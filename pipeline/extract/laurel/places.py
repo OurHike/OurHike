@@ -1,7 +1,5 @@
-"""Laurel Highlands Hiking Trail (PA DCNR): places, published, and not landed (coverage audit
-2026-10-01, batch c9_federal_state_rest).
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+"""Laurel Highlands Hiking Trail (PA DCNR): places, drawn from pasda/'s resources (decision 54, wave 1,
+read 2026-10-03).
 """
 
 from datetime import date
@@ -9,11 +7,17 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "`www.gis.dcnr.pa.gov/agsprod/rest/services/Parks/State_Parks/MapServer/9` (State Park Boundaries): "
-        "125. State Forest boundaries at `BOF/State_Forests/MapServer/4`.",
+        "via pasda `dcnr_state_park_boundaries` (DCNR's Parks/State_Parks/MapServer/9, 125 polygons, Laurel Ridge, Laurel"
+        " Hill and Laurel Summit state parks among them) and `dcnr_state_forest_boundaries` "
+        "(BOF/State_Forests/MapServer/4, 662), registered 2026-10-03.",
     ),
-    where=("https://www.gis.dcnr.pa.gov/agsprod/rest/services/Parks/State_Parks/MapServer/9",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    where=(
+        "https://www.gis.dcnr.pa.gov/agsprod/rest/services/Parks/State_Parks/MapServer/9",
+        "https://www.gis.dcnr.pa.gov/agsprod/rest/services/BOF/State_Forests/MapServer/4",
+    ),
+    reason=(
+        "drawn from pasda/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in"
+    ),
 )

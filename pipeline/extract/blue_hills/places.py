@@ -1,9 +1,7 @@
-"""Friends of the Blue Hills: places, published, and not landed (coverage audit 2026-10-01, batch
-c4_regional_1).
+"""Friends of the Blue Hills: places, drawn from massgis/'s resources (decision 54, wave 1, read
+2026-10-03).
 
-DCR's boundaries.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+DCR's boundaries, inside MassGIS's open-space compilation.
 """
 
 from datetime import date
@@ -11,11 +9,16 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=("MassGIS `AGOL/openspace/MapServer/0`: 94 rows with `SITE_NAME LIKE '%Blue Hills%'`. FBH `/directions/` page.",),
+    confirmed=date(2026, 10, 3),
+    checked=(
+        "via massgis `massgis_openspace` (AGOL/openspace/MapServer/0, 61,486 polygons), registered 2026-10-03; 94 of its "
+        "rows match `SITE_NAME LIKE '%Blue Hills%'` (coverage audit).",
+    ),
     where=(
         "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/openspace/MapServer/0",
         "https://friendsofthebluehills.org/",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason=(
+        "drawn from massgis/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+    ),
 )

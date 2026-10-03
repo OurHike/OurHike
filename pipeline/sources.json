@@ -893,6 +893,132 @@
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: whether hunting seasons are warnings at all is the maintainer's open question (nysdec/warnings.py)."
     },
     {
+      "key": "dec_lands",
+      "title": "DEC Lands (state land units)",
+      "provider": "NYS DEC",
+      "kind": "club_arcgis_layer",
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_activities/MapServer/0",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. New York State Department of Environmental Conservation publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM NEW YORK STATE DEPARTMENT OF ENVIRONMENTAL CONSERVATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "New York State Department of Environmental Conservation",
+      "geometry_kind": "polygon",
+      "name_field": "FACILITY",
+      "id_field": null,
+      "id_comment": "NONE: no column but the object id `OBJECTID` is unique and non-null on all 3,234 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which.",
+      "category_field": "CATEGORY",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "UPDATED",
+        "notes": "The on-prem change check's maintained date. Fingerprint read 2026-10-03: {'N': 3234, 'MAX_OID': 47264.0, 'MAX_DATE': 1789344000000}."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b3_nys_dec), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "3,234 polygon features (returnCountOnly), 22 fields, maxRecordCount 1,000, served in EPSG:26918, no editingInfo (on-prem); max(UPDATED) 2026-09-14, all read 2026-10-03. KEY: NONE: no column but the object id `OBJECTID` is unique and non-null on all 3,234 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which. MART: kind `park`: Forest Preserve units, State Forests, Wildlife Management Areas and the rest, the gazetteer a hiker searches ('Five Ponds Wilderness'); `CATEGORY` and `CLASS` are the publisher's words for a park's category. CATEGORY on the 3,234 rows: Forest Preserve 1,370, State Forest 816, Wildlife Management 338, Fishing Access 182, For Pres Det Par 140, Tidal Wetland 101, Waterway Access 87, Unique Area 76, Multiple Use Area 41, Special Use 32, Administrative 17. `PUBLICUSE` is the publisher's own access flag. MANAGE_BY is null on every row. Whether the NYS GIS Clearinghouse lists this layer, which would make it `maintainer_clearinghouse` under decisions 20 and 22, was not checked. CHANGE CHECK: on-prem, so the statistics fingerprint: count, max(object id), max(UPDATED) and the summed system length or area (ArcgisLayer._onprem_check). The first three answered {'N': 3234, 'MAX_OID': 47264.0, 'MAX_DATE': 1789344000000} on 2026-10-03, read before the sum joined the check. The service's ETag hashes the body and never moves with the data.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "dec_conservation_easements",
+      "title": "DEC Conservation Easements",
+      "provider": "NYS DEC",
+      "kind": "club_arcgis_layer",
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_activities/MapServer/1",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. New York State Department of Environmental Conservation publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM NEW YORK STATE DEPARTMENT OF ENVIRONMENTAL CONSERVATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "New York State Department of Environmental Conservation",
+      "geometry_kind": "polygon",
+      "name_field": "FACILITY",
+      "id_field": "LANDS_UID",
+      "id_comment": "`LANDS_UID` is unique and non-null on all 93 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b3_nys_dec), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "93 polygon features (returnCountOnly), 16 fields, maxRecordCount 1,000, served in EPSG:26918, no editingInfo (on-prem), all read 2026-10-03. KEY: `LANDS_UID` is unique and non-null on all 93 rows read 2026-10-03. MART: kind `park` only where the easement carries public recreation rights: an easement is private land, and the layer's `HUNT` and `URL` say what access it carries. Phase C decides; never a place by default. DATE_VEST, the date an easement vested (max 2025-11-25), is the only date column and is no maintained date, so the on-prem change check is not given one and the layer is read whole every monthly run. The layer's object id is OBJECTID_1, and its OBJECTID column is null in a statistics query. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "dec_wildlife_management_areas",
+      "title": "DEC Wildlife Management Areas",
+      "provider": "NYS DEC",
+      "kind": "club_arcgis_layer",
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_activities/MapServer/2",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. New York State Department of Environmental Conservation publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM NEW YORK STATE DEPARTMENT OF ENVIRONMENTAL CONSERVATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "New York State Department of Environmental Conservation",
+      "geometry_kind": "polygon",
+      "name_field": "WMA",
+      "id_field": "WMA",
+      "id_comment": "`WMA` is unique and non-null on all 132 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b3_nys_dec), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "132 polygon features (returnCountOnly), 13 fields, maxRecordCount 1,000, served in EPSG:26918, no editingInfo (on-prem), all read 2026-10-03. KEY: `WMA` is unique and non-null on all 132 rows read 2026-10-03. MART: kind `park`. DEC Lands (dec_lands) also carries 338 Wildlife Management rows; whether these 132 are the same units drawn once per area is not measured, so dedup between the two is phase C's. No date column, so the on-prem change check answers UNKNOWN and the layer is read whole every monthly run. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "dec_adirondack_park_boundary",
+      "title": "Adirondack Park Boundary (the Blue Line)",
+      "provider": "NYS DEC",
+      "kind": "club_arcgis_layer",
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_reference/MapServer/8",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. New York State Department of Environmental Conservation publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM NEW YORK STATE DEPARTMENT OF ENVIRONMENTAL CONSERVATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "New York State Department of Environmental Conservation",
+      "geometry_kind": "polygon",
+      "name_constant": "Adirondack Park",
+      "id_field": "MOREINFO",
+      "id_comment": "`MOREINFO` is unique and non-null on all 1 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b3_nys_dec), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "1 polygon feature (returnCountOnly), 5 fields, maxRecordCount 1,000, served in EPSG:26918, no editingInfo (on-prem), all read 2026-10-03. KEY: `MOREINFO` is unique and non-null on all 1 rows read 2026-10-03. MART: kind `park`, one row, named by the layer (it carries no name column): the place a hiker means by 'the Adirondacks'. One polygon; fields OBJECTID, MOREINFO (a URL) and the shape. No date column, so read whole every monthly run. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "dec_catskill_park_boundary",
+      "title": "Catskill Park Boundary (the Blue Line)",
+      "provider": "NYS DEC",
+      "kind": "club_arcgis_layer",
+      "url": "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_reference/MapServer/9",
+      "trust": "authoritative",
+      "steward": "New York State Department of Environmental Conservation",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. New York State Department of Environmental Conservation publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM NEW YORK STATE DEPARTMENT OF ENVIRONMENTAL CONSERVATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "New York State Department of Environmental Conservation",
+      "geometry_kind": "polygon",
+      "name_constant": "Catskill Park",
+      "id_field": "MOREINFO",
+      "id_comment": "`MOREINFO` is unique and non-null on all 1 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b3_nys_dec), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "1 polygon feature (returnCountOnly), 5 fields, maxRecordCount 1,000, served in EPSG:26918, no editingInfo (on-prem), all read 2026-10-03. KEY: `MOREINFO` is unique and non-null on all 1 rows read 2026-10-03. MART: kind `park`, one row, named by the layer. One polygon; fields OBJECTID, MOREINFO (a URL) and the shape. No date column, so read whole every monthly run. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
       "key": "usfs_trails",
       "title": "National Forest System Trails (USFS, nationwide)",
       "provider": "USFS",
@@ -1545,6 +1671,108 @@
       "notes": "0 rows on 2026-10-03 (returnCountOnly answered {\"count\":0}); edited 2026-09-17. An allowed zero, proven by the server's own count in the same run. GIS_PARCEL, MGMT_AGENCY, FFS_DIVISION, COUNTY, MUN, NOTIFY_STATUS, BURN_DATE. Read by this step at 2026-10-03T16:12:05Z: returnCountOnly under the row's `where` answered 0, and `GLOBALID` is distinct on 0 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "nj_state_open_space",
+      "title": "State Protected Open Space (Generalized) and Recreation Areas in New Jersey",
+      "provider": "NJDEP",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/QWdNfRs7lkPq4g4Q/arcgis/rest/services/Open_Space__State_Owned__Generalized_h/FeatureServer/67",
+      "trust": "authoritative",
+      "steward": "New Jersey Department of Environmental Protection",
+      "licence": "See njdep_licence below: the NJDEP Data Distribution Agreement is this item's own licenseInfo, quoted whole in `terms` (read 2026-10-03), the same agreement nj_statewide_trails carries. It regulates reproduction rather than forbidding it, and its conditions travel with the layer under decision 38: the coordinate reference system kept intact, the metadata with any redistribution, and its credit line verbatim.",
+      "licence_basis": "stated_by_org",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: This state open space coverage was created to assist in open space planning/acquisition efforts. This information is NOT to be used for describing actual or true property ownership title nor may it be used as an accurate depiction of the geographic extent of earlier purchased parcels. Green Acres encourages notification of inaccuracies or omissions found in the data. Please read the Mapping Methodologies listed in SUPPLEMENTAL SECTION prior to using the data set to better understand limitations and intended use. New Jersey Department of Environmental Protection (NJDEP) Data Distribution Agreement. The data provided herein are distributed subject to the following conditions and restrictions: NJDEP assumes no responsibility to maintain them in any manner or form and disclaims any duty or obligation to either maintain availability of or to update the data. Terms of Agreement 1. All data is provided, as is, without any representation or warranty of any kind, implied, expressed or statutory including, but not limited to, the warranties of non-infringement of third party rights, title, merchantability or fitness for a particular use, freedom from computer virus nor are any such warranties to be implied with respect to the digital data layers furnished hereunder. User is responsible for understanding the accuracy limitations of all digital data layers provided herein, as documented in the accompanying cross-reference files (see SUPPLEMENTAL INFORMATION). Any reproduction or manipulation of the above data must ensure that the coordinate reference system remains intact. 2. Digital data received from the NJDEP may not be reproduced or redistributed without all the metadata provided. 3. Any maps, publications, reports, or other documents produced as a result of this project that utilize this digital data will credit the NJDEP's Geographic Information System (GIS) as the source of the data with the following credit/disclaimer: \"This (map/publication/report) was developed using New Jersey Department of Environmental Protection Geographic Information System digital data, but this secondary product has not been verified by NJDEP and is not state-authorized or endorsed.\" 4. NJDEP makes no warranty that digital data are free of Copyright or Trademark claims or other restrictions or limitations on free use or display. Making a copy of this data may be subject to the copyright of trademark laws. | accessInformation: NJDEP | copyrightText: NJDEP",
+      "attribution": "New Jersey Department of Environmental Protection",
+      "geometry_kind": "polygon",
+      "name_field": "FEATURE_NAME",
+      "id_field": "GLOBALID",
+      "id_comment": "`GLOBALID` is unique and non-null on all 373 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "person_fields": [
+        "LAST_EDITOR",
+        "NAME_CONTACT",
+        "TELEPHONE"
+      ],
+      "person_fields_comment": "Columns of this layer that name or reach a person, never requested and never loaded (ELT.md 'Who may publish', rule 8); read off the live layer's fields on 2026-10-03.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "373 polygon features (returnCountOnly), 60 fields, maxRecordCount 2,000, served in EPSG:102711, layer lastEditDate 2026-09-24, all read 2026-10-03. KEY: `GLOBALID` is unique and non-null on all 373 rows read 2026-10-03. MART: kind `park`: the 373 generalized state units, the 'which park am I in' layer. `PUBLIC_ACCESS` (Yes 263, No 24, null 86) is the publisher's own flag and travels with the row. 60 fields, among them FACILITY_URL, FACILITY_TRAILMAP_URL, PARKING, HUNTING_PERMITTED and PUBLIC_ACCESS. LAST_EDITOR holds a staff username on all 373 rows; NAME_CONTACT holds an office's name and TELEPHONE its number (202 null), and both are left out with it under ELT.md 'Who may publish' rule 8 as decision 54's wave 1 applies it: no phone number loads. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 24 Sep 2026 16:08:17 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "nj_state_natural_areas",
+      "title": "State Natural Areas in New Jersey",
+      "provider": "NJDEP",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/QWdNfRs7lkPq4g4Q/arcgis/rest/services/State_Natural_Areas_Preserve_Boundaries_in_New_Jersey/FeatureServer/7",
+      "trust": "authoritative",
+      "steward": "New Jersey Department of Environmental Protection",
+      "licence": "See njdep_licence below: the NJDEP Data Distribution Agreement is this item's own licenseInfo, quoted whole in `terms` (read 2026-10-03), the same agreement nj_statewide_trails carries. It regulates reproduction rather than forbidding it, and its conditions travel with the layer under decision 38: the coordinate reference system kept intact, the metadata with any redistribution, and its credit line verbatim.",
+      "licence_basis": "stated_by_org",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: New Jersey Department of Environmental Protection (NJDEP) Data Distribution Agreement. The data provided herein are distributed subject to the following conditions and restrictions: NJDEP assumes no responsibility to maintain them in any manner or form and disclaims any duty or obligation to either maintain availability of or to update the data. Terms of Agreement 1. All data is provided, as is, without any representation or warranty of any kind, implied, expressed or statutory including, but not limited to, the warranties of non-infringement of third party rights, title, merchantability or fitness for a particular use, freedom from computer virus nor are any such warranties to be implied with respect to the digital data layers furnished hereunder. User is responsible for understanding the accuracy limitations of all digital data layers provided herein, as documented in the accompanying cross-reference files (see SUPPLEMENTAL INFORMATION). Any reproduction or manipulation of the above data must ensure that the coordinate reference system remains intact. 2. Digital data received from the NJDEP may not be reproduced or redistributed without all the metadata provided. 3. Any maps, publications, reports, or other documents produced as a result of this project that utilize this digital data will credit the NJDEP's Geographic Information System (GIS) as the source of the data with the following credit/disclaimer: 'This (map/publication/report) was developed using New Jersey Department of Environmental Protection Geographic Information System digital data, but this secondary product has not been verified by NJDEP and is not state-authorized or endorsed.' 4. NJDEP makes no warranty that digital data are free of Copyright or Trademark claims or other restrictions or limitations on free use or display. Making a copy of this data may be subject to the copyright of trademark laws. | accessInformation: NJDEP Office of Natural Lands Management, Edition 20220120 | copyrightText: NJDEP Office of Natural Lands Management, Edition 20220120",
+      "attribution": "New Jersey Department of Environmental Protection",
+      "geometry_kind": "polygon",
+      "name_field": "FEATURE_NAME",
+      "id_field": "GLOBALID",
+      "id_comment": "`GLOBALID` is unique and non-null on all 47 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "47 polygon features (returnCountOnly), 9 fields, maxRecordCount 2,000, served in EPSG:102711, layer lastEditDate 2026-02-25, all read 2026-10-03. KEY: `GLOBALID` is unique and non-null on all 47 rows read 2026-10-03. MART: kind `park`. Fields FEATURE_NAME, ACRES, FACILITY_LABEL, MUNICIPALITY, COUNTY, GLOBALID. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Wed, 25 Feb 2026 20:00:32 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "nj_parks_points",
+      "title": "Parks (points), NJDEP Features/Land",
+      "provider": "NJDEP",
+      "kind": "club_arcgis_layer",
+      "url": "https://mapsdep.nj.gov/arcgis/rest/services/Features/Land/MapServer/5",
+      "trust": "authoritative",
+      "steward": "New Jersey Department of Environmental Protection",
+      "licence": "See njdep_licence below - the footing njdep_park_trails ships on: NJDEP's on-prem service states copyrightText 'NJDEP' and no terms of its own (read 2026-10-03), and the Data Distribution Agreement that block reads is NJDEP's published term for its GIS data, carried here under decision 38.",
+      "licence_basis": "stated_by_org",
+      "terms": "Verbatim from the on-prem service and layer, read 2026-10-03. copyrightText: NJDEP",
+      "attribution": "New Jersey Department of Environmental Protection",
+      "geometry_kind": "point",
+      "name_field": "NAME",
+      "id_field": "PARK_ID",
+      "id_comment": "`PARK_ID` is unique and non-null on all 394 rows read 2026-10-03.",
+      "place_kind_comment": "No `place_kind`, deliberately: this layer maps onto none of the places mart's five kinds (park, town, trailhead, parking, trail); `notes`' MART says why.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "394 point features (returnCountOnly), 14 fields, maxRecordCount 2,000, served in EPSG:102711, no editingInfo (on-prem), all read 2026-10-03. KEY: `PARK_ID` is unique and non-null on all 394 rows read 2026-10-03. MART: NO MART KIND AS IT STANDS: a park as a point, and the mart's `park` carries a boundary box, so these join to a polygon layer by name or point-in-polygon rather than becoming places themselves. Fields PARK_, PARK_ID, NAME, TYPE, TOWNSHIP, COUNTY, POLYGONID. No date column, so read whole every monthly run. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "nj_place_names",
+      "title": "Place Names (GNIS-derived points), NJDEP Features/Land",
+      "provider": "NJDEP",
+      "kind": "club_arcgis_layer",
+      "url": "https://mapsdep.nj.gov/arcgis/rest/services/Features/Land/MapServer/6",
+      "trust": "authoritative",
+      "steward": "New Jersey Department of Environmental Protection",
+      "licence": "See njdep_licence below - the footing njdep_park_trails ships on: NJDEP's on-prem service states copyrightText 'NJDEP' and no terms of its own (read 2026-10-03), and the Data Distribution Agreement that block reads is NJDEP's published term for its GIS data, carried here under decision 38.",
+      "licence_basis": "stated_by_org",
+      "terms": "Verbatim from the on-prem service and layer, read 2026-10-03. copyrightText: NJDEP",
+      "attribution": "New Jersey Department of Environmental Protection",
+      "geometry_kind": "point",
+      "name_field": "FEATURE_NAME",
+      "id_field": "FEATURE_ID",
+      "id_comment": "`FEATURE_ID` is unique and non-null on all 2,641 rows read 2026-10-03.",
+      "category_field": "FEATURE_CLASS",
+      "place_kind": "town",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "2,641 point features (returnCountOnly), 15 fields, maxRecordCount 2,000, served in EPSG:102711, no editingInfo (on-prem), all read 2026-10-03. KEY: `FEATURE_ID` is unique and non-null on all 2,641 rows read 2026-10-03. MART: kind `town` for its Populated Place rows (2,595 of 2,641; Locale 45, Military 1). The mart's town is a published waypoint today (PL05), so phase C needs a branch from a places layer, or routes these through points_of_interest's resupply rows. FEATURE_ID (a GNIS id, typed double) is unique on all 2,641; DATE_EDITED maxes at 2016-10-19, so the layer has not moved in a decade. Read whole every monthly run: the newest date is not a maintained one. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
     },
     {
       "key": "nyc_parks_trails",
@@ -2469,6 +2697,53 @@
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
     },
     {
+      "key": "cpw_managed_properties",
+      "title": "CPW Managed Properties (public access only)",
+      "provider": "Colorado Parks & Wildlife",
+      "kind": "club_arcgis_layer",
+      "url": "https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/arcgis/rest/services/CPWAdminData/FeatureServer/5",
+      "trust": "authoritative",
+      "steward": "Colorado Parks & Wildlife",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. Colorado Parks & Wildlife publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM COLORADO PARKS & WILDLIFE, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: This map is a product and property of the Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data. Written documents may accompany this map and should be referenced. The Colorado Department of Natural Resources is not responsible and shall not be liable to the user for damages of any kind arising out of the use of data or information provided by the Department, including the installation of the data or information, its use, or the results obtained from its use. ANY DATA OR INFORMATION PROVIDED BY THE DEPARTMENT OF NATURAL RESOURCES IS PROVIDED \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MECHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Data or information provided by the Department of Natural Resources shall be used and relied upon only at the user's sole risk, and the user agrees to indemnify and hold harmless the Department of Natural Resources, its officials, officers and employees from any liability arising out of the use of the data or information provided. | accessInformation: Colorado Parks and Wildlife | copyrightText: Colorado Parks and Wildlife",
+      "attribution": "Colorado Parks & Wildlife",
+      "geometry_kind": "polygon",
+      "name_field": "PropName",
+      "id_field": "GlobalID_2",
+      "id_comment": "`GlobalID_2` is unique and non-null on all 920 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "920 polygon features (returnCountOnly), 10 fields, maxRecordCount 2,000, served in EPSG:102100, layer lastEditDate 2026-08-27, all read 2026-10-03. KEY: `GlobalID_2` is unique and non-null on all 920 rows read 2026-10-03. MART: kind `park`: state parks, state trust lands and wildlife areas with public access, `PropType` the category. Two GlobalID columns: GlobalID_2 is the layer's own and GlobalID a string carried over; both are unique on all 920. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 27 Aug 2026 14:25:24 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "cpw_property_centroids",
+      "title": "CPW All Properties Centroid",
+      "provider": "Colorado Parks & Wildlife",
+      "kind": "club_arcgis_layer",
+      "url": "https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/arcgis/rest/services/CPWAdminData/FeatureServer/13",
+      "trust": "authoritative",
+      "steward": "Colorado Parks & Wildlife",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. Colorado Parks & Wildlife publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM COLORADO PARKS & WILDLIFE, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: This map is a product and property of the Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data. Written documents may accompany this map and should be referenced. The Colorado Department of Natural Resources is not responsible and shall not be liable to the user for damages of any kind arising out of the use of data or information provided by the Department, including the installation of the data or information, its use, or the results obtained from its use. ANY DATA OR INFORMATION PROVIDED BY THE DEPARTMENT OF NATURAL RESOURCES IS PROVIDED \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MECHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Data or information provided by the Department of Natural Resources shall be used and relied upon only at the user's sole risk, and the user agrees to indemnify and hold harmless the Department of Natural Resources, its officials, officers and employees from any liability arising out of the use of the data or information provided. | accessInformation: Colorado Parks and Wildlife | copyrightText: Colorado Parks and Wildlife",
+      "attribution": "Colorado Parks & Wildlife",
+      "geometry_kind": "point",
+      "name_field": "PropName",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 1,056 rows read 2026-10-03.",
+      "place_kind_comment": "No `place_kind`, deliberately: this layer maps onto none of the places mart's five kinds (park, town, trailhead, parking, trail); `notes`' MART says why.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "1,056 point features (returnCountOnly), 6 fields, maxRecordCount 2,000, served in EPSG:102100, layer lastEditDate 2026-08-27, all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 1,056 rows read 2026-10-03. MART: NO MART KIND AS IT STANDS: a point per CPW property, public or not (`ManagedPub` says which), 1,056 to the polygon layer's 920. A park as a point; it joins to cpw_managed_properties rather than becoming a place. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 27 Aug 2026 14:25:24 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
       "key": "wa_rco_trails",
       "title": "Washington State Trails Database",
       "provider": "Washington RCO",
@@ -2514,6 +2789,63 @@
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
     },
     {
+      "key": "wa_public_lands_inventory",
+      "title": "WA Public Lands Inventory 2019",
+      "provider": "Washington RCO",
+      "kind": "club_arcgis_layer",
+      "url": "https://services2.arcgis.com/TGEC20q86HQAeMS6/arcgis/rest/services/WA_Public_Lands_Inventory_2019/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Washington Recreation and Conservation Office",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. Washington Recreation and Conservation Office publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM WASHINGTON RECREATION AND CONSERVATION OFFICE, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: WA OCIO Category 1 Data: Public Information | accessInformation: Washington State Recreation and Conservation Office",
+      "attribution": "Washington Recreation and Conservation Office",
+      "geometry_kind": "polygon",
+      "name_field": "Agency_Management_Unit",
+      "id_field": null,
+      "id_comment": "NONE: no column but the object id `OBJECTID` is unique and non-null on all 32,593 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "not_person_fields": [
+        "Land_Owner",
+        "Owner"
+      ],
+      "not_person_fields_comment": "Land_Owner names an agency or a city on the 32,593 rows (DNR 23,967, Washington State Department of Fish and Wildlife 1,913, WSPRC 1,219, read 2026-10-03), and Owner is its short form.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "32,593 polygon features (returnCountOnly), 29 fields, maxRecordCount 2,000, served in EPSG:102100, layer lastEditDate 2020-06-04, all read 2026-10-03. KEY: NONE: no column but the object id `OBJECTID` is unique and non-null on all 32,593 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which. MART: kind `park` only after phase C dissolves parcels into units: these are 32,593 acquisition parcels, and Agency_Management_Unit names a unit on 1,560 of them only. STALE: last edited 2020-06-04, aggregated from the agencies. No column is a key; OBJECTID is the only unique one. The Recreation_Provider_Inventory view's layer 1 holds the same 32,593 rows (SAME_AS note). Census population columns (POPULATION, POP2010) are carried along by a county join. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 04 Jun 2020 22:10:27 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "wa_recreation_areas",
+      "title": "Recreation Areas (Recreation Provider Inventory)",
+      "provider": "Washington RCO",
+      "kind": "club_arcgis_layer",
+      "url": "https://services2.arcgis.com/TGEC20q86HQAeMS6/arcgis/rest/services/Recreation_Provider_Inventory/FeatureServer/2",
+      "trust": "authoritative",
+      "steward": "Washington Recreation and Conservation Office",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. Washington Recreation and Conservation Office publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM WASHINGTON RECREATION AND CONSERVATION OFFICE, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "Washington Recreation and Conservation Office",
+      "geometry_kind": "polygon",
+      "name_field": "Name",
+      "id_field": null,
+      "id_comment": "NONE: no column but the object id `OBJECTID` is unique and non-null on all 5,221 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "not_person_fields": [
+        "Owner"
+      ],
+      "not_person_fields_comment": "Owner names an agency, a city or 'Private' on the 5,221 rows (Seattle 434, WDFW 278, King County 203, read 2026-10-03).",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "5,221 polygon features (returnCountOnly), 13 fields, maxRecordCount 2,000, served in EPSG:4326, layer lastEditDate 2021-10-06, all read 2026-10-03. KEY: NONE: no column but the object id `OBJECTID` is unique and non-null on all 5,221 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which. MART: kind `park` for Category Park (3,585) and Recreation Lands (1,049); golf, pools and sports complexes are not hiking places. A hosted view of the 'Mapped Inventory For 2023' service. Name is 4,749 distinct on 5,221; no column is a key. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Wed, 06 Oct 2021 15:11:19 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
       "key": "utah_sgid_trails",
       "title": "Utah trails and pathways (SGID)",
       "provider": "Utah UGRC",
@@ -2538,6 +2870,128 @@
       "blaze_field": null,
       "blaze_default": "Unknown",
       "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for. `CartoCode` looked like symbology and is not: its 12 values are use classes - '1 - Hiking Only', '2 - Hiking and Biking', '7 - Steps' - measured live."
+    },
+    {
+      "key": "ugrc_municipal_boundaries",
+      "title": "Utah Municipal Boundaries",
+      "provider": "Utah UGRC",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/UtahMunicipalBoundaries/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Utah Geospatial Resource Center",
+      "licence": "CC BY 4.0, which UGRC states in the item's licenseInfo ('This work is licensed under a Creative Commons Attribution 4.0 International License.', read 2026-10-03); attribution required. The layer's words are quoted verbatim in `terms`.",
+      "licence_basis": "stated_by_org",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: The data, including but not limited to geographic data, tabular data, and analytical data, are provided \"as is\" and \"as available\", with no guarantees relating to the availability, completeness, or accuracy of data, and without any express or implied warranties. These data are provided as a public service for informational purposes only. You are solely responsible for obtaining the proper evaluation of a location and associated data by a qualified professional. UGRC reserves the right to change, revise, suspend or discontinue published data and services without notice at any time. Neither UGRC nor the State of Utah are responsible for any misuse or misrepresentation of the data. UGRC and the State of Utah are not obligated to provide you with any maintenance or support. The user assumes the entire risk as to the quality and performance of the data. You agree to hold the State of Utah harmless for any claims, liability, costs, and damages relating to your use of the data. You agree that your sole remedy for any dissatisfaction or claims is to discontinue use of the data. This work is licensed under a Creative Commons Attribution 4.0 International License. | copyrightText: Cities, Towns and Counties of Utah, UGRC",
+      "attribution": "Utah Geospatial Resource Center",
+      "geometry_kind": "polygon",
+      "name_field": "NAME",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 261 rows read 2026-10-03.",
+      "place_kind": "town",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states and p08_persist (wmc)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "261 polygon features (returnCountOnly), 18 fields, maxRecordCount 2,000, served in EPSG:102100, layer lastEditDate 2026-10-01, all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 261 rows read 2026-10-03. MART: kind `town`, from each polygon's centroid: the 261 cities and towns, with POPLASTESTIMATE. UPDATED maxes at 2026-09-30. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 01 Oct 2026 07:15:19 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "ugrc_state_park_boundaries",
+      "title": "Utah state park boundaries (dissolved)",
+      "provider": "Utah UGRC",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/state_park_boundaries_dissolved/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Utah Geospatial Resource Center",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. Utah Geospatial Resource Center publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM UTAH GEOSPATIAL RESOURCE CENTER, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "Utah Geospatial Resource Center",
+      "geometry_kind": "polygon",
+      "name_field": "label_state",
+      "id_field": null,
+      "id_comment": "NONE: no column but the object id `OBJECTID` is unique and non-null on all 47 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states and p08_persist (wmc)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "47 polygon features (returnCountOnly), 13 fields, maxRecordCount 2,000, served in EPSG:26912, layer lastEditDate 2026-03-31, all read 2026-10-03. KEY: NONE: no column but the object id `OBJECTID` is unique and non-null on all 47 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which. MART: kind `park`: 46 named state parks and one unnamed polygon. full_name is null on all 47 rows; label_state and truncated_name are each 46 distinct on the 46 named rows, one row unnamed, so no column is a key. The item carries no licence text of its own, unlike UGRC's SGID items. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Tue, 31 Mar 2026 21:20:28 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "ugrc_state_park_points",
+      "title": "Utah state park points (for website)",
+      "provider": "Utah UGRC",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/state_park_points_for_website/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Utah Geospatial Resource Center",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. Utah Geospatial Resource Center publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM UTAH GEOSPATIAL RESOURCE CENTER, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "Utah Geospatial Resource Center",
+      "geometry_kind": "point",
+      "name_field": "full_name",
+      "id_field": "full_name",
+      "id_comment": "`full_name` is unique and non-null on all 54 rows read 2026-10-03.",
+      "place_kind_comment": "No `place_kind`, deliberately: this layer maps onto none of the places mart's five kinds (park, town, trailhead, parking, trail); `notes`' MART says why.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states and p08_persist (wmc)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "54 point features (returnCountOnly), 14 fields, maxRecordCount 2,000, layer lastEditDate 2026-09-24, all read 2026-10-03. KEY: `full_name` is unique and non-null on all 54 rows read 2026-10-03. MART: NO MART KIND AS IT STANDS: a park as a point, joined to ugrc_state_park_boundaries by name rather than a place of its own. 54 points to the boundary layer's 47. Carries activities, facilities, lodging and a link per park. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 24 Sep 2026 19:29:13 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "ugrc_cities_towns",
+      "title": "Utah City and Town Locations",
+      "provider": "Utah UGRC",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/CitiesTownsLocations/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Utah Geospatial Resource Center",
+      "licence": "CC BY 4.0, which UGRC states in the item's licenseInfo ('This work is licensed under a Creative Commons Attribution 4.0 International License.', read 2026-10-03); attribution required. The layer's words are quoted verbatim in `terms`.",
+      "licence_basis": "stated_by_org",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: The data, including but not limited to geographic data, tabular data, and analytical data, are provided \"as is\" and \"as available\", with no guarantees relating to the availability, completeness, or accuracy of data, and without any express or implied warranties. These data are provided as a public service for informational purposes only. You are solely responsible for obtaining the proper evaluation of a location and associated data by a qualified professional. UGRC reserves the right to change, revise, suspend or discontinue published data and services without notice at any time. Neither UGRC nor the State of Utah are responsible for any misuse or misrepresentation of the data. UGRC and the State of Utah are not obligated to provide you with any maintenance or support. The user assumes the entire risk as to the quality and performance of the data. You agree to hold the State of Utah harmless for any claims, liability, costs, and damages relating to your use of the data. You agree that your sole remedy for any dissatisfaction or claims is to discontinue use of the data. This work is licensed under a Creative Commons Attribution 4.0 International License. | accessInformation: AGRC | copyrightText: AGRC",
+      "attribution": "Utah Geospatial Resource Center",
+      "geometry_kind": "point",
+      "name_field": "NAME",
+      "id_fields": [
+        "NAME",
+        "COUNTY"
+      ],
+      "id_comment": "(NAME, COUNTY) is unique and non-null on all 462 rows read 2026-10-03; no single column is.",
+      "place_kind": "town",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states and p08_persist (wmc)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "462 point features (returnCountOnly), 8 fields, maxRecordCount 2,000, layer lastEditDate 2026-05-20, all read 2026-10-03. KEY: (NAME, COUNTY) is unique and non-null on all 462 rows read 2026-10-03; no single column is. MART: kind `town`: 462 cities, towns and places with POPULATION and TYPE. Overlaps ugrc_municipal_boundaries' incorporated places; dbt deduplicates. NAME repeats across counties: (NAME, COUNTY) is unique on all 462 and is the measured key. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Wed, 20 May 2026 21:50:45 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "ugrc_local_parks",
+      "title": "Utah Parks Local",
+      "provider": "Utah UGRC",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/UtahParksLocal/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Utah Geospatial Resource Center",
+      "licence": "CC BY 4.0, which UGRC states in the item's licenseInfo ('This work is licensed under a Creative Commons Attribution 4.0 International License.', read 2026-10-03); attribution required. The layer's words are quoted verbatim in `terms`.",
+      "licence_basis": "stated_by_org",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: The data, including but not limited to geographic data, tabular data, and analytical data, are provided \"as is\" and \"as available\", with no guarantees relating to the availability, completeness, or accuracy of data, and without any express or implied warranties. These data are provided as a public service for informational purposes only. You are solely responsible for obtaining the proper evaluation of a location and associated data by a qualified professional. UGRC reserves the right to change, revise, suspend or discontinue published data and services without notice at any time. Neither UGRC nor the State of Utah are responsible for any misuse or misrepresentation of the data. UGRC and the State of Utah are not obligated to provide you with any maintenance or support. The user assumes the entire risk as to the quality and performance of the data. You agree to hold the State of Utah harmless for any claims, liability, costs, and damages relating to your use of the data. You agree that your sole remedy for any dissatisfaction or claims is to discontinue use of the data. This work is licensed under a Creative Commons Attribution 4.0 International License. | accessInformation: AGRC",
+      "attribution": "Utah Geospatial Resource Center",
+      "geometry_kind": "polygon",
+      "name_field": "NAME",
+      "id_field": null,
+      "id_comment": "NONE: no column but the object id `OBJECTID` is unique and non-null on all 2,104 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states and p08_persist (wmc)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "2,104 polygon features (returnCountOnly), 9 fields, maxRecordCount 2,000, layer lastEditDate 2026-08-31, all read 2026-10-03. KEY: NONE: no column but the object id `OBJECTID` is unique and non-null on all 2,104 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which. MART: kind `park`: 2,104 city and county parks, `TYPE` and `STATUS` per row. NAME is 1,386 distinct on 2,104; no column is a key. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Mon, 31 Aug 2026 04:57:08 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
     },
     {
       "key": "ncta_trail",
@@ -2726,6 +3180,63 @@
       "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no model reads this table yet. Phase C flips this to true when its generated base model and the elevation union read it. Until then false, because an elevation figure that reached a phone before anyone checked it against the 3DEP profile would be a display outrunning its source (CLAUDE.md)."
     },
     {
+      "key": "pasda_dcnr_wild_natural_areas",
+      "title": "DCNR BOF Wild and Natural Areas 202402 (PASDA)",
+      "provider": "PASDA",
+      "kind": "club_arcgis_layer",
+      "url": "https://mapservices.pasda.psu.edu/server/rest/services/pasda/DCNR/MapServer/9",
+      "trust": "authoritative",
+      "steward": "Pennsylvania Department of Conservation and Natural Resources",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. Pennsylvania Department of Conservation and Natural Resources publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM PENNSYLVANIA DEPARTMENT OF CONSERVATION AND NATURAL RESOURCES, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "Pennsylvania Department of Conservation and Natural Resources",
+      "geometry_kind": "polygon",
+      "name_field": "WnaName",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 141 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "person_fields": [
+        "CreatedBy",
+        "LastEdited"
+      ],
+      "person_fields_comment": "Columns of this layer that name or reach a person, never requested and never loaded (ELT.md 'Who may publish', rule 8); read off the live layer's fields on 2026-10-03.",
+      "not_person_fields": [
+        "LastEdit_1"
+      ],
+      "not_person_fields_comment": "On this PASDA copy `LastEdited` is the editor's username and `LastEdit_1` the edit date ('2023.02.08 09:53' on 188 rows), read 2026-10-03.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa and c9_federal_state_rest (laurel)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "141 polygon features (returnCountOnly), 26 fields, maxRecordCount 1,000, served in EPSG:4326, no editingInfo (on-prem), all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 141 rows read 2026-10-03. MART: kind `park`: State Forest Wild and Natural Areas, the named places inside state forests. A February 2024 snapshot PASDA hosts; no live DCNR copy of this layer was found on www.gis.dcnr.pa.gov's BOF/State_Forests service, which was the only DCNR service read, so it is registered from PASDA, as pasda_dcnr_trails is. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "pasda_dcnr_local_parks",
+      "title": "DCNR Local Park 202406 (PASDA)",
+      "provider": "PASDA",
+      "kind": "club_arcgis_layer",
+      "url": "https://mapservices.pasda.psu.edu/server/rest/services/pasda/DCNR/MapServer/18",
+      "trust": "authoritative",
+      "steward": "Pennsylvania Department of Conservation and Natural Resources",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. Pennsylvania Department of Conservation and Natural Resources publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM PENNSYLVANIA DEPARTMENT OF CONSERVATION AND NATURAL RESOURCES, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "Pennsylvania Department of Conservation and Natural Resources",
+      "geometry_kind": "polygon",
+      "name_field": "PARK_NAME",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 6,325 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa and c9_federal_state_rest (laurel)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "6,325 polygon features (returnCountOnly), 70 fields, maxRecordCount 1,000, served in EPSG:4326, no editingInfo (on-prem), all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 6,325 rows read 2026-10-03. MART: kind `park`: 6,325 municipal and county parks, with a Hiking and a Trails flag per row. PARK_ID is not unique; GlobalID is. A June 2024 snapshot PASDA hosts; DCNR's own server was not searched for a live copy beyond its Parks and BOF folders. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
       "key": "ct_deep_blue_blazed",
       "title": "Connecticut Blue-Blazed Hiking Trails",
       "provider": "CT DEEP",
@@ -2766,6 +3277,53 @@
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
     },
     {
+      "key": "ct_deep_property",
+      "title": "DEEP Property (state parks, forests and wildlife areas)",
+      "provider": "CT DEEP",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Connecticut_DEEP_Property/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Connecticut Department of Energy and Environmental Protection",
+      "licence": "CC0, which the item's licenseInfo states ('CC0', read 2026-10-03). The layer's words are quoted verbatim in `terms`.",
+      "licence_basis": "stated_by_org",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: CC0 | accessInformation: USDA, NRCS | service copyrightText: USDA, NRCS",
+      "attribution": "Connecticut Department of Energy and Environmental Protection",
+      "geometry_kind": "polygon",
+      "name_field": "PROPERTY",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 491 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "491 polygon features (returnCountOnly), 10 fields, maxRecordCount 1,000, served in EPSG:102656, layer lastEditDate 2026-08-19, all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 491 rows read 2026-10-03. MART: kind `park`: Housatonic State Forest, Kent Falls SP, Macedonia Brook SP and the other units along Connecticut's A.T. `AV_LEGEND` is the publisher's category. DEP_ID is unique on all 491 too. accessInformation and the service's copyrightText read 'USDA, NRCS', which credits the base data, not the licence. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Wed, 19 Aug 2026 12:25:15 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "ct_deep_greenways",
+      "title": "Official Designated Connecticut Greenways",
+      "provider": "CT DEEP",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Greenways/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Connecticut Department of Energy and Environmental Protection",
+      "licence": "CC0, which the item's licenseInfo and its description ('Content is provided under CC0') state, read 2026-10-03. The layer's words are quoted verbatim in `terms`.",
+      "licence_basis": "stated_by_org",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: CC0",
+      "attribution": "Connecticut Department of Energy and Environmental Protection",
+      "geometry_kind": "line",
+      "name_field": "NAME",
+      "id_field": null,
+      "id_comment": "NONE: no column but the object id `OBJECTID` is unique and non-null on all 120 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which.",
+      "place_kind_comment": "No `place_kind`, deliberately: this layer maps onto none of the places mart's five kinds (park, town, trailhead, parking, trail); `notes`' MART says why.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "120 polyline features (returnCountOnly), 6 fields, maxRecordCount 1,000, served in EPSG:102656, layer lastEditDate 2026-07-28, all read 2026-10-03. KEY: NONE: no column but the object id `OBJECTID` is unique and non-null on all 120 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which. MART: NO MART KIND: a designated greenway is a corridor, not a trail line the network routes on, and its name (96 distinct on 120 lines) is not one named trail. The places mart's `trail` kind comes from trail_lines, so these are a candidate for a corridor label, not a place. Fields Id, NAME, OD_YEAR (the designation year), GREENWAY_DESCRIPTION. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Tue, 28 Jul 2026 14:15:50 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
       "key": "nc_mst_trail",
       "title": "Mountains-to-Sea Trail (NC state-published layer)",
       "provider": "NC State Parks",
@@ -2789,6 +3347,30 @@
       "blaze_comment": "Declared so network_line_sources() reads this layer (#1787), and with the STEWARD'S OWN COLUMN rather than a constant, because this one publishes paint. `Blaze`'s distinct values were read live on 2026-09-30 and each has a row in reference/blaze_mapping.json - mapped where it names a palette member, deferred with a reason where it does not. A value in neither falls to Unknown WITH A WARNING, which is lib/blaze.py's way of telling an oversight from a decision."
     },
     {
+      "key": "nc_state_park_boundaries",
+      "title": "NC State Parks Boundaries",
+      "provider": "NC State Parks",
+      "kind": "club_arcgis_layer",
+      "url": "https://services6.arcgis.com/nRIB86xC7kq6wavB/arcgis/rest/services/NC_State_Parks_System/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "North Carolina Division of Parks and Recreation",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. North Carolina Division of Parks and Recreation publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM NORTH CAROLINA DIVISION OF PARKS AND RECREATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. accessInformation: North Carolina Division of Parks and Recreation Dept of Natural and Cultural Resources | copyrightText: NC Division of Parks and Recreation, Dept of Natural and Cultural Resources",
+      "attribution": "North Carolina Division of Parks and Recreation",
+      "geometry_kind": "polygon",
+      "name_field": "PK_NAME",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 346 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch c9_federal_state_rest and b7_long_trails_states (nc-mst)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "346 polygon features (returnCountOnly), 10 fields, maxRecordCount 2,000, served in EPSG:32119, layer lastEditDate 2026-10-02, all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 346 rows read 2026-10-03. MART: kind `park`: the units the Mountains-to-Sea Trail crosses, `PK_TYPE` the category. nc_mst/places.py draws from it. A hosted view, last edited 2026-10-02. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Fri, 02 Oct 2026 16:54:06 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
       "key": "azgeo_arizona_trail",
       "title": "Arizona National Scenic Trail (AZGeo)",
       "provider": "AZGeo",
@@ -2809,6 +3391,80 @@
       "blaze_field": null,
       "blaze_default": "Unknown",
       "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
+    },
+    {
+      "key": "azt_gateway_communities",
+      "title": "Arizona Trail gateway communities",
+      "provider": "AZGeo",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Gateway_Community_Points/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Arizona Trail Association",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. Arizona Trail Association publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM ARIZONA TRAIL ASSOCIATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "Arizona Trail Association",
+      "geometry_kind": "point",
+      "name_field": "NAME",
+      "id_field": "NAME",
+      "id_comment": "`NAME` is unique and non-null on all 22 rows read 2026-10-03.",
+      "place_kind": "town",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states and c10_nst_rest (ata)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "22 point features (returnCountOnly), 7 fields, maxRecordCount 2,000, served in EPSG:102100, layer lastEditDate 2025-12-28, all read 2026-10-03. KEY: `NAME` is unique and non-null on all 22 rows read 2026-10-03. MART: kind `town`: 22 gateway communities with a link each. ATA's own page lists 20. Owned by the Arizona Trail Association's account in the same ArcGIS Online organization as azgeo_arizona_trail, which is why it sits in azgeo/ beside that row; ata/places.py draws from it. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Sun, 28 Dec 2025 22:57:28 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "azt_passage_areas",
+      "title": "AZT Passages Segments (polygons)",
+      "provider": "AZGeo",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Arizona_National_Scenic_Trail_Feature_Layers_view/FeatureServer/6",
+      "trust": "authoritative",
+      "steward": "Arizona Trail Association",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. Arizona Trail Association publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM ARIZONA TRAIL ASSOCIATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "Arizona Trail Association",
+      "geometry_kind": "polygon",
+      "name_field": "Passage",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 138 rows read 2026-10-03.",
+      "place_kind_comment": "No `place_kind`, deliberately: this layer maps onto none of the places mart's five kinds (park, town, trailhead, parking, trail); `notes`' MART says why.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states and c10_nst_rest (ata)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "138 polygon features (returnCountOnly), 12 fields, maxRecordCount 1,000, served in EPSG:4326, layer lastEditDate 2026-09-04, all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 138 rows read 2026-10-03. MART: NO MART KIND: the trail's passages as polygons around it, a section of a long trail. Layer 6 of the view whose layer 5 is azgeo_arizona_trail (one service, two layers, two resources). CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Fri, 04 Sep 2026 18:59:09 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "azt_land_ownership",
+      "title": "Land Ownership within 10 miles of the Arizona Trail",
+      "provider": "AZGeo",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Land_Ownership_within_10_miles_of_AZ_Trail/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Arizona Trail Association",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. Arizona Trail Association publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM ARIZONA TRAIL ASSOCIATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "Arizona Trail Association",
+      "geometry_kind": "polygon",
+      "name_field": "DESC_",
+      "id_field": "OWNER",
+      "id_comment": "`OWNER` is unique and non-null on all 32 rows read 2026-10-03.",
+      "place_kind_comment": "No `place_kind`, deliberately: this layer maps onto none of the places mart's five kinds (park, town, trailhead, parking, trail); `notes`' MART says why.",
+      "not_person_fields": [
+        "OWNER"
+      ],
+      "not_person_fields_comment": "OWNER is an integer code, unique on the 32 rows (read 2026-10-03), described by DESC_.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states and c10_nst_rest (ata)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "32 polygon features (returnCountOnly), 10 fields, maxRecordCount 2,000, served in EPSG:102100, layer lastEditDate 2026-01-10, all read 2026-10-03. KEY: `OWNER` is unique and non-null on all 32 rows read 2026-10-03. MART: NO MART KIND: whose land the trail crosses, 32 ownership classes. Context for the `within` of a place, not a place. MANAGER is blank on all 32. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Sat, 10 Jan 2026 20:51:18 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
     },
     {
       "key": "tahoe_rim_trail",
@@ -2857,6 +3513,35 @@
       "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
     },
     {
+      "key": "duluth_park_boundaries",
+      "title": "City of Duluth parks",
+      "provider": "City of Duluth",
+      "kind": "club_arcgis_layer",
+      "url": "https://utility.arcgis.com/usrsvcs/servers/b132d6d3b1864dc8a8c8493c46bb71f9/rest/services/Parks/ParkBoundaryService/MapServer/0",
+      "trust": "authoritative",
+      "steward": "City of Duluth",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. City of Duluth publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM CITY OF DULUTH, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the on-prem service and layer, read 2026-10-03. service copyrightText: City of Duluth, Mn GIS Office",
+      "attribution": "City of Duluth",
+      "geometry_kind": "polygon",
+      "name_field": "PARK_NAME",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 165 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "person_fields": [
+        "created_user",
+        "last_edited_user"
+      ],
+      "person_fields_comment": "Columns of this layer that name or reach a person, never requested and never loaded (ELT.md 'Who may publish', rule 8); read off the live layer's fields on 2026-10-03.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host's /robots.txt answers 200 with an HTML page, not a robots file, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "165 polygon features (returnCountOnly), 18 fields, maxRecordCount 1,000, served in EPSG:26915, no editingInfo (on-prem), all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 165 rows read 2026-10-03. MART: kind `park`: the city's 165 parks, which the Superior Hiking Trail's Duluth section crosses. Through the city's utility.arcgis.com proxy (servers/b132d6d3b1864dc8a8c8493c46bb71f9), a different proxy from the trails layer's. created_user and last_edited_user name staff. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
       "key": "massgis_long_distance_trails",
       "title": "Massachusetts long-distance trails (MassGIS)",
       "provider": "MassGIS",
@@ -2877,6 +3562,39 @@
       "blaze_field": null,
       "blaze_default": "Unknown",
       "blaze_comment": "Declared so network_line_sources() reads this layer at all (#1787): that selector is `'blaze_field' in s or 'blaze_default' in s`, and a trail-line source carrying neither is skipped exactly as OPRHP's facilities points are. `reaches_hikers` gates publish.py and is a different question - #1786 flipped it alone and this layer still reached nobody. 'Unknown' is what usfs_trails and the four NYC layers already use for a steward publishing no blaze. EVERY FIELD OF THIS LAYER WAS READ LIVE on 2026-09-30 rather than pattern-matched, because #1778's probe used a name filter and a filter only finds what it was told to look for."
+    },
+    {
+      "key": "massgis_openspace",
+      "title": "Protected and Recreational OpenSpace (Polygons)",
+      "provider": "MassGIS",
+      "kind": "club_arcgis_layer",
+      "url": "https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/openspace/MapServer/0",
+      "trust": "authoritative",
+      "steward": "MassGIS (Bureau of Geographic Information)",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. MassGIS (Bureau of Geographic Information) publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM MASSGIS (BUREAU OF GEOGRAPHIC INFORMATION), and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the on-prem service and layer, read 2026-10-03. copyrightText: MassGIS, Executive Office of Energy and Environmental Affairs | service copyrightText: MassGIS, EEA",
+      "attribution": "MassGIS (Bureau of Geographic Information)",
+      "geometry_kind": "polygon",
+      "name_field": "SITE_NAME",
+      "id_field": "OS_ID",
+      "id_comment": "`OS_ID` is unique and non-null on all 61,486 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "person_fields": [
+        "FEE_OWNER",
+        "MANAGER"
+      ],
+      "person_fields_comment": "Columns of this layer that name or reach a person, never requested and never loaded (ELT.md 'Who may publish', rule 8); read off the live layer's fields on 2026-10-03.",
+      "not_person_fields": [
+        "OWNER_TYPE"
+      ],
+      "not_person_fields_comment": "OWNER_TYPE is a one-letter ownership class (M 25,878, S 11,872, P 10,952, L 8,142 and seven more on the 61,486 rows, read 2026-10-03), not a name.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host's /robots.txt answered 502, so no rule could be read; the layer itself answered 200): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "61,486 polygon features (returnCountOnly), 63 fields, maxRecordCount 2,000, served in EPSG:26986, no editingInfo (on-prem), all read 2026-10-03. KEY: `OS_ID` is unique and non-null on all 61,486 rows read 2026-10-03. MART: kind `park` where `PUB_ACCESS` allows it (Y 41,888, L 6,318, N 8,588, X 4,691): most of the 61,486 rows are not places a hiker searches, and 10,952 are privately owned. The Trustees' own 137 properties (trustees_properties) are inside this compilation (613 rows with OWNER_ABRV or MANAGR_ABRV 'TTOR', per the coverage audit), two datasets of the same ground for dbt to deduplicate. 63 fields. FEE_OWNER can hold a private individual's name on the 10,952 privately owned rows and MANAGER a person's, so both are left out. OWNER_ABRV is left out too, by extract/_kinds.py's person-shaped backstop, and not cleared, because nobody read its values on the private rows; MANAGR_ABRV stays. On-prem, no date column the layer maintains (ATT_DATE and CAL_DATE_R are attribute dates), so read whole every monthly run: 31 pages at 2,000. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
     },
     {
       "key": "pcta_centerline",
@@ -3155,6 +3873,63 @@
       "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link. The lead-contamination advisory at LHHT miles 24-25 should not wait for the notices mart: it is the first item for the water path, which nothing reads from this table yet."
     },
     {
+      "key": "dcnr_state_park_boundaries",
+      "title": "Pennsylvania State Park Boundaries (DCNR)",
+      "provider": "PA DCNR",
+      "kind": "club_arcgis_layer",
+      "url": "https://www.gis.dcnr.pa.gov/agsprod/rest/services/Parks/State_Parks/MapServer/9",
+      "trust": "authoritative",
+      "steward": "Pennsylvania Department of Conservation and Natural Resources",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. Pennsylvania Department of Conservation and Natural Resources publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM PENNSYLVANIA DEPARTMENT OF CONSERVATION AND NATURAL RESOURCES, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "Pennsylvania Department of Conservation and Natural Resources",
+      "geometry_kind": "polygon",
+      "name_field": "PARK_NAME",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 125 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa and c9_federal_state_rest (laurel)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "125 polygon features (returnCountOnly), 12 fields, maxRecordCount 1,000, no editingInfo (on-prem), all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 125 rows read 2026-10-03. MART: kind `park`: Laurel Ridge State Park and the other 124 units. PASDA's 'DCNR State Parks 202503' is a dated copy of this layer (pasda/places.py's SAME_AS note). On DCNR's own ArcGIS Server, which exposes no editingInfo and no date column, so read whole every monthly run. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "dcnr_state_forest_boundaries",
+      "title": "Pennsylvania State Forests (DCNR Bureau of Forestry)",
+      "provider": "PA DCNR",
+      "kind": "club_arcgis_layer",
+      "url": "https://www.gis.dcnr.pa.gov/agsprod/rest/services/BOF/State_Forests/MapServer/4",
+      "trust": "authoritative",
+      "steward": "Pennsylvania Department of Conservation and Natural Resources",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. Pennsylvania Department of Conservation and Natural Resources publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM PENNSYLVANIA DEPARTMENT OF CONSERVATION AND NATURAL RESOURCES, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the on-prem service and layer, read 2026-10-03. service copyrightText: PA DCNR, Bureau of Forestry",
+      "attribution": "Pennsylvania Department of Conservation and Natural Resources",
+      "geometry_kind": "polygon",
+      "name_field": "SF_Name",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID` is unique and non-null on all 662 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "person_fields": [
+        "CreatedBy",
+        "LastEditedBy"
+      ],
+      "person_fields_comment": "Columns of this layer that name or reach a person, never requested and never loaded (ELT.md 'Who may publish', rule 8); read off the live layer's fields on 2026-10-03.",
+      "not_person_fields": [
+        "LastEditedDate"
+      ],
+      "not_person_fields_comment": "LastEditedDate is the edit date written as a string (the layer types it esriFieldTypeString), not the editor, who is LastEditedBy; read 2026-10-03.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa and c9_federal_state_rest (laurel)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "662 polygon features (returnCountOnly), 24 fields, maxRecordCount 1,000, no editingInfo (on-prem), all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 662 rows read 2026-10-03. MART: kind `park`. PASDA's 'DCNR BOF State Forests 202503' (670 rows to this layer's 662) is a dated copy (SAME_AS note). CreatedBy and LastEditedBy hold staff usernames and are never requested; CreatedDate and LastEditedDate are strings here, so the on-prem change check has no date to read and the layer is read whole every monthly run. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
       "key": "tehcc_wiki_announcements",
       "title": "TEHCC club wiki announcements",
       "provider": "TEHCC",
@@ -3276,6 +4051,30 @@
       "notes": "72 counties on 2026-10-03, all LOW; max LAST_CHANGED_DATE 2026-09-30 06:53 UTC. COUNTY_NAME, DANGER_RATING_NAME, NO_BURN_FLAG, PERMIT_RESTRICTIONS, ADD_COMMENT. /0 Wildfires (Today) was not re-read and is not wired. Read by this step at 2026-10-03T16:12:14Z: returnCountOnly under the row's `where` answered 72, and `OBJECTID` is distinct on 72 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "wdnr_managed_properties",
+      "title": "DNR Managed Land Property Search Layer",
+      "provider": "Wisconsin DNR",
+      "kind": "club_arcgis_layer",
+      "url": "https://dnrmaps.wi.gov/arcgis/rest/services/LF_DML/LF_DNR_MGD_PROP_WTM_Ext/MapServer/0",
+      "trust": "authoritative",
+      "steward": "Wisconsin Department of Natural Resources",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. Wisconsin Department of Natural Resources publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM WISCONSIN DEPARTMENT OF NATURAL RESOURCES, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the on-prem service and layer, read 2026-10-03. service copyrightText: WI DNR Bureau of Facilities and Lands",
+      "attribution": "Wisconsin Department of Natural Resources",
+      "geometry_kind": "polygon",
+      "name_field": "PROP_NAME",
+      "id_field": null,
+      "id_comment": "NONE: no column but the object id `OBJECTID` is unique and non-null on all 1,978 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "1,978 polygon features (returnCountOnly), 15 fields, maxRecordCount 2,000, served in EPSG:3071, no editingInfo (on-prem), all read 2026-10-03. KEY: NONE: no column but the object id `OBJECTID` is unique and non-null on all 1,978 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which. MART: kind `park` where `PUBLIC_ACCESS` allows it: state parks, forests and natural areas, by PROP_NAME. PROP_NAME_CODE is 1,418 distinct on 1,978; no column is a key. The coverage audit's REC_OPPS/14 'DNR Managed Lands' (1,457) answered HTTP 500 on 2026-10-03, and the service now lists layers 1 to 4 only, so it is not registered. Layer 6 of this service is a closed-area polygon, the closures worker's. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
     },
     {
       "key": "fws_hunt_units",
@@ -3738,6 +4537,30 @@
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
     },
     {
+      "key": "tn_state_park_boundaries",
+      "title": "Tennessee State Park Boundaries (Public View)",
+      "provider": "TDEC",
+      "kind": "club_arcgis_layer",
+      "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/State_Park_Boundaries_Primary_March_2024_view2/FeatureServer/331",
+      "trust": "authoritative",
+      "steward": "Tennessee Department of Environment and Conservation",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. Tennessee Department of Environment and Conservation publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM TENNESSEE DEPARTMENT OF ENVIRONMENT AND CONSERVATION, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. copyrightText: Tennessee Department of Environment and Conservation",
+      "attribution": "Tennessee Department of Environment and Conservation",
+      "geometry_kind": "polygon",
+      "name_field": "PRIMARY_NAME__LONG_",
+      "id_field": "TSP_UID",
+      "id_comment": "`TSP_UID` is unique and non-null on all 68 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch c9_federal_state_rest), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "68 polygon features (returnCountOnly), 6 fields, maxRecordCount 2,000, served in EPSG:102736, layer lastEditDate 2026-10-02, all read 2026-10-03. KEY: `TSP_UID` is unique and non-null on all 68 rows read 2026-10-03. MART: kind `park`: Justin P. Wilson Cumberland Trail State Park and the other 67 units. A hosted view, last edited 2026-10-02. TSP_UID and GlobalID are each unique on all 68. The coverage audit's CTSST 'PUBLIC_Properties_2020' sits on an individual's account, not TDEC's, and is not registered. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Fri, 02 Oct 2026 19:52:06 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
       "key": "portland_parks_closed_assets",
       "title": "Portland Parks & Recreation closed assets",
       "provider": "Portland Parks",
@@ -3921,6 +4744,54 @@
       "notes": "745 segments, 3 closed, on 2026-10-03; edited 2026-07-31. Trail_Name, Manager_Na, Open_Statu, Comments, Last_Edi_1 (a row date), GlobalID. PERSON FIELDS LEFT OUT: Created_Us and Last_Edite, a shapefile's truncated editor names. Read by this step at 2026-10-03T16:10:45Z: returnCountOnly under the row's `where` answered 3, and `GlobalID` is distinct on 3 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "nh_conservation_lands",
+      "title": "NH Conservation/Public Lands (CL: Management Status)",
+      "provider": "NH GRANIT",
+      "kind": "club_arcgis_layer",
+      "url": "https://nhgeodata.unh.edu/nhgeodata/rest/services/EC/Conservation/MapServer/0",
+      "trust": "authoritative",
+      "steward": "NH GRANIT",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. NH GRANIT publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM NH GRANIT, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "Verbatim from the on-prem service and layer, read 2026-10-03. service copyrightText: GRANIT",
+      "attribution": "NH GRANIT",
+      "geometry_kind": "polygon",
+      "name_field": "NAME",
+      "id_field": null,
+      "id_comment": "NONE: no column but the object id `OBJECTID` is unique and non-null on all 13,502 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch c9_federal_state_rest, with p03 (msgtc) and p05 (rmc)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "13,502 polygon features (returnCountOnly), 40 fields, maxRecordCount 2,000, served in EPSG:102710, no editingInfo (on-prem), all read 2026-10-03. KEY: NONE: no column but the object id `OBJECTID` is unique and non-null on all 13,502 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which. MART: kind `park` where `ACCESS` allows it: Pillsbury and Mount Sunapee state parks, Monadnock Reservation and the other 13,502 conservation parcels. #1711 removed GRANIT's TRAIL layer on the maintainer's judgement about that data; whether that reaches this layer is the maintainer's call, so it loads with `reaches_hikers` false and the question goes up. TID is 13,500 distinct on 13,502 rows, so no column is a key; OBJECTID is the only unique one. Layer 6 of the same service ('CL: Solid') is the same 13,502 rows drawn another way (SAME_AS note). CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "nh_recreation_areas",
+      "title": "NH Recreation Inventory: Areas",
+      "provider": "NH GRANIT",
+      "kind": "club_arcgis_layer",
+      "url": "https://nhgeodata.unh.edu/nhgeodata/rest/services/CSD/RecreationResources/MapServer/3",
+      "trust": "authoritative",
+      "steward": "NH GRANIT",
+      "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE. NH GRANIT publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM NH GRANIT, and never to be rendered as one; its words are quoted verbatim in `terms`.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo and accessInformation and the service's copyrightText are all empty (read 2026-10-03).",
+      "attribution": "NH GRANIT",
+      "geometry_kind": "polygon",
+      "name_field": "SITE",
+      "id_field": "NHRECPOL_",
+      "id_comment": "`NHRECPOL_` is unique and non-null on all 2,718 rows read 2026-10-03.",
+      "place_kind": "park",
+      "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch c9_federal_state_rest, with p03 (msgtc) and p05 (rmc)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
+      "discovered_date": "2026-10-03",
+      "notes": "2,718 polygon features (returnCountOnly), 49 fields, maxRecordCount 2,000, served in EPSG:102710, no editingInfo (on-prem), all read 2026-10-03. KEY: `NHRECPOL_` is unique and non-null on all 2,718 rows read 2026-10-03. MART: kind `park`: town beaches, forests and parks with parking counts and fees. UP_DTE and YR_INV are strings, so no date to read; read whole every monthly run. CHANGE CHECK: on-prem with no maintained date, so ArcgisLayer._onprem_check answers UNKNOWN and the layer is read whole every monthly run; a false stale costs a read, a false fresh would keep a moved boundary.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
     }
   ],
   "usdm_licence": {
@@ -4218,7 +5089,7 @@
       },
       "PA DCNR": {
         "state": "not_asked",
-        "note": "Not asked. Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
+        "note": "Not asked. Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent. Its place layers, registered under decision 54 (2026-10-03) at reaches_hikers: false, are covered by the same answer."
       },
       "TEHCC": {
         "state": "not_asked",
@@ -4282,7 +5153,7 @@
       },
       "TDEC": {
         "state": "not_asked",
-        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent. Its place layers, registered under decision 54 (2026-10-03) at reaches_hikers: false, are covered by the same answer."
       },
       "Portland Parks": {
         "state": "not_asked",
@@ -4303,6 +5174,10 @@
       "FTA": {
         "state": "not_asked",
         "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "NH GRANIT": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its places layers under decision 54, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -4848,7 +5723,7 @@
       "org:padcnr": {
         "provider": "PA DCNR",
         "name": "Pennsylvania Department of Conservation and Natural Resources",
-        "note": "Pennsylvania's state parks and forests agency, whose park advisories API carries each park page's alerts. Its land trails reach this build through PASDA (org:pasda); this id is DCNR's own services."
+        "note": "Pennsylvania's state parks and forests agency, whose park advisories API carries each park page's alerts. Its land trails reach this build through PASDA (org:pasda); this id is DCNR's own services. Also registered for its place layers under decision 54 (2026-10-03), at reaches_hikers: false."
       },
       "org:tehcc": {
         "provider": "TEHCC",
@@ -4928,7 +5803,7 @@
       "org:tdec": {
         "provider": "TDEC",
         "name": "Tennessee Department of Environment and Conservation",
-        "note": "Runs Tennessee State Parks, the Cumberland Trail State Park among them; registered for its statewide trail-closure segments."
+        "note": "Runs Tennessee State Parks, the Cumberland Trail State Park among them; registered for its statewide trail-closure segments. Also registered for its place layers under decision 54 (2026-10-03), at reaches_hikers: false."
       },
       "org:portlandparks": {
         "provider": "Portland Parks",
@@ -4954,6 +5829,11 @@
         "provider": "FTA",
         "name": "Florida Trail Association",
         "note": "Maintains the Florida National Scenic Trail; registered for the closed segments of its FNST master layer."
+      },
+      "org:nhgranit": {
+        "provider": "NH GRANIT",
+        "name": "NH GRANIT, New Hampshire's statewide GIS clearinghouse",
+        "note": "Registered again for conservation and recreation land only (decision 54), after #1711 removed its trail layer on the maintainer's judgement about that data. Whether this one loads at all is flagged for the maintainer."
       }
     }
   },
@@ -6385,35 +7265,35 @@
         "types": {
           "shelter": {
             "status": "unprobed",
-            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "campsite": {
             "status": "unprobed",
-            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "water": {
             "status": "unprobed",
-            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "resupply": {
             "status": "unprobed",
-            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "viewpoint": {
             "status": "unprobed",
-            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "parking": {
             "status": "unprobed",
-            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "privy": {
             "status": "unprobed",
-            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "trailhead": {
             "status": "unprobed",
-            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           }
         }
       },
@@ -6974,35 +7854,35 @@
         "types": {
           "shelter": {
             "status": "unprobed",
-            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "campsite": {
             "status": "unprobed",
-            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "water": {
             "status": "unprobed",
-            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "resupply": {
             "status": "unprobed",
-            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "viewpoint": {
             "status": "unprobed",
-            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "parking": {
             "status": "unprobed",
-            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "privy": {
             "status": "unprobed",
-            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           },
           "trailhead": {
             "status": "unprobed",
-            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+            "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it. Decision 54's places read (2026-10-03) opened its place layers only and asked nothing about point data either."
           }
         }
       },
@@ -7188,6 +8068,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its closure and warning layers under decision 53's phase B (2026-10-03). The phase A inventory read those layers and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's first wave, which reads every club's points of interest, is what would settle it."
+          }
+        }
+      },
+      "NH GRANIT": {
+        "probed_date": "2026-10-03",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
           }
         }
       }

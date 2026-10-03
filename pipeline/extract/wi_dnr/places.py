@@ -1,24 +1,14 @@
-"""Wisconsin DNR Open Data: places, published, and not landed (coverage audit 2026-10-01, batch
-b7_long_trails_states).
+"""Wisconsin DNR Open Data: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `wdnr_managed_properties`: DNR Managed Land Property Search Layer, 1,978 polygon features; places kind
+  `park`.
+
+LF_DNR_REC_OPPS_WTM_Ext/MapServer/14 answered HTTP 500 on 2026-10-03 and the service lists layers 1 to 4
+only.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`LF_DNR_MGD_PROP_WTM_Ext/0`: 1,978 property polygons (`PROP_NAME`, `PUBLIC_ACCESS`). `REC_OPPS/14` DNR"
-        " Managed Lands: 1,457.",
-    ),
-    where=(
-        "https://dnrmaps.wi.gov/arcgis/rest/services",
-        "https://dnrmaps.wi.gov/arcgis_image/rest/services",
-        "https://services5.arcgis.com/Ul9AyFFeFTjf08DW/arcgis/rest/services",
-        "https://data-wi-dnr.opendata.arcgis.com/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("wdnr_managed_properties",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

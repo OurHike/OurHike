@@ -1,7 +1,5 @@
-"""NC Mountains-to-Sea Trail (state-published layer): places, published, and not landed (coverage audit
-2026-10-01, batch b7_long_trails_states).
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+"""NC Mountains-to-Sea Trail (state-published layer): places, drawn from nc_dpr/'s resources (decision 54,
+wave 1, read 2026-10-03).
 """
 
 from datetime import date
@@ -9,15 +7,16 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "`NC_State_Parks_System/0` ParkBoundaries: 346 polygons (`PK_NAME`, `PK_TYPE`), last edit 2026-09-30. "
-        "Also `State_Owned_Land_(Latest)`.",
+        "via nc_dpr `nc_state_park_boundaries` (NC_State_Parks_System/FeatureServer/0, 346 polygons, last edited "
+        "2026-10-02), registered 2026-10-03. `State_Owned_Land_(Latest)` was not read.",
     ),
     where=(
-        "https://services.nconemap.gov/secure/rest/services",
-        "https://services7.arcgis.com/SEKZuPu27jfvDQ5b/arcgis/rest/services",
+        "https://services6.arcgis.com/nRIB86xC7kq6wavB/arcgis/rest/services/NC_State_Parks_System/FeatureServer/0",
         "https://trails.nc.gov/",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason=(
+        "drawn from nc_dpr/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+    ),
 )

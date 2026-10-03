@@ -1,18 +1,13 @@
-"""MassGIS (Bureau of Geographic Information): places, published, and not landed (coverage audit
-2026-10-01, batch b5_nyc_nj_ct_ma_pa).
+"""MassGIS (Bureau of Geographic Information): places, extracted (decision 54, wave 1; live read 2026-10-03
+under lib/user_agent.py's USER_AGENT).
 
-Open space is MassGIS's own compilation, so `_shared/massgis/`.
+- `massgis_openspace`: Protected and Recreational OpenSpace (Polygons), 61,486 polygon features; places
+  kind `park`.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+AGOL/Census2020_Towns is the Census's boundaries and is not registered.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=('`AGOL/openspace/MapServer/0` "Protected and Recreational OpenSpace (Polygons)": 61,486. `AGOL/Census2020_Towns`.',),
-    where=("https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/openspace/MapServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("massgis_openspace",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

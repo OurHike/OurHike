@@ -1,12 +1,5 @@
-"""Monadnock-Sunapee Greenway Trail Club: places, published, and not landed (coverage audit 2026-10-01,
-batch p03_persist).
-
-none_stated: licenseInfo "Not for legal use", accessInformation "GRANIT database". The data belongs
-in the `nh-granit` folder as a places layer. Reasoned: this does not reverse #1711 — Ship only
-hiking trails: remove NH GRANIT, and drop USFS motorized trails nationwide, which removed GRANIT's
-trail …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+"""Monadnock-Sunapee Greenway Trail Club: places, drawn from nh_granit/'s resources (decision 54, wave 1,
+read 2026-10-03).
 """
 
 from datetime import date
@@ -14,19 +7,16 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        '`nhgeodata.unh.edu/nhgeodata/rest/services/EC/Conservation/MapServer/6`, "CL: Solid" (13,502 '
-        "polygons): 33 lie within 10 m of the 24 segments in GRANIT `CSD/RecreationResources/MapServer/2` whose"
-        " `TRAILSYSTE` is the Greenway. Those segments fall in the towns of Dublin, Goshen, Harrisville, "
-        "Nelson, Newbury, Stoddard and Washington. The 33 include Pillsbury State Park, Mount Sunapee State "
-        "Park, Monadnock Reservation, Andorra Forest, Leighton, Lovewell Mountain and Max Israel state forests,"
-        ' and Pitcher Mountain Fire Tower. A hosted copy is item `ac1d1c9b…`, "New Hampshire '
-        "Conservation/Public …",
+        "via nh_granit `nh_conservation_lands` (EC/Conservation/MapServer/0, 13,502 polygons), registered 2026-10-03: the"
+        " 33 parcels the coverage audit found within 10 m of the Greenway's segments (Pillsbury and Mount Sunapee state "
+        "parks, Monadnock Reservation and the rest) are among them. Layer 6, which the audit read, is the same rows "
+        "(nh_granit's SAME_AS note).",
     ),
-    where=(
-        "https://nhgeodata.unh.edu/nhgeodata/rest/services/CSD/RecreationResources/MapServer/2",
-        "https://nhgeodata.unh.edu/nhgeodata/rest/services/EC/Conservation/MapServer/6",
+    where=("https://nhgeodata.unh.edu/nhgeodata/rest/services/EC/Conservation/MapServer/0",),
+    reason=(
+        "drawn from nh_granit/'s resources, extracted once there (decision 34); checked names the layer this org's data "
+        "arrives in"
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

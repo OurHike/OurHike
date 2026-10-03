@@ -1,20 +1,25 @@
-"""DEC Lands: published on DEC's own server and listed in the clearinghouse, and not landed yet."""
+"""New York State Dept of Environmental Conservation: places, extracted (decision 54, wave 1; live read
+2026-10-03 under lib/user_agent.py's USER_AGENT).
 
-from datetime import date
+- `dec_lands`: DEC Lands (state land units), 3,234 polygon features; places kind `park`.
+- `dec_conservation_easements`: DEC Conservation Easements, 93 polygon features; places kind `park`.
+- `dec_wildlife_management_areas`: DEC Wildlife Management Areas, 132 polygon features; places kind
+  `park`.
+- `dec_adirondack_park_boundary`: Adirondack Park Boundary (the Blue Line), 1 polygon feature; places
+  kind `park`.
+- `dec_catskill_park_boundary`: Catskill Park Boundary (the Blue Line), 1 polygon feature; places kind
+  `park`.
 
-from extract._contract import NotAvailable
+The Adirondack and Catskill boundaries carry no name column, so their rows declare `name_constant`.
+"""
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "dil/dil_land_activities/MapServer/0, 'DEC Lands': 3,234 polygons, all PUBLICUSE='Y', max(UPDATED) "
-        "2026-09-14, with CATEGORY, CLASS, UNIT, FACILITY, UMP, URL and ACRES (re-read 2026-10-01)",
-        "the same service's layer 1 (93 conservation easements) and layer 2 (132 Wildlife Management Areas)",
-        "dil/dil_reference/MapServer/8 and /9: the Adirondack and Catskill Park boundaries, one polygon each",
-    ),
-    where=(
-        "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_land_activities/MapServer/0",
-        "https://gisservices.dec.ny.gov/arcgis/rest/services/dil/dil_reference/MapServer",
-    ),
-    reason="published, and not landed: the layer has no sources.json row, which a builder needs",
+from extract._kinds import arcgis_layer
+
+CLAIMS = (
+    "dec_lands",
+    "dec_conservation_easements",
+    "dec_wildlife_management_areas",
+    "dec_adirondack_park_boundary",
+    "dec_catskill_park_boundary",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

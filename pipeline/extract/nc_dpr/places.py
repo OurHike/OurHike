@@ -1,16 +1,10 @@
-"""NC Division of Parks & Recreation — NC Trails: places, published, and not landed (coverage audit
-2026-10-01, batch c9_federal_state_rest).
+"""NC Division of Parks & Recreation — NC Trails: places, extracted (decision 54, wave 1; live read
+2026-10-03 under lib/user_agent.py's USER_AGENT).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `nc_state_park_boundaries`: NC State Parks Boundaries, 346 polygon features; places kind `park`.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=("`NC_State_Parks_System/FeatureServer/0` (ParkBoundaries): 346 polygons, edited 2026-09-30.",),
-    where=("https://services6.arcgis.com/nRIB86xC7kq6wavB/arcgis/rest/services/NC_State_Parks_System/FeatureServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("nc_state_park_boundaries",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

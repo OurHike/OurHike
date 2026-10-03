@@ -1,27 +1,18 @@
-"""NJDEP / NJGIN — Statewide Trails: places, published, and not landed (coverage audit 2026-10-01,
-batch b5_nyc_nj_ct_ma_pa).
+"""NJDEP / NJGIN — Statewide Trails: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-The 373 generalized state units are the "which park am I in" layer.
+- `nj_state_open_space`: State Protected Open Space (Generalized) and Recreation Areas in New Jersey,
+  373 polygon features; places kind `park`.
+- `nj_state_natural_areas`: State Natural Areas in New Jersey, 47 polygon features; places kind `park`.
+- `nj_parks_points`: Parks (points), NJDEP Features/Land, 394 point features; no places kind.
+- `nj_place_names`: Place Names (GNIS-derived points), NJDEP Features/Land, 2,641 point features; places
+  kind `town`.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Not read this time: Open_Space/66 (95,032 parcels of every owner) and Land/81 Hidden Gems (71). The
+state open-space points of interest are the points_of_interest file's.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`Open_Space__State_Owned__Generalized_h/67`: 373 polygons (edited 2026-07-01). `Open_Space/66`: 95,032"
-        " (all owners, edited 2026-07-22). `State_Natural_Areas_Preserve_Boundaries_in_New_Jersey/7`: 47. "
-        "`Features/Land/MapServer/5` Parks: 394 points. `Features/Land/MapServer/6` Place Names: 2,641 points "
-        "with `FEATURE_CLASS` and `ELEV_IN_FT`. `Land/81` Hidden Gems: 71.",
-    ),
-    where=(
-        "https://mapsdep.nj.gov/arcgis/rest/services/Features/Land/MapServer/5",
-        "https://mapsdep.nj.gov/arcgis/rest/services/Features/Land/MapServer/6",
-        "https://services1.arcgis.com/QWdNfRs7lkPq4g4Q/arcgis/rest/services",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("nj_state_open_space", "nj_state_natural_areas", "nj_parks_points", "nj_place_names")
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

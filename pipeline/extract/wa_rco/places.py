@@ -1,26 +1,33 @@
-"""Washington RCO — State Trails Database: places, published, and not landed (coverage audit
-2026-10-01, batch b7_long_trails_states).
+"""Washington RCO — State Trails Database: places, extracted (decision 54, wave 1; live read 2026-10-03
+under lib/user_agent.py's USER_AGENT).
 
-Aggregated from the agencies, and six years old.
+- `wa_public_lands_inventory`: WA Public Lands Inventory 2019, 32,593 polygon features; places kind
+  `park`.
+- `wa_recreation_areas`: Recreation Areas (Recreation Provider Inventory), 5,221 polygon features;
+  places kind `park`.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+SAME_AS below: copies of a registered layer, noted and never loaded (decision 34).
 """
 
 from datetime import date
 
-from extract._contract import NotAvailable
+from extract._contract import SameAs
+from extract._kinds import arcgis_layer
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`WA_Public_Lands_Inventory_2019/0`: 32,593 polygons (`Land_Owner`, `NAME`), last edit 2020-06-04. "
-        "`Recreation_Provider_Inventory/2` Recreation Areas: 5,221.",
+CLAIMS = ("wa_public_lands_inventory", "wa_recreation_areas")
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]
+SAME_AS = (
+    SameAs(
+        original="wa_public_lands_inventory",
+        copy=(
+            "https://services2.arcgis.com/TGEC20q86HQAeMS6/arcgis/rest/services/Recreation_Provider_Inventory/FeatureServer/1",
+        ),
+        confirmed=date(2026, 10, 3),
+        checked=(
+            "Layer 1 of the Recreation Provider Inventory view, 'WA Public Lands Inventory 2019': 32,593 rows, the "
+            "registered layer's count, with two of its columns (Land_Owner, Owner), read 2026-10-03",
+            "The view's source is the 'Mapped Inventory For 2023' service (its Service2Service relation), which "
+            "republished the 2019 inventory beside the 2023 recreation areas",
+        ),
     ),
-    where=(
-        "https://gis.dnr.wa.gov/site1/rest/services",
-        "https://gis.dnr.wa.gov/site3/rest/services",
-        "https://services2.arcgis.com/TGEC20q86HQAeMS6/arcgis/rest/services",
-        "https://trails-wa-rco.hub.arcgis.com/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

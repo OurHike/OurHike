@@ -1,20 +1,15 @@
-"""AZGeo Data Hub: places, published, and not landed (coverage audit 2026-10-01, batch
-b7_long_trails_states).
+"""AZGeo Data Hub: places, extracted (decision 54, wave 1; live read 2026-10-03 under lib/user_agent.py's
+USER_AGENT).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `azt_gateway_communities`: Arizona Trail gateway communities, 22 point features; places kind `town`.
+- `azt_passage_areas`: AZT Passages Segments (polygons), 138 polygon features; no places kind.
+- `azt_land_ownership`: Land Ownership within 10 miles of the Arizona Trail, 32 polygon features; no
+  places kind.
+
+ATA's own page /explore/gateway-communities/ lists 20 towns to the layer's 22.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`/6` AZT Passages Segments: 138 polygons. `Land_Ownership_within_10_miles_of_AZ_Trail` exists; not probed.",
-        "Skeptic adds: `Gateway_Community_Points/FeatureServer/0`: 22 gateway communities (`NAME`, `COUNTY`, "
-        "`Weblink`), last edit 2025-12-28, owner `AZTrail`.",
-    ),
-    where=("https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Gateway_Community_Points/FeatureServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("azt_gateway_communities", "azt_passage_areas", "azt_land_ownership")
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

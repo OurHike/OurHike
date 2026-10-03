@@ -939,7 +939,15 @@ def test_the_org_row_carries_the_licence_of_every_key_the_club_claims():
         # nysdec/warnings.py's two, decision 53 phase B (2026-10-03): registered, not shipped yet.
         "nysdec_hab_reports",
         "nysdec_big_game_seasons",
+        # Decision 54's places layers (nysdec/places.py, registered 2026-10-03).
+        "dec_lands",
+        "dec_conservation_easements",
+        "dec_wildlife_management_areas",
+        "dec_adirondack_park_boundary",
+        "dec_catskill_park_boundary",
     }
+    assert claims["dec_lands"]["type"] == "places"
+    assert claims["dec_lands"]["reaches_hikers"] is False
     assert claims["nysdec_hab_reports"]["type"] == "warnings"
     assert claims["nysdec_hab_reports"]["reaches_hikers"] is False
 

@@ -323,10 +323,14 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     BLM, USFS, USFWS and USGS boundaries and gazetteers - each `stated_by_org`
     on 17 U.S.C. 105, the reading usfs_licence records, and each at
     `reaches_hikers: false` until a mart reads it.
+
+    DECISION 54'S PLACES WAVE, STATE AND CITY (2026-10-03): 34 layers, 9
+    `stated_by_org` (CC0, CC BY 4.0, NJDEP's Data Distribution Agreement) and
+    25 `public_gis` (decision 21(a)), each at `reaches_hikers: false`.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
-    assert counts == {"maintainer_authorisation": 48, "public_gis": 39, "stated_by_org": 83, "unresolved": 2}
+    assert counts == {"maintainer_authorisation": 48, "public_gis": 64, "stated_by_org": 92, "unresolved": 2}

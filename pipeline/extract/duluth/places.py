@@ -1,18 +1,10 @@
-"""City of Duluth Open Data: places, published, and not landed (coverage audit 2026-10-01, batch
-b7_long_trails_states).
+"""City of Duluth Open Data: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `duluth_park_boundaries`: City of Duluth parks, 165 polygon features; places kind `park`.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`ParkBoundaryService/MapServer/0` Parks: 165 polygons (`PARK_NAME`, `PARK_TYPE`, `ACRES`); item modified 2026-02-19.",
-    ),
-    where=("https://utility.arcgis.com/usrsvcs/servers/085f4309eec943a8998e801f7849b1b8/rest/services",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("duluth_park_boundaries",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

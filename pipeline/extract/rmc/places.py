@@ -1,11 +1,5 @@
-"""Randolph Mountain Club: places, published, and not landed (coverage audit 2026-10-01, batch
-p05_persist).
-
-USFS: public domain (17 U.S.C. 105). GRANIT: service copyrightText `GRANIT`, layer copyrightText
-empty; AGOL item `ac1d1c9b7fb548dcaaa6bdb5c80b70d5` says "Not for legal use". That is none_stated, a
-disclaimer. GRANIT's trails were retired by #1711 — Ship only hiking trails: remove NH GRANIT, and …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+"""Randolph Mountain Club: places, drawn from usfs/'s and nh_granit/'s resources (decision 54, wave 1, read
+2026-10-03).
 """
 
 from datetime import date
@@ -13,16 +7,15 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "Loaded: `EDW_RecInfraRecreationSites_02`, managing_org 0922, has 187 TRAILHEAD sites, among them "
-        "APPALACHIA, RANDOLPH PATH, LOWES PATH and LOWER FALLS (AMMO), all OPEN. `export_places.py` publishes "
-        "trailhead waypoints as `kind: trailhead` places (Reasoned from its `POINT_PLACE_KINDS`). Not loaded:",
-        "The WMNF boundary: `EDW_ForestSystemBoundaries_01/MapServer/0`, forestorgcode 0922.",
-        "Great Gulf Wilderness: `EDW_Wilderness_02/MapServer/0`, 5,658 acres.",
-        "Randolph Community Forest in GRANIT's "
-        "`nhgeodata.unh.edu/nhgeodata/rest/services/EC/Conservation/MapServer/0`: 10 rows match '%Randolph%' …",
+        "via usfs `usfs_forest_boundaries` (forestorgcode 0922, the White Mountain NF) and `usfs_wilderness_areas` (Great"
+        " Gulf), and nh_granit `nh_conservation_lands` (Randolph Community Forest among the 13,502), registered "
+        "2026-10-03. The WMNF's trailheads already arrive through usfs `usfs_rec_sites`.",
     ),
-    where=("https://nhgeodata.unh.edu/nhgeodata/rest/services/EC/Conservation/MapServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    where=(
+        "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ForestSystemBoundaries_01/MapServer/0",
+        "https://nhgeodata.unh.edu/nhgeodata/rest/services/EC/Conservation/MapServer/0",
+    ),
+    reason="drawn from usfs/'s and nh_granit/'s resources, extracted once there (decision 34); checked names the layers",
 )

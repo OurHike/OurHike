@@ -1,27 +1,12 @@
-"""Connecticut DEEP: places, published, and not landed (coverage audit 2026-10-01, batch
-b5_nyc_nj_ct_ma_pa).
+"""Connecticut DEEP: places, extracted (decision 54, wave 1; live read 2026-10-03 under lib/user_agent.py's
+USER_AGENT).
 
-Skeptic, 2026-10-01: also
-`https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Greenways/FeatureServer/0`
-"Official Designated Connecticut Greenways" (owner `deepgis`): 120 polylines with `NAME`, `OD_YEAR`
-and `GREENWAY_DESCRIPTION`, edited 2026-02-19, `licenseInfo: CC0`. These are …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `ct_deep_property`: DEEP Property (state parks, forests and wildlife areas), 491 polygon features;
+  places kind `park`.
+- `ct_deep_greenways`: Official Designated Connecticut Greenways, 120 polyline features; no places kind.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`Connecticut_DEEP_Property/0`: 491 polygons (state parks, forests, WMAs), CC0, edited 2026-08-19. "
-        "`data.ct.gov` federates the same items (`3ikr-b6ij` etc.) and holds no separate copy.",
-    ),
-    where=(
-        "https://services1.arcgis.com/FjPcSmEFuDYlIdKC/arcgis/rest/services/Greenways/FeatureServer/0",
-        "https://data.ct.gov",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("ct_deep_property", "ct_deep_greenways")
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

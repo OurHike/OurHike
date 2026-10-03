@@ -2372,6 +2372,381 @@
       "notes": "2 polygons on 2026-10-03 (e.g. 'TRAIL SECTION CLOSED', Laurel Ridge Trail, Lake Sidney Lanier). projectAreaStatus (Closed|Open|Partially Closed|Temporary Closure). PERSON FIELDS LEFT OUT: created_user and last_edited_user, individual accounts. Read by this step at 2026-10-03T16:08:39Z: returnCountOnly under the row's `where` answered 2, and `GlobalID` is distinct on 2 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: the rows were last edited 2020-05-06 and the layer 2023-03-18, so a 2020 closure would read as live. Omit rather than guess."
+    },
+    {
+      "key": "nifc_wfigs_current_perimeters",
+      "title": "WFIGS interagency fire perimeters (current)",
+      "provider": "NIFC",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "National Interagency Fire Center",
+      "steward_contact": "https://www.nifc.gov/about-us/contact-us",
+      "licence": "PUBLIC DOMAIN on the 17 U.S.C. 105 reading usfs_trails' row records, Reasoned rather than decided: WFIGS is an interagency federal product, and its item's licenseInfo is a liability disclaimer ('shall not be held liable') with no use restriction (coverage audit 2026-10-01, inventory batch 4).",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Interagency Fire Center",
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "112 current perimeters nationwide on 2026-10-03 (returnCountOnly); lastEditDate 2026-10-03 14:32 UTC. Current by construction, so not filtered. Three intersect ONDA's Oregon Desert Trail box (Second Flat 2026-ORBUD-002693, 105,854 ac; Jackass Butte 2026-ORBUD-002694, 24,723 ac; Stubble 2026-ORMAR-002683, 15,673 ac). The layer is edited most hours, so most hourly checks are full reads of large polygons: the first lane cost phase F measures (@unvalidated). No person field among its 150: the attr_FFReportApprovedBy* fields hold a title and a unit, not a name. Read by this step at 2026-10-03T16:08:50Z: returnCountOnly under the row's `where` answered 112, and `GlobalID` is distinct on 112 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "odfw_orham_alert_areas",
+      "title": "ODFW hunting access map: alert areas",
+      "provider": "ODFW",
+      "kind": "club_arcgis_layer",
+      "url": "https://nrimp.dfw.state.or.us/arcgis/rest/services/ORHAM/ORHAM/MapServer/6",
+      "trust": "authoritative",
+      "steward": "Oregon Department of Fish and Wildlife",
+      "steward_contact": "https://www.dfw.state.or.us/agency/contact.asp",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The layer's copyrightText reads 'ODFW' and nothing else (coverage audit 2026-10-01: none_stated). This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Oregon Department of Fish and Wildlife",
+      "person_fields": [
+        "contact",
+        "created_user",
+        "last_edited_user"
+      ],
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "last_edited_date",
+        "notes": "An on-prem MapServer: its ETag hashes the body, so the change check is the statistics fingerprint, count and max(OBJECTID) beside max(last_edited_date), the layer's Esri editor-tracking date, which the server sets on every edit (Reasoned from editor tracking's definition; @unvalidated on this server)."
+      },
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "289 alert areas across layers 6, 7, 9, 10 and 11 on 2026-10-03; this is layer 6. PERSON FIELDS LEFT OUT: contact, created_user, last_edited_user. Tables 8 (ORHAM_Contacts, people) and 13 are never read. Read by this step at 2026-10-03T16:08:55Z: returnCountOnly under the row's `where` answered 289, and `GlobalID` is distinct on 289 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: hunting-access geography whose alert fields (alert_enabled, alert_title, alert_start, alert_end) were not read for their values, on ONDA's ground; the inventory proposed nothing until a season window is known."
+    },
+    {
+      "key": "cdpr_park_unit_status",
+      "title": "California State Parks unit closure status",
+      "provider": "California State Parks",
+      "kind": "club_arcgis_layer",
+      "url": "https://services2.arcgis.com/AhxrK3F6WM8ECvDi/arcgis/rest/services/CSPParkUnit_Status_DOC/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "California Department of Parks and Recreation",
+      "steward_contact": "https://www.parks.ca.gov/?page_id=29079",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The item's licenseInfo is empty (none_stated). Decision 36 names California State Parks' 'may not be sold or altered' for its other layers and reads it as not covering display; this layer states nothing. This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "California State Parks",
+      "person_fields": [
+        "Creator",
+        "Creator_1721162575294",
+        "Editor",
+        "Editor_1721162575294"
+      ],
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "id_field": "globalid",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "281 units on 2026-10-03: OPEN 246, Partial Closure 24, Full Closure 10, Potential Closure 1; dataLastEditDate 2024-07-10. Not filtered, so Mount Diablo's OPEN row with every trail mile closed stays visible to dbt's tests. PERSON FIELDS LEFT OUT: Creator, Editor, Creator_1721162575294, Editor_1721162575294. Kept but internal by their names, for dbt to drop: status_notes (beside status_notes_pub), requests_answer, Requests, pressure_answer, CountyPressure; decision 36's 'admin-code fields, which CSP limits to interagency use' are not named field by field anywhere, so none is dropped here. Read by this step at 2026-10-03T16:09:00Z: returnCountOnly under the row's `where` answered 281, and `globalid` is distinct on 281 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: the layer contradicts itself. Six non-OPEN units carry a StatusReopenDate already past (Woodson Bridge SRA 2026-04-01, Salt Point SP 2026-08-07, Hungry Valley SVRA 2026-08-10, Angel Island SP 2026-08-15, Humboldt Lagoons SP 2026-09-26, Anza-Borrego Desert SP 2026-10-01); every non-OPEN row was last edited 2025-01-23; Mount Diablo SP reads OPEN with 200 of 200 trail miles closed (inventory, 2026-10-03). Until CDPR confirms the layer is maintained, its rows are not shown as live closures."
+    },
+    {
+      "key": "king_county_parks_alerts_points",
+      "title": "King County Parks alerts and construction (points)",
+      "provider": "King County Parks",
+      "kind": "club_arcgis_layer",
+      "url": "https://services.arcgis.com/Ej0PsM5Aw677QF1W/arcgis/rest/services/Parks_alert_and_construction_view/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "King County Parks and Recreation",
+      "steward_contact": "https://kingcounty.gov/en/dept/dnrp/parks-recreation",
+      "licence": "MAINTAINER AUTHORISATION on decision 55 (facts and a link, 2026-10-03): the organization's terms restrict copying or reproducing its content and do not forbid reading it, so its notices are extracted and publish as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The terms are quoted verbatim in `terms`. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "King County Parks and Recreation",
+      "terms": "Any sale of this map or information on this map is prohibited except by written permission of King County.",
+      "terms_source": "King County GIS terms page linked from the item's licenseInfo; quoted by the coverage audit (batch p04, 2026-10-01), not re-read by the phase A inventory (2026-10-03)",
+      "person_fields": [
+        "Creator",
+        "DataEntryPerson",
+        "Editor"
+      ],
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "234 points on 2026-10-03, 14 current by their dates (Full Closure 8, Construction 3, Closure with Detour 1, Maintenance 1, Other 1); edited 2026-09-24. AlertType (Full Closure|Closure with Detour|Intermittent Closure|Construction|Hazard|Maintenance|Other), StartDate, EndDate, Title, URL. Not filtered: the inventory's 'EndDate IS NULL OR EndDate >= CURRENT_TIMESTAMP' is a date filter, and expiry is dbt's. PERSON FIELDS LEFT OUT: DataEntryPerson, Creator, Editor. Countywide; the Greenway's portion is a dbt clip. Whether OurHike's paid tiers are 'sale' is the maintainer's call. Read by this step at 2026-10-03T16:09:04Z: returnCountOnly under the row's `where` answered 234, and `GlobalID` is distinct on 234 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "king_county_parks_alerts_lines",
+      "title": "King County Parks alerts and construction (lines)",
+      "provider": "King County Parks",
+      "kind": "club_arcgis_layer",
+      "url": "https://services.arcgis.com/Ej0PsM5Aw677QF1W/arcgis/rest/services/Parks_alert_and_construction_view/FeatureServer/1",
+      "trust": "authoritative",
+      "steward": "King County Parks and Recreation",
+      "steward_contact": "https://kingcounty.gov/en/dept/dnrp/parks-recreation",
+      "licence": "MAINTAINER AUTHORISATION on decision 55 (facts and a link, 2026-10-03): the organization's terms restrict copying or reproducing its content and do not forbid reading it, so its notices are extracted and publish as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The terms are quoted verbatim in `terms`. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "King County Parks and Recreation",
+      "terms": "Any sale of this map or information on this map is prohibited except by written permission of King County.",
+      "terms_source": "King County GIS terms page linked from the item's licenseInfo; quoted by the coverage audit (batch p04, 2026-10-01), not re-read by the phase A inventory (2026-10-03)",
+      "person_fields": [
+        "Creator",
+        "DataEntryPerson",
+        "Editor"
+      ],
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "8 current lines by their dates on 2026-10-03 (Hazard 4, Full Closure 2, Closure with Detour 1, Construction 1); edited 2026-09-24. AlertType (Full Closure|Closure with Detour|Intermittent Closure|Construction|Hazard|Maintenance|Other), StartDate, EndDate, Title, URL. Not filtered: the inventory's 'EndDate IS NULL OR EndDate >= CURRENT_TIMESTAMP' is a date filter, and expiry is dbt's. PERSON FIELDS LEFT OUT: DataEntryPerson, Creator, Editor. Countywide; the Greenway's portion is a dbt clip. Whether OurHike's paid tiers are 'sale' is the maintainer's call. Read by this step at 2026-10-03T16:09:09Z: returnCountOnly under the row's `where` answered 88, and `GlobalID` is distinct on 88 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "king_county_parks_alerts_areas",
+      "title": "King County Parks alerts and construction (areas)",
+      "provider": "King County Parks",
+      "kind": "club_arcgis_layer",
+      "url": "https://services.arcgis.com/Ej0PsM5Aw677QF1W/arcgis/rest/services/Parks_alert_and_construction_view/FeatureServer/2",
+      "trust": "authoritative",
+      "steward": "King County Parks and Recreation",
+      "steward_contact": "https://kingcounty.gov/en/dept/dnrp/parks-recreation",
+      "licence": "MAINTAINER AUTHORISATION on decision 55 (facts and a link, 2026-10-03): the organization's terms restrict copying or reproducing its content and do not forbid reading it, so its notices are extracted and publish as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The terms are quoted verbatim in `terms`. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "King County Parks and Recreation",
+      "terms": "Any sale of this map or information on this map is prohibited except by written permission of King County.",
+      "terms_source": "King County GIS terms page linked from the item's licenseInfo; quoted by the coverage audit (batch p04, 2026-10-01), not re-read by the phase A inventory (2026-10-03)",
+      "person_fields": [
+        "Creator",
+        "DataEntryPerson",
+        "Editor"
+      ],
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "3 current areas by their dates on 2026-10-03 (Full Closure 2, Hazard 1); edited 2026-09-24. AlertType (Full Closure|Closure with Detour|Intermittent Closure|Construction|Hazard|Maintenance|Other), StartDate, EndDate, Title, URL. Not filtered: the inventory's 'EndDate IS NULL OR EndDate >= CURRENT_TIMESTAMP' is a date filter, and expiry is dbt's. PERSON FIELDS LEFT OUT: DataEntryPerson, Creator, Editor. Countywide; the Greenway's portion is a dbt clip. Whether OurHike's paid tiers are 'sale' is the maintainer's call. Read by this step at 2026-10-03T16:09:13Z: returnCountOnly under the row's `where` answered 37, and `GlobalID` is distinct on 37 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "midpen_preserve_access",
+      "title": "Midpen preserve access",
+      "provider": "Midpen",
+      "kind": "club_arcgis_layer",
+      "url": "https://services2.arcgis.com/qmhndvC947rDNl6t/arcgis/rest/services/Preserve_Access_(public)/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Midpeninsula Regional Open Space District",
+      "steward_contact": "https://www.openspace.org/about-us/contact-us",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The item states a no-warranty disclaimer and nothing about reuse (coverage audit 2026-10-01: none_stated). This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Midpeninsula Regional Open Space District",
+      "person_fields": [
+        "created_user",
+        "last_edited_user"
+      ],
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "195 polygons on 2026-10-03: ACCESS Closed 133, Open 60, Permit Only 2; edited 2026-07-21. CLOSETYPE (Regular, Conservation Managment Unit, Hazardous, Sensitive, Temporary): most Closed rows are standing closed areas, and only Hazardous and Temporary are notice-like; that split is dbt's, since CLOSETYPE is a type and not a status. Not filtered. PERSON FIELDS LEFT OUT: created_user, last_edited_user. Read by this step at 2026-10-03T16:09:18Z: returnCountOnly under the row's `where` answered 195, and `GlobalID` is distinct on 195 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "scc_parks_closed_areas",
+      "title": "Santa Clara County Parks areas closed to the public",
+      "provider": "Santa Clara County Parks",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/4QPaqCJqF1UIaPbN/arcgis/rest/services/Santa_Clara_County_Parks_Closed_Areas_view/FeatureServer/1",
+      "trust": "authoritative",
+      "steward": "Santa Clara County Parks",
+      "steward_contact": "https://parks.santaclaracounty.gov/about-us/contact-us",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. Nothing is stated (coverage audit 2026-10-01: none_stated). This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Santa Clara County Parks",
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "65 polygons on 2026-10-03: closure_type long-term 42, facility 3, na 4, null 16; edited 2026-07-01. Standing closures (unopened and undeveloped land), not dated notices. Read by this step at 2026-10-03T16:09:22Z: returnCountOnly under the row's `where` answered 65, and `GlobalID` is distinct on 65 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "ma_dcr_park_alerts",
+      "title": "DCR park alerts and advisories",
+      "provider": "MA DCR",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/FACILITYCLOSURE_APPDATA/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Massachusetts Department of Conservation and Recreation",
+      "steward_contact": "https://www.mass.gov/orgs/department-of-conservation-recreation",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The item's licenseInfo, accessInformation and copyrightText are empty (coverage audit 2026-10-01: none_stated). mass.gov's terms, which decision 55 answers for DCR's alert pages, govern the website, not this layer. This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Massachusetts Department of Conservation and Recreation",
+      "id_field": "OBJECTID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "4 rows on 2026-10-03 against the audit's 2 on 2026-10-01, one a trail closure (Purgatory Chasm State Park, 'Chasm Loop Trail'). ParkAlertType (Closure|Advisory), PAdv_StartDT and PAdv_EndDT as ISO strings, FACILITY_APPROVAL_STATUS 'Published' on all 4. The point geometry came back absent; the place is in FACILITY_LAT/FACILITY_LONG. lastEditDate equals the minute of the request: the layer is rebuilt on a schedule, so its check reads STALE most hours, the safe direction, at one 12 KB read. Not filtered on FACILITY_APPROVAL_STATUS: 4 rows buy nothing from a filter and risk an empty table if DCR renames the value. Which PARK_SITE values are on the Massachusetts A.T. is unchecked. Read by this step at 2026-10-03T16:09:27Z: returnCountOnly under the row's `where` answered 3, and `OBJECTID` is distinct on 3 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "ma_dcr_blue_hills_hunt_areas",
+      "title": "DCR Blue Hills hunt areas",
+      "provider": "MA DCR",
+      "kind": "club_arcgis_layer",
+      "url": "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/HuntAreas_BH_PGC_FM/FeatureServer/18",
+      "trust": "authoritative",
+      "steward": "Massachusetts Department of Conservation and Recreation",
+      "steward_contact": "https://www.mass.gov/orgs/department-of-conservation-recreation",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The item states nothing of its own; mass.gov's terms govern the website, not this layer. This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Massachusetts Department of Conservation and Recreation",
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "13 polygons on 2026-10-03 (YrHuntArea 2026 on 12, 2025 on 'Ponkapoag'); lastEditDate 2026-07-28. No status field. Read by this step at 2026-10-03T16:09:31Z: returnCountOnly under the row's `where` answered 13, and `GlobalID` is distinct on 13 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: hunt-area polygons with no season dates (those are DCR's annual hunt notice); a warning only during DCR's controlled hunt, and whether hunting areas are warnings is the maintainer's open question."
+    },
+    {
+      "key": "wa_dnr_wildfire_danger",
+      "title": "WA DNR wildfire danger and burn bans",
+      "provider": "WA DNR",
+      "kind": "club_arcgis_layer",
+      "url": "https://gis.dnr.wa.gov/site3/rest/services/Public_Wildfire/WADNR_PUBLIC_WD_WildfireDanger/MapServer/0",
+      "trust": "authoritative",
+      "steward": "Washington State Department of Natural Resources",
+      "steward_contact": "https://www.dnr.wa.gov/contact-us",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. DNR's sibling item reads 'provides these geographic data \"as is.\" DNR makes no guarantee or warranty' (coverage audit; none_stated). This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Washington State Department of Natural Resources",
+      "person_fields": [
+        "REGION_EMAIL_ADDR",
+        "REGION_PHONE_NO"
+      ],
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "id_field": "OBJECTID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "23 fire-danger-rating areas on 2026-10-03: Moderate 18, Low 5 (20 and 3 on 2026-10-01: it moves). FIRE_DANGER_LEVEL_NM, BURN_BAN_LEVEL_NM, NOTES_TXT. On-prem ArcGIS Server 11.5 with no date field: the change check answers UNKNOWN and the 23 polygons are read each hour. Contact fields REGION_PHONE_NO and REGION_EMAIL_ADDR are left out with the person fields; the office address fields are kept. Layer /1 (Burn Bans) was not re-read and is not wired. Read by this step at 2026-10-03T16:09:36Z: returnCountOnly under the row's `where` answered 23, and `OBJECTID` is distinct on 23 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "wa_dnr_ifpl",
+      "title": "WA DNR industrial fire precaution levels",
+      "provider": "WA DNR",
+      "kind": "club_arcgis_layer",
+      "url": "https://gis.dnr.wa.gov/site3/rest/services/Public_Wildfire/WADNR_PUBLIC_WD_IFPL/MapServer/0",
+      "trust": "authoritative",
+      "steward": "Washington State Department of Natural Resources",
+      "steward_contact": "https://www.dnr.wa.gov/contact-us",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. DNR's sibling item reads 'provides these geographic data \"as is.\" DNR makes no guarantee or warranty' (coverage audit; none_stated). This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Washington State Department of Natural Resources",
+      "person_fields": [
+        "RGN_EMAIL",
+        "RGN_PHONE"
+      ],
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "EDIT_DT",
+        "notes": "An on-prem MapServer: its ETag hashes the body, so the change check is the statistics fingerprint, count and max(OBJECTID) beside max(EDIT_DT), the layer's own edit date (max 2026-10-02 16:42 UTC on 2026-10-03). Reasoned to move on every edit from its name; @unvalidated."
+      },
+      "id_field": "OBJECTID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "37 zones on 2026-10-03, all level 1; max FIRE_PRECAUTION_EFFECTIVE_DT 2026-10-03. Contact fields RGN_PHONE and RGN_EMAIL are left out with the person fields. Read by this step at 2026-10-03T16:09:41Z: returnCountOnly under the row's `where` answered 37, and `OBJECTID` is distinct on 37 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "wsprc_winter_rec_closures",
+      "title": "WA State Parks winter recreation temporary closures",
+      "provider": "WA State Parks",
+      "kind": "club_arcgis_layer",
+      "url": "https://services5.arcgis.com/4LKAHwqnBooVDUlX/arcgis/rest/services/Temporary_Closure_(Public)/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Washington State Parks and Recreation Commission",
+      "steward_contact": "https://parks.wa.gov/about/contact-us",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The item's licenseInfo is a warranty disclaimer ('provides these geographic data \"as is\"'), with no use restriction. This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Washington State Parks and Recreation Commission",
+      "terms": "The Washington State Parks and Recreation Commission (WSPRC) provides these geographic data \"as is\"…",
+      "terms_source": "item 675652dc7a364c4686032d8d0a599c61 licenseInfo, phase A inventory batch 5, 2026-10-03, quoted to its own ellipsis: a warranty disclaimer with no use restriction",
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "47 polylines on 2026-10-03, 'TemporaryClosure'; dataLastEditDate 2025-12-03; item 675652dc7a364c4686032d8d0a599c61, snippet 'updates in real time'. Fields Name and GlobalID only. Read by this step at 2026-10-03T16:09:45Z: returnCountOnly under the row's `where` answered 47, and `GlobalID` is distinct on 47 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: 47 closure lines from a winter layer last edited 2025-12-03 were still present in October 2026, with no dates and no status, so a row's presence does not say it is in force (inventory, 2026-10-03)."
+    },
+    {
+      "key": "utah_ffsl_fire_restrictions",
+      "title": "Utah fire restrictions (FFSL, multi-agency)",
+      "provider": "Utah FFSL",
+      "kind": "club_arcgis_layer",
+      "url": "https://services.arcgis.com/ZzrwjTRez6FJiOq4/arcgis/rest/services/Fire_Restrictions/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Utah Division of Forestry, Fire and State Lands",
+      "steward_contact": "https://ffsl.utah.gov/contact-us/",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The item's copyright is an 'as is' disclaimer (coverage audit 2026-10-01: none_stated). This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Utah Division of Forestry, Fire and State Lands",
+      "where": "Status NOT IN ('Rescinded', 'Superseded') OR Status IS NULL",
+      "where_comment": "FFSL'S OWN STATUS FIELD, as a denylist: Status read Active 8, Recurring 2, Standing 15, Rescinded 106, Superseded 45 of 176 on 2026-10-03. Leaving out only the two ended states keeps Active, Recurring, Standing and any value FFSL adds later; which of the kept three mean 'in force today' is FFSL's to confirm (@unvalidated).",
+      "id_field": "OBJECTID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "176 orders across FFSL, USFS, BLM, NPS and tribal agencies; lastEditDate 2026-10-01 21:10 UTC. OrderNum, Agency, EffectiveDate, RescindedDate, OnDate (DateOnly), RestrictionType, Status, Short_AreaDescription, Link. Read by this step at 2026-10-03T16:09:50Z: returnCountOnly under the row's `where` answered 25, and `OBJECTID` is distinct on 25 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "tdec_trail_closures",
+      "title": "TDEC trail closures (Tennessee State Parks)",
+      "provider": "TDEC",
+      "kind": "club_arcgis_layer",
+      "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/TDEC_Trail_Closures_Public/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Tennessee Department of Environment and Conservation",
+      "steward_contact": "https://www.tn.gov/environment/contacts.html",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The layer's copyrightText is empty and its item states nothing. Decision 36 names Cumberland/TDEC's profit- and sale-limited terms for their other layers and publishes under them as non-commercial use; this layer states none. This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Tennessee Department of Environment and Conservation",
+      "person_fields": [
+        "Creator",
+        "Editor"
+      ],
+      "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "id_field": "GlobalID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "22 closed segments statewide on 2026-10-03 (TRSTAT 'Temporarily Closed' 21, 'Closed Repairs' 1): the public view holds only closed segments, so it is not filtered. 1 is on the Cumberland Trail now (TSP-0077, 'Cumberland Mountain Section', 3.89 mi, Temporarily Closed, edited 2026-05-06); North Chickamauga, which the audit counted, is no longer in the layer. lastEditDate 2026-10-03 02:27 UTC. PERSON FIELDS LEFT OUT: Creator and Editor hold staff account names (e.g. 'Firstname.Lastname_TSP'). Read by this step at 2026-10-03T16:09:54Z: returnCountOnly under the row's `where` answered 22, and `GlobalID` is distinct on 22 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+    },
+    {
+      "key": "portland_parks_closed_assets",
+      "title": "Portland Parks & Recreation closed assets",
+      "provider": "Portland Parks",
+      "kind": "club_arcgis_layer",
+      "url": "https://services.arcgis.com/quVN97tn06YNGj9s/arcgis/rest/services/Park_Closures/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Portland Parks & Recreation",
+      "steward_contact": "https://www.portland.gov/parks",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. Item 149785d2699343cfa4e87920fb1148df (owner ppr.maps) carries an empty licenseInfo. This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Portland Parks & Recreation",
+      "id_field": "OBJECTID",
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03; registered in phase B (ArcGIS).",
+      "discovered_date": "2026-10-03",
+      "notes": "40 points on 2026-10-03, 'Closed Assets'; no editingInfo and no edit-date field. Name, Short_Desc, Desc1-5, Website, Hours, PropertyID. Read by this step at 2026-10-03T16:09:59Z: returnCountOnly under the row's `where` answered 40, and `OBJECTID` is distinct on 40 of them (returnDistinctValues), the key phase C builds on.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: facility closures (the Alberta Park wading pool, closed since a 2009 state rule), not trail notices (inventory, 2026-10-03). Forest Park's trail closures are on portland.gov's page, which the Forest Park Conservancy's folder lists to wire."
     }
   ],
   "usdm_licence": {
@@ -2688,6 +3063,54 @@
         "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
       },
       "USACE": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "NIFC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "ODFW": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "California State Parks": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "King County Parks": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "Midpen": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "Santa Clara County Parks": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "MA DCR": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "WA DNR": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "WA State Parks": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "Utah FFSL": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "TDEC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
+      },
+      "Portland Parks": {
         "state": "not_asked",
         "note": "Not asked. Registered for its closures and warnings layers under decision 53 (2026-10-03), which publish as facts and a link; nothing of theirs reaches a hiker until dbt's int_sources__publication says so, and an org mark would be a separate ask the maintainer sends. Nothing has been sent."
       }
@@ -3261,11 +3684,71 @@
         "provider": "USACE",
         "name": "U.S. Army Corps of Engineers",
         "note": "Manages recreation land around its lakes and dams; registered for two district layers, the Garrison Project's hunting restrictions and Mobile District's closed recreation areas."
+      },
+      "org:nifc": {
+        "provider": "NIFC",
+        "name": "National Interagency Fire Center",
+        "note": "Publishes WFIGS, the interagency map of every current wildfire perimeter in the United States, which the western clubs' warnings draw on."
+      },
+      "org:odfw": {
+        "provider": "ODFW",
+        "name": "Oregon Department of Fish and Wildlife",
+        "note": "Publishes ORHAM, Oregon's hunting-access map; registered for its alert-areas layer, on ONDA's ground. Its contacts table holds people and is never read."
+      },
+      "org:cdpr": {
+        "provider": "California State Parks",
+        "name": "California Department of Parks and Recreation",
+        "note": "Runs California's state parks; registered for its park-unit closure status layer, whose closure rows have not been edited since 2025-01-23 (inventory, 2026-10-03)."
+      },
+      "org:kingcountyparks": {
+        "provider": "King County Parks",
+        "name": "King County Parks and Recreation",
+        "note": "Washington county parks agency; registered for its parks alert and construction layers on the Mountains to Sound Greenway's ground."
+      },
+      "org:midpen": {
+        "provider": "Midpen",
+        "name": "Midpeninsula Regional Open Space District",
+        "note": "Bay Area open-space district; registered for its preserve-access layer, which marks which preserve areas are open, closed or permit-only."
+      },
+      "org:sccparks": {
+        "provider": "Santa Clara County Parks",
+        "name": "Santa Clara County Parks",
+        "note": "County parks department on the Bay Area Ridge Trail's ground; registered for its areas-closed-to-the-public layer."
+      },
+      "org:madcr": {
+        "provider": "MA DCR",
+        "name": "Massachusetts Department of Conservation and Recreation",
+        "note": "Runs Massachusetts' state parks and reservations; registered for its statewide park alerts layer and the Blue Hills hunt areas."
+      },
+      "org:wadnr": {
+        "provider": "WA DNR",
+        "name": "Washington State Department of Natural Resources",
+        "note": "Sets Washington's wildfire danger, burn bans and industrial fire precaution levels; registered for two of those layers."
+      },
+      "org:wsprc": {
+        "provider": "WA State Parks",
+        "name": "Washington State Parks and Recreation Commission",
+        "note": "Runs Washington's state parks; registered for its winter recreation temporary-closure layer."
+      },
+      "org:utahffsl": {
+        "provider": "Utah FFSL",
+        "name": "Utah Division of Forestry, Fire and State Lands",
+        "note": "Publishes Utah's multi-agency fire restriction orders as one layer, each order carrying its own status."
+      },
+      "org:tdec": {
+        "provider": "TDEC",
+        "name": "Tennessee Department of Environment and Conservation",
+        "note": "Runs Tennessee State Parks, the Cumberland Trail State Park among them; registered for its statewide trail-closure segments."
+      },
+      "org:portlandparks": {
+        "provider": "Portland Parks",
+        "name": "Portland Parks & Recreation",
+        "note": "City parks bureau that manages Forest Park; registered for its closed-assets layer, facility closures rather than trail notices."
       }
     }
   },
   "reaches_hikers_comment": "Why every source entry carries `reaches_hikers` (#927). The sources screen names the organizations whose data is on a hiker's phone, under the terms each one set - so it has to know which registered sources actually SHIP, and that fact lived only in prose inside each entry's `licence` string ('fetched for REVIEW AND CROSS-CHECKS ONLY', 'nothing from this source reaches a published artifact until...'). A screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded. So it is a field: true means an exporter reads this source and its data reaches a release, false means registered-but-not-shipped, for any reason - review-only pending a licence answer (gatc_water_sources, every oprhp_*), watched-only (usgs_3dhp), or registered and not yet wired to anything (bridges, at_treadway, per pipeline/README.md). It is NOT a licence judgement and does not replace one: a source can be freely licensed and still not ship. export_sources.py refuses to run if any entry lacks the field, so a newly registered source cannot reach a hiker's screen by defaulting into it.",
-  "licence_basis_comment": "WHAT A SOURCE'S LICENCE ACTUALLY RESTS ON, as a field rather than as prose (#929). Three values and they are not interchangeable: `stated_by_org` - the organization published terms of its own and they permit this (OPRHP's licenseInfo, ODbL, a federal public-domain work); `maintainer_authorisation` - the organization has stated nothing that reaches this use, and the maintainer authorised it as the person who carries the consequence. IT IS NOT A GRANT FROM THE ORGANIZATION and must never be rendered as one; `unresolved` - nobody has answered, and nothing ships. WHY IT IS A FIELD. Every one of these facts was already written down, in the per-source `licence` prose and the `<x>_licence` blocks - and only there. A screen or a report that wanted to say 'eleven of the thirty-three ship on your own authorisation rather than the org's terms' had to decide it by reading those sentences, which is exactly the failure `reaches_hikers_comment` records for the flag above: 'a screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded'. The same argument, one field over. IT IS NOT A JUDGEMENT ABOUT QUALITY and it does not replace the prose: the prose is where the reasoning, the dates, the read terms and the open questions live. This is one word saying which of the three shapes that reasoning has, so it can be counted. Measured 2026-08-27 against this file: 6 stated_by_org, 26 maintainer_authorisation, 1 unresolved. Re-measured 2026-09-08 (#1288): 8, 28 and 1 - nynjtc_long_path_guide was registered `unresolved` that morning and moved to `maintainer_authorisation` the same day on the maintainer's word (nynjtc_guide_licence); tests/test_organizations.py pins all three.",
+  "licence_basis_comment": "WHAT A SOURCE'S LICENCE ACTUALLY RESTS ON, as a field rather than as prose (#929). Three values and they are not interchangeable: `stated_by_org` - the organization published terms of its own and they permit this (OPRHP's licenseInfo, ODbL, a federal public-domain work); `maintainer_authorisation` - the organization has stated nothing that reaches this use, and the maintainer authorised it as the person who carries the consequence. IT IS NOT A GRANT FROM THE ORGANIZATION and must never be rendered as one; `unresolved` - nobody has answered, and nothing ships. WHY IT IS A FIELD. Every one of these facts was already written down, in the per-source `licence` prose and the `<x>_licence` blocks - and only there. A screen or a report that wanted to say 'eleven of the thirty-three ship on your own authorisation rather than the org's terms' had to decide it by reading those sentences, which is exactly the failure `reaches_hikers_comment` records for the flag above: 'a screen that decided by reading those sentences would print a licence claim for data nobody publishes the first time one was reworded'. The same argument, one field over. IT IS NOT A JUDGEMENT ABOUT QUALITY and it does not replace the prose: the prose is where the reasoning, the dates, the read terms and the open questions live. This is one word saying which of the three shapes that reasoning has, so it can be counted. Measured 2026-08-27 against this file: 6 stated_by_org, 26 maintainer_authorisation, 1 unresolved. Re-measured 2026-09-08 (#1288): 8, 28 and 1 - nynjtc_long_path_guide was registered `unresolved` that morning and moved to `maintainer_authorisation` the same day on the maintainer's word (nynjtc_guide_licence); tests/test_organizations.py pins all three. A FOURTH VALUE, `public_gis`, has rows since 2026-10-03: decision 21a's presumption (pipeline/ELT.md, 'Who may publish', rule 3) that a GIS layer an organization publishes itself, anonymously, on a public endpoint is reusable for rendering with attribution. Like `maintainer_authorisation` it is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; tests/test_organizations.py counts all four.",
   "poi_coverage": {
     "_comment": "What each organization publishes for each of lib/poi_schema.POI_TYPES, and whether OurHike ships it (#1092). The maintainer's ask, 2026-08-27: \"We don't have POI for the org's outside of ATC. Search those sources for the POI types we have... Maybe we need to track each of the POI types for the org, and whether or not it is provided.\" This block is the second half of that - the answer in a form a test can read, so \"does DEC give us campsites\" stops being a question the next session re-probes from scratch. pipeline/POI_COVERAGE_SURVEY.md is the evidence and the argument; spike_org_poi_coverage.py is the script every count here came from, re-runnable in one command. THE COUNTS ARE OF WHAT THE ORG PUBLISHES, NOT OF WHAT A HIKER WOULD SEE: nothing here is clipped to a corridor, deduped against ATC's POIs, or filtered to walkable ground, because this block is a survey of supply and those are ingest decisions belonging to per-org issues. `org_flags_public` is the subset the org's OWN publication flag marks as visitor-facing - DEC's PUBLICUSE, OPRHP's ParksApp - and it is the more honest of the two numbers wherever the two disagree. Twelve of these cells became `shipping` on 2026-08-27 (#1097, export_nearby_poi.py -> nearby_poi.geojson): six DEC types and six OPRHP ones, 8,480 features. Neither org's water is among them. tests/test_poi_coverage.py enforces that every provider in `sources` has a verdict for every POI type, from the vocabulary below: no blanks, the same discipline NYC_SOURCE_SURVEY.md §9 applies to licensing.",
     "status_vocabulary": {

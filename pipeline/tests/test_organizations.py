@@ -323,5 +323,5 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 26 rows, all reaches_hikers false: 26 `stated_by_org`.
-    assert counts == {"maintainer_authorisation": 37, "stated_by_org": 60, "unresolved": 2, "public_gis": 4}
+    # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 42 rows, all reaches_hikers false: 3 `maintainer_authorisation`, 12 `public_gis`, 27 `stated_by_org`.
+    assert counts == {"maintainer_authorisation": 40, "stated_by_org": 61, "unresolved": 2, "public_gis": 16}

@@ -1,4 +1,16 @@
-"""Black Hills Trails: warnings, published, and not landed (coverage audit 2026-10-01, batch
+"""Black Hills Trails: warnings, drawn from another folder's resource (decision 53 phase B,
+2026-10-03).
+
+This club's warnings arrive through _shared/nifc/ `nifc_wfigs_current_perimeters`, each extracted
+once in its steward's folder (decision 34). Its portion is assigned in dbt.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.fs.usda.gov/r02/blackhills/alerts (html_page);
+https://www.blm.gov/press-release/montana-dakotas/rss (rss).
+
+Before decision 53 phase B, 2026-10-03, this note read:
+
+Black Hills Trails: warnings, published, and not landed (coverage audit 2026-10-01, batch
 p10_persist).
 
 WFIGS licenseInfo: "The National Interagency Fire Center shall not be held liable for improper or
@@ -13,20 +25,16 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        'Same BH NF alerts page: "Open Fire Restriction - Black Hills NF in South Dakota" (fire-restriction, '
-        '2024-11-16); "Stage 2 Fire Restrictions in Black Hills NF in Wyoming" (2026-09-24); "Topaz timber sale'
-        ' near Sturgis, SD Continues Operations" (caution: "Tethered logging with chipping/mastication may '
-        'cause flying debris near trails"); "Please Use Caution When Entering the Black Elk Wilderness" '
-        '(falling trees; the Centennial Trail crosses that wilderness). BLM RSS: "BLM South Dakota Enters Stage'
-        ' 2 Fire Restrictions" (2026-07-15). NIFC …',
+        "via _shared/nifc/ `nifc_wfigs_current_perimeters` (decision 53 phase B, 2026-10-03): `nifc_wfigs_current_perimeters` reads `WFIGS_Interagency_Perimeters_Current/FeatureServer/0`",
+        'Same BH NF alerts page: "Open Fire Restriction - Black Hills NF in South Dakota" (fire-restriction, 2024-11-16); "Stage 2 Fire Restrictions in Black Hills NF in Wyoming" (2026-09-24); "Topaz timber sale near Sturgis, SD Continues Operations" (caution: "Tethered logging with chipping/mastication may cause flying debris near trails"); "Please Use Caution When Entering the Black Elk Wilderness" (falling trees; the Centennial Trail crosses that wilderness). BLM RSS: "BLM South Dakota Enters Stage 2 Fire Restrictions" (2026-07-15). NIFC …',
     ),
     where=(
+        "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0",
         "https://apps.fs.usda.gov/arcx/rest/services",
         "https://services3.arcgis.com/NbEEwwcVRO4AIaWE/arcgis/rest/services",
         "https://blackhillstrails.org/",
-        "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="drawn from _shared/nifc/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; the org's own non-ArcGIS sources are listed in the docstring, still to wire",
 )

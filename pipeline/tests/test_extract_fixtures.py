@@ -61,9 +61,9 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | GuidePages
     )
     fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
-    assert len(fetched) == 88, (
-        "61 monthly layers and OPRHP's temporary closures on the hourly lane, and decision 53's 26 "
-        "ArcGIS closure and warning layers: 22 hourly, 3 daily, 1 monthly"
+    assert len(fetched) == 104, (
+        "61 monthly layers and OPRHP's temporary closures on the hourly lane, and decision 53's 42 "
+        "ArcGIS closure and warning layers: 38 hourly, 3 daily, 1 monthly"
     )
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])

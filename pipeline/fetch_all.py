@@ -33,6 +33,10 @@ status (lib/arcgis.py's fetch_layer_geojson() has no floor for this), which
 would otherwise be recorded as an ordinary successful fetch with
 feature_count 0. If any source is missing, failed, or comes back with
 feature_count 0, the script exits non-zero rather than silently continuing.
+
+The floor is one feature (lib/completeness.py's count_problems default). It
+catches an empty layer and says nothing about a layer cut short partway
+through its pages, which can still clear it (#1730).
 """
 
 import json

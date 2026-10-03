@@ -16,8 +16,8 @@
 # raw store, dbt builds the closures and warnings marts and their pub_
 # writers, and publish.py publishes those writers' files under
 # OURHIKE_PHONE_FILES=dbt, with the exporters still writing the files no dbt
-# writer owns yet (drought, notes and disputes among them). Decision 30 soaks the dbt path on
-# UA for seven days of hourly dispatches before the merge, which is why a
+# writer owns yet (drought, notes and disputes among them). Decision 30, shortened by decision
+# 46, soaks the dbt path on UA for three days of hourly dispatches before the merge, which is why a
 # dispatch from any ref but main runs the UA leg alone (the matrix below).
 #
 # HOURLY since 2026-08-15 (#720), where this used to be daily on the
@@ -412,8 +412,8 @@ jobs:
         run: pip install -r requirements.txt
 
       # THE dbt PATH NEEDS THE RAW STORE AND THIS LEG'S DATABASE, and says
-      # which is missing by name. Whether the maintainer has stored the raw
-      # bucket's three secrets is unknown (pipeline/ELT.md, "Secrets and
+      # which is missing by name. The raw bucket's three secrets are set: this
+      # step passed on run 481, 2026-10-02 (pipeline/ELT.md, "Secrets and
       # buckets: a maintainer action"; decision 43: one bucket, `our-hike-raw`,
       # one key, and R2_ENDPOINT_URL reused). Today's bake skips its database
       # half with a warning when the database is unset; the dbt path has no

@@ -3477,7 +3477,7 @@ From the decisions log, the six research reports and every section.
 
 ## Open questions for the maintainer
 
-1. **Buckets and secrets** ([above](#secrets-and-buckets-a-maintainer-action)). **Answered 2026-10-01 by decision 43**, which supersedes decision 42: one private bucket, `our-hike-raw`, for raw and the step cache, and one key. The bucket exists; the key and its three secrets wait on the maintainer.
+1. **Buckets and secrets** ([above](#secrets-and-buckets-a-maintainer-action)). **Answered 2026-10-01 by decision 43**, which supersedes decision 42: one private bucket, `our-hike-raw`, for raw and the step cache, and one key. The bucket, its key and its three secrets are in place: publish-conditions run 481's "Check the dbt path has its raw store and its database" step, which fails by name on any of them empty, passed on UA on 2026-10-02, and the leg it guards then extracted into the raw store.
 2. **Aggregators.** Decision 18 puts `osm`, `outerspatial` and `avenza` in `_shared/`, and [Club by club](#club-by-club) adds Trail Finder. Does club data that only an aggregator carries stay there, or move to the club's folder?
 3. **Shrink floors.** 0.5 for every type except closures and warnings (no floor) until six runs measure them, or per-type floors now?
 4. **The conditions bake after the merge.** Decision 30's soak runs the new path on UA for 3 days (decision 46) before the merge. After it, does the bake keep its direct production publish from the merge, as today, or run UA-only for a further probation?

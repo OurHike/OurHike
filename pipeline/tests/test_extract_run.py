@@ -453,6 +453,35 @@ def test_a_read_shorter_than_the_servers_count_fails_before_anything_loads(regis
         lane(store, lines(), closures())
 
 
+def test_a_field_added_to_person_fields_is_dropped_from_a_layer_that_has_not_moved_upstream(
+    registry, store, requests_mock, monkeypatch
+):
+    """The layer answers 304, so only the resource's own definition in its marker can say it must be read again."""
+    FakeLayer(requests_mock, LINES_URL, [feature(1, ranger="A. Person")])
+    with monkeypatch.context() as before_the_fix:
+        before_the_fix.setattr(_kinds, "PERSON_FIELDS", _kinds.PERSON_FIELDS - {"ranger"})
+        lane(store, lines())
+        con, _ = warehouse(store)
+        assert "A. Person" in str(con.execute('select * from raw."raw_testclub__trails"').fetchall()), "the leak"
+
+    second = lane(store, lines())
+
+    assert second.verdicts == {"raw_testclub__trails": "stale"}
+    con, _ = warehouse(store)
+    assert "A. Person" not in str(con.execute('select * from raw."raw_testclub__trails"').fetchall())
+    assert lane(store, lines()).verdicts == {"raw_testclub__trails": "fresh"}, "read again once, then fresh"
+
+
+def test_definition_digest_moves_with_the_person_fields_and_the_resources_own_fields(registry, monkeypatch):
+    digest = _run.definition_digest(lines())
+    assert _run.definition_digest(lines()) == digest, "the same definition, built again"
+    assert _run.definition_digest(ReviewedFile(key="w", club="c", type="closures", path="w.json", verbatim=True)) != (
+        _run.definition_digest(ReviewedFile(key="w", club="c", type="closures", path="w.json"))
+    )
+    monkeypatch.setattr(_kinds, "PERSON_FIELDS", _kinds.PERSON_FIELDS | {"steward_name"})
+    assert _run.definition_digest(lines()) != digest
+
+
 def test_person_fields_never_reach_a_row_or_a_column_hint(registry, requests_mock):
     FakeLayer(requests_mock, LINES_URL, [feature(1, ranger="A. Person")])
     resource = lines()

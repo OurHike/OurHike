@@ -55,6 +55,7 @@ dlt resources, which tests/test_extract_run.py and the run check hold.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -83,6 +84,7 @@ import pyarrow.parquet as pq  # noqa: E402
 from dlt.common.schema.exceptions import DataValidationError  # noqa: E402
 from dlt.pipeline.exceptions import PipelineStepFailed  # noqa: E402
 
+from extract import _kinds  # noqa: E402
 from extract._contract import (  # noqa: E402
     CADENCES,
     Carried,
@@ -455,6 +457,26 @@ def store_schema(pipeline) -> dlt.Schema:
     if pipeline.default_schema_name:
         return pipeline.default_schema
     return dlt.Schema(SOURCE_NAME)
+
+
+#: The key under which each stored marker also carries its resource's definition_digest().
+DEFINITION_KEY = "_definition"
+
+
+def definition_digest(resource: Resource) -> str:
+    """A sha256 of what decides a resource's rows on our side: its own fields, the fields every read drops, its `where`.
+
+    Kept in its marker, so a fix to the resource, such as a field added to
+    PERSON_FIELDS, reads an upstream that has not moved again once.
+    """
+    definition = {
+        "resource": repr(resource),
+        "person_fields": sorted(_kinds.PERSON_FIELDS),
+        "wordpress_dropped": sorted(_kinds.WP_DROPPED),
+        "withheld_columns": sorted(_kinds.WITHHELD_COLUMNS),
+        "where": getattr(resource, "where", None),
+    }
+    return hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
 
 
 def recorded_markers(pipeline) -> dict[str, dict | None]:
@@ -1118,9 +1140,16 @@ def _run(
             # 37081046157 then answered 53 resources FRESH whose rows no build
             # could see. And a FRESH verdict is UNKNOWN when the served load cannot
             # give a build what it needs (fresh_but_unserved()).
-            before = recorded.get(resource.name) if resource.table in current else None
+            stored = recorded.get(resource.name) if resource.table in current else None
+            # A marker of another definition of the resource, or of none, is no marker (definition_digest()).
+            definition = definition_digest(resource)
+            if stored and stored.get(DEFINITION_KEY) == definition:
+                before = {name: value for name, value in stored.items() if name != DEFINITION_KEY}
+            else:
+                before = None
             try:
                 verdict, marker = resource.change_check(before)
+                marker = {**marker, DEFINITION_KEY: definition} if marker else None
                 if verdict is Freshness.FRESH:
                     load_id = current.get(resource.table)
                     row = served.get((resource.table, load_id), {})
@@ -1134,7 +1163,7 @@ def _run(
                 report.unavailable[resource.name] = str(reason)
                 report.verdicts[resource.name] = UNAVAILABLE
                 continue
-            planned.append(Planned(resource, verdict, before, marker))
+            planned.append(Planned(resource, verdict, stored, marker))
             report.verdicts[resource.name] = verdict.value
     to_run = [item for item in planned if item.verdict is not Freshness.FRESH]
     print(

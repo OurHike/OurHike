@@ -770,6 +770,13 @@ def _read_rows(pipeline, files: list[str]) -> list[dict]:
     return rows
 
 
+def readable_tables(pipeline, log: list[dict], complete: set[str]) -> set[str]:
+    """The tables a build reads rows of: extract/_warehouse.py's committed_tables(), imported here for committed_rows()' reason."""
+    from extract._warehouse import committed_tables
+
+    return set(committed_tables(pipeline, log=log, complete=complete))
+
+
 def committed_rows(pipeline, table: str, *, log: list[dict] | None = None, complete: set[str] | None = None) -> tuple[dict, ...]:
     """The table's rows as its last committed load left them, dlt's own columns dropped; () where it has none.
 
@@ -1052,11 +1059,23 @@ def _run(
         recorded = recorded_markers(pipeline)
         # Read once: every run log file is a read of its own, and nothing writes the log before the run's end.
         log = run_log_rows(pipeline)
+        complete = committed_load_ids(pipeline)
+        current = readable_tables(pipeline, log, complete)
         plan_resources = due(plan_resources, log, checked_at)
     planned, unavailable = [], []
     with timed(report, "change checks"):
         for resource in plan_resources:
-            before = recorded.get(resource.name)
+            # A MARKER COUNTS ONLY BESIDE ROWS A BUILD CAN READ. dlt commits a
+            # resource's marker with its load's state, and a load can commit
+            # with no `_extract_runs` row to say so: the monthly lane's second
+            # run (refresh-reference.yml, 37070628933) committed and then
+            # refused before its run log. committed_tables() rightly serves no
+            # such load, but its markers stood, so the third run (37081046157)
+            # answered 53 resources FRESH whose rows no build could see, and
+            # the pin then had no raw_nysparks__oprhp_trails to hand
+            # export_nearby_trails.py. A marker whose table has no logged,
+            # committed load is read as no marker: the resource fetches again.
+            before = recorded.get(resource.name) if resource.table in current else None
             try:
                 verdict, marker = resource.change_check(before)
             except Unavailable as reason:
@@ -1080,7 +1099,6 @@ def _run(
     carrying = any(item.resource.carries for item in planned)
     kept = {}
     if carrying:
-        complete = committed_load_ids(pipeline)
         kept = stored_progress(pipeline, complete)
         carried_for(pipeline, to_run, kept, log, complete)
 

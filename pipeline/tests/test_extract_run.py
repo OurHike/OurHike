@@ -302,6 +302,30 @@ def test_a_store_an_older_build_left_with_a_second_schema_still_loads_one_packag
     assert counts["raw_testclub__closures_layer"] == 1
 
 
+def test_a_load_that_committed_without_its_run_log_is_read_again_rather_than_answered_fresh(
+    registry, store, requests_mock, monkeypatch
+):
+    """refresh-reference.yml's monthly lane: 37070628933 committed and refused before its log, then 37081046157 skipped 53."""
+    FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])
+
+    def dies(*args, **kwargs):
+        raise RuntimeError("the runner went away after the load committed")
+
+    with monkeypatch.context() as died:
+        died.setattr(_run, "write_run_log", dies)
+        with pytest.raises(RuntimeError, match="went away"):
+            lane(store, lines(), closures())
+    _, unlogged = warehouse(store)
+    assert unlogged == {}, "the store this test exists for: committed rows that no run log names"
+
+    report = lane(store, lines(), closures())
+
+    assert report.verdicts == {"raw_testclub__trails": "stale", "raw_testclub__closures_layer": "stale"}
+    _, counts = warehouse(store)
+    assert counts == {"raw_testclub__trails": 2, "raw_testclub__closures_layer": 1}
+
+
 def test_a_trail_layer_that_halves_is_refused(registry, store, requests_mock):
     layer = FakeLayer(requests_mock, LINES_URL, [feature(i) for i in range(1, 7)])
     FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])

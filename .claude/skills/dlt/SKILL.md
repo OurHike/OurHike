@@ -355,7 +355,13 @@ platform". **A marker advances only when a load commits**: after
 `abort_packages()` (measured as `drop_pending_packages()`, its alias, deprecated
 in dlt 1.30.0) the old marker came back, and `sync_destination()`
 restored it on a fresh pipeline directory (measured 2026-10-01 on DuckDB and a
-local `file://` destination; R2 is `@unvalidated`).
+local `file://` destination; R2 is `@unvalidated`). **And a marker counts only
+beside a logged load**: a load can commit with no `_extract_runs` row, which
+`committed_tables()` serves nothing from. So `_run()` reads the marker of a
+table with no logged, committed load as no marker, and the resource fetches
+again. The monthly lane's second run committed and then refused before its
+log, and its third run answered 53 resources FRESH whose rows no build could
+read (refresh-reference.yml, 37070628933 and 37081046157, 2026-10-03).
 
 **The rest of `.dlt` configuration**, each with its measurement in
 `pipeline/ELT.md`, "dlt configuration requirements":

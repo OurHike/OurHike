@@ -169,16 +169,6 @@ def keys_by_writer(exposure: dict, nodes: dict) -> dict[str, list[str]]:
     return paired
 
 
-def key_for_version(v1_key: str, version: int) -> str:
-    """Where version `version` of the file at `v1_key` is published."""
-    if version <= 1:
-        return v1_key
-    for prefix in ROOT_SCOPED_PREFIXES:
-        if v1_key.startswith(prefix):
-            return f"{prefix}v{version}/{v1_key[len(prefix) :]}"
-    return f"v{version}/{v1_key}"
-
-
 @dataclass
 class Report:
     failures: list[str] = field(default_factory=list)
@@ -210,11 +200,7 @@ def _label(identity: tuple[str, str, str | None]) -> str:
 
 def contracted_versions(manifest: dict) -> dict[tuple[str, str, str | None], dict]:
     """Every model with an enforced contract, by (package, name, version)."""
-    return {
-        (node.get("package_name"), node.get("name"), _version(node)): node
-        for node in (manifest.get("nodes") or {}).values()
-        if node.get("resource_type") == "model" and _enforced(node)
-    }
+    return {identity: node for identity, node in _models(manifest).items() if _enforced(node)}
 
 
 def _models(manifest: dict) -> dict[tuple[str, str, str | None], dict]:

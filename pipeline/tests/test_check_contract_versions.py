@@ -368,9 +368,7 @@ def test_an_exposure_that_does_not_pair_up_fails_the_check():
         ("podcasts/episodes.json", "podcasts/v2/episodes.json"),
     ],
 )
-def test_the_version_segment_round_trips(v1_key, v2_key):
-    assert ccv.key_for_version(v1_key, 1) == v1_key
-    assert ccv.key_for_version(v1_key, 2) == v2_key
+def test_version_in_key_reads_2_from_the_v2_segment_and_none_from_the_v1_key(v1_key, v2_key):
     assert ccv.version_in_key(v1_key) is None
     assert ccv.version_in_key(v2_key) == 2
 

@@ -330,7 +330,10 @@ def save(url: str, warehouse: Path) -> str:
                 f"{url}/{POINTER} names save {current_save}, and this warehouse restored {restored_save}: another run "
                 "saved in between. Not saving over it; rerun to build on that save."
             )
-        save_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(3)
+        # Sorted by name is sorted by time, which the pruning below relies on: to the microsecond, so two saves in
+        # one second (a test's, never a lane's) still sort in the order they were made. The suffix only keeps two
+        # machines' ids apart.
+        save_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + "-" + secrets.token_hex(3)
         entries = {}
         with tempfile.TemporaryDirectory() as scratch:
             for table in tables:
@@ -355,7 +358,7 @@ def save(url: str, warehouse: Path) -> str:
     }
     store.write_text(POINTER, json.dumps(pointer, indent=2, sort_keys=True) + "\n")
     for old in store.save_folders()[:-KEEP_SAVES]:
-        if old != save_id:
+        if old not in (save_id, restored_save):
             store.remove_save(old)
     return f"saved {len(entries)} snapshot tables, {sum(counts.values())} rows, to {url} as save {save_id}"
 

@@ -434,3 +434,60 @@ def test_a_run_ourhikes_reader_stops_says_what_stopped_it_and_leaves_its_rows_bl
 def test_a_summary_with_no_run_says_the_run_never_began():
     text = summary_markdown(None, "conditions_ua", failure=ValueError("no lane 'x'"))
     assert "**Failed before a run began:** `ValueError: no lane 'x'`" in text
+
+
+def test_a_leg_takes_on_its_limit_of_never_loaded_tables_and_the_rest_wait_for_the_next_run(store, monkeypatch):
+    """Soak run 506 met 70 new layers at once and overran its step; a leg now takes on a few per run."""
+    leg(store, club_closures("atc", "a1", count=1))
+    monkeypatch.setattr(_run, "NEW_TABLES_PER_LEG_RUN", 2)
+    clubs = [club_closures("atc", "a1", count=1), *(club_closures(club, f"{club}-1", count=1) for club in ("c1", "c2", "c3"))]
+
+    second = leg(store, *clubs)
+
+    assert set(second.waiting) == {"raw_c3__closures"}, "c1 and c2 are taken on by name; atc has loaded before"
+    assert second.rows == {"raw_atc__closures": 1, "raw_c1__closures": 1, "raw_c2__closures": 1}
+    assert not second.isolated and _run.exit_status(second) == 0
+    (c3,) = [
+        row
+        for row in run_log_rows(make_pipeline("conditions_ua", store["url"], store["dir"]))
+        if row["run_id"] == second.run_id and row["table_name"] == "raw_c3__closures"
+    ]
+    assert (c3["outcome"], c3["load_id"], c3["column_hints"]) == ("incomplete", None, None)
+    assert "raw_c3__closures" not in warehouse_ids(store)
+    assert "**Waiting**" in summary_markdown(second, "conditions_ua")
+
+    third = leg(store, *clubs)
+
+    assert not third.waiting and third.rows["raw_c3__closures"] == 1
+
+
+def test_a_never_loaded_table_refused_last_run_waits_behind_one_never_tried(store, monkeypatch):
+    """So a layer that fails every run goes to the back each time, and cannot hold the others out."""
+    monkeypatch.setattr(_run, "NEW_TABLES_PER_LEG_RUN", 1)
+    first = leg(store, club_closures("c1", error="answered 500"), club_closures("c2", "c2-1", count=1))
+    assert set(first.isolated) == {"raw_c1__closures"} and set(first.waiting) == {"raw_c2__closures"}
+
+    second = leg(store, club_closures("c1", error="answered 500"), club_closures("c2", "c2-1", count=1))
+
+    assert set(second.waiting) == {"raw_c1__closures"} and second.rows == {"raw_c2__closures": 1}
+
+
+def test_a_refusal_fails_the_exit_only_when_its_source_may_reach_a_hiker(monkeypatch):
+    """A sources.json row saying reaches_hikers false is quiet; true, unset or unregistered keeps PARTIAL_EXIT."""
+    rows = {"quiet": {"reaches_hikers": False}, "loud": {"reaches_hikers": True}, "unset": {}}
+
+    def entry(key):
+        return rows[key]  # an unregistered key raises KeyError, as registry_entry() does
+
+    monkeypatch.setattr(_run._kinds, "registry_entry", entry)
+    resources = [ClubAnswer(key=key, club=f"c{n}", type="closures") for n, key in enumerate(("quiet", "loud", "unset", "none"))]
+    report = _run.RunReport(run_id="r", lane="conditions_ua", outcome="loaded")
+
+    report.isolated = {resources[0].name: "answered 500"}
+    report.quiet = _run.quiet_refusals(report, resources)
+    assert report.quiet == {"raw_c0__quiet"} and _run.exit_status(report) == 0
+
+    for other in resources[1:]:
+        report.isolated = {resources[0].name: "answered 500", other.name: "answered 500"}
+        report.quiet = _run.quiet_refusals(report, resources)
+        assert report.quiet == {"raw_c0__quiet"} and _run.exit_status(report) == _run.PARTIAL_EXIT, other.key

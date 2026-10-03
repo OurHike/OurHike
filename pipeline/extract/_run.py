@@ -33,8 +33,11 @@ refresh, published docs, and lighter phone downloads):
 
 A conditions leg isolates each upstream (_extract_and_load()): one that
 fails or is refused is left out while the rest load, and the leg exits
-PARTIAL_EXIT (3) so its job still goes red. OurHike's own Postgres rows
-still stop the whole leg (stops_the_leg()).
+PARTIAL_EXIT (3) so its job still goes red, unless every one refused has a
+sources.json row saying reaches_hikers false (exit_status()). OurHike's own
+Postgres rows still stop the whole leg (stops_the_leg()). A leg takes on at
+most NEW_TABLES_PER_LEG_RUN tables it has never loaded per run, so a batch
+of new sources comes on over several runs rather than overrunning one.
 
 Not built yet, and designed in ELT.md: the as-sent copy beside dlt's
 normalized one (`_source_path`), the raw lake (DuckLake) for the monthly
@@ -119,6 +122,17 @@ LANES = {"monthly": ("monthly",), "hourly": ("hourly", "daily")}
 # keeps every dbt source unchanged (Reasoned). Not in LANES, so fixture mode
 # does not run the hourly resources three times.
 LEGS = {"conditions_production": "hourly", "conditions_ua": "hourly"}
+# A LEG TAKES ON AT MOST THIS MANY TABLES IT HAS NEVER LOADED IN ONE RUN, after
+# every table it has (take_on_new_tables()); the rest wait, logged
+# INCOMPLETE as "not yet loaded", and come on over the next runs. Soak run 506
+# (publish-conditions.yml 37154645937, 2026-10-03) met 70 new hourly layers
+# at once: 85 resources to read, the 150 s read budget spent, and the extract
+# step killed at its 4-minute cap during dlt's load, so nothing committed and
+# the next run would have met the same 85. Run 505, an hour earlier, read 13
+# and loaded them inside 58 s. 10 is @unvalidated: it keeps a run near 505's
+# size plus ten, and the step summary's per-part timings on the runs that take
+# the new tables on will settle whether it is too many or too few.
+NEW_TABLES_PER_LEG_RUN = 10
 # A daily resource has no job of its own: it rides the hourly lane and runs
 # when its last good check is a day old, so no second job writes the hourly
 # lane's raw store (ELT.md, "Every node carries its cadence"). NYNJTC's alert
@@ -222,6 +236,15 @@ class RunReport:
     # with how far it got. Not a refusal, so the exit stays 0; a read that fit
     # no page at all raises instead, and is isolated.
     incomplete: dict[str, str] = field(default_factory=dict)
+    # A conditions leg only: resources whose table has never loaded and that
+    # this run did not take on (take_on_new_tables()), by name, with why. They
+    # are logged INCOMPLETE with no column hints, so nothing lands, no marker
+    # moves and no metadata is asked for; not a refusal, so the exit stays 0.
+    waiting: dict[str, str] = field(default_factory=dict)
+    # Isolated resources whose sources.json row says reaches_hikers false, by
+    # name (quiet_refusals()): listed as refused, but they leave the exit 0,
+    # because nothing a hiker sees is held back by them.
+    quiet: set[str] = field(default_factory=set)
     # What each incomplete read had read, by name, which write_run_log keeps
     # in PROGRESS_TABLE for the next run.
     progress: dict[str, list[dict]] = field(default_factory=dict)
@@ -308,6 +331,57 @@ def stops_the_leg(resource: Resource) -> bool:
     previous cache forward when either is unreachable.
     """
     return isinstance(resource, ConditionsQuery)
+
+
+def take_on_new_tables(report: RunReport, to_run: list[Planned], current: dict, log: list[dict], limit: int) -> list[Planned]:
+    """`to_run` less the never-loaded resources past `limit`, which go in `report.waiting`.
+
+    Every resource whose table has a logged, committed load (`current`) runs
+    as before. Of the rest, those never tried come first, then those refused
+    longest ago, so a layer that fails every run goes to the back each time
+    and cannot hold the others out; ties go by name.
+    """
+    new = [item for item in to_run if item.resource.table not in current]
+    if len(new) <= limit:
+        return to_run
+    tried: dict[str, str] = {}
+    for row in log:
+        if row.get("outcome") == ISOLATED_OUTCOME:
+            name = row["resource_name"]
+            tried[name] = max(tried.get(name, ""), row["run_id"])
+    new.sort(key=lambda item: (tried.get(item.resource.name, ""), item.resource.name))
+    waiting = new[limit:]
+    for item in waiting:
+        report.waiting[item.resource.name] = (
+            f"not yet loaded: a leg takes on {limit} tables it has never loaded per run, and {len(new)} were due"
+        )
+    print(f"::notice title={len(waiting)} new tables wait their turn::{', '.join(sorted(report.waiting))}")
+    left_out = {item.resource.name for item in waiting}
+    return [item for item in to_run if item.resource.name not in left_out]
+
+
+def quiet_refusals(report: RunReport, resources: list[Resource]) -> set[str]:
+    """The isolated resources whose sources.json row says reaches_hikers false.
+
+    A key with no registry row, or a row that does not say false, is not
+    quiet: an unknown is held to the stricter rule.
+    """
+    by_name = {resource.name: resource for resource in resources}
+    quiet = set()
+    for name in report.isolated:
+        resource = by_name.get(name)
+        try:
+            row = _kinds.registry_entry(resource.key) if resource is not None else None
+        except KeyError:
+            row = None
+        if row is not None and row.get("reaches_hikers") is False:
+            quiet.add(name)
+    return quiet
+
+
+def exit_status(report: RunReport) -> int:
+    """The command line's exit after a run that loaded: PARTIAL_EXIT when a resource that may reach a hiker was refused."""
+    return PARTIAL_EXIT if set(report.isolated) - report.quiet else 0
 
 
 def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -> tuple[list[Planned], dict]:
@@ -1008,10 +1082,13 @@ def write_run_log(
         # their column hints, so the warehouse can create a table not yet
         # loaded, empty, rather than refuse the build (not_yet_loaded()).
         isolated = resource.name in report.isolated
-        incomplete = resource.name in report.incomplete
+        waiting = resource.name in report.waiting
+        incomplete = resource.name in report.incomplete or waiting
         skipped = item.verdict is Freshness.FRESH or isolated or incomplete
         outcome = ISOLATED_OUTCOME if isolated else INCOMPLETE if incomplete else "skipped" if skipped else report.outcome
-        if incomplete:
+        if waiting:
+            hints = None  # never read this run, and column_hints() would ask the server for its metadata
+        elif incomplete:
             hints = report.hints.get(resource.table) or resource.column_hints()
         elif isolated:
             hints = report.hints.get(resource.table)  # None where the read failed before its hints
@@ -1185,6 +1262,8 @@ def _run(
         f"{lane}: {len(planned) + len(unavailable)} resources, {len(to_run)} to read, "
         f"{len(planned) - len(to_run)} fresh, {len(unavailable)} unavailable"
     )
+    if lane in LEGS:
+        to_run = take_on_new_tables(report, to_run, current, log, NEW_TABLES_PER_LEG_RUN)
     # A resource that reads only what moved (Resource.carries) is handed its
     # last committed rows and what an earlier incomplete read kept, and every
     # run log written below carries PROGRESS_TABLE forward: unchanged where the
@@ -1383,6 +1462,12 @@ def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseExcept
     if report.incomplete:
         lines += ["**Read incomplete** (ran out of budget; nothing landed, and what it read is kept for the next run):", ""]
         lines += [*[f"- `{name}`: {why}" for name, why in sorted(report.incomplete.items())], ""]
+    if report.waiting:
+        lines += [f"**Waiting** ({len(report.waiting)} never-loaded tables this run did not take on; not yet loaded):", ""]
+        lines += [", ".join(f"`{name}`" for name in sorted(report.waiting)), ""]
+    if report.quiet:
+        lines += ["**Refused, and reaching no hiker** (`reaches_hikers: false`, so the run's exit is not failed for them):", ""]
+        lines += [", ".join(f"`{name}`" for name in sorted(report.quiet)), ""]
     normalized = "normalize" in report.timings and not (stopped and not report.rows)
     if report.verdicts:
         lines += ["| table | verdict | rows | upstream count |", "|---|---|---:|---:|"]
@@ -1391,6 +1476,8 @@ def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseExcept
                 rows = "refused, last table stands"
             elif name in report.incomplete:
                 rows = "incomplete, nothing landed"
+            elif name in report.waiting:
+                rows = "waiting, not yet loaded"
             elif verdict == Freshness.FRESH.value:
                 rows = "kept"
             elif verdict == UNAVAILABLE:
@@ -1491,6 +1578,7 @@ def main(argv: list[str] | None = None) -> RunReport:
             with open(args.summary, "a", encoding="utf-8") as handle:
                 handle.write(summary_markdown(known, args.lane, failure=failure))
         raise
+    report.quiet = quiet_refusals(report, resources)
     if args.summary is not None:
         with open(args.summary, "a", encoding="utf-8") as handle:
             handle.write(summary_markdown(report, args.lane))
@@ -1507,6 +1595,8 @@ if __name__ == "__main__":
     except ExtractRefused as refused:
         print(refused, file=sys.stderr)
         sys.exit(1)
-    if finished.isolated:
+    if finished.quiet:
+        print(f"{len(finished.quiet)} resource(s) reaching no hiker refused on their own (reaches_hikers false)")
+    if exit_status(finished):
         print(f"{len(finished.isolated)} resource(s) refused on their own; the rest loaded", file=sys.stderr)
         sys.exit(PARTIAL_EXIT)

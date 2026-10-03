@@ -409,19 +409,29 @@ def _load_module(path: Path, club: str) -> ModuleType:
     return module
 
 
-def read_club_file(path: Path) -> ClubFile:
-    club, type_ = path.parent.name, path.stem
-    module = _load_module(path, club)
-    resources = tuple(replace(resource, club=club, type=type_) for resource in getattr(module, "RESOURCES", ()) or ())
+def read_club_file(path: Path, *, shared: bool = False) -> ClubFile:
+    """One club file, whose type is its name; or, with `shared`, one _shared/ file.
+
+    A _shared/ file is free-form, so its type is the `TYPE` it declares rather
+    than its name, it never SHARES, and it may say UNREGISTERED. Its folder
+    plays the club's part in the table name (`raw_<folder>__<key>`), which is
+    why the layout test holds _shared/ folder names apart from club folder
+    names. A file with no `TYPE` (a `notes.py`) declares no resource.
+    """
+    folder = path.parent.name
+    module = _load_module(path, f"_shared.{folder}" if shared else folder)
+    type_ = getattr(module, "TYPE", None) if shared else path.stem
+    resources = tuple(replace(resource, club=folder, type=type_) for resource in getattr(module, "RESOURCES", ()) or ())
     return ClubFile(
-        club=club,
+        club=folder,
         type=type_,
         path=path,
         claims=tuple(getattr(module, "CLAIMS", ()) or ()),
         resources=resources,
-        shares=getattr(module, "SHARES", None),
+        shares=None if shared else getattr(module, "SHARES", None),
         note=getattr(module, "NOT_AVAILABLE", None),
         same_as=tuple(getattr(module, "SAME_AS", ()) or ()),
+        unregistered=getattr(module, "UNREGISTERED", None) if shared else None,
     )
 
 
@@ -442,33 +452,9 @@ def shared_folders(root: Path = EXTRACT_DIR) -> list[Path]:
     return sorted(p for p in shared.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
 
 
-def read_shared_file(path: Path) -> ClubFile:
-    """One _shared/ file. Free-form, so its type is the `TYPE` it declares rather than its name.
-
-    The folder plays the club's part in the table name (`raw_<folder>__<key>`),
-    which is why the layout test holds _shared/ folder names apart from club
-    folder names. A file with no `TYPE` (a `notes.py`) declares no resource.
-    """
-    folder = path.parent.name
-    module = _load_module(path, f"_shared.{folder}")
-    type_ = getattr(module, "TYPE", None)
-    resources = tuple(replace(resource, club=folder, type=type_) for resource in getattr(module, "RESOURCES", ()) or ())
-    return ClubFile(
-        club=folder,
-        type=type_,
-        path=path,
-        claims=tuple(getattr(module, "CLAIMS", ()) or ()),
-        resources=resources,
-        shares=None,
-        note=getattr(module, "NOT_AVAILABLE", None),
-        same_as=tuple(getattr(module, "SAME_AS", ()) or ()),
-        unregistered=getattr(module, "UNREGISTERED", None),
-    )
-
-
 def discover_shared(root: Path = EXTRACT_DIR) -> list[ClubFile]:
     """Every file in every _shared/ folder, in a stable order. not_clubs.py sits beside the folders and declares none."""
-    return [read_shared_file(path) for folder in shared_folders(root) for path in sorted(folder.glob("*.py"))]
+    return [read_club_file(path, shared=True) for folder in shared_folders(root) for path in sorted(folder.glob("*.py"))]
 
 
 def all_resources(files: list[ClubFile]) -> list[Resource]:

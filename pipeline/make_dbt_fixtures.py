@@ -3034,6 +3034,349 @@ def closures_and_warnings_fixtures() -> dict[str, str]:
     }
 
 
+# --- closures and warnings: the ArcGIS layers decision 53 registers (phase B) ---------
+#
+# One file per layer under external/, where extract/_fixtures.py's fixture_file() finds it
+# by registry key, so fixture mode runs each layer through ArcgisLayer's own change check,
+# pager, hints and count proof. THE NAMES ARE MEASURED: every property is a field name the
+# layer's live ?f=json lists, read in decision 53's phase A inventory on 2026-10-03 (the
+# session's scratchpad, never committed). THE VALUES ARE INVENTED and start with 'Fixture'
+# wherever they are text. Fixture mode answers every query with every row, whatever its
+# `where`, so each row carries a status value the layer's own filter keeps. No person field
+# appears: those never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8).
+
+#: Epoch milliseconds, the way ArcGIS sends a date: 2026-09-21T14:13:20Z.
+FIXTURE_DATE_MS = 1790000000000
+
+#: Registry key -> (geometry builder, the one row's properties).
+NOTICE_LAYERS = {
+    "usfs_rec_opportunities_status": (
+        _point,
+        {
+            "objectid": 1,
+            "recareaid": 1,
+            "recareaname": "Fixture Recreation Area",
+            "forestname": "Fixture National Forest",
+            "forestorgcode": "0811",
+            "openstatus": "temporarily closed",
+            "recareaurl": "https://www.fs.usda.gov/recarea/fixture",
+        },
+    ),
+    "usfs_r03_fire_restrictions": (
+        _polygon,
+        {
+            "objectid": 1,
+            "forestname": "Fixture National Forest",
+            "ordername": "Fixture Stage 1 Fire Restrictions",
+            "ordernum": "03-00-00-26-01",
+            "ordertype": "Fire Restriction",
+            "startdate": FIXTURE_DATE_MS,
+            "enddate": FIXTURE_DATE_MS,
+            "rescinddate": None,
+            "hyperlink": "https://www.fs.usda.gov/fixture-order.pdf",
+        },
+    ),
+    "usfs_r03_forest_orders": (
+        _point,
+        {
+            "objectid": 1,
+            "forestname": "Fixture National Forest",
+            "ordername": "Fixture Area Closure",
+            "ordernum": "03-00-00-26-02",
+            "ordertype": "Closure",
+            "startdate": FIXTURE_DATE_MS,
+            "enddate": None,
+            "rescinddate": None,
+            "hyperlink": "https://www.fs.usda.gov/fixture-closure.pdf",
+        },
+    ),
+    "usfs_r04_forest_orders": (
+        _polygon,
+        {
+            "objectid": 1,
+            "forestname": "Fixture-Wasatch-Cache National Forest",
+            "ordername": "Fixture Trail Closures",
+            "ordernum": "04-19-26-001",
+            "ordertype": "Safety Closure",
+            "startdate": FIXTURE_DATE_MS,
+            "enddate": FIXTURE_DATE_MS,
+            "rescinddate": None,
+            "hyperlink": "https://www.fs.usda.gov/fixture-r4-order.pdf",
+            "pub_date": FIXTURE_DATE_MS,
+        },
+    ),
+    "usfs_r06_fire_closure_points": (
+        _point,
+        {
+            "OBJECTID": 1,
+            "ForestUnit": "Fixture National Forest",
+            "District": "Fixture Ranger District",
+            "FireName": "Fixture Fire",
+            "ClosureOrderName": "Fixture Fire Area Closure",
+            "ClosureOrderNumber": "06-00-00-26-01",
+            "ClosureStatus": "Active",
+            "ClosureStartDate": FIXTURE_DATE_MS,
+            "ClosureEndDate": None,
+            "ClosureURLlink": "https://www.fs.usda.gov/fixture-r6-order",
+            "GlobalID": "{fixture-usfs-r06-fire-closure-points-1}",
+        },
+    ),
+    "usfs_r06_fire_closure_lines": (
+        _line,
+        {
+            "OBJECTID": 1,
+            "ForestUnit": "Fixture National Forest",
+            "District": "Fixture Ranger District",
+            "FireName": "Fixture Fire",
+            "ClosureOrderName": "Fixture Fire Area Closure",
+            "ClosureOrderNumber": "06-00-00-26-02",
+            "ClosureStatus": "Active",
+            "ClosureStartDate": FIXTURE_DATE_MS,
+            "ClosureEndDate": None,
+            "ClosureURLlink": "https://www.fs.usda.gov/fixture-r6-order",
+            "RouteName": "FIXTURE BUTTE",
+            "RouteNum": "400",
+            "GlobalID": "{fixture-usfs-r06-fire-closure-lines-1}",
+        },
+    ),
+    "usfs_r06_fire_closure_areas": (
+        _polygon,
+        {
+            "OBJECTID": 1,
+            "ForestUnit": "Fixture National Forest",
+            "District": "Fixture Ranger District",
+            "FireName": "Fixture Fire",
+            "ClosureOrderName": "Fixture Fire Area Closure",
+            "ClosureOrderNumber": "06-00-00-26-03",
+            "ClosureStatus": "Active",
+            "ClosureStartDate": FIXTURE_DATE_MS,
+            "ClosureEndDate": None,
+            "ClosureURLlink": "https://www.fs.usda.gov/fixture-r6-order",
+            "GlobalID": "{fixture-usfs-r06-fire-closure-areas-1}",
+        },
+    ),
+    "usfs_r09_superior_closures": (
+        _point,
+        {
+            "OBJECTID": 1,
+            "SITE_NAME": "Fixture Lake Campsite",
+            "SITE_ID": 1.0,
+            "Closure_Type": "Campsite Closure",
+            "Posted_Date": FIXTURE_DATE_MS,
+            "ExpireDate": None,
+            "ClosureOrderNumber": "09-09-26-01",
+            "WebSite": "https://www.fs.usda.gov/superior/fixture",
+            "GlobalID": "{fixture-usfs-r09-superior-closures-1}",
+        },
+    ),
+    "usfs_r01_bmwc_trail_closures": (
+        _line,
+        {
+            "OBJECTID": 1,
+            "Trail_Status": "Closed",
+            "Field_Season": "2026",
+            "ID": "BMWC-1",
+            "NAME": "FIXTURE CREEK",
+            "GIS_MILES": 4.2,
+        },
+    ),
+    "usfs_r01_kootenai_inaccessible": (
+        _line,
+        {
+            "OBJECTID": 1,
+            "Status": "Inaccessible",
+            "ID": "FIXTURE-7",
+            "Comments": "Fixture washout",
+            "PlannedWorkDate": None,
+            "Miles": 1.3,
+            "GlobalID": "{fixture-usfs-r01-kootenai-inaccessible-1}",
+        },
+    ),
+    "usfs_forest_closure_area": (_polygon, {"OBJECTID": 1, "Name": "Fixture Closure Area", "Acres": 120.5}),
+    "usfs_baer_assessments": (
+        _polygon,
+        {
+            "objectid": 1,
+            "baer_name": "FIXTURE FIRE",
+            "incident_name": "Fixture Fire",
+            "ig_date": FIXTURE_DATE_MS,
+            "gis_acres": 1520.0,
+            "forest_names": "Fixture National Forest",
+            "etl_modified_date": FIXTURE_DATE_MS,
+        },
+    ),
+    "usfs_r08_prescribed_burns": (
+        _polygon,
+        {
+            "OBJECTID": 1,
+            "ADMIN_FOREST_CODE": "03",
+            "ORG": "Fixture Ranger District",
+            "BURN_BLOCK_NAME": "Fixture Block 7",
+            "BURN_STATUS": "Planned for 1-10 days",
+            "BURN_TYPE": "Broadcast",
+            "DATE_COMPLETED": None,
+            "GlobalID": "{fixture-usfs-r08-prescribed-burns-1}",
+        },
+    ),
+    "nps_grca_closures": (
+        _polygon,
+        {
+            "FID": 1,
+            "name": "Fixture Trail",
+            "status": "Closed",
+            "dates": "Until further notice",
+            "notes": "Fixture note",
+            "last_edi_1": FIXTURE_DATE_MS,
+            "globalid": "{fixture-grca-1}",
+            "IRMA_URL": "https://irma.nps.gov/fixture",
+        },
+    ),
+    "nps_seki_closures": (
+        _line,
+        {
+            "OBJECTID": 1,
+            "FullName": "Fixture Trail",
+            "UnitName": "Sequoia and Kings Canyon National Parks",
+            "LastEditDate": FIXTURE_DATE_MS,
+            "IsPublic": "Yes",
+            "IsVisible": "Yes",
+            "Closure_Type": "Administrative",
+            "Closure_Desc": "Fixture closure",
+            "GlobalID": "{fixture-nps-seki-closures-1}",
+        },
+    ),
+    "nps_yose_trail_closures": (
+        _line,
+        {
+            "OBJECTID": 1,
+            "trail": "Fixture Trail",
+            "starttime": FIXTURE_DATE_MS,
+            "endtime": FIXTURE_DATE_MS,
+            "EditDate": FIXTURE_DATE_MS,
+            "GlobalID": "{fixture-nps-yose-trail-closures-1}",
+        },
+    ),
+    "nps_yose_fire_restrictions": (
+        _polygon,
+        {
+            "OBJECTID": 1,
+            "MAPLABEL": "Fixture Zone",
+            "Zone": "Fixture",
+            "RESTRICTSTAGE": "Stage 1",
+            "RESTRICTDESC": "Fixture restriction",
+            "PUBLICDISPLAY": "Yes",
+            "EDITDATE": FIXTURE_DATE_MS,
+            "GlobalID": "{fixture-nps-yose-fire-restrictions-1}",
+        },
+    ),
+    "nps_yell_bear_management_areas": (
+        _polygon,
+        {
+            "OBJECTID": 1,
+            "CLOSED": "Yes",
+            "NAME": "Fixture BMA",
+            "Status": "Closed",
+            "ClosureDate_Begin": FIXTURE_DATE_MS,
+            "ClosureDate_End": FIXTURE_DATE_MS,
+            "Expected_OpenDate": None,
+            "GlobalID": "{fixture-nps-yell-bear-management-areas-1}",
+        },
+    ),
+    "nps_appa_helene_status": (_line, {"OBJECTID": 1, "HeleneStatus": "Closed", "AssessmentComplete": "Yes"}),
+    "grsm_trails_access": (
+        _line,
+        {
+            "OBJECTID": 1,
+            "TRAILNAME": "Fixture Creek Trail",
+            "TRAILSTATUS": "Existing",
+            "ACCESS": "Closed",
+            "NOTES": "Fixture closed beyond the first mile",
+            "EditDate": FIXTURE_DATE_MS,
+            "GlobalID": "{fixture-grsm-trails-access-1}",
+        },
+    ),
+    "blm_shooting_points": (
+        _point,
+        {
+            "FID": 1,
+            "STATE": "UT",
+            "CURRENT_STATUS": "Authorized",
+            "DISTRICT": "Fixture District",
+            "NAME": "Fixture Shooting Range",
+            "TYPE_OF_RANGE_": "Rifle",
+        },
+    ),
+    "blm_or_rec_site_status": (
+        _point,
+        {
+            "OBJECTID": 1,
+            "Status__District": "Fixture District",
+            "Status__RecSiteName": "Fixture Campground",
+            "Status__RecreationSiteType": "Campground",
+            "Status__CurrentRecSiteStatus": "Closed",
+            "Status__CurrentStatusNotes": "Fixture note",
+            "Status__WebLink": "https://www.blm.gov/fixture",
+            "OregonRecreationSitesStatus_GLO": "{fixture-blm-or-rec-site-status-1}",
+        },
+    ),
+    "fws_hunt_units": (
+        _polygon,
+        {
+            "OBJECTID": 1,
+            "Hunt_Unit_Name": "Fixture Unit A",
+            "Huntable": "Yes",
+            "Organization_Name": "Fixture NWR",
+            "Hunting_Website": "https://www.fws.gov/refuge/fixture",
+            "State": "MD",
+            "GlobalID": "{fixture-fws-hunt-units-1}",
+        },
+    ),
+    "usace_garrison_hunting_restrictions": (
+        _polygon,
+        {
+            "OBJECTID": 1,
+            "Section": "Fixture",
+            "Restriction": "No Hunting or Trapping",
+            "AreaID": "FX-1",
+            "AreaName": "Fixture Recreation Area",
+            "ContactOffice": "Fixture Project Office",
+            "GlobalID": "{fixture-usace-garrison-hunting-restrictions-1}",
+        },
+    ),
+    "usace_sam_closed_rec_areas": (
+        _polygon,
+        {
+            "OBJECTID": 1,
+            "GlobalID": "{fixture-usace-sam-closed-rec-areas-1}",
+            "district": "Fixture District",
+            "featureName": "Fixture Trail Section",
+            "projectAreaStatus": "Closed",
+            "recProjectSiteName": "Fixture Lake",
+            "last_edited_date": FIXTURE_DATE_MS,
+        },
+    ),
+    "usgs_pwfdf_assessments": (
+        _point,
+        {
+            "OBJECTID": 1,
+            "fire": "Fixture Fire",
+            "location": "Fixture County, CA",
+            "size": 1200.0,
+            "status": "Complete",
+            "Fire_ID": "FX2026",
+            "start_date": FIXTURE_DATE_MS,
+            "assessment_date": FIXTURE_DATE_MS,
+            "download_url": "https://landslides.usgs.gov/fixture.zip",
+        },
+    ),
+}
+
+
+def notice_layers_fixtures() -> dict[str, dict]:
+    """One external/<key>.geojson per NOTICE_LAYERS entry, each holding its one row."""
+    return {f"external/{key}.geojson": _features([row], geometry) for key, (geometry, row) in NOTICE_LAYERS.items()}
+
+
 # --- trail_lines, the network half (#1793, stage 3) --------------------------
 #
 # The network's dbt models (pipeline/dbt/models/intermediate/trail_lines/
@@ -4132,6 +4475,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/wi_ice_age_trail.geojson": _registered_trail_lines_layer("wi_ice_age_trail", None),
         **{name: build() for name, build in ELEVATION_PRODUCT_FIXTURES.items()},
         **closures_and_warnings_fixtures(),
+        **notice_layers_fixtures(),
         **suggested_hikes_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)

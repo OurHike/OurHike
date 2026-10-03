@@ -858,7 +858,9 @@ class TestTheRegistryTheConsoleReads:
         """
         orgs = self.real()["organizations"]
 
-        assert len(orgs) == 34
+        # 36 since decision 53's ArcGIS closure and warning layers (2026-10-03) registered 2
+        # stewards with no row before: the second block below.
+        assert len(orgs) == 36
         assert {org["steward_id"] for org in orgs} == {
             "org:alaskatrails",
             "org:atc",
@@ -894,6 +896,9 @@ class TestTheRegistryTheConsoleReads:
             "org:usgs",
             "org:warco",
             "org:wdnr",
+            # Decision 53, phase B (ArcGIS), 2026-10-03.
+            "org:usace",
+            "org:usfws",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

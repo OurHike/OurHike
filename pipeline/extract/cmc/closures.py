@@ -1,4 +1,17 @@
-"""Carolina Mountain Club: closures, published, and not landed (coverage audit 2026-10-01, batch
+"""Carolina Mountain Club: closures, drawn from another folder's resource (decision 53 phase B,
+2026-10-03).
+
+This club's closures arrive through usfs/ `usfs_rec_opportunities_status`, each extracted once in
+its steward's folder (decision 34). Its portion is assigned in dbt.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://carolinamountainclub.org/trail-alerts/feed/ (rss);
+https://carolinamountainclub.org/wp-json/wp/v2/posts?categories=59 (wordpress);
+https://www.fs.usda.gov/r08/northcarolina/alerts (html_page).
+
+Before decision 53 phase B, 2026-10-03, this note read:
+
+Carolina Mountain Club: closures, published, and not landed (coverage audit 2026-10-01, batch
 p01_persist).
 
 Licence: EDW is public domain (federal work; maintainer's `usfs_licence`, 2026-09-02). The alerts
@@ -14,17 +27,14 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "USFS EDW `https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RecreationOpportunities_01/MapServer/0`,"
-        " `openstatus`, counted in rough boxes around CMC's sections:",
-        "A.T. Davenport Gap–Spivey Gap (-83.12,35.75 to -82.30,36.12): 35 sites. open 5, closed 10, temporarily"
-        " closed 1, none 19. Closed include Harmon Den Horsecamp, Rocky Bluff Campground, Murray Branch Picnic "
-        "Area and Paint Creek Campground.",
-        "Art Loeb / Pisgah RD (-82.95,35.22 to -82.68,35.45): 25 sites. open 23; Sliding Rock closed; Black "
-        "Mountain / South Toe River Area temporarily closed.",
+        "via usfs/ `usfs_rec_opportunities_status` (decision 53 phase B, 2026-10-03): `usfs_rec_opportunities_status` reads `EDW/EDW_RecreationOpportunities_01/MapServer/0`",
+        "USFS EDW `https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RecreationOpportunities_01/MapServer/0`, `openstatus`, counted in rough boxes around CMC's sections:",
+        "A.T. Davenport Gap–Spivey Gap (-83.12,35.75 to -82.30,36.12): 35 sites. open 5, closed 10, temporarily closed 1, none 19. Closed include Harmon Den Horsecamp, Rocky Bluff Campground, Murray Branch Picnic Area and Paint Creek Campground.",
+        "Art Loeb / Pisgah RD (-82.95,35.22 to -82.68,35.45): 25 sites. open 23; Sliding Rock closed; Black Mountain / South Toe River Area temporarily closed.",
         "MST Waterrock Knob–Black Mountains …",
     ),
     where=("https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_RecreationOpportunities_01/MapServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="drawn from usfs/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; the org's own non-ArcGIS sources are listed in the docstring, still to wire",
 )

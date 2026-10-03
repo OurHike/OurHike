@@ -1,30 +1,66 @@
-"""USDA Forest Service: warnings, published, and not landed (coverage audit 2026-10-01, batch
+"""USDA Forest Service: warnings, 3 ArcGIS layers extracted here (decision 53 phase B, 2026-10-03).
+
+- `usfs_r03_fire_restrictions`: USFS Southwestern Region fire restrictions,
+  `r03/r03_FireRestriction_01/MapServer/0`.
+- `usfs_baer_assessments`: USFS Burned Area Emergency Response assessment boundaries,
+  `EDW/EDW_BurnedAreaEmergencyResponse_01/MapServer/0`. Read daily, not on the type's lane: an
+  on-prem layer with no maintained date answers its change check UNKNOWN, so each check is a full
+  read of 246 burn-scar polygons from the Forest Service's own server. Its row says why phase C
+  should hold it back.
+- `usfs_r08_prescribed_burns`: USFS Southern Region prescribed burn status,
+  `R8_Prescribed_Burn_Status__read_only/FeatureServer/0`. Filtered on the agency's own status field:
+  `BURN_STATUS IN ('In Progress', 'Planned for 1-10 days')`.
+
+Each layer's row in sources.json holds its counts, dates, terms and the person fields it never
+loads. Change checks are _kinds.py's ArcgisLayer: a conditional GET of the layer document on ArcGIS
+Online, the statistics fingerprint on an on-prem server, and an allowed zero only beside the
+server's own returnCountOnly read in the same run.
+
+Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
+robots.txt, terms and change check): https://www.fs.usda.gov/r08/cherokee/alerts (html_page);
+https://www.fs.usda.gov/r08/gwj/alerts (html_page); https://www.wfas.net/ (html_page).
+
+ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
+https://services1.arcgis.com/gGHDlz6USftL5Pau/arcgis/rest/services/CNF_ClosureAreaPolygons/FeatureServer,
+Chugach NF's 22 one-polygon layers of winter motorized closure areas (service Last-Modified
+2024-01-11); each is its own layer, so 22 registry rows, deferred: they do not close the footpath;
+https://apps.fs.usda.gov/fsgisx02/rest/services/r04/R04_Alerts_And_Closures_01/MapServer/0, a copy
+of usfs_r04_forest_orders (the SAME_AS note below).
+
+Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
+
+USDA Forest Service: warnings, published, and not landed (coverage audit 2026-10-01, batch
 b6_federal).
 
 A BAER polygon marks a recent burn (hazard trees, debris flow). That is a hazard area, but it is not
 a notice. Reasoned, not published by USFS as a warning.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Its `checked` (confirmed 2026-10-01): Per-forest alerts pages carry an "Alerts Key" (Critical / Fire
+Restriction / Caution / Information). Cherokee today: "Fire Restrictions Continue Along the
+Appalachian Trail", "Roan Mountain Fire Restrictions".
+`.../EDW/EDW_BurnedAreaEmergencyResponse_01/MapServer/0` (BAER assessment boundaries, polygon): 246,
+ignitions 2024-03-22 → 2026-08-26, `max(etl_modified_date)` 2026-09-30, 124 since 2025-01-01.
+Regional fire-restriction layers: `fsgisx02/.../r03/r03_FireRestriction_01/0` (1 polygon),
+`PSICCRangerDistrictsFireRestrictions_2026` (R02, 2026-06-25). WFAS (`https://www.wfas.net/`, titled
+…
+
+Its `where`: https://www.wfas.net/ https://apps.fs.usda.gov/arcx/rest/services
+
+Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
+registered key
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'Per-forest alerts pages carry an "Alerts Key" (Critical / Fire Restriction / Caution / Information). '
-        'Cherokee today: "Fire Restrictions Continue Along the Appalachian Trail", "Roan Mountain Fire '
-        'Restrictions". `.../EDW/EDW_BurnedAreaEmergencyResponse_01/MapServer/0` (BAER assessment boundaries, '
-        "polygon): 246, ignitions 2024-03-22 → 2026-08-26, `max(etl_modified_date)` 2026-09-30, 124 since "
-        "2025-01-01. Regional fire-restriction layers: `fsgisx02/.../r03/r03_FireRestriction_01/0` (1 polygon),"
-        " `PSICCRangerDistrictsFireRestrictions_2026` (R02, 2026-06-25). WFAS (`https://www.wfas.net/`, titled "
-        "…",
+CLAIMS = ("usfs_r03_fire_restrictions", "usfs_baer_assessments", "usfs_r08_prescribed_burns")
+RESOURCES = [
+    arcgis_layer("usfs_r03_fire_restrictions"),
+    arcgis_layer(
+        "usfs_baer_assessments",
+        cadence_override="daily",
+        cadence_reason="an on-prem layer with no maintained date answers its change check UNKNOWN, so each check is a full read of 246 burn-scar polygons from the Forest Service's own server; assessments arrive days apart (124 since 2025-01-01), so a daily read is enough (@unvalidated: settled by _extract_runs' row counts over a fire season)",
     ),
-    where=(
-        "https://www.wfas.net/",
-        "https://apps.fs.usda.gov/arcx/rest/services",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+    arcgis_layer("usfs_r08_prescribed_burns"),
+]

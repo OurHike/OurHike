@@ -135,7 +135,7 @@ class NpsAlerts(Resource):
     it, so the list and the reason for each code have one home; dbt assigns a
     club its portion from the same map (decision 34's `via` rule). Every
     alert lands as NPS serves it. `category` is NPS's own field (Park Closure,
-    Danger, Caution, Information): nps/closures.py SHARES this resource, and
+    Danger, Caution, Information): the closures staging model reads it too, and
     which category feeds which mart is decided in dbt, never by leaving rows
     out here. No alert carries geometry: a park code is the place.
 

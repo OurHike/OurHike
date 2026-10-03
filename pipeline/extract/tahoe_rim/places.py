@@ -1,22 +1,16 @@
-"""Tahoe Rim Trail Association: places, published, and not landed (coverage audit 2026-10-01, batch
-b7_long_trails_states).
+"""Tahoe Rim Trail Association: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `trta_special_management_areas`: Tahoe Rim Trail special management areas, 7 polygon features; places
+  kind `park`.
+- `trta_desolation_wilderness_zones`: Desolation Wilderness zones, 49 polygon features; no places kind.
+- `trta_trail_sections`: Tahoe Rim Trail sections, 85 polyline features; no places kind.
+
+Camping_Permitted, Camping_Prohibited, Use_Restrictions and EldoradoNationalForestBoundary in the same
+organization were not read.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`Special_Management_Areas/0` (7 polygons: wilderness, state parks). `Desolation_Wilderness_Zones/0` "
-        "(49). `trail_sections/0` (85).",
-    ),
-    where=(
-        "https://services7.arcgis.com/NchnBpgTjegMVinZ/arcgis/rest/services",
-        "https://tahoerimtrail.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("trta_special_management_areas", "trta_desolation_wilderness_zones", "trta_trail_sections")
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

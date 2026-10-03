@@ -1,29 +1,30 @@
-"""Potomac Appalachian Trail Club: places, published, and not landed (coverage audit 2026-10-01, batch
-c2_at_clubs_mid).
+"""Potomac Appalachian Trail Club: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Most of these parcels are closed to the public. They must never render as "places to go", and if
-they are loaded at all, `PUBACCESS` has to travel with them (Reasoned).
+- `patc_lands_compilation`: PATC Lands Compilation (v1.0.0), 55 polygon features; no places kind.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+SAME_AS below: copies of a registered layer, noted and never loaded (decision 34).
 """
 
 from datetime import date
 
-from extract._contract import NotAvailable
+from extract._contract import SameAs
+from extract._kinds import arcgis_layer
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        '`PATC_Lands_Compilation_Version_1_0_0/0`: 55 PATC-held parcels (2020-10-28). `PUBACCESS`: 40 "closed",'
-        ' 1 closed-presumed, 2 unknown, 1 "by arrangement", 11 blank. `/places-to-hike` (page, about 30 parks '
-        "keyed to PATC maps). `ShenandoahNP_Boundary_PATC_022023` (NPS is the authority for this one). Trail "
-        "towns LOADED via atc",
+CLAIMS = ("patc_lands_compilation",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]
+SAME_AS = (
+    SameAs(
+        original="nps_park_boundaries",
+        copy=(
+            "https://services7.arcgis.com/BbnVmymrKxjFL0SO/arcgis/rest/services/ShenandoahNP_Boundary_PATC_022023/FeatureServer/0",
+        ),
+        confirmed=date(2026, 10, 3),
+        checked=(
+            "ShenandoahNP_Boundary_PATC_022023: 4 polygons carrying the NPS park-polygon coverage's own columns "
+            "(PKPLYNW_, PKPLYNW_ID, ACREAGE), a copy PATC posted in February 2023 of the Shenandoah boundary "
+            "nps_park_boundaries carries as unit SHEN (read 2026-10-03)",
+            "The coverage audit, batch c2_at_clubs_mid: 'NPS is the authority for this one'",
+        ),
     ),
-    where=(
-        "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services",
-        "https://services7.arcgis.com/BbnVmymrKxjFL0SO/arcgis/rest/services",
-        "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services",
-        "https://patc.net/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

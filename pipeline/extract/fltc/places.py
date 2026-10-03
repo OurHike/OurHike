@@ -1,24 +1,13 @@
-"""Finger Lakes Trail Conference: places, published, and not landed (coverage audit 2026-10-01, batch
-c4_regional_1).
+"""Finger Lakes Trail Conference: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Skeptic spot-check: `FLT_Index_Rectangles` holds 54 polygons, lastEdit 2026-04-06.
+- `fltc_map_sheet_index`: FLT Index Rectangles (map-sheet areas), 54 polygon features; no places kind.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+PostOffices, the 27 resupply towns, is a Category of Waypoints/FeatureServer/8, the points_of_interest
+file's upstream: one upstream, so no second resource here.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "Waypoints `PostOffices` (27, resupply towns). `FLT_Index_Rectangles/FeatureServer/6` (map-sheet "
-        "polygons). `/plan-hikes-finger-lakes-trail/parks/`.",
-    ),
-    where=(
-        "https://services7.arcgis.com/GwV4OWqOyYWWUpBK/arcgis/rest/services/FLT_Index_Rectangles/FeatureServer/6",
-        "https://fingerlakestrail.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("fltc_map_sheet_index",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

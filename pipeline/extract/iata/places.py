@@ -1,25 +1,15 @@
-"""Ice Age Trail Alliance: places, published, and not landed (coverage audit 2026-10-01, batch
-c10_nst_rest).
+"""Ice Age Trail Alliance: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Skeptic spot-check: `Ice_Age_Trail_Communities_View/0` = 29, last edit 2026-07-30.
+- `iat_trail_communities`: Ice Age Trail Communities, 29 point features; places kind `town`.
+- `iata_properties`: IATA Properties (fee-owned land), 44 polygon features; places kind `park`.
+- `iata_land_ownership`: Land Ownership along the Ice Age Trail (public view), 194 polygon features; no
+  places kind.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Not read: Land_Ownership_Preserve and the IATA_Lands hunting-regulation views in the same organization.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`.../Ice_Age_Trail_Communities_View/FeatureServer/0`: 29 trail communities, each with an itinerary "
-        "link and community, tourism and chamber URLs. `.../IATA_Fee/FeatureServer/0`: 44 IATA property "
-        "polygons with `Public_Access`. `.../Land_Ownership_Hosted_Public`: 194 polygons, last edit 2020-08-13.",
-    ),
-    where=(
-        "https://dnrmaps.wi.gov/arcgis/rest/services",
-        "https://iceagetrail.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("iat_trail_communities", "iata_properties", "iata_land_ownership")
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

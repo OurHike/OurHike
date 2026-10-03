@@ -1,21 +1,15 @@
-"""Appalachian Mountain Club: places, published, and not landed (coverage audit 2026-10-01, batch
-c10_nst_rest).
+"""Appalachian Mountain Club: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Skeptic spot-check: 9, last edit 2024-10-04.
+- `amc_properties_and_landscapes`: AMC Properties and Landscapes, 9 polygon features; places kind
+  `park`.
+- `amc_chapter_boundaries`: AMC Chapter Boundaries, 11 polygon features; no places kind.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+AMC's organization holds about 700 services, many of them copies of other publishers' data (PAD-US
+extracts, state trails); only its own two place layers are registered.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`.../AMC_Properties_and_Landscapes/FeatureServer/0`: 9 polygons. `AMC_Chapter_Boundaries`. Destination"
-        " pages under `/destinations/`.",
-    ),
-    where=("https://outdoors.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("amc_properties_and_landscapes", "amc_chapter_boundaries")
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

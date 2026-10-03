@@ -1,23 +1,10 @@
-"""The Trustees of Reservations: places, published, and not landed (coverage audit 2026-10-01, batch
-c4_regional_1).
+"""The Trustees of Reservations: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Machine-readable and current.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `trustees_properties`: Trustees Properties, 137 polygon features; places kind `park`.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'ArcGIS `TTOR_2`, "Trustees Properties": '
-        "`https://services1.arcgis.com/whFP7sXcUCogtdJz/arcgis/rest/services/Trustees_props/FeatureServer/0`. "
-        "137 polygons with PROPERTY, PROP_TYPE, TOWN, MGMT_REGION; lastEdit 2026-02-06. MassGIS "
-        "`AGOL/openspace` has 613 rows with `OWNER_ABRV` or `MANAGR_ABRV` = 'TTOR'.",
-    ),
-    where=("https://services1.arcgis.com/whFP7sXcUCogtdJz/arcgis/rest/services/Trustees_props/FeatureServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("trustees_properties",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

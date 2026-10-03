@@ -860,12 +860,14 @@ class TestTheRegistryTheConsoleReads:
 
         # 52 since decision 53's ArcGIS closure and warning layers (2026-10-03) registered 18
         # stewards with no row before: the second block below.
-        assert len(orgs) == 53
+        assert len(orgs) == 62
         assert {org["steward_id"] for org in orgs} == {
             "org:alaskatrails",
+            "org:amc",
             "org:atc",
             "org:azgeo",
             "org:blm",
+            "org:bta",
             "org:cdpr",
             "org:cdtc",
             "org:cpw",
@@ -875,6 +877,7 @@ class TestTheRegistryTheConsoleReads:
             "org:fltc",
             "org:fmst",
             "org:foot",
+            "org:fpc",
             "org:fta",
             "org:gatc",
             "org:iata",
@@ -883,6 +886,7 @@ class TestTheRegistryTheConsoleReads:
             "org:massgis",
             "org:midpen",
             "org:mohonk",
+            "org:mtsg",
             "org:ncparks",
             "org:ncta",
             "org:ndmc",
@@ -899,12 +903,17 @@ class TestTheRegistryTheConsoleReads:
             "org:osm",
             "org:padcnr",
             "org:pasda",
+            "org:patc",
             "org:pcta",
             "org:portlandparks",
+            "org:sbts",
             "org:sccparks",
+            "org:spnhf",
             "org:tdec",
             "org:tehcc",
             "org:trta",
+            "org:trustees",
+            "org:ttc",
             "org:ugrc",
             "org:usace",
             "org:usfs",

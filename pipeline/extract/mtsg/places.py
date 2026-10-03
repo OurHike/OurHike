@@ -1,21 +1,11 @@
-"""Mountains to Sound Greenway Trust: places, published, and not landed (coverage audit 2026-10-01,
-batch c6_regional_3).
+"""Mountains to Sound Greenway Trust: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `mtsg_heritage_area_boundary`: Mountains to Sound Greenway National Heritage Area boundary, 1 polygon
+  feature; places kind `park`.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "The same REST endpoint: parks and open spaces 57, cultural and natural heritage sites 41, museums and "
-        "education centers 31, visitor information centers 6. The NHA boundary is "
-        "`https://services.arcgis.com/b2nA3bRpH9jJyZOr/arcgis/rest/services/MTS_Boundary/FeatureServer` (1 "
-        "polygon layer, item modified 2023-12-16).",
-    ),
-    where=("https://services.arcgis.com/b2nA3bRpH9jJyZOr/arcgis/rest/services/MTS_Boundary/FeatureServer",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("mtsg_heritage_area_boundary",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

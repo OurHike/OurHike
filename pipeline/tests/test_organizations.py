@@ -327,10 +327,16 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     DECISION 54'S PLACES WAVE, STATE AND CITY (2026-10-03): 34 layers, 9
     `stated_by_org` (CC0, CC BY 4.0, NJDEP's Data Distribution Agreement) and
     25 `public_gis` (decision 21(a)), each at `reaches_hikers: false`.
+
+    DECISION 54'S PLACES WAVE, CLUBS (2026-10-03): 30 layers, 28 `public_gis`,
+    CDTC's CC BY sections `stated_by_org`, and one `unresolved`: the Buckeye
+    Trail Association's map outlines, extracted under decision 39 from a
+    `refuse` organization and never published until its permission is
+    recorded.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
-    assert counts == {"maintainer_authorisation": 48, "public_gis": 64, "stated_by_org": 92, "unresolved": 2}
+    assert counts == {"maintainer_authorisation": 48, "public_gis": 92, "stated_by_org": 93, "unresolved": 3}

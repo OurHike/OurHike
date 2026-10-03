@@ -1,32 +1,27 @@
-"""Pacific Crest Trail Association: places, published, and not landed (coverage audit 2026-10-01, batch
-b7_long_trails_states).
+"""Pacific Crest Trail Association: places, extracted (decision 54, wave 1; live read 2026-10-03 under
+lib/user_agent.py's USER_AGENT).
 
-Permit areas tell a hiker where an unpermitted night is a citation. The sheriff polygons answer "who
-do I call from here", which is the get-off-the-trail case.
+- `pcta_trail_towns`: PCT Trail Town Resupply points, 106 point features; places kind `town`.
+- `pcta_letter_sections`: PCT Letter Sections, 29 polyline features; no places kind.
+- `pcta_centerline_regions`: PCT Centerline Regions, 6 polyline features; no places kind.
+- `pcta_permit_areas`: PCT Permit Areas, 32 polygon features; no places kind.
+- `pcta_wilderness_areas`: Wilderness Areas along the PCT (CA, OR, WA), 253 polygon features; places
+  kind `park`.
+- `pcta_sheriffs_offices`: PCT county sheriff's offices, 45 polygon features; no places kind.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Trail_Town_Resupply_Walkable_Transit_Accessible_Public, USFS_Forest_Admin_Boundaries,
+USFS_Ranger_Districts and the rest of PCTA's 100-odd services were not read; the forest and district
+ones copy USFS's.
 """
 
-from datetime import date
+from extract._kinds import arcgis_layer
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`Trail_Town_Resupply_Public/FeatureServer/0`: 106 trail towns, last edit 2025-05-12. "
-        "`PCT_Letter_Sections/FeatureServer/0`: 29 sections. `PCTA_Centerline_Regions`: 6. "
-        "`Permit_Areas_Public/FeatureServer/0`: 32 polygons with `Permit_required_on_PCT__Y_N`, `Quota` and "
-        "`Permit_situation_summary`, last edit 2025-08-26. `WildernessAreasPCTA/FeatureServer/0`: 253 polygons.",
-        "Skeptic adds: `PCT_Sheriffs_Offices/FeatureServer/0`: 45 county polygons with `Sheriff_Dept`, `Phone`,"
-        " `Website`, last edit 2024-03-15.",
-    ),
-    where=(
-        "https://services5.arcgis.com/ZldHa25efPFpMmfB/arcgis/rest/services/Trail_Town_Resupply_Public/FeatureServer/0",
-        "https://services5.arcgis.com/ZldHa25efPFpMmfB/arcgis/rest/services/PCT_Letter_Sections/FeatureServer/0",
-        "https://services5.arcgis.com/ZldHa25efPFpMmfB/arcgis/rest/services/Permit_Areas_Public/FeatureServer/0",
-        "https://services5.arcgis.com/ZldHa25efPFpMmfB/arcgis/rest/services/WildernessAreasPCTA/FeatureServer/0",
-        "https://services5.arcgis.com/ZldHa25efPFpMmfB/arcgis/rest/services/PCT_Sheriffs_Offices/FeatureServer/0",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+CLAIMS = (
+    "pcta_trail_towns",
+    "pcta_letter_sections",
+    "pcta_centerline_regions",
+    "pcta_permit_areas",
+    "pcta_wilderness_areas",
+    "pcta_sheriffs_offices",
 )
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]

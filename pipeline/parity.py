@@ -68,12 +68,13 @@ included.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import functools
 import hashlib
 import json
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -138,13 +139,14 @@ def _registry_old() -> dict:
     return export_sources.build_registry()
 
 
-def _elevation_old(raw_dir: Path) -> dict:
-    """export_elevation.build_profile over the raw files the warehouse was loaded from.
+@contextlib.contextmanager
+def _cold_index(raw_dir: Path) -> Iterator[tuple[Path, list[dict]]]:
+    """export_elevation.build_profile over raw_dir's files, read through a copy of the tile index in a directory of
+    its own: yields (the copy's path, the profile's records), and deletes the copy on exit.
 
-    The DEM is read through a copy of the tile index in a directory of its
-    own, so the sampler's cache, which lives beside the index, starts cold:
-    no elevation comes from what step_dem_sampling read on the dbt side, and
-    two paths that read the DEM at different points cannot agree through it."""
+    The sampler's cache lives beside the index, so the copy starts cold: no
+    elevation comes from what step_dem_sampling read on the dbt side, and two
+    paths that read the DEM at different points cannot agree through it."""
     import shutil
     import tempfile
 
@@ -159,7 +161,14 @@ def _elevation_old(raw_dir: Path) -> dict:
             index,
             export_elevation.SAMPLE_INTERVAL_METERS,
         )
-    return {"samples": records}
+        yield index, records
+
+
+def _elevation_old(raw_dir: Path) -> dict:
+    """export_elevation.build_profile over the raw files the warehouse was loaded from, on a cold copy of the DEM's
+    tile index (_cold_index())."""
+    with _cold_index(raw_dir) as (_, records):
+        return {"samples": records}
 
 
 def _graph_edges(warehouse: Path) -> tuple[dict, list]:
@@ -181,26 +190,16 @@ def _graph_edges(warehouse: Path) -> tuple[dict, list]:
 def _graph_companions_old(raw_dir: Path, warehouse: Path) -> tuple[list, list]:
     """export_network_elevation.build and export_network_profile.build over the build's own graph.
 
-    Run in publish-vector-data.yml's order on one cold copy of the tile index: export_elevation.py's A.T. profile,
-    then the climbs, then the profiles. The A.T. profile fills the sampler's cache first, so an edge point sharing an
-    A.T. point's cache key gets the A.T.'s pixel here, as step_dem_sampling's single query gives it on the dbt side."""
-    import shutil
-    import tempfile
-
+    Run in publish-vector-data.yml's order on one cold copy of the tile index (_cold_index()): export_elevation.py's
+    A.T. profile, then the climbs, then the profiles. The A.T. profile fills the sampler's cache first, so an edge point
+    sharing an A.T. point's cache key gets the A.T.'s pixel here, as step_dem_sampling's single query gives it on the
+    dbt side."""
     import export_elevation
     import export_network_elevation
     import export_network_profile
 
     graph, geometry = _graph_edges(warehouse)
-    with tempfile.TemporaryDirectory() as scratch:
-        index = Path(scratch) / "tile_index.json"
-        shutil.copy(raw_dir / "elevation" / "tile_index.json", index)
-        export_elevation.build_profile(
-            raw_dir / "centerline.geojson",
-            raw_dir / "half_mile_points_from_springer.geojson",
-            index,
-            export_elevation.SAMPLE_INTERVAL_METERS,
-        )
+    with _cold_index(raw_dir) as (index, _):
         sampler = export_elevation.ElevationSampler.for_index(index)
         try:
             climbs, _stats = export_network_elevation.build(graph, geometry, sampler)

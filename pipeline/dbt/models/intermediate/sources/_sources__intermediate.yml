@@ -102,6 +102,16 @@ models:
                   - publishing_before_registration
       - name: licence_basis
         description: The registry's `licence_basis`, copied.
+  - name: int_sources__final
+    description: >
+      The sources mart's rows before their row dates (decision 57):
+      what models/marts/sources/sources.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_sources__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: source_key
+        description: The mart's key.
+        data_tests: [not_null, unique]
 
 unit_tests:
   - name: int_sources__paper_maps_refuses_what_paper_maps_refuses

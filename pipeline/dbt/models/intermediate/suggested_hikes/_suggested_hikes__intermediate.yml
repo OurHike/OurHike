@@ -178,6 +178,16 @@ models:
         description: The first rule the row breaks, in resolve()'s words, or null where it publishes.
       - name: record_json
         description: The record highlights.json carries, as_published()'s, on a row that publishes.
+  - name: int_suggested_hikes__final
+    description: >
+      The suggested hikes mart's rows before their row dates (decision 57):
+      what models/marts/suggested_hikes/suggested_hikes.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_suggested_hikes__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: hike_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
 
 exposures:
   - name: step_form_route

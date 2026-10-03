@@ -1,0 +1,13 @@
+version: 2
+
+snapshots:
+  - name: int_elevation__history
+    description: >
+      The elevation mart's row history.
+      {{ doc('row_history_snapshot') }}
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, seq]
+          config:
+            where: dbt_valid_to is null

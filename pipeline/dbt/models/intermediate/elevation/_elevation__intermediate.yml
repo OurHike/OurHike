@@ -327,6 +327,16 @@ models:
         description: The 95th-percentile step in feet, nearest-rank, one decimal.
       - name: step_ft_max
         description: The largest step in feet, one decimal; 0.0 with no step.
+  - name: int_elevation__final
+    description: >
+      The elevation mart's rows before their row dates (decision 57):
+      what models/marts/elevation/elevation.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_elevation__history snapshots it, and the mart reads that snapshot.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_id, seq]
 
 exposures:
   - name: step_dem_sampling

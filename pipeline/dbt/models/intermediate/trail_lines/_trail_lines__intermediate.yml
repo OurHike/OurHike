@@ -670,6 +670,16 @@ models:
       - name: trail_line_id
         description: The published feature id, as the trail_lines mart describes it.
         data_tests: [not_null, unique]
+  - name: int_trail_lines__final
+    description: >
+      The trail lines mart's rows before their row dates (decision 57):
+      what models/marts/trail_lines/trail_lines.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_trail_lines__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: trail_line_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
 
 unit_tests:
   # One fixture runs through all four mile-axis steps, each test's given

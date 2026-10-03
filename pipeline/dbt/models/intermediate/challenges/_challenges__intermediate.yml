@@ -206,3 +206,13 @@ models:
       - name: report_line
         description: The line as export_challenges.py prints it, two-space indent left out.
         data_tests: [not_null]
+  - name: int_challenges__final
+    description: >
+      The challenges mart's rows before their row dates (decision 57):
+      what models/marts/challenges/challenges.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_challenges__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: challenge_id
+        description: The mart's key.
+        data_tests: [not_null, unique]

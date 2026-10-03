@@ -41,6 +41,16 @@ models:
         description: >
           Why, in validate()'s words, with any value rendered as JSON rather
           than as Python's repr. Null if the row publishes.
+  - name: int_podcasts__final
+    description: >
+      The podcasts mart's rows before their row dates (decision 57):
+      what models/marts/podcasts/podcasts.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_podcasts__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: spotify_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
 
 unit_tests:
   - name: int_podcasts__checked_finds_what_validate_finds

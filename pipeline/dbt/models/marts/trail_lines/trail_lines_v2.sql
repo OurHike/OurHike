@@ -51,5 +51,9 @@ select
     spur_length_ft,
     spur_destination_poi_id,
     spur_destination_distance_m,
-    spur_junction_mile
+    spur_junction_mile,
+    -- v1's row dates (decision 57): v2's rows are v1's, printed for v2's
+    -- files, so a change to a v1 column v2 drops moves them too.
+    _first_seen_at,
+    _changed_at
 from v1

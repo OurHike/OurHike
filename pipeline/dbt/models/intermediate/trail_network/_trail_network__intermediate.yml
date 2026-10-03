@@ -255,6 +255,16 @@ models:
         data_type: double
         constraints:
           - type: not_null
+  - name: int_trail_network__final
+    description: >
+      The trail network mart's rows before their row dates (decision 57):
+      what models/marts/trail_network/trail_network.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_trail_network__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: edge_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
 
 exposures:
   - name: step_node_lines

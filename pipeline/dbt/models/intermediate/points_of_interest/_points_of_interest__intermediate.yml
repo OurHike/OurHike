@@ -524,6 +524,16 @@ models:
       - name: lon
         description: The site's longitude, EPSG:4326.
         data_tests: [not_null]
+  - name: int_points_of_interest__final
+    description: >
+      The points of interest mart's rows before their row dates (decision 57):
+      what models/marts/points_of_interest/points_of_interest.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_points_of_interest__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: poi_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
 
 exposures:
   - name: step_site_water

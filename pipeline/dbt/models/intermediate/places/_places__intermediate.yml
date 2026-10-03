@@ -196,3 +196,13 @@ models:
         description: The row's registry key.
       - name: _loaded_at
         description: When the extract loaded the row's source.
+  - name: int_places__final
+    description: >
+      The places mart's rows before their row dates (decision 57):
+      what models/marts/places/places.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_places__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: place_id
+        description: The mart's key.
+        data_tests: [not_null, unique]

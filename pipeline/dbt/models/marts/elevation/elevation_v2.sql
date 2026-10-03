@@ -37,5 +37,9 @@ select
     part_start,
     club,
     source_key,
-    _loaded_at
+    _loaded_at,
+    -- v1's row dates (decision 57): v2's rows are v1's, printed for v2's
+    -- files, so a change to a v1 column v2 drops moves them too.
+    _first_seen_at,
+    _changed_at
 from v1

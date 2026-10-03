@@ -1,31 +1,53 @@
-"""Ice Age Trail Alliance: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch c10_nst_rest).
+"""IATA's water, camping and parking layers, the bases its public views are cut from.
 
-`IAT_Potable_Water` and `IAT_Possible_Water` are views of the same 423 rows. Use the base layer and
-the `Potability` code, not the view names. The item says water "is not comprehensive". That is a
-per-source coverage caveat the card has to carry. Skeptic: spot-checked `IAT_Water/0` = 423, last
-edit …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Read live 2026-10-03 for decision 54's wave 1. The views are SAME_AS notes below. IAT_Water's own
+description says 'some points should not be shared publicly', which sources.json's iata_water row
+quotes and sends to the maintainer. The hunting-closure layers on the same org (IAT_Hunting_Closures
+and two siblings) are closures, decision 53's; IAT_PrimitiveCamping is 39 polygons, an area rather
+than a point, and is not extracted here.
 """
 
 from datetime import date
 
-from extract._contract import NotAvailable
+from extract._contract import SameAs
+from extract._kinds import arcgis_layer
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`.../IAT_Water/FeatureServer/0`: 423 water points. Potability: Potable 198, Treatment required 217, No"
-        " water 7, Unknown 1. Type: river/stream 207, drinking fountain 103, water pump 97, lake 7, spring 3, "
-        "artesian well 3. Reliability: permanent 62, intermittent/seasonal 86, unknown 274. Last edit "
-        "2026-03-31. `.../IAT_Camping1/FeatureServer/0`: 247 camping points: Private 77, Public 66, Dispersed "
-        "Camping Area 39, Primitive 33, Public Group 18, Shelter/Hut 12, Cabin 2, with `Water`, `Toilet` and "
-        "`Num_Sites`. `.../IAT_Parking/FeatureServer/0`: 443, of which 114 have `Overnight_Park` = Yes. …",
+CLAIMS = (
+    "iata_water",
+    "iata_camping",
+    "iata_parking",
+)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]
+
+SAME_AS = (
+    SameAs(
+        original="iata_water",
+        copy=(
+            "https://services.arcgis.com/EeCmkqXss9GYEKIZ/arcgis/rest/services/IAT_Potable_Water/FeatureServer/0",
+            "https://services.arcgis.com/EeCmkqXss9GYEKIZ/arcgis/rest/services/IAT_Possible_Water/FeatureServer/0",
+        ),
+        confirmed=date(2026, 10, 3),
+        checked=(
+            "each item's relatedItems (Service2Service, reverse) names 'IAT - Water Features', item "
+            "ac9f90ddfd3d4292b97f7a2f58c94e3b, as its source, and each answers the same 423 rows with the "
+            "same six fields (read 2026-10-03). The 'Potable Water' view is not filtered to potable water: "
+            "its 423 include the 217 coded Treatment required.",
+        ),
     ),
-    where=(
-        "https://dnrmaps.wi.gov/arcgis/rest/services",
-        "https://iceagetrail.org/",
+    SameAs(
+        original="iata_camping",
+        copy=(
+            "https://services.arcgis.com/EeCmkqXss9GYEKIZ/arcgis/rest/services/IAT_-_Camping_view/FeatureServer/0",
+            "https://services.arcgis.com/EeCmkqXss9GYEKIZ/arcgis/rest/services/IAT_Backpack_Campsite/FeatureServer/0",
+            "https://services.arcgis.com/EeCmkqXss9GYEKIZ/arcgis/rest/services/IAT_Car_Camping/FeatureServer/0",
+            "https://services.arcgis.com/EeCmkqXss9GYEKIZ/arcgis/rest/services/IAT_Dispersed_Camping_Areas_(DCAs)/FeatureServer/0",
+        ),
+        confirmed=date(2026, 10, 3),
+        checked=(
+            "each item's relatedItems (Service2Service, reverse) names 'IAT - Camping', item "
+            "6ef656ba224c4d469184d002d462a013, as its source, and their counts, 14 + 33 + 161 + 39, sum to "
+            "that layer's 247, the same nine fields on each (read 2026-10-03): filtered views of "
+            "iata_camping.",
+        ),
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

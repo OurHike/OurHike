@@ -863,7 +863,8 @@ class TestTheRegistryTheConsoleReads:
         # 77 since its trail-line rows (2026-10-03) registered 15: ATA, Austin PARD,
         # the Bay Area Ridge Trail Council, Chesapeake Conservancy, the City of Des Moines,
         # GMC, Indiana and Iowa DNR, Lake County MN, OCTA, ONDA, Oregon Metro, SHTA, TKO and TPWD.
-        assert len(orgs) == 77
+        # 78 since decision 54's points of interest (2026-10-03) registered org:cfpa.
+        assert len(orgs) == 78
         assert {org["steward_id"] for org in orgs} == {
             "org:alaskatrails",
             "org:amc",
@@ -875,6 +876,7 @@ class TestTheRegistryTheConsoleReads:
             "org:bta",
             "org:cdpr",
             "org:cdtc",
+            "org:cfpa",
             "org:chesapeakeconservancy",
             "org:cpw",
             "org:ctc",

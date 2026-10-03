@@ -1,12 +1,9 @@
-"""E Mau Na Ala Hele: points of interest, published, and not landed (coverage audit 2026-10-01, batch
-p01_persist).
+"""E Mau Na Ala Hele: points of interest, drawn from nps_poi/'s resource.
 
-Licence:; • NPS: open_licence, public domain (federal work). copyrightText: "Points of Interest
-(POI) data are contributed, reviewed, and maintained by individual park units…".; • Hawaii State
-Parks campsites: open_licence, public domain by state declaration (not a federal work). licenseInfo:
-…
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Inside the Ala Kahakai corridor the coverage audit counted 38 NPS points (KAHO 22, PUHO 2, PUHE 3). They
+are extracted once, as nps_points_of_interest, in nps_poi/points_of_interest.py (decision 34). Hawaii
+State Parks' campsites (8 at Kiholo, on geodata.hawaii.gov) belong to a steward with no folder, which
+waits on decision 54's wave 6.
 """
 
 from datetime import date
@@ -14,17 +11,15 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "Inside the ALKA corridor:",
-        "NPS Public POIs "
-        "`mapservices.nps.gov/arcgis/rest/services/NationalDatasets/NPS_Public_POIs/FeatureServer/0`: 38 "
-        "(Restroom 4, Parking Lot 4, Visitor Center 4, Entrance/Exit 4, Viewpoint 3, Picnic Area 2, Campground "
-        "1, Ranger Station 1…). By unit: KAHO 22, PUHO 2, PUHE 3, ALKA 0.",
-        "Hawaii State Parks campsites `geodata.hawaii.gov/.../Infrastructure/MapServer/31`: 8, all at Kīholo "
-        "State Park Reserve, which is the site of E Mau's National Trails Day 2026 Kīholo Bay walk.",
-        'Na Ala Hele trails (`Terrestrial/MapServer/34`): 5. Four carry `amenities` "Toilet, Parking …',
+        "NPS_Public_POIs/FeatureServer/0, 35,639 points nationwide (read 2026-10-03), registered as "
+        "nps_points_of_interest and extracted in nps_poi/",
+        "Hawaii State Parks' campsites, 8 at Kiholo State Park Reserve on the coverage audit's read "
+        "(2026-10-01): its steward has no club folder, so they wait on decision 54's wave 6",
     ),
     where=("https://mapservices.nps.gov/arcgis/rest/services/NationalDatasets/NPS_Public_POIs/FeatureServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason=(
+        "drawn from nps_poi/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+    ),
 )

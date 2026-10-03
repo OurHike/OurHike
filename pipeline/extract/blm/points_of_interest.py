@@ -1,33 +1,27 @@
-"""Bureau of Land Management: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch b6_federal).
+"""BLM's national recreation sites, one layer for every type.
 
-"Campsite - Primitive" may be dispersed camping. It needs the review
-`usfs_dispersed_camping_holdback` records before any of it ships (Reasoned). What "Water Staging
-Area" means is unknown, so do not map it to water. Skeptic: the Oregon fire water sources are water
-for firefighting. Like Water …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Read live 2026-10-03 for decision 54's wave 1. BLM_Natl_Recs_pts serves the same 10,241 rows again, all
+in layer 23 and one type per layer in 0 to 22, which is a SAME_AS note below.
 """
 
 from datetime import date
 
-from extract._contract import NotAvailable
+from extract._contract import SameAs
+from extract._kinds import arcgis_layer
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`https://gis.blm.gov/arcgis/rest/services/recreation/BLM_Natl_Recs_pts/MapServer`, one point layer per"
-        " type: Potable Water (11) 61; Group Shelter (5) 36; Cabin (19) 10; Trail Head (14) 1,256; Parking Area"
-        " (8) 794; Restroom (12) 1,411; Campground (2) 583; Campsite - Developed (3) 1,462; Campsite - "
-        "Primitive (4) 1,386; Scenic Overlook (13) 381; Ranger Station/Field Office (0) 65; Water Staging Area "
-        "(16) 30. Also `BLM_Natl_Recreation/MapServer/3` (all rec sites, 10,241) and "
-        "`BLM_Natl_Recreation_Sites_Facilities/MapServer/0` (RIDB-sourced facilities, 1,261, "
-        "`max(LastUpdatedDate)` 2026-09-29) and …",
+CLAIMS = ("blm_recreation_sites",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]
+
+SAME_AS = (
+    SameAs(
+        original="blm_recreation_sites",
+        copy=("https://gis.blm.gov/arcgis/rest/services/recreation/BLM_Natl_Recs_pts/MapServer/23",),
+        confirmed=date(2026, 10, 3),
+        checked=(
+            "'Recreation Locations - All' answers 10,241 rows, as BLM_Natl_Recreation/MapServer/3 does, with "
+            "the same FET_TYPE counts (3: 2,984; 4: 1,727; 5: 1,411 and on) and the same fields bar GlobalID,"
+            " which it carries as Original_GlobalID (read 2026-10-03). Its layers 0 to 22 are one per type, "
+            "slices of the same rows (Potable Water 61, Group Shelter 36).",
+        ),
     ),
-    where=(
-        "https://gis.blm.gov/arcgis/rest/services/recreation/BLM_Natl_Recs_pts/MapServer",
-        "https://gis.blm.gov/arcgis/rest/services/recreation/BLM_Natl_Recreation/MapServer/3",
-        "https://gis.blm.gov/arcgis/rest/services/recreation/BLM_Natl_Recreation_Sites_Facilities/MapServer/0",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

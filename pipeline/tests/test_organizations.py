@@ -344,10 +344,17 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     `reaches_hikers: false`: 71 more. 70 rest on decision 21a's presumption
     (`public_gis`), and USACE Mobile District's trails are a federal work
     (`stated_by_org`).
+
+    DECISION 54'S POINTS OF INTEREST, WATER AND SHELTERS FIRST (2026-10-03),
+    all `reaches_hikers: false`: 36 club point layers. 32 that state nothing
+    or only a disclaimer are `public_gis`; BLM's recreation sites, NPS's
+    points and the Smokies' shelters are federal works, `stated_by_org` as
+    blm_trails and nps_trails are; and NJDEP's open-space points carry the
+    Data Distribution Agreement, `stated_by_org` as njdep_park_trails is.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
-    assert counts == {"maintainer_authorisation": 48, "public_gis": 166, "stated_by_org": 117, "unresolved": 3}
+    assert counts == {"maintainer_authorisation": 48, "public_gis": 198, "stated_by_org": 121, "unresolved": 3}

@@ -1,28 +1,39 @@
-"""Tahoe Rim Trail Association: points of interest, published, and not landed (coverage audit
-2026-10-01, batch b7_long_trails_states).
+"""TRTA's water sources, campgrounds, points of interest and newest trailhead layer.
 
-The water layer is 3.5 years old. `RELIABILITY` is a planning label, not a report, and must never
-render as current flow.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Read live 2026-10-03 for decision 54's wave 1. NOT EXTRACTED, ON PURPOSE: TRTA's Vistas layer
+(Vistas/FeatureServer/0, 297 points) is its Adopt-a-Vista dedication list. Its `Name` and `VISTA_DEDI`
+name private individuals on most rows, memorials among them, so it is a roster rather than a map
+layer and loads nowhere (pipeline/ELT.md, 'Who may publish', rule 8). The vistas themselves are
+Type 'Vista' in tahoe_rim_points_of_interest. The two older trailhead layers are SAME_AS notes below.
 """
 
 from datetime import date
 
-from extract._contract import NotAvailable
+from extract._contract import SameAs
+from extract._kinds import arcgis_layer
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`Water_Sources/0`: 126 (69 `Reliable`, 57 `Seasonal`), last edit 2023-04-05. `Points_of_Interest/0`: "
-        "228 (Vista 149, Lake 23, Peak 21…), last edit 2020-12-13. `Trailheads/0`: 22, with `Toilet`, `Water`, "
-        "`Parking_Capacity`. `Campgrounds/0`: 6. `Mile_Markers/0`: 170. `Vistas/0`: 297 (Adopt-a-Vista).",
-        "Skeptic adds: `Trailheads_New_info_Tahoe_Rim_Trail/FeatureServer/0`: 22 trailheads with `Toilet`, "
-        "`Water`, `Number_of_Parking_Stalls`, `Biking_Allowed`, `Picnic_Tables`, last edit 2024-10-21. It is "
-        "newer than `Trailheads/0` (item modified 2020-01-29), so this is the trailhead layer to load. Also …",
+CLAIMS = (
+    "tahoe_rim_water_sources",
+    "tahoe_rim_campgrounds",
+    "tahoe_rim_points_of_interest",
+    "tahoe_rim_trailheads",
+)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]
+
+SAME_AS = (
+    SameAs(
+        original="tahoe_rim_trailheads",
+        copy=(
+            "https://services7.arcgis.com/NchnBpgTjegMVinZ/arcgis/rest/services/Trailheads/FeatureServer/0",
+            "https://services7.arcgis.com/NchnBpgTjegMVinZ/arcgis/rest/services/TRT_Trailheads/FeatureServer/0",
+        ),
+        confirmed=date(2026, 10, 3),
+        checked=(
+            "three TRTA layers of the same 22 trailheads, Name unique on each (22 of 22): "
+            "Trailheads_New_info_Tahoe_Rim_Trail last edited 2024-10-21, Trailheads 2023-02-21 and "
+            "TRT_Trailheads 2017-03-26 (editingInfo, read 2026-10-03). The newest is extracted, as CPW's "
+            "newest COTREX copy is; the older two carry other attribute columns (Accessible, Trailhead_Type) "
+            "and were not compared row by row.",
+        ),
     ),
-    where=(
-        "https://services7.arcgis.com/NchnBpgTjegMVinZ/arcgis/rest/services/Trailheads_New_info_Tahoe_Rim_Trail/FeatureServer/0",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

@@ -1,32 +1,28 @@
-"""NJDEP / NJGIN — Statewide Trails: points of interest, published, and not landed (coverage audit
-2026-10-01, batch b5_nyc_nj_ct_ma_pa).
+"""NJDEP's state-owned open space points of interest.
 
-Water is the safety trap. Of the 17 water points, 4 are named "Potable Water NOTE NonFunctional":
-the status lives in the name. A loader must exclude these by an allowlist on name and type, as
-`nyc_drinking_fountains` does, and ship the rest at a reduced confidence rather than the default.
-The 524 …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Read live 2026-10-03 for decision 54's wave 1. Under the NJDEP Data Distribution Agreement, whose
+conditions travel with the layer. The hosted twin is a SAME_AS note below.
 """
 
 from datetime import date
 
-from extract._contract import NotAvailable
+from extract._contract import SameAs
+from extract._kinds import arcgis_layer
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`https://mapsdep.nj.gov/arcgis/rest/services/Features/Land/MapServer/62` (hosted twin "
-        "`Open_Space__State_Owned__Points_of_Interest_h/FeatureServer/62`, edited 2026-06-23): 3,260 points. "
-        "`FEATURE_TYPE` includes Parking 463, Unpaved Parking 373, Pulloff Parking 202, Scenic View 163, "
-        "Restroom 142, Trailhead 138, Bridge 132, Campground 47, Cabins 30, Group Campground 25, Shelter 17 (3 "
-        'named "AT … Shelter": High Point, Mashipacong, Rutherford), Water 17, Lean To 14 (all at Meisle '
-        'Campground), First Aid 6 and Fire Tower 4. `OPNS_STAT` carries seasons ("April 1 to Oct 31" 45, '
-        '"Seasonal" 77). …',
+CLAIMS = ("nj_open_space_points_of_interest",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]
+
+SAME_AS = (
+    SameAs(
+        original="nj_open_space_points_of_interest",
+        copy=(
+            "https://services1.arcgis.com/QWdNfRs7lkPq4g4Q/arcgis/rest/services/Open_Space__State_Owned__Points_of_Interest_h/FeatureServer/62",
+        ),
+        confirmed=date(2026, 10, 3),
+        checked=(
+            "the hosted twin answers the same 3,260 rows, GLOBALID unique on both (3,260 of 3,260), with the "
+            "on-prem layer's 23 attribute fields plus five (OSOURCE, OSRCE_TYPE, ODATE, SOURCE, COMMENTS) (read "
+            "2026-10-03). GLOBALIDs were not matched row by row.",
+        ),
     ),
-    where=(
-        "https://mapsdep.nj.gov/arcgis/rest/services/Features/Land/MapServer/62",
-        "https://services1.arcgis.com/QWdNfRs7lkPq4g4Q/arcgis/rest/services/Open_Space__State_Owned__Points_of_Interest_h/FeatureServer/62",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

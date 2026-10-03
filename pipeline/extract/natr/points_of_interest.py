@@ -1,10 +1,8 @@
-"""Natchez Trace NST (NPS-administered): points of interest, published, and not landed (coverage audit
-2026-10-01, batch c10_nst_rest).
+"""Natchez Trace National Scenic Trail: points of interest, drawn from nps_poi/'s resource.
 
-The `nps-poi` row is on hold for scope (c9). These counts are NATR's share of it. Skeptic
-spot-check: `UNITCODE='NATR'` = 854; `UNITCODE='POHE'` = 0.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+NATR's share of NPS_Public_POIs (UNITCODE 'NATR'): the coverage audit counted 854, mile markers,
+parking, trailheads, restrooms and five springs among them. Extracted once, as nps_points_of_interest,
+in nps_poi/points_of_interest.py (decision 34); NATR's portion is assigned in dbt.
 """
 
 from datetime import date
@@ -12,13 +10,14 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
-        "`nps-poi` layer `NPS_Public_POIs_Geographic/MapServer/0`, `UNITCODE='NATR'`: 854: Mile Marker 372, "
-        "Parking Lot 140, Trailhead 78, Picnic Area 43, Restroom 25, Overlook 19, Campground 7, Ranger Station "
-        "7, Visitor Center 7, Spring 5. API `/campgrounds`: 3 (Rocky Springs MP 54.8, Jeff Busby MP 193.1, "
-        "Meriwether Lewis MP 385.9).",
+        "NPS_Public_POIs/FeatureServer/0, 35,639 points nationwide (read 2026-10-03), registered as "
+        "nps_points_of_interest and extracted in nps_poi/; UNITCODE 'NATR' held 854 on the coverage audit's "
+        "read (2026-10-01)",
     ),
-    where=("https://mapservices.nps.gov/arcgis/rest/services/NationalDatasets/NPS_Public_POIs_Geographic/MapServer/0",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    where=("https://mapservices.nps.gov/arcgis/rest/services/NationalDatasets/NPS_Public_POIs/FeatureServer/0",),
+    reason=(
+        "drawn from nps_poi/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+    ),
 )

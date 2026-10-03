@@ -1,29 +1,28 @@
-"""National Park Service: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch c9_federal_state_rest).
+"""NPS's nationwide public points of interest.
 
-The row is held on scope (corridor clip and a POITYPE allowlist), not on terms. The counts above are
-the allowlist's starting material. Fields `PUBLICDISPLAY`, `OPENTOPUBLIC`, `SEASONAL` and
-`XYACCURACY` exist, so the filter can be strict. Water types are spelled at least six ways, so the
-allowlist …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Read live 2026-10-03 for decision 54's wave 1. Held on scope by trail_orgs.json's nps-poi row (a corridor
+clip and a POITYPE allowlist a person reads), which decides publication, not extraction. Natchez Trace,
+E Mau Na Ala Hele and CDTC's NPS views draw from this resource. The Geographic MapServer serves the same
+rows again, a SAME_AS note below.
 """
 
 from datetime import date
 
-from extract._contract import NotAvailable
+from extract._contract import SameAs
+from extract._kinds import arcgis_layer
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "ArcGIS layer `.../NationalDatasets/NPS_Public_POIs_Geographic/MapServer/0`: 35,639 points, 382 POITYPE"
-        " values. Hiker-relevant types: Campsite 3,859; Restroom 2,631; Trailhead 2,211; Campground 863; "
-        "Overlook 611; Viewpoint 563; Bridge 476; Ranger Station 279; Vault Toilet 255; Potable Water 214, "
-        "Backcountry Campsite 203, Drinking Water 136, Shelter 117, Water 43, Water - Drinking/Potable 34, "
-        "Weather Shelter 29, Spring 25, Lookout/Tower 26, Hut 10. Also `NPS_Public_ParkingLots_Geographic` "
-        "(6,743) and `NPS_Public_Buildings_Geographic` (29,054). API `/campgrounds`: 665.",
-        "Skeptic adds (Measured …",
+CLAIMS = ("nps_points_of_interest",)
+RESOURCES = [arcgis_layer(key) for key in CLAIMS]
+
+SAME_AS = (
+    SameAs(
+        original="nps_points_of_interest",
+        copy=("https://mapservices.nps.gov/arcgis/rest/services/NationalDatasets/NPS_Public_POIs_Geographic/MapServer/0",),
+        confirmed=date(2026, 10, 3),
+        checked=(
+            "the Geographic MapServer answers the same 35,639 rows with the same 37 fields as "
+            "NPS_Public_POIs/FeatureServer/0 (returnCountOnly and metadata, read 2026-10-03), the same data "
+            "in geographic coordinates. GEOMETRYIDs were not matched row by row.",
+        ),
     ),
-    where=("https://nps.gov/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

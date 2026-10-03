@@ -39,6 +39,16 @@
     the outliers). A row whose extent sits inside the eastern box has no
     entry.
 
+    DECISION 54'S POINT-OF-INTEREST ROWS (2026-10-03) are listed after
+    nws_alerts, each by its vertices: every point of the layer, read that
+    day with outSR 4326 and geometry only, never the server's extent. A
+    point row whose points all sit inside the eastern box has no entry, as
+    GMC's, FLTC's, AMC's, CFPA's, NJDEP's and the Smokies' shelters do. The
+    widest: nps_points_of_interest, lat -14.29 to 68.14 and lon -170.71 to
+    145.73 (American Samoa to Guam), and blm_recreation_sites, lat 26.95 to
+    69.57. IATA's reach lon -92.67 in western Wisconsin and FTA's lat 25.86
+    at the Florida Trail's southern end, both outside the eastern box.
+
     @unvalidated Every margin is picked, not measured. What would settle it
     is the per-club box from trail_orgs.json's `states` that pipeline/ELT.md
     plans. A source loading outside the eastern box without a row in
@@ -147,6 +157,27 @@
     'usfws_trail_segments': 'us_and_territories',
     'nps_trails': 'us_and_territories',
     'nws_alerts': 'us_and_territories',
+    'nps_points_of_interest': 'us_and_territories',
+    'blm_recreation_sites': 'national',
+    'ncta_points': 'national',
+    'alaska_trails_cabins_and_campsites': 'national',
+    'alaska_trails_access_points': 'national',
+    'tahoe_rim_water_sources': 'national',
+    'tahoe_rim_campgrounds': 'national',
+    'tahoe_rim_points_of_interest': 'national',
+    'tahoe_rim_trailheads': 'national',
+    'pcta_halfmile_water_sources': 'national',
+    'pcta_halfmile_campsites': 'national',
+    'pcta_trailheads': 'national',
+    'cdtc_water_caches': 'national',
+    'cdtc_bootheel_water_caches': 'national',
+    'cdtc_parking': 'national',
+    'cdtc_trailheads_and_mail': 'national',
+    'fta_campsites': 'national',
+    'fta_trailheads': 'national',
+    'iata_water': 'national',
+    'iata_camping': 'national',
+    'iata_parking': 'national',
 } -%}
 
 with placed as (

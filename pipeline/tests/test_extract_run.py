@@ -22,11 +22,13 @@ from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 import pytest
+import requests
 from dlt.pipeline.exceptions import PipelineStepFailed
 
 from extract import _kinds, _run
 from extract._contract import Resource
 from extract._kinds import (
+    MONTHLY_READ_BACKOFF_SECONDS,
     ArcgisLayer,
     BucketListing,
     ClubPdf,
@@ -46,6 +48,7 @@ from extract._kinds import (
 from extract._run import ExtractRefused, Planned, make_pipeline, run_check, run_pipeline
 from extract._warehouse import load_warehouse
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
+from lib import http_retry
 from lib.freshness_state import Freshness
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.user_agent import USER_AGENT
@@ -421,6 +424,41 @@ def test_a_marker_from_an_unlogged_load_over_a_logged_proven_zero_is_not_trusted
     assert third.verdicts["raw_testclub__closures_layer"] == "unknown", "a FRESH here serves the logged zero: no closures"
     _, counts = warehouse(store)
     assert counts["raw_testclub__closures_layer"] == 1
+
+
+class HangingLayer(FakeLayer):
+    """A FakeLayer whose first `hangs` page requests time out, as DEC's gisservices.dec.ny.gov pages did."""
+
+    def __init__(self, *args, hangs, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hangs = hangs
+
+    def query(self, request, context):
+        if "returncountonly" not in {key.lower() for key in request.qs} and self.hangs:
+            self.hangs -= 1
+            raise requests.exceptions.ReadTimeout("Read timed out. (read timeout=60)")
+        return super().query(request, context)
+
+
+def test_a_monthly_layer_read_waits_out_five_timed_out_pages_and_an_hourly_one_gives_up_after_three_attempts(
+    registry, requests_mock, monkeypatch
+):
+    """refresh-reference.yml runs 37097625268 and 37099504783 each failed the whole monthly lane on one DEC page
+    that timed out on all three attempts of lib/http_retry.py's default (5, 30)."""
+    pauses = []
+    monkeypatch.setattr(http_retry.time, "sleep", pauses.append)
+    HangingLayer(requests_mock, LINES_URL, [feature(1), feature(2), feature(3)], hangs=5)
+    HangingLayer(requests_mock, CLOSURES_URL, [feature(10)], hangs=5)
+
+    monthly = ArcgisLayer(key="trails", club="testclub", type="trail_lines")
+    assert monthly.cadence == "monthly"
+    assert len(list(monthly.rows({}))) == 3
+    assert pauses == list(MONTHLY_READ_BACKOFF_SECONDS)
+
+    pauses.clear()
+    with pytest.raises(requests.exceptions.ReadTimeout):
+        list(closures().rows({}))
+    assert pauses == list(http_retry.DEFAULT_BACKOFF_SECONDS), "a leg reads a club's resources inside one budget"
 
 
 def test_an_r2_store_uploads_in_fixed_size_parts_and_a_local_one_passes_no_option(tmp_path):

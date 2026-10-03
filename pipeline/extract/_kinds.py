@@ -86,7 +86,7 @@ from lib.hikefinder import as_cache_entry as as_hike_row
 from lib.hikefinder import listing_count as hikefinder_listing_count
 from lib.hikefinder import listing_ids as hikefinder_listing_ids
 from lib.hikefinder import parse_gpx, parse_hike
-from lib.http_retry import request_with_retry
+from lib.http_retry import DEFAULT_BACKOFF_SECONDS, request_with_retry
 from lib.nhd import NHD_GPKG_URL
 from lib.nws_alerts import ACCEPT as NWS_ACCEPT
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
@@ -152,6 +152,22 @@ ESRI_TYPES = {
 # platform": identical ETags for identical bodies on DEC, USFS EDW and NPS,
 # measured 2026-10-01).
 AGOL_HOST = re.compile(r"^services\d*\.arcgis\.com$")
+
+# How long a monthly layer's read waits out a server that stops answering,
+# one pause per retry. lib/http_retry.py's default, (5, 30), failed the
+# monthly lane twice on 2026-10-03 (refresh-reference.yml runs 37097625268
+# and 37099504783): a gisservices.dec.ny.gov page timed out on all three
+# attempts, once on DEC's primitive campsites and once on its fire towers.
+# A count query on the campsites layer still got no answer within 90 s at
+# about 05:14 UTC, then answered in 0.6 s at 05:19. This ladder pauses
+# 1,055 s over six attempts, about 18 minutes before the timeouts, to outlast
+# a hang that long. @unvalidated: picked from that one outage; how long
+# upstream hangs really last, read from a few months of _extract_runs, would
+# settle it. The hourly lanes keep the default, because a leg reads a club's
+# resources one after another inside one read budget (_run.py's read_each),
+# and a long wait on one would spend the others' time. Change checks keep it
+# too: a failed check is UNKNOWN and the layer is read anyway.
+MONTHLY_READ_BACKOFF_SECONDS = (5, 30, 120, 300, 600)
 
 
 def session() -> requests.Session:
@@ -229,8 +245,13 @@ class ArcgisLayer(Resource):
         """
         return {"columns": "evolve", "data_type": "freeze"}
 
-    def metadata(self) -> dict:
-        return request_with_retry(self.url, session=session(), params={"f": "json"}, timeout=30).json()
+    def metadata(self, backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS) -> dict:
+        return request_with_retry(self.url, session=session(), params={"f": "json"}, timeout=30, backoff=backoff).json()
+
+    @property
+    def read_backoff(self) -> tuple[int, ...]:
+        """The retry pauses the layer's read uses: MONTHLY_READ_BACKOFF_SECONDS on the monthly lane, else the default."""
+        return MONTHLY_READ_BACKOFF_SECONDS if self.cadence == "monthly" else DEFAULT_BACKOFF_SECONDS
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         try:
@@ -307,7 +328,7 @@ class ArcgisLayer(Resource):
 
     def column_hints(self) -> dict:
         hints = {"geometry": {"data_type": "json"}}
-        for field in self.metadata().get("fields") or []:
+        for field in self.metadata(self.read_backoff).get("fields") or []:
             name = field.get("name")
             data_type = ESRI_TYPES.get(field.get("type"))
             if name and data_type and name.lower() not in PERSON_FIELDS:
@@ -322,14 +343,14 @@ class ArcgisLayer(Resource):
         leaves nothing half-written.
         """
         named = session()
-        fields = [field.get("name") for field in self.metadata().get("fields") or [] if field.get("name")]
+        fields = [field.get("name") for field in self.metadata(self.read_backoff).get("fields") or [] if field.get("name")]
         kept = [name for name in fields if name.lower() not in PERSON_FIELDS]
         # Person fields are left out of the field list asked for, so they never
         # cross the wire; "*" only when the layer has none to leave out.
         out_fields = "*" if len(kept) == len(fields) else ",".join(kept)
-        pages = iter_layer_pages(self.url, where=self.where, out_fields=out_fields, session=named)
+        pages = iter_layer_pages(self.url, where=self.where, out_fields=out_fields, session=named, backoff=self.read_backoff)
         features = [feature for page in pages for feature in page]
-        count = layer_count(self.url + "/query", where=self.where, session=named)
+        count = layer_count(self.url + "/query", where=self.where, session=named, backoff=self.read_backoff)
         if count is not None:
             if len(features) < count:
                 raise RuntimeError(f"{self.key}: the server counts {count} features and {len(features)} were read")

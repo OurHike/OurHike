@@ -16,7 +16,7 @@ from pathlib import Path
 
 import requests
 
-from lib.http_retry import request_with_retry
+from lib.http_retry import DEFAULT_BACKOFF_SECONDS, request_with_retry
 
 PAGE_SIZE = 1000
 
@@ -86,6 +86,7 @@ def iter_layer_pages(
     page_size: int | None = None,
     where: str = "1=1",
     session=None,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
 ):
     """Yield each page of GeoJSON features `fetch_layer_geojson` would collect, in order.
 
@@ -104,6 +105,8 @@ def iter_layer_pages(
     count that proves a short read must be taken under the same clause, so
     `layer_count` takes it too. `session` is the caller's, so a caller that
     names itself to the server (lib/user_agent.py) does so on every page.
+    `backoff` is the caller's too: how long each page waits out a server that
+    stops answering (lib/http_retry.py).
 
     A SERVER THAT IGNORES `resultOffset` IS REFUSED, not looped on. One that
     does not support pagination answers every offset with page one, and
@@ -128,7 +131,7 @@ def iter_layer_pages(
         }
         if geometry_precision is not None:
             params["geometryPrecision"] = geometry_precision
-        resp = request_with_retry(query_url, session=session, params=params, timeout=60)
+        resp = request_with_retry(query_url, session=session, params=params, timeout=60, backoff=backoff)
         refusal = page_refusal(resp)
         if refusal is not None:
             if records <= 1:
@@ -172,7 +175,9 @@ def check_not_truncated(query_url: str, fetched: int) -> None:
         raise RuntimeError(f"{query_url} holds {count} features but {fetched} were fetched; the layer was truncated")
 
 
-def layer_count(query_url: str, *, where: str = "1=1", session=None) -> int | None:
+def layer_count(
+    query_url: str, *, where: str = "1=1", session=None, backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS
+) -> int | None:
     """The server's own `returnCountOnly` count for `where`, or None when it cannot be read.
 
     Split out of check_not_truncated so the extract run check can record
@@ -183,7 +188,11 @@ def layer_count(query_url: str, *, where: str = "1=1", session=None) -> int | No
     """
     try:
         resp = request_with_retry(
-            query_url, session=session, params={"where": where, "returnCountOnly": "true", "f": "json"}, timeout=60
+            query_url,
+            session=session,
+            params={"where": where, "returnCountOnly": "true", "f": "json"},
+            timeout=60,
+            backoff=backoff,
         )
         count = resp.json().get("count")
     except (ValueError, AttributeError, requests.RequestException) as exc:

@@ -134,9 +134,15 @@
  * until the release train promotes the folder, the order DATA_RELEASES.md §4
  * asks for, and pr-preview.yml previews UA for this pin (#1374).
  *
+ * THEN TO 2026-10-03-2, the same day, because 2026-10-03 had no climb and
+ * flow-data's nine elevation tests failed on it. publish-vector-data.yml run
+ * 37114537637 ran with include_elevation and staged 2026-10-03-2: 4,436
+ * artifacts in UA, 1,561 of them elevation or profile files, among them
+ * elevation_profile.json and trail_graph_elevation.json (Measured 2026-10-03).
+ *
  * @see pipeline/DATA_RELEASES.md §4, pipeline/R2_LAYOUT.md
  */
-export const DATA_RELEASE = '2026-10-03'
+export const DATA_RELEASE = '2026-10-03-2'
 
 /**
  * The schema version of the phone files this build reads (decision 44): the

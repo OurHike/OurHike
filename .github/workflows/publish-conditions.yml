@@ -1015,6 +1015,9 @@ jobs:
           else
             export CONDITIONS_DATABASE_URL="$UA_URL"
           fi
+          # dlt and the extract's other pins run below with this leg's URL
+          # only, so a UA run never carries production's.
+          unset PRODUCTION_URL UA_URL
           set +e
           "$RUNNER_TEMP/extract/bin/python" -m extract._run --lane "$LEG" --raw-bucket "$R2_RAW_BUCKET" \
             --read-seconds 150 --pipelines-dir "$RUNNER_TEMP/dlt" \

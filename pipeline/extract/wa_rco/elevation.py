@@ -1,5 +1,10 @@
-"""Washington RCO — State Trails Database: elevation, published, and not landed (coverage audit
-2026-10-01, batch p10_persist).
+"""Washington RCO — State Trails Database: elevation, published by WA DNR as hillshades and lidar DEMs,
+not landed.
+
+No raster lands as data (decision 35, pipeline/ELT.md "No raster lands as data"): a DEM, an image
+service or a hillshade is read in place or not at all, and USGS 3DEP (_shared/usgs/) is the
+elevation source. The Washington Lidar Portal also refuses automated reading of its data paths in
+its robots.txt, quoted in `terms`.
 
 Lidar_Hillshade item licenseInfo is empty, accessInformation "Washington Geological Survey, WA DNR,
 USGS": none_stated. Low value either way: OurHike already reads 3DEP (`_shared`), and
@@ -16,8 +21,11 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
+        "re-read 2026-10-03: `Public_Geology/Lidar_Hillshade/MapServer` still holds two Raster Layers, 'Top "
+        "Surface Hillshade (Default Sun Angle)' and 'Bare Earth Hillshade (Default Sun Angle)'",
+        "lidarportal.dnr.wa.gov/robots.txt, read 2026-10-03, quoted in `terms`",
         "`https://gis.dnr.wa.gov/site1/rest/services/Public_Geology/Lidar_Hillshade/MapServer` has layers `0` "
         '"Top Surface Hillshade (Default Sun Angle)" and `1` "Bare Earth Hillshade (Default Sun Angle)". '
         'copyrightText "Washington Geological Survey"; items `ab865c2741db4cf6a49c1577e1020632` and '
@@ -51,5 +59,6 @@ NOT_AVAILABLE = NotAvailable(
         "https://trails-wa-rco.hub.arcgis.com/",
         "https://services2.arcgis.com/TGEC20q86HQAeMS6/arcgis/rest/services",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    terms="User-agent: *\nDisallow: /arcgis/\nDisallow: /download\nDisallow: /query",
+    reason="raster, not landed: decision 35 lands no raster as data, and 3DEP (_shared/usgs/) is the elevation source",
 )

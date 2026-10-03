@@ -1,5 +1,8 @@
-"""NH GRANIT (University of New Hampshire): elevation, published, and not landed (coverage audit
-2026-10-01, batch c9_federal_state_rest).
+"""NH GRANIT (University of New Hampshire): elevation, published as lidar DEMs, not landed.
+
+No raster lands as data (decision 35, pipeline/ELT.md "No raster lands as data"): a DEM, an image
+service or a hillshade is read in place or not at all, and USGS 3DEP (_shared/usgs/) is the
+elevation source. Not re-read for decision 54.
 
 Very likely the same lidar projects 3DEP serves (Reasoned). No reason to add it.
 
@@ -17,5 +20,5 @@ NOT_AVAILABLE = NotAvailable(
         "`Topical/WF_NHGeodataImageDownloadTileIndex`.",
     ),
     where=("https://granit.unh.edu/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="raster, not landed: decision 35 lands no raster as data, and 3DEP (_shared/usgs/) is the elevation source",
 )

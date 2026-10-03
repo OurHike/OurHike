@@ -1,5 +1,9 @@
-"""NC Mountains-to-Sea Trail (state-published layer): elevation, published, and not landed (coverage
-audit 2026-10-01, batch p01_persist).
+"""NC Mountains-to-Sea Trail (state-published layer): elevation, published as NC OneMap's DEM, not
+landed.
+
+No raster lands as data (decision 35, pipeline/ELT.md "No raster lands as data"): a DEM, an image
+service or a hillshade is read in place or not at all, and USGS 3DEP (_shared/usgs/) is the
+elevation source. The same DEM as nc_dpr/elevation.py's note.
 
 Licence: open_licence. NC OneMap terms page (item `e60514c3…`): "all partner organizations
 understand this free and unrestricted use policy… Written release agreements to authorize use of the
@@ -20,8 +24,10 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
+        "re-read 2026-10-03: `Elevation/DEM03/ImageServer` is still an esriImageServiceDataTypeElevation "
+        "ImageServer, F32, 1 band, 3.125 ft pixels",
         "NC OneMap `https://services.nconemap.gov/secure/rest/services/Elevation/DEM03/ImageServer` (item "
         '`d0416b6d…`, owner `nconemap`, "NC Digital Elevation Model"): F32, 1 band, 3.125 ft pixels, extent '
         'covers the state, item modified 2026-04-29. Description: "A digital elevation model (DEM) for North '
@@ -46,5 +52,5 @@ NOT_AVAILABLE = NotAvailable(
         "https://trails.nc.gov/",
         "https://services7.arcgis.com/SEKZuPu27jfvDQ5b/arcgis/rest/services",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="raster, not landed: decision 35 lands no raster as data, and 3DEP (_shared/usgs/) is the elevation source",
 )

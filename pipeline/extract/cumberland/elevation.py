@@ -1,5 +1,9 @@
-"""Cumberland Trail / Tennessee State Parks: elevation, published, and not landed (coverage audit
-2026-10-01, batch p01_persist).
+"""Cumberland Trail / Tennessee State Parks: elevation, published as lidar DEM tiles, not landed.
+
+No raster lands as data (decision 35, pipeline/ELT.md "No raster lands as data"): a DEM, an image
+service or a hillshade is read in place or not at all, and USGS 3DEP (_shared/usgs/) is the
+elevation source. The Tennessee lidar tile index is a vector index of DEM and point-cloud downloads,
+not elevations. Not re-read for decision 54.
 
 Licence:; • TN lidar: none_stated, a disclaimer: "The State of Tennessee makes no representation or
 warranty as to the accuracy of this map… The user accepts this map on an 'AS IS' basis…".; • The
@@ -31,5 +35,5 @@ NOT_AVAILABLE = NotAvailable(
         "https://tnmap.tn.gov/arcgis/rest/services",
         "https://tnstateparks.com",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="raster, not landed: decision 35 lands no raster as data, and 3DEP (_shared/usgs/) is the elevation source",
 )

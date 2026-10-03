@@ -1,5 +1,8 @@
-"""Laurel Highlands Hiking Trail (PA DCNR): elevation, published, and not landed (coverage audit
-2026-10-01, batch c9_federal_state_rest).
+"""Laurel Highlands Hiking Trail (PA DCNR): elevation, published as statewide lidar, not landed.
+
+No raster lands as data (decision 35, pipeline/ELT.md "No raster lands as data"): a DEM, an image
+service or a hillshade is read in place or not at all, and USGS 3DEP (_shared/usgs/) is the
+elevation source. Not re-read for decision 54.
 
 3DEP already covers PA. Load only if it is shown to differ.
 
@@ -18,5 +21,5 @@ NOT_AVAILABLE = NotAvailable(
         "and PASDA.",
     ),
     where=("https://dcnr.pa.gov/agencies/dcnr/conservation/geology/digital-base-maps",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="raster, not landed: decision 35 lands no raster as data, and 3DEP (_shared/usgs/) is the elevation source",
 )

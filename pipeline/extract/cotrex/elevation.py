@@ -1,5 +1,8 @@
-"""Colorado Parks & Wildlife — COTREX: elevation, published, and not landed (coverage audit 2026-10-01,
-batch p09_persist).
+"""Colorado Parks & Wildlife — COTREX: elevation, published only as rasters, not landed.
+
+No raster lands as data (decision 35, pipeline/ELT.md "No raster lands as data"): a DEM, an image
+service or a hillshade is read in place or not at all, and USGS 3DEP (_shared/usgs/) is the
+elevation source.
 
 Licences: NDIS copyrightText empty, none_stated. OIT on AWS: "License:
 https://creativecommons.org/publicdomain/zero/1.0/legalcode", open_licence CC0 1.0, a state work.
@@ -19,8 +22,10 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
+        "re-read 2026-10-03: NDIS `Elevation/MapServer` still holds one layer, 'Elevation', a Raster Layer "
+        "(capabilities Map, Query and Data)",
         "(1) NDIS, `https://ndismaps.nrel.colostate.edu/arcgis/rest/services` (30 services walked; folders "
         "include `CPW`, `HuntingAtlas2025` and `FishingAtlas2025`), has `Elevation/MapServer`: one Raster "
         "Layer, capabilities Map, Query and Data, extent Colorado in UTM 13N. An identify at Mount Elbert's "
@@ -52,5 +57,5 @@ NOT_AVAILABLE = NotAvailable(
         "https://data.gov",
         "https://services3.arcgis.com/0jWpHMuhmHsukKE3/arcgis/rest/services",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="raster, not landed: decision 35 lands no raster as data, and 3DEP (_shared/usgs/) is the elevation source",
 )

@@ -1,8 +1,11 @@
-"""Tennessee Eastman Hiking & Canoeing Club: elevation, published, and not landed (coverage audit
-2026-10-01, batch c3_at_clubs_south).
+"""Tennessee Eastman Hiking & Canoeing Club: elevation, published as stated gains on wiki pages, not landed.
 
-The figure is already hand-copied as a comparison in `reference/published_gain.json`, not loaded as
-data. It is a steward-stated gain, not a DEM.
+The club's trail pages carry `High Point`, `Low Point`, `Elevation Gain`,
+`Elevation Loss` and `Elevation Change Direction` in a wiki template (coverage
+audit 2026-10-01, batch c3_at_clubs_south). Web pages are decision 54's wave
+5, a parser per site. One figure is already hand-copied as a comparison in
+`reference/published_gain.json`; it is a steward-stated gain, a check on a
+computed climb, not a DEM. Not re-read for decision 54.
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 """
@@ -23,5 +26,5 @@ NOT_AVAILABLE = NotAvailable(
         "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services",
         "https://tehcc.org/",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="web pages, not landed: decision 54's wave 5 needs a parser for the site",
 )

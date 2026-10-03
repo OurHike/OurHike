@@ -1,5 +1,8 @@
-"""NY State Parks / NYS GIS Clearinghouse: elevation, published, and not landed (coverage audit
-2026-10-01, batch p08_persist).
+"""NY State Parks / NYS GIS Clearinghouse: elevation, published as NYS ITS's 1 m DEM, not landed.
+
+No raster lands as data (decision 35, pipeline/ELT.md "No raster lands as data"): a DEM, an image
+service or a hillshade is read in place or not at all, and USGS 3DEP (_shared/usgs/) is the
+elevation source.
 
 Licence, Latest DEM item: "The State of New York, acting through the New York State Office of
 Information Technology Services, makes no representations or warranties, express or implied, with
@@ -21,8 +24,10 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 3),
     checked=(
+        "re-read 2026-10-03: `Latest_DEM/ImageServer` is still an F32, 1-band, 1 m ImageServer; "
+        "copyrightText 'NYS ITS Geospatial Services, United State Geological Survey (USGS), and FEMA'",
         '`https://elevation.its.ny.gov/arcgis/rest/services/Latest_DEM/ImageServer`: "Mosaic dataset of high '
         "resolution (1 meter) Bare Earth Digital Elevation Model's (DEM's). Newest and hightest resolution data"
         ' is stored on top. This mosaic is a combination of County, State, and Federal Collections". F32, 1 m '
@@ -47,5 +52,5 @@ NOT_AVAILABLE = NotAvailable(
         "https://data.gis.ny.gov/",
         "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="raster, not landed: decision 35 lands no raster as data, and 3DEP (_shared/usgs/) is the elevation source",
 )

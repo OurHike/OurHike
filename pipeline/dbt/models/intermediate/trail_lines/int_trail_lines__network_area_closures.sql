@@ -52,6 +52,11 @@
 -- marks one closure-area layer today, and
 -- assert_every_closure_area_layer_is_applied_to_the_network stops the build
 -- when it marks another this model does not read.
+--
+-- ONLY WHILE THAT LAYER MAY PUBLISH (int_sources__publication): an area's
+-- reason and the tape it draws are the layer's own data, so a held-back
+-- layer closes nothing, as an empty one does. export_nearby_trails.py does
+-- not check this; the closures mart already does.
 with lines as (
     select
         *,
@@ -59,12 +64,19 @@ with lines as (
     from {{ ref('int_trail_lines__network_deduplicated') }}
 ),
 
+publication as (
+    select source_key
+    from {{ ref('int_sources__publication') }}
+    where source_key = 'oprhp_trail_closures' and may_publish
+),
+
 areas as (
     select
-        source_row,
-        closure_reason,
-        st_geomfromgeojson(geom_geojson) as geom
-    from {{ ref('int_closures__oprhp_areas') }}
+        oprhp_areas.source_row,
+        oprhp_areas.closure_reason,
+        st_geomfromgeojson(oprhp_areas.geom_geojson) as geom
+    from {{ ref('int_closures__oprhp_areas') }} as oprhp_areas
+    cross join publication
 ),
 
 -- No row at all in a week with nothing closed, rather than the empty

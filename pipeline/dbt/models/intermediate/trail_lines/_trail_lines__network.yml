@@ -1146,6 +1146,9 @@ unit_tests:
           - {"closure_key": "b-outer", "source_row": 4, "closure_reason": "Closed: the outer area", "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-73.3, 41.2], [-73.2, 41.2], [-73.2, 41.3], [-73.3, 41.3], [-73.3, 41.2]]]}"}
           - {"closure_key": "a-inner", "source_row": 5, "closure_reason": "Closed: the inner area", "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-73.28, 41.22], [-73.22, 41.22], [-73.22, 41.28], [-73.28, 41.28], [-73.28, 41.22]]]}"}
           - {"closure_key": "area-blank", "source_row": 6, "closure_reason": null, "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-73.1, 41.2], [-73.0, 41.2], [-73.0, 41.3], [-73.1, 41.3], [-73.1, 41.2]]]}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_trail_closures", "may_publish": true}
     expect:
       rows:
         - {"trail_segment_key": "test_export_nearby_trails::test_a_trail_wholly_inside_a_closed_area_ships_closed:closed", "trail_line_id": "oprhp_trails:1", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": "Area Closed - No Entry due to extreme rainfall event in 2023", "closure_source": "oprhp_trail_closures", "geom_wkt": "LINESTRING (-74.06 41.25, -74.04 41.26)"}
@@ -1173,10 +1176,34 @@ unit_tests:
       # No closed area: the empty layer a good week lands.
       - input: ref('int_closures__oprhp_areas')
         rows: []
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_trail_closures", "may_publish": true}
     expect:
       rows:
         - {"trail_segment_key": "test_export_nearby_trails::test_an_empty_closures_layer_is_a_good_week_not_a_failure", "trail_line_id": "oprhp_trails:1", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.06 41.25, -74.04 41.26)"}
         - {"trail_segment_key": "test_export_nearby_trails::test_a_closure_layer_that_was_never_fetched_leaves_every_trail_open", "trail_line_id": "oprhp_trails:2", "trail_status": "closed", "trail_status_basis": "stated", "closure_kind": "long_term", "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.2 41.25, -74.05 41.25)"}
+  - name: int_trail_lines__network_area_closures_closes_nothing_with_a_layer_that_may_not_publish
+    description: >
+      A closed-area layer int_sources__publication holds back closes no
+      trail: a line inside its area ships as it was, with no closure reason
+      or source, as it does in a week with nothing closed. Stricter than
+      apply_area_closures(), which never asks.
+    model: int_trail_lines__network_area_closures
+    given:
+      - input: ref('int_trail_lines__network_deduplicated')
+        rows:
+          - {"trail_segment_key": "a trail inside an area of a held-back layer", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:1", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.06 41.25, -74.04 41.26)"}
+      - input: ref('int_closures__oprhp_areas')
+        rows:
+          - {"closure_key": "area-square", "source_row": 1, "closure_reason": "Area Closed - No Entry due to extreme rainfall event in 2023", "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-74.1, 41.2], [-74.0, 41.2], [-74.0, 41.3], [-74.1, 41.3], [-74.1, 41.2]]]}"}
+      - input: ref('int_sources__publication')
+        rows:
+          - {"source_key": "oprhp_trail_closures", "may_publish": false}
+          - {"source_key": "oprhp_trails", "may_publish": true}
+    expect:
+      rows:
+        - {"trail_segment_key": "a trail inside an area of a held-back layer", "trail_line_id": "oprhp_trails:1", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.06 41.25, -74.04 41.26)"}
   - name: int_trail_lines__network_navigation_answers_what_simplify_records_answers
     description: >
       One row per case of tests/test_simplify_trails.py that a fixed 1 m

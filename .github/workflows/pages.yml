@@ -496,6 +496,8 @@ jobs:
             exit 1
           fi
           mkdir -p _site/data
+          # Never empty: `cp -r "/." _site/data/` would copy the runner's root.
+          : "${DOCS_DIR:?the docs step named no directory}"
           cp -r "$DOCS_DIR"/. _site/data/
           python pipeline/check_docs_site.py _site/data
           # Pages runs Jekyll by default, which skips files beginning with an

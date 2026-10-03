@@ -465,9 +465,9 @@ jobs:
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by
-      # record. Each family here has files in git as its input (the podcast
-      # list, the source registry), so CI holds the real data, not a
-      # fixture. Fails on any difference.
+      # record. Most families read the fixture warehouse the step above
+      # built; the podcast list and the source registry read their committed
+      # files. Fails on any difference.
       - name: Parity with today's exporters
         if: steps.scope.outputs.run == 'true'
         # EVERY LINE RUNS ON THE PIPELINE'S OWN PINS ($RUNNER_TEMP/pipeline),

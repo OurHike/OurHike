@@ -6,8 +6,9 @@
 #
 # NOTHING HERE CAN REACH PRODUCTION (ELT.md, "Why a scheduled run cannot
 # reach production"; .github/tests/test_refresh_reference.py holds it):
-#   - No input names an environment, and the one publish step sets
-#     OURHIKE_DATA_ENV to the literal `ua`. publish.py scopes every key it
+#   - No input names an environment, and both publish steps ("Publish to UA"
+#     and "Put the podcast list in place on UA") set OURHIKE_DATA_ENV to the
+#     literal `ua`. publish.py scopes every key it
 #     writes by that value (lib/data_env.py).
 #   - Phones follow channels.json (decision 44), which only the release
 #     train uploads (`publish.py --channels`).
@@ -40,7 +41,8 @@ on:
     # clear of the hourly slots (:07, :37, :40, :55) and of every daily or
     # weekly job in .github/workflows/README.md. Off the 1st only by analogy
     # with avoiding :00 (@unvalidated: GitHub's load by day of month is
-    # unmeasured). Schedules fire from main only. If the last success is over
+    # unmeasured; scheduled runs' queue delays on the 1st against other days
+    # would settle it). Schedules fire from main only. If the last success is over
     # 35 days old, check-upstream-freshness.yml reports it in #478 - Upstream
     # data freshness, and a dispatch is the fallback.
     - cron: "15 5 3 * *"
@@ -72,10 +74,11 @@ jobs:
   extract:
     name: Extract the monthly resources into the raw store
     runs-on: ubuntu-latest
-    # @unvalidated: no full monthly extract has run. Hike Finder's crawl delay
-    # alone is about 64 min for its 386 requests (the dlt skill, "Terms are
-    # never routed around"); the first run's _extract_runs times the rest.
-    timeout-minutes: 120
+    # Measured: the full extract took 1 h 48 m on run 37058045092 and 1 h 45 m
+    # on 37081046157 (2026-10-02/03), of which Hike Finder's crawl delay is
+    # about 64 min for its 386 requests (the dlt skill, "Terms are never routed
+    # around"). 120 left 12 minutes, so the limit is 180.
+    timeout-minutes: 180
     outputs:
       raw_run: ${{ steps.extract.outputs.raw_run }}
     defaults:
@@ -136,8 +139,8 @@ jobs:
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
-          # @unvalidated against R2: `auto` is R2's documented region, and no
-          # dlt run has written R2 yet (ELT.md, "Where data lands").
+          # `auto` is R2's documented region. dlt has written R2 with it on
+          # publish-conditions run 481 and on this lane's run 37081046157.
           DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
           HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
         run: |
@@ -385,8 +388,9 @@ jobs:
         run: python publish.py
 
       # podcasts/episodes.json is a live root key, outside every release
-      # folder (pipeline/DATA_RELEASES.md:274; publish.py's
-      # LIVE_ROOT_PREFIXES), so it is uploaded on its own, to UA. Production's
+      # folder (export_podcasts.py's docstring, on #1683 — Offer podcast
+      # episodes picked for the hike, with a one-tap Spotify save and an in-app
+      # player; publish.py's LIVE_ROOT_PREFIXES), so it is uploaded on its own, to UA. Production's
       # podcast list stays a dispatch of publish-podcasts.yml.
       - name: Put the podcast list in place on UA
         env:

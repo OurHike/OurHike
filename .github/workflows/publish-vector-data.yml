@@ -168,9 +168,11 @@ jobs:
     # first cold photo fetch into our-hike, spent 1 h 39 m on ATC's photos and
     # 36 m on Commons', and was cancelled at 180 inside "Form or read a route
     # for every NYNJTC hike", before anything published, with elevation off.
-    # Every step after the photos took 44 m to reach that point, so a cold run
-    # needs about 3 h 15 m before the routes, graph cells and checks; 330
-    # leaves about an hour of that and stays under a hosted runner's 360.
+    # The steps after the photos took 44 m to reach that point, so a cold run
+    # reaches the routes at about 3 h. On warm run 166 (37073452481) the routes
+    # and every step after them took 8 m, so a cold run needs about 3 h 10 m;
+    # 330 leaves about 2 h for slower photo fetches and stays under a hosted
+    # runner's 360.
     # @unvalidated: one cold run measured; what would settle it is the next
     # refetch_photos run's own step times.
     timeout-minutes: ${{ inputs.refetch_photos && 330 || 180 }}

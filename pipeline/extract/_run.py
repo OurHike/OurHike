@@ -200,7 +200,8 @@ class RunReport:
     verdicts: dict[str, str] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
     # Each table's column hints, as read_each() or to_dlt read them. Kept in the
-    # run log only for a proven zero, which is the one case the warehouse needs them.
+    # run log only where the warehouse may create the table from them: a proven
+    # zero, and a table refused or incomplete on its own (write_run_log()).
     hints: dict[str, dict] = field(default_factory=dict)
     # Resources whose change check raised Unavailable, by name: why each was left out.
     unavailable: dict[str, str] = field(default_factory=dict)
@@ -927,13 +928,24 @@ def write_run_log(
         # An isolated resource (refused on its own by a leg) and an incomplete
         # read leave what a FRESH one leaves, no rows and no load, and are
         # logged `refused` or `incomplete`, so committed_tables() keeps serving
-        # the last committed load and due() does not count the check. An
-        # incomplete one keeps its column hints, so the warehouse can create a
-        # table not yet loaded, empty, rather than refuse the build.
+        # the last committed load and due() does not count the check. Both keep
+        # their column hints, so the warehouse can create a table not yet
+        # loaded, empty, rather than refuse the build (not_yet_loaded()).
         isolated = resource.name in report.isolated
         incomplete = resource.name in report.incomplete
         skipped = item.verdict is Freshness.FRESH or isolated or incomplete
         outcome = ISOLATED_OUTCOME if isolated else INCOMPLETE if incomplete else "skipped" if skipped else report.outcome
+        if incomplete:
+            hints = report.hints.get(resource.table) or resource.column_hints()
+        elif isolated:
+            hints = report.hints.get(resource.table)  # None where the read failed before its hints
+        elif outcome == "loaded" and report.rows.get(resource.table, 0) == 0:
+            # A proven zero writes no file on a table's first load (dlt keeps no
+            # schema for a table that never held a row, measured 2026-10-01), so
+            # its hints are what lets the warehouse create it empty.
+            hints = report.hints.get(resource.table)
+        else:
+            hints = None
         log.append(
             {
                 "run_id": report.run_id,
@@ -951,14 +963,7 @@ def write_run_log(
                 "load_id": None if skipped else report.load_id,
                 "outcome": outcome,
                 "checked_at": checked_at,
-                # A proven zero writes no file on a table's first load (dlt keeps no
-                # schema for a table that never held a row, measured 2026-10-01), so
-                # its hints are what lets the warehouse create it empty.
-                "column_hints": json.dumps(resource.column_hints(), sort_keys=True)
-                if incomplete
-                else json.dumps(report.hints[resource.table], sort_keys=True)
-                if not skipped and report.rows.get(resource.table, 0) == 0 and resource.table in report.hints
-                else None,
+                "column_hints": None if hints is None else json.dumps(hints, sort_keys=True),
             }
         )
 

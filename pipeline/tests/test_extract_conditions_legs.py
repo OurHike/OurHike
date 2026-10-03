@@ -189,6 +189,35 @@ def test_a_club_table_the_run_check_refuses_is_left_out_and_the_rest_load(store)
     assert warehouse_ids(store) == {"raw_atc__closures": ["a1"], "raw_nynjtc__closures": ["n3"]}
 
 
+@pytest.mark.parametrize(
+    "atc",
+    [club_closures("atc", error="ATC answered 503"), club_closures("atc")],
+    ids=["its read failed", "the run check refused its unproven zero"],
+)
+def test_a_club_refused_on_its_first_ever_run_is_an_empty_table_in_the_warehouse_not_a_missing_one(store, atc):
+    """int_closures__unioned refs every club's raw table, so a missing one fails every club's closures in dbt."""
+    report = leg(store, atc, club_closures("nynjtc", "n1", count=1))
+
+    assert set(report.isolated) == {"raw_atc__closures"}
+    assert warehouse_ids(store) == {"raw_atc__closures": [], "raw_nynjtc__closures": ["n1"]}
+
+
+def test_a_club_whose_first_run_was_refused_and_whose_second_loaded_is_read_from_the_second(store):
+    leg(store, club_closures("atc", error="ATC answered 503"), club_closures("nynjtc", "n1", count=1))
+
+    leg(store, club_closures("atc", "a1", count=1), club_closures("nynjtc", "n1", count=1))
+
+    assert warehouse_ids(store) == {"raw_atc__closures": ["a1"], "raw_nynjtc__closures": ["n1"]}
+
+
+def test_a_whole_leg_refused_on_its_first_run_creates_no_empty_tables_for_a_later_build(store):
+    """OurHike's own rows stop the leg; an empty raw_ourhike__closures would publish as "no OurHike closures"."""
+    with pytest.raises(ExtractRefused):
+        leg(store, ourhike_closures(), club_closures("nynjtc", "n1", count=1))
+
+    assert warehouse_ids(store) == {}
+
+
 @pytest.mark.usefixtures("registry")
 def test_an_arcgis_field_retyped_upstream_refuses_that_layer_only_and_the_rest_load(store, requests_mock):
     """dlt's `data_type: freeze` contract raises at extract, which runs every resource of the leg at once."""

@@ -44,6 +44,7 @@ from extract._run import (
     AS_LANDED_INDEX,
     AS_LANDED_PREFIX,
     INCOMPLETE,
+    ISOLATED_OUTCOME,
     LANES,
     RUNS_TABLE,
     UNAVAILABLE,
@@ -148,12 +149,12 @@ def committed_tables(
 
 
 def not_yet_loaded(pipeline, committed: dict[str, str], log: list[dict] | None = None) -> dict[str, dict]:
-    """{table: column hints} for each table a carrying read is still reading for the first time.
+    """{table: column hints} for each table that has never committed a load, nor been withdrawn since.
 
-    A table whose resource answered Incomplete (extract/_contract.py) and has
-    never committed a load, nor been withdrawn since: a first run on an empty
-    raw store, reading ATC's trail-updates pages over several hours at their
-    Crawl-delay. The hints are the latest incomplete row's.
+    Its resource answered Incomplete (extract/_contract.py), as ATC's
+    trail-updates pages do on a first run, read over several hours at their
+    Crawl-delay; or a conditions leg refused it on its own (`refused`, with
+    hints) on every run so far. The hints are the latest such row's.
     """
     log = run_log_rows(pipeline) if log is None else log
     latest: dict[str, tuple[str, dict]] = {}
@@ -162,7 +163,7 @@ def not_yet_loaded(pipeline, committed: dict[str, str], log: list[dict] | None =
         table = row["table_name"]
         if row.get("outcome") == UNAVAILABLE:
             withdrawn[table] = max(withdrawn.get(table, ""), row["run_id"])
-        elif row.get("outcome") == INCOMPLETE and row.get("column_hints") and table not in committed:
+        elif row.get("outcome") in (INCOMPLETE, ISOLATED_OUTCOME) and row.get("column_hints") and table not in committed:
             if table not in latest or row["run_id"] > latest[table][0]:
                 latest[table] = (row["run_id"], json.loads(row["column_hints"]))
     return {table: hints for table, (run_id, hints) in latest.items() if run_id > withdrawn.get(table, "")}
@@ -188,16 +189,16 @@ def load_warehouse(con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw"
         con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{table}" AS SELECT * FROM _committed')
         con.unregister("_committed")
         loaded[table] = arrow.num_rows
-    # NOT YET LOADED IS NOT A REFUSAL OF EVERYONE ELSE. A carrying read still
-    # on its first pass has no committed file, and a missing table would stop
-    # every model downstream of it, every other club's closures included. So it
-    # is created empty from its own hints and named in an annotation. For ATC's
-    # trail-updates pages that publishes the reviewed rows without the
-    # automatic ones, as export_atc_updates.py does today when
-    # fetch_atc_updates.py's cache is missing (export_atc_updates.py's
+    # NOT YET LOADED IS NOT A REFUSAL OF EVERYONE ELSE. A table with no
+    # committed load yet (not_yet_loaded()) has no file, and a missing table
+    # would stop every model downstream of it, every other club's closures
+    # included. So it is created empty from its own hints and named in an
+    # annotation. For ATC's trail-updates pages that publishes the reviewed
+    # rows without the automatic ones, as export_atc_updates.py does today
+    # when fetch_atc_updates.py's cache is missing (export_atc_updates.py's
     # CACHE_PATH comment).
     for table, hints in sorted(not_yet_loaded(pipeline, committed_tables(pipeline)).items()):
-        print(f"::warning title={table} not yet loaded::its first read is still in progress, so it is empty in this build")
+        print(f"::warning title={table} not yet loaded::no load of it has committed yet, so it is empty in this build")
         _create_proven_empty(con, schema, table, hints, pipeline)
         loaded[table] = 0
     log = run_log_rows(pipeline)

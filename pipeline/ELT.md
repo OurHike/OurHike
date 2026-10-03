@@ -3443,6 +3443,9 @@ decision 28a).
   `int_closures__gate` reads its sources from the registry and the run log instead
   of its typed list of two.
 - `place` resolved only from the source's own geometry or reviewed terms.
+- **A feed is a window, not a list** (measured by phase B's `FeedNotices`, 2026-10-03: CFPA's feed carries 10 of its 30 notices). A notice that ages out of a `listing='window'` source is never read as lifted: it stays in `int_closures__final` and `int_warnings__final` until the club's own full listing omits it, its own end date passes, or a person marks it, so decision 57's snapshot never closes it on absence alone.
+- **No prose is published** (decision 55). `WordpressPosts` still lands a post's `content` in the private raw store; no staging model may carry it past `base_`, and a test fails a mart or `pub_` model with a column whose values are a source's own wording.
+- **A club's own stale page is still the club's**: Standing Stone's closure pages still serve closures that ended in 2022 and 2023 (phase A). A notice whose stated end date has passed is held back with that reason, never published as current.
 
 ### Phase D: one notices file
 

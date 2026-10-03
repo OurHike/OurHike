@@ -41,7 +41,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from extract._run import (
-    AS_LANDED_INDEX,
     AS_LANDED_PREFIX,
     INCOMPLETE,
     ISOLATED_OUTCOME,
@@ -49,6 +48,8 @@ from extract._run import (
     RUNS_TABLE,
     UNAVAILABLE,
     _client,
+    as_landed_index,
+    as_landed_path,
     committed_load_ids,
     fs_path,
     make_pipeline,
@@ -260,20 +261,32 @@ def read_pin(pipeline, steps_url: str, raw_run: str) -> dict:
         return json.load(handle)
 
 
-def _landed_index(fs, bucket_url: str, load_id: str, cache: dict) -> dict[str, str]:
-    """{table: path under data/raw/} for one load's as-landed files; empty for a load that wrote none."""
-    if load_id not in cache:
-        path = f"{fs_path(bucket_url)}/{AS_LANDED_PREFIX}/{load_id}/{AS_LANDED_INDEX}"
-        if fs.exists(path):
-            with fs.open(path, "r") as handle:
-                cache[load_id] = json.load(handle)
-        else:
-            cache[load_id] = {}
-    return cache[load_id]
+def as_landed_tables() -> set[str]:
+    """The tables whose resource writes an as-landed file (extract/_run.py's as_landed_path()), from discover()."""
+    from extract._contract import all_resources, discover, discover_shared
+
+    return {resource.table for resource in all_resources(discover() + discover_shared()) if as_landed_path(resource)}
+
+
+def _landed_path(fs, bucket_url: str, table: str, load_id: str, indexes: dict, landed_tables) -> str | None:
+    """The table's as-landed path in its load's index; refuses one of `landed_tables` whose load wrote none."""
+    path = as_landed_index(fs, bucket_url, load_id, indexes).get(table)
+    if path is None and table in (landed_tables or ()):
+        raise BuildRefused(
+            f"{table}: load {load_id} wrote no as-landed file, and the build reads one; "
+            "the next --as-landed extract reads it again"
+        )
+    return path
 
 
 def pin_raw_inputs(
-    pipeline, bucket_url: str, steps_url: str, raw_run: str, extras: dict[str, Path] | None = None
+    pipeline,
+    bucket_url: str,
+    steps_url: str,
+    raw_run: str,
+    extras: dict[str, Path] | None = None,
+    *,
+    landed_tables: set[str] | None = None,
 ) -> tuple[dict, bool]:
     """Copy what a build of `raw_run` reads to `<steps-url>/raw_inputs/<raw_run>/`. Returns (manifest, whether this call wrote it).
 
@@ -281,7 +294,9 @@ def pin_raw_inputs(
     build job reads the pin its first attempt wrote, and so does the
     promotion. `extras` are other files the build read that no dlt table
     holds, by their path under data/raw/ (the DEM tile index
-    fetch_elevation.py writes), pinned beside the as-landed copies.
+    fetch_elevation.py writes), pinned beside the as-landed copies. A table
+    in `landed_tables` (as_landed_tables(), from the command line) whose
+    load wrote no as-landed file refuses the pin.
     """
     _same_bucket(bucket_url, steps_url)
     fs = _client(pipeline).fs_client
@@ -321,7 +336,7 @@ def pin_raw_inputs(
     landed: dict[str, dict] = {}
     indexes: dict[str, dict] = {}
     for table, entry in tables.items():
-        path = _landed_index(fs, bucket_url, entry["load_id"], indexes).get(table)
+        path = _landed_path(fs, bucket_url, table, entry["load_id"], indexes, landed_tables)
         if path is None:
             continue
         target = f"{root}/{AS_LANDED_PREFIX}/{path}"
@@ -402,17 +417,20 @@ def materialize_pinned(pipeline, steps_url: str, raw_run: str, raw_dir: Path) ->
     return written
 
 
-def materialize_committed(pipeline, bucket_url: str, raw_run: str, raw_dir: Path) -> list[str]:
+def materialize_committed(
+    pipeline, bucket_url: str, raw_run: str, raw_dir: Path, *, landed_tables: set[str] | None = None
+) -> list[str]:
     """Before a pin exists: the as-landed files of each table's committed load as of `raw_run`, under `raw_dir`.
 
     For the steps that read today's fetchers' files to make an input the pin
     then holds (fetch_elevation.py's tile index, from centerline.geojson).
+    `landed_tables` refuses as pin_raw_inputs() does.
     """
     fs = _client(pipeline).fs_client
     indexes: dict[str, dict] = {}
     written = []
     for table, load_id in sorted(committed_tables(pipeline, as_of=raw_run).items()):
-        path = _landed_index(fs, bucket_url, load_id, indexes).get(table)
+        path = _landed_path(fs, bucket_url, table, load_id, indexes, landed_tables)
         if path is None:
             continue
         target = raw_dir / path
@@ -517,7 +535,9 @@ def main(argv: list[str] | None = None) -> int:
             if not path or not local:
                 parser.error(f"--extra takes PATH=FILE, not {item!r}")
             extras[path] = Path(local)
-        manifest, wrote = pin_raw_inputs(pipeline, args.bucket_url, args.steps_url, args.raw_run, extras)
+        manifest, wrote = pin_raw_inputs(
+            pipeline, args.bucket_url, args.steps_url, args.raw_run, extras, landed_tables=as_landed_tables()
+        )
         rows = sum(entry["rows"] for entry in manifest["tables"].values())
         verb = "pinned" if wrote else "was already pinned, so it was read back and not rewritten:"
         print(
@@ -537,7 +557,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{len(counts)} tables, {sum(counts.values())} rows, from raw_run {args.raw_run} into {args.warehouse}")
         return 0
     if args.command == "as-landed":
-        written = materialize_committed(pipeline, args.bucket_url, args.raw_run, args.raw_dir)
+        written = materialize_committed(pipeline, args.bucket_url, args.raw_run, args.raw_dir, landed_tables=as_landed_tables())
         print(f"{len(written)} as-landed files as of raw_run {args.raw_run} into {args.raw_dir}")
         return 0
     if args.command == "load-committed":

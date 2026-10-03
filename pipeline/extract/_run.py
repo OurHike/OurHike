@@ -634,6 +634,18 @@ def fs_path(url: str) -> str:
     return f"{parts.netloc}{unquote(parts.path)}".rstrip("/")
 
 
+def as_landed_index(fs, bucket_url: str, load_id: str, cache: dict) -> dict[str, str]:
+    """{table: path under data/raw/} for one load's as-landed files; empty for a load that wrote none."""
+    if load_id not in cache:
+        path = f"{fs_path(bucket_url)}/{AS_LANDED_PREFIX}/{load_id}/{AS_LANDED_INDEX}"
+        if fs.exists(path):
+            with fs.open(path, "r") as index:
+                cache[load_id] = json.load(index)
+        else:
+            cache[load_id] = {}
+    return cache[load_id]
+
+
 def upload_as_landed(pipeline, bucket_url: str, load_id: str, as_landed: AsLanded) -> dict[str, str]:
     """Put this load's as-landed files under `<bucket-url>/as_landed/<load_id>/`, the index last. Returns {table: path}."""
     if not as_landed.paths:
@@ -771,6 +783,20 @@ def readable_tables(pipeline, log: list[dict], complete: set[str]) -> dict[str, 
     from extract._warehouse import committed_tables
 
     return committed_tables(pipeline, log=log, complete=complete)
+
+
+def fresh_but_unserved(pipeline, resource: Resource, load_id: str | None, row: dict, landed=None) -> str | None:
+    """Why a FRESH verdict cannot stand, or None. `landed`, in an --as-landed run, gives a load's as-landed index.
+
+    FRESH keeps the served load, so that load must still have its files, and,
+    in an --as-landed run, the as-landed file the pin copies: an upload that
+    failed after the run log leaves a logged load with none.
+    """
+    if not load_id or not served_files_intact(pipeline, resource.table, load_id, row):
+        return f"the files of load {load_id} are gone"
+    if landed is not None and as_landed_path(resource) is not None and resource.table not in landed(load_id):
+        return f"load {load_id} wrote no as-landed file"
+    return None
 
 
 def proven_zero(row: dict) -> bool:
@@ -1072,6 +1098,11 @@ def _run(
         complete = committed_load_ids(pipeline)
         current = readable_tables(pipeline, log, complete)
         served = {(row["table_name"], row.get("load_id")): row for row in log}
+        indexes: dict[str, dict] = {}
+
+        def landed(load_id: str) -> dict[str, str]:
+            return as_landed_index(_client(pipeline).fs_client, bucket_url, load_id, indexes)
+
         plan_resources = due(plan_resources, log, checked_at)
     planned, unavailable = [], []
     with timed(report, "change checks"):
@@ -1080,17 +1111,17 @@ def _run(
             # committed load (`current`) it is read as none: refresh-reference.yml's
             # monthly run 37070628933 committed with no `_extract_runs` row, and
             # 37081046157 then answered 53 resources FRESH whose rows no build
-            # could see. And a FRESH verdict is UNKNOWN when a later load has
-            # replaced the served load's files (served_files_intact()).
+            # could see. And a FRESH verdict is UNKNOWN when the served load cannot
+            # give a build what it needs (fresh_but_unserved()).
             before = recorded.get(resource.name) if resource.table in current else None
             try:
                 verdict, marker = resource.change_check(before)
-                load_id = current.get(resource.table)
-                if verdict is Freshness.FRESH and not (
-                    load_id and served_files_intact(pipeline, resource.table, load_id, served.get((resource.table, load_id), {}))
-                ):
-                    print(f"  {resource.name}: fresh, but the files of load {load_id} are gone; reading it again")
-                    verdict = Freshness.UNKNOWN
+                if verdict is Freshness.FRESH:
+                    load_id = current.get(resource.table)
+                    row = served.get((resource.table, load_id), {})
+                    if gap := fresh_but_unserved(pipeline, resource, load_id, row, landed if as_landed else None):
+                        print(f"  {resource.name}: fresh, but {gap}; reading it again")
+                        verdict = Freshness.UNKNOWN
             except Unavailable as reason:
                 # An annotation, so the gap reaches the run summary rather than only the step log.
                 print(f"::warning title={resource.name} is unavailable::{reason}")
@@ -1122,7 +1153,8 @@ def _run(
     try:
         _extract_and_load(pipeline, report, lane, planned, to_run, unavailable, checked_at, read_seconds, copy, progress)
         # After the run log, so a failed upload leaves a committed, logged load
-        # and a red job rather than a load the warehouse cannot see.
+        # and a red job, and the next --as-landed run reads the layer again
+        # (fresh_but_unserved()).
         if copy is not None and report.load_id is not None:
             report.as_landed = upload_as_landed(pipeline, bucket_url, report.load_id, copy)
     finally:

@@ -247,6 +247,50 @@ def test_a_layer_left_out_as_fresh_is_pinned_from_the_load_that_last_read_it(reg
     assert manifest["as_landed"]["trails.geojson"]["load_id"] == first.load_id
 
 
+def test_a_layer_whose_as_landed_upload_failed_after_the_run_log_is_read_again_by_the_next_as_landed_run(
+    registry, store, steps, requests_mock, monkeypatch, tmp_path
+):
+    """The load is logged `loaded` before the upload, so the layer answers FRESH next month and no copy is made."""
+    FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+
+    def r2_hiccup(*args, **kwargs):
+        raise OSError("R2 503 on put_file")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(_run, "upload_as_landed", r2_hiccup)
+        with pytest.raises(OSError):
+            run(store, lines(), as_landed=True)
+
+    second = run(store, lines(), as_landed=True)
+
+    assert second.verdicts == {"raw_testclub__trails": "unknown"}
+    assert second.as_landed == {"raw_testclub__trails": "trails.geojson"}
+    written = _warehouse.materialize_committed(
+        pipeline_of(store), store["bucket_url"], second.run_id, tmp_path / "raw", landed_tables={"raw_testclub__trails"}
+    )
+    assert written == ["trails.geojson"]
+    assert run(store, lines()).verdicts == {"raw_testclub__trails": "fresh"}, "a run without --as-landed asks for no copy"
+
+
+def test_a_table_whose_load_wrote_no_as_landed_file_refuses_the_pin_and_the_as_landed_step_by_name(
+    registry, store, steps, requests_mock, tmp_path, monkeypatch
+):
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    report = run(store, lines())  # no --as-landed, so no copy
+    expected = {"raw_testclub__trails"}
+
+    with pytest.raises(BuildRefused, match="raw_testclub__trails: load .* wrote no as-landed file"):
+        _warehouse.materialize_committed(
+            pipeline_of(store), store["bucket_url"], report.run_id, tmp_path / "raw", landed_tables=expected
+        )
+    with pytest.raises(BuildRefused, match="raw_testclub__trails: load .* wrote no as-landed file"):
+        pin_raw_inputs(pipeline_of(store), store["bucket_url"], steps, report.run_id, landed_tables=expected)
+    monkeypatch.setattr(_warehouse, "as_landed_tables", lambda: expected)
+    store_args = ["--lane", "hourly", "--bucket-url", store["bucket_url"], "--pipelines-dir", store["pipelines_dir"]]
+    with pytest.raises(BuildRefused, match="raw_testclub__trails"):
+        _warehouse.main(["as-landed", *store_args, "--steps-url", steps, "--raw-run", report.run_id, "--raw-dir", str(tmp_path)])
+
+
 def test_a_pin_is_written_once_and_a_second_pin_reads_the_first_back(registry, store, steps, requests_mock, tmp_path):
     FakeLayer(requests_mock, LINES_URL, [feature(1)])
     report = run(store, lines(), as_landed=True)

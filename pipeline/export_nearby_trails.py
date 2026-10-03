@@ -341,11 +341,14 @@ TILES_MAX_ZOOM = 14
 # vertices (1,648,401 of its 17,292,860), z5-z14: whole, they had not tiled
 # after 25 minutes; cut at 1,000, they tiled in 47.3 s. The step that runs
 # this took 5m24s on run 153's 104,990 records and 38m12s on run 163's
-# 329,849. A tile draws the same line either way, since a tile only ever
-# holds a line's clipped pieces; what changes is the archive's bytes and its
-# per-tile feature counts. @unvalidated as a size: any value of 2 or more
-# draws the same, and the cost of the whole network at other sizes was not
-# measured.
+# 329,849, before the cut. With it, run 166 (37073452481, 2026-10-02) tiled
+# the whole network's 329,690 records in 461 s, and the step took 12m55s; its
+# peak RSS rose from 7,801 MB to 11,072 MB during the tiling, on a
+# 15,990 MB runner. A tile draws the same line either way, since a tile only
+# ever holds a line's clipped pieces; what changes is the archive's bytes and
+# its per-tile feature counts. @unvalidated as a size: any value of 2 or more
+# draws the same, and the whole network's cost at sizes other than 1,000 was
+# not measured.
 TILES_CHUNK_VERTICES = 1_000
 
 

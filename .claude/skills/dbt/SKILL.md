@@ -585,9 +585,11 @@ exactly the club's available types, `photos` included and `org` excluded.
 5. **Add the club to `int_<mart>__unioned`**, and for POIs to
    `assert_int_points_of_interest__unioned_matches_staging_sum`, whose branch
    list is typed by hand on purpose.
-6. **Give it a region box.** The bounds and region tests read the club's box
-   from `trail_orgs.json`'s `states`; a `national` row keeps the national
-   bound. Every margin is `@unvalidated` until a pass over a live fetch reports
-   each layer's real extent.
+6. **Give it a region box.** The lon/lat swap tests read each `source_key`'s
+   box from the `regions` map in `macros/lands_outside_its_region.sql`; a key
+   it does not list gets `eastern`, so a western or national source fails
+   until it is given a row. The three boxes were checked against the live
+   layers' extents on 2026-10-03, and their margins are still `@unvalidated`
+   (the macro's header says what would settle them).
 7. **Run the job** ([above](#the-commands-ci-runs-today)), evaluator included:
    `scripts/test.sh`, with `--no-dbt-deps` in a sandbox.

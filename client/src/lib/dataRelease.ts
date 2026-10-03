@@ -123,9 +123,20 @@
  * whether the release train should assert the pin resolves before it tags,
  * which is cheaper than either and is nobody's file yet.
  *
+ * THE PIN MOVED TO 2026-10-03 ahead of production, on the branch of
+ * PR #1805 — dlt → dbt re-platform as one go/no-go change. UA's refill
+ * (publish-vector-data.yml run 37097659154) replaced UA's tree, so
+ * `2026-09-24-2` no longer resolves there and client-tests.yml's flow-data
+ * job read a 404. Measured 2026-10-03: UA's `releases/2026-10-03/manifest.json`
+ * answers 200 with 2,875 artifacts, none of them elevation or profile cells
+ * (the refill ran without the elevation leg, as every publish before it did);
+ * production answers 404. So pages.yml's guard refuses a production deploy
+ * until the release train promotes the folder, the order DATA_RELEASES.md §4
+ * asks for, and pr-preview.yml previews UA for this pin (#1374).
+ *
  * @see pipeline/DATA_RELEASES.md §4, pipeline/R2_LAYOUT.md
  */
-export const DATA_RELEASE = '2026-09-24-2'
+export const DATA_RELEASE = '2026-10-03'
 
 /**
  * The schema version of the phone files this build reads (decision 44): the

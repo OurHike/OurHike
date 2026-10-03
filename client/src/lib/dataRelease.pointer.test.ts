@@ -42,7 +42,17 @@ vi.mock('idb-keyval', () => ({
 const BASE = 'https://data.example'
 const UA_BASE = `${BASE}/environments/ua`
 const KEY = 'ourhike:data-channel'
-const COMPILED = '2026-09-24-2'
+// The compiled pin, read out of lib/dataRelease.ts the way pages.yml's guard
+// reads it, so moving the pin is one line in that file and not two.
+const COMPILED = /^export const DATA_RELEASE = '([^']+)'$/m.exec(
+  readFileSync(
+    [
+      join(cwd(), 'src/lib/dataRelease.ts'),
+      join(cwd(), 'client/src/lib/dataRelease.ts'),
+    ].find((candidate) => existsSync(candidate)) as string,
+    'utf-8',
+  ),
+)?.[1] as string
 const LAST_GOOD = '2026-10-01'
 const NEWER = '2026-10-03-2'
 

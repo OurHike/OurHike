@@ -423,6 +423,18 @@ def test_a_marker_from_an_unlogged_load_over_a_logged_proven_zero_is_not_trusted
     assert counts["raw_testclub__closures_layer"] == 1
 
 
+def test_an_r2_store_uploads_in_fixed_size_parts_and_a_local_one_passes_no_option(tmp_path):
+    """refresh-reference.yml, 37088620131: R2 refused the pin's multipart upload, "All non-trailing parts must have
+    the same length"."""
+
+    def kwargs(bucket_url):
+        destination = make_pipeline("monthly", bucket_url, str(tmp_path / "pipelines")).destination
+        return destination.configuration(None, accept_partial=True).kwargs
+
+    assert kwargs("s3://our-hike-raw/raw/dlt/monthly") == {"fixed_upload_size": True}
+    assert kwargs((tmp_path / "store").as_uri()) is None
+
+
 def test_a_trail_layer_that_halves_is_refused(registry, store, requests_mock):
     layer = FakeLayer(requests_mock, LINES_URL, [feature(i) for i in range(1, 7)])
     FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])

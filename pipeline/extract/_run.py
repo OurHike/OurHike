@@ -433,10 +433,18 @@ def due(resources: list[Resource], log: list[dict], now: datetime) -> list[Resou
     ]
 
 
+#: R2 refuses a multipart upload whose parts are not all one length ("All
+#: non-trailing parts must have the same length"), and s3fs only guarantees
+#: that with fixed_upload_size. Monthly run 37088620131's pin failed on it
+#: (2026-10-03), writing a large file through fs.open().
+S3_KWARGS = {"fixed_upload_size": True}
+
+
 def make_pipeline(lane: str, bucket_url: str, pipelines_dir: str | None = None):
+    kwargs = S3_KWARGS if bucket_url.startswith("s3://") else None
     return dlt.pipeline(
         pipeline_name=f"ourhike_{lane}",
-        destination=dlt.destinations.filesystem(bucket_url),
+        destination=dlt.destinations.filesystem(bucket_url, kwargs=kwargs),
         dataset_name=DATASET,
         pipelines_dir=pipelines_dir,
     )

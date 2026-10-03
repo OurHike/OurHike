@@ -337,6 +337,38 @@ def test_only_refuses_a_table_its_lane_does_not_carry():
         _run.only_tables([ourhike_closures("u1"), a_monthly_layer()], ["raw_testclub__lines"], "conditions_ua")
 
 
+def test_a_leg_run_and_its_warehouse_read_each_run_log_file_once_and_no_dlt_loads_file(tmp_path, monkeypatch):
+    """Every `_extract_runs` and `_dlt_loads` file is a GET on R2, and both grow by a run's worth every run.
+
+    Measured before the fix on this leg: run 6 opened 40 run log files and
+    90 `_dlt_loads` files (about 23 more each run), inside a 4-minute step.
+    """
+    import fsspec.implementations.local as local
+
+    resources = [club_closures("atc", "a1", count=1), club_closures("nynjtc", "n1", count=1)]
+    monkeypatch.setattr(_run, "discover", list)
+    monkeypatch.setattr(_run, "discover_shared", list)
+    monkeypatch.setattr(_run, "all_resources", lambda files: resources)
+    store, warehouse = (tmp_path / "store").as_uri(), str(tmp_path / "warehouse.duckdb")
+    args = ["--lane", "conditions_ua", "--bucket-url", store, "--pipelines-dir", str(tmp_path / "dlt"), "--warehouse", warehouse]
+    for _ in range(5):
+        _run.main(args)
+    opened = {"_extract_runs": 0, "_dlt_loads": 0}
+    first_open = local.LocalFileSystem._open
+
+    def counting_open(self, path, mode="rb", *rest, **options):
+        folder = str(path).rstrip("/").split("/")[-2]
+        if "r" in mode and folder in opened:
+            opened[folder] += 1
+        return first_open(self, path, mode, *rest, **options)
+
+    monkeypatch.setattr(local.LocalFileSystem, "_open", counting_open)
+
+    _run.main(args)
+
+    assert opened == {"_extract_runs": 6, "_dlt_loads": 0}, "6 run log files after the sixth run, each read once"
+
+
 def test_the_command_line_loads_the_registry_alone_into_the_warehouse_and_summarises_it(tmp_path):
     """The hourly job's registry step: the monthly lane's sources.json resource, a file in git, and nothing else."""
     warehouse, summary = tmp_path / "warehouse.duckdb", tmp_path / "summary.md"

@@ -170,13 +170,20 @@ def not_yet_loaded(pipeline, committed: dict[str, str], log: list[dict] | None =
     return {table: hints for table, (run_id, hints) in latest.items() if run_id > withdrawn.get(table, "")}
 
 
-def load_warehouse(con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw") -> dict[str, int]:
-    """Replace each extracted table in `schema` with its committed rows. Returns {table: rows}."""
+def load_warehouse(
+    con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw", log: list[dict] | None = None
+) -> dict[str, int]:
+    """Replace each extracted table in `schema` with its committed rows. Returns {table: rows}.
+
+    `log` is `_extract_runs` where the caller has read it already; it is read once otherwise.
+    """
     client = _client(pipeline)
     con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
     loaded = {}
-    log_rows = {(row["table_name"], row.get("load_id")): row for row in run_log_rows(pipeline)}
-    for table, load_id in sorted(committed_tables(pipeline).items()):
+    log = run_log_rows(pipeline) if log is None else log
+    log_rows = {(row["table_name"], row.get("load_id")): row for row in log}
+    committed = committed_tables(pipeline, log=log)
+    for table, load_id in sorted(committed.items()):
         files = table_files(pipeline, table, load_id)
         if not files:
             row = log_rows.get((table, load_id)) or {}
@@ -198,11 +205,10 @@ def load_warehouse(con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw"
     # rows without the automatic ones, as export_atc_updates.py does today
     # when fetch_atc_updates.py's cache is missing (export_atc_updates.py's
     # CACHE_PATH comment).
-    for table, hints in sorted(not_yet_loaded(pipeline, committed_tables(pipeline)).items()):
+    for table, hints in sorted(not_yet_loaded(pipeline, committed, log).items()):
         print(f"::warning title={table} not yet loaded::no load of it has committed yet, so it is empty in this build")
         _create_proven_empty(con, schema, table, hints, pipeline)
         loaded[table] = 0
-    log = run_log_rows(pipeline)
     if log:
         con.register("_runs", pa.Table.from_pylist(log))
         con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{RUNS_TABLE}" AS SELECT * FROM _runs')

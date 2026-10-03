@@ -223,6 +223,8 @@ class RunReport:
     # What each incomplete read had read, by name, which write_run_log keeps
     # in PROGRESS_TABLE for the next run.
     progress: dict[str, list[dict]] = field(default_factory=dict)
+    # `_extract_runs` as this run left it, so --warehouse does not read every file again.
+    run_log: list[dict] | None = field(default=None, repr=False)
 
 
 @contextmanager
@@ -715,15 +717,17 @@ def _client(pipeline):
 
 
 def committed_load_ids(pipeline) -> set[str]:
-    """Load ids `_dlt_loads` records as complete (status 0). dlt writes that row last, so a load cut short has none."""
-    client = _client(pipeline)
+    """Load ids `_dlt_loads` records as complete, from its file names: one listing, no file read.
+
+    dlt 1.30.0's filesystem destination writes one `<schema>__<load_id>.jsonl`
+    per complete load, always with status 0 (FilesystemClient._store_load()),
+    and writes it last, so a load cut short has none.
+    """
     ids = set()
-    for path in client.list_table_files("_dlt_loads"):
-        for line in client.read_text(path).splitlines():
-            if line.strip():
-                row = json.loads(line)
-                if row.get("status") == 0:
-                    ids.add(row["load_id"])
+    for path in _client(pipeline).list_table_files("_dlt_loads"):
+        name = os.path.basename(path)
+        if name.endswith(".jsonl") and "__" in name:
+            ids.add(name.removesuffix(".jsonl").rsplit("__", 1)[1])
     return ids
 
 
@@ -928,8 +932,10 @@ def write_run_log(
     checked_at: datetime,
     unavailable: list[Resource] = (),
     progress: dict[str, list[dict]] | None = None,
-) -> None:
+) -> list[str]:
     """Append one `_extract_runs` row per planned resource, and per unavailable one. INCREMENTAL.md's log.json, as one append-only table.
+
+    Returns the ids of the loads that wrote it.
 
     `progress`, where the run has a carrying resource or kept progress
     (progress_after()), replaces PROGRESS_TABLE in the same load, so what an
@@ -1011,8 +1017,7 @@ def write_run_log(
         yield log
 
     if progress is None:
-        pipeline.run(runs(), schema=store_schema(pipeline))
-        return
+        return pipeline.run(runs(), schema=store_schema(pipeline)).loads_ids
 
     @dlt.resource(
         name=PROGRESS_TABLE,
@@ -1028,7 +1033,7 @@ def write_run_log(
             for row in rows
         ]
 
-    pipeline.run([runs(), kept()], schema=store_schema(pipeline))
+    return pipeline.run([runs(), kept()], schema=store_schema(pipeline)).loads_ids
 
 
 def run_pipeline(
@@ -1151,7 +1156,7 @@ def _run(
 
     copy = AsLanded(Path(tempfile.mkdtemp(prefix="as_landed_"))) if as_landed and to_run else None
     try:
-        _extract_and_load(pipeline, report, lane, planned, to_run, unavailable, checked_at, read_seconds, copy, progress)
+        _extract_and_load(pipeline, report, lane, planned, to_run, unavailable, checked_at, read_seconds, copy, progress, log)
         # After the run log, so a failed upload leaves a committed, logged load
         # and a red job, and the next --as-landed run reads the layer again
         # (fresh_but_unserved()).
@@ -1173,6 +1178,7 @@ def _extract_and_load(
     read_seconds: float | None,
     as_landed: AsLanded | None,
     progress: Callable[..., dict[str, list[dict]] | None] = lambda loaded=frozenset(): None,
+    log: list[dict] | None = None,
 ) -> None:
     """run_pipeline's extract, checks, load and run log; ExtractRefused, after logging, when either check fails.
 
@@ -1189,7 +1195,8 @@ def _extract_and_load(
     if to_run and lane in LEGS:
         with timed(report, "read"):
             to_run, read = read_each(report, to_run, read_seconds)
-    previous = last_loaded_counts(run_log_rows(pipeline)) if to_run else {}
+    log = run_log_rows(pipeline) if log is None else log
+    previous = last_loaded_counts(log) if to_run else {}
     while to_run:
         if as_landed is not None:
             as_landed.reset()  # a leg's second pass re-extracts what is left, and copies it again
@@ -1279,7 +1286,11 @@ def _extract_and_load(
                 write_run_log(pipeline, report, planned, checked_at, unavailable, progress())
             raise ExtractRefused("Extract after-run check:\n  " + "\n  ".join(report.problems), report)
     with timed(report, "run log"):
-        write_run_log(pipeline, report, planned, checked_at, unavailable, progress({item.resource.name for item in to_run}))
+        written = write_run_log(
+            pipeline, report, planned, checked_at, unavailable, progress({item.resource.name for item in to_run})
+        )
+    # The log as this run left it: what it read at the start, and the file it just wrote.
+    report.run_log = log + _read_rows(pipeline, [path for load in written for path in table_files(pipeline, RUNS_TABLE, load)])
 
 
 def report_document(report: RunReport) -> dict:
@@ -1350,19 +1361,22 @@ def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseExcept
     return "\n".join(lines) + "\n"
 
 
-def load_committed(lane: str, bucket_url: str, warehouse: Path, pipelines_dir: str | None = None) -> dict[str, int]:
+def load_committed(
+    lane: str, bucket_url: str, warehouse: Path, pipelines_dir: str | None = None, log: list[dict] | None = None
+) -> dict[str, int]:
     """Every table the lane's pipeline has committed, into `warehouse`'s raw schema. Returns {table: rows}.
 
     extract/_warehouse.py's committed-file read, which refuses a table whose
-    recorded load left no file rather than loading it empty. Imported here
-    rather than at the top, because that module imports this one."""
+    recorded load left no file rather than loading it empty. `log` is the run
+    log as a run just left it (RunReport.run_log), so it is not read again.
+    Imported here rather than at the top, because that module imports this one."""
     import duckdb
 
     from extract._warehouse import load_warehouse
 
     warehouse.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(warehouse)) as con:
-        return load_warehouse(con, make_pipeline(lane, bucket_url, pipelines_dir))
+        return load_warehouse(con, make_pipeline(lane, bucket_url, pipelines_dir), log=log)
 
 
 def main(argv: list[str] | None = None) -> RunReport:
@@ -1425,7 +1439,7 @@ def main(argv: list[str] | None = None) -> RunReport:
             args.report_json.write_text(json.dumps(report_document(report), indent=2, sort_keys=True, default=str))
         if args.warehouse is not None:
             with timed(report, "warehouse"):
-                loaded = load_committed(args.lane, bucket_url, args.warehouse, args.pipelines_dir)
+                loaded = load_committed(args.lane, bucket_url, args.warehouse, args.pipelines_dir, report.run_log)
             print(f"{len(loaded)} tables, {sum(loaded.values())} rows, into {args.warehouse}")
     except Exception as failure:
         if args.summary is not None:

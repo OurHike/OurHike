@@ -795,6 +795,19 @@ class WordpressPosts(Resource):
             return Freshness.STALE, marker
         return compare_marker(_canonical(recorded), _canonical(marker)), marker
 
+    @property
+    def person_fields(self) -> frozenset[str]:
+        """The registry row's `person_fields`, lower-cased: a post's own fields that never load, as ArcgisLayer reads them.
+
+        Decision 59 leaves a free-text field that carries personal data out
+        whole, never redacted. Measured in decision 53's phase B (2026-10-03):
+        the Ozark Highlands Trail's alert posts carry a maintenance e-mail
+        address and a telephone number in `content`, TEHCC's Appalachian
+        Trail posts 14 telephone numbers and Trailkeepers of Oregon's
+        condition posts 3, so those rows list `content` and `excerpt` here.
+        """
+        return frozenset(name.lower() for name in self.entry.get("person_fields") or ())
+
     def rows(self, proofs: dict[str, int]):
         http = self._session()
         posts, total = wp_list(self.api, self.route, self.scope(http), http)
@@ -802,8 +815,9 @@ class WordpressPosts(Resource):
             if len(posts) < total:
                 raise RuntimeError(f"{self.key}: the site counts {total} posts and {len(posts)} were read")
             proofs[self.table] = total
+        left_out = PERSON_FIELDS | self.person_fields
         for post in posts:
-            yield {name: value for name, value in post.items() if name not in WP_DROPPED and name.lower() not in PERSON_FIELDS}
+            yield {name: value for name, value in post.items() if name not in WP_DROPPED and name.lower() not in left_out}
 
 
 # Fields a post carries that are WordPress plumbing or name a person. `author`

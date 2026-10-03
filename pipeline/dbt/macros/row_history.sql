@@ -73,19 +73,22 @@
     both dates null, and the snapshot is not read. build_marts.py sets it
     only on a conditions leg whose restore failed: that leg still publishes
     closures and warnings, with both dates null (unknown, never "new"), and
-    saves nothing back. Both refs are taken whichever way, so the graph is
-    the same in every build. (`env_var is defined` is false under SQLFluff's
-    jinja templater, which lints the snapshot branch.)
+    saves nothing back. Only the branch's own ref is taken, so in that build
+    the mart depends on the final model and not on the snapshot. Taking both
+    in every build made a second path from the final model to the mart,
+    which raised dbt_project_evaluator's peak memory from 1,451 MB on
+    f4ca3e35 to 5,960 MB, one thread each (measured 2026-10-03), and
+    needed an exception to its rejoin rule. (`env_var is defined` is false
+    under SQLFluff's jinja templater, which lints the snapshot branch.)
 
     Example, models/marts/closures/closures.sql:
 
         {{ row_history_mart('int_closures__history', 'int_closures__final', 'closure_id') }} -#}
 {% macro row_history_mart(history_name, final_name, key) -%}
     {%- set keys = [key] if key is string else key -%}
-    {%- set history = ref(history_name) -%}
-    {%- set final = ref(final_name) -%}
     {%- set history_off = env_var is defined and env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' -%}
     {%- if not history_off %}
+    {%- set history = ref(history_name) %}
     with history as (
         select * from {{ history }}
     ),
@@ -111,7 +114,7 @@
         *,
         cast(null as timestamptz) as _first_seen_at,
         cast(null as timestamptz) as _changed_at
-    from {{ final }}
+    from {{ ref(final_name) }}
     {%- endif %}
 {%- endmacro %}
 

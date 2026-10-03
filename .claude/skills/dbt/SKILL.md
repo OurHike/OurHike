@@ -139,7 +139,7 @@ Present, among others: `ST_LineLocatePoint`, `ST_LineInterpolatePoints`,
 | stewardship | `int_<mart>__stewardship` | `intermediate/<mart>/` | the deduplicated intermediate, `stg_registry__orgs`, ATC's club sections | one row per (feature, club, basis, evidence): which clubs steward each feature. It assigns, never copies |
 | final | `int_<mart>__final` | `intermediate/<mart>/` | intermediates | the mart's rows, every contracted column but the two row dates ([Row dates](#row-dates-one-snapshot-per-mart)) |
 | row history | `int_<mart>__history` | `snapshots/<mart>/` | its `int_<mart>__final` | a dbt snapshot: every version of every row, whole, schema `intermediate` |
-| mart | one of the eleven names | `marts/<mart>/` | its history and its final model | `row_history_mart()`: the current rows and their two dates. Contract, `access: public`, exposures |
+| mart | one of the eleven names | `marts/<mart>/` | its history; its final model instead when `OURHIKE_ROW_HISTORY=off` | `row_history_mart()`: the current rows and their two dates. Contract, `access: public`, exposures |
 | reporting | `rpt_<thing>` | `reporting/` | marts | counts for the docs page |
 | publish | `pub_<file>` | `publish/` | the marts its exposure names | writes one phone file |
 

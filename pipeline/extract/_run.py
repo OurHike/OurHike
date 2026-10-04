@@ -853,8 +853,18 @@ def recorded_markers(pipeline) -> dict[str, dict | None]:
     markers. A marker set during a run that was refused is gone after
     `abort_packages()` (measured 2026-10-01, ELT.md), which is what keeps a
     degraded response from advancing it.
+
+    They are read under the store schema's name, not SOURCE_NAME's: dlt
+    1.30.0 keys a source's resource state by the schema it extracts into
+    (its source_state(): "possible to share state across many sources if
+    they share a schema with the same name"), and the extract passes
+    store_schema(). The monthly store's is `ourhike_monthly`, so reading
+    `extract` found no marker and monthly runs 16 and 17 (refresh-reference.yml
+    37210020925, 37232256991) read every resource again: "0 fresh" of 545,
+    then of 569. tests/test_extract_run.py holds that store answering FRESH.
     """
-    resources = pipeline.state.get("sources", {}).get(SOURCE_NAME, {}).get("resources", {})
+    key = pipeline.default_schema_name or SOURCE_NAME  # store_schema(pipeline).name
+    resources = pipeline.state.get("sources", {}).get(key, {}).get("resources", {})
     return {name: state.get("marker") for name, state in resources.items()}
 
 

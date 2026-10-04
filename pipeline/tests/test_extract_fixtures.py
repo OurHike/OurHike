@@ -273,6 +273,7 @@ def test_section_cs_content_lands_no_author_or_guest_and_none_of_the_prose_a_row
         assert "Fixture Person" not in values("raw_gmc__gmc_hikes"), "Spectra's and Yoast's author blocks never load"
         assert "transcript" not in columns("raw_nps__nps_multimedia_audio")
 
+
 # Decision 54's waves 2 and 3 (section G, 2026-10-04): each GIS file and geographic API, the rows its fixture answers
 # hold (make_dbt_fixtures.py's _gis_file_documents() and _geo_api_documents()). Catamount's main trail lands 3 rows
 # with 2 exact copies among them, a KMZ and a zipped GPX arrive whole as ASCII-only zips, and a location with no

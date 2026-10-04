@@ -282,10 +282,14 @@ def test_an_arcgis_layer_whose_metadata_stops_answering_mid_read_refuses_that_la
 
 
 def test_a_slow_club_is_left_out_when_the_read_budget_runs_out_and_nothing_waits_for_it(store):
-    """A host behind a 10-second Crawl-delay is never hurried to fit: its read is abandoned, not shortened."""
+    """A host behind a 10-second Crawl-delay is never hurried to fit: its read is abandoned, not shortened.
+
+    The slow read sleeps 30 s and the leg must end within 15: the leg takes about 2 s alone (measured
+    2026-10-04), and a 5 s read against a 4.5 s bound failed at 4.92 s at a load average of 70.
+    """
     started = time.monotonic()
-    report = leg(store, club_closures("atc", "a1", count=1, delay=5.0), club_closures("nynjtc", "n1", count=1), read_seconds=0.5)
-    assert time.monotonic() - started < 4.5
+    report = leg(store, club_closures("atc", "a1", count=1, delay=30.0), club_closures("nynjtc", "n1", count=1), read_seconds=0.5)
+    assert time.monotonic() - started < 15
     assert set(report.isolated) == {"raw_atc__closures"}
     assert "TimeoutError: no answer within the leg's 0.5 s read budget" in report.isolated["raw_atc__closures"]
     assert report.rows == {"raw_nynjtc__closures": 1}

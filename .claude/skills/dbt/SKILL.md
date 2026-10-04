@@ -606,6 +606,23 @@ The club's extract folder comes first: [the dlt skill](../dlt/SKILL.md), "Adding
 a club". The extract layout pytest then requires a `stg_<club>__<type>` for
 exactly the club's available types, `photos` included and `org` excluded.
 
+**A club ArcGIS layer of a places, elevation, points-of-interest or
+trail-lines type is generated, never hand-written**: run
+`python make_dbt_staging.py` from `pipeline/` and commit what it writes
+(decision 54). It reads the layer's key from its `sources.json` row
+(`key_fields`, else `id_fields`, else `id_field`; `geometry` in a list is
+the shape) and stops, naming the row, when there is none or the key holds a
+server row id. It writes the source block with its `duplicates_are_exact`
+test, the base model (dates in `date_fields` cast from epoch milliseconds),
+one `stg_<club>__<type>` per folder and type, the type's
+`int_<type>__unioned`, and the region each source is held to
+(`macros/generated_regions.sql`). `pipeline/tests/test_dbt_generated_staging.py`
+fails when a committed file differs from what it would write. A rule a
+layer needs beyond its key, such as a historic alignment that may not route
+or a road a trail layer carries, is a row of the `layer_rules` seed, read by
+the type's intermediate, never an edit to a generated file. The steps
+below are for everything else.
+
 1. **`staging/<club>/_<club>__sources.yml`** declares every raw table dlt
    writes for the club (`raw_<club>__<key>`), each with a description, v2's
    `config:` block holding `loaded_at_field: _loaded_at` and `freshness`,

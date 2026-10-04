@@ -1,0 +1,52 @@
+version: 2
+
+# The rules decision 54's live reads found a layer needs beyond its key
+# (pipeline/ELT.md, "What wave 1's live reads found that phase C must
+# honour"), one row per rule per layer, each quoting the evidence it rests on.
+# A judgement somebody reviews row by row, so it is a seed and not a
+# generated file: pipeline/make_dbt_staging.py stages the layers, and the
+# type's intermediate reads this to apply the rule.
+seeds:
+  - name: layer_rules
+    description: >
+      One row per rule a registered layer carries beyond its key: `historic_alignment` (the whole
+      layer is an alignment, not tread: it never routes and never draws as a trail a hiker can
+      walk), `winter_trail` (the whole layer is seasonal and draws only with that said), and
+      `drop_where` (its rows whose `field`, by dlt's name in the row's `properties`, equals
+      `matches` are left out, such as the public roads a trail layer carries). `evidence` says what
+      the rule rests on, mostly the layer's own sources.json notes.
+    config:
+      column_types:
+        source_key: varchar
+        rule: varchar
+        field: varchar
+        matches: varchar
+        evidence: varchar
+    data_tests:
+      # A row-level rule names its field and value; a layer-wide one names neither.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(rule = 'drop_where') = (field is not null and matches is not null)"
+    columns:
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_registry__sources')
+                field: source_key
+      - name: rule
+        description: historic_alignment, winter_trail or drop_where.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['historic_alignment', 'winter_trail', 'drop_where']
+      - name: field
+        description: For drop_where, the row field the rule reads, by dlt's name; null for a layer-wide rule.
+      - name: matches
+        description: For drop_where, the field's value that leaves a row out; null for a layer-wide rule.
+      - name: evidence
+        description: What the rule rests on, quoted or cited.
+        data_tests: [not_null]

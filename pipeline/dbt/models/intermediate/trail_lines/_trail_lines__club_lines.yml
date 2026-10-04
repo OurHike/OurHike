@@ -1,0 +1,231 @@
+version: 2
+
+# The clubs' own trail-line layers (decision 54's wave 1), after
+# int_trail_lines__unioned: the rules pipeline/ELT.md's "What wave 1's live
+# reads found that phase C must honour" gives them, each with a unit test
+# below. Neither model is read by a mart or by the routable network: every
+# layer here is held back by its sources.json row.
+models:
+  - name: int_trail_lines__club_lines
+    description: >
+      Every line of the clubs' registered trail-line layers, two-dimensional, with the
+      layer_rules seed applied: a historic alignment may not route and does not draw as a trail, a
+      winter trail carries its season, and a layer's roads are left out where the seed names the
+      field that says which.
+    data_tests:
+      # The historic-alignment rule: neither half of it without the other.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not historic_alignment or (not may_route and not draws_as_trail)"
+      # The dimension rule: no Z rides out of this model.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "geom_wkt is null or not st_hasz(st_geomfromtext(geom_wkt))"
+    columns:
+      - name: trail_segment_key
+        description: The line's key, from its base model.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null]
+      - name: club
+        description: The extract folder that landed the layer.
+      - name: name
+        description: The layer's own name for the line, or its registry `name_constant`.
+      - name: geom_wkt
+        description: The line in OGC:CRS84, two-dimensional (ST_Force2D), as WKT.
+      - name: had_z
+        description: Whether the line arrived with a Z on its vertices (a `return_z` layer's, such as ATA's).
+      - name: historic_alignment
+        description: Whether the layer_rules seed marks the layer a historic alignment rather than tread.
+      - name: may_route
+        description: False on a historic alignment, which never joins the routable network.
+      - name: draws_as_trail
+        description: False on a historic alignment, which never draws as a trail a hiker can walk.
+      - name: season
+        description: "'winter' on a layer the seed marks a winter trail (BLM's Iditarod line); null otherwise."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['winter']
+      - name: _loaded_at
+        description: When the extract landed the line.
+  - name: int_trail_lines__source_extents
+    description: >
+      One row per trail-line layer in int_trail_lines__unioned: its rows, how many carry a geometry,
+      the extent of their own vertices, and the narrowest region box those vertices fit
+      (macros/lands_outside_its_region.sql's vertex_extents). The evidence a source's region box is
+      set from, never a server's returnExtentOnly.
+    columns:
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null, unique]
+      - name: row_count
+        description: Rows the union holds for the layer.
+      - name: rows_with_geometry
+        description: Of those, rows with a geometry.
+      - name: lon_min
+        description: The smallest longitude of any vertex.
+      - name: lon_max
+        description: The largest longitude of any vertex.
+      - name: lat_min
+        description: The smallest latitude of any vertex.
+      - name: lat_max
+        description: The largest latitude of any vertex.
+      - name: vertex_region
+        description: >
+          The narrowest of the eastern, national and us_and_territories boxes holding every vertex;
+          null when none does, which a lon/lat swap makes so.
+
+unit_tests:
+  - name: trail_lines_club_lines_never_route_or_draw_a_historic_alignment
+    model: int_trail_lines__club_lines
+    description: >
+      A historic alignment is not tread (pipeline/ELT.md, "What wave 1's live reads found"): NPS's
+      National Historic Trail lines and OCTA's atlas routes never draw as a trail a hiker can walk
+      and never join the routable network. A walkable layer beside them, NPS's Anza recreation
+      trails, keeps both.
+    given:
+      - input: ref('int_trail_lines__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              trail_segment_key,
+              name,
+              st_geomfromtext(geom_wkt) as geom,
+              cast('{}' as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('nps_oregon_nht', 'nps', 'oregon-1', 'Oregon National Historic Trail', 'LINESTRING (-116.5 43.6, -116.4 43.7)'),
+              ('octa_barlow_road_62', 'octa', 'barlow-1', 'Barlow Road', 'LINESTRING (-121.7 45.3, -121.6 45.3)'),
+              ('nps_anza_recreation_trails', 'nps', 'anza-1', 'Anza Trail', 'LINESTRING (-118.1 34.1, -118.0 34.1)')
+          ) as unioned (source_key, club, trail_segment_key, name, geom_wkt)
+      - input: ref('layer_rules')
+        rows:
+          - {"source_key": "nps_oregon_nht", "rule": "historic_alignment", "field": null, "matches": null, "evidence": "a designated alignment"}
+          - {"source_key": "octa_barlow_road_62", "rule": "historic_alignment", "field": null, "matches": null, "evidence": "an emigrant route"}
+    expect:
+      rows:
+        - {"trail_segment_key": "oregon-1", "historic_alignment": true, "may_route": false, "draws_as_trail": false}
+        - {"trail_segment_key": "barlow-1", "historic_alignment": true, "may_route": false, "draws_as_trail": false}
+        - {"trail_segment_key": "anza-1", "historic_alignment": false, "may_route": true, "draws_as_trail": true}
+  - name: trail_lines_club_lines_flag_a_winter_trail_seasonal
+    model: int_trail_lines__club_lines
+    description: >
+      A winter trail is seasonal (pipeline/ELT.md, "What wave 1's live reads found"): BLM's Iditarod
+      line is "primarily a winter trail", so every line of it carries season 'winter' before it
+      draws, and a line of another layer carries none.
+    given:
+      - input: ref('int_trail_lines__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              trail_segment_key,
+              name,
+              st_geomfromtext(geom_wkt) as geom,
+              cast('{}' as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('blm_iditarod_nht', 'blm', 'iditarod-1', 'Iditarod', 'LINESTRING (-150.0 61.5, -151.0 62.0)'),
+              ('shta_line_2025', 'shta', 'sht-1', 'Superior Hiking Trail', 'LINESTRING (-91.5 47.3, -91.4 47.4)')
+          ) as unioned (source_key, club, trail_segment_key, name, geom_wkt)
+      - input: ref('layer_rules')
+        rows:
+          - {"source_key": "blm_iditarod_nht", "rule": "winter_trail", "field": null, "matches": null, "evidence": "primarily a winter trail"}
+    expect:
+      rows:
+        - {"trail_segment_key": "iditarod-1", "season": "winter", "may_route": true}
+        - {"trail_segment_key": "sht-1", "season": null, "may_route": true}
+  - name: trail_lines_club_lines_leave_out_the_roads_a_trail_layer_carries
+    model: int_trail_lines__club_lines
+    description: >
+      Roads ride in some trail layers (pipeline/ELT.md, "What wave 1's live reads found"): MassGIS
+      DCR's roads-and-trails layer carries public roads, and its TYPE says which, so a 'Public Road'
+      line is left out while its 'Trail' and 'Forest Road/Trail' lines stay, and another layer's
+      line whose own TYPE reads 'Public Road' is untouched.
+    given:
+      - input: ref('int_trail_lines__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              trail_segment_key,
+              name,
+              st_geomfromtext(geom_wkt) as geom,
+              cast(properties_text as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('dcr_roads_and_trails', 'massgis', 'dcr-1', 'Skyline Trail', 'LINESTRING (-71.1 42.2, -71.0 42.2)', '{"type": "Trail"}'),
+              ('dcr_roads_and_trails', 'massgis', 'dcr-2', 'Route 28', 'LINESTRING (-71.1 42.21, -71.0 42.21)', '{"type": "Public Road"}'),
+              ('dcr_roads_and_trails', 'massgis', 'dcr-3', null, 'LINESTRING (-71.1 42.22, -71.0 42.22)', '{"type": "Forest Road/Trail"}'),
+              ('other_layer', 'other', 'other-1', 'A road walk', 'LINESTRING (-72.1 42.2, -72.0 42.2)', '{"type": "Public Road"}')
+          ) as unioned (source_key, club, trail_segment_key, name, geom_wkt, properties_text)
+      - input: ref('layer_rules')
+        rows:
+          - {"source_key": "dcr_roads_and_trails", "rule": "drop_where", "field": "type", "matches": "Public Road", "evidence": "TYPE covers roads"}
+    expect:
+      rows:
+        - {"trail_segment_key": "dcr-1"}
+        - {"trail_segment_key": "dcr-3"}
+        - {"trail_segment_key": "other-1"}
+  - name: trail_lines_club_lines_force_every_line_to_two_dimensions
+    model: int_trail_lines__club_lines
+    description: >
+      Units and dimensions (pipeline/ELT.md, "What wave 1's live reads found"): a Z-enabled line
+      needs ST_Force2D before the network, so ATA's line, whose Z is in feet, comes out without its
+      heights and says it had them.
+    given:
+      - input: ref('int_trail_lines__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              trail_segment_key,
+              name,
+              st_geomfromtext(geom_wkt) as geom,
+              cast('{}' as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('ata_arizona_trail', 'ata', 'azt-1', 'Passage 1', 'LINESTRING Z (-110.6 31.33 5600, -110.61 31.34 5650.5)'),
+              ('shta_line_2025', 'shta', 'sht-1', 'Superior Hiking Trail', 'LINESTRING (-91.5 47.3, -91.4 47.4)')
+          ) as unioned (source_key, club, trail_segment_key, name, geom_wkt)
+      - input: ref('layer_rules')
+        rows:
+          - {"source_key": "none", "rule": "winter_trail", "field": null, "matches": null, "evidence": "none"}
+    expect:
+      rows:
+        - {"trail_segment_key": "azt-1", "geom_wkt": "LINESTRING (-110.6 31.33, -110.61 31.34)", "had_z": true}
+        - {"trail_segment_key": "sht-1", "geom_wkt": "LINESTRING (-91.5 47.3, -91.4 47.4)", "had_z": false}
+  - name: trail_lines_source_extents_are_read_from_vertices_never_a_server_extent
+    model: int_trail_lines__source_extents
+    description: >
+      A server's extent can lie (pipeline/ELT.md, "What wave 1's live reads found"): USFWS's trail
+      segments answered returnExtentOnly with lat -24.99 to 90, while their vertices span lat 13.64
+      to 63.20 and lon -159.48 to 144.87, Guam and Puerto Rico the outliers. The extent here is the
+      vertices', which fit us_and_territories and no narrower box.
+    given:
+      - input: ref('int_trail_lines__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              'usfws' as club,
+              trail_segment_key,
+              cast(null as varchar) as name,
+              st_geomfromtext(geom_wkt) as geom,
+              cast('{}' as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('usfws_trail_segments', 'guam', 'LINESTRING (144.87 13.64, 144.86 13.65)'),
+              ('usfws_trail_segments', 'alaska', 'LINESTRING (-159.48 60.0, -150.0 63.2)'),
+              ('usfws_trail_segments', 'puerto-rico', 'LINESTRING (-66.0 18.2, -65.9 18.3)')
+          ) as unioned (source_key, trail_segment_key, geom_wkt)
+    expect:
+      rows:
+        - {"source_key": "usfws_trail_segments", "row_count": 3, "rows_with_geometry": 3, "lon_min": -159.48, "lon_max": 144.87, "lat_min": 13.64, "lat_max": 63.2, "vertex_region": "us_and_territories"}

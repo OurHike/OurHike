@@ -16,7 +16,7 @@ from pathlib import Path
 
 import requests
 
-from lib.http_retry import DEFAULT_BACKOFF_SECONDS, request_with_retry
+from lib.http_retry import DEFAULT_BACKOFF_SECONDS, DEFAULT_RETRYABLE_STATUSES, request_with_retry
 
 PAGE_SIZE = 1000
 
@@ -31,13 +31,34 @@ PAGE_SIZE = 1000
 # sent by GET exactly as before, so no layer read today changes request.
 GET_URL_LIMIT = 2000
 
+# A PAGE ABOVE THIS MANY FEATURES THAT ANSWERS 5xx IS HALVED AT
+# ONCE, rather than retried at its size over the caller's whole backoff.
+# Measured 2026-10-03 on apps.fs.usda.gov's EDW_Wilderness_02/MapServer/0
+# (449 polygons): returnCountOnly answered 449 in 6.7 s, while a page of 1,000
+# answered "Error performing query operation" (500) in 19 s, 250 answered 500
+# in 8.7 s, and 100 answered 200 with 12,757,608 bytes in 7.2 s. Monthly run 10
+# (refresh-reference.yml 37156600376) spent the monthly lane's 18-minute
+# ladder retrying the page of 1,000 and failed the run. At or below the floor
+# the caller's backoff applies as before, so a server that is really down still
+# gets its full wait. 50 is @unvalidated: a layer whose features are larger
+# still would need a smaller floor, and the first one to fail at 50 says so.
+HALVE_FLOOR = 50
 
-def query_page(query_url: str, params: dict, *, session=None, backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS):
+
+def query_page(
+    query_url: str,
+    params: dict,
+    *,
+    session=None,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    retryable_statuses: tuple[int, ...] = DEFAULT_RETRYABLE_STATUSES,
+):
     """One page query: a GET, or a POST form when the GET's URL would pass GET_URL_LIMIT."""
     url = requests.Request("GET", query_url, params=params).prepare().url
-    if len(url) <= GET_URL_LIMIT:
-        return request_with_retry(query_url, session=session, params=params, timeout=60, backoff=backoff)
-    return request_with_retry(query_url, session=session, method="post", data=params, timeout=60, backoff=backoff)
+    method, fields = ("get", {"params": params}) if len(url) <= GET_URL_LIMIT else ("post", {"data": params})
+    return request_with_retry(
+        query_url, session=session, method=method, timeout=60, backoff=backoff, retryable_statuses=retryable_statuses, **fields
+    )
 
 
 def fetch_layer_geojson(
@@ -191,7 +212,20 @@ def iter_layer_pages(
             params["returnZ"] = "true"
         if geometry_precision is not None:
             params["geometryPrecision"] = geometry_precision
-        resp = query_page(query_url, params, session=session, backoff=backoff)
+        try:
+            # Above the floor a 5xx is not retried at this size (it is halved below); a timeout still is.
+            statuses = DEFAULT_RETRYABLE_STATUSES if records <= HALVE_FLOOR else (429,)
+            resp = query_page(query_url, params, session=session, backoff=backoff, retryable_statuses=statuses)
+        except requests.HTTPError as failure:
+            # A 5xx only: a timeout is a stalled server, as DEC's was on 2026-10-03, whose count
+            # query hung too, and it keeps the caller's whole backoff at the size asked.
+            status = failure.response.status_code if failure.response is not None else None
+            if records <= HALVE_FLOOR or status is None or status < 500:
+                raise
+            smaller = records // 2
+            print(f"  {query_url} answered {status} at a page of {records}; retrying at {smaller}")
+            records = smaller
+            continue
         refusal = page_refusal(resp)
         if refusal is not None:
             if records <= 1:

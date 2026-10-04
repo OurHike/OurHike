@@ -1,9 +1,7 @@
-"""Iditarod Historic Trail Alliance: places, published, and not landed (coverage audit 2026-10-01,
-batch c11_nht).
-
-Trail towns
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+"""Iditarod Historic Trail Alliance: places, published as community pages with no coordinate, and not landed
+(decision 54, wave 5, read 2026-10-04). About 17 community pages (Seward, Moose Pass, Girdwood ... Nome, the
+coverage audit 2026-10-01) describe each trail town in prose, with no fix, and a town is never looked up from
+its name. GNIS's populated places, which another folder loads, hold the same towns with fixes.
 """
 
 from datetime import date
@@ -11,16 +9,15 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 4),
     checked=(
-        "About 17 community pages in the sitemap (seward, moose-pass, girdwood, eagle-river, eklutna, knik, "
-        "skwentna, rainy-pass, takotna, iditarod, kaltag, galena, unalakleet, golovin, solomon, nome, "
-        "tolovana-roadhouse), HTML",
+        "iditarod100.org/robots.txt (/ajax/ and /apps/ disallowed), then /seward, read 2026-10-04 under "
+        "lib/user_agent.py's agent: 200, 84,894 bytes, no coordinate in the page.",
+        "the coverage audit (2026-10-01, batch c11_nht): about 17 community pages in the sitemap.",
     ),
     where=(
-        "https://gis.blm.gov/arcgis/rest/services",
-        "https://services2.arcgis.com/Ce3DhLRthdwbHlfF/arcgis/rest/services",
+        "https://iditarod100.org/seward",
         "https://iditarod100.org/",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="needs a per-site reader, not built in this pull request: trail towns described in prose, with no coordinate",
 )

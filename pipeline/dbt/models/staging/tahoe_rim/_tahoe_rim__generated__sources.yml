@@ -29,6 +29,17 @@ sources:
           Tahoe Rim Trail campgrounds (TRTA's own layer) (sources.json
           `tahoe_rim_campgrounds`). Key: the registry's `id_field`; its row records no
           measurement of it.
+      - name: raw_tahoe_rim__tahoe_rim_day_hikes
+        data_tests:
+          # Rows sharing base_tahoe_rim__tahoe_rim_day_hikes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'tahoe_rim_day_hikes'", "name"]
+        description: >
+          Tahoe Rim Trail Day Hike Itineraries (tahoerimtrail.org/day-hiking/)
+          (sources.json `tahoe_rim_day_hikes`). Key: `name`, the hike's h3 as its theme
+          page states it ('Lake Aloha Hike'): unique on all 15 rows across the four theme
+          pages read 2026-10-04. No hike has an id or a page of its own.
       - name: raw_tahoe_rim__tahoe_rim_points_of_interest
         data_tests:
           # Rows sharing base_tahoe_rim__tahoe_rim_points_of_interest's key must be exact copies (decision 40).

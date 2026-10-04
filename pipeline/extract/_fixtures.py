@@ -71,6 +71,11 @@ the HTTP session or the Postgres connection, is swapped:
   each a URL without its query, the query parameters it must carry, and the
   body, so a reader's paging, count and person-column rules run. NPS's key is
   set to a placeholder for the build, since no request leaves the process.
+  Section K's content pages (extract/_pages_content.py's ContentPages,
+  decision 54 wave 5) ride the same folder, each page an answer by its URL,
+  so a site parser runs over its fixture's markup. Its PDFs
+  (extract/_pdf_content.py) have no fixture, because fixture mode's Python
+  need not have pypdf.
 
 WHAT FIXTURE MODE DOES NOT EXERCISE for Postgres, so nobody reads a green
 dbt job as evidence of it: the query text itself. The rows are the queries'
@@ -102,7 +107,7 @@ import requests
 from requests.structures import CaseInsensitiveDict
 
 import export_conditions
-from extract import _content, _json_apis, _kinds, _notices
+from extract import _content, _json_apis, _kinds, _notices, _pages_content
 from extract._contract import all_resources, discover, discover_shared
 from extract._gis_files import GisFile
 from extract._kinds import (
@@ -166,6 +171,7 @@ JSON_API_KINDS = (
     _json_apis.SheetCsvSegments,
     _json_apis.MyMapsPlacemarks,
     _content.PodcastEpisodes,
+    _pages_content.ContentPages,
     GisFile,
     OgcFeatures,
     JsonFeatures,

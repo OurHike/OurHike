@@ -30,3 +30,14 @@ sources:
           (sources.json `foothills_gps_coordinates`). Key: `name`: unique on 17 of 17
           (measured 2026-10-04 on the live REST answer, parsed as extract/_pages_points.py
           parses it), and the geometry 17 of 17.
+      - name: raw_foothills__foothills_sections
+        data_tests:
+          # Rows sharing base_foothills__foothills_sections's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'foothills_sections'", "link"]
+        description: >
+          Foothills Trail section by section (foothillstrail.org) (sources.json
+          `foothills_sections`). Key: `link`, the section's own /portfolio/ page: unique
+          on all 19 rows read 2026-10-04, and the page a hiker reads. The names are unique
+          too, and a name is the more likely of the two to be reworded.

@@ -873,7 +873,10 @@ class TestTheRegistryTheConsoleReads:
         # Diablo (its podcast) and NMVFO (its Hike New Mexico pages), and waves 2 and 3's GIS files
         # (2026-10-04) registered 7: the Bartram Trail Conference, the Condor Trail Association, the
         # Hoosier Hikers Council, MDHTA, OCVT, the Potomac Heritage Trail Association and RMFI.
-        assert len(orgs) == 113
+        # 116 since decision 54's waves 4 and 5 content pages and PDFs (section K, 2026-10-04) registered
+        # the Mazamas (its Hike List View), the Randolph Mountain Club (its Recommended Hikes PDF) and the
+        # Keystone Trails Association (its Favorite Hikes in Pennsylvania).
+        assert len(orgs) == 116
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -915,11 +918,13 @@ class TestTheRegistryTheConsoleReads:
             "org:indnr",
             "org:iowadnr",
             "org:kingcountyparks",
+            "org:kta",
             "org:lakecountymn",
             "org:lsht",
             "org:madcr",
             "org:massgis",
             "org:matc",
+            "org:mazamas",
             "org:mdhta",
             "org:mcomd",
             "org:midpen",
@@ -960,6 +965,7 @@ class TestTheRegistryTheConsoleReads:
             "org:pnta",
             "org:portlandparks",
             "org:ridgetrail",
+            "org:rmc",
             "org:rmfi",
             "org:sbts",
             "org:sccparks",

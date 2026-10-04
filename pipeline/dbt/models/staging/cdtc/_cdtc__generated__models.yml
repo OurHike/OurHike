@@ -22,3 +22,12 @@ models:
       - name: poi_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_cdtc__suggested_hikes
+    description: >
+      The cdtc/ folder's suggested hikes layers (`cdtc_hike_suggestions`), one row per base
+      row, renamed to int_suggested_hikes__club_unioned's columns, with each layer's own
+      columns in `properties`.
+    columns:
+      - name: hike_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

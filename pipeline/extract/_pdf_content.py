@@ -1,0 +1,315 @@
+"""Decision 54 wave 4's PDF readers for the content types (section K): the suggested hikes and challenges a club
+publishes as PDFs, one parser per document family.
+
+pipeline/ELT.md, "Loading everything the clubs publish (decision 54)", wave 4, is the plan: "a parser per document
+family; a PDF that only a person can read stays a note". extract/_kinds.py's ClubPdf (GATC's water sources) is the
+pattern, and lib/club_pdfs.py's rule is this module's: a parser reads the layout it was written for and REFUSES
+RATHER THAN RELABELS when the layout changes (PdfLayoutChanged), so a redrawn document never lands its columns under
+the wrong names. A scanned PDF has no text layer and parses to nothing, which refuses too.
+
+    content_pdf(key)          a club's PDF, or the PDFs its index page links, one row per item its family's
+                              parser (PDF_FAMILIES) reads
+
+WHAT A ROW CARRIES is extract/_pages_content.py's rule, the same allowlist (its TYPE_COLUMNS, the family's own
+`columns`, and DOCUMENT_COLUMNS): facts and the link, never the document's prose (decision 55), and a text value
+longer than its MAX_FACT_CHARS raises. Each row also carries its document's manifest (DOCUMENT_COLUMNS: the URL, the
+validators, the sha256, the byte count and the date the PDF's own metadata states), so the date a club put on its
+file is in the warehouse. A PDF's metadata names a person more often than not (RMC's /Author is a member's name,
+2026-10-04), so no metadata field lands but the ModDate and CreationDate days.
+
+THE CHANGE CHECK IS PER FILE, as the round brief asks: a conditional GET with the file's own validators, a 304
+FRESH; on a 200 the marker is the file's ETag, else its Last-Modified with its Content-Length, and a host that sends
+neither answers UNKNOWN, so the file is read every run. A family read through an index page (a club's page linking
+one PDF a hike) checks every file the index links, and the index's own link set is part of the marker, so a PDF
+added or dropped is STALE. A static file's validators are the file's (decision 53's inventory measured strong ETags
+on four clubs' PDFs; extract/_notices.py's PageNotice docstring), unlike an HTML page's, which is why a validator
+decides FRESH here and not in the page readers. That they move only with the file is @unvalidated for each host;
+what would settle it is a 304 followed, on the next 200, by an unchanged sha256.
+
+ONE READ A RUN AND POLITE, as extract/_notices.py's sources are: the check's answers are kept for the read, every
+request passes polite() at the host's Crawl-delay or DEFAULT_HOST_GAP_SECONDS, and a wall, a challenge or a redirect
+to another host raises. The text comes from extract/_notices.py's read_pdf, which needs pypdf: requirements-extract.in
+pins it, and the pipeline suite and scripts/test.sh's fixture build do not, so these resources have no fixture-mode
+fixture (as the notice PDFs have none, tests/test_extract_fixtures.py's NOTICE_PDFS): their tables land only where
+pypdf is installed, the monthly extract job's venv. make_dbt_staging.py stages them all the same, and their base
+models read no rows in the fixture build (dbt/macros/raw_or_empty.sql); tests/test_extract_pdf_content.py runs
+each family over an invented text layer, which needs no pypdf. The lane is the type's, monthly.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from urllib.parse import urlparse
+
+import requests
+
+from extract._notices import NoticeUnreadable, PdfFacts, _canonical, _forget, _NoticeSource, _recall, _remember, read_pdf
+from extract._pages_content import TYPE_COLUMNS, LayoutChanged, Page, checked_row, fact, guarded_get, parse_html
+from lib.freshness_state import Freshness, compare_marker
+
+
+class PdfLayoutChanged(LayoutChanged):
+    """A PDF that no longer reads as the layout its family's parser was written for: refused, never relabelled."""
+
+
+#: The document's own manifest, on every row a PDF yields (the module docstring).
+DOCUMENT_COLUMNS = {
+    "document_url": "text",
+    "document_etag": "text",
+    "document_last_modified": "text",
+    "document_bytes": "bigint",
+    "document_sha256": "text",
+    "document_modified": "text",
+    "document_created": "text",
+}
+
+
+@dataclass(frozen=True)
+class PdfFamily:
+    """One document family: how its text becomes rows, the columns it adds, and, for a family behind an index page,
+    how the index names its PDFs.
+
+    `read(facts, url)` takes the PDF's text layer and metadata dates (extract/_notices.py's PdfFacts) and returns
+    the rows; it raises PdfLayoutChanged on a layout it was not written for. `documents(page)`, when set, takes the
+    registry row's page and returns the PDFs it links, in order; without it the registry row's url is the PDF.
+    """
+
+    read: Callable[[PdfFacts, str], list[dict]]
+    columns: dict[str, str] = field(default_factory=dict)
+    documents: Callable[[Page], list[str]] | None = None
+
+
+@dataclass(frozen=True)
+class ContentPdf(_NoticeSource):
+    """A club's PDF, or the PDFs its index page links, one row per item its family in PDF_FAMILIES reads."""
+
+    family: str = ""
+
+    @property
+    def parser(self) -> PdfFamily:
+        return PDF_FAMILIES[self.family or self.key]
+
+    @property
+    def timeout(self) -> int:
+        """ClubPdf's 120 s: a PDF can be megabytes."""
+        return 120
+
+    @property
+    def columns(self) -> dict[str, str]:
+        if self.type not in TYPE_COLUMNS:
+            raise ValueError(f"{self.key}: a content PDF reader feeds {sorted(TYPE_COLUMNS)}, not {self.type}")
+        return {**TYPE_COLUMNS[self.type], **self.parser.columns, **DOCUMENT_COLUMNS}
+
+    def column_hints(self) -> dict:
+        return {name: {"data_type": kind} for name, kind in self.columns.items()}
+
+    def _urls(self) -> list[str]:
+        """The PDFs this resource reads: the registry row's url, or the ones its index page links, on its own host."""
+        if self.parser.documents is None:
+            return [self.url]
+        response = guarded_get(self, self.url)
+        urls = self.parser.documents(Page(self.url, parse_html(response.text), response.text))
+        if not urls:
+            raise PdfLayoutChanged(f"{self.key}: the index links no PDF, which is a changed shape")
+        for url in urls:
+            if urlparse(url).hostname != urlparse(self.url).hostname:
+                raise PdfLayoutChanged(f"{self.key}: the index links {url}, off its own host, which is not read")
+        return urls
+
+    @staticmethod
+    def _validator(response: requests.Response) -> dict | None:
+        """The file's own validator: its ETag, else its Last-Modified with its Content-Length, else None."""
+        etag = response.headers.get("ETag")
+        if etag:
+            return {"etag": etag}
+        modified, length = response.headers.get("Last-Modified"), response.headers.get("Content-Length")
+        if modified and length:
+            return {"last_modified": modified, "content_length": length}
+        return None
+
+    @staticmethod
+    def _conditional(recorded: dict | None) -> dict | None:
+        if not recorded:
+            return None
+        if recorded.get("etag"):
+            return {"If-None-Match": recorded["etag"]}
+        if recorded.get("last_modified"):
+            return {"If-Modified-Since": recorded["last_modified"]}
+        return None
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """Every file's own validator, by a conditional GET each; UNKNOWN where any file sends none (module docstring)."""
+        _forget(self.table)
+        files = (recorded or {}).get("files") or {}
+        bodies: dict[str, requests.Response] = {}
+        marker: dict[str, dict] = {}
+        try:
+            urls = self._urls()
+            for url in urls:
+                response = guarded_get(self, url, self._conditional(files.get(url)))
+                if response.status_code == 304:
+                    marker[url] = files[url]
+                    continue
+                validator = self._validator(response)
+                bodies[url] = response
+                if validator is None:
+                    _remember(self.table, bodies)
+                    return Freshness.UNKNOWN, None
+                marker[url] = validator
+        except (requests.RequestException, NoticeUnreadable, ValueError) as error:
+            print(f"  {self.key}: change check failed ({error}); fetching")
+            return Freshness.UNKNOWN, None
+        _remember(self.table, bodies)
+        stamped = {"files": marker}
+        if recorded is None:
+            return Freshness.STALE, stamped
+        return compare_marker(_canonical(recorded), _canonical(stamped)), stamped
+
+    @property
+    def exact_proof(self) -> bool:
+        return True
+
+    def rows(self, proofs: dict[str, int]):
+        kept = _recall(self.table)
+        bodies = kept if isinstance(kept, dict) else {}
+        rows = []
+        for url in self._urls():
+            response = bodies.get(url) or guarded_get(self, url)
+            if response.status_code != 200:
+                response = guarded_get(self, url)
+            facts = read_pdf(response.content)
+            if not any(text.strip() for text in facts.texts):
+                raise PdfLayoutChanged(f"{self.key}: {url} has no text layer, so only a person can read it")
+            found = self.parser.read(facts, url)
+            if not found:
+                raise PdfLayoutChanged(f"{self.key}: {url} reads as no item, which is a changed layout")
+            document = {
+                "document_url": url,
+                "document_etag": response.headers.get("ETag"),
+                "document_last_modified": response.headers.get("Last-Modified"),
+                "document_bytes": len(response.content),
+                "document_sha256": hashlib.sha256(response.content).hexdigest(),
+                "document_modified": facts.modified[1] if facts.modified else None,
+                "document_created": facts.created[1] if facts.created else None,
+            }
+            rows.extend(checked_row(self.key, self.type, self.columns, {**row, **document}) for row in found)
+        proofs[self.table] = len(rows)
+        yield from rows
+
+
+def content_pdf(key: str, *, family: str | None = None, crawl_delay: float = 0.0, **overrides) -> ContentPdf:
+    """A ContentPdf for a registry key; `crawl_delay` is the host's robots.txt Crawl-delay, as its live read found."""
+    resource = ContentPdf(key=key, family=family or key, crawl_delay=crawl_delay, **overrides)
+    if resource.family not in PDF_FAMILIES:
+        raise KeyError(f"{key}: extract/_pdf_content.py's PDF_FAMILIES has no family {resource.family!r}")
+    resource.url  # an unregistered key fails at import, in the layout test
+    return resource
+
+
+# --- The families ---------------------------------------------------------------------------------------------------
+
+
+def lines(facts: PdfFacts) -> list[str]:
+    """The text layer's lines in page order, each whitespace folded, empty ones left out."""
+    return [folded for text in facts.texts for line in text.splitlines() if (folded := " ".join(line.split()))]
+
+
+_RMC_STATS = re.compile(
+    r"(?P<miles>\d+(?:\.\d+)?) mi(?: (?P<shape>round trip|loop|one way))?, (?P<feet>\d[\d,]*)(?:-ft| ft)"
+    r"(?: (?:ascent|elevation gain))?(?P<rest>.*)"
+)
+_RMC_TIME = re.compile(r"(\d+ hr(?: \d+ min)?|\d+ min)")
+#: The headings RMC's 'Suggested Walks' uses for its groups: three of walks, then one per Northern Peak.
+RMC_WALK_GROUPS = ("EASY WALKS", "MODERATE WALKS", "STRENUOUS WALKS")
+RMC_PEAK_GROUPS = ("MT MADISON", "MT ADAMS", "MT JEFFERSON")
+
+
+def _rmc_name(found: list[str], index: int) -> str:
+    """The name above the statistics line at `index`: its line, and the one or two before it when the name wraps.
+
+    A peak route's name is a list of trails that can run onto a second line ('Castle Trail, Israel Ridge Path,
+    Castle Ravine Trail, Randolph Path, Gulfside' / 'Trail, Mt Jefferson Loop'). The line before a name ends the
+    previous walk's description, a sentence ending '.', ')', ':' or '!', or is a heading, a statistics line or a
+    Trailhead line; any other line above the name is the name's own first part.
+    """
+    parts = [found[index - 1]]
+    for above in (index - 2, index - 3):
+        if above < 0:
+            break
+        line = found[above]
+        if (
+            line.endswith((".", ")", ":", "!"))
+            or line in RMC_WALK_GROUPS
+            or line in RMC_PEAK_GROUPS
+            or line.startswith(("Trailhead:", "Suggested Routes"))
+            or _RMC_STATS.fullmatch(line)
+        ):
+            break
+        parts.insert(0, line)
+    return " ".join(parts)
+
+
+def _rmc_recommended_hikes(facts: PdfFacts, url: str) -> list[dict]:
+    """The Randolph Mountain Club's 'Suggested Walks' and 'Suggested Routes to the Northern Peaks' (Recommended-Hikes-1.pdf).
+
+    Eight pages, read 2026-10-04 (Last-Modified 2023-02-20, 104,747 bytes, no ETag). Each walk is a name line, a
+    statistics line ('0.5 mi round trip, 100-ft ascent, 30 min'; on the peak routes '4.3 mi, 4100-ft ascent, 4 hr
+    10 min', or '0.9 mi, 1000 ft, 55 min' for a route from a hut) and, for most, 'Trailhead: <place>', under a group
+    heading: EASY, MODERATE and STRENUOUS WALKS, then MT MADISON, MT ADAMS and MT JEFFERSON, whose distances the
+    document says "are one-way to the summit". The paragraph after each is RMC's description and lands nowhere.
+    The time is the document's own estimate and lands as its text (`time_text`), never a pace this module made. A
+    peak route's name can wrap onto a second line (_rmc_name).
+
+    A statistics line before any group heading, a group missing, or no walk read raises PdfLayoutChanged.
+    """
+    found = lines(facts)
+    rows, group, peaks_section = [], None, False
+    for index, line in enumerate(found):
+        if line in RMC_WALK_GROUPS or line in RMC_PEAK_GROUPS:
+            group = line.title()
+            continue
+        if line.startswith("Suggested Routes to the Northern Peaks"):
+            peaks_section, group = True, None
+            continue
+        stats = _RMC_STATS.fullmatch(line)
+        if not stats:
+            continue
+        if group is None or index == 0:
+            raise PdfLayoutChanged(f"rmc: a statistics line {line!r} sits under no group heading")
+        name = _rmc_name(found, index)
+        trailhead = None
+        for after in found[index + 1 : index + 3]:
+            if after.startswith("Trailhead:"):
+                trailhead = fact(after.removeprefix("Trailhead:"))
+                break
+        time = _RMC_TIME.search(stats["rest"])
+        shape = stats["shape"] or ("one way" if peaks_section else None)
+        rows.append(
+            {
+                "name": fact(name),
+                "section": group,
+                "distance_mi": float(stats["miles"]),
+                "distance_text": f"{stats['miles']} mi" + (f" {stats['shape']}" if stats["shape"] else ""),
+                "elevation_gain_ft": float(stats["feet"].replace(",", "")),
+                "elevation_gain_text": f"{stats['feet']} ft",
+                "route_type": shape,
+                "place": trailhead,
+                "time_text": time.group(1) if time else None,
+                "link": url,
+                "source_url": url,
+            }
+        )
+    groups = {row["section"] for row in rows}
+    expected = {name.title() for name in (*RMC_WALK_GROUPS, *RMC_PEAK_GROUPS)}
+    if groups != expected:
+        raise PdfLayoutChanged(f"rmc: the walks fall under {sorted(groups)}, not {sorted(expected)}")
+    return rows
+
+
+#: Every document family's parser, by the registry key (or the `family`) its resource names.
+PDF_FAMILIES: dict[str, PdfFamily] = {
+    "rmc_recommended_hikes": PdfFamily(_rmc_recommended_hikes, columns={"time_text": "text"}),
+}

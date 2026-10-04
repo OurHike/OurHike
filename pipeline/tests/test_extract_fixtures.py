@@ -246,7 +246,11 @@ def test_the_json_api_notice_sources_land_from_their_answers_with_no_nps_key_in_
     resources, _ = fixture_resources(root / "raw")
     # extract/_gis_files.py's and extract/_ogc.py's kinds ride the same answers folder; GIS_AND_GEO_API_ROWS holds them.
     # Section C's content readers (extract/_content.py) are JSON_API_ROWS' too.
-    landed = {r.table for r in resources if isinstance(r, JSON_API_KINDS) and type(r).__module__ not in GIS_AND_GEO_MODULES}
+    landed = {
+        r.table
+        for r in resources
+        if isinstance(r, JSON_API_KINDS) and type(r).__module__ not in GIS_AND_GEO_MODULES | SECTION_K_MODULES
+    }
     assert landed == set(JSON_API_ROWS)
     assert all((root / "raw" / "conditions" / JSON_API_DIR / f"{r.key}.json").exists() for r in resources if r.table in landed)
     assert {table: counts[table] for table in JSON_API_ROWS} == JSON_API_ROWS
@@ -351,6 +355,28 @@ def test_every_club_page_read_for_its_points_lands_the_rows_its_own_parser_makes
     with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
         unplaced = con.execute("select count(*) from raw.raw_ouachita__foot_trail_shelters where geometry is null").fetchone()[0]
     assert unplaced == 1
+
+
+# Decision 54's waves 4 and 5, the content types' pages (section K, 2026-10-04): each ContentPages resource lands the
+# rows its site parser reads from make_dbt_fixtures.py's invented markup (K_PAGES_ROWS), and nothing outside its
+# type's columns. Its PDFs (extract/_pdf_content.py) have no fixture: fixture mode's Python need not have pypdf.
+#: The module section K's page reader lives in, which is what separates its tables from JSON_API_ROWS'.
+SECTION_K_MODULES = frozenset({"extract._pages_content"})
+
+
+def test_every_content_page_lands_the_rows_its_site_parser_reads_and_only_its_types_columns(fixtures):
+    from extract._pages_content import ContentPages
+
+    root, counts = fixtures
+    resources, _ = fixture_resources(root / "raw")
+    pages = {r.key: r for r in resources if isinstance(r, ContentPages)}
+    registered = {r.key for r in all_resources(discover()) if isinstance(r, ContentPages)}
+    assert set(pages) == registered == set(make_dbt_fixtures.K_PAGES_ROWS), "every page reader has its fixture"
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        for key, resource in pages.items():
+            assert counts[resource.table] == make_dbt_fixtures.K_PAGES_ROWS[key], resource.table
+            landed = {row[0] for row in con.execute(f"describe raw.{resource.table}").fetchall()}
+            assert landed - {"_loaded_at", "_dlt_load_id", "_dlt_id"} == set(resource.columns), resource.table
 
 
 def test_a_notice_feed_lands_no_creator_and_no_prose_and_a_page_lands_its_own_title_and_date(fixtures):

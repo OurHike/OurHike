@@ -47,6 +47,52 @@ models:
           cdtc_gateway_communities, globalid, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_cdtc__cdtc_hike_suggestions
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('cdtc', 'raw_cdtc__cdtc_hike_suggestions')
+          config:
+            severity: warn
+    description: >
+      CDTC hike suggestions (the `hike_suggestion` post type, cdtcoalition.org), every row,
+      keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_suggested_hikes__club_unioned reads it through
+      stg_cdtc__suggested_hikes.
+    columns:
+      - name: hike_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          cdtc_hike_suggestions, id, the registry key first and then the fields measured
+          unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cdtc__cdtc_hike_suggestions_terms
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('cdtc', 'raw_cdtc__cdtc_hike_suggestions_terms')
+          config:
+            severity: warn
+    description: >
+      CDTC hike suggestions (the `hike_suggestion` post type, cdtcoalition.org): its taxonomy
+      terms, every row, keyed and deduped (decision 40), the layer's own columns under dlt's
+      names. Its sources.json row reads `reaches_hikers: false`, so int_sources__publication
+      holds it back from every mart. A lookup beside stg_cdtc__suggested_hikes's rows, which
+      carry its ids; no union reads it.
+    columns:
+      - name: term_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          cdtc_hike_suggestions, taxonomy, id, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_cdtc__cdtc_parking
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

@@ -40,6 +40,29 @@ sources:
         description: >
           CDT Gateway Communities 2026 (sources.json `cdtc_gateway_communities`). Key:
           `GlobalID` is unique and non-null on all 27 rows read 2026-10-03.
+      - name: raw_cdtc__cdtc_hike_suggestions
+        data_tests:
+          # Rows sharing base_cdtc__cdtc_hike_suggestions's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'cdtc_hike_suggestions'", "id"]
+        description: >
+          CDTC hike suggestions (the `hike_suggestion` post type, cdtcoalition.org)
+          (sources.json `cdtc_hike_suggestions`). Key: `id`, the WordPress post id: unique
+          on all 60 rows read 2026-10-04, with X-WP-Total 60 in the same answer. The
+          site's own primary key, never minted again by a reload (decision 40).
+      - name: raw_cdtc__cdtc_hike_suggestions_terms
+        data_tests:
+          # Rows sharing base_cdtc__cdtc_hike_suggestions_terms's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'cdtc_hike_suggestions'", "taxonomy", "id"]
+        description: >
+          CDTC hike suggestions (the `hike_suggestion` post type, cdtcoalition.org): its
+          taxonomy terms (sources.json `cdtc_hike_suggestions`). Key: a term's `taxonomy`
+          and its `id`: WordPress numbers terms within one site, and the reader lands each
+          taxonomy's terms with its name (extract/_content.py's SiteTerms), so the pair is
+          one term.
       - name: raw_cdtc__cdtc_parking
         data_tests:
           # Rows sharing base_cdtc__cdtc_parking's key must be exact copies (decision 40).

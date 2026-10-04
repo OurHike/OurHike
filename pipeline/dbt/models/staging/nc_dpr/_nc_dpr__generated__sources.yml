@@ -19,6 +19,18 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_nc_dpr__nc_parks_trails
+        data_tests:
+          # Rows sharing base_nc_dpr__nc_parks_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nc_parks_trails'", "link", "name"]
+        description: >
+          NC State Parks trail tables (ncparks.gov/state-parks/<park>/trails)
+          (sources.json `nc_parks_trails`). Key: The park's trails page and the trail's
+          name (`link`, `name`): unique on all 407 rows read 2026-10-04. The name alone is
+          not ('Lake Trail', 'Laurel Trail', 'Summit Trail' and others name trails in two
+          parks), and the tables carry no id.
       - name: raw_nc_dpr__nc_state_park_boundaries
         data_tests:
           # Rows sharing base_nc_dpr__nc_state_park_boundaries's key must be exact copies (decision 40).

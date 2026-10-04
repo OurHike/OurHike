@@ -118,9 +118,8 @@ models:
             severity: warn
     description: >
       AMC Properties and Landscapes, every row, keyed and deduped (decision 40), the layer's
-      own columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
-      int_sources__publication holds it back from every mart. int_places__unioned reads it
-      through stg_amc__places.
+      own columns under dlt's names. Whether it may publish is int_sources__publication's to
+      decide, from its sources.json row. int_places__unioned reads it through stg_amc__places.
     columns:
       - name: place_key
         description: >

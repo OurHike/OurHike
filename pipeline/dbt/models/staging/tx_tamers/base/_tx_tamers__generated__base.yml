@@ -14,9 +14,9 @@ models:
             severity: warn
     description: >
       Texas State Parks trails (TPWD), every row, keyed and deduped (decision 40), the layer's
-      own columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
-      int_sources__publication holds it back from every mart. int_trail_lines__unioned reads
-      it through stg_tx_tamers__trail_lines.
+      own columns under dlt's names. Whether it may publish is int_sources__publication's to
+      decide, from its sources.json row. int_trail_lines__unioned reads it through
+      stg_tx_tamers__trail_lines.
     columns:
       - name: trail_segment_key
         description: >

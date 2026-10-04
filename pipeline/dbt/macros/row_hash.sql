@@ -53,9 +53,18 @@
     OGC_FID (GDAL), `_dlt_id` (dlt, at random on every load) and
     `_socrata_id` (Socrata's `:id`, which extract/_kinds.py's
     SocrataDataset lands; duplicates_are_exact's header says how its absence
-    failed the monthly lane's first live build). -#}
+    failed the monthly lane's first live build).
+
+    OBJECTID_1, OBJECTID_12, OID and ESRI_OID are ArcGIS's names for the
+    same id on a layer published from a join, as make_dbt_staging.py's
+    ROW_IDS already reads them, and tests/test_dbt_keys.py holds every
+    ROW_IDS name here. They were missing until monthly run 17
+    (refresh-reference.yml 37232256991) failed
+    pasda_explore_pa_trail_access's test on two pairs of rows that differ in
+    OBJECTID and OBJECTID_1 and in nothing else (read live 2026-10-04: 3,030
+    rows, 3,028 keys). -#}
 {% macro row_hash_row_ids() -%}
-    {{ return(['objectid', 'fid', 'ogc_fid', '_dlt_id', '_socrata_id']) }}
+    {{ return(['objectid', 'objectid_1', 'objectid_12', 'oid', 'esri_oid', 'fid', 'ogc_fid', '_dlt_id', '_socrata_id']) }}
 {%- endmacro %}
 
 {#- The columns a load writes on every row whatever the row says: dlt's

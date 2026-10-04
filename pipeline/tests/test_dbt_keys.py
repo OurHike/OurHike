@@ -328,6 +328,26 @@ def test_the_socrata_models_are_the_seven_nyc_base_models():
     }
 
 
+def _default_row_ids() -> list[str]:
+    default = re.search(r"macro row_hash_row_ids\(\).*?return\((\[.*?\])\)", ROW_HASH_MACROS.read_text(), re.S)
+    assert default, f"{ROW_HASH_MACROS.name}: no row_hash_row_ids() list to read"
+    return ast.literal_eval(default.group(1))
+
+
+def test_every_server_row_id_the_generator_keeps_out_of_a_key_is_one_duplicates_are_exact_sets_aside():
+    """Monthly run 17 (refresh-reference.yml 37232256991) failed pasda_explore_pa_trail_access on copies differing in OBJECTID_1.
+
+    make_dbt_staging.py's ROW_IDS read OBJECTID_1 as a server row id, so no key held it, while
+    row_hash_row_ids() did not, so two copies of one point differed. `feature_index` is a file's
+    own, and FILE_ROW_IDS, which a file's or an OGC collection's test passes instead, holds both.
+    """
+    import make_dbt_staging
+
+    default = set(_default_row_ids())
+    assert make_dbt_staging.ROW_IDS - {"feature_index"} <= default
+    assert default <= set(make_dbt_staging.FILE_ROW_IDS)
+
+
 @pytest.mark.parametrize("path", SOCRATA_MODELS, ids=lambda p: p.stem)
 def test_each_socrata_tables_duplicates_are_exact_skips_socrata_id_as_a_row_id(path):
     """Socrata mints `:id` per row, so two copies of one record always differ in it.
@@ -340,9 +360,7 @@ def test_each_socrata_tables_duplicates_are_exact_skips_socrata_id_as_a_row_id(p
     (test,) = [t["duplicates_are_exact"] for t in source_tests()[source] if isinstance(t, dict) and "duplicates_are_exact" in t]
     row_ids = test["arguments"].get("row_id_columns")
     if row_ids is None:
-        default = re.search(r"macro row_hash_row_ids\(\).*?return\((\[.*?\])\)", ROW_HASH_MACROS.read_text(), re.S)
-        assert default, f"{ROW_HASH_MACROS.name}: no row_hash_row_ids() list to read"
-        row_ids = ast.literal_eval(default.group(1))
+        row_ids = _default_row_ids()
     assert "_socrata_id" in row_ids, f"{source[1]}'s duplicates_are_exact compares `_socrata_id`, so every copy fails it"
 
 

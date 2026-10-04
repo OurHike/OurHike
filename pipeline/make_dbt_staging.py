@@ -116,7 +116,19 @@ ROW_IDS = frozenset({"objectid", "objectid_1", "objectid_12", "fid", "oid", "esr
 #: row_hash_row_ids(): two copies of one feature differ in their position in the file (`feature_index`) and in
 #: the id an exporter mints per feature (`feature_id`: Catamount's GeoJSON repeats a line under ids 52 and 53,
 #: measured 2026-10-04), and in nothing else.
-FILE_ROW_IDS = ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+FILE_ROW_IDS = [
+    "objectid",
+    "objectid_1",
+    "objectid_12",
+    "oid",
+    "esri_oid",
+    "fid",
+    "ogc_fid",
+    "_dlt_id",
+    "_socrata_id",
+    "feature_index",
+    "feature_id",
+]
 FILE_KINDS = frozenset({"gis_file", "ogc_features"})
 
 #: The region every generated source's rows are held to. The widest of the three boxes

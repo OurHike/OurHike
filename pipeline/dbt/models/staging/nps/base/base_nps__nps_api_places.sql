@@ -5,10 +5,15 @@
 -- (decision 40), with nothing filtered and nothing joined. A base model,
 -- the one place this dataset is staged (decision 34).
 --
--- Key: `id`, the API's own UUID for the item. @unvalidated as unique on the
--- live list: no real key has read the whole list (the demo key allows 10
--- requests an hour); the first monthly read with NPS_API_KEY settles it,
--- and duplicates_are_exact fails loudly if it is not.
+-- Key: `id`, the API's own UUID for the item. Not unique on the first keyed
+-- read: monthly run 17 (refresh-reference.yml 37232256991, 2026-10-04)
+-- landed one `id` on two rows that differ, of 17,505 items the API counted,
+-- and duplicates_are_exact failed the build. What differed was not kept,
+-- and the demo key (10 requests an hour) cannot read the list again.
+-- extract/_ogc.py's JsonFeatures now reads a paged list once more when it
+-- holds fewer distinct keys than the API counts, and refuses copies that
+-- still differ, naming the fields, so the next monthly read says whether
+-- the list moved during the read (Reasoned) or the API lists one id twice.
 with source as (
     -- dlt lands geometry as GeoJSON text and an ArcGIS date as epoch
     -- milliseconds (extract/_kinds.py's ESRI_TYPES); both are cast here, as

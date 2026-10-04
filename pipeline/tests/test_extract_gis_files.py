@@ -102,6 +102,7 @@ def registry(tmp_path, monkeypatch):
             "lon_field": "longitude",
             "api_key_env": "FIXTURE_TEST_API_KEY",
             "person_fields": ["images"],
+            "key_fields": ["id"],
         },
         {
             "key": "venues",
@@ -580,6 +581,51 @@ def test_a_start_limit_api_steps_by_the_rows_each_page_returned_and_sends_its_ke
         request.headers["X-Api-Key"] == "fixture-key" and "fixture-key" not in request.url
         for request in requests_mock.request_history
     )
+
+
+def test_a_paged_list_that_moves_during_the_read_is_read_again_and_the_consistent_read_lands(
+    registry, requests_mock, monkeypatch, capsys
+):
+    """Monthly run 17 (refresh-reference.yml 37232256991): nps_api_places landed one `id` on two rows that differ."""
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+    pages = {"asked": 0}
+
+    def page(request, context):
+        pages["asked"] += 1
+        start, first_read = int(request.qs["start"][0]), pages["asked"] <= 3
+        if first_read and start == 1:
+            item = {"id": "id-0", "title": "edited"}  # id-0 edited and moved up a place mid-read; id-1 never sent
+        elif first_read and start == 0:
+            item = {"id": "id-0", "title": "before the edit"}
+        else:
+            item = {"id": f"id-{start}", "title": "edited"}
+        return {"total": "3", "data": [{**item, "latitude": "41", "longitude": "-74"}]}
+
+    requests_mock.get(NPS_URL, json=page)
+
+    proofs = {}
+    rows = list(JsonFeatures(key="nps_places", club="testclub", type="places").rows(proofs))
+
+    assert [row["id"] for row in rows] == ["id-0", "id-1", "id-2"]
+    assert proofs == {"raw_testclub__nps_places": 3}
+    assert "read an item twice::2 distinct of 3 items, the API counts 3; reading the list again, once" in capsys.readouterr().out
+
+
+def test_a_paged_list_whose_copies_differ_on_two_reads_is_refused_with_the_fields_that_differ(
+    registry, requests_mock, monkeypatch
+):
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+
+    def page(request, context):
+        start = int(request.qs["start"][0])
+        item = {"id": "id-0" if start < 2 else "id-2", "title": f"t{start}", "credit": "Fixture Person", "latitude": "41"}
+        return {"total": "3", "data": [{**item, "longitude": "-74"}]}
+
+    requests_mock.get(NPS_URL, json=page)
+
+    with pytest.raises(RuntimeError, match=r"nps_places: 1 id value\(s\) on items that differ \(first: id-0, in title\)"):
+        list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
+    assert len(requests_mock.request_history) == 6, "read twice, three pages each"
 
 
 def test_a_next_url_api_follows_the_url_each_page_names_until_none(registry, requests_mock):

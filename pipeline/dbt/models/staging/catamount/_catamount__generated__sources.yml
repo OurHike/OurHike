@@ -25,7 +25,7 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'catamount_access_points'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+                row_id_columns: ["objectid", "objectid_1", "objectid_12", "oid", "esri_oid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
         description: >
           Catamount Trail access points (the association's web map CSV) (sources.json
           `catamount_access_points`). Key: The geometry alone: unique on 80 of 80
@@ -36,7 +36,7 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'catamount_backcountry_zones'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+                row_id_columns: ["objectid", "objectid_1", "objectid_12", "oid", "esri_oid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
         description: >
           Catamount Trail backcountry ski zones (web map CSV) (sources.json
           `catamount_backcountry_zones`). Key: The geometry alone: unique on 6 of 6
@@ -47,7 +47,7 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'catamount_businesses'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+                row_id_columns: ["objectid", "objectid_1", "objectid_12", "oid", "esri_oid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
         description: >
           Businesses near the Catamount Trail: lodging, food, Nordic and alpine centres
           (web map CSV) (sources.json `catamount_businesses`). Key: The geometry alone:
@@ -58,7 +58,7 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'catamount_full_route'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+                row_id_columns: ["objectid", "objectid_1", "objectid_12", "oid", "esri_oid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
         description: >
           Catamount Trail full route, December 2022 (the association's GPX download)
           (sources.json `catamount_full_route`). Key: The geometry alone: unique on 6 of 6
@@ -69,7 +69,7 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'catamount_main_trail'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+                row_id_columns: ["objectid", "objectid_1", "objectid_12", "oid", "esri_oid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
         description: >
           Catamount Trail main route, by surface (the association's web map GeoJSON)
           (sources.json `catamount_main_trail`). Key: The geometry alone: unique on 789 of
@@ -83,7 +83,7 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'catamount_sections'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+                row_id_columns: ["objectid", "objectid_1", "objectid_12", "oid", "esri_oid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
         description: >
           Catamount Trail sections (the association's web map GeoJSON, polygons)
           (sources.json `catamount_sections`). Key: The geometry alone: unique on 31 of 31
@@ -94,7 +94,7 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'catamount_side_trails'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+                row_id_columns: ["objectid", "objectid_1", "objectid_12", "oid", "esri_oid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
         description: >
           Catamount Trail side trails, by surface (the association's web map GeoJSON)
           (sources.json `catamount_side_trails`). Key: The geometry alone: unique on 324

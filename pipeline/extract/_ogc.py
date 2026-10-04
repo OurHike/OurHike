@@ -333,9 +333,71 @@ class JsonFeatures(_Paged):
             return Freshness.STALE, marker
         return compare_marker(json.dumps(recorded, sort_keys=True), json.dumps(marker, sort_keys=True)), marker
 
+    def _copies(self, items: list) -> tuple[int, dict[str, list[str]]]:
+        """How many distinct values of the row's one-field key the items hold, and {value: the fields its copies differ in}.
+
+        Only values whose copies differ are named; exact copies are the staging
+        dedupe's (decision 40). A row whose key is not one item field, or is
+        the geometry, answers (len(items), {}).
+        """
+        fields = self.entry.get("key_fields") or []
+        if len(fields) != 1 or fields[0] == "geometry":
+            return len(items), {}
+        groups: dict[str, list] = {}
+        for item in items:
+            value = _path(item, fields[0])
+            if value is not None:
+                groups.setdefault(str(value), []).append(item)
+        differing = {}
+        for value, group in groups.items():
+            if len(group) > 1:
+                names = sorted(
+                    {
+                        name
+                        for one in group
+                        for name in one
+                        if len({json.dumps(other.get(name), sort_keys=True) for other in group}) > 1
+                    }
+                )
+                if names:
+                    differing[value] = names
+        return len(groups), differing
+
+    def _consistent_read(self) -> tuple[list, int | None]:
+        """read(), and once more where a paged read holds fewer distinct keys than the API counts; RuntimeError on differing copies.
+
+        Paging by offset over a list that changes during the read can hand back
+        one item twice and skip another: an item added or removed before the
+        offset shifts every later one (Reasoned). The count check cannot see
+        it, because the repeat makes up the number. Monthly run 17
+        (refresh-reference.yml 37232256991) loaded nps_api_places with one `id`
+        on two rows that differ, which failed duplicates_are_exact and stopped
+        the build; what differed was not kept, and the list (17,505 items
+        on 2026-10-04) is too long for the demo key to read again here. So a
+        paged read with fewer distinct keys than the API's total is read once
+        more, and differing copies left after that refuse the read with the
+        fields that differ named, never the values.
+        """
+        items, total = self.read(self._session())
+        distinct, differing = self._copies(items)
+        if self.paging != "single" and (differing or (total is not None and distinct < total)):
+            print(
+                f"::warning title={self.key} read an item twice::{distinct} distinct of {len(items)} items, "
+                f"the API counts {total}; reading the list again, once"
+            )
+            items, total = self.read(self._session())
+            distinct, differing = self._copies(items)
+        if differing:
+            value, names = next(iter(differing.items()))
+            raise RuntimeError(
+                f"{self.key}: {len(differing)} {self.entry['key_fields'][0]} value(s) on items that differ "
+                f"(first: {value}, in {', '.join(names)}), so its key would drop a real item"
+            )
+        return items, total
+
     def rows(self, proofs: dict[str, int]):
         entry = self.entry
-        items, total = self.read(self._session())
+        items, total = self._consistent_read()
         if total is not None:
             if len(items) < total:
                 raise RuntimeError(f"{self.key}: the API counts {total} items and {len(items)} were read")

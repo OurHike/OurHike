@@ -86,10 +86,19 @@ def _get(url: str, *, headers: dict | None = None, label: str | None = None) -> 
 
 
 def _json(response: requests.Response, what: str):
+    """The body as JSON; ValueError naming its content type, its length and where it stopped parsing.
+
+    Monthly run 17 (refresh-reference.yml 37232256991) left nps_multimedia_audio out on
+    "answered 'application/json;charset=utf-8', not JSON" and nothing else, while two items
+    of the same list asked again parse (2026-10-04). Whether that body was cut short or an
+    error page is not known; the length and the parser's own error say so next time.
+    """
     try:
         return response.json()
     except ValueError as error:
-        raise ValueError(f"{what} answered {response.headers.get('Content-Type')!r}, not JSON") from error
+        raise ValueError(
+            f"{what} answered {response.headers.get('Content-Type')!r}, not JSON: {len(response.content):,} bytes, {error}"
+        ) from error
 
 
 def _sha256(value) -> str:

@@ -35,7 +35,7 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ota_trail_map'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+                row_id_columns: ["objectid", "objectid_1", "objectid_12", "oid", "esri_oid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
         description: >
           Ozark Trail map: trail lines and trailheads (Ozark Trail Association's Google My
           Map) (sources.json `ota_trail_map`). Key: The geometry alone: unique on 161 of

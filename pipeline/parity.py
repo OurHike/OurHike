@@ -970,8 +970,9 @@ FAMILIES: dict[str, Family] = {
 # --- the points_of_interest family (#1793, stage 3) -------------------------
 #
 # Ten files, three exporters. The records are GeoJSON features, keyed by
-# properties.id (`key_of`), and nearby_poi's one kind of deliberate difference
-# is named by `explained`.
+# properties.id (`key_of`), and each kind of deliberate difference is named by
+# `explained`: nearby_poi's exact copies and decision 31's new data, and the
+# poi_<type> files' synthesized water held on a retired ledger id.
 
 
 def _poi_id(feature: dict) -> str:
@@ -997,6 +998,14 @@ POI_REASONS = {
         f"{NEW_DATA_REASON}: a POI from a layer no exporter reads, one of decision 54's wave 1 point layers "
         "(int_points_of_interest__club_points), so there is no old record to compare it with; new_data_report.py "
         "counts it by source and type, and lists every water and shelter source line by line"
+    ),
+    "retired_csi_water": (
+        "expected by verify_release.py's check_poi_identity(), which fails a release with an id 'published live "
+        "against a RETIRED ledger row': int_points_of_interest__water synthesizes no atc_csi water point whose "
+        "`atc_csi:<GlobalID>` id reference/poi_identity.json has retired, where export_poi.py's synthesize_csi_water() "
+        "publishes one (reconcile_poi_identity.py holds that key until a person writes a `same` override). The "
+        "shelter or campsite it would have joined keeps CSI's distance and source on its card, and one in no other "
+        "site stays in none, so its site_id, site_role and site_name are null"
     ),
 }
 
@@ -1065,6 +1074,86 @@ def _new_source_reasons(old: dict, new: dict) -> dict[str, str]:
 def _nearby_poi_reasons(old: dict, new: dict) -> dict[str, str]:
     """nearby_poi's two explained kinds: an exact copy staging removed, and decision 31's new data."""
     return {**_exact_copy_reasons(old, new), **_new_source_reasons(old, new)}
+
+
+#: export_poi.py's CSI_WATER_SOURCE: the source a synthesized water point publishes under.
+CSI_WATER_SOURCE = "atc_csi"
+#: The site properties synthesize_csi_water() sets on an anchor that was in no site.
+SITE_PROPERTIES = ("site_id", "site_role", "site_name")
+
+
+def _poi_ledger() -> dict:
+    """reference/poi_identity.json's `pois`, the ledger both sides read: export_poi.py's apply_ledger_ids() and
+    base_ourhike__poi_identity."""
+    import export_poi
+
+    return json.loads(export_poi.LEDGER_PATH.read_text(encoding="utf-8"))["pois"]
+
+
+def _held_csi_water_ids(pois: dict) -> set[str]:
+    """The ids int_points_of_interest__water holds: `atc_csi:<GlobalID>` where the ledger has retired that id and
+    holds no live atc_csi row for that GlobalID (a live row would give the point its own id instead)."""
+    live = {
+        row.get("source_feature_id") for row in pois.values() if row.get("source") == CSI_WATER_SOURCE and "retired" not in row
+    }
+    prefix = f"{CSI_WATER_SOURCE}:"
+    return {
+        poi_id
+        for poi_id, row in pois.items()
+        if "retired" in row and poi_id.startswith(prefix) and poi_id.removeprefix(prefix) not in live
+    }
+
+
+def _only_its_held_site(old: dict, new: dict) -> bool:
+    """The anchor is the same feature on both sides except the two-part site synthesis made of it in today's file:
+    there it is its own site's anchor under its own name, and in the new file it is in no site."""
+    was, now = old["properties"], new["properties"]
+    made = (was.get("site_id"), was.get("site_role"), was.get("site_name")) == (_poi_id(old), "anchor", was.get("name"))
+    none = all(now.get(name) is None for name in SITE_PROPERTIES)
+
+    def rest(feature: dict) -> str:
+        properties = {name: value for name, value in feature["properties"].items() if name not in SITE_PROPERTIES}
+        return canonical({"geometry": feature.get("geometry"), "properties": properties})
+
+    return made and none and rest(old) == rest(new)
+
+
+def _held_csi_water_reasons(old: dict, new: dict, pois: dict | None = None) -> dict[str, str]:
+    """The synthesized water points the dbt writer holds because the ledger retired their ids, and what follows.
+
+    POI_REASONS["retired_csi_water"] explains exactly three kinds of difference:
+    - a feature today's file has and the new file lacks, whose `source` is atc_csi and whose id is
+      `atc_csi:<its source_feature_id>`, one of _held_csi_water_ids();
+    - a shelter or campsite in both files whose would-be point `atc_csi:<its source_feature_id>` is one of those ids,
+      equal but for synthesize_csi_water() having made it its own site's anchor (_only_its_held_site());
+    - the file's order, when the new order is today's with those missing features left out.
+    Anything else either file holds is still a difference. nearby_poi needs no such reason: a synthesized point is a
+    poi_water feature, and its anchor an A.T. shelter or campsite in poi_shelter or poi_campsite.
+    """
+    held = _held_csi_water_ids(_poi_ledger() if pois is None else pois)
+    if not held:
+        return {}
+    reason = POI_REASONS["retired_csi_water"]
+    new_by_id = {_poi_id(feature): feature for feature in new.get("features") or []}
+    reasons: dict[str, str] = {}
+    missing: set[str] = set()
+    for feature in old.get("features") or []:
+        properties, poi_id = feature["properties"], _poi_id(feature)
+        would_be = f"{CSI_WATER_SOURCE}:{properties.get('source_feature_id')}"
+        if poi_id not in new_by_id:
+            if properties.get("source") == CSI_WATER_SOURCE and poi_id == would_be and poi_id in held:
+                reasons[f"properties.id {poi_id}"] = reason
+                missing.add(poi_id)
+        elif (
+            properties.get("poi_type") in ("shelter", "campsite")
+            and would_be in held
+            and _only_its_held_site(feature, new_by_id[poi_id])
+        ):
+            reasons[f"properties.id {poi_id}"] = reason
+    old_order = [_poi_id(feature) for feature in old.get("features") or [] if _poi_id(feature) not in missing]
+    if missing and old_order == [_poi_id(feature) for feature in new.get("features") or []]:
+        reasons["order"] = reason
+    return reasons
 
 
 @functools.cache
@@ -1294,9 +1383,16 @@ def _retired_poi_old() -> dict:
 
 FAMILIES.update(
     {
+        # Explained on every type, though only water, shelter and campsite can
+        # hold such a case: _held_csi_water_reasons() names nothing else.
         **{
             f"poi_{poi_type}": Family(
-                old=_poi_by_type_old(poi_type), records="features", key="properties.id", ordered=True, key_of=_poi_id
+                old=_poi_by_type_old(poi_type),
+                records="features",
+                key="properties.id",
+                ordered=True,
+                key_of=_poi_id,
+                explained=_held_csi_water_reasons,
             )
             for poi_type in ("shelter", "campsite", "water", "resupply", "viewpoint", "parking", "privy", "trailhead")
         },

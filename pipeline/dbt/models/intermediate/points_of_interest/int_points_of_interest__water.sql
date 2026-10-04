@@ -29,6 +29,32 @@
 -- anchor's distance and source, publishes as `atc_csi:<GlobalID>` through
 -- the ledger like every other id, and its description says whose figure
 -- it is (the poi_water_claims seed) and that the spot is unmapped.
+--
+-- NO SYNTHESIS UNDER A RETIRED ID. Where no live atc_csi ledger row names
+-- the anchor, its point would publish as `atc_csi:<GlobalID>`; where the
+-- ledger has RETIRED that id, the anchor synthesizes nothing and is not
+-- made a site anchor, so its site columns are what they would be without
+-- synthesis, and `held_csi_water_id` names the id held
+-- (assert_no_synthesized_water_is_held_on_a_retired_id.sql lists each at
+-- warn). The rule is verify_release.py's check_poi_identity(), which fails
+-- a release with an id "published live against a RETIRED ledger row", and
+-- reconcile_poi_identity.py:585-592's hold on a key that re-presents a
+-- retired row: production publishes none of these ids live either.
+-- Measured: refresh-reference.yml run 37182708502 (monthly run 13, on
+-- 377e981a) failed int_points_of_interest__final's unique poi_id test on 21
+-- ids both live and tombstoned, the count of synthesized points
+-- assert_no_live_poi_reuses_a_retired_id.sql found on 2026-10-02 under ids
+-- retired on 2026-08-19. That run landed no OSM water (#1652 — Download
+-- OSM's Geofabrik extracts at most once a month, into a private raw bucket
+-- that outlives the 7-day Actions cache) and no trail_water.json, so no real
+-- water stopped synthesis there; that real water stopped it when production
+-- retired them is the likeliest reading (Reasoned, not checked).
+-- A hiker at one of these sites still reads CSI's distance and its source
+-- on the shelter's card (int_points_of_interest__enriched's nearby entry,
+-- which a POI in no site takes too); only the unmapped "Water near ..."
+-- member is held. The trade: #694 — A card can promise water 37 m away
+-- while its site shows no water at all — returns at these sites until real
+-- water lands there or a `same` override resurrects the id.
 with sites as (
     select * from {{ ref('int_points_of_interest__sites') }}
 ),
@@ -61,6 +87,12 @@ live_ledger as (
         and source = 'atc_csi'
 ),
 
+retired_ledger as (
+    select poi_id
+    from {{ ref('base_ourhike__poi_identity') }}
+    where retired is not null
+),
+
 with_distance as (
     select
         sites.*,
@@ -85,7 +117,7 @@ sites_with_real_water as (
         and source != 'atc_csi'
 ),
 
-synthesis_anchors as (
+synthesis_candidates as (
     select with_distance.*
     from with_distance
     where
@@ -99,6 +131,28 @@ synthesis_anchors as (
         and coalesce(with_distance.site_id, '') not in (
             select sites_with_real_water.site_id from sites_with_real_water
         )
+),
+
+held as (
+    -- The header's hold: no live atc_csi row, so the point would take its
+    -- derived id, and the ledger has retired that id.
+    select
+        candidate.poi_id,
+        retired_ledger.poi_id as held_csi_water_id
+    from synthesis_candidates as candidate
+    inner join
+        retired_ledger
+        on 'atc_csi:' || candidate.source_feature_id = retired_ledger.poi_id
+    left join
+        live_ledger
+        on candidate.source_feature_id = live_ledger.source_feature_id
+    where live_ledger.poi_id is null
+),
+
+synthesis_anchors as (
+    select synthesis_candidates.*
+    from synthesis_candidates
+    where synthesis_candidates.poi_id not in (select held.poi_id from held)
 ),
 
 anchored as (
@@ -148,11 +202,13 @@ anchored as (
         with_distance.record_order,
         with_distance.water_distance_ft,
         with_distance.water_distance_source,
-        cast(null as varchar) as synthesized_description
+        cast(null as varchar) as synthesized_description,
+        held.held_csi_water_id
     from with_distance
     left join
         synthesis_anchors
         on with_distance.poi_id = synthesis_anchors.poi_id
+    left join held on with_distance.poi_id = held.poi_id
 ),
 
 synthesized as (
@@ -206,7 +262,8 @@ synthesized as (
         )
         || '; the spot itself is not mapped, so this point sits on the '
         || anchor.poi_type
-        || '.' as synthesized_description
+        || '.' as synthesized_description,
+        cast(null as varchar) as held_csi_water_id
     from synthesis_anchors as anchor
     left join claims as claim on anchor.water_distance_source = claim.provenance
     left join claims as fallback on fallback.provenance = '*'
@@ -245,7 +302,8 @@ select
     record_order,
     water_distance_ft,
     water_distance_source,
-    synthesized_description
+    synthesized_description,
+    held_csi_water_id
 from anchored
 union all
 select
@@ -278,5 +336,6 @@ select
     record_order,
     water_distance_ft,
     water_distance_source,
-    synthesized_description
+    synthesized_description,
+    held_csi_water_id
 from synthesized

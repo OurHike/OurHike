@@ -362,7 +362,8 @@ models:
       Every POI with ATC's distance to water and where that figure came
       from, for an A.T. shelter or campsite reference/water_distance.json
       gives one, plus the water point export_poi.py's synthesize_csi_water()
-      makes where that distance is all anyone knows (#694).
+      makes where that distance is all anyone knows (#694), except where that
+      point's id is a retired ledger row, which no release may publish live.
     data_tests:
       # A distance never travels without the provenance the phone prints its
       # tilde from: all 305 distances carry one (measured 2026-10-01).
@@ -392,6 +393,13 @@ models:
         description: CSI's Nearest_Water_Source, verbatim (#1728).
       - name: synthesized_description
         description: The synthesized point's sentence, which says whose figure it is and that the spot is unmapped.
+      - name: held_csi_water_id
+        description: >
+          On a shelter or campsite whose synthesized water point is held because
+          its `atc_csi:<GlobalID>` id is a retired ledger row (the model's
+          header), that retired id; null on every other row.
+          assert_no_synthesized_water_is_held_on_a_retired_id.sql lists each
+          one at warn.
 
   - name: int_points_of_interest__enriched
     description: >

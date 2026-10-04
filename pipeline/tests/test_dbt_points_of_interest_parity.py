@@ -67,6 +67,7 @@ MILES = "int_points_of_interest__miles_reads_the_axis_like_attach_miles"
 IDENTIFIED = "int_points_of_interest__identified_applies_the_ledger_like_apply_ledger_ids"
 RETIRED = "int_points_of_interest__retired_resolves_like_lib_poi_identity"
 WATER = "int_points_of_interest__water_attaches_and_synthesizes_like_export_poi"
+HELD_WATER = "int_points_of_interest__water_holds_a_point_whose_id_the_ledger_retired"
 ENRICHED = "int_points_of_interest__enriched_attaches_capacity_and_nearby_like_export_poi"
 OSM_DESCRIBED = "int_points_of_interest__described_says_what_describe_water_says"
 OSM_REACH = "int_points_of_interest__osm_water_reach_measures_like_measure_distances"
@@ -690,8 +691,8 @@ WATER_COLUMNS = (
 )
 
 
-def water_answers(test: dict, workdir: Path) -> dict[str, dict]:
-    """attach_water_distance(), synthesize_csi_water() and the ledger's second pass, as build_enriched_records() runs them (PO14-PO16)."""
+def _water_records(test: dict, workdir: Path) -> list[dict]:
+    """attach_water_distance(), synthesize_csi_water() and the ledger's second pass, as build_enriched_records() runs them (PO14-PO16): the records, the A.T.'s first."""
     workdir.mkdir(parents=True, exist_ok=True)
     distances = workdir / "water_distance.json"
     distances.write_text(
@@ -713,8 +714,13 @@ def water_answers(test: dict, workdir: Path) -> dict[str, dict]:
     export_poi.attach_water_distance(trail, export_poi.load_water_distances(distances))
     export_poi.synthesize_csi_water(trail)
     export_poi.apply_ledger_ids(trail, ledger)
+    return trail + others
+
+
+def water_answers(test: dict, workdir: Path) -> dict[str, dict]:
+    """_water_records()' answer for each record, in the water model's columns (PO14-PO16)."""
     answers = {}
-    for record in trail + others:
+    for record in _water_records(test, workdir):
         answer = {name: record.get(name) for name in WATER_COLUMNS}
         synthesized = record.get("source") == export_poi.CSI_WATER_SOURCE
         answer["synthesized_description"] = record.get("description") if synthesized else None
@@ -1128,6 +1134,68 @@ def test_water_is_attached_and_synthesized_as_export_poi_does(tmp_path):
     _held(_expected(test, "poi_id"), water_answers(test, tmp_path))
 
 
+#: The properties a poi_<type>.geojson feature carries that the water model and export_poi.py's records both hold.
+WATER_FEATURE_PROPERTIES = (
+    "poi_type",
+    "source",
+    "source_feature_id",
+    "name",
+    "confidence",
+    "site_id",
+    "site_role",
+    "site_name",
+    "water_distance_ft",
+    "water_distance_source",
+    "description",
+)
+
+
+def _water_feature(record: dict) -> dict:
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [record["lon"], record["lat"]]},
+        "properties": {"id": record["id"], **{name: record.get(name) for name in WATER_FEATURE_PROPERTIES}},
+    }
+
+
+def test_a_point_held_on_a_retired_id_differs_from_export_poi_only_as_parity_explains(tmp_path):
+    """HELD_WATER's rows through today's Python, and as the SQL is held to answer, written as the poi files.
+
+    The Python publishes the two atc_csi ids the unit test's ledger retired and makes the shelter that was in no
+    site its own site's anchor; parity._held_csi_water_reasons() explains exactly those three features and the water
+    file's order, and every other feature, the live-row, no-row and other-id cases among them, is equal.
+    """
+    test = _unit_test(HELD_WATER)
+    pois = _ledger(_given(test, "base_ourhike__poi_identity"))
+    sites = {row["source_feature_id"]: row for row in _given(test, "int_points_of_interest__sites")}
+    old_records = _water_records(test, tmp_path)
+    new_records = [
+        {
+            "id": row["poi_id"],
+            **{name: row.get(name) for name in WATER_FEATURE_PROPERTIES},
+            "description": row["synthesized_description"],
+            "lat": sites[row["source_feature_id"]]["lat"],
+            "lon": sites[row["source_feature_id"]]["lon"],
+        }
+        for row in test["expect"]["rows"]
+    ]
+    explained = {}
+    for poi_type in ("shelter", "campsite", "water", "privy"):
+        family = parity.FAMILIES[f"poi_{poi_type}"]
+        assert family.explained is parity._held_csi_water_reasons
+        old = {"features": [_water_feature(record) for record in old_records if record["poi_type"] == poi_type]}
+        new = {"features": [_water_feature(record) for record in new_records if record["poi_type"] == poi_type]}
+        reasons = parity._held_csi_water_reasons(old, new, pois)
+        assert {what for what, _, _ in parity.differences(old, new, family)} == set(reasons), poi_type
+        explained[poi_type] = set(reasons)
+    assert explained == {
+        "shelter": {"properties.id atc_shelters:H1"},
+        "campsite": set(),
+        "water": {"properties.id atc_csi:H1", "properties.id atc_csi:H2", "order"},
+        "privy": set(),
+    }
+
+
 def test_capacity_and_nearby_are_attached_as_export_poi_does(tmp_path):
     test = _unit_test(ENRICHED)
     expected = _expected(test, "poi_id")
@@ -1217,3 +1285,91 @@ def test_no_wave_1_point_layer_is_one_export_nearby_poi_reads():
     wave_1 = {table.key for table in make_dbt_staging.tables() if table.type == "points_of_interest"}
     assert wave_1, "no wave 1 point layer is staged"
     assert not wave_1 & parity._today_poi_sources()
+
+
+#: A ledger for the held-water explanation: GlobalID R's derived id retired (held); L's retired beside a live row
+#: for L under another id (not held: the point takes L-now); V's live; and a retired shelter.
+HELD_LEDGER = {
+    "atc_csi:R": {"source": "atc_csi", "source_feature_id": "R", "retired": "2026-08-19"},
+    "atc_csi:L": {"source": "atc_csi", "source_feature_id": "L", "retired": "2026-08-19"},
+    "atc_csi:L-now": {"source": "atc_csi", "source_feature_id": "L"},
+    "atc_csi:V": {"source": "atc_csi", "source_feature_id": "V"},
+    "atc_shelters:T": {"source": "atc_shelters", "source_feature_id": "T", "retired": "2026-08-19"},
+}
+
+
+def _shelter(poi_id: str, *, site: bool, **changed) -> dict:
+    """An A.T. shelter as a poi_shelter.geojson feature: its own site's anchor where `site`, else in no site."""
+    name = f"Fixture {poi_id}"
+    properties = {
+        "id": poi_id,
+        "poi_type": "shelter",
+        "source": "atc_shelters",
+        "source_feature_id": poi_id.split(":", 1)[1],
+        "name": name,
+        "water_distance_ft": 120,
+        "water_distance_source": "FarOut",
+        "site_id": poi_id if site else None,
+        "site_role": "anchor" if site else None,
+        "site_name": name if site else None,
+    }
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [-74.0, 41.0]},
+        "properties": {**properties, **changed},
+    }
+
+
+def test_only_held_csi_water_ids_are_the_ledgers_retired_ones_with_no_live_row():
+    assert parity._held_csi_water_ids(HELD_LEDGER) == {"atc_csi:R"}
+
+
+def test_a_missing_csi_water_point_is_explained_only_when_the_ledger_retired_its_id():
+    """poi_water: today's atc_csi:R (held) is explained as verify_release.py's rule, and so is the order once it is
+    left out; a point under a live row's id, one with no ledger row, and a retired id from another source are not."""
+    kept = _poi_feature("opentrail_at:1", "opentrail_at")
+    carried = _poi_feature("atc_csi:L-now", "atc_csi")
+    carried["properties"]["source_feature_id"] = "L"
+    old = {
+        "features": [
+            _poi_feature("atc_csi:R", "atc_csi"),
+            carried,
+            _poi_feature("atc_csi:V", "atc_csi"),
+            _poi_feature("atc_csi:N", "atc_csi"),
+            _poi_feature("atc_shelters:T", "atc_shelters"),
+            kept,
+        ]
+    }
+    reason = parity.POI_REASONS["retired_csi_water"]
+    assert parity._held_csi_water_reasons(old, {"features": [kept]}, HELD_LEDGER) == {"properties.id atc_csi:R": reason}
+    held_only = {"features": [_poi_feature("atc_csi:R", "atc_csi"), kept]}
+    assert parity._held_csi_water_reasons(held_only, {"features": [kept]}, HELD_LEDGER) == {
+        "properties.id atc_csi:R": reason,
+        "order": reason,
+    }
+    # The dbt writer publishing the held id after all is never explained, nor is a point it adds.
+    assert parity._held_csi_water_reasons({"features": [kept]}, held_only, HELD_LEDGER) == {}
+    assert reason.startswith("expected by verify_release.py's check_poi_identity()")
+    assert "RETIRED ledger row" in reason
+
+
+def test_an_anchor_is_explained_only_for_the_site_its_held_point_made():
+    """poi_shelter: a shelter whose would-be point is held is explained where today's file made it its own site's
+    anchor and the new file leaves it in no site, and nowhere it differs in anything else."""
+    reason = parity.POI_REASONS["retired_csi_water"]
+
+    def reasons(old: dict, new: dict) -> dict[str, str]:
+        return parity._held_csi_water_reasons({"features": [old]}, {"features": [new]}, HELD_LEDGER)
+
+    assert reasons(_shelter("atc_shelters:R", site=True), _shelter("atc_shelters:R", site=False)) == {
+        "properties.id atc_shelters:R": reason
+    }
+    # The same site change where the point would take a live row's id (L's carried one, V's own), or one the ledger
+    # does not know: not this reason.
+    for poi_id in ("atc_shelters:L", "atc_shelters:V", "atc_shelters:N"):
+        assert reasons(_shelter(poi_id, site=True), _shelter(poi_id, site=False)) == {}, poi_id
+    # A site change and anything else besides; a site that was not its own; a site the new file kept.
+    assert reasons(_shelter("atc_shelters:R", site=True), _shelter("atc_shelters:R", site=False, water_distance_ft=90)) == {}
+    other_site = _shelter("atc_shelters:R", site=True, site_id="atc_shelters:other")
+    assert reasons(other_site, _shelter("atc_shelters:R", site=False)) == {}
+    assert reasons(_shelter("atc_shelters:R", site=True), _shelter("atc_shelters:R", site=True, site_name="Renamed")) == {}

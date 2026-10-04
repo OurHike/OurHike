@@ -416,5 +416,6 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # add 6: 5 `public_gis` and 1 `unresolved`; their content pages and PDFs (section K) add 12, all `unresolved`
     # (above). Section S's second batch adds 3 `public_gis` (BRBTC's sections, the Palmetto Trail's passages and
     # OHTA's trailheads), and its fourth 1 `public_gis` (PATC's Tuscarora access points and camping), recounted
-    # from the registry 2026-10-04.
-    assert counts == {"maintainer_authorisation": 186, "public_gis": 252, "stated_by_org": 192, "unresolved": 40}
+    # from the registry 2026-10-04. Decision 75 (section G, 2026-10-04) moves GATC's water PDF from `unresolved`
+    # to `maintainer_authorisation`: the maintainer's answer to card Q5, with GATC's answer still not in.
+    assert counts == {"maintainer_authorisation": 187, "public_gis": 252, "stated_by_org": 192, "unresolved": 39}

@@ -228,19 +228,38 @@ files, and `publish-conditions.yml` chooses between them with one value, `PHONE_
   direct production publish from the merge, or run the new path on UA for longer). The
   cutover is that one line, and so is the rollback; a dispatch picks either with
   `phone_files`.
-- **`dbt`** is ELT.md's hourly lane. Per leg: dlt reads every club's closures and warnings
-  files, OurHike's own rows through these same queries (`extract/_shared/ourhike/`), NWS and
-  NYNJTC into the private raw store, one dlt pipeline per leg
-  (`extract/_run.py`'s `conditions_production` and `conditions_ua`); `build_marts.py --lane
-  hourly` builds the `closures` and `warnings` marts and their `pub_` writers; and
-  `publish.py` runs with `OURHIKE_PHONE_FILES=dbt`, taking `closures.json`, `reports.json`,
-  `atc_updates.json` and `nynjtc_alerts.json` from the writers while the exporters still
-  write the files no writer owns yet (drought, notes and disputes among them).
+- **`dbt`** is ELT.md's hourly lane. Per leg: dlt reads OurHike's own rows through these
+  same queries (`extract/_shared/ourhike/`), NWS, ATC, NYNJTC, OPRHP's trail closures and the
+  work projects into the private raw store, one dlt pipeline per leg (`extract/_run.py`'s
+  `conditions_production` and `conditions_ua`); the newest served copy of every other club's
+  notices is added beside them (below); `build_marts.py --lane hourly` builds the `closures`
+  and `warnings` marts and their `pub_` writers; and `publish.py` runs with
+  `OURHIKE_PHONE_FILES=dbt`, taking `closures.json`, `reports.json`, `atc_updates.json` and
+  `nynjtc_alerts.json` from the writers while the exporters still write the files no writer
+  owns yet (drought, notes and disputes among them).
+
+**Two jobs read the hourly lane since decision 61** (`pipeline/ELT.md`, 2026-10-04). The
+maintainer moved every club's and agency's notices to a job of their own, every 4 hours with
+up to an hour to read, and kept in this hourly job what a storm or a moderator's closure turns
+on: NWS's alerts, OurHike's own moderated closures and reports, and ATC's and NYNJTC's
+notices, which with OPRHP's closures and the work projects are the twelve tables
+`extract/_run.py`'s `HOURLY_JOB_TABLES` names. `extract-notices.yml` reads the rest into its
+own legs' stores (`notices_production`, `notices_ua`), then copies what a build reads,
+write-once, under each store's `served/` (`extract/_warehouse.py`, "THE SERVED COPY"), and
+this job adds the newest copy to its warehouse each hour. So the closures and warnings marts
+carry every club's notices hourly, as old as that job's last read: up to about 4 hours, plus
+however late GitHub fires its cron, and the phone already says how old. The copy exists
+because a notices load deletes a table's files before it writes the new ones; reading the
+store itself while one commits could find a closures layer half gone. A copy that will not
+read falls back to the one before, the notices' last good rows, and the run goes red after
+publishing; no copy at all yet is a warning. Neither ever stops this job's own publish, and in
+both the build saves no row history, so a notice missing for an hour is never recorded as
+lifted.
 
 **One club's failure is its own on the dbt path, and OurHike's is still everyone's.** A leg
-reads each upstream separately, within a 150-second budget, and one that fails, runs out of
-time or is refused by the run check is left out, with its last committed table standing and
-the run turned red after the rest has published. That keeps the bake's own carry-forward for
+reads each upstream separately, within a 150-second budget (1,800 seconds on a notices leg),
+and one that fails, runs out of time or is refused by the run check is left out, with its last
+committed table standing and the run turned red after the rest has published. That keeps the bake's own carry-forward for
 ATC and NYNJTC, whose previous cache publishes when either is unreachable. OurHike's own
 closures and reports keep the rule above, "either of them failing the same check is a
 regression and still stops the run": a carried-forward table would publish under a new

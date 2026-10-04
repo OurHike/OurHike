@@ -112,6 +112,13 @@ can never interleave. All are dispatch-only except `publish-conditions.yml`,
 | `publish-weather.yml` | the NBM forecast for every trail square, one file per cell, and the active NWS alerts over trail squares, to UA only → `build`, `publish` — hourly as well as dispatch, only `publish` holds the group, and either half publishes without the other (#1056) |
 | `refresh-reference.yml` | the monthly lane of `pipeline/ELT.md`: every monthly dlt resource into the private raw store, the raw inputs pinned under `steps/raw_inputs/<raw_run>/`, every mart through `build_marts.py --lane monthly`, and a release staged on UA from the dbt writers' files → `extract`, `build`, `publish`, `confirm`, `parity`. UA only, by a literal, with no input that could name another environment; monthly as well as dispatch. Only `publish` holds the group |
 
+One more workflow feeds a publish without being one, so it holds its own
+group, `extract-notices`, and never `publish-data`:
+
+| | |
+|---|---|
+| `extract-notices.yml` | every club's and agency's closures and warnings notices into the private raw store, every 4 hours with up to an hour to read (`pipeline/ELT.md` decision 61), then a write-once copy of what a build reads, which `publish-conditions.yml`'s hourly dbt path adds to its warehouse → `extract`, one leg per environment, production from `main` only. Writes no phone file |
+
 `publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
 both run under the `production` environment whenever they will actually
 write, which is what makes RELEASING.md §12 — only the maintainer ships — a
@@ -239,6 +246,7 @@ gathered rather than restated.
 | `50 8 * * *` | daily | `propose-atc-updates.yml` — reads the same cache `publish-conditions.yml`'s hourly leg does, so a slot near it rather than far from it |
 | `40 * * * *` | hourly | `publish-conditions.yml` — moved off daily by #720; still shown here at its :40-past-the-hour slot, which is what keeps it clear of `check-pending-approvals.yml` above |
 | `55 * * * *` | hourly | `publish-weather.yml` — NBM runs a new cycle every hour and NWS alerts change by the minute; `:55` is a minute nothing else here uses, and like every cron in this table it fires about five times a day in practice (#1346) |
+| `22 2-22/4 * * *` | every 4 hours | `extract-notices.yml` — decision 61's clock for every club's notices; `:22` is a minute nothing else here uses, and 02:22 starts the day off midnight UTC. Its own group, so it never waits on, or holds up, the hourly publish |
 | `15 9 * * *` | daily | `check-deployment.yml` — after `publish-conditions`, so a publish that breaks something is noticed the same day |
 | `30 9 * * *` | daily | `check-deployed-app.yml` |
 | `45 9 * * *` | daily | `check-auth-redirects.yml` — after `check-deployed-app`, so an already-broken app is not a second alarm for the same cause |

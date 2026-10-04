@@ -2451,7 +2451,7 @@ Decision 26, "tiers as drawn". INCREMENTAL.md's private key validator governs bo
 | Tier | Holds | Format | Where, and the key | Written by · read by | Changes at | Grade |
 |---|---|---|---|---|---|---|
 | **Raw, monthly lane** | every monthly dlt resource's normalized rows; dlt's `_dlt_loads`, `_dlt_pipeline_state`, `_dlt_version`; `_extract_runs` | Parquet with zstd, set by `[normalize.data_writer] compression = "zstd"` in `.dlt/config.toml`. Geometry stays GeoJSON text in a `VARCHAR` (the `json` hint in [dlt configuration requirements](#dlt-configuration-requirements)) | raw store, `dlt/monthly/raw/<table>/<load_id>.<file_id>.parquet`, dlt's own file name. One prefix per dlt pipeline | extract job (`R2_RAW_*`) · build job (`R2_RAW_*`) | **DuckLake at phase 3**, at the Freeze step of [Keeping every rule we already built](#keeping-every-rule-we-already-built): dlt's `ducklake` destination, `replace_strategy = "insert-from-staging"`, builds pinned to the snapshot the after-run check passed ([DuckLake at phases 3 and 4](#ducklake-at-phases-3-and-4)) | Measured: format, size and speed (next table). One prefix per pipeline is Reasoned: two pipelines sharing one dataset folder were not tested, and separate prefixes make the question moot |
-| **Raw, hourly lanes** | closures, warnings, NWS alerts, the drought manifest, OurHike's Postgres rows | Parquet with zstd, plain files | raw store, `dlt/<pipeline>/raw/<table>/…`, one dlt pipeline per hourly leg: `conditions_production`, `conditions_ua` (`publish-conditions.yml` runs one leg per environment) and `nws`, which the conditions job runs once for both legs (decision 28a) | the hourly job's extract step · the same job's build step | **Stays plain files.** A build reads only loads committed in `_dlt_loads` ([A full reload that cannot empty a safety table](#a-full-reload-that-cannot-empty-a-safety-table)) | Measured: the committed-load read refuses a failed load and passes a legitimately empty one |
+| **Raw, hourly lanes** | closures, warnings, NWS alerts, the drought manifest, OurHike's Postgres rows | Parquet with zstd, plain files | raw store, `dlt/<pipeline>/raw/<table>/…`, one dlt pipeline per leg: `conditions_production`, `conditions_ua` (`publish-conditions.yml` runs one leg per environment, NWS among its upstreams, decision 28a) and, since decision 61, `notices_production`, `notices_ua` (`extract-notices.yml`, every 4 hours) | each job's extract step · the hourly job's build step: its own leg's store, and the notices leg's **served copy**, `dlt/notices_<env>/served/<run_id>/` (each table as one Parquet file, its run log rows, `manifest.json` last with every file's sha256), write-once, the newest 3 kept ([Phase F](#phase-f-the-hourly-lanes-budget)) | **Stays plain files.** A build reads only loads committed in `_dlt_loads` ([A full reload that cannot empty a safety table](#a-full-reload-that-cannot-empty-a-safety-table)) | Measured: the committed-load read refuses a failed load and passes a legitimately empty one. The served copy's round trip, its fallback to the copy before and its carry of a torn table: on `file://` stores (`tests/test_extract_served.py`), not yet on R2 |
 | **As-sent copies** | each resource's assembled response; file-shaped sources (PBF, GeoPackage, COG, PDF, GPX, photos) as their own bytes, each with a dlt manifest row (decision 4) | the upstream's own bytes | raw store, INCREMENTAL.md's `current/` (a mutable mirror) and `snapshots/<source_key>/<timestamp>_<sha12>.<ext>` (write-once) | extract job · `lib/data_change.classify()` and the exporters not yet ported | **Never moves into a lake.** DuckLake's FAQ: "The data files of DuckLake must be stored in Parquet." | Reasoned |
 | **Step cache** | each expensive Python step's output: DEM samples, the graph noding, the ledger proposal, and the gain scan and mile calibration for as long as they run as Python fallbacks | **GeoParquet**: WKB with the CRS in the `geo` metadata, zstd, written by DuckDB `COPY … (FORMAT parquet, COMPRESSION zstd)` with `st_setcrs` immediately before ([Geometry rules every mart obeys](#geometry-rules-every-mart-obeys)). Small per-unit maps keep their own formats (`samples.json`) | step cache, `steps/<step>/<key>/<output>.parquet` plus `inputs.json`, write-once. The key hashes the inputs, the code **and the DuckDB version**, so a 1.5.4 output and a 1.5.5 output never share a key | build job (`R2_RAW_*`, under `steps/`) · later builds | unchanged | Measured: round trip, CRS kept, read across 1.5.4 ↔ 1.5.5 and by pyarrow |
 | **Step cache, `raw_inputs`** | a copy of exactly the raw files one build read | Parquet, as read | `steps/raw_inputs/<raw_run>/<table>.parquet`, write-once | build job · the promotion build | From phase 3 the monthly tables' pin is a DuckLake snapshot id, and `raw_inputs/` holds only what the lake does not | Reasoned: `replace` deletes the files a UA build read the next time that table is extracted, so without this copy a mid-month dispatch would silently change what gets promoted |
@@ -3047,7 +3047,8 @@ Every line references `main` at 23fca25, read 2026-10-01. `main` has since moved
 | **`refresh-reference.yml`** (new) | `cron: "15 5 3 * *"` + `workflow_dispatch` | The monthly lane (decision 1). `data_environment` is fixed to `ua`, with no input to change it |
 | `publish-vector-data.yml` | dispatch, **plus `workflow_call`** | Its build becomes callable, as the header written under **#1314 — Build DATA_RELEASES.md §2's weekly candidate build, minus the raster half that #855 switched off** recommends (`build-data-release.yml:30-34`: "The first is right and is its own change"). Gains a `raw_run` input |
 | `verify-release.yml`, `publish-podcasts.yml` | dispatch, plus `workflow_call` | Called monthly with UA. Production podcasts stay a dispatch |
-| `publish-conditions.yml` | `40 * * * *`, unchanged | dlt and dbt run inside it, and it gains NWS alerts, so it is the one job that builds `warnings` ([below](#the-hourly-lanes)) |
+| `publish-conditions.yml` | `40 * * * *`, unchanged | dlt and dbt run inside it, and it gains NWS alerts, so it is the one job that builds `warnings` ([below](#the-hourly-lanes)). Since decision 61 its extract keeps the twelve tables `extract/_run.py`'s `HOURLY_JOB_TABLES` names, and it adds the notices legs' served copy to its warehouse |
+| **`extract-notices.yml`** (new, decision 61) | `22 2-22/4 * * *` + `workflow_dispatch` | Every other club's and agency's closures and warnings into the notices legs' stores, with up to an hour to read, then the served copy the hourly build reads. Publishes nothing; its own concurrency group ([Phase F](#phase-f-the-hourly-lanes-budget)) |
 | `publish-weather.yml` | `55 * * * *`, unchanged | keeps the NBM forecast only; its NWS-alert half moves to the conditions job (decision 28a) |
 | `build-data-release.yml` | `25 6 * * 1`, a weekly planner that writes nothing | its Monday run gives way to the monthly `refresh-reference.yml` (decision 28a): the schedule retires once `refresh-reference.yml` has run once, and the dispatch stays |
 | `check-upstream-freshness.yml` | daily `20 7 * * *` | Also reports in **#478 — Upstream data freshness** when the last successful `refresh-reference.yml` run is over 35 days old |
@@ -3133,7 +3134,8 @@ The `concurrency:` group and the `maintain` job are explained in [Where data liv
 
 | Lane | Cron | Inside, in order | Publishes to |
 |---|---|---|---|
-| `publish-conditions.yml` | `40 * * * *`, kept; fires every 4.0 h (median of 40 runs, 2026-09-18 to 09-25, `:202-213`) | Per leg: `python -m extract._run --pipeline conditions_<env>` (each club's `closures.py`/`warnings.py`; `_shared/ourhike/` for **that leg's own database**; `_shared/ndmc/`, whose drought stays in the bake and in no mart; the daily NYNJTC terms when due) and the `nws` pipeline, under a 1-minute step cap → raw store, committed loads only → `dbt build --selector hourly_conditions --defer --state <the monthly manifest that environment serves>` → `--selector hourly_conditions_writers` (writers last) → `publish.py` → freshness | **production and UA, one leg each, as today**. `conditions/weather_alerts.json` comes from the UA leg, as it comes from UA-only `publish-weather.yml` today |
+| `publish-conditions.yml` | `40 * * * *`, kept; fires every 4.0 h (median of 40 runs, 2026-09-18 to 09-25, `:202-213`) | Per leg: `python -m extract._run --pipeline conditions_<env>` (each club's `closures.py`/`warnings.py`; `_shared/ourhike/` for **that leg's own database**; `_shared/ndmc/`, whose drought stays in the bake and in no mart; the daily NYNJTC terms when due) and the `nws` pipeline, under a 1-minute step cap → raw store, committed loads only. *As built since decision 61: the leg reads only `HOURLY_JOB_TABLES`, NWS among them, and adds the notices legs' served copy to its warehouse ([Phase F](#phase-f-the-hourly-lanes-budget))* → `dbt build --selector hourly_conditions --defer --state <the monthly manifest that environment serves>` → `--selector hourly_conditions_writers` (writers last) → `publish.py` → freshness | **production and UA, one leg each, as today**. `conditions/weather_alerts.json` comes from the UA leg, as it comes from UA-only `publish-weather.yml` today |
+| `extract-notices.yml` (decision 61) | `22 2-22/4 * * *` | Per leg: `python -m extract._run --lane notices_<env> --read-seconds 1800`, after up to 600 s of change checks (every closures and warnings resource not in `HOURLY_JOB_TABLES`), then `python -m extract._warehouse serve` | nothing a phone reads: its legs' raw stores and their served copies, which `publish-conditions.yml`'s dbt path adds to its warehouse each hour |
 | `publish-weather.yml` | `55 * * * *`, kept | the NBM manifest through dlt; NBM stays outside dbt, and its writer reads the source and the deferred weather squares | UA only (`:104`, `:184`), as today |
 
 **One job owns `warnings`** (decision 28a). The conditions job builds it, and the weather job no longer does. NWS moves from `:55` to `:40`, which keeps it hourly; `publish-weather.yml`'s "two halves" header rested on NBM's ~240 MB, while NWS is 160 KB and 0.49 s (Measured, 2026-10-01), so that reason does not carry over to the alerts half. Whether NWS fits beside the conditions job's 10 minutes is `@unvalidated`; one timed run settles it.
@@ -3489,6 +3491,73 @@ upstreams in a thread of its own, one listing of the store (`table_listing()`)
 replaces a request per table, and a leg's warehouse read takes 8 tables at once
 (`LEG_READERS`, `@unvalidated`). Whether 190 more page, feed and WordPress sources
 then fit, or the notices need a leg of their own, is what the next runs measure.
+
+**Decision 61 answered it before the runs did** (the maintainer, 2026-10-04: *"if this
+is going to be too hard to keep fast, let's expand now and not waste time on it"*). As
+built:
+
+- **Which resources go where is a named set, not a flag.** The conditions job,
+  `publish-conditions.yml`, keeps exactly the twelve tables the bake published before
+  decision 53, read off the conditions legs at 52835a44: NWS's alerts, OurHike's closures,
+  reports, notes and disputes, the reviewed work projects, ATC's three (the reviewed file,
+  its rows, and the pages since the review), NYNJTC's alerts and their terms, and OPRHP's
+  trail closures (`extract/_run.py`'s `HOURLY_JOB_TABLES`, each with why it stays hourly).
+  Every other closures and warnings resource, whatever its reader, is the notices job's
+  (`job_of()`), so a source wired later lands there without being named.
+  `tests/test_extract_layout.py` pins the twelve, holds the two jobs disjoint and
+  together the whole hourly lane, and keeps every `ConditionsQuery` and NWS on the
+  conditions job. At 377e981a that is 12 resources on each conditions leg and 261 on
+  each notices leg: the 80 moved layers and all 181 of section M's page, feed and
+  WordPress sources.
+- **Four legs, each its own dlt pipeline and raw-store prefix**: `conditions_production`,
+  `conditions_ua`, `notices_production`, `notices_ua` (`LEGS`). Isolation, `exit_status()`,
+  `by_folder()` and `take_on_new_tables()` are the same code on all four. The notices legs
+  check within 600 s where the conditions legs check within 45 (`LEG_CHECK_SECONDS`),
+  because a page or feed notice's check is its one request a run and a folder's checks
+  wait on its host's Crawl-delay (at 377e981a buckeyetrail.org's 26 pages and blm.gov's 26
+  are at least 50 s of gaps each, bmta's 2 behind a 60 s Crawl-delay 60 s). They read
+  within `--read-seconds 1800`, inside a 50-minute step of a 60-minute job, and take on
+  at most 150 never-loaded tables a run where the conditions legs take 10
+  (`NEW_TABLES_PER_LEG_RUN`). `extract/_notices.py`'s `REUSE_SECONDS`, how long a read
+  may use what its check fetched, goes from 600 to 3600 to match. The 150 is Reasoned
+  from run 506: dlt normalized and loaded the 83 tables it had read, and committed its
+  run log, in at most 78 s, about 0.94 s a table, so 150 is about 2.4 minutes of the 10
+  the step leaves after its checks and reads, and the 80 moved layers plus phase B's 181
+  sources come on in two runs rather than 27. The 600 and the 150 are `@unvalidated`
+  until the first two notices runs' `Seconds:` lines.
+- **`extract-notices.yml`**, `22 2-22/4 * * *`: UA from any ref by dispatch, production
+  only from `main` by `publish-conditions.yml`'s two locks
+  (`.github/tests/test_notices_production_leg_needs_main.py`), concurrency group
+  `extract-notices` of its own, so two notices runs never overlap and none waits on
+  `publish-data`. It writes no phone file. Whether GitHub fires a 4-hourly cron six times
+  a day is `@unvalidated`: #1346 measured the hourly one at a median 4.0 h.
+- **The hourly job reads the notices through a served copy, never the store itself.** A
+  `replace` load deletes a table's files before it writes the new ones, and the run log
+  lands after both, so a read of the notices store while one of its loads commits could
+  find a closures layer half gone. After each run that commits, the notices job copies
+  what a build reads of its leg, write-once, to `served/<run_id>/` under the leg's store:
+  each table as one Parquet file, the hints of each table created empty, and its run log
+  rows, with `manifest.json` last holding every file's sha256 (`extract/_warehouse.py`'s
+  `write_served_copy()`). A table the store cannot give back whole, a run killed between
+  its load and its run log, is carried from the copy before and the run goes red; the
+  rest still serve. The hourly job's new step adds the newest finished copy to its
+  warehouse, its tables and its run log rows beside the conditions leg's in
+  `_extract_runs` (`load_served()`). The conditions legs' warehouse load now takes only
+  their own job's tables, because their stores still hold the 80 notice layers they read
+  before the split, frozen at the move.
+- **A notices read never stops the hourly publish.** The newest copy is retried three
+  times, 5 s apart, then the copy before is read: the notices' last good rows, and the run
+  goes red after publishing. No copy yet only warns. Anything else builds without the
+  notices and says so. In every case but the newest copy, `build_marts.py
+  --no-history-save` keeps the row history from recording a missing notice as lifted.
+- **What this does not settle.** A notices table the hourly warehouse lacks (one still
+  waiting its turn, which logs no hints, one a copy left out, or every one in a build
+  without the notices) is absent, never created empty, which is
+  harmless while no dbt model reads a notices table; once phase C's staging reads every
+  notice source, such a build would fail on the missing relation rather than publish
+  "no notices", and phase C's union must hold an absent source back instead
+  (`@unvalidated`: no such build has run). The hourly job's own caps are unchanged: its
+  extract now reads 12 upstreams, where run 505 read 13 in a 70-second step.
 
 ### Phase G: the gate
 

@@ -1,0 +1,279 @@
+# Extracts every club's and agency's closures and warnings notices into the
+# private raw store, every 4 hours, with up to an hour to read them. It
+# publishes nothing to phones: publish-conditions.yml's hourly dbt path reads
+# what this leaves and builds the closures and warnings marts from it.
+#
+# DECISION 61 (pipeline/ELT.md's decisions table, 2026-10-04) IS WHY THIS IS
+# ITS OWN JOB. The maintainer: "we can move the conditions to run every 4
+# hours and to take up to an hour. if this is going to be too hard to keep
+# fast, let's expand now and not waste time on it", and then, by poll, kept
+# what a storm or a moderator's closure turns on in the short hourly job. So
+# the hourly lane is read by two jobs (extract/_run.py's LEGS and job_of()):
+#
+#  - publish-conditions.yml, hourly, reads the upstreams the bake published
+#    before decision 53: NWS's alerts, OurHike's own moderated closures and
+#    reports, ATC's and NYNJTC's notices, OPRHP's trail closures and the
+#    reviewed work projects (_run.py's HOURLY_JOB_TABLES, which
+#    pipeline/tests/test_extract_layout.py pins table by table).
+#  - this job reads every other closures and warnings resource, every
+#    decision 53 source whatever its reader (ArcGIS, JSON, feed, page,
+#    WordPress), by that rule rather than by a list, so a club wired later
+#    comes here without anybody naming it.
+#
+# What the split costs a hiker, said plainly: a club's notice can now reach
+# the warehouse up to about 4 hours after the club posts it, plus however
+# late GitHub fires this cron. The phone already says "Conditions as of Nh
+# ago" at any age (client/src/lib/conditionState.ts), and decision 61 chose
+# this over letting a short NWS warning expire unseen.
+#
+# HOW THE HOURLY JOB READS IT WITHOUT TEARING. A `replace` load deletes a
+# table's files before it writes the new ones, and its run log lands after
+# both, so the hourly job reading this store directly while a run here
+# commits could find a closures layer half gone. So the last step here copies
+# what a build reads, write-once, to served/<run_id>/ under each leg's store,
+# manifest last (extract/_warehouse.py, "THE SERVED COPY"), and the hourly job
+# reads the newest finished copy, falling back to the one before when the
+# newest will not verify. A run here that dies before its copy finishes
+# leaves the hourly job reading the previous copy: the notices' last good
+# rows, with their own dates.
+#
+# ONE RUN PER DATA ENVIRONMENT, as publish-conditions.yml has, so that each
+# environment's hourly build reads a store only its own legs write
+# (features/DATA_ENVIRONMENTS.md). These legs read no database, so the two
+# read the same upstreams: every source is asked twice a run, conditional
+# requests where the host sends validators and every host's Crawl-delay
+# honoured (pipeline/ELT.md, "The rules this keeps"), which is the same
+# trade the conditions legs already make for the same reason.
+#
+# THE PRODUCTION LEG EXISTS ONLY FOR A RUN FROM MAIN, by publish-conditions.yml's
+# two locks, held here by .github/tests/test_notices_production_leg_needs_main.py.
+# Nothing a hiker reads moves when it runs (it writes the private raw store
+# and the served copy, and production's hourly dbt path is refused today),
+# but production's store is the one the cutover will publish from, and only
+# reviewed, merged code may fill it.
+
+name: Extract notices
+
+# ITS OWN GROUP, AT THE WORKFLOW LEVEL, never publish-data. Two notices runs
+# never overlap: a second waits for the first, and GitHub keeps one pending
+# entrant per group, so a third replaces the second rather than queueing,
+# which costs nothing because the next one reads the same upstreams. And a
+# notices run never blocks the hourly job, which holds publish-data: this
+# writes neither the public bucket nor latest.json, so it has no reason to
+# wait on, or hold up, any publisher.
+concurrency:
+  group: extract-notices
+  cancel-in-progress: false
+
+on:
+  schedule:
+    # :22 past 02, 06, 10, 14, 18 and 22 UTC. Off the hour for the reason
+    # every cron in this directory records (GitHub queues everything
+    # submitted at :00 behind everyone else's), on a minute no other
+    # workflow here uses, and off midnight UTC, by analogy with that rule
+    # only. Every 4 hours is decision 61's.
+    #
+    # @unvalidated: what GitHub actually does with a 4-hourly cron. #1346 -
+    # Every cron in this repository fires about five times a day, whatever
+    # it declares - including the conditions bake measured the hourly one
+    # at a median gap of 4.0 h and a maximum of 6.3 h (publish-conditions.yml's
+    # schedule comment, 2026-09-25). If a 4-hourly cron is late by the same
+    # hours, this fires two or three times a day, not six. The run list
+    # after a week settles it.
+    - cron: "22 2-22/4 * * *"
+  workflow_dispatch:
+    inputs:
+      # `ua` runs the UA leg alone: the soak's dispatch from the pull
+      # request's branch (decision 62 restarts the soak on these jobs). `both`
+      # is the schedule's behaviour, and means both legs only from main.
+      data_environment:
+        description: "Which legs to run: both (production and UA; from main only) or ua alone"
+        type: choice
+        options: [both, ua]
+        default: both
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  # dlt's telemetry is on by default and would send from a job holding the
+  # raw store's write key (the dlt skill, rule 3).
+  RUNTIME__DLTHUB_TELEMETRY: "false"
+
+jobs:
+  extract:
+    name: Extract notices (${{ matrix.data_environment }})
+    runs-on: ubuntu-latest
+    # DECISION 61'S HOUR. The steps' caps below are sized inside it: 3 minutes
+    # to install, 50 to extract and 5 to copy, 58 of the 60, with checkout and
+    # Python a few seconds besides (publish-conditions.yml's run 510 measured
+    # 3 s and 8 s for those two, 2026-10-04).
+    timeout-minutes: 60
+    # fail-fast off: UA's leg failing is not a reason to leave production's
+    # store four hours older, nor the reverse.
+    strategy:
+      fail-fast: false
+      matrix:
+        data_environment: ${{ fromJSON((github.ref == 'refs/heads/main' && inputs.data_environment != 'ua') && '["production", "ua"]' || '["ua"]') }}
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      # First, before the checkout and any step that reads a secret: the
+      # second lock, with bash's case-sensitive comparison, because GitHub's
+      # `==` in the matrix ignores case and a branch called `Main` would pass it.
+      - name: Refuse a production leg from any ref but main
+        working-directory: .
+        env:
+          LEG: ${{ matrix.data_environment }}
+          REF: ${{ github.ref }}
+          ASKED: ${{ inputs.data_environment }}
+        run: |
+          if [ "$LEG" = "production" ] && [ "$REF" != "refs/heads/main" ]; then
+            echo "::error title=Production leg refused::$REF is not refs/heads/main, and only main fills production's notices store. Nothing was read for production."
+            exit 1
+          fi
+          if [ "$LEG" = "ua" ] && [ "$REF" != "refs/heads/main" ] && [ "$ASKED" != "ua" ]; then
+            echo "::notice title=UA leg only::$REF is not refs/heads/main, so the production leg was left out and this run extracts UA alone."
+          fi
+
+      # Stops here, naming each missing secret, rather than failing somewhere
+      # inside dlt, as refresh-reference.yml's extract job does. NPS_API_KEY
+      # only warns: without it the two NPS tables read as unavailable and the
+      # leg stays green (extract/_json_apis.py, "THE KEY").
+      - name: Name every secret this job needs, and stop if one is missing
+        working-directory: .
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          R2_RAW_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          R2_RAW_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          NPS_API_KEY: ${{ secrets.NPS_API_KEY }}
+        run: |
+          missing=()
+          for name in R2_ENDPOINT_URL R2_RAW_BUCKET R2_RAW_ACCESS_KEY_ID R2_RAW_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Raw store secrets missing::${missing[*]} not set; nothing was extracted (pipeline/ELT.md, Secrets and buckets)."
+            exit 1
+          fi
+          if [ -z "$NPS_API_KEY" ]; then
+            echo "::warning title=NPS_API_KEY is not set::the NPS alerts and road events read as unavailable this run."
+          fi
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements-extract.txt
+
+      # requirements-extract.txt alone, in its own venv, as every extract job
+      # installs it. Three minutes: publish-conditions.yml's run 510 installed
+      # this and dbt's pins and ran `dbt deps` in 26 s (2026-10-04).
+      - name: Install the extract's own pins
+        timeout-minutes: 3
+        run: |
+          python -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+
+      # extract/_run.py's notices leg: each upstream read on its own, one
+      # thread per club folder, within --read-seconds; one that fails, times
+      # out or is refused by the run check is left out with its last committed
+      # table standing, and the rest load. A refusal exits 3, recorded here so
+      # the copy below still runs and the last step turns the run red; a
+      # refused source whose sources.json row says reaches_hikers false exits
+      # 0 (exit_status()). A run takes on at most 150 tables it has never
+      # loaded (NEW_TABLES_PER_LEG_RUN, which says what that rests on).
+      #
+      # THE BUDGET, inside a 50-minute step: up to 600 s of change checks
+      # (extract/_run.py's LEG_CHECK_SECONDS for the notices job), then 1800 s
+      # of reading, which leaves about 10 minutes for the store's sync, dlt's
+      # normalize and load, and the run log. The checks get the larger share
+      # than they would on the conditions legs because a page or feed
+      # notice's check is its one request a run, and the read reuses it
+      # (extract/_notices.py): a folder's checks run one after another behind
+      # its host's Crawl-delay, and at 377e981a buckeyetrail.org's 26 pages
+      # and blm.gov's 26 are at least 50 s of gaps each, hike-mst.org's 23
+      # 44 s, and bmta's 2 behind a 60 s Crawl-delay 60 s. The reads are then
+      # the ArcGIS layers and WordPress posts that moved: the conditions legs
+      # read 85 sources, most of them ArcGIS first reads, inside 150 s on soak
+      # run 506 (publish-conditions.yml 37154645937, 2026-10-03). Both are
+      # ceilings sized to the hour, not the time a run is expected to take
+      # (@unvalidated: no notices leg has run yet, and the first run's
+      # "Seconds:" summary line settles both). A slow host costs only its own
+      # folder's checks and reads, never a shorter Crawl-delay.
+      - name: Extract every club's and agency's notices into this leg's store
+        id: extract
+        timeout-minutes: 50
+        env:
+          LEG: notices_${{ matrix.data_environment }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          # `auto` is R2's documented region, as refresh-reference.yml's
+          # extract sets it.
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+          # The NPS alerts API's key (extract/_json_apis.py, "THE KEY"). Absent,
+          # the two NPS tables read as unavailable with a warning.
+          NPS_API_KEY: ${{ secrets.NPS_API_KEY }}
+        run: |
+          set +e
+          "$RUNNER_TEMP/extract/bin/python" -m extract._run --lane "$LEG" --raw-bucket "$R2_RAW_BUCKET" \
+            --read-seconds 1800 --pipelines-dir "$RUNNER_TEMP/dlt" --summary "$GITHUB_STEP_SUMMARY"
+          status=$?
+          set -e
+          if [ "$status" -eq 3 ]; then
+            echo "partial=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+
+      # What the hourly build reads of this leg (extract/_warehouse.py's
+      # write_served_copy()), after the run has committed and only then.
+      # Exit 3 means a table the store could not give back whole was carried
+      # from the copy before, or left out; the copy is still written, and the
+      # last step turns the run red. Five minutes: the copy is one read and
+      # one write of each of the leg's tables (soak run 508 read 92 conditions
+      # tables, 11,999 rows, in about 55 s one at a time), @unvalidated
+      # against R2 at this job's size.
+      - name: Copy what the hourly build reads of this leg
+        id: serve
+        timeout-minutes: 5
+        env:
+          LEG: notices_${{ matrix.data_environment }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          set +e
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse serve --lane "$LEG" --raw-bucket "$R2_RAW_BUCKET" \
+            --pipelines-dir "$RUNNER_TEMP/dlt" --summary "$GITHUB_STEP_SUMMARY"
+          status=$?
+          set -e
+          if [ "$status" -eq 3 ]; then
+            echo "partial=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+
+      # Last, so a source refused on its own has not held back the ones that
+      # loaded or their copy, and the run still goes red for it. The extract
+      # step's summary names the source and why.
+      - name: Fail the run if a source was refused on its own
+        if: steps.extract.outputs.partial == 'true'
+        run: |
+          echo "::error title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was copied for the hourly build."
+          exit 1
+
+      - name: Fail the run if a table was not copied whole
+        if: steps.serve.outputs.partial == 'true'
+        run: |
+          echo "::error title=A table was not copied whole::The store could not give back at least one table as its run log says it landed, so the copy carries that table's last good rows or leaves it out. The run summary names it."
+          exit 1

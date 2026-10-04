@@ -67,8 +67,9 @@ settings:
       The private raw store, `our-hike-raw` (pipeline/ELT.md, decision 43:
       one private bucket for raw and the step cache, one key). dlt lands every
       extract there under raw/, the step cache sits under steps/, and the
-      builds read it back; no phone reads it. Two workflows need it, and each
-      stops by name when it is missing: refresh-reference.yml's jobs, and
+      builds read it back; no phone reads it. Three workflows need it, and
+      each stops by name when it is missing: refresh-reference.yml's jobs,
+      extract-notices.yml's (decision 61's notices legs, every 4 hours), and
       publish-conditions.yml's `phone_files: dbt` path (the schedule's default
       path, today's bake, does not read it). REQUIRED: FALSE until the
       maintainer has minted the key and stored the three R2_RAW_* secrets
@@ -99,12 +100,14 @@ settings:
     why: >-
       The National Park Service alerts API's key (developer.nps.gov, free from
       https://www.nps.gov/subjects/developer/get-started.htm), read by
-      publish-conditions.yml's conditions extract step for decision 53's NPS
-      alerts and road events (pipeline/extract/_json_apis.py, "THE KEY").
-      REQUIRED: FALSE because an hour without it is honest rather than wrong:
-      the two NPS tables read as unavailable with a warning, no NPS alert
-      reaches dbt for the 27 park codes 26 clubs draw on, and the leg stays
-      green. Added by the maintainer as a repository secret on 2026-10-03.
+      extract-notices.yml's extract step for decision 53's NPS alerts and road
+      events (pipeline/extract/_json_apis.py, "THE KEY"), which decision 61
+      moved off publish-conditions.yml's hourly job with every other club's
+      and agency's notices. REQUIRED: FALSE because a run without it is honest
+      rather than wrong: the two NPS tables read as unavailable with a
+      warning, no NPS alert reaches dbt for the 27 park codes 26 clubs draw
+      on, and the leg stays green. Added by the maintainer as a repository
+      secret on 2026-10-03.
 
   HIKEFINDER_PASSWORD:
     where: secret

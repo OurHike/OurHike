@@ -42,6 +42,19 @@ scripts/suite_scopes.py - a hand copy is exactly the half that goes stale):
 4. Plus the workflow file itself, and the SHARED_ROOTS below that feed every
    exporter at once regardless of what imports what.
 
+AN EXTRACT PATH FEEDS A PUBLISH WITHOUT BEING ONE. A workflow that runs
+`python -m extract._run` and no publish.py lands raw tables a publishing
+path reads later: extract-notices.yml, decision 61's notices legs, whose
+served copy publish-conditions.yml's hourly dbt path reads. Its scope is the
+extract package's own modules (pipeline/extract/_*.py) and their import
+closure, the club files of the types on the hourly lane (extract/_contract.py's
+CADENCE_BY_TYPE, read out of that file), the extract's pins and dlt's
+committed config. It is reported beside the publishing paths and claims
+nothing for the `unclaimed` line, which is about publishing paths: an
+extract file is still unclaimed by them until scripts/pipelines.sh learns
+the extract layout (pipeline/ELT.md, "scripts/pipelines.sh must learn the
+new layout").
+
 THE CONSERVATIVE DIRECTION IS "STALE". A false STALE costs somebody a
 minute deciding not to dispatch; a false fresh is the #1123 failure - a
 bucket that disagrees with `main` and nothing saying so. But unlike
@@ -62,6 +75,7 @@ when a workflow could not be read - callers must treat that as "answer by
 hand", never as "nothing is stale".
 """
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -100,6 +114,17 @@ NEVER_STALE_RE = re.compile(r"^pipeline/tests/|\.md$")
 #: Searched only in `run:` scripts with their comment lines dropped - see
 #: run_scripts() - because an echo or a comment can name the publisher too.
 INVOKES_PUBLISH_RE = re.compile(r"(?<![\w.])python3?\s+(?:(?:[\w./-]*/)?publish\.py\b|-m\s+publish\b)")
+#: `python -m extract._run`, from any interpreter path: the workflows run the
+#: extract's own venv, `"$RUNNER_TEMP/extract/bin/python" -m extract._run`.
+INVOKES_EXTRACT_RE = re.compile(r"python3?\"?\s+-m\s+extract\._run\b")
+#: A _shared/ extract file's type, as it declares it.
+SHARED_TYPE_RE = re.compile(r'^TYPE = "([a-z_]+)"', re.M)
+#: An extract path's scope beyond its modules' import closure (see extract_scope_for()).
+EXTRACT_ROOTS = (
+    "pipeline/requirements-extract.txt",
+    "pipeline/requirements-extract.in",
+    "pipeline/.dlt/",
+)
 SCRIPT_MENTION_RE = re.compile(r"(?<![\w.])([A-Za-z0-9_]+\.py)\b")
 IMPORT_RE = re.compile(r"^\s*(?:from|import)\s+([A-Za-z0-9_]+)", re.M)
 
@@ -139,6 +164,45 @@ def run_scripts(workflow: Path) -> str:
 
 def publishing_workflows() -> list[Path]:
     return [p for p in sorted(WORKFLOWS.glob("*.yml")) if INVOKES_PUBLISH_RE.search(run_scripts(p))]
+
+
+def extract_paths() -> list[Path]:
+    """Workflows that run the extract and publish nothing: a publishing path reads what they land."""
+    found = []
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        scripts = run_scripts(workflow)
+        if INVOKES_EXTRACT_RE.search(scripts) and not INVOKES_PUBLISH_RE.search(scripts):
+            found.append(workflow)
+    return found
+
+
+def hourly_types() -> set[str]:
+    """The types whose club files ride the hourly lane, read from extract/_contract.py's CADENCE_BY_TYPE literal."""
+    tree = ast.parse((PIPELINE / "extract" / "_contract.py").read_text())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(getattr(target, "id", None) == "CADENCE_BY_TYPE" for target in node.targets):
+            return {kind for kind, cadence in ast.literal_eval(node.value).items() if cadence in ("hourly", "daily")}
+    raise ValueError("extract/_contract.py has no CADENCE_BY_TYPE literal to read the hourly types from")
+
+
+def extract_scope_for(workflow: Path) -> set[str]:
+    """Repo-relative paths whose change stales what an extract path lands: the workflow, the extract package's own
+    modules and their import closure, and every club folder's file of an hourly type. EXTRACT_ROOTS and SHARED_ROOTS
+    are prefixes, matched in print_verdict()."""
+    modules = {str(path.relative_to(PIPELINE)) for path in (PIPELINE / "extract").glob("_*.py")}
+    files = {f"pipeline/{name}" for name in import_closure(modules)}
+    kinds = hourly_types()
+    for path in (PIPELINE / "extract").rglob("*.py"):
+        if path.parent.parent.name == "_shared":
+            # A _shared/ file is named freely and says its type in `TYPE = "<type>"` (extract/_contract.py).
+            declared = SHARED_TYPE_RE.search(path.read_text())
+            hourly = declared is not None and declared.group(1) in kinds
+        else:
+            hourly = path.parent.parent.name == "extract" and path.stem in kinds
+        if hourly:
+            files.add(f"pipeline/{path.relative_to(PIPELINE)}")
+    files.add(f".github/workflows/{workflow.name}")
+    return files
 
 
 def import_closure(scripts: set[str]) -> set[str]:
@@ -200,6 +264,8 @@ def rerun_note(workflow: Path) -> str:
 def print_scopes() -> None:
     for workflow in publishing_workflows():
         print(f"{workflow.name} {' '.join(sorted(scope_for(workflow)))}")
+    for workflow in extract_paths():
+        print(f"extract-path {workflow.name} {' '.join(sorted(extract_scope_for(workflow) | set(EXTRACT_ROOTS)))}")
     print(f"every-path {' '.join(SHARED_ROOTS)}")
 
 
@@ -214,6 +280,17 @@ def print_verdict(changed: list[str]) -> None:
         claimed.update(hits)
         if hits:
             print(f"STALE  {workflow.name}  <- {', '.join(hits)}")
+            print(f"       {rerun_note(workflow)}")
+        else:
+            print(f"fresh  {workflow.name}")
+
+    for workflow in extract_paths():
+        scope = extract_scope_for(workflow)
+        hits = sorted(
+            set(f for f in relevant if f in scope or any(f.startswith(root) for root in EXTRACT_ROOTS)) | set(shared_hits)
+        )
+        if hits:
+            print(f"STALE  {workflow.name}  <- {', '.join(hits)}  (an extract path: a publish reads what it lands)")
             print(f"       {rerun_note(workflow)}")
         else:
             print(f"fresh  {workflow.name}")

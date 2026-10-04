@@ -50,6 +50,15 @@ PUBLISHING_PATHS = {
     "refresh-reference.yml",
 }
 
+#: The extract paths: workflows that run `python -m extract._run` and no
+#: publish.py, whose raw tables a publishing path reads later. Pinned exactly,
+#: as the publishing roster is.
+EXTRACT_PATHS = {
+    # Decision 61's notices legs, every 4 hours; publish-conditions.yml's
+    # hourly dbt path reads their served copy (pipeline/ELT.md, phase F).
+    "extract-notices.yml",
+}
+
 
 def _load_scopes_module():
     spec = importlib.util.spec_from_file_location("pipeline_scopes", SCOPES)
@@ -85,9 +94,37 @@ def test_the_roster_is_derived_and_complete():
         text=True,
         check=True,
     ).stdout
-    named = {line.split()[0] for line in scopes.splitlines() if line.strip()} - {"every-path"}
+    lines = [line.split() for line in scopes.splitlines() if line.strip()]
+    named = {line[0] for line in lines} - {"every-path", "extract-path"}
     assert PUBLISHING_PATHS <= named, f"derivation lost a publishing path: {sorted(PUBLISHING_PATHS - named)}"
     assert named <= PUBLISHING_PATHS, f"derivation invented a publishing path: {sorted(named - PUBLISHING_PATHS)}"
+    assert {line[1] for line in lines if line[0] == "extract-path"} == EXTRACT_PATHS
+
+
+def test_a_notices_source_stales_the_extract_path_that_lands_it_and_needs_no_dispatch():
+    """A club's closures file is read by extract-notices.yml (an hourly type, extract/_contract.py's
+    CADENCE_BY_TYPE), whose schedule reruns it from main; publishing paths do not claim it yet, so it is still
+    named unclaimed for them rather than read as fresh."""
+    verdict = _verdict(["pipeline/extract/usfs/closures.py"])
+    assert "STALE  extract-notices.yml" in verdict
+    assert "nothing to dispatch" in _note_after(verdict, "extract-notices.yml")
+    assert "unclaimed  pipeline/extract/usfs/closures.py" in verdict
+
+
+def test_a_monthly_types_club_file_leaves_the_extract_path_fresh():
+    verdict = _verdict(["pipeline/extract/usfs/trail_lines.py"])
+    assert "fresh  extract-notices.yml" in verdict
+
+
+def test_the_extract_package_and_what_it_imports_stale_the_extract_path():
+    for changed in ("pipeline/extract/_run.py", "pipeline/lib/arcgis.py", "pipeline/requirements-extract.txt"):
+        assert "STALE  extract-notices.yml" in _verdict([changed]), changed
+
+
+def test_a_shared_folders_file_of_an_hourly_type_stales_the_extract_path_and_a_monthly_one_does_not():
+    """A _shared/ file names its type in `TYPE = "<type>"`, not by its own name."""
+    assert "STALE  extract-notices.yml" in _verdict(["pipeline/extract/_shared/nifc/perimeters.py"])
+    assert "fresh  extract-notices.yml" in _verdict(["pipeline/extract/_shared/ourhike/highlights.py"])
 
 
 def test_workflows_that_only_mention_the_publisher_are_not_publishing_paths():

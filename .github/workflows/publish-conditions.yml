@@ -20,6 +20,15 @@
 # hourly dispatches before the merge, which is why a dispatch from any ref
 # but main runs the UA leg alone.
 #
+# THE dbt PATH READS TWO STORES SINCE DECISION 61 (2026-10-04). This job's
+# extract keeps the upstreams the bake published before decision 53 (NWS,
+# OurHike's own rows, ATC, NYNJTC, OPRHP's closures and the work projects:
+# extract/_run.py's HOURLY_JOB_TABLES), and every other club's and agency's
+# notices are extract-notices.yml's, every 4 hours with up to an hour to
+# read. Each hour this job adds that workflow's newest served copy to the
+# warehouse before the build, so the closures and warnings marts carry every
+# club's notices hourly, at the age that job last read them.
+#
 # HOURLY since 2026-08-15 (#720), where this used to be daily on the
 # maintainer's "a closure can be latent by a day" from 2026-08-08. What
 # changed is that the client now re-reads on the same clock, so the shorter
@@ -966,13 +975,18 @@ jobs:
           --pipelines-dir "$RUNNER_TEMP/dlt" --warehouse data/warehouse.duckdb
           --summary "$GITHUB_STEP_SUMMARY"
 
-      # 2. THIS LEG'S UPSTREAMS, THROUGH dlt, INTO THE RAW STORE: each club's
-      # closures and warnings, OurHike's own rows from this leg's database,
-      # NWS, and NYNJTC's terms when a day old (extract/_run.py's
-      # conditions_production or conditions_ua lane, each its own dlt
-      # pipeline at s3://<R2_RAW_BUCKET>/raw/dlt/<leg>/). Every table the leg
-      # has committed then goes into the warehouse; a table whose recorded
-      # load left no file is refused, not read as "no closures".
+      # 2. THIS LEG'S UPSTREAMS, THROUGH dlt, INTO THE RAW STORE: the twelve
+      # tables decision 61 keeps hourly (extract/_run.py's HOURLY_JOB_TABLES):
+      # OurHike's own rows from this leg's database, NWS, ATC's and NYNJTC's
+      # notices (NYNJTC's terms when a day old), OPRHP's trail closures and
+      # the work projects, through extract/_run.py's conditions_production or
+      # conditions_ua leg, each its own dlt pipeline at
+      # s3://<R2_RAW_BUCKET>/raw/dlt/<leg>/. Every table of those the leg has
+      # committed then goes into the warehouse, and nothing else its store
+      # kept (it still holds the 80 notice layers it read before decision 61,
+      # frozen at the move); a table whose recorded load left no file is
+      # refused, not read as "no closures". Every other club's notices come in
+      # at step 2b.
       #
       # ONE UPSTREAM'S FAILURE IS ITS OWN (extract/_run.py's read_each). Each
       # is read separately within --read-seconds; one that fails, times out
@@ -993,13 +1007,18 @@ jobs:
       # it has never loaded per run (NEW_TABLES_PER_LEG_RUN), because run
       # 506 met 70 at once and this step's cap stopped its load.
       #
-      # 150 s of reading inside a 4-minute step (the cap "Fetch ATC's trail
-      # updates" has; its comment says why) leaves about 90 s for dlt's
-      # normalize and the loads to R2 and the warehouse. Both @unvalidated
-      # against R2: on the fixtures the whole leg took 2.7 s (Measured
-      # 2026-10-02, 11 tables, 69 rows, a file:// store;
-      # features/CONDITIONS_DELIVERY.md has the table), and the first soak
-      # run's summary gives the real figures.
+      # THE BUDGET: change checks end after 45 s (extract/_run.py's
+      # LEG_CHECK_SECONDS), then 150 s of reading, inside the 6-minute step
+      # below. Kept as they were, because decision 61 shrank this step's
+      # work rather than its budget: this leg now reads 12 upstreams. Run 505
+      # (37151246098, 2026-10-03), the last before the 70 notice layers came
+      # on, took this step 70 s reading 13, and run 510 (37176072338,
+      # 2026-10-04) 169 s for 89 resources, 20 of them read. Not cut back to
+      # 4 minutes: ATC's trail-updates pages carry their reads to the end of
+      # whatever budget is left (run 510 spent the whole 150 s), so 45 s of
+      # checks and 150 s of reads can still take 3 m 15 s before the load,
+      # and no run of the 12-table leg has been timed yet (Reasoned). A few
+      # soak runs' step times would settle a smaller cap.
       - name: Extract this leg's closures and warnings into the raw store (dbt path)
         id: extract
         if: env.PHONE_FILES == 'dbt'
@@ -1018,9 +1037,6 @@ jobs:
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
-          # The NPS alerts API's key (extract/_json_apis.py, "THE KEY"). Absent, the two
-          # NPS tables read as unavailable with a warning and the leg stays green.
-          NPS_API_KEY: ${{ secrets.NPS_API_KEY }}
         run: |
           if [ "$ENVIRONMENT" = "production" ]; then
             export CONDITIONS_DATABASE_URL="$PRODUCTION_URL"
@@ -1041,6 +1057,54 @@ jobs:
           elif [ "$status" -ne 0 ]; then
             exit "$status"
           fi
+
+      # 2b. EVERY OTHER CLUB'S NOTICES, FROM extract-notices.yml (decision
+      # 61): its leg for this environment, notices_<env>, writes a served copy
+      # after each run that commits (extract/_warehouse.py, "THE SERVED
+      # COPY"), and this adds the newest one to the warehouse, read-only: its
+      # tables of the notices job, and its run log rows beside this leg's in
+      # `_extract_runs`. Never the notices store itself, because a notices
+      # load committing while this reads would tear it.
+      #
+      # IT NEVER STOPS THE HOURLY PUBLISH. A copy that will not read is
+      # retried, then the one before is read, the notices' last good rows
+      # (`read=older`, exit 5). No copy at all yet is a warning
+      # (`read=none`, exit 6). Anything else (`read=unread`) builds without
+      # the notices store and says so. In every case but `latest` the build
+      # below saves no row history, so a notice missing from this build is
+      # never recorded as removed, and `older` and `unread` turn the run red
+      # at the end, after everything else has published.
+      #
+      # Two minutes, @unvalidated: the copy is one Parquet file per notices
+      # table, read 8 at a time (LEG_READERS), and soak run 508 read 92 such
+      # tables, 11,999 rows, from this store in about 55 s one at a time.
+      - name: Add the notices legs' newest served copy to the warehouse (dbt path)
+        id: notices
+        if: env.PHONE_FILES == 'dbt'
+        timeout-minutes: 2
+        env:
+          LEG: notices_${{ matrix.data_environment }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          set +e
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse add-served --lane "$LEG" --raw-bucket "$R2_RAW_BUCKET" \
+            --pipelines-dir "$RUNNER_TEMP/dlt" --warehouse data/warehouse.duckdb --summary "$GITHUB_STEP_SUMMARY"
+          status=$?
+          set -e
+          case "$status" in
+            0) served=latest ;;
+            5) served=older ;;
+            6) served=none ;;
+            *)
+              served=unread
+              echo "::error title=Notices not read::$LEG's served copy could not be added (exit $status), so this build has no club notices beyond the hourly job's own. Everything else still builds and publishes."
+              ;;
+          esac
+          echo "read=$served" >> "$GITHUB_OUTPUT"
 
       # 3. THE BUILD, in build_marts.py's order: the closures and warnings
       # marts with their tests, then their pub_ writers last, into
@@ -1073,6 +1137,11 @@ jobs:
       # below then turns the run red so the store gets fixed. Any other
       # failure stops here, as before.
       #
+      # `--no-history-save` when step 2b did not add the newest notices copy:
+      # the history is restored and the build dates rows from it, but nothing
+      # is saved, so a notice this build lacks is never closed in the history
+      # (build_marts.py's docstring).
+      #
       # Whether the restore and the save fit beside the build inside this
       # step's 4 minutes is @unvalidated; the first soak run's log settles it.
       # On the fixture warehouse the two snapshots saved as 12,797 and
@@ -1089,19 +1158,24 @@ jobs:
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+          NOTICES_READ: ${{ steps.notices.outputs.read }}
         run: |
           started=$SECONDS
           without=()
           if [ "$ENVIRONMENT" != "ua" ] || [ ! -s data/raw/weather/squares.json ]; then
             without=(--without-step step_weather_squares)
           fi
+          history=()
+          if [ "$NOTICES_READ" != "latest" ]; then
+            history=(--no-history-save)
+          fi
           set +e
-          python build_marts.py --lane hourly --dbt "$RUNNER_TEMP/dbt/bin/dbt" "${without[@]}" \
+          python build_marts.py --lane hourly --dbt "$RUNNER_TEMP/dbt/bin/dbt" "${without[@]}" "${history[@]}" \
             --history-url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
             --history-python "$RUNNER_TEMP/extract/bin/python" --history-on-failure degrade
           status=$?
           set -e
-          printf -- '- build_marts.py --lane hourly %s: %s s, exit %s\n\n' "${without[*]}" "$((SECONDS - started))" "$status" >> "$GITHUB_STEP_SUMMARY"
+          printf -- '- build_marts.py --lane hourly %s: %s s, exit %s\n\n' "${without[*]} ${history[*]}" "$((SECONDS - started))" "$status" >> "$GITHUB_STEP_SUMMARY"
           if [ "$status" -eq 4 ]; then
             echo "history_lost=true" >> "$GITHUB_OUTPUT"
           elif [ "$status" -ne 0 ]; then
@@ -1198,6 +1272,20 @@ jobs:
           ENVIRONMENT: ${{ matrix.data_environment }}
         run: |
           echo "::error title=Row history not restored::This leg's row history (history/conditions_$ENVIRONMENT/ in the raw store) could not be restored, so closures and warnings published with _first_seen_at and _changed_at null and nothing was saved. Fix the store; the next run that restores it dates rows again."
+          exit 1
+
+      # Last for the same reason: the closures and warnings files published
+      # without the newest notices copy, and the run goes red so the notices
+      # store or its copy gets looked at. Step 2b's summary says which copy
+      # was read, if any, and why the newer ones were not. A store with no
+      # copy yet only warns there: that is the notices job not having run on
+      # this branch yet, not a failure.
+      - name: Fail the run if the notices legs' newest copy was not read (dbt path)
+        if: steps.notices.outputs.read == 'older' || steps.notices.outputs.read == 'unread'
+        env:
+          NOTICES_READ: ${{ steps.notices.outputs.read }}
+        run: |
+          echo "::error title=Notices not current::The notices legs' newest served copy was not read ($NOTICES_READ), so this hour's closures and warnings marts hold older club notices or none. Everything else was published, and no row history was saved."
           exit 1
 
       - name: Save dbt's DuckDB driver and v2's spatial extension

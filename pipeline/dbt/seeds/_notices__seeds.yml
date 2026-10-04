@@ -1,8 +1,8 @@
 version: 2
 
 # Decision 53's phase C: the club notice sources' seeds. Two are reviewed by
-# hand row by row (notice_source_fields, notice_status_values), and one is
-# written by
+# hand row by row (notice_source_fields, notice_status_values), one is a
+# person's mark on a notice (notice_marks), and one is written by
 # pipeline/generate_notice_models.py from the extract's own declarations
 # (notice_readers), which tests/test_generated_notice_models.py holds to what
 # the generator writes.
@@ -92,6 +92,41 @@ seeds:
                 values: [closes_trail, not_current]
       - name: why
         description: The evidence, quoted from the source's sources.json notes where they hold it.
+  - name: notice_marks
+    description: >
+      A person's mark on one notice: `lifted` ends a notice that a feed's
+      window no longer carries (int_closures__window_carried keeps such a
+      notice otherwise, because a window is not a list, decision 53 phase C).
+      Empty until somebody marks one; each row is reviewed in a pull
+      request like any other seed.
+    config:
+      column_types:
+        source_key: varchar
+        notice_id: varchar
+        mark: varchar
+        marked_on: date
+        reviewed_in: varchar
+        why: varchar
+    columns:
+      - name: source_key
+        description: The notice's source.
+      - name: notice_id
+        description: The notice, as the closures and warnings marts key it.
+        data_tests: [unique]
+      - name: mark
+        description: lifted, the one mark there is.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [lifted]
+      - name: marked_on
+        description: The day the person checked the source.
+      - name: reviewed_in
+        description: >
+          The pull request that reviewed the row, by number and title; never a
+          person's name or contact.
+      - name: why
+        description: What the person read that ends the notice.
   - name: notice_readers
     description: >
       Every closures and warnings resource the extract declares, one row per
@@ -101,7 +136,7 @@ seeds:
       OurHike's and NWS's, which have their own). Written by
       pipeline/generate_notice_models.py from extract/_contract.py's
       discover(); int_closures__gate reads its sources from it, the registry
-      and the run log.
+      and the run log, and int_closures__window_carried its windows.
     config:
       column_types:
         source_key: varchar

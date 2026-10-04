@@ -284,6 +284,25 @@ models:
       - name: updated_at
         description: The source's own edit stamp, ISO 8601 UTC, or null where it gives none; never the load time.
 
+  - name: int_closures__window_carried
+    description: >
+      A feed is a window, not a list (decision 53, phase C): every notice of
+      a `window` source (seeds/notice_readers.csv) that the previous build's
+      closures or warnings mart held and this build's read no longer
+      carries, with its last content, unless a person marked it lifted
+      (seeds/notice_marks.csv). int_closures__final and int_warnings__final
+      carry it, so the snapshot never closes it on absence alone.
+    columns:
+      - name: notice_id
+        description: The notice, as the closures or warnings mart keys it.
+        data_tests: [not_null, unique]
+      - name: mart
+        description: closures or warnings, the mart that held it.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [closures, warnings]
+
   - name: int_closures__gate
     description: >
       The per-source gate: one row per source a conditions file is written
@@ -1784,3 +1803,44 @@ unit_tests:
         - {source_key: club_never_loaded, club: a, rows_total: 0, passed: false, held_because: 'club_never_loaded has no rows, and no count of zero from the source itself backs that, so the read may have broken or not happened yet'}
         - {source_key: club_held_by_the_registry, club: a, passed: false, held_because: 'int_sources__publication holds club_held_by_the_registry back (held_back_by_the_registry)'}
         - {source_key: club_never_run, club: a, rows_total: 0, passed: false, held_because: 'the run log shows no run of raw_a__club_never_run, so nothing says club_never_run was read'}
+
+  - name: int_closures__window_carried_keeps_a_feed_notice_that_left_its_window
+    description: >
+      A feed's notice that the last build's mart held and this build's feed
+      no longer carries is carried, from either mart; one the feed still
+      carries is not (it is read afresh); a full listing's notice that
+      vanished is not (absence there is lifting); one a person marked lifted
+      is not; a version the snapshot already closed is not; and nothing but
+      an organization notice is ever carried out of warnings.
+    model: int_closures__window_carried
+    given:
+      - input: ref('stg_row_history__closures')
+        rows:
+          - {history_row_key: h1, dbt_scd_id: s1, closure_id: 'feed_a:item-1', club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: true, review_state: org_published, title: 'Fixture Trail closed', dbt_valid_to: null}
+          - {history_row_key: h2, dbt_scd_id: s2, closure_id: 'feed_a:item-2', club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: true, review_state: org_published, title: 'Fixture bridge out', dbt_valid_to: null}
+          - {history_row_key: h3, dbt_scd_id: s3, closure_id: 'layer_b:1', club: b, source_key: layer_b, notice_kind: club_arcgis_layer, obstructs_trail: true, review_state: org_published, title: 'Fixture area closure', dbt_valid_to: null}
+          - {history_row_key: h4, dbt_scd_id: s4, closure_id: 'feed_a:item-4', club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: true, review_state: org_published, title: 'Fixture marked lifted', dbt_valid_to: null}
+          - {history_row_key: h5, dbt_scd_id: s5, closure_id: 'feed_a:item-5', club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: true, review_state: org_published, title: 'Fixture closed version', dbt_valid_to: '2026-10-01 00:00:00'}
+      - input: ref('stg_row_history__warnings')
+        rows:
+          - {history_row_key: h6, dbt_scd_id: s6, warning_id: 'feed_a:item-6', warning_kind: org_notice, club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: null, review_state: not_reviewed, title: 'Fixture water carry', dbt_valid_to: null}
+          - {history_row_key: h7, dbt_scd_id: s7, warning_id: 'nws_alerts:x', warning_kind: nws_alert, club: nws, source_key: feed_a, notice_kind: nws_alert, obstructs_trail: false, review_state: relayed, title: null, dbt_valid_to: null}
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: feed_a, club: a, notice_type: closures, reader: feed_notices, listing: window, raw_table: raw_a__feed_a, staged_by: stg_a__feed_a}
+          - {source_key: layer_b, club: b, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_b__layer_b, staged_by: stg_b__layer_b}
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'feed_a:item-2' as notice_id
+      - input: ref('int_warnings__unioned')
+        format: sql
+        rows: |
+          select 'nws_alerts:y' as notice_id
+      - input: ref('notice_marks')
+        rows:
+          - {source_key: feed_a, notice_id: 'feed_a:item-4', mark: lifted, marked_on: '2026-10-02', reviewed_in: 'fixture pull request', why: 'Fixture: the club says it reopened'}
+    expect:
+      rows:
+        - {mart: closures, notice_id: 'feed_a:item-1', title: 'Fixture Trail closed', obstructs_trail: true}
+        - {mart: warnings, notice_id: 'feed_a:item-6', title: 'Fixture water carry', obstructs_trail: null}

@@ -163,11 +163,25 @@ def test_the_run_log_table_is_the_one_extract_run_writes():
     assert {path.stem for path in MODELS if SOURCE.search(path.read_text()).group(2) in RUN_LOG_TABLES} == {"base_extract__runs"}
 
 
+#: The closures and warnings marts' own snapshots, read back as sources (staging/row_history/, decision 53's
+#: phase C): rows of int_<mart>__final, whose geometry is GeoJSON text already, never a raw geometry column.
+ROW_HISTORY_TABLES = {"int_closures__history", "int_warnings__history"}
+
+
+def test_the_row_history_tables_are_the_two_conditions_marts_snapshots():
+    snapshots = {path.stem for path in (DBT / "snapshots").rglob("int_*__history.sql")}
+    assert ROW_HISTORY_TABLES <= snapshots
+    assert {path.stem for path in MODELS if SOURCE.search(path.read_text()).group(2) in ROW_HISTORY_TABLES} == {
+        "stg_row_history__closures",
+        "stg_row_history__warnings",
+    }
+
+
 SPATIAL_MODELS = [
     path
     for path in MODELS
     if SOURCE.search(path.read_text()).group(2)
-    not in _reviewed_tables() | _row_tables() | GEOMETRY_FREE_STEP_TABLES | RUN_LOG_TABLES
+    not in _reviewed_tables() | _row_tables() | GEOMETRY_FREE_STEP_TABLES | RUN_LOG_TABLES | ROW_HISTORY_TABLES
 ]
 
 

@@ -170,6 +170,24 @@ models:
                 field: source_key
               config:
                 where: "starts_with(notice_kind, 'club_')"
+  - name: int_warnings__wording_leaks
+    description: >
+      No prose is published (decision 55): one row per text value of a
+      closures or warnings row of a club notice source that contains a whole
+      value of that source's own wording (int_warnings__notice_wording_unioned).
+      Its test fails the build on any row.
+    data_tests:
+      # Error, not warn: a source's paragraphs in a published column is the
+      # one thing decision 55 rules out, and the writers run after this.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "false"
+          config:
+            severity: error
+    columns:
+      - name: leak_key
+        description: The mart, the row, the column and the wording.
+        data_tests: [not_null, unique]
   - name: int_warnings__final
     description: >
       The warnings mart's rows before their row dates (decision 57):
@@ -556,3 +574,31 @@ unit_tests:
       rows:
         - {notice_id: 'nws_alerts:inside', squares: '[[5,5]]'}
         - {notice_id: 'nws_alerts:away', squares: '[]'}
+
+  - name: int_warnings__wording_leaks_finds_a_sources_paragraph_in_a_published_column
+    description: >
+      A closures row of a club notice source whose category holds its
+      source's own paragraph leaks, and so does a warnings row whose title
+      holds another source's paragraph inside HTML, read as words; the same
+      source's clean row does not, a paragraph of one source in another
+      source's row is not read as that source's, and a row no club notice
+      source feeds (ATC's) is not read at all.
+    model: int_warnings__wording_leaks
+    given:
+      - input: ref('int_warnings__notice_wording_unioned')
+        rows:
+          - {wording_key: w1, source_key: src_a, notice_key: k1, column_name: notes, wording: 'Closed until further notice due to the August flash flood damage'}
+          - {wording_key: w2, source_key: src_b, notice_key: k2, column_name: description, wording: 'Another source paragraph about a washed out bridge crossing'}
+      - input: ref('int_closures__final')
+        rows:
+          - {closure_id: 'src_a:1', source_key: src_a, notice_kind: club_arcgis_layer, title: 'River Trail'}
+          - {closure_id: 'src_a:2', source_key: src_a, notice_kind: club_arcgis_layer, title: 'River Trail', category: 'Closed until further notice due to the August flash flood damage'}
+          - {closure_id: 'atc_trail_updates:x', source_key: src_a, notice_kind: atc_trail_update, title: 'Closed until further notice due to the August flash flood damage today'}
+      - input: ref('int_warnings__final')
+        rows:
+          - {warning_id: 'src_b:3', source_key: src_b, notice_kind: club_page_notice, title: 'Fixture <b>Another source paragraph about a washed out bridge crossing</b> now'}
+          - {warning_id: 'src_a:4', source_key: src_a, notice_kind: club_page_notice, title: 'Another source paragraph about a washed out bridge crossing'}
+    expect:
+      rows:
+        - {mart: closures, row_id: 'src_a:2', column_name: category, source_key: src_a}
+        - {mart: warnings, row_id: 'src_b:3', column_name: title, source_key: src_b}

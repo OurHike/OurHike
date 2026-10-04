@@ -14,8 +14,9 @@
 -- THE CLUB NOTICES (decision 53, phase C) are counted as they land: a
 -- closures-type one through int_closures__unioned like any notice, unless
 -- its own end date or status holds it back (`notice_held_because`), which
--- lands it in neither; and a warnings-type one through int_warnings__unioned,
--- which only the warnings mart takes.
+-- lands it in neither; a warnings-type one through int_warnings__unioned,
+-- which only the warnings mart takes; and one a feed's window aged out
+-- (int_closures__window_carried) in the mart it was in.
 with passing as (
     select gate.source_key
     from {{ ref('int_closures__gate') }} as gate
@@ -36,6 +37,12 @@ notices as (
     where
         starts_with(warning_notices.notice_kind, 'club_')
         and warning_notices.notice_held_because is null
+    union all
+    select carried.notice_id
+    from {{ ref('int_closures__window_carried') }} as carried
+    inner join {{ ref('int_sources__publication') }} as publishable
+        on carried.source_key = publishable.source_key
+    where publishable.may_publish
 ),
 
 landed as (

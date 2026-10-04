@@ -1,0 +1,50 @@
+version: 2
+
+# The closures and warnings marts' own row histories, read back as sources so
+# that a feed's notice is not lifted by leaving its window (decision 53, phase
+# C; int_closures__window_carried). The tables are the snapshots
+# snapshots/closures/ and snapshots/warnings/ write (decision 57), restored
+# into the warehouse before dbt runs (pipeline/row_history.py); read here they
+# are the history as the previous build saved it, because every model that
+# reads them builds before this build's snapshot does. A table that does not
+# exist yet (a cold start, or a leg with OURHIKE_ROW_HISTORY=off) reads as no
+# rows (macros/notices.sql's notice_raw_table), so nothing is carried.
+sources:
+  - name: row_history
+    description: >
+      The closures and warnings marts' snapshots (decision 57), as the
+      previous build left them: the one way a model upstream of a mart's
+      final model reads what that mart held before, without a cycle.
+    schema: intermediate
+    config:
+      loaded_at_field: dbt_updated_at
+      meta:
+        cadence: hourly
+      freshness:
+        # @unvalidated, the threshold of the hourly sources: a snapshot every
+        # conditions leg writes. What settles it is the gap between saves the
+        # store's history.json records.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: int_closures__history
+        description: >
+          Every version of every closures mart row (snapshots/closures/).
+          Key: dbt's own dbt_scd_id, one per version.
+        data_tests:
+          # Rows sharing stg_row_history__closures's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'int_closures__history'", "dbt_scd_id"]
+              config:
+                severity: warn
+      - name: int_warnings__history
+        description: >
+          Every version of every warnings mart row (snapshots/warnings/).
+          Key: dbt's own dbt_scd_id, one per version.
+        data_tests:
+          # Rows sharing stg_row_history__warnings's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'int_warnings__history'", "dbt_scd_id"]
+              config:
+                severity: warn

@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: stg_row_history__closures
+    description: >
+      Every version of every closures mart row the previous build's snapshot
+      saved, in the club notices' columns, keyed by its snapshot row. Empty
+      before the first save. Read by int_closures__window_carried alone.
+    columns:
+      - name: history_row_key
+        description: The key, from the registry-style literal and dbt_scd_id.
+        data_tests: [unique, not_null]
+      - name: dbt_valid_to
+        description: Null on the version the snapshot holds as current.
+  - name: stg_row_history__warnings
+    description: >
+      Every version of every warnings mart row the previous build's snapshot
+      saved, in the club notices' columns, keyed by its snapshot row. Empty
+      before the first save. Read by int_closures__window_carried alone.
+    columns:
+      - name: history_row_key
+        description: The key, from the registry-style literal and dbt_scd_id.
+        data_tests: [unique, not_null]
+      - name: dbt_valid_to
+        description: Null on the version the snapshot holds as current.

@@ -34,9 +34,20 @@ gate as (
 
 publication as (
     select * from {{ ref('int_sources__publication') }}
+),
+
+-- A feed's notices that aged out of its window, never lifted by absence
+-- (int_closures__window_carried, decision 53's phase C), through the same
+-- publication check as every row.
+carried as (
+    select * from {{ ref('int_closures__window_carried') }}
+    where mart = 'closures'
 )
 
-select
+-- `union all by name` below: a carried row has the club notices' columns
+-- only, and the rest read as null. SQLFluff 4.3.0 counts the columns as if
+-- the union were positional (AM07), so that rule is told not to here.
+select  -- noqa: AM07
     notices.notice_id as closure_id,
     notices.club,
     notices.source_key,
@@ -83,3 +94,25 @@ where
     and publication.may_publish
     and notices.obstructs_trail
     and notices.notice_held_because is null
+
+union all by name
+
+select
+    carried.notice_id as closure_id,
+    carried.club,
+    carried.source_key,
+    carried._loaded_at,
+    carried.notice_kind,
+    carried.obstructs_trail,
+    carried.review_state,
+    carried.title,
+    carried.category,
+    carried.locality,
+    carried.source_edited_at,
+    carried.updated_at,
+    carried.source_url,
+    carried.geom_geojson,
+    carried.source_row_key
+from carried
+inner join publication on carried.source_key = publication.source_key
+where publication.may_publish

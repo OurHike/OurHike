@@ -298,6 +298,17 @@ unit_tests:
           - {source_key: nynjtc_trail_alerts, may_publish: true}
           - {source_key: ourhike_closures, may_publish: true}
           - {source_key: oprhp_trail_closures, may_publish: false}
+          - {source_key: feed_a, may_publish: true}
+          - {source_key: feed_b, may_publish: false}
+      # A feed's notice the window aged out is carried in (decision 53's
+      # phase C), from the closures mart only, and only where its source may
+      # publish: the gate's read checks do not apply to the last good rows.
+      - input: ref('int_closures__window_carried')
+        rows:
+          - {mart: closures, notice_id: 'feed_a:item-1', source_key: feed_a, obstructs_trail: true, review_state: org_published}
+          - {mart: closures, notice_id: 'feed_b:item-2', source_key: feed_b, obstructs_trail: true, review_state: org_published}
+          - {mart: warnings, notice_id: 'feed_a:item-3', source_key: feed_a, obstructs_trail: null, review_state: not_reviewed}
     expect:
       rows:
         - {closure_id: 'atc_trail_updates:a1', obstructs_trail: true, review_state: reviewed}
+        - {closure_id: 'feed_a:item-1', obstructs_trail: true, review_state: org_published}

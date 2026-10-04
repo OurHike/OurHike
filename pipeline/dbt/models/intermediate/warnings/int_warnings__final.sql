@@ -91,6 +91,31 @@ org_notices as (
         and notices.notice_held_because is null
 ),
 
+-- A feed's notices that aged out of its window, never lifted by absence
+-- (int_closures__window_carried, decision 53's phase C).
+carried as (
+    select
+        carried.notice_id as warning_id,
+        'org_notice' as warning_kind,
+        carried.club,
+        carried.source_key,
+        carried._loaded_at,
+        carried.notice_kind,
+        carried.obstructs_trail,
+        carried.review_state,
+        carried.title,
+        carried.category,
+        carried.locality,
+        carried.source_edited_at,
+        carried.updated_at,
+        carried.source_url,
+        carried.geom_geojson,
+        carried.source_row_key
+    from {{ ref('int_closures__window_carried') }} as carried
+    inner join publication on carried.source_key = publication.source_key
+    where carried.mart = 'warnings' and publication.may_publish
+),
+
 club_warnings as (
     select
         others.notice_id as warning_id,
@@ -191,3 +216,7 @@ select * from relayed
 union all by name
 
 select * from club_warnings
+
+union all by name
+
+select * from carried

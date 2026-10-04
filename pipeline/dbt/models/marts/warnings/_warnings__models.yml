@@ -368,10 +368,18 @@ unit_tests:
           - {source_key: nynjtc_trail_alerts, may_publish: true}
           - {source_key: ourhike_closures, may_publish: true}
           - {source_key: oprhp_trail_closures, may_publish: false}
+          - {source_key: feed_a, may_publish: true}
+      # A feed's notice the window aged out is carried in from the warnings
+      # mart only (decision 53's phase C), as the organization notice it was.
+      - input: ref('int_closures__window_carried')
+        rows:
+          - {mart: warnings, notice_id: 'feed_a:item-3', source_key: feed_a, obstructs_trail: null, review_state: not_reviewed}
+          - {mart: closures, notice_id: 'feed_a:item-1', source_key: feed_a, obstructs_trail: true, review_state: org_published}
     expect:
       rows:
         - {warning_id: 'atc_trail_updates:a2', warning_kind: org_notice, obstructs_trail: false, review_state: reviewed}
         - {warning_id: 'nynjtc_trail_alerts:n1', warning_kind: org_notice, obstructs_trail: null, review_state: not_reviewed}
+        - {warning_id: 'feed_a:item-3', warning_kind: org_notice, obstructs_trail: null, review_state: not_reviewed}
 
   - name: warnings_relays_nws_alerts_and_serious_reports_from_sources_that_may_publish
     description: >
@@ -395,6 +403,8 @@ unit_tests:
           - {source_key: nws_alerts, may_publish: true}
           - {source_key: ourhike_reports, may_publish: true}
           - {source_key: held_back_reports, may_publish: false}
+      - input: ref('int_closures__window_carried')
+        rows: []
     expect:
       rows:
         - {warning_id: 'nws_alerts:urn:oid:test.1', warning_kind: nws_alert, review_state: relayed}

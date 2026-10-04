@@ -247,8 +247,8 @@ carried_checks as (
 -- Each geometry as a phone needs it (the header says why 10 m).
 -- Made valid first: GEOS's simplifier and precision reducer throw on a
 -- ring that crosses itself, and one source's did (soak run 531,
--- publish-conditions.yml 37237506320: "TopologyException: side location
--- conflict at -115.664878 45.267286"), which stopped every club's file.
+-- publish-conditions.yml 37237506320: a TopologyException, "side location
+-- conflict", at a point in central Idaho), which stopped every club's file.
 -- ST_MakeValid keeps every vertex and splits a crossed ring into the
 -- polygons it encloses, a bowtie into two triangles, so the area the phone
 -- asks a trail to meet is the area the source drew (Reasoned; a bowtie

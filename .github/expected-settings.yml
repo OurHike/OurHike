@@ -103,7 +103,8 @@ settings:
       extract-notices.yml's extract step for decision 53's NPS alerts and road
       events (pipeline/extract/_json_apis.py, "THE KEY"), which decision 61
       moved off publish-conditions.yml's hourly job with every other club's
-      and agency's notices. REQUIRED: FALSE because a run without it is honest
+      and agency's notices; and by refresh-reference.yml's monthly extract for
+      the NPS Data API's places and campgrounds (decision 54). REQUIRED: FALSE because a run without it is honest
       rather than wrong: the two NPS tables read as unavailable with a
       warning, no NPS alert reaches dbt for the 27 park codes 26 clubs draw
       on, and the leg stays green. Added by the maintainer as a repository

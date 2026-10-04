@@ -144,6 +144,11 @@ jobs:
           # publish-conditions run 481 and on this lane's run 37081046157.
           DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
           HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
+          # The NPS Data API's places and campgrounds (decision 54 waves 2
+          # and 3, extract/_ogc.py's JsonFeatures). Unset, both tables are
+          # withdrawn with a warning and the run stays green; make_dbt_staging.py
+          # stages neither until a run shows them landing.
+          NPS_API_KEY: ${{ secrets.NPS_API_KEY }}
         run: |
           set +e
           "$RUNNER_TEMP/extract/bin/python" -m extract._run --lane monthly \

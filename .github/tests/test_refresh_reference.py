@@ -103,8 +103,11 @@ def test_only_the_publish_job_holds_the_public_buckets_keys_or_the_write_switch(
             assert not holds and not writes, f"{job_id} holds {sorted(holds)} or R2_WRITE_ENABLED"
 
 
-def test_the_extract_job_holds_the_raw_store_and_the_upstream_credential_and_nothing_else(workflow):
-    assert _secrets(workflow["jobs"]["extract"]) == RAW_STORE_SECRETS | {"R2_ENDPOINT_URL", "HIKEFINDER_PASSWORD"}
+def test_the_extract_job_holds_the_raw_store_and_the_upstream_credentials_and_nothing_else(workflow):
+    # The two upstream credentials: Hike Finder's password, and the NPS Data API's key for decision 54's NPS places
+    # and campgrounds (extract/_ogc.py's JsonFeatures), both optional and both warned about when unset.
+    upstream = {"HIKEFINDER_PASSWORD", "NPS_API_KEY"}
+    assert _secrets(workflow["jobs"]["extract"]) == RAW_STORE_SECRETS | {"R2_ENDPOINT_URL"} | upstream
 
 
 @pytest.mark.parametrize("job_id", ["extract", "build", "parity"])

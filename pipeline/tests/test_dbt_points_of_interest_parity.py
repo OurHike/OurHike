@@ -89,6 +89,7 @@ DELIBERATE = {
     "miles": {"atc_shelters:m-04-on-the-junction": "junction_tie"},
 }
 
+
 def _decision_65_value_types() -> dict[tuple[str, str], str]:
     """The value-map rows the dbt path adds to export_nearby_poi.py's, read from layer_rules' plumbed_water rows.
 

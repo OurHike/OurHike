@@ -1,10 +1,12 @@
-"""Colorado Mountain Club: suggested hikes, inside its trip leaders' Routes & Places library, and not landed
-(decision 54 wave 5, section K, 2026-10-04).
+"""Colorado Mountain Club: suggested hikes, none: its Routes & Places library is a trip leaders' catalogue,
+which the lead ruled is not suggested hikes (decision 54 wave 5, section K, 2026-10-04).
+
+THE LEAD'S RULING, 2026-10-04: "On cmc_co's Routes & Places: a trip leaders' catalogue across every activity is
+not suggested hikes. Leave it a note saying so."
 
 The Routes & Places library (@@faceted_query, '1354 results') is the club's catalogue for leading trips: climbs,
 camps, ski tours, gym nights and 'Instructions for building a new Route & Place' sit beside hikes, each record's
-distance and gain on its own page. Reading it is 68 listing pages and up to 1,354 records a month, and whether a
-club's trip-leader library is a list of suggested hikes is the maintainer's call; neither is made here.
+distance and gain on its own page.
 
 The note this replaces read, whole:
 
@@ -37,5 +39,5 @@ NOT_AVAILABLE = NotAvailable(
         "https://www.cmc.org/education-adventure/trips/routes-places/@@faceted_query?b_start=0 (HTTP 200, 26,410 bytes, 2026-10-04T15:38:16Z): '1354 results', climbing, camping and hiking records",
     ),
     where=("https://www.cmc.org/education-adventure/trips/routes-places/",),
-    reason="needs the maintainer's call: a trip leaders' library of every activity, 1,354 records",
+    reason="not this type: a trip leaders' catalogue across every activity, which the lead ruled is not suggested hikes (2026-10-04)",
 )

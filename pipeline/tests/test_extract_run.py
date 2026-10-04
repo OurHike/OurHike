@@ -17,6 +17,10 @@ the warehouse reads; a table that halves is refused.
 import hashlib
 import json
 import shutil
+import tempfile
+import threading
+import time
+from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -538,6 +542,141 @@ def test_a_trail_layer_that_halves_is_refused(registry, store, requests_mock):
         lane(store, lines(), closures())
     _, counts = warehouse(store)
     assert counts["raw_testclub__trails"] == 6
+
+
+# The monthly lane isolates each upstream (_run.ISOLATING_LANES): two monthly layers in two folders,
+# so read_each() reads them on two of MONTHLY_READERS' threads.
+def monthly_lines():
+    return ArcgisLayer(key="trails", club="testclub", type="trail_lines")
+
+
+def monthly_points():
+    return ArcgisLayer(key="closures_layer", club="otherclub", type="points_of_interest")
+
+
+def month(store, *resources):
+    return run_pipeline("monthly", store["bucket_url"], resources=list(resources), pipelines_dir=store["pipelines_dir"])
+
+
+def monthly_counts(store):
+    con = duckdb.connect()
+    return load_warehouse(con, make_pipeline("monthly", store["bucket_url"], store["pipelines_dir"]))
+
+
+def test_a_monthly_layer_whose_metadata_is_refused_is_left_out_and_the_other_layers_month_loads(
+    registry, store, requests_mock, monkeypatch
+):
+    """Monthly run 15 (refresh-reference.yml 37208267018) stopped two minutes in: MassGIS's open-space layer
+    answered its metadata 403 while dlt was being handed the lane, and nothing else of the month loaded."""
+    monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+    trails = FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2), feature(3)])
+    FakeLayer(requests_mock, CLOSURES_URL, [feature(10), feature(11)])
+    first = month(store, monthly_lines(), monthly_points())
+    assert first.rows == {"raw_testclub__trails": 3, "raw_otherclub__closures_layer": 2} and not first.isolated
+
+    trails.features, trails.etag = [feature(1), feature(2), feature(3), feature(4)], "v2"
+    requests_mock.get(CLOSURES_URL, status_code=403)
+    second = month(store, monthly_lines(), monthly_points())
+
+    assert second.outcome == "loaded"
+    assert second.rows == {"raw_testclub__trails": 4}
+    assert set(second.isolated) == {"raw_otherclub__closures_layer"}
+    assert "403" in second.isolated["raw_otherclub__closures_layer"]
+    assert _run.exit_status(second) == _run.PARTIAL_EXIT
+    assert monthly_counts(store) == {"raw_testclub__trails": 4, "raw_otherclub__closures_layer": 2}
+
+
+def test_a_monthly_layer_whose_rate_limit_never_lifts_is_left_out_and_keeps_its_last_month(
+    registry, store, requests_mock, monkeypatch
+):
+    """Monthly run 14 (refresh-reference.yml 37207306294) stopped on Oregon Metro's trails, throttled at a page of 1."""
+    monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr("lib.arcgis.time.sleep", lambda seconds: None)
+    FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    points = FakeLayer(requests_mock, CLOSURES_URL, [feature(10), feature(11)])
+    month(store, monthly_lines(), monthly_points())
+
+    points.etag = "v2"
+    real_query = points.query
+
+    def throttled(request, context):
+        if "returncountonly" in {key.lower() for key in request.qs}:
+            return real_query(request, context)
+        return {"error": {"code": 429, "message": "Unable to perform query. Too many requests.", "details": []}}
+
+    requests_mock.get(CLOSURES_URL + "/query", json=throttled)
+    report = month(store, monthly_lines(), monthly_points())
+
+    assert set(report.isolated) == {"raw_otherclub__closures_layer"}
+    assert "rate limit" in report.isolated["raw_otherclub__closures_layer"]
+    assert monthly_counts(store) == {"raw_testclub__trails": 2, "raw_otherclub__closures_layer": 2}
+
+
+def test_a_monthly_table_the_run_check_refuses_keeps_its_rows_while_the_others_load(registry, store, requests_mock):
+    trails = FakeLayer(requests_mock, LINES_URL, [feature(i) for i in range(1, 7)])
+    points = FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])
+    month(store, monthly_lines(), monthly_points())
+
+    trails.features, trails.etag = [feature(1), feature(2)], "v2"
+    points.features, points.etag = [feature(10), feature(12)], "v2"
+    report = month(store, monthly_lines(), monthly_points())
+
+    assert "below the 50% floor" in report.isolated["raw_testclub__trails"]
+    assert report.rows == {"raw_otherclub__closures_layer": 2}
+    assert monthly_counts(store) == {"raw_testclub__trails": 6, "raw_otherclub__closures_layer": 2}
+
+
+def test_a_spooled_monthly_layer_lands_the_rows_its_reader_made(registry, store, requests_mock, tmp_path, monkeypatch):
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp))
+    FakeLayer(requests_mock, LINES_URL, [feature(1, "Ridge"), feature(2, "Valley")])
+    month(store, monthly_lines())
+    con = duckdb.connect()
+    load_warehouse(con, make_pipeline("monthly", store["bucket_url"], store["pipelines_dir"]))
+    rows = con.execute("select globalid, name, edited, capacity from raw.raw_testclub__trails order by 1").fetchall()
+    assert rows == [("g1", "Ridge", 1790000000000, None), ("g2", "Valley", 1790000000000, None)]
+    assert not list(temp.glob("read_*")), "the run's spool is removed when it ends"
+
+
+class CountingResource:
+    """A stand-in for read_each(): records how many folders, and how many of its own folder, read at once."""
+
+    def __init__(self, club, name, gauge):
+        self.club, self.name, self.table, self.gauge = club, name, f"raw_{club}__{name}", gauge
+        self.carries = False
+
+    def column_hints(self):
+        return {}
+
+    def rows(self, proofs):
+        with self.gauge["lock"]:
+            self.gauge["now"] += 1
+            self.gauge["folders"][self.club] += 1
+            self.gauge["most"] = max(self.gauge["most"], self.gauge["now"])
+            self.gauge["most_in_a_folder"] = max(self.gauge["most_in_a_folder"], self.gauge["folders"][self.club])
+        time.sleep(0.02)
+        with self.gauge["lock"]:
+            self.gauge["now"] -= 1
+            self.gauge["folders"][self.club] -= 1
+        yield {"id": self.name}
+
+
+def test_read_each_reads_at_most_its_readers_folders_at_once_and_one_resource_of_a_folder_at_a_time(tmp_path):
+    gauge = {"lock": threading.Lock(), "now": 0, "most": 0, "most_in_a_folder": 0, "folders": defaultdict(int)}
+    to_run = [
+        Planned(CountingResource(f"club{club}", f"layer{club}_{layer}", gauge), Freshness.STALE, None, None)
+        for club in range(6)
+        for layer in range(3)
+    ]
+    report = _run.RunReport(run_id="r", lane="monthly", outcome="loaded")
+
+    kept, read = _run.read_each(report, to_run, None, spool=tmp_path, readers=2)
+
+    assert len(kept) == 18 and not report.isolated
+    assert gauge["most"] == 2 and gauge["most_in_a_folder"] == 1
+    assert [list(read[item.resource.name]) for item in to_run[:2]] == [[{"id": "layer0_0"}], [{"id": "layer0_1"}]]
+    assert len(list(tmp_path.glob("*.pickle.gz"))) == 18
 
 
 def test_a_read_shorter_than_the_servers_count_fails_before_anything_loads(registry, store, requests_mock):

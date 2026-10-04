@@ -78,10 +78,18 @@ jobs:
     # Measured: the full extract took 1 h 48 m on run 37058045092 and 1 h 45 m
     # on 37081046157 (2026-10-02/03), of which Hike Finder's crawl delay is
     # about 64 min for its 386 requests (the dlt skill, "Terms are never routed
-    # around"). 120 left 12 minutes, so the limit is 180.
-    timeout-minutes: 180
+    # around"). 120 left 12 minutes, so the limit was 180. Decision 54's
+    # layers took run 37182708502's extract step (run 13) to 161.5 min, about
+    # 50 of it reading one layer at a time and about 103 normalizing in one
+    # process (extract/_run.py's NORMALIZE_WORKERS). The reads now run four
+    # folders at a time and normalize on four processes, which is unmeasured,
+    # and each request ArcGIS Online throttles may wait 450 s (lib/arcgis.py's
+    # THROTTLE_WAITS_SECONDS). 240 keeps run 13's figure with 78 minutes to
+    # spare while the first run's "Seconds:" line settles what it now takes.
+    timeout-minutes: 240
     outputs:
       raw_run: ${{ steps.extract.outputs.raw_run }}
+      partial: ${{ steps.extract.outputs.partial }}
     defaults:
       run:
         working-directory: pipeline
@@ -126,9 +134,13 @@ jobs:
           python -m venv "$RUNNER_TEMP/extract"
           "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
 
-      # extract/_run.py's run check (before the load) or after-run check
-      # failing exits 1 after the run log is written, and nothing it loaded
-      # is read. --as-landed writes each ArcGIS, Socrata and opentrail layer
+      # extract/_run.py's after-run check failing exits 1 after the run log
+      # is written, and nothing it loaded is read. A layer whose read fails,
+      # or which the run check or dlt's schema contract refuses, is left out
+      # on its own while the rest load (_run.py's ISOLATING_LANES): its last
+      # committed table stands, and the run exits 3, which this step turns
+      # into `partial` so the build reads what did load and the last job
+      # still goes red. The step summary names each layer and why. --as-landed writes each ArcGIS, Socrata and opentrail layer
       # back out as today's fetcher's file, under as_landed/<load_id>/, for
       # the parity job. --cross-lane-inputs also reads the one hourly-lane
       # table a monthly node needs (_run.py's ALSO_READS). The run's id is
@@ -154,7 +166,7 @@ jobs:
           "$RUNNER_TEMP/extract/bin/python" -m extract._run --lane monthly \
             --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" \
             --as-landed --cross-lane-inputs \
-            --report-json "$RUNNER_TEMP/extract_run.json"
+            --report-json "$RUNNER_TEMP/extract_run.json" --summary "$GITHUB_STEP_SUMMARY"
           status=$?
           set -e
           raw_run=""
@@ -167,6 +179,10 @@ jobs:
             echo
             echo "raw_run: \`${raw_run:-none}\`, exit $status"
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -eq 3 ]; then
+            echo "partial=true" >> "$GITHUB_OUTPUT"
+            status=0
+          fi
           exit "$status"
 
       - name: Keep the run's own report
@@ -678,3 +694,18 @@ jobs:
           path: ${{ runner.temp }}/parity/
           retention-days: 90
           if-no-files-found: warn
+
+  # Last, so a layer refused on its own has not held back the ones that
+  # loaded, and the run still goes red for it, as publish-conditions.yml's
+  # legs do: decision 30's gate counts "no failed check", and a refusal is
+  # one. The extract job's summary names each layer and why.
+  refused:
+    name: Fail the run if a layer was refused on its own
+    needs: [extract, build, publish, confirm, parity]
+    if: always() && needs.extract.outputs.partial == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: |
+          echo "::error title=A monthly layer was refused::The extract left at least one layer out, and its last committed table stood in for it. The extract job's summary names it and the reason; everything else loaded."
+          exit 1

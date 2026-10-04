@@ -139,6 +139,20 @@ def test_the_extract_runs_the_monthly_lane_with_its_as_landed_copy_and_cross_lan
     assert "--as-landed" in runs and "--cross-lane-inputs" in runs and "--report-json" in runs
 
 
+def test_a_layer_refused_on_its_own_lets_the_build_run_and_the_last_job_go_red(workflow):
+    """Monthly runs 10, 11, 12, 14 and 15 each stopped on one layer; extract/_run.py's ISOLATING_LANES now exits 3."""
+    extract = workflow["jobs"]["extract"]
+    (step,) = [step for step in extract["steps"] if step.get("id") == "extract"]
+    assert '"$status" -eq 3' in step["run"] and "partial=true" in step["run"]
+    assert '--summary "$GITHUB_STEP_SUMMARY"' in step["run"], "the summary names each refused layer"
+    assert extract["outputs"]["partial"] == "${{ steps.extract.outputs.partial }}"
+
+    refused = workflow["jobs"]["refused"]
+    assert refused["if"] == "always() && needs.extract.outputs.partial == 'true'"
+    assert set(refused["needs"]) == set(workflow["jobs"]) - {"refused"}, "after every other job"
+    assert not _secrets(refused) and "exit 1" in _runs(refused)
+
+
 def test_the_build_runs_through_build_marts_monthly_lane_and_no_dbt_command_of_its_own(workflow):
     runs = _runs(workflow["jobs"]["build"])
 

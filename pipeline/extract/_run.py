@@ -33,13 +33,14 @@ refresh, published docs, and lighter phone downloads):
    extract/_warehouse.py refuses to read the tables.
 5. One `_extract_runs` row per resource per run, skipped ones included.
 
-A leg isolates each upstream (_extract_and_load()): one that
-fails or is refused is left out while the rest load, and the leg exits
-PARTIAL_EXIT (3) so its job still goes red, unless every one refused has a
-sources.json row saying reaches_hikers false (exit_status()). OurHike's own
-Postgres rows still stop the whole leg (stops_the_leg()). A leg takes on at
-most NEW_TABLES_PER_LEG_RUN tables it has never loaded per run, so a batch
-of new sources comes on over several runs rather than overrunning one.
+A leg, and the monthly lane (ISOLATING_LANES), isolates each upstream
+(_extract_and_load()): one that fails or is refused is left out while the
+rest load, and the run exits PARTIAL_EXIT (3) so its job still goes red,
+unless every one refused has a sources.json row saying reaches_hikers false
+(exit_status()). OurHike's own Postgres rows still stop the whole leg
+(stops_the_leg()). A leg takes on at most NEW_TABLES_PER_LEG_RUN tables it
+has never loaded per run, so a batch of new sources comes on over several
+runs rather than overrunning one.
 
 Not built yet, and designed in ELT.md: the as-sent copy beside dlt's
 normalized one (`_source_path`), the raw lake (DuckLake) for the monthly
@@ -60,9 +61,12 @@ dlt resources, which tests/test_extract_run.py and the run check hold.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import os
+import pickle
+import queue
 import shutil
 import sys
 import tempfile
@@ -287,6 +291,38 @@ ALSO_READS: dict[str, dict[str, str]] = {
     },
 }
 
+#: THE MONTHLY LANE ISOLATES EACH UPSTREAM, as a leg does (_extract_and_load()).
+#: Monthly runs 10, 11, 12, 14 and 15 (refresh-reference.yml, 2026-10-03/04)
+#: each stopped on one layer of about 480, and took every other layer's month
+#: with it: run 14 on Oregon Metro's rate limit twelve minutes in, run 15 two
+#: minutes in on MassGIS's open-space layer answering its metadata 403. The
+#: plain `hourly` lane, which no workflow runs (the legs read its resources),
+#: keeps one refusal refusing the run.
+ISOLATING_LANES = frozenset({"monthly"})
+
+#: How many extract folders the monthly lane reads at once, before dlt
+#: (read_each()). A folder's resources are still read one after another, so
+#: no host a folder asks is asked twice at once. @unvalidated: run 13
+#: (refresh-reference.yml 37182708502) read its layers one at a time in about
+#: 50 minutes, 484 s of it USFS's trails, and 4 is the runner's vCPU count,
+#: not a measurement of what the upstreams tolerate. The first run's "read"
+#: timing, and any rate-limit waits lib/arcgis.py logs, would settle it.
+MONTHLY_READERS = 4
+
+#: dlt's normalize processes, by lane. Run 13's normalize was about 103 of its
+#: extract step's 161 minutes (Reasoned from its log: its last layer was read
+#: at 07:16:26Z and normalize's schema warnings closed at 08:59:37Z), in one
+#: process on a 4-vCPU runner. dlt gives each worker whole tables (its
+#: group_worker_files()), so USFS's 1,072,508,650 bytes of trails stay one
+#: worker's. A leg normalizes in seconds and keeps one process.
+NORMALIZE_WORKERS = {"monthly": 4}
+
+
+def isolates(lane: str) -> bool:
+    """Whether the lane, or leg, leaves an upstream that fails out on its own while the rest load."""
+    return lane in LEGS or lane in ISOLATING_LANES
+
+
 # @unvalidated: a table whose type may not be empty fails the run when it
 # lands below this share of its last loaded size. 0.5 is fetch_opentrail.py's
 # MAX_FEATURE_DROP_RATIO, the one precedent here; six monthly runs of
@@ -337,7 +373,7 @@ class RunReport:
     # checks, read, extract, normalize, load, after-run check, run log,
     # warehouse). A part a run did not reach is absent.
     timings: dict[str, float] = field(default_factory=dict)
-    # A leg only: resources refused on their own while the rest
+    # A leg or an isolating lane only (isolates()): resources refused on their own while the rest
     # loaded, by name, with why. Each keeps its last committed table, is logged
     # ISOLATED_OUTCOME, and makes the command line exit PARTIAL_EXIT.
     isolated: dict[str, str] = field(default_factory=dict)
@@ -436,7 +472,7 @@ def raw_store_url(bucket: str, lane: str) -> str:
     return f"s3://{bucket}/{RAW_STORE_PREFIX}/{lane}"
 
 
-#: The exit status of a leg that loaded, and left at least one
+#: The exit status of a leg or an isolating lane that loaded, and left at least one
 #: resource out as refused: not 0, so the job goes red, and not 1, so the
 #: workflow can tell "the rest loaded" from "nothing loaded" and still build
 #: and publish what did. 2 is argparse's own.
@@ -549,11 +585,57 @@ def exit_status(report: RunReport) -> int:
     return PARTIAL_EXIT if set(report.isolated) - report.quiet else 0
 
 
-def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -> tuple[list[Planned], dict]:
+class Spool:
+    """One resource's rows, read before dlt runs and kept on disk until the run ends (read_each()).
+
+    The monthly lane's layers are too large to hold: run 13 spooled
+    5,122,690,216 bytes of ArcGIS features, 1,072,508,650 of them USFS's
+    trails. Each row is pickled, so dlt is handed exactly the objects the
+    reader made, and the file is gzip at level 1. Iterating reads the file
+    again from the start, so a table re-extracted after another's refusal
+    gets the same rows."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.count = 0
+
+    def write(self, rows) -> Spool:
+        try:
+            with gzip.open(self.path, "wb", compresslevel=1) as out:
+                for row in rows:
+                    pickle.dump(row, out, protocol=pickle.HIGHEST_PROTOCOL)
+                    self.count += 1
+        except BaseException:
+            self.path.unlink(missing_ok=True)
+            raise
+        return self
+
+    def __iter__(self):
+        with gzip.open(self.path, "rb") as source:
+            while True:
+                try:
+                    yield pickle.load(source)
+                except EOFError:
+                    return
+
+    def __len__(self) -> int:
+        return self.count
+
+
+def read_each(
+    report: RunReport,
+    to_run: list[Planned],
+    seconds: float | None,
+    *,
+    spool: Path | None = None,
+    readers: int | None = None,
+) -> tuple[list[Planned], dict]:
     """Read every resource's rows before dlt runs, so one upstream's failure, or its slowness, is its own.
 
-    One thread per extract folder, so a club's resources are read one after
-    another and no host is asked twice at once. `seconds` is the whole read's
+    A club's resources are read one after another, one folder to a thread, so
+    no host is asked twice at once: every folder at once, or `readers` folders
+    at a time (MONTHLY_READERS). With `spool`, a directory, each resource's
+    rows go to a Spool there rather than a list. `seconds` is the whole read's
     budget: a folder still reading at the end leaves its unread resources out
     of this run, and its daemon thread is abandoned. No host's Crawl-delay is
     shortened to fit (lib/http_retry.py's throttle is the resource's own).
@@ -568,6 +650,7 @@ def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -
     """
     results: dict[str, object] = {}
     hints: dict[str, dict] = {}
+    files = {item.resource.name: None if spool is None else spool / f"{index}.pickle.gz" for index, item in enumerate(to_run)}
 
     def read(items: list[Planned]) -> None:
         for item in items:
@@ -576,20 +659,33 @@ def read_each(report: RunReport, to_run: list[Planned], seconds: float | None) -
                 hints[item.resource.table] = item.resource.column_hints()
                 if item.resource.carries:
                     left = None if deadline is None else max(0.0, deadline - time.monotonic())
-                    rows = list(item.resource.rows_carried(proofs, replace(item.carried or Carried(), seconds=left)))
+                    answer = item.resource.rows_carried(proofs, replace(item.carried or Carried(), seconds=left))
                 else:
-                    rows = list(item.resource.rows(proofs))
+                    answer = item.resource.rows(proofs)
+                path = files[item.resource.name]
+                rows = list(answer) if path is None else Spool(path).write(answer)
             except Exception as failure:  # noqa: BLE001 - every failure is recorded, and re-raised where it stops the leg
                 results[item.resource.name] = failure
             else:
                 results[item.resource.name] = (rows, proofs)
 
+    folders: queue.SimpleQueue[list[Planned]] = queue.SimpleQueue()
     by_folder: dict[str | None, list[Planned]] = defaultdict(list)
     for item in to_run:
         by_folder[item.resource.club].append(item)
-    threads = [
-        threading.Thread(target=read, args=(items,), name=f"read {folder}", daemon=True) for folder, items in by_folder.items()
-    ]
+    for items in by_folder.values():
+        folders.put(items)
+
+    def reader() -> None:
+        while True:
+            try:
+                items = folders.get_nowait()
+            except queue.Empty:
+                return
+            read(items)
+
+    count = len(by_folder) if readers is None else max(1, min(readers, len(by_folder)))
+    threads = [threading.Thread(target=reader, name=f"read {index}", daemon=True) for index in range(count)]
     deadline = None if seconds is None else time.monotonic() + seconds
     for thread in threads:
         thread.start()
@@ -1488,8 +1584,12 @@ def _run(
         return progress_after(kept, report, loaded) if carrying else None
 
     copy = AsLanded(Path(tempfile.mkdtemp(prefix="as_landed_"))) if as_landed and to_run else None
+    # An isolating lane's rows wait on disk between the read and the load (Spool); a leg's are few, and held.
+    spool = Path(tempfile.mkdtemp(prefix="read_")) if lane in ISOLATING_LANES and to_run else None
     try:
-        _extract_and_load(pipeline, report, lane, planned, to_run, unavailable, checked_at, read_seconds, copy, progress, log)
+        _extract_and_load(
+            pipeline, report, lane, planned, to_run, unavailable, checked_at, read_seconds, copy, progress, log, spool
+        )
         # After the run log, so a failed upload leaves a committed, logged load
         # and a red job, and the next --as-landed run reads the layer again
         # (fresh_but_unserved()).
@@ -1498,6 +1598,8 @@ def _run(
     finally:
         if copy is not None:
             shutil.rmtree(copy.staging, ignore_errors=True)
+        if spool is not None:
+            shutil.rmtree(spool, ignore_errors=True)
 
 
 def _extract_and_load(
@@ -1512,22 +1614,26 @@ def _extract_and_load(
     as_landed: AsLanded | None,
     progress: Callable[..., dict[str, list[dict]] | None] = lambda loaded=frozenset(): None,
     log: list[dict] | None = None,
+    spool: Path | None = None,
 ) -> None:
     """run_pipeline's extract, checks, load and run log; ExtractRefused, after logging, when either check fails.
 
     `progress` is _run()'s: what PROGRESS_TABLE holds after this run, given
-    the resources that loaded, which every run log written here carries."""
-    # A CONDITIONS LEG ISOLATES EACH UPSTREAM, so one club's failure does not
-    # hold back another club's closures. A leg reads every resource first
-    # (read_each), and one whose read fails, runs out of time or is refused by
-    # the run check or dlt's schema contract is left out like a FRESH one: its
-    # last committed table stands, it is logged `refused`, and the rest load
-    # (extracted again after a refusal). OurHike's own rows are the exception
-    # (stops_the_leg). On the monthly and hourly lanes one refusal refuses the run.
+    the resources that loaded, which every run log written here carries.
+    `spool` is where an isolating lane's rows wait (Spool)."""
+    # A LEG, AND THE MONTHLY LANE, ISOLATE EACH UPSTREAM (isolates()), so one
+    # club's failure does not hold back another club's closures, or its month.
+    # Every resource is read first (read_each), and one whose read fails, runs
+    # out of time or is refused by the run check or dlt's schema contract is
+    # left out like a FRESH one: its last committed table stands, it is logged
+    # `refused`, and the rest load (extracted again after a refusal). OurHike's
+    # own rows are the exception (stops_the_leg). On the plain hourly lane one
+    # refusal refuses the run.
     read = None
-    if to_run and lane in LEGS:
+    if to_run and isolates(lane):
+        readers = None if lane in LEGS else MONTHLY_READERS
         with timed(report, "read"):
-            to_run, read = read_each(report, to_run, read_seconds)
+            to_run, read = read_each(report, to_run, read_seconds, spool=spool, readers=readers)
     log = run_log_rows(pipeline) if log is None else log
     previous = last_loaded_counts(log) if to_run else {}
     while to_run:
@@ -1558,7 +1664,7 @@ def _extract_and_load(
                 # What ran: a lane's every non-FRESH resource, a leg's less those read_each() left out.
                 as_landed.close(to_run)
             with timed(report, "normalize"):
-                pipeline.normalize()
+                pipeline.normalize(workers=NORMALIZE_WORKERS.get(lane, 1))
         except PipelineStepFailed as failure:
             # On a leg, a table dlt's schema contract refuses is left out like one the run check refuses.
             breach = contract_breach(failure) if read is not None else None

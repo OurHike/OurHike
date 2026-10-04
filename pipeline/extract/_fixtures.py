@@ -624,7 +624,12 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     try:
         for lane in LANES:
             if lane_resources(lane, resources):
-                run_pipeline(lane, bucket_url, resources=resources, pipelines_dir=pipelines_dir)
+                report = run_pipeline(lane, bucket_url, resources=resources, pipelines_dir=pipelines_dir)
+                # The monthly lane leaves a failing upstream out and loads the rest (_run.ISOLATING_LANES).
+                # A fixture is a file in this repository, so a refusal here is a broken fixture, not a bad day.
+                if report.isolated:
+                    refused = "; ".join(f"{name}: {why}" for name, why in sorted(report.isolated.items()))
+                    raise RuntimeError(f"fixture mode's {lane} lane refused {len(report.isolated)} resource(s): {refused}")
     finally:
         _kinds.session = real_session
         _kinds.ATC_CRAWL_DELAY_SECONDS = crawl_delay

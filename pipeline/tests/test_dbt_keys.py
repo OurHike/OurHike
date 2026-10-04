@@ -17,6 +17,7 @@ model, tested unique and not null, and a dedupe on that key.
 
 import ast
 import re
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -28,7 +29,9 @@ KEY_LINE = re.compile(r"\{\{\s*dbt_utils\.generate_surrogate_key\((\[.*?\])\)\s*
 DEDUPE = re.compile(
     r"\{\{\s*dbt_utils\.deduplicate\(\s*relation='renamed',\s*partition_by='(\w+)',\s*order_by='(\w+)'\s*\)\s*\}\}\s*$"
 )
-SOURCE = re.compile(r"source\('([a-z_]+)',\s*'([a-z_]+)'\)")
+# Digits too: a raw table's key may hold one (raw_shta__shta_line_2025), and a model whose source() this
+# pattern missed would leave every check below silently.
+SOURCE = re.compile(r"source\('([a-z0-9_]+)',\s*'([a-z0-9_]+)'\)")
 # Every model that keys and dedupes a raw table, which is every staging model that reads a
 # source() (decision 40): the stg_ models of the first 28, and the base_ models stage 3 adds
 # for the rest (ELT.md, "The dbt project"). A stg_ model that reads a base model, as the
@@ -53,6 +56,8 @@ def model_key(path: Path) -> tuple[str, list[str]]:
     return match.group(2), ast.literal_eval(items)
 
 
+# Read once: every parametrized case below asks, and there are hundreds (decision 54's generated models).
+@cache
 def models_yaml() -> dict:
     found = {}
     for path in [*STAGING.rglob("_*__models.yml"), *STAGING.rglob("_*__base.yml")]:
@@ -61,6 +66,7 @@ def models_yaml() -> dict:
     return found
 
 
+@cache
 def source_tests() -> dict:
     found = {}
     for path in STAGING.rglob("_*__sources.yml"):

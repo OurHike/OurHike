@@ -9,8 +9,10 @@
     this, so the boxes have one home.
 
     `geometry` is a SQL expression for the row's GEOMETRY. Its bounding box
-    must sit inside the box `regions` gives its `source_key_column`, and a
-    key it does not list gets `eastern`.
+    must sit inside the box `regions` gives its `source_key_column`, or else
+    the box macros/generated_regions.sql gives it (every source
+    pipeline/make_dbt_staging.py stages, decision 54), and a key neither
+    lists gets `eastern`.
 
     THE BOXES, and what each rests on (extents measured 2026-10-03 from each
     live ArcGIS layer's returnExtentOnly, in lon/lat):
@@ -65,11 +67,6 @@
     relation, geometry, source_key_column='source_key'
 ) %}
 
-{%- set boxes = {
-    'eastern': (30.0, 50.0, -90.0, -66.0),
-    'national': (18.0, 72.0, -180.0, -64.0),
-    'us_and_territories': (-20.0, 72.0, -180.0, 180.0),
-} -%}
 {%- set regions = {
     'usfs_trails': 'national',
     'usfs_rec_sites': 'national',
@@ -224,22 +221,100 @@ boxed as (
             {% for key, region in regions.items() -%}
             when source_key = '{{ key }}' then '{{ region }}'
             {% endfor -%}
+            {{ generated_region_cases('source_key') }}
             else 'eastern'
         end as region
     from placed
     where geom is not null
 )
 
-select *
+select boxed.*
 from boxed
+inner join {{ region_boxes() }} on boxed.region = boxes.region
 where
-    case region
-        {% for region, box in boxes.items() -%}
-        when '{{ region }}'
-            then
-                ymin < {{ box[0] }} or ymax > {{ box[1] }}
-                or xmin < {{ box[2] }} or xmax > {{ box[3] }}
-        {% endfor -%}
-    end
+    boxed.ymin < boxes.lat_min or boxed.ymax > boxes.lat_max
+    or boxed.xmin < boxes.lon_min or boxed.xmax > boxes.lon_max
 
 {% endmacro %}
+
+{#-
+    The three boxes, as a table `boxes` (region, lat_min, lat_max, lon_min,
+    lon_max) for a FROM or JOIN: this file's header says what each rests
+    on. One home, read by lands_outside_its_region above and by
+    vertex_extents below. SQL rather than a returned dict, so SQLFluff's
+    jinja templater renders it as dbt does.
+-#}
+{% macro region_boxes() -%}
+    (
+        values
+        ('eastern', 30.0, 50.0, -90.0, -66.0),
+        ('national', 18.0, 72.0, -180.0, -64.0),
+        ('us_and_territories', -20.0, 72.0, -180.0, 180.0)
+    ) as boxes (region, lat_min, lat_max, lon_min, lon_max)
+{%- endmacro %}
+
+{#-
+    One row per source in `relation`: how many rows it has, how many carry a
+    geometry, the extent of those rows' own vertices, and the narrowest of
+    region_boxes() holding every vertex (`vertex_region`, null when none
+    does, which a lon/lat swap makes so). The boxes nest, so the narrowest
+    is the one of least area. The evidence a source's region box is set
+    from (macros/generated_regions.sql), read off the rows a build landed,
+    never off a server's returnExtentOnly answer, which can lie: USFWS's
+    trail segments answered lat -24.99 to 90 for vertices at 13.64 to 63.20
+    (pipeline/ELT.md, "What wave 1's live reads found that phase C must
+    honour", 2026-10-03).
+-#}
+{% macro vertex_extents(relation, geometry='geom', source_key_column='source_key') -%}
+with placed as (
+    select
+        {{ source_key_column }} as source_key,
+        {{ geometry }} as geom
+    from {{ relation }}
+),
+
+extents as (
+    select
+        source_key,
+        count(*) as row_count,
+        count(geom) as rows_with_geometry,
+        min(st_xmin(geom)) as lon_min,
+        max(st_xmax(geom)) as lon_max,
+        min(st_ymin(geom)) as lat_min,
+        max(st_ymax(geom)) as lat_max
+    from placed
+    group by source_key
+),
+
+fits as (
+    select
+        extents.source_key,
+        boxes.region,
+        row_number() over (
+            partition by extents.source_key
+            order by
+                (boxes.lat_max - boxes.lat_min)
+                * (boxes.lon_max - boxes.lon_min)
+        ) as narrowest
+    from extents
+    inner join {{ region_boxes() }}
+        on
+            extents.lat_min >= boxes.lat_min
+            and extents.lat_max <= boxes.lat_max
+            and extents.lon_min >= boxes.lon_min
+            and extents.lon_max <= boxes.lon_max
+)
+
+select
+    extents.source_key,
+    extents.row_count,
+    extents.rows_with_geometry,
+    extents.lon_min,
+    extents.lon_max,
+    extents.lat_min,
+    extents.lat_max,
+    fits.region as vertex_region
+from extents
+left join fits
+    on extents.source_key = fits.source_key and fits.narrowest = 1
+{%- endmacro %}

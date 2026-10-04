@@ -174,3 +174,25 @@ def test_a_reader_no_source_uses_yet_stages_only_columns_it_lands(reader_class, 
     named = {generator._column(spec)[0] for spec in reader.roles.values()} | set(reader.key)
     assert named <= landed, sorted(named - landed)
     assert reader.lists <= landed
+
+
+def test_every_unit_test_input_on_a_generated_notice_model_is_sql_rows():
+    """A generated notice base model reads its raw table through notice_raw_table(), so on a warehouse that lacks the
+    table (an hourly build with no served notices copy, decision 61) it has only the key columns. dbt checks dict or
+    CSV fixture rows against the input's real columns and fails the whole build before a test runs, which stopped the
+    soak run on ecc43d56 (publish-conditions.yml 37203308446). SQL rows carry their own columns."""
+    import glob
+
+    import yaml
+
+    import generate_notice_models
+
+    bases = {source.base_model for source in generate_notice_models.notice_sources() if not source.hand_staged}
+    offenders = []
+    for path in glob.glob(str(Path(generate_notice_models.__file__).parent / "dbt" / "models" / "**" / "*.yml"), recursive=True):
+        for unit_test in (yaml.safe_load(Path(path).read_text()) or {}).get("unit_tests") or []:
+            for given in unit_test.get("given") or []:
+                name = given.get("input", "").removeprefix("ref('").removesuffix("')")
+                if name in bases and given.get("format", "dict") != "sql":
+                    offenders.append(f"{unit_test['name']}: {name}")
+    assert not offenders, offenders

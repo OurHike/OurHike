@@ -980,26 +980,22 @@ def render_wording_yml(sources: list[NoticeSource], fields: dict[str, dict]) -> 
     given = []
     for source in parts[tested - 1]:
         if source.key == WORDING_TEST_SOURCE:
+            # SQL rows, as every other branch here. An hourly warehouse with no served notices copy lands no raw
+            # table for this source, so its base model has only notice_raw_table()'s key columns, and dict rows
+            # naming title, description and category fail dbt's column check before a single test runs: the soak
+            # run on ecc43d56 (publish-conditions.yml 37203308446) stopped there.
             given.append(
                 {
                     "input": f"ref('{source.base_model}')",
-                    "rows": [
-                        {
-                            "notice_key": "k1",
-                            "id": "a1",
-                            "title": "Fixture Trail closed",
-                            "description": "<p>Fixture wording: the trail is closed beyond the second bridge for repairs.</p>",
-                            "category": "Park Closure",
-                        },
-                        {
-                            "notice_key": "k2",
-                            "id": "a2",
-                            "title": "A fixture title that the description repeats",
-                            "description": "A fixture title that the description repeats",
-                            "category": "Caution",
-                        },
-                        {"notice_key": "k3", "id": "a3", "title": "Fixture", "description": "Too short.", "category": "Danger"},
-                    ],
+                    "format": "sql",
+                    "rows": (
+                        "select 'k1' as notice_key, 'a1' as id, 'Fixture Trail closed' as title,"
+                        " '<p>Fixture wording: the trail is closed beyond the second bridge for repairs.</p>'"
+                        " as description, 'Park Closure' as category"
+                        " union all select 'k2', 'a2', 'A fixture title that the description repeats',"
+                        " 'A fixture title that the description repeats', 'Caution'"
+                        " union all select 'k3', 'a3', 'Fixture', 'Too short.', 'Danger'"
+                    ),
                 }
             )
         else:
@@ -1016,7 +1012,7 @@ def render_wording_yml(sources: list[NoticeSource], fields: dict[str, dict]) -> 
                     "rows": f"select {columns} where false",
                 }
             )
-    if not any(g["rows"] for g in given):
+    if not any(" union all " in g["rows"] for g in given):
         raise SystemExit(f"{WORDING_TEST_SOURCE} is not a generated notice source, so the wording unit test has no row")
     unit = {
         "name": "int_warnings__notice_wording_unioned_collects_a_sources_paragraph_and_never_its_facts",

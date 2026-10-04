@@ -135,22 +135,12 @@ unit_tests:
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
   - input: ref('base_nps__nps_alerts')
-    rows:
-    - notice_key: k1
-      id: a1
-      title: Fixture Trail closed
-      description: '<p>Fixture wording: the trail is closed beyond the second bridge for repairs.</p>'
-      category: Park Closure
-    - notice_key: k2
-      id: a2
-      title: A fixture title that the description repeats
-      description: A fixture title that the description repeats
-      category: Caution
-    - notice_key: k3
-      id: a3
-      title: Fixture
-      description: Too short.
-      category: Danger
+    format: sql
+    rows: 'select ''k1'' as notice_key, ''a1'' as id, ''Fixture Trail closed'' as title, ''<p>Fixture
+      wording: the trail is closed beyond the second bridge for repairs.</p>'' as description, ''Park
+      Closure'' as category union all select ''k2'', ''a2'', ''A fixture title that the description repeats'',
+      ''A fixture title that the description repeats'', ''Caution'' union all select ''k3'', ''a3'', ''Fixture'',
+      ''Too short.'', ''Danger'''
   - input: ref('base_nps__nps_appa_helene_status')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false

@@ -19,6 +19,16 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_palmetto__palmetto_passages
+        data_tests:
+          # Rows sharing base_palmetto__palmetto_passages's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'palmetto_passages'", "link"]
+        description: >
+          Palmetto Trail passages (palmettotrail.org/trails/trail/, listed by sitemap.xml)
+          (sources.json `palmetto_passages`). Key: `link`, the passage's own page: unique
+          on all 33 rows read 2026-10-04, as are the names.
       - name: raw_palmetto__palmetto_trail_passages
         data_tests:
           # Rows sharing base_palmetto__palmetto_trail_passages's key must be exact copies (decision 40).

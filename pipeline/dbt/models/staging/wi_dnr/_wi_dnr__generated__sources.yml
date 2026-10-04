@@ -55,3 +55,15 @@ sources:
           `wdnr_wild_wisconsin_podcast`). Key: `guid`: present and unique on all 59 items
           read 2026-10-04, the feed's own id for an episode, which a podcast app keys on
           too.
+      - name: raw_wi_dnr__wi_dnr_hiking
+        data_tests:
+          # Rows sharing base_wi_dnr__wi_dnr_hiking's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'wi_dnr_hiking'", "link", "name"]
+        description: >
+          Wisconsin DNR property hiking pages
+          (dnr.wisconsin.gov/topic/<kind>/<property>/recreation/hiking) (sources.json
+          `wi_dnr_hiking`). Key: The property's hiking page and the trail's name (`link`,
+          `name`): unique on all 170 rows read 2026-10-04. The name alone is not ('Blue
+          trail' is in two parks, 'Ice Age National Scenic Trail' in more).

@@ -28,6 +28,17 @@ sources:
         description: >
           Florida Trail campsites (FTA's own layer) (sources.json `fta_campsites`). Key:
           the registry's `id_field`; its row records no measurement of it.
+      - name: raw_fta__fta_day_hikes
+        data_tests:
+          # Rows sharing base_fta__fta_day_hikes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'fta_day_hikes'", "section", "name"]
+        description: >
+          FTA Day & Section Hike: Grab-and-Go and other trail hikes (floridatrail.org/day-
+          hike/) (sources.json `fta_day_hikes`). Key: The map and the hike's name
+          (`section`, `name`): unique on all 46 rows read 2026-10-04. The name alone is
+          not: Big Oak Trail is on both maps.
       - name: raw_fta__fta_gateway_communities
         data_tests:
           # Rows sharing base_fta__fta_gateway_communities's key must be exact copies (decision 40).

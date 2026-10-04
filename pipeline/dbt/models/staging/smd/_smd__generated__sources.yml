@@ -30,3 +30,16 @@ sources:
           `audible_mount_diablo_podcast`). Key: `guid`: present and unique on all 209
           items read 2026-10-04, the feed's own id for an episode, which a podcast app
           keys on too.
+      - name: raw_smd__smd_diablo_range_hikes
+        data_tests:
+          # Rows sharing base_smd__smd_diablo_range_hikes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'smd_diablo_range_hikes'", "section", "name"]
+        description: >
+          Save Mount Diablo field guide: Hikes in the Diablo Range (sources.json
+          `smd_diablo_range_hikes`). Key: The region's part and the hike's name
+          (`section`, `name`): unique on all 47 rows read 2026-10-04. The name alone is
+          not (Marsh Creek Regional Trail and Morgan Territory Regional Preserve are each
+          listed under two parts), nor the link (one post, '8 great places to hike at
+          sunrise and sunset', is linked by six hikes).

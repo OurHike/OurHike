@@ -20,3 +20,12 @@ models:
       - name: episode_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_wi_dnr__suggested_hikes
+    description: >
+      The wi_dnr/ folder's suggested hikes layers (`wi_dnr_hiking`), one row per base row,
+      renamed to int_suggested_hikes__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: hike_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

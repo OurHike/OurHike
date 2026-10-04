@@ -37,7 +37,37 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_blue_hills__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_buckeye__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_cdtc__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_cfpa__suggested_hikes') }}
 union all by name
 select
     source_key,
@@ -77,6 +107,16 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_fta__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_gmc__suggested_hikes') }}
 union all by name
 select
@@ -98,6 +138,36 @@ select
     properties,
     _loaded_at
 from {{ ref('stg_mazamas__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_mdhta__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_mohonk__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_mratc__suggested_hikes') }}
 union all by name
 select
     source_key,
@@ -147,6 +217,36 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_onda__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_ota__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_palmetto__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_patc__suggested_hikes') }}
 union all by name
 select
@@ -187,6 +287,16 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_smd__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_tahoe_rim__suggested_hikes') }}
 union all by name
 select
@@ -208,3 +318,13 @@ select
     properties,
     _loaded_at
 from {{ ref('stg_tko__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_wi_dnr__suggested_hikes') }}

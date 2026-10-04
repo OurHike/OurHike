@@ -28,6 +28,17 @@ sources:
         description: >
           Mohonk Preserve boundary (sources.json `mohonk_preserve_boundary`). Key:
           `GlobalID` is unique and non-null on all 1 rows read 2026-10-03.
+      - name: raw_mohonk__mohonk_suggested_hikes
+        data_tests:
+          # Rows sharing base_mohonk__mohonk_suggested_hikes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'mohonk_suggested_hikes'", "section", "name"]
+        description: >
+          Mohonk Preserve Suggested Hikes (mohonkpreserve.org/visit/activities/suggested-
+          hikes/) (sources.json `mohonk_suggested_hikes`). Key: The trailhead and the
+          hike's name (`section`, `name`): unique on all 13 rows read 2026-10-04. The name
+          alone is not: Undercliff-Overcliff Loop is suggested from two trailheads.
       - name: raw_mohonk__mohonk_walk_back_in_time_podcast
         data_tests:
           # Rows sharing base_mohonk__mohonk_walk_back_in_time_podcast's key must be exact copies (decision 40).

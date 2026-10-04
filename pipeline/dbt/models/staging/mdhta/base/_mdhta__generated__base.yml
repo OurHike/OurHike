@@ -49,3 +49,24 @@ models:
           mdhta_trail_guide_points, link, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_mdhta__mdhta_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('mdhta', 'raw_mdhta__mdhta_trails')
+          config:
+            severity: warn
+    description: >
+      Maah Daah Hey Trail Association trails (mdhta.com/trails/), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_suggested_hikes__club_unioned reads it through stg_mdhta__suggested_hikes.
+    columns:
+      - name: hike_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over mdhta_trails,
+          link, the registry key first and then the fields measured unique for this layer.
+        data_tests: [not_null, unique]

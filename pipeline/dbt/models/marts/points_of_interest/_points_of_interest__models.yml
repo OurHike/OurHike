@@ -122,6 +122,15 @@ models:
             expression: "phone_files = 'retired_poi' or confidence in ('high', 'low')"
           config:
             severity: error
+      # Decision 65's season caution rides only on unconfirmed water: a
+      # caution on a confirmed source, or on a shelter, would be a display
+      # outrunning its source.
+      - dbt_utils.expression_is_true:
+          name: points_of_interest_season_cautions_are_on_unconfirmed_water
+          arguments:
+            expression: "water_caution is null or (poi_type = 'water' and confidence = 'low')"
+          config:
+            severity: error
       # The text parses as the point it says it is, at most an ulp or three
       # from the source's own lon and lat (GDAL's printing moves a
       # poi_<type>.geojson coordinate by that much, never more).
@@ -278,6 +287,17 @@ models:
       - name: water_reliability
         description: reliable or unreliable, where the guide says which of a water source; null where it does not.
         data_type: varchar
+      - name: water_caution
+        description: >
+          Decision 65: 'no_shutoff_season' on a plumbed tap or fountain whose layer records no
+          shutoff season (int_points_of_interest__season_cautions), which the waypoint card reads to
+          say taps like it are often off out of season. Only ever on low-confidence water; null on
+          every other POI, and on a tap whose layer's own winter status says it is open in winter.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['no_shutoff_season']
       - name: photo_key
         description: >
           The card photo's bucket key, photos/<digest>.jpg (PO24); null where the

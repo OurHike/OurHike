@@ -485,6 +485,12 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
+  // A PLUMBED TAP'S SEASON CAUTION (decision 65, 2026-10-04) is a state of
+  // this card the flow suite does not reach yet, for the club line's reason
+  // above: no pinned release carries `water_caution` until one is published
+  // from the change that writes it. PoiCard.test.tsx ('says on the peek that a plumbed tap may
+  // be shut off') and trailData.test.ts hold it, and
+  // preview-shots/seasonal-tap-card.mjs photographs it from a fixture.
   'chrome/PoiCard.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },

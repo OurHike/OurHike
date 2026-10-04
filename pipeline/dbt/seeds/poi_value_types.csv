@@ -16,6 +16,8 @@ oprhp_facilities,Parking Area,parking
 oprhp_facilities,Pull Off,parking
 oprhp_facilities,Accessible Parking Area,parking
 oprhp_facilities,Trailhead,trailhead
+oprhp_facilities,Water Spigot,water
+oprhp_facilities,Drinking Fountain,water
 usfs_rec_sites,TRAILHEAD,trailhead
 usfs_rec_sites,CAMPGROUND,campsite
 usfs_rec_sites,GROUP CAMPGROUND,campsite

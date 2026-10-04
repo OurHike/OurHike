@@ -3867,6 +3867,21 @@ a.poi-card__credit::after {
   border-radius: 10px;
 }
 
+/* Decision 65's season caution on a plumbed tap: the unverified line's
+   panel, with a left rule in the warning ink, so it reads as a second and
+   different claim beside "nobody has confirmed this one" rather than as more
+   of the same sentence. Not the trails-closed line's full weight: the tap may
+   well be on, and the caution is to carry enough, not to stay away. */
+.poi-card__season-caution {
+  margin: var(--space-1, 4px) 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-left: 3px solid var(--warning, #b26a00);
+  border-radius: 10px;
+}
+
 /* The conditions section (FieldNoteSection.tsx): what the field has said,
    and the one-tap way to answer.
 

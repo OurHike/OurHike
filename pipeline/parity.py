@@ -69,6 +69,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
 import functools
 import hashlib
 import json
@@ -998,6 +999,13 @@ POI_REASONS = {
         "(int_points_of_interest__club_points), so there is no old record to compare it with; new_data_report.py "
         "counts it by source and type, and lists every water and shelter source line by line"
     ),
+    "seasonal_tap": (
+        "expected by decision 65 (the maintainer's poll of 2026-10-04): a plumbed tap or fountain whose layer records "
+        "no shutoff season, which export_nearby_poi.py holds back as a water holdback (sources.json's "
+        "oprhp_water_holdback), ships as unconfirmed water carrying water_caution 'no_shutoff_season' "
+        "(int_points_of_interest__season_cautions); only a record today's file lacks, of a layer whose taps "
+        "layer_rules names plumbed_water, at low confidence with that caution"
+    ),
 }
 
 
@@ -1062,9 +1070,35 @@ def _new_source_reasons(old: dict, new: dict) -> dict[str, str]:
     }
 
 
+@functools.cache
+def _plumbed_water_sources() -> frozenset[str]:
+    """The layers a layer_rules `plumbed_water` row names: decision 65's one home for which taps carry a caution."""
+    with (Path(__file__).resolve().parent / "dbt" / "seeds" / "layer_rules.csv").open(newline="") as handle:
+        return frozenset(row["source_key"] for row in csv.DictReader(handle) if row["rule"] == "plumbed_water")
+
+
+def _seasonal_tap_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The taps decision 65 ships from a layer today's exporter reads and holds them back from.
+
+    Only a record the new file holds and the old one lacks, of a layer a plumbed_water rule names, that is water at
+    low confidence carrying the season caution: anything else a layer of today's adds is still a difference.
+    """
+    old_ids = {_poi_id(feature) for feature in old.get("features") or []}
+    return {
+        f"properties.id {_poi_id(feature)}": POI_REASONS["seasonal_tap"]
+        for feature in new.get("features") or []
+        if _poi_id(feature) not in old_ids
+        and feature["properties"].get("source") in _plumbed_water_sources()
+        and feature["properties"].get("poi_type") == "water"
+        and feature["properties"].get("confidence") == "low"
+        and feature["properties"].get("water_caution") == "no_shutoff_season"
+    }
+
+
 def _nearby_poi_reasons(old: dict, new: dict) -> dict[str, str]:
-    """nearby_poi's two explained kinds: an exact copy staging removed, and decision 31's new data."""
-    return {**_exact_copy_reasons(old, new), **_new_source_reasons(old, new)}
+    """nearby_poi's three explained kinds: an exact copy staging removed, decision 31's new data, and decision 65's
+    seasonal taps from a layer today's exporter reads."""
+    return {**_exact_copy_reasons(old, new), **_seasonal_tap_reasons(old, new), **_new_source_reasons(old, new)}
 
 
 @functools.cache

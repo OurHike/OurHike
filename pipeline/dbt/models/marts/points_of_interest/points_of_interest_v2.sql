@@ -84,6 +84,7 @@ select
     position_error_m,
     off_trail_miles,
     water_reliability,
+    water_caution,
     photo_key,
     photo_page_url,
     photo_author,

@@ -144,6 +144,14 @@ export interface PoiDetail {
    *  the release was computed with. The card says so above everything else. */
   trailsClosedWithinM?: number
   /**
+   * A tap or fountain whose publisher does not say when it is shut off for the
+   * season (decision 65) - lib/trailData.ts's StoredPoi.waterCaution. The
+   * card says so in its own line, apart from the unverified one: the pin
+   * already says "unconfirmed", and this says why a plumbed tap in particular
+   * may be dry when the hiker gets there.
+   */
+  waterCaution?: 'no_shutoff_season'
+  /**
    * Which published source listed it - see poiSources.ts.
    *
    * Optional because a phone that downloaded before the client started
@@ -1170,6 +1178,27 @@ export function PoiCard({
       </p>
     ) : null
 
+  /* Decision 65's season caution (the maintainer's poll of 2026-10-04, from
+     the drawn card in decisions-64-67-mock.html section 2): a plumbed tap
+     whose publisher records no shutoff season. Its own line, under the
+     unverified one and never folded into it: that line says nobody vouched
+     for the pin, and this one says why a tap in particular can be dry even
+     where it is real. Placed by the same rule, as high as the card goes at
+     both heights, for the same reason - a hiker deciding how much water to
+     carry must not have to pull the card open to learn the tap may be off.
+
+     "Out of season" rather than the mock's "in winter": a fixed season is a
+     guess that flips wrong in the South, which is the alternative the poll
+     turned down. "Its publisher" rather than "the agency", because two of
+     the layers are clubs' (NCTA's and FLTC's), not agencies'. */
+  const seasonCautionLine =
+    shown.type === 'water' && shown.waterCaution === 'no_shutoff_season' ? (
+      <p className="poi-card__season-caution" role="note">
+        Plumbed water. Its publisher does not say when it is shut off, and taps like this
+        are often off out of season. Carry enough to reach the next source.
+      </p>
+    ) : null
+
   /* Every part of this place, the one you are on included, at BOTH heights.
 
      The peek carries it since #1706. #941 had moved it into the opened card, on
@@ -1859,11 +1888,15 @@ export function PoiCard({
                   gets the band with no heading, because "Conditions" is a
                   promise about water, shelter, campsites and resupply and
                   this file must not make it about anything else. */}
-              {(notesShown || unverifiedLine !== null || closedLine !== null) && (
+              {(notesShown ||
+                unverifiedLine !== null ||
+                seasonCautionLine !== null ||
+                closedLine !== null) && (
                 <section className="poi-card__section">
                   {notesShown && <h3 className="poi-card__section-title">Conditions</h3>}
                   {closedLine}
                   {unverifiedLine}
+                  {seasonCautionLine}
                   {conditions('open')}
                 </section>
               )}
@@ -1988,6 +2021,7 @@ export function PoiCard({
           )}
 
           {unverifiedLine}
+          {seasonCautionLine}
           {conditions('peek')}
 
           {/* One deliberate pull, named for what is behind it. "Notes &

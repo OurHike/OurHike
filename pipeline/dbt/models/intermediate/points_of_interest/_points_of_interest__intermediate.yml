@@ -428,6 +428,26 @@ models:
       - name: description
         description: The sentence, null where nothing usable is stated.
 
+  - name: int_points_of_interest__season_cautions
+    description: >
+      Decision 65: every published water point a layer_rules `plumbed_water` row names, a tap or
+      fountain whose layer records no shutoff season, one row each. The final model ships each at low
+      confidence (the phone's hollow pin) with `water_caution`, which the waypoint card reads. A
+      layer's own winter status (an `open_in_winter` row, CPW's d_WINTER_S 'Open') leaves the tap
+      plumbed and low but takes the caution off.
+    columns:
+      - name: poi_id
+        description: The published id of a plumbed water point.
+        data_tests: [not_null, unique]
+      - name: water_caution
+        description: >
+          'no_shutoff_season': the layer does not say when the tap is shut off. Null where the layer's
+          own winter status says it is open in winter.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['no_shutoff_season']
+
   - name: int_points_of_interest__miles
     description: >
       Each A.T.-family POI's NOBO mile from Springer on the marker-calibrated

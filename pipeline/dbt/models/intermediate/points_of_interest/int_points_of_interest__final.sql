@@ -27,7 +27,12 @@
 --   `water_distance_source` is: a distance never ships without the source
 --   the phone prints its tilde from (42 of the 305 published distances are
 --   OSA_Field_Estimate);
--- - `confidence` high or low on every live POI.
+-- - `confidence` high or low on every live POI;
+-- - `water_caution` only on low-confidence water (decision 65): a plumbed
+--   tap or fountain whose layer records no shutoff season
+--   (int_points_of_interest__season_cautions) ships low whatever its layer's
+--   own public flag says, and carries 'no_shutoff_season' unless the layer's
+--   own winter status says it is open in winter.
 --
 -- GEOMETRY IS TEXT HERE: `geom_geojson`, an RFC 7946 Point in lon/lat at the
 -- precision the row's phone file prints today, because dbt 2.0.6 cannot
@@ -63,6 +68,10 @@ photos as (
     select * from {{ ref('int_points_of_interest__photos') }}
 ),
 
+season_cautions as (
+    select * from {{ ref('int_points_of_interest__season_cautions') }}
+),
+
 live as (
     select
         described.poi_id,
@@ -78,7 +87,12 @@ live as (
         described.lon,
         cast(miles.mile as double) as mile,
         described.not_on_at,
-        described.confidence,
+        -- Decision 65: a plumbed tap is unconfirmed water, whatever its
+        -- layer's own public flag rated it (NY Parks' ParksApp 'Y').
+        case
+            when season_cautions.poi_id is not null then 'low'
+            else described.confidence
+        end as confidence,
         cast(described.capacity as integer) as capacity,
         cast(described.water_distance_ft as integer) as water_distance_ft,
         described.water_distance_source,
@@ -91,6 +105,7 @@ live as (
         described.position_error_m,
         described.off_trail_miles,
         described.water_reliability,
+        season_cautions.water_caution,
         described.site_id,
         described.site_role,
         described.site_name,
@@ -102,6 +117,7 @@ live as (
         described._loaded_at
     from described
     left join miles on described.poi_id = miles.poi_id
+    left join season_cautions on described.poi_id = season_cautions.poi_id
 ),
 
 tombstones as (
@@ -132,6 +148,7 @@ tombstones as (
         cast(null as integer) as position_error_m,
         cast(null as double) as off_trail_miles,
         cast(null as varchar) as water_reliability,
+        cast(null as varchar) as water_caution,
         cast(null as varchar) as site_id,
         cast(null as varchar) as site_role,
         cast(null as varchar) as site_name,
@@ -194,6 +211,8 @@ select
     unioned.position_error_m,
     unioned.off_trail_miles,
     unioned.water_reliability,
+    -- Decision 65's season caution, on a plumbed tap only.
+    unioned.water_caution,
     -- PO24 and PO38: the card photo and gallery through the face gate
     -- (int_points_of_interest__photos), on the A.T. family's POIs, which are
     -- the only ones export_poi.py attaches photos to. Null is "no photo",

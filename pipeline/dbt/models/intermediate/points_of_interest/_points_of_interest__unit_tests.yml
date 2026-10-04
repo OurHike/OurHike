@@ -728,7 +728,10 @@ unit_tests:
       over raw files written from the A.T. rows and build_records() on each
       other row, and holds every id, type, confidence, name and reason to
       them. The registry entries are sources.json's own, trimmed to the keys
-      a rule reads.
+      a rule reads. NY Parks' Water Spigot types water: decision 65's row in
+      the poi_value_types seed, the one the dbt path adds to
+      export_nearby_poi.py's map, which the pytest adds to the Python's map
+      before it compares.
     model: int_points_of_interest__classified
     given:
       - input: ref('int_points_of_interest__unioned')
@@ -842,6 +845,8 @@ unit_tests:
           - {source_key: 'oprhp_facilities', value: 'Pull Off', poi_type: 'parking'}
           - {source_key: 'oprhp_facilities', value: 'Accessible Parking Area', poi_type: 'parking'}
           - {source_key: 'oprhp_facilities', value: 'Trailhead', poi_type: 'trailhead'}
+          - {source_key: 'oprhp_facilities', value: 'Water Spigot', poi_type: 'water'}
+          - {source_key: 'oprhp_facilities', value: 'Drinking Fountain', poi_type: 'water'}
           - {source_key: 'usfs_rec_sites', value: 'TRAILHEAD', poi_type: 'trailhead'}
           - {source_key: 'usfs_rec_sites', value: 'CAMPGROUND', poi_type: 'campsite'}
           - {source_key: 'usfs_rec_sites', value: 'GROUP CAMPGROUND', poi_type: 'campsite'}
@@ -890,7 +895,7 @@ unit_tests:
         - {poi_key: 'c-ot-05', derived_id: 'opentrail_at:105', source_feature_id: '105', trail_id: 'AT', name: 'Fixture Spring Two', poi_type: 'water', family_confidence: 'high', asset: null, facility: null, drop_reason: 'no geometry'}
         - {poi_key: 'c-ot-06', derived_id: 'opentrail_at:106', source_feature_id: '106', trail_id: 'AT', name: 'Fixture Mystery', poi_type: null, family_confidence: null, asset: null, facility: null, drop_reason: 'icon not published'}
         - {poi_key: 'c-n-17', derived_id: 'oprhp_facilities:17', source_feature_id: '17', trail_id: 'NYSOPRHP', name: null, poi_type: 'shelter', family_confidence: null, asset: 'Lean-to', facility: 'Fixture State Park', drop_reason: null}
-        - {poi_key: 'c-n-18', derived_id: 'oprhp_facilities:18', source_feature_id: '18', trail_id: 'NYSOPRHP', name: 'Fixture Spigot', poi_type: null, family_confidence: null, asset: 'Water Spigot', facility: 'Fixture State Park', drop_reason: 'excluded: Water Spigot - water holdback - no seasonal shutoff recorded (sources.json oprhp_water_holdback)'}
+        - {poi_key: 'c-n-18', derived_id: 'oprhp_facilities:18', source_feature_id: '18', trail_id: 'NYSOPRHP', name: 'Fixture Spigot', poi_type: 'water', family_confidence: null, asset: 'Water Spigot', facility: 'Fixture State Park', drop_reason: null}
         - {poi_key: 'c-n-19', derived_id: 'oprhp_facilities:19', source_feature_id: '19', trail_id: 'NYSOPRHP', name: 'Fixture Trailhead', poi_type: 'trailhead', family_confidence: null, asset: 'Trailhead', facility: 'Fixture State Park', drop_reason: null}
         - {poi_key: 'c-at-04', derived_id: 'atc_parking:{AT-PARKING-1}', source_feature_id: '{AT-PARKING-1}', trail_id: 'AT', name: 'Fixture Lot', poi_type: 'parking', family_confidence: 'high', asset: null, facility: null, drop_reason: null}
         - {poi_key: 'c-at-05', derived_id: 'atc_privies:{AT-PRIVY-1}', source_feature_id: '{AT-PRIVY-1}', trail_id: 'AT', name: 'Fixture Privy', poi_type: 'privy', family_confidence: 'high', asset: null, facility: null, drop_reason: null}

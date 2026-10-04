@@ -230,6 +230,20 @@ export interface StoredPoi {
    * closed".
    */
   trailsClosedWithinM?: number
+  /**
+   * Why this water point is a tap the hiker should not count on (decision 65,
+   * the maintainer's poll of 2026-10-04) - pipeline/dbt's `water_caution`.
+   *
+   * `'no_shutoff_season'` is the only value: a plumbed tap or fountain whose
+   * agency's layer does not say when it is shut off for the season. The
+   * pipeline sets it only on low-confidence water, so the pin is already the
+   * hollow one; the waypoint card adds the caution in words, beside and apart
+   * from the ordinary unverified line. Absent on every other waypoint, on any
+   * release cut before the field existed, and on a value this build does not
+   * know, which shows the card it always showed rather than a caution about
+   * something else.
+   */
+  waterCaution?: 'no_shutoff_season'
   photoUrl?: string
   /** The Commons file page, where the full licence terms and history live. */
   photoPage?: string
@@ -337,6 +351,7 @@ interface PoiProperties {
   site_name?: unknown
   nearby?: unknown
   trails_closed_within_m?: unknown
+  water_caution?: unknown
 }
 
 /** The property when it is a non-empty string, else nothing - the artifact
@@ -553,6 +568,13 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     // the units the hiker chose - see lib/nearbyClause.ts.
     const nearby = readNearbyList(props.nearby)
     const type = typeof props.poi_type === 'string' ? props.poi_type : fallbackType
+    // Decision 65's season caution, only on water and only the one value this
+    // build can word: a caution read off a shelter, or a word nobody wrote a
+    // sentence for, would be a display outrunning its source.
+    const waterCaution =
+      type === 'water' && props.water_caution === 'no_shutoff_season'
+        ? ('no_shutoff_season' as const)
+        : undefined
     // A positive, finite number of metres, or nothing (#1695): a cross on the
     // map is a claim that every trail there is shut, so a value this build
     // does not recognise reads as the ordinary pin.
@@ -607,6 +629,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // storing the empty one would put an array on 40,000 POIs to say nothing.
       ...(nearby.length > 0 ? { nearby } : {}),
       ...(trailsClosedWithinM !== undefined ? { trailsClosedWithinM } : {}),
+      ...(waterCaution !== undefined ? { waterCaution } : {}),
       // Photo fields ride only behind a photo URL: an author or licence with
       // no photo is a credit for nothing, and would render as one.
       ...(photoUrl !== undefined

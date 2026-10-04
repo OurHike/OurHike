@@ -1,0 +1,37 @@
+# A placeholder, so the 4-hourly notices job can be dispatched before the pull
+# request that builds it merges.
+#
+# GitHub accepts a workflow_dispatch only for a workflow whose file exists on
+# the default branch, and the run then uses the file at the ref it was
+# dispatched on. PR #1805 - dlt -> dbt re-platform as one go/no-go change
+# builds the real notices job in this file on claude/intelligent-feynman-sw3ewm
+# (decision 61 in pipeline/ELT.md on that branch), and its restarted soak
+# (decision 62) dispatches that job's UA leg from the branch every 4 hours.
+# This file is only what lets
+#
+#   gh workflow run extract-notices.yml --ref claude/intelligent-feynman-sw3ewm -f data_environment=ua
+#
+# be accepted. The input matches the branch's file so the same dispatch is
+# valid against either. Dispatched on main it does nothing: no checkout, no
+# secret, no write, no schedule. That pull request replaces it with the job.
+name: Extract notices (placeholder)
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_environment:
+        description: "Which legs to run: both (production and UA; from main only) or ua alone"
+        type: choice
+        options: [both, ua]
+        default: both
+
+permissions: {}
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Say what this is
+        run: |
+          echo "Placeholder. The notices job is extract-notices.yml on the branch of PR #1805; dispatch it with --ref that branch."

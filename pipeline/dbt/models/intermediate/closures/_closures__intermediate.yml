@@ -470,8 +470,63 @@ models:
       - name: closure_id
         description: The mart's key.
         data_tests: [not_null, unique]
+  - name: int_closures__notice_state_shapes
+    description: >
+      Decision 76: the shape of every state seeds/notice_states.csv names,
+      from the Census Bureau's TIGER/Line file, simplified for a phone
+      (Douglas-Peucker at `notice_state_simplify_tolerance_m` in the state's
+      own equirectangular frame, 4 decimal places), with the margin the phone
+      holds a route to (`notice_state_edge_margin_m`). The model's header has
+      the measurement behind both, and
+      assert_notice_state_shapes_stay_inside_their_edge_margin re-measures it
+      every build. pub_conditions_notice_states writes it; no map draws it.
+    columns:
+      - name: state
+        description: The two-letter USPS code, as the seed and notices.json's `states` name it.
+        data_tests: [not_null, unique]
+      - name: state_name
+        description: The state's name, as the Census Bureau spells it.
+        data_tests: [not_null]
+      - name: frame
+        description: The PROJ string of the state's equirectangular frame, which the simplification and the offset test both measure in.
+      - name: phone_geometry
+        description: The simplified shape as GeoJSON, rings wound as RFC 7946 asks of a writer.
+        data_tests: [not_null]
+      - name: edge_margin_m
+        description: How far inside the shape a route vertex must be before the phone counts it as in the state.
+        data_tests: [not_null]
 
 unit_tests:
+  - name: int_closures__notice_state_shapes_simplifies_only_the_states_the_seed_names
+    model: int_closures__notice_state_shapes
+    description: >
+      An invented Utah-sized box, in its own frame (true scale at its southern
+      edge, 37 N): a vertex about 55 m off the straight south edge is dropped
+      at 250 m, and the 1.1 km jog in the north edge is kept, at 4 decimal
+      places, the shell wound counterclockwise. The Colorado row is not named
+      by the seed and is left out; the seed's OR and WA have no row and add
+      nothing.
+    given:
+      - input: ref('notice_states')
+        rows:
+          - {source_key: blm_fire_restrictions_utah, states: UT, evidence: Fixture}
+          - {source_key: blm_fire_restrictions_oregon_washington, states: OR WA, evidence: Fixture}
+      - input: ref('stg_census__states')
+        format: sql
+        rows: |
+          select
+              state,
+              state_name,
+              st_geomfromgeojson(shape) as geom,
+              cast('2026-10-01 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('UT', 'Utah', '{"type":"Polygon","coordinates":[[[-114.05,37.0],[-111.55,37.0005],[-109.05,37.0],[-109.05,42.0],[-111.55,42.0],[-111.55,42.01],[-114.05,42.01],[-114.05,37.0]]]}'),
+              ('CO', 'Colorado', '{"type":"Polygon","coordinates":[[[-109.05,37.0],[-102.04,37.0],[-102.04,41.0],[-109.05,41.0],[-109.05,37.0]]]}')
+          ) as states (state, state_name, shape)
+    expect:
+      rows:
+        - {state: UT, state_name: Utah, frame: '+proj=eqc +lat_ts=37.0 +lon_0=-111.551 +datum=NAD83 +units=m +no_defs', phone_geometry: '{"type":"Polygon","coordinates":[[[-114.05,37.0],[-109.05,37.0],[-109.05,42.0],[-111.55,42.0],[-111.55,42.01],[-114.05,42.01],[-114.05,37.0]]]}', edge_margin_m: 500.0}
+
   - name: int_closures__atc_checked_finds_what_file_problems_finds
     description: >
       One row per branch of lib/atc_updates.py's row_problems() and the file's

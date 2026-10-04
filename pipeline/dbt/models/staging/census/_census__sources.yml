@@ -1,0 +1,35 @@
+version: 2
+
+sources:
+  - name: census
+    description: >
+      The U.S. Census Bureau's TIGER/Line state boundaries, landed by the
+      extract's _shared/census/ folder (pipeline/extract/_shared/census/
+      states.py) for decision 76: a state-wide agency notice is placed by its
+      state. sources.json's census_tiger_states holds the counts, the
+      validators and the terms.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      meta:
+        cadence: monthly
+    tables:
+      - name: raw_census__census_tiger_states
+        config:
+          # A zipped shapefile, which the fixture warehouse never holds:
+          # fixture mode serves an answer as text and a .shp is binary. Its
+          # fct_sources_without_freshness row in
+          # dbt_project_evaluator_exceptions.csv says why.
+          freshness: null
+        data_tests:
+          # Rows sharing base_census__census_tiger_states's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'census_tiger_states'", "stusps"]
+                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+        description: >
+          tl_2025_us_state.zip, one row per state or equivalent (56 on
+          2026-10-04: 50 states, DC and 5 territories), its .dbf columns as dlt
+          names them and the shape as GeoJSON text in NAD83 degrees. Each state
+          runs out over its coastal water. Key: `stusps`, the two-letter code,
+          56 of 56.

@@ -1,14 +1,16 @@
 version: 2
 
 # The closures and warnings family's phone files (pipeline/ELT.md, "Publish
-# (reverse ETL)"): seven writers, and an exposure for each of the nine files
+# (reverse ETL)"): eight writers, and an exposure for each of the ten files
 # they and export_conditions.py's notes and disputes write. Each writer but
 # pub_conditions_notices names its int_closures__gate row in `meta.gate` and
 # selects no row while that source is held, so its last copy stays on the
 # phone while the others are written, and publish.py fails the run
 # afterwards. pub_conditions_notices spans every club, so a held club keeps
 # its last good rows inside the file instead (decision 53, phase D), and it
-# names no gate row. Only it is new data with no exporter. None of them uploads
+# names no gate row. Only it and pub_conditions_notice_states (decision 76's
+# state shapes, a monthly node that reads no notice source, so no gate row)
+# are new data with no exporter. None of them uploads
 # anything: publish-conditions.yml and publish-weather.yml still upload the
 # Python exporters' files until stage 4 of #1793 — Rebuild the data platform
 # as dlt → dbt: seven contracted marts, a monthly refresh, published docs,
@@ -122,8 +124,36 @@ models:
           of exactly these keys: notice_id, source_key, club, provider, title,
           category, locality, place, hazard, obstructs_trail, starts_on,
           ends_on, updated_at, checked_at, first_seen_at, changed_at,
-          carried_since, source_url and review_state. No other field of a
-          source, its person fields or its prose among them, can reach it.
+          carried_since, source_url and review_state, and `states` on the rows
+          of a source seeds/notice_states.csv names (decision 76). No other
+          field of a source, its person fields or its prose among them, can
+          reach it.
+        data_type: json
+
+  - name: pub_conditions_notice_states
+    description: >
+      Writes conditions/notice_states.json (decision 76): the shape of every
+      state a state-wide agency notice names, from
+      int_closures__notice_state_shapes, each with its code, its name and
+      the margin the phone holds a route to. The phone reads it beside
+      conditions/notices.json and shows a state-wide notice to a hike
+      planned inside one of its states that walks the agency's trails. A
+      file of its own so its bytes hold between builds; `generated_at` is
+      when the extract landed TIGER's file. Writes nothing while no shape is
+      built, and the phone keeps its last file. No map draws a shape.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the extract landed the Census Bureau's file, stamped as every conditions writer stamps a time.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: states
+        description: >
+          One object per state, by code, of exactly these keys: state, name,
+          edge_margin_m and geometry (GeoJSON, 4 decimal places).
         data_type: json
 
   - name: pub_conditions_closures
@@ -205,7 +235,8 @@ unit_tests:
       states; NYNJTC's carries its trail tags as `org_terms`; a burned area
       carries its own geometry and `hazard`, and never obstructs the trail,
       whatever its row says; OurHike's own closure and an NWS alert are not
-      club notices. `checked_at` is the oldest of a source's tables' latest
+      club notices. A source seeds/notice_states.csv names (decision 76)
+      carries its states as `states`, last, and no other row carries the key. `checked_at` is the oldest of a source's tables' latest
       loaded or unchanged reads (ATC's two), null where a table has none
       (BAER), and on a carried row the latest such read before carrying
       began (a page notice, whose 09:00 read came after it). A refused read
@@ -282,6 +313,9 @@ unit_tests:
       - input: ref('notice_hazard_areas')
         rows:
           - {source_key: usfs_baer_assessments, hazard: burned_area, category_value: '', why: 'Fixture'}
+      - input: ref('notice_states')
+        rows:
+          - {source_key: usfs_baer_assessments, states: 'ID MT', evidence: 'Fixture'}
       - input: ref('int_closures__nynjtc_checked')
         rows:
           - {notice_id: 'nynjtc_trail_alerts:detour', place_terms: '["trail:appalachian-trail"]'}
@@ -302,7 +336,7 @@ unit_tests:
           - {table_name: raw_a__club_page, outcome: skipped, checked_at: '2026-10-04 09:00:00+00'}
     expect:
       rows:
-        - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+        - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","states":["ID","MT"]}]'}
 
   - name: pub_conditions_notices_simplifies_an_area_for_a_phone
     model: pub_conditions_notices
@@ -356,6 +390,8 @@ unit_tests:
       - input: ref('notice_hazard_areas')
         rows:
           - {source_key: iata_lands_hunting_regs, hazard: hunting, category_value: 'Open for public hunting', why: 'Fixture'}
+      - input: ref('notice_states')
+        rows: []
       - input: ref('int_closures__nynjtc_checked')
         rows: []
       - input: ref('int_closures__gate')
@@ -367,6 +403,52 @@ unit_tests:
     expect:
       rows:
         - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.51],[-89.5,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+
+  - name: pub_conditions_notice_states_writes_each_shape_with_its_margin_and_the_files_own_date
+    model: pub_conditions_notice_states
+    description: >
+      Decision 76's file: one object per state, by code, with its name, the
+      margin the phone holds a route to and its shape, and `generated_at`
+      the latest landing of TIGER's file, never the build's clock, so a
+      build that changes nothing writes the same bytes.
+    given:
+      - input: ref('int_closures__notice_state_shapes')
+        format: sql
+        rows: |
+          select
+              state,
+              state_name,
+              cast(phone_geometry as json) as phone_geometry,
+              cast(500.0 as double) as edge_margin_m,
+              cast(_loaded_at as timestamptz) as _loaded_at
+          from (values
+              ('UT', 'Utah', '{"type":"Polygon","coordinates":[[[-114.05,37.0],[-109.05,37.0],[-109.05,42.0],[-114.05,42.0],[-114.05,37.0]]]}', '2026-10-01 06:00:00+00'),
+              ('CT', 'Connecticut', '{"type":"Polygon","coordinates":[[[-73.7,41.0],[-71.8,41.0],[-71.8,42.05],[-73.7,42.05],[-73.7,41.0]]]}', '2026-10-01 06:00:00+00')
+          ) as shapes (state, state_name, phone_geometry, _loaded_at)
+    expect:
+      rows:
+        - {generated_at: '2026-10-01T06:00:00Z', states: '[{"state":"CT","name":"Connecticut","edge_margin_m":500.0,"geometry":{"type":"Polygon","coordinates":[[[-73.7,41.0],[-71.8,41.0],[-71.8,42.05],[-73.7,42.05],[-73.7,41.0]]]}},{"state":"UT","name":"Utah","edge_margin_m":500.0,"geometry":{"type":"Polygon","coordinates":[[[-114.05,37.0],[-109.05,37.0],[-109.05,42.0],[-114.05,42.0],[-114.05,37.0]]]}}]'}
+
+  - name: pub_conditions_notice_states_writes_nothing_while_no_shape_is_built
+    model: pub_conditions_notice_states
+    description: >
+      A warehouse without TIGER's table (the fixture build, or a month the
+      extract refused it) builds no shape, and the writer selects no row, so
+      the phone keeps its last file rather than an empty list that would hide
+      every state-wide notice.
+    given:
+      - input: ref('int_closures__notice_state_shapes')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as state,
+              cast(null as varchar) as state_name,
+              cast(null as json) as phone_geometry,
+              cast(null as double) as edge_margin_m,
+              cast(null as timestamptz) as _loaded_at
+          where false
+    expect:
+      rows: []
 
 exposures:
   - name: conditions_atc_updates_json
@@ -472,6 +554,30 @@ exposures:
         r2_keys: [conditions/notices.json]
         format: json
         cadence: hourly
+
+  - name: conditions_notice_states_json
+    label: conditions/notice_states.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The shape of every state a state-wide agency notice names (decision
+      76), read by client/src/lib/publishedNotices.ts as
+      PUBLISHED_NOTICE_STATES_KEY beside conditions/notices.json, for
+      client/src/lib/plannedNotices.ts's one question of it: is a planned
+      route inside this state? Never drawn. Its bytes hold between builds,
+      so its ETag does too. A monthly node (its upstream is the Census
+      Bureau's TIGER/Line file), so refresh-reference.yml's dbt path writes
+      it; the exporters' path has no writer for it, and a phone without it
+      shows no state-wide notice, as decision 68 left them.
+    depends_on:
+      - ref('pub_conditions_notice_states')
+    config:
+      meta:
+        r2_keys: [conditions/notice_states.json]
+        format: json
+        cadence: monthly
 
   - name: conditions_closures_json
     label: conditions/closures.json

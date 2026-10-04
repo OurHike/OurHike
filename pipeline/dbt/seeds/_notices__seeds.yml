@@ -1,8 +1,8 @@
 version: 2
 
-# Decision 53's phase C: the club notice sources' seeds. Three are reviewed by
-# hand row by row (notice_source_fields, notice_status_values, and decision
-# 67's notice_hazard_areas), one is a
+# Decision 53's phase C: the club notice sources' seeds. Four are reviewed by
+# hand row by row (notice_source_fields, notice_status_values, decision 67's
+# notice_hazard_areas and decision 76's notice_states), one is a
 # person's mark on a notice (notice_marks), and one is written by
 # pipeline/generate_notice_models.py from the extract's own declarations
 # (notice_readers), which tests/test_generated_notice_models.py holds to what
@@ -218,3 +218,43 @@ seeds:
           - accepted_values:
               arguments:
                 values: [club, agency]
+  - name: notice_states
+    description: >
+      The agency notice sources that speak for a whole state (decision 76,
+      the maintainer's poll of 2026-10-04 from statewide_notice_mock.html's
+      frame A): BLM's state fire-restriction pages and CT DEEP's state parks
+      emergency message. Such a notice is placed by its state, on that
+      agency's land: the phone shows it to a hike planned in a named state
+      that walks the agency's trails (client/src/lib/plannedNotices.ts), and
+      a Utah notice never to a Colorado hike. Reviewed by hand row by row,
+      each state read from the source's own data (its URL, its key or its
+      page), which `evidence` quotes; tests/test_notice_states_seed.py holds
+      each quotation to the source's sources.json row. Of the 22 agency
+      notices UA's live notices.json held unplaced on 2026-10-04, these are
+      the 13 that are state-wide; the other 9 speak for the nation, a city,
+      a district or one park, and stay unplaced.
+    data_tests:
+      # Two-letter codes, one space between: what int_closures__notice_state_shapes splits on.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "regexp_full_match(states, '[A-Z]{2}( [A-Z]{2})*')"
+    config:
+      column_types:
+        source_key: varchar
+        states: varchar
+        evidence: varchar
+    columns:
+      - name: source_key
+        description: The notice source's sources.json key.
+        data_tests: [not_null, unique]
+      - name: states
+        description: >
+          The two-letter USPS codes of the states it speaks for, separated by
+          a space ("OR WA" for BLM's one Oregon and Washington page).
+        data_tests: [not_null]
+      - name: evidence
+        description: >
+          Where the state was read, each quotation in single quotes as the
+          source's sources.json row spells it: the URL's path, the page's
+          title as the extract landed it, or the registry's own note.
+        data_tests: [not_null]

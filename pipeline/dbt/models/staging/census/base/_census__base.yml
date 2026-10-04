@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: base_census__census_tiger_states
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a key unique by
+      # construction is none. A raw table that never landed passes
+      # (tests/generic/).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('census', 'raw_census__census_tiger_states')
+          config:
+            severity: warn
+    description: >
+      The U.S. Census Bureau's TIGER/Line states, every row, keyed and deduped
+      (decision 40), the file's own columns under dlt's names. Read by
+      stg_census__states.
+    columns:
+      - name: state_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          census_tiger_states and stusps.
+        data_tests: [not_null, unique]
+      - name: stusps
+        description: The state's two-letter USPS code, as the file spells it.
+        data_tests: [not_null, unique]
+      - name: name
+        description: The state's name, as the file spells it.
+      - name: geom
+        description: The state's shape in NAD83 degrees, its coastal water included.

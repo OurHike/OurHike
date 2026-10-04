@@ -223,6 +223,11 @@ def _by_edge(entries: list) -> dict:
 # answers under data/raw/conditions/, so the old side reads those same answers
 # through today's own parse and read.
 RAW_DIR = Path(__file__).resolve().parent / "data" / "raw"
+#: Where a monthly run's pin keeps the two water scans under data/raw/ (extract/_geofabrik.py's SCANS), which the old
+#: side reads in place of the fixture's inputs. Not the scanners' own paths, where export_poi.py would demand the reach
+#: file beside osm_water.geojson; _osm_water_old() makes that file.
+PINNED_OSM_WATER = "derived/osm_water.geojson"
+PINNED_SITE_WATER = "derived/trail_water.json"
 # _stamp_utc()'s two forms: isoformat() prints microseconds only when there are any.
 STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{6})?Z")
 
@@ -1219,6 +1224,11 @@ def _site_water_old() -> Path:
     import fetch_trail_water
 
     raw = export_poi.RAW_DIR
+    # A monthly run's pin holds fetch_trail_water.py --derive's own file (refresh-reference.yml's "Pin this run's raw
+    # inputs", extract/_geofabrik.py's SCANS), the file today's publish hands export_poi.py, so the old side reads it.
+    pinned = raw / PINNED_SITE_WATER
+    if pinned.exists():
+        return pinned
     out = Path(tempfile.mkdtemp(prefix="parity-site-water-")) / "trail_water.json"
     candidates = raw / "site_water" / "candidates.json"
     if not candidates.exists():
@@ -1277,6 +1287,11 @@ def _osm_water_old() -> tuple[str, str] | None:
     layers, the published network (_published_network()) and the EPQS answers step_osm_water_grade reads in place of
     data/raw/, nearby_trails.geojson and EPQS. write() runs unguarded: its floor of 40 reachable points watches a real
     scan, and the fixture has a dozen. With no points file there is no OSM water, as on a run that never fetched it.
+
+    A monthly run's pin holds fetch_osm_water.py's own points instead (PINNED_OSM_WATER), scanned from the kept
+    Geofabrik extracts (#1652), and those are the old side's points, graded against live EPQS as today's publish grades
+    them, since no fixture answers exist for them. write() stays unguarded there too, so an EPQS outage reads as fewer
+    reachable points on both sides rather than stopping parity.
     """
     import contextlib
     import io
@@ -1288,18 +1303,20 @@ def _osm_water_old() -> tuple[str, str] | None:
     import export_poi
 
     raw = export_poi.RAW_DIR
-    points = raw / "osm_water" / "points.geojson"
+    pinned = raw / PINNED_OSM_WATER
+    points = pinned if pinned.exists() else raw / "osm_water" / "points.geojson"
     if not points.exists():
         return None
     folder = Path(tempfile.mkdtemp(prefix="parity-osm-water-"))
     for name in ("centerline.geojson", "side_trails.geojson", "shelters.geojson", "campsites.geojson"):
         (folder / name).symlink_to(raw / name)
     (folder / "osm_water.geojson").symlink_to(points)
-    answers = json.loads((raw / "osm_water" / "epqs_elevations.json").read_text(encoding="utf-8"))
+    answers = None if pinned.exists() else json.loads((raw / "osm_water" / "epqs_elevations.json").read_text(encoding="utf-8"))
     network = _published_network()
     live = (reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH, reach.elevation_ft)
     reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH = folder, network, folder / "osm_water_reach.json"
-    reach.elevation_ft = lambda lat, lon: answers.get(f"{lat:.6f},{lon:.6f}")
+    if answers is not None:
+        reach.elevation_ft = lambda lat, lon: answers.get(f"{lat:.6f},{lon:.6f}")
     try:
         con = duckdb.connect()
         con.execute("INSTALL spatial; LOAD spatial;")
@@ -1309,7 +1326,7 @@ def _osm_water_old() -> tuple[str, str] | None:
             reach.write(records, guard=False)
     finally:
         reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH, reach.elevation_ft = live
-    return "osm_water/points.geojson", str(folder / "osm_water_reach.json")
+    return str(points.relative_to(raw)), str(folder / "osm_water_reach.json")
 
 
 def _guide_sections_old() -> Path:

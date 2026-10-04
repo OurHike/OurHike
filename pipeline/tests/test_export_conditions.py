@@ -542,6 +542,49 @@ def test_exported_report_timestamps_are_stamped(clean_tables):
     assert row["verified_at"] == "2026-08-02T12:00:00Z"
 
 
+def test_a_report_off_the_globe_exports_with_no_location(clean_tables):
+    """#1763: the schema accepts (1000, -5000); the bake must not draw it."""
+    _insert_report(clean_tables, report_id="r-off")
+    _insert_report(clean_tables, report_id="r-on")
+    clean_tables.execute("UPDATE public.reports SET lat = 1000, lon = -5000 WHERE id = 'r-off'")
+
+    exported = {row["id"]: row for row in read_reports(clean_tables)}
+
+    assert (exported["r-off"]["lat"], exported["r-off"]["lon"]) == (None, None)
+    assert exported["r-off"]["mile"] == 1407.2  # the row stays; only the point goes
+    assert (exported["r-on"]["lat"], exported["r-on"]["lon"]) == (41.2, -74.1)
+
+
+def test_one_bad_half_of_a_coordinate_pair_drops_both(clean_tables):
+    _insert_report(clean_tables, report_id="r1")
+    clean_tables.execute("UPDATE public.reports SET lat = 41.2, lon = 500 WHERE id = 'r1'")
+
+    [row] = read_reports(clean_tables)
+
+    assert (row["lat"], row["lon"]) == (None, None)
+
+
+def test_a_note_off_the_globe_exports_with_no_location(clean_tables):
+    _insert_note(clean_tables, note_id="n1")
+    clean_tables.execute("UPDATE public.field_notes SET lat = -91, lon = 0 WHERE id = 'n1'")
+
+    [row] = read_notes(clean_tables)
+
+    assert (row["lat"], row["lon"]) == (None, None)
+
+
+def test_a_closure_endpoint_off_the_globe_is_dropped_and_the_other_kept(clean_tables):
+    _insert(clean_tables, closure_id="c1", moderation_status="verified")
+    clean_tables.execute(
+        "UPDATE public.closures SET start_lat = 1000, start_lon = 0, end_lat = 41.2, end_lon = -74.1 WHERE id = 'c1'"
+    )
+
+    [row] = read_closures(clean_tables)
+
+    assert (row["start_lat"], row["start_lon"]) == (None, None)
+    assert (row["end_lat"], row["end_lon"]) == (41.2, -74.1)
+
+
 def _insert_note(
     conn,
     *,

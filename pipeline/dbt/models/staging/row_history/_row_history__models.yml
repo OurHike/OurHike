@@ -5,21 +5,31 @@ models:
     description: >
       Every version of every closures mart row the previous build's snapshot
       saved, in the club notices' columns, keyed by its snapshot row. Empty
-      before the first save. Read by int_closures__window_carried alone.
+      before the first save. Read by int_closures__window_carried, and by
+      int_closures__held_carried through `row_json`.
     columns:
       - name: history_row_key
         description: The key, from the registry-style literal and dbt_scd_id.
         data_tests: [unique, not_null]
       - name: dbt_valid_to
         description: Null on the version the snapshot holds as current.
+      - name: row_json
+        description: >
+          The whole saved row as JSON, every column the mart had when it was
+          saved; a column the saved history predates is absent from it.
   - name: stg_row_history__warnings
     description: >
       Every version of every warnings mart row the previous build's snapshot
       saved, in the club notices' columns, keyed by its snapshot row. Empty
-      before the first save. Read by int_closures__window_carried alone.
+      before the first save. Read by int_closures__window_carried, and by
+      int_closures__held_carried through `row_json`.
     columns:
       - name: history_row_key
         description: The key, from the registry-style literal and dbt_scd_id.
         data_tests: [unique, not_null]
       - name: dbt_valid_to
         description: Null on the version the snapshot holds as current.
+      - name: row_json
+        description: >
+          The whole saved row as JSON, every column the mart had when it was
+          saved; a column the saved history predates is absent from it.

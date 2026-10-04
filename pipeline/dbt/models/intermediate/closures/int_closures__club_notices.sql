@@ -45,6 +45,17 @@
 -- 5. FACTS AND A LINK (decision 55). The columns are the notice's title,
 --    category, dates, place and link; no prose column exists to carry, and
 --    int_warnings__wording_leaks fails the build if one reaches a mart.
+-- 6. A HAZARD AREA IS ONLY THE HAZARD ITS OWN CATEGORY SAYS (decision 67).
+--    A source seeds/notice_hazard_areas.csv lists with category values
+--    publishes only the rows whose own category is one of them: IATA's
+--    'No hunting' parcels and NY Parks' safety zones are where hunting is
+--    not allowed, and drawing one as a hunting area would tell a hiker the
+--    opposite of what the layer says. The rest are held with the category
+--    in the reason. A source listed with no category value publishes every
+--    row. Its dates are its own (`starts_on`, `ends_on`), and a layer with
+--    no season field has none: none of the four hunting layers gives one
+--    (seeds/notice_source_fields.csv), so their dates are null, never a
+--    season OurHike supplied.
 --
 -- `key_versions` is how many different raw rows share the notice's key (its
 -- base model counts them); int_closures__gate holds a source with any over
@@ -61,10 +72,32 @@ status_values as (
     select * from {{ ref('notice_status_values') }}
 ),
 
+-- Rule 6's seed: each hazard source once, with whether every row is the
+-- hazard, and its category values as compared.
+hazard_sources as (
+    select
+        source_key,
+        any_value(hazard) as hazard,
+        bool_or(coalesce(trim(category_value), '') = '') as every_row
+    from {{ ref('notice_hazard_areas') }}
+    group by source_key
+),
+
+hazard_values as (
+    select distinct
+        source_key,
+        lower(trim(category_value)) as category_value
+    from {{ ref('notice_hazard_areas') }}
+    where coalesce(trim(category_value), '') != ''
+),
+
 read_status as (
     select
         notices.*,
         status_values.reads_as as status_reads,
+        hazard_sources.hazard,
+        coalesce(hazard_sources.every_row, false) as hazard_every_row,
+        hazard_values.category_value is not null as hazard_category_listed,
         cast(timezone('UTC', notices.starts_at) as date) as starts_on,
         cast(timezone('UTC', notices.ends_at) as date) as ends_on,
         cast(timezone('UTC', notices.rescinded_at) as date) as rescinded_on,
@@ -74,6 +107,12 @@ read_status as (
         on
             notices.source_key = status_values.source_key
             and lower(trim(notices.status)) = lower(status_values.status_value)
+    left join hazard_sources
+        on notices.source_key = hazard_sources.source_key
+    left join hazard_values
+        on
+            notices.source_key = hazard_values.source_key
+            and lower(trim(notices.category)) = hazard_values.category_value
 ),
 
 judged as (
@@ -85,6 +124,14 @@ judged as (
                     'its own status reads ' || status
                     || ', which the source uses for a notice that is not '
                     || 'current'
+            when
+                hazard is not null
+                and not hazard_every_row
+                and not hazard_category_listed
+                then
+                    'its own category, ' || coalesce(category, 'none')
+                    || ', is not one notice_hazard_areas reads as '
+                    || hazard
             when rescinded_on is not null and rescinded_on <= build_date
                 then 'its own order was rescinded on ' || rescinded_on
             when ends_on is not null and ends_on < build_date - 1
@@ -124,6 +171,7 @@ select
     status_reads,
     locality,
     starts_at,
+    starts_on,
     ends_on,
     rescinded_on,
     source_edited_at,

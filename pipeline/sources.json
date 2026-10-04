@@ -731,7 +731,7 @@
       "trust": "authoritative",
       "steward": "New York State Office of Parks, Recreation and Historic Preservation",
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
-      "licence": "See oprhp_licence, as for oprhp_trail_closures: OPRHP states terms and they permit this - reuse allowed, attribution to OPRHP required, non-commercial purposes, which the maintainer determined on 2026-08-24 that OurHike satisfies. This layer's own item terms were not re-read in phase A. Nothing exports this layer yet: it is registered for review, at reaches_hikers false.",
+      "licence": "See oprhp_licence, as for oprhp_trail_closures: OPRHP states terms and they permit this - reuse allowed, attribution to OPRHP required, non-commercial purposes, which the maintainer determined on 2026-08-24 that OurHike satisfies. This layer's own item terms were not re-read in phase A. It reaches hikers under decision 67 (2026-10-04), as a warning; reaches_hikers_comment says how.",
       "licence_basis": "stated_by_org",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
       "person_fields": [
@@ -743,8 +743,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "224 polygons on 2026-10-03 (audit 223): Hunting 1 'Hunting area' 135, Hunting 2 'Restricted Area/Safety Zone' 89; lastEditDate 2026-10-02 14:57 UTC. PERSON FIELDS LEFT OUT: created_user and last_edited_user hold staff e-mail addresses. Read by this step at 2026-10-03T16:11:47Z: returnCountOnly under the row's `where` answered 224, and `GlobalID` is distinct on 224 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): the layer says 'hunting happens here' and not 'this week' (no season dates), and whether a hunting area is a warning at all is the maintainer's open question (nysparks/warnings.py), which decision 63 did not answer. Settled by the maintainer, then DEC's season calendar."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "Decision 67 (the maintainer, poll, 2026-10-04): a warning where a trail crosses one, the area drawn and the trail open. Its rules are in dbt and tested: a warnings.py source, so it never closes a trail (tests/singular/assert_a_hazard_area_never_closes_a_trail.sql); seeds/notice_hazard_areas.csv marks it a hunting area and publishes only the rows whose Description is 'Hunting area', so the 89 'Restricted Area/Safety Zone' polygons are held back rather than drawn as hunting; it gives no season dates, so none is published (starts_on and ends_on null); created_user and last_edited_user are never loaded. @unvalidated that Description carries 'Hunting area' word for word (the seed's row says why)."
     },
     {
       "key": "nynjtc_long_path",
@@ -1756,8 +1756,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "246 assessment polygons at the coverage audit (2026-10-01), ignitions 2024-03-22 to 2026-08-26, max(etl_modified_date) 2026-09-30. PERSON FIELDS LEFT OUT at extraction: baer_teamleader, baer_sbs_soilscientist and baer_gis_analyst name the assessment team. etl_modified_date is a load stamp, not proven to move on every edit, so it is not the marker. Read by this step at 2026-10-03T16:07:39Z: returnCountOnly under the row's `where` answered 235, and `objectid` is distinct on 235 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): a BAER polygon marks a recent burn (hazard trees, debris flow), a hazard area the Forest Service does not publish as a notice (usfs/warnings.py), and whether and how a hiker sees one is phase E's design question. Settled by that design."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "Decision 67 (the maintainer, poll, 2026-10-04): a warning where a trail crosses one, the area drawn and the trail open. Its rules are in dbt and tested: a warnings.py source, so it never closes a trail (tests/singular/assert_a_hazard_area_never_closes_a_trail.sql); seeds/notice_hazard_areas.csv marks it a burned area, every row, shown while USFS's layer lists it: a full listing, never carried by a window, so an area USFS drops leaves on the next good read (a read the gate holds keeps the last good rows, as for every source); the three BAER team-member fields are never loaded."
     },
     {
       "key": "usfs_r08_prescribed_burns",
@@ -4190,8 +4190,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "93 points on 2026-10-03, layer 'Sheet1'; dataLastEditDate 2026-05-06. NAME, STATE, DISTRICT, FIELD_OFFICE, COUNTY, CURRENT_STATUS, TYPE_OF_RANGE_. PERSON FIELD LEFT OUT: CUSTOMER, a land-use case holder, who may be a person. Read by this step at 2026-10-03T16:08:20Z: returnCountOnly under the row's `where` answered 93, and `FID` is distinct on 93 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): whether a recreational shooting site is a hiker warning is the maintainer's open question (coverage audit 2026-10-01, repeated by the inventory); no rule answers it. Settled by the maintainer."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "Decision 67 (the maintainer, poll, 2026-10-04): a warning where a trail crosses one, the area drawn and the trail open. Its rules are in dbt and tested: a warnings.py source, so it never closes a trail (tests/singular/assert_a_hazard_area_never_closes_a_trail.sql); seeds/notice_hazard_areas.csv marks it a recreational shooting site, every row; a point, drawn as one where a trail passes it; CUSTOMER is never loaded."
     },
     {
       "key": "blm_or_rec_site_status",
@@ -8370,8 +8370,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "24 polygons on 2026-10-03 (No Hunting or Trapping 8, by Special Permit 6, Closed to Center-fire Rifles 5, Open by Permit 4, Bow Only 1); edited 2026-05-29. The year lives in the service name, so next season's is a new URL to recheck. ContactInfo, an office phone number, is left out with the person fields. Read by this step at 2026-10-03T16:08:34Z: returnCountOnly under the row's `where` answered 24, and `GlobalID` is distinct on 24 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): standing hunting restrictions for the 2026 season with no dates of their own, and whether a hunting area is a warning at all is the maintainer's open question, which decision 63 did not answer. Settled by the maintainer."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "Decision 67 (the maintainer, poll, 2026-10-04): a warning where a trail crosses one, the area drawn and the trail open. Its rules are in dbt and tested: a warnings.py source, so it never closes a trail (tests/singular/assert_a_hazard_area_never_closes_a_trail.sql); seeds/notice_hazard_areas.csv marks it a hunting area and publishes only the areas whose Restriction allows some hunting (open, bow only, closed to centre-fire rifles only), never a no-hunting one; it gives no dates (the year is in the service name), so none is published; ContactInfo and ContactOffice are never loaded."
     },
     {
       "key": "usace_sam_closed_rec_areas",
@@ -9470,8 +9470,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "65 polygons on 2026-10-03; edited 2026-07-13; copyrightText 'Ice Age Trail Alliance'. Hunting_Reg (No hunting | Open for public hunting | Open for deer hunting by permit only | Private hunting by agreement), Display_Name, County, Public_Access. Standing rules with no season dates. Read by this step at 2026-10-03T16:10:26Z: returnCountOnly under the row's `where` answered 65, and `OBJECTID` is distinct on 65 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): standing hunting rules by parcel with no season dates, and whether a hunting area is a warning at all is the maintainer's open question, which decision 63 did not answer. Settled by the maintainer."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "Decision 67 (the maintainer, poll, 2026-10-04): a warning where a trail crosses one, the area drawn and the trail open. Its rules are in dbt and tested: a warnings.py source, so it never closes a trail (tests/singular/assert_a_hazard_area_never_closes_a_trail.sql); seeds/notice_hazard_areas.csv marks it a hunting area and publishes only the parcels whose Hunting_Reg says hunters may be there (public, deer by permit, private by agreement), never a 'No hunting' parcel; it gives no season dates, so none is published."
     },
     {
       "key": "iat_trail_communities",

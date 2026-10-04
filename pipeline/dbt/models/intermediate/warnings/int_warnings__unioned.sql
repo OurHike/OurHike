@@ -41,6 +41,8 @@ select
     title,
     category,
     locality,
+    starts_on,
+    ends_on,
     source_edited_at,
     updated_at,
     source_url,

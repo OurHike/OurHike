@@ -16,7 +16,11 @@ deleted, as a warehouse with only the hourly store's tables has them. Then:
     int_sources__publication's;
 (c) ATC's, NYNJTC's, NYS Parks', OurHike's and NWS's gate rows pass, and the
     three conditions writers write their files;
-(d) no club notice reaches the closures or warnings mart.
+(d) no club notice reaches the closures or warnings mart;
+(e) conditions/notices.json is not written: with no row history there is no
+    held club's last good rows to carry, so its writer keeps the phone's
+    last file whole rather than publishing every club as having no notices
+    (decision 53, phase D).
 
 The narrower cases run in every fixture build: four notice tables have no
 fixture rows and are never created, and
@@ -58,6 +62,8 @@ HOURLY_SOURCES = {
     "reference/work_projects.json",
 }
 WRITERS = ("pub_conditions_atc_updates", "pub_conditions_nynjtc_alerts", "pub_conditions_closures")
+#: conditions/notices.json's writer, which spans every club and so keeps its last file while one is held here.
+NOTICES_WRITER = "pub_conditions_notices"
 
 
 def _generated_tables() -> set[str]:
@@ -120,7 +126,7 @@ def build(tmp_path_factory) -> dict:
     }
     paths = ["--profiles-dir", ".", "--target-path", str(root / "target"), "--log-path", str(root / "logs")]
     _run([DBT, "seed", *paths], DBT_DIR, dbt_env)
-    selection = ["+closures", "+warnings", *(f"+{writer}" for writer in WRITERS)]
+    selection = ["+closures", "+warnings", *(f"+{writer}" for writer in (*WRITERS, NOTICES_WRITER))]
     _run(
         [DBT, "build", "-s", *selection, "--exclude", "resource_type:snapshot", "--indirect-selection", "cautious", *paths],
         DBT_DIR,
@@ -145,6 +151,7 @@ def build(tmp_path_factory) -> dict:
         "atc_rows": _query(warehouse, "select count(*) from marts.warnings_v1 where source_key = 'atc_trail_updates'")[0][0]
         + _query(warehouse, "select count(*) from marts.closures_v1 where source_key = 'atc_trail_updates'")[0][0],
         "files": {writer: processed / f"conditions_{writer.removeprefix('pub_conditions_')}.json" for writer in WRITERS},
+        "notices_file": processed / "conditions_notices.json",
     }
 
 
@@ -174,3 +181,7 @@ def test_the_hourly_sources_pass_and_their_files_are_written(build):
 
 def test_no_club_notice_reaches_a_mart(build):
     assert build["club_rows"] == [(0,), (0,)]
+
+
+def test_the_notices_file_keeps_its_last_copy_while_a_club_is_held_without_history(build):
+    assert not build["notices_file"].exists(), "notices.json was written with every club held and nothing to carry"

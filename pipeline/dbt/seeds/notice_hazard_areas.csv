@@ -1,0 +1,10 @@
+source_key,hazard,category_value,why
+oprhp_hunting_areas,hunting,Hunting area,"Hunting 1 'Hunting area' 135 of 224 (the row's notes). Hunting 2 'Restricted Area/Safety Zone' 89 is where hunting is restricted, so it is not listed and its rows are held back. @unvalidated that Description carries 'Hunting area' word for word: read from the notes and the fixture's 'Restricted Area/Safety Zone', not from a live value; a different spelling holds every NY Parks area back, a miss rather than a safety zone drawn as hunting"
+iata_lands_hunting_regs,hunting,Open for public hunting,"One of Hunting_Reg's four values (the row's notes: No hunting | Open for public hunting | Open for deer hunting by permit only | Private hunting by agreement)"
+iata_lands_hunting_regs,hunting,Open for deer hunting by permit only,As Open for public hunting: hunters may be on the parcel
+iata_lands_hunting_regs,hunting,Private hunting by agreement,As Open for public hunting: hunters may be on the parcel
+usace_garrison_hunting_restrictions,hunting,Open to Hunting / Trapping by Special Permit Only,"Restriction's own value, read in the decision 53 inventory's saved distinct values (2026-10-03, five of five)"
+usace_garrison_hunting_restrictions,hunting,Open to Bow Hunting Only / Trapping by Special Permit Only,As Open to Hunting: bow hunters may be on the area
+usace_garrison_hunting_restrictions,hunting,Closed to Center-fire Rifles Only / Trapping by Special Permit Only,As Open to Hunting: only centre-fire rifles are barred
+blm_shooting_points,shooting,,"Every row: the layer is BLM's qualified recreational shooting sites (93 points on 2026-10-03, the row's notes)"
+usfs_baer_assessments,burned_area,,"Every row: each polygon is a burned area under Burned Area Emergency Response assessment (the row's notes: ignitions 2024-03-22 to 2026-08-26)"

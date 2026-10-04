@@ -8,8 +8,12 @@ models:
       classified (decision 7: unknown lands here, never dropped), NWS's
       relayed alerts, and OurHike's serious reports. No hazard POIs:
       ELT.md's warnings ledger, "No hazard POI exists to port". Every row's source may publish, and a
-      notice's source passed int_closures__gate. Rebuilt whole each run, as
-      the closures mart is.
+      notice's source passed int_closures__gate, or is held by it and the
+      row is that source's last good one, marked with `carried_since`
+      (decision 53, phase D). Decision 67's hazard areas (hunting areas,
+      shooting sites and burned areas, seeds/notice_hazard_areas.csv) land
+      here and never in the closures mart. Rebuilt whole each run, as the
+      closures mart is.
     config:
       access: public
       contract:
@@ -161,6 +165,19 @@ models:
       - name: mile_end
         description: The mile it ends at.
         data_type: double
+      - name: starts_on
+        description: >
+          The day a club notice says it starts, as the source states it, in
+          UTC; null where the source states none (decision 53's phase C reads
+          it before publishing). A hunting area's season where its layer gives
+          one, and never a season OurHike supplied (decision 67).
+        data_type: date
+      - name: ends_on
+        description: >
+          The day a club notice says it ends, as the source states it, in UTC;
+          null where the source states none. A notice past it is held back,
+          never published.
+        data_type: date
       - name: source_edited_at
         description: >
           The row's own date from its source: ATC's `updated_at`, NYNJTC's
@@ -319,6 +336,14 @@ models:
       - name: source_row_key
         description: The row's key in its staging model, for lineage.
         data_type: varchar
+      - name: carried_since
+        description: >
+          Null on a row this build read from its source. Set on a row of a
+          notice source int_closures__gate holds back this build: the last
+          good row the previous build's history held, kept rather than
+          dropped (decision 53, phase D; int_closures__held_carried), and
+          this is when carrying it began. It stays put while the hold lasts.
+        data_type: timestamptz
       - name: _first_seen_at
         description: "{{ doc('row_first_seen_at') }}"
         data_type: timestamptz
@@ -375,11 +400,18 @@ unit_tests:
         rows:
           - {mart: warnings, notice_id: 'feed_a:item-3', source_key: feed_a, obstructs_trail: null, review_state: not_reviewed}
           - {mart: closures, notice_id: 'feed_a:item-1', source_key: feed_a, obstructs_trail: true, review_state: org_published}
+      # A notice source the gate holds keeps its last good rows (decision 53's
+      # phase D), the warnings mart's half.
+      - input: ref('int_closures__held_carried')
+        rows:
+          - {mart: closures, notice_id: 'held_c:1', source_key: held_c, obstructs_trail: true, review_state: org_published, carried_since: '2026-10-04 10:00:00+00'}
+          - {mart: warnings, notice_id: 'held_c:2', source_key: held_c, obstructs_trail: null, review_state: not_reviewed, carried_since: '2026-10-04 10:00:00+00'}
     expect:
       rows:
         - {warning_id: 'atc_trail_updates:a2', warning_kind: org_notice, obstructs_trail: false, review_state: reviewed}
         - {warning_id: 'nynjtc_trail_alerts:n1', warning_kind: org_notice, obstructs_trail: null, review_state: not_reviewed}
         - {warning_id: 'feed_a:item-3', warning_kind: org_notice, obstructs_trail: null, review_state: not_reviewed}
+        - {warning_id: 'held_c:2', warning_kind: org_notice, obstructs_trail: null, review_state: not_reviewed}
 
   - name: warnings_relays_nws_alerts_and_serious_reports_from_sources_that_may_publish
     description: >
@@ -404,6 +436,8 @@ unit_tests:
           - {source_key: ourhike_reports, may_publish: true}
           - {source_key: held_back_reports, may_publish: false}
       - input: ref('int_closures__window_carried')
+        rows: []
+      - input: ref('int_closures__held_carried')
         rows: []
     expect:
       rows:

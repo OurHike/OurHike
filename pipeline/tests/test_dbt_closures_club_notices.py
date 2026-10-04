@@ -32,6 +32,19 @@ def test_the_unit_tests_mocked_status_seed_is_the_seed_file():
     assert given["rows"] == _seed("notice_status_values")
 
 
+def test_the_unit_tests_mocked_hazard_seed_is_the_seed_file():
+    """Decision 67's hazard rule (rule 6) is tested on the categories the build reads."""
+    (given,) = [g for g in _unit_test()["given"] if g["input"] == "ref('notice_hazard_areas')"]
+    assert given["rows"] == _seed("notice_hazard_areas")
+
+
+def test_no_hazard_seed_row_lists_a_category_that_says_the_hazard_is_absent():
+    """A 'No hunting' parcel or a safety zone drawn as a hunting area would tell a hiker the opposite of the layer."""
+    for row in _seed("notice_hazard_areas"):
+        value = row["category_value"].lower()
+        assert not value.startswith("no ") and "safety zone" not in value and value != "closed", row
+
+
 def test_the_two_named_status_cases_close_in_the_seed():
     closing = {
         (row["source_key"], row["status_value"]) for row in _seed("notice_status_values") if row["reads_as"] == "closes_trail"

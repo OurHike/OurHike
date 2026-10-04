@@ -178,3 +178,18 @@
 {% macro duckdb__snapshot_get_time() -%}
     timezone('UTC', now())
 {%- endmacro %}
+
+{#- `sql`, only in a build without the row history (OURHIKE_ROW_HISTORY=off,
+    decision 58), and nothing otherwise: for a writer that must not publish
+    what a missing history would make it publish. pub_conditions_notices
+    keeps the phone's last file while a notice source is held, because with
+    no history a held club's last good rows cannot be carried. A macro, so
+    that SQLFluff's jinja templater, which defines no env_var, renders the
+    model with the history on.
+
+    Example: {{ when_row_history_is_off('where held.sources_held = 0') }} -#}
+{% macro when_row_history_is_off(sql) -%}
+    {%- if env_var is defined and env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' -%}
+        {{ sql }}
+    {%- endif -%}
+{%- endmacro %}

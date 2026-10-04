@@ -4,12 +4,14 @@
 -- to warnings, never dropped), and nothing else lands in either as a notice
 -- (pipeline/ELT.md, "The eleven marts").
 --
--- OVER PASSING SOURCES ONLY. A source the gate holds back lands in neither
--- mart by design, so its last good file stays on the phone, and counting its
--- rows here would fail the build for the very case the gate exists to
--- contain. The test reads the union joined to the passing sources, not the
--- whole union. Returns one row per notice that lands in no mart, in both, or
--- in a mart it should not.
+-- OVER PASSING SOURCES ONLY. A source the gate holds back lands none of this
+-- build's rows in either mart by design, and counting them here would fail
+-- the build for the very case the gate exists to contain. The test reads the
+-- union joined to the passing sources, not the whole union. What a held
+-- source does land is its last good rows (int_closures__held_carried,
+-- decision 53's phase D), each once, in the mart the history had it in, so
+-- those are counted as the window's carried rows are. Returns one row per
+-- notice that lands in no mart, in both, or in a mart it should not.
 --
 -- THE CLUB NOTICES (decision 53, phase C) are counted as they land: a
 -- closures-type one through int_closures__unioned like any notice, unless
@@ -43,6 +45,9 @@ notices as (
     inner join {{ ref('int_sources__publication') }} as publishable
         on carried.source_key = publishable.source_key
     where publishable.may_publish
+    union all
+    select held_carried.notice_id
+    from {{ ref('int_closures__held_carried') }} as held_carried
 ),
 
 landed as (

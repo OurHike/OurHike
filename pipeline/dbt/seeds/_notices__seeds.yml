@@ -1,7 +1,8 @@
 version: 2
 
-# Decision 53's phase C: the club notice sources' seeds. Two are reviewed by
-# hand row by row (notice_source_fields, notice_status_values), one is a
+# Decision 53's phase C: the club notice sources' seeds. Three are reviewed by
+# hand row by row (notice_source_fields, notice_status_values, and decision
+# 67's notice_hazard_areas), one is a
 # person's mark on a notice (notice_marks), and one is written by
 # pipeline/generate_notice_models.py from the extract's own declarations
 # (notice_readers), which tests/test_generated_notice_models.py holds to what
@@ -92,6 +93,43 @@ seeds:
                 values: [closes_trail, not_current]
       - name: why
         description: The evidence, quoted from the source's sources.json notes where they hold it.
+  - name: notice_hazard_areas
+    description: >
+      The notice sources that are an area a hiker walks into rather than a
+      notice about the trail (decision 67, 2026-10-04): hunting areas,
+      recreational shooting sites and burned areas. Each publishes as a
+      warning that never closes a trail, drawn where a downloaded trail
+      crosses it, with `hazard` saying which. A source with a
+      `category_value` publishes only the rows whose own category (the
+      field notice_source_fields names) is one listed, compared without
+      case or surrounding space, so a parcel the layer itself marks as no
+      hunting is held back rather than drawn as a hunting area; an empty
+      `category_value` publishes every row. int_closures__club_notices holds
+      the rest back with the category in the reason. Reasoned from the
+      values quoted in `why`; a value the layer adds later is held back
+      until a row lists it, which misses a new hunting category rather than
+      drawing a safety zone as one.
+    config:
+      column_types:
+        source_key: varchar
+        hazard: varchar
+        category_value: varchar
+        why: varchar
+    columns:
+      - name: source_key
+        description: The source's sources.json key.
+        data_tests: [not_null]
+      - name: hazard
+        description: hunting, shooting or burned_area; the same for every row of one source.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [hunting, shooting, burned_area]
+      - name: category_value
+        description: A category value that means the hazard is there, as the source writes it; empty for every row.
+      - name: why
+        description: The evidence, quoted from the source's sources.json notes or the inventory's saved reads.
   - name: notice_marks
     description: >
       A person's mark on one notice: `lifted` ends a notice that a feed's

@@ -520,6 +520,21 @@ test.describe('the plate a long press raises', () => {
 })
 
 test.describe('every trail notice the app holds', () => {
+  // TODAY'S LIST, which a phone shows while conditions/notices.json has not
+  // reached it: production's state until the cutover (#1805). UA has served
+  // that file since soak run 529 (publish-conditions.yml 37232255266,
+  // 2026-10-04), and a phone holding it shows decision 66's planned-hike
+  // panel in this list's place, so these two tests went red the first time
+  // they met it. They reach the list by answering the file 404, exactly as a
+  // bucket the exporters publish does; the panel has its own test below.
+  test.beforeEach(async ({ page }) => {
+    await page
+      .context()
+      .route('**/conditions/notices.json', (route) =>
+        route.fulfill({ status: 404, body: '' }),
+      )
+  })
+
   test('entrance and states: the list carries a link out for every notice, and never the notice itself', async ({
     page,
   }) => {
@@ -589,6 +604,36 @@ test.describe('every trail notice the app holds', () => {
     // wrong reason.
     await expect(fresh.getByRole('button', { name: /^Legend/ })).toHaveText('Legend')
     await fresh.close()
+  })
+})
+
+test.describe('the notices for planned hikes', () => {
+  test('entrance: a phone holding the published notices.json opens the planned-hike panel, and with nothing planned says so', async ({
+    page,
+  }) => {
+    // Decision 66 (#1805): with conditions/notices.json a phone shows the
+    // notices that touch a hike planned in the next 7 days, never every
+    // club's list. This phone plans nothing, so the panel's answer is its
+    // empty state, and the "Gathered by OurHike on" line is the proof that
+    // the real file parsed: one that does not parse reads as no file, and
+    // the list above would show instead.
+    const notices = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/conditions/notices.json'),
+    )
+    await openMap(page)
+    const response = await notices
+    test.skip(
+      response.status() === 404,
+      'This environment serves no conditions/notices.json, so a phone shows the list the tests above hold.',
+    )
+    expect(response.status()).toBe(200)
+
+    const legend = await openLegend(page)
+    await legend.getByRole('button', { name: /^Notices for your planned hikes/ }).click()
+    const panel = page.getByRole('dialog', { name: 'Notices for your planned hikes' })
+    await expect(panel).toBeVisible()
+    await expect(panel).toContainText('You have no hike planned')
+    await expect(panel).toContainText(/Gathered by OurHike on /)
   })
 })
 

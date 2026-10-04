@@ -7993,7 +7993,7 @@ def _content_wordpress_fixtures(files: dict) -> dict:
     by id, the terms and the types by route. Each reader still reads only its own route, category or type.
     """
     files = dict(files)
-    mine = _content_wordpress_documents()
+    mine = {**_content_wordpress_documents(), **_k_wordpress_documents()}
     by_site: dict[str, list[str]] = {}
     for key in mine:
         by_site.setdefault(_wp_site(key), []).append(key)
@@ -8689,6 +8689,101 @@ def gis_file_and_geo_api_fixtures() -> dict[str, str]:
     return {f"conditions/json_apis/{key}.json": json.dumps(document) for key, document in documents.items()}
 
 
+# --- decision 54, waves 4 and 5: the content types' pages and posts (section K, extract/_pages_content.py) ---
+#
+# One answers document per registry key under conditions/json_apis/, as section C's and G's are, because fixture
+# mode serves extract/_pages_content.py's ContentPages from that folder (extract/_fixtures.py's JSON_API_KINDS): each
+# page an answer by its exact URL, so the site's own parser reads it. THE MARKUP IS MEASURED: every element, class,
+# heading level and label below is one the live page carried when it was read for registration on 2026-10-04 (each
+# sources.json row's `notes`). THE VALUES ARE INVENTED and start with 'Fixture'; no real hike is copied. The PDFs of
+# extract/_pdf_content.py get no document here, because fixture mode's Python need not have pypdf, and
+# tests/test_extract_pdf_content.py runs their families over invented text layers instead. Section K's WordPress
+# post types ride section C's documents (_k_wordpress_documents(), merged by _content_wordpress_fixtures()).
+
+HTML = "text/html; charset=UTF-8"
+
+
+def _k_page(title: str, body: str) -> str:
+    return f"<!DOCTYPE html><html><head><title>{title}</title></head><body><main>{body}</main></body></html>"
+
+
+def _mazamas_hike_list_page() -> str:
+    """The Hike List View's markup: a Hike Details block, then one rich-text block a region, an h3 above a list."""
+    details = (
+        '<article class="col-xs-12 block-richtextblock block"><h3 class="block--title">Hike Details</h3>'
+        '<div class="richtextblock--content rte"><ul><li>Fixture mileage note.</li></ul></div></article>'
+    )
+    regions = []
+    for n, region in enumerate(("Columbia River Gorge Hikes", "Mt. Hood", "Clackamas River", "Oregon Coast")):
+        star = "*" if region == "Oregon Coast" else ""
+        regions.append(
+            f'<article class="col-xs-12 block-richtextblock block"><h3 class="block--title">{region}</h3>'
+            '<div class="richtextblock--content rte"><p><strong>List includes: hike name, hike distance, hike '
+            "elevation, appx. driving distance, trailhead fee</strong></p><ul>"
+            f"<li>Fixture Hike {n}A 4.6 miles 1,540 feet 42 miles, no</li>"
+            f"<li>Fixture Hike {n}B varies varies 84 miles{star}, yes</li></ul></div></article>"
+        )
+    return _k_page("hiking | Mazamas", "<h1>Hike List View</h1>" + details + "".join(regions))
+
+
+def _tahoe_rim_pages() -> list[tuple[str, str, str]]:
+    """The day-hiking index's cards (an <a> around an <h4>) and one theme page's h3 hikes with bold-labelled facts."""
+    index_url, theme_url = "https://tahoerimtrail.org/day-hiking/", "https://tahoerimtrail.org/day-hiking/alpine-lakes/"
+    index = _k_page(
+        "Day Hiking - Tahoe Rim Trail Association",
+        f'<h1>Day Hiking</h1><h2>Day Hike Itineraries</h2><a href="{theme_url}"><h4>Alpine Lakes</h4></a>',
+    )
+    hikes = "".join(
+        f"<h3><img src='https://tahoerimtrail.org/fixture.jpg'/><strong>Fixture Lake {n} Hike</strong></h3>"
+        f"<p><strong>Classification</strong>: Moderate</p><p><strong>Distance:</strong> {n}.5 miles round trip</p>"
+        "<p><strong>Highlights:</strong> Fixture highlights.</p><p><strong>Location:</strong> Fixture trailhead</p>"
+        "<p><strong>Bikes Allowed:</strong> No</p><p><strong>Access from</strong>: Fixture Shore</p>"
+        "<p><strong>Description:</strong> Fixture description, 2 miles in.</p>"
+        for n in (1, 2)
+    )
+    theme = _k_page("Alpine Lakes", f"<h1>Alpine Lakes</h1>{hikes}<h3>Office</h3><p>Fixture address</p>")
+    return [(index_url, HTML, index), (theme_url, HTML, theme)]
+
+
+def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
+    """Each ContentPages key's answers, as (url, content type, body)."""
+    return {
+        "mazamas_hike_list": [("https://mazamas.org/hikelist/", HTML, _mazamas_hike_list_page())],
+        "tahoe_rim_day_hikes": _tahoe_rim_pages(),
+    }
+
+
+#: What each fixture page's parser must land, which tests/test_extract_fixtures.py holds the warehouse to.
+K_PAGES_ROWS = {"mazamas_hike_list": 8, "tahoe_rim_day_hikes": 2}
+
+
+def _k_wordpress_documents() -> dict[str, dict]:
+    """Section K's WordPress post types, in section C's document shape (_content_wordpress_documents())."""
+    cdtc = "cdtcoalition.org"
+    return {
+        "cdtc_hike_suggestions": {
+            "categories": [],
+            "posts": [],
+            "types": {
+                "hike_suggestion": [
+                    _content_wp_post(cdtc, 9301 + n, post_type="hike_suggestion", hike_suggestion_category=[700])
+                    for n in range(2)
+                ]
+            },
+            "terms": {"hike_suggestion_category": _wp_terms("hike_suggestion_category")},
+        },
+    }
+
+
+def section_k_fixtures() -> dict[str, str]:
+    """Section K's page answers, one conditions/json_apis/ document a key."""
+    files = {}
+    for key, answers in _k_pages_documents().items():
+        document = {"answers": [_answer(url, body, None, content_type) for url, content_type, body in answers]}
+        files[f"conditions/json_apis/{key}.json"] = json.dumps(document)
+    return files
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -8833,6 +8928,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         **_club_trail_lines_fixtures(),
         **{name: _club_point_layer(*spec) for name, spec in CLUB_POINT_FIXTURES.items()},
         **gis_file_and_geo_api_fixtures(),
+        **section_k_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)

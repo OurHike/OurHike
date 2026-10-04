@@ -17,7 +17,27 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_cdtc__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_gmc__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_mazamas__suggested_hikes') }}
 union all by name
 select
     source_key,
@@ -68,6 +88,16 @@ select
     properties,
     _loaded_at
 from {{ ref('stg_ridgetrail__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_tahoe_rim__suggested_hikes') }}
 union all by name
 select
     source_key,

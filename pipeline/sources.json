@@ -7082,6 +7082,35 @@
       }
     },
     {
+      "key": "tahoe_rim_day_hikes",
+      "title": "Tahoe Rim Trail Day Hike Itineraries (tahoerimtrail.org/day-hiking/)",
+      "provider": "TRTA",
+      "kind": "published_hikes",
+      "url": "https://tahoerimtrail.org/day-hiking/",
+      "steward": "Tahoe Rim Trail Association",
+      "attribution": "Tahoe Rim Trail Association",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None of the website's own found: a WordPress page search for 'terms' (2026-10-04) returned only 'SMS Terms and Conditions' and 'Share Your Story Terms and Conditions', neither of which reaches reading or reusing the site's pages, and the pages carry no copyright line.",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `tahoe_rim_day_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the hike's h3 as its theme page states it ('Lake Aloha Hike'): unique on all 15 rows across the four theme pages read 2026-10-04. No hike has an id or a page of its own.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://tahoerimtrail.org/day-hiking/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T14:51:16Z to 15:02:02Z: the index (HTTP 200, 157,511 bytes) and its four theme pages (/day-hiking/alpine-lakes/ 4 hikes, /day-hiking/wildflowers/ 4, /day-hiking/peaks-vistas/ 4, /day-hiking/waterfalls-hikes/ 3; /alpine-lakes/ and /wildflowers/ as linked answer 301 to those). Every Last-Modified was the request time and no page sent an ETag. robots.txt allows / for every agent and asks no Crawl-delay. Each hike states Classification, Distance (all 15 'round trip'), Location, Access from and, on 13, Bike(s) Allowed; Highlights and Description are the association's prose and are not read. The index's 'How to break the Tahoe Rim Trail into 14 Day Hikes' PDF is not read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
       "key": "duluth_superior_hiking_trail",
       "title": "Superior Hiking Trail (Duluth section)",
       "provider": "City of Duluth",
@@ -7811,6 +7840,38 @@
       "meta": {
         "cadence": "monthly"
       }
+    },
+    {
+      "key": "cdtc_hike_suggestions",
+      "title": "CDTC hike suggestions (the `hike_suggestion` post type, cdtcoalition.org)",
+      "provider": "CDTC",
+      "kind": "published_hikes",
+      "url": "https://cdtcoalition.org/explore-the-trail/day-section-hiking/",
+      "steward": "Continental Divide Trail Coalition",
+      "attribution": "Continental Divide Trail Coalition",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "Not read: /terms-of-service/ renders a heading and a Termly embed (`termly-embed`, data-id 83099c18-6c84-41b5-a576-c44958931ce7) that loads its text by script, and the embed's viewer page (app.termly.io/policy-viewer/policy.html) answered a 1,583-byte script shell with no text (2026-10-04). The footer reads '© 2025 Continental Divide Trail Coalition | All Rights Reserved'.",
+      "reader": "WordpressPosts (extract/_kinds.py), with SiteTerms (extract/_content.py) for its taxonomy",
+      "person_fields": [
+        "content",
+        "excerpt"
+      ],
+      "person_fields_comment": "Decision 59 leaves a free-text column that carries a telephone number out whole: on 2026-10-04 the rendered content of 22 of the 60 posts held ranger-district and park office numbers (406-466-5341, 970-468-5400 and others), so `content` and `excerpt` never load, beside what the reader always leaves out (WP_DROPPED). What lands is each post's title, link, dates and its state category. A hike's distance, which only the prose states, is lost with it: a gap, never a guess.",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the WordPress post id: unique on all 60 rows read 2026-10-04, with X-WP-Total 60 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
+      "freshness": {
+        "kind": "wp_id_modified_set",
+        "url": "https://cdtcoalition.org/wp-json/wp/v2/hike_suggestion",
+        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "The page /explore-the-trail/day-section-hiking/ (HTTP 200, 197,517 bytes) lists the `hike_suggestion` post type, which /wp-json/wp/v2/types names with the taxonomy `hike_suggestion_category`. /wp-json/wp/v2/hike_suggestion?per_page=100 answered X-WP-Total 60 in one page (2026-10-04T14:55:37Z), modified 2024-05-14 to 2026-09-10. Four posts are per-state 'Day & Overnight Hikes Guide' entries rather than one hike; dbt tells them apart by title and category. `acf` is empty on every row. robots.txt asks `Crawl-delay: 10` of every agent and disallows /wp-admin/ only.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
     },
     {
       "key": "wi_ice_age_trail",
@@ -16088,6 +16149,65 @@
       "notes": "2 tracks, read 2026-10-04: 'Pine Swamp Branch Shelter to U.S. 460' (227,994 bytes) and 'VA 611 to I-77' (99,426), GPSBabel output with <time>2009-08-25</time> and `ele` 0.0 throughout (the coverage audit), so no elevation. Superseded by ATC's centerline (edited 2026-08-04): a dated cross-check, deduplicated in dbt.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header); 2009 tracks of a section ATC's centerline draws. Decision 63 turns it true once that is no longer so."
+    },
+    {
+      "key": "mazamas_hike_list",
+      "title": "Mazamas Hike List View (mazamas.org/hikelist/)",
+      "provider": "Mazamas",
+      "kind": "published_hikes",
+      "url": "https://mazamas.org/hikelist/",
+      "steward": "Mazamas",
+      "attribution": "Mazamas",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None of the content's found: the footer's 'Privacy & Terms of Use' link (/privacy/) holds only a two-item privacy policy about member information, and the footer reads '© Copyright 2017 Mazamas' (read 2026-10-04).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `mazamas_hike_list`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the hike's name as the list states it: unique on all 162 rows read 2026-10-04. The list has no id or page per hike ('Coming soon, clickable hike links!'), so the name is the only thing that tells one hike from the next; a renamed hike is a new row, as it would be on the page.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://mazamas.org/hikelist/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T14:50:48Z: HTTP 200, 106,951 bytes, no ETag or Last-Modified. robots.txt asks `Crawl-delay: 15` of every agent and disallows /profile/, /dashboard/, /?next, /draft/ and /calendar/csv/ only. Four region blocks (Columbia River Gorge Hikes 71, Mt. Hood 49, Clackamas River 18, Oregon Coast 24) hold 162 items, each 'name miles feet drive, fee'; the coverage audit counted 161. The page's 'Hike Details' block: hiking and driving mileage are round-trip unless noted, elevation gain is cumulative, driving miles are from Gateway P&R for the Gorge, Hood, Gifford Pinchot and Clackamas hikes and from Tanasborne for the coast, or Durham P&R where a coast figure carries an asterisk (8 rows). Two items state 'varies' (Dalles Mountain Ranch's distance and gain, Timberline Trail's driving miles) and one gain is written '1.300 feet' (Augspurger Mountain-Dog Mountain), all landed as text with no number. The page names a fifth destination, Gifford Pinchot National Forest, with no block of its own.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "rmc_recommended_hikes",
+      "title": "Randolph Mountain Club Recommended Hikes (Recommended-Hikes-1.pdf)",
+      "provider": "RMC",
+      "kind": "published_hikes",
+      "url": "https://randolphmountainclub.org/wp-content/uploads/Recommended-Hikes-1.pdf",
+      "steward": "Randolph Mountain Club",
+      "attribution": "Randolph Mountain Club",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: a WordPress page search for 'terms' returned only the Board of Directors page (2026-10-04), and the site's footer reads '© 1999-2023 Randolph Mountain Club, P.O. Box 279, Gorham, NH 03581'.",
+      "reader": "ContentPdf (extract/_pdf_content.py), family `rmc_recommended_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None from the text: the family reads each walk's name, statistics line and trailhead, nothing else. The PDF's own metadata names a person (/Author, a member), so no metadata field lands but its ModDate and CreationDate days (extract/_pdf_content.py's DOCUMENT_COLUMNS).",
+      "key_fields": [
+        "section",
+        "name"
+      ],
+      "key_comment": "The walk's group heading and its name (`section`, `name`): unique on all 47 rows read 2026-10-04, and the names alone are unique too; the pair is kept because the peak routes reuse trail names across peaks ('Lowe's Path' climbs Adams, and appears in Jefferson's routes).",
+      "freshness": {
+        "kind": "file_validator",
+        "url": "https://randolphmountainclub.org/wp-content/uploads/Recommended-Hikes-1.pdf",
+        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T14:52:04Z: HTTP 200, application/pdf, 104,747 bytes, Last-Modified 'Mon, 20 Feb 2023 22:09:17 GMT', Content-Length 104747, no ETag; metadata CreationDate and ModDate 2023-02-20 (Word on macOS). robots.txt is Yoast's `User-agent: * / Disallow:` and asks no Crawl-delay. Eight pages with a text layer; 47 walks: Easy 9, Moderate 10, Strenuous 6, and the Northern Peaks' routes Madison 6, Adams 10, Jefferson 6, whose distances the document says 'are one-way to the summit'. Five peak routes from a hut or camp name no trailhead. Two route names wrap onto a second line in the text layer and are joined.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules. It is not staged either: the reader needs pypdf, which fixture mode's Python does not install, so no fixture warehouse holds the table (extract/_pdf_content.py's docstring)."
     }
   ],
   "usdm_licence": {
@@ -16714,6 +16834,14 @@
       "RMFI": {
         "state": "not_asked",
         "note": "Not asked. Registered for its GIS files under decision 54's wave 2 (2026-10-04), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Mazamas": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its Hike List View under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "RMC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its Recommended Hikes PDF under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -17670,6 +17798,16 @@
         "provider": "RMFI",
         "name": "Rocky Mountain Field Institute",
         "note": "A Colorado Springs trail stewardship nonprofit; registered for its project-sites Google My Map (decision 54, wave 2)."
+      },
+      "org:mazamas": {
+        "provider": "Mazamas",
+        "name": "Mazamas",
+        "note": "A Portland, Oregon mountaineering club; registered for its Hike List View, 162 hikes with miles, gain and driving distance (decision 54, wave 5, section K, 2026-10-04), at reaches_hikers: false."
+      },
+      "org:rmc": {
+        "provider": "RMC",
+        "name": "Randolph Mountain Club",
+        "note": "Maintains trails and camps on the northern slopes of the Presidential Range from Randolph, New Hampshire; registered for its Recommended Hikes PDF (decision 54, wave 4, section K, 2026-10-04), at reaches_hikers: false."
       }
     }
   },
@@ -23030,6 +23168,80 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Decision 54's wave 2 (2026-10-04) read its project-sites Google My Map (46 work sites) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          }
+        }
+      },
+      "Mazamas": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its Hike List View under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its Hike List View under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its Hike List View under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its Hike List View under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its Hike List View under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its Hike List View under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its Hike List View under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its Hike List View under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "RMC": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its Recommended Hikes PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its Recommended Hikes PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its Recommended Hikes PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its Recommended Hikes PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its Recommended Hikes PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its Recommended Hikes PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its Recommended Hikes PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its Recommended Hikes PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
           }
         }
       }

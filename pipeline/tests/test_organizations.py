@@ -391,6 +391,12 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     federal works on 17 U.S.C. 105, the Forest Service's Nez Perce NHT My Map and the NPS Data API's
     places and campgrounds, and FMST's trailheads sheet, whose own first line says it "can be used or
     adapted as you like", an act of consent like PCTA's.
+
+    DECISION 54'S WAVES 4 AND 5, CONTENT PAGES AND PDFS (section K, 2026-10-04): 4 rows, all
+    `reaches_hikers: false`: 2 read by extract/_pages_content.py, 1 by extract/_pdf_content.py and 1
+    WordPress post types; 4 `unresolved`. A club's hike list, challenge list or episode page
+    publishes on no decision yet, so each quotes the terms it found on its row and waits on the
+    maintainer, in dbt, once a mart reads it.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
@@ -401,4 +407,5 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03) add 113: 87 and 26 (above).
     # Decision 54's wave 3 content feeds and APIs (section C) add 34: 11 and 23; waves 2 and 3's GIS files and
     # geographic APIs add 30: 26 `public_gis` and 4 `stated_by_org` (above).
-    assert counts == {"maintainer_authorisation": 186, "public_gis": 243, "stated_by_org": 192, "unresolved": 27}
+    # Decision 54's waves 4 and 5 content pages and PDFs (section K) add 4: 4 `unresolved` (above).
+    assert counts == {"maintainer_authorisation": 186, "public_gis": 243, "stated_by_org": 192, "unresolved": 31}

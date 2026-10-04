@@ -25,6 +25,27 @@ models:
           tahoe_rim_campgrounds, globalid, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_tahoe_rim__tahoe_rim_day_hikes
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('tahoe_rim', 'raw_tahoe_rim__tahoe_rim_day_hikes')
+          config:
+            severity: warn
+    description: >
+      Tahoe Rim Trail Day Hike Itineraries (tahoerimtrail.org/day-hiking/), every row, keyed
+      and deduped (decision 40), the layer's own columns under dlt's names. Its sources.json
+      row reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_suggested_hikes__club_unioned reads it through stg_tahoe_rim__suggested_hikes.
+    columns:
+      - name: hike_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          tahoe_rim_day_hikes, name, the registry key first and then the fields measured
+          unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_tahoe_rim__tahoe_rim_points_of_interest
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

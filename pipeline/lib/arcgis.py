@@ -12,6 +12,8 @@ directory away from the module that never called it.
 """
 
 import json
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 import requests
@@ -230,7 +232,10 @@ def iter_layer_pages(
         last_chance = rounded or (records <= 1 and geometry_precision is not None)
         statuses = DEFAULT_RETRYABLE_STATUSES if last_chance else (429,)
         try:
-            resp = query_page(query_url, params, session=session, backoff=backoff, retryable_statuses=statuses)
+            resp = ask_until_let_in(
+                lambda: query_page(query_url, params, session=session, backoff=backoff, retryable_statuses=statuses),
+                query_url,
+            )
         except requests.HTTPError as failure:
             status = failure.response.status_code if failure.response is not None else None
             if last_chance or status is None or status < 500:
@@ -302,12 +307,15 @@ def iter_pages_by_object_id(
     layer. An empty id list is an empty layer; whether it is a whole one is
     the caller's `returnCountOnly` check, as for the paged loop.
     """
-    answer = request_with_retry(
+    answer = ask_until_let_in(
+        lambda: request_with_retry(
+            query_url,
+            session=session,
+            params={"where": where, "returnIdsOnly": "true", "f": "json"},
+            timeout=60,
+            backoff=backoff,
+        ),
         query_url,
-        session=session,
-        params={"where": where, "returnIdsOnly": "true", "f": "json"},
-        timeout=60,
-        backoff=backoff,
     )
     refusal = page_refusal(answer)
     if refusal is not None:
@@ -325,7 +333,10 @@ def iter_pages_by_object_id(
             form["returnZ"] = "true"
         if geometry_precision is not None:
             form["geometryPrecision"] = geometry_precision
-        resp = request_with_retry(query_url, session=session, method="post", data=form, timeout=60, backoff=backoff)
+        resp = ask_until_let_in(
+            lambda: request_with_retry(query_url, session=session, method="post", data=form, timeout=60, backoff=backoff),
+            query_url,
+        )
         refusal = page_refusal(resp)
         if refusal is not None:
             if size <= 1:
@@ -439,6 +450,42 @@ def layer_count(
         print(f"  {query_url} count check skipped: no integer count in the answer")
         return None
     return count
+
+
+#: ArcGIS Online answers a rate-limited query with HTTP 200 and a JSON error object of code 429, "Unable to perform
+#: query. Too many requests." Oregon Metro's trails on services2.arcgis.com did so in monthly run 14
+#: (refresh-reference.yml 37207306294, 2026-10-04), and the paged loop read it as a page too large and halved down to
+#: one feature before giving up, which stopped the whole monthly extract. A throttled answer is never halved: the same
+#: request is made again after each wait here, and only after the last one does the read fail. @unvalidated: Esri
+#: publishes no figure for how long an anonymous client is held back, so the 7.5 minutes this ladder waits in all is a
+#: guess. The next throttled run's log, which names every wait, would settle it.
+THROTTLE_WAITS_SECONDS = (30, 60, 120, 240)
+
+
+def is_throttled(resp) -> bool:
+    """Whether this answer is ArcGIS's rate limit, an error object of code 429 in the body, whatever the HTTP status."""
+    try:
+        body = resp.json()
+    except ValueError:
+        return False
+    error = body.get("error") if isinstance(body, dict) else None
+    return bool(error) and str(error.get("code")) == "429"
+
+
+def ask_until_let_in(ask: Callable[[], requests.Response], what: str) -> requests.Response:
+    """`ask()`'s answer, asked again after each of THROTTLE_WAITS_SECONDS while it is throttled (is_throttled).
+
+    Raises RuntimeError, naming the server's words, when the last wait is spent and the answer is still the rate
+    limit, so a caller never halves a page or reads a refusal as an answer."""
+    for wait in (*THROTTLE_WAITS_SECONDS, None):
+        resp = ask()
+        if not is_throttled(resp):
+            return resp
+        if wait is None:
+            raise RuntimeError(f"{what} {page_refusal(resp)} after {len(THROTTLE_WAITS_SECONDS)} waits for its rate limit")
+        print(f"  {what} answered its rate limit (429 in the body); asking again in {wait} s")
+        time.sleep(wait)
+    raise AssertionError("unreachable")
 
 
 def page_refusal(resp) -> str | None:

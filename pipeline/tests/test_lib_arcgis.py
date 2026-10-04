@@ -678,3 +678,56 @@ def test_one_feature_no_page_can_hold_is_asked_once_at_six_decimals_and_only_it(
     assert [feature["properties"]["n"] for page in pages for feature in page] == list(range(10))
     rounded = [r for r in requests_mock.request_history if "geometryprecision" in r.qs]
     assert [(r.qs["resultoffset"][0], r.qs["geometryprecision"][0]) for r in rounded] == [("6", "6")]
+
+
+#: ArcGIS Online's rate limit as Oregon Metro's trails answered it in monthly run 14: HTTP 200, the error in the body.
+THROTTLED = {"error": {"code": 429, "message": "Unable to perform query. Too many requests.", "details": []}}
+
+
+def test_a_page_answered_with_the_rate_limit_is_asked_again_at_the_same_size_after_a_wait(requests_mock, monkeypatch):
+    """Monthly run 14's failure: the paged loop halved a throttled page down to one feature and gave up, stopping the
+    whole extract. A throttled page is the same size asked again, after THROTTLE_WAITS_SECONDS' first wait."""
+    waits = []
+    monkeypatch.setattr("lib.arcgis.time.sleep", waits.append)
+    requests_mock.get(LAYER_URL + "/query", [{"json": THROTTLED}, {"json": _page(3)}, {"json": {"features": []}}])
+
+    fc = fetch_layer_geojson(LAYER_URL)
+
+    assert len(fc["features"]) == 3
+    assert [r.qs["resultrecordcount"][0] for r in _page_requests(requests_mock)] == ["1000", "1000", "1000"]
+    assert waits == [arcgis.THROTTLE_WAITS_SECONDS[0]]
+
+
+def test_a_rate_limit_that_never_lifts_fails_the_read_without_halving_the_page(requests_mock, monkeypatch):
+    """Every wait spent and still throttled: the read fails with the server's words, never read as a page too large."""
+    waits = []
+    monkeypatch.setattr("lib.arcgis.time.sleep", waits.append)
+    requests_mock.get(LAYER_URL + "/query", json=THROTTLED)
+
+    with pytest.raises(RuntimeError, match="Too many requests"):
+        fetch_layer_geojson(LAYER_URL)
+
+    assert waits == list(arcgis.THROTTLE_WAITS_SECONDS)
+    assert {r.qs["resultrecordcount"][0] for r in _page_requests(requests_mock)} == {"1000"}
+
+
+def test_an_object_id_batch_answered_with_the_rate_limit_waits_and_keeps_its_size(requests_mock, monkeypatch):
+    """The object-id loop the same way: a throttled batch is waited for, not halved."""
+    waits = []
+    monkeypatch.setattr("lib.arcgis.time.sleep", waits.append)
+    layer = UnpagedLayer(requests_mock, ids=range(3))
+    answers = iter([THROTTLED])
+
+    def answer(request, context):
+        if "objectIds" in (request.text or ""):
+            throttled = next(answers, None)
+            if throttled is not None:
+                return throttled
+        return layer.answer(request, context)
+
+    requests_mock.post(LAYER_URL + "/query", json=answer)
+
+    pages = list(arcgis.iter_layer_pages(LAYER_URL, paginate=False, page_size=4))
+
+    assert [[f["id"] for f in page] for page in pages] == [[0, 1, 2]]
+    assert waits == [arcgis.THROTTLE_WAITS_SECONDS[0]]

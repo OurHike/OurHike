@@ -244,6 +244,7 @@ jobs:
             pipeline/row_history.py
             pipeline/row_history_stores.toml
             pipeline/tests/test_dbt_row_dates_builds.py
+            pipeline/tests/test_dbt_notice_tables_absent_builds.py
             pipeline/step_node_lines.py
             pipeline/build_trail_graph.py
             pipeline/export_poi.py
@@ -481,6 +482,18 @@ jobs:
         run: |
           "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "$(grep -E '^pytest==' requirements-dev.txt)"
           OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_row_dates_builds.py
+
+      # A conditions build on a warehouse with no club notice table
+      # (decision 61): the hourly warehouse takes the 4-hourly notices store's
+      # newest served copy, so a notice table can be absent, and the build
+      # must hold that club's source rather than fail or publish "no
+      # notices". The test builds its own fixture warehouse and drops every
+      # club notice table. Measured 2026-10-04 on a four-core sandbox: 4
+      # passed in 259 to 272 s.
+      - name: Notices absent from the warehouse (tests/test_dbt_notice_tables_absent_builds.py)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_tables_absent_builds.py
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by

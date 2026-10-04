@@ -464,6 +464,8 @@ if selected_has dbt; then
     # Row dates across builds, as CI's dbt job runs it (decision 57): three
     # podcasts builds in fresh warehouses, the history restored between them.
     step "dbt row dates builds"  env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_row_dates_builds.py
+    # A conditions build with no club notice table in the warehouse (decision 61), as CI's dbt job runs it.
+    step "dbt notices absent"    env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_tables_absent_builds.py
     for family in podcasts:podcasts_episodes stewards:stewards registry:registry; do
       step "dbt parity ${family%%:*}" env -C pipeline "$PY" parity.py "${family%%:*}" --new "$dbt_tmp/processed/${family#*:}.json"
     done

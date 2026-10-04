@@ -30,7 +30,7 @@
 --   potable-water types) was held the same way until decision 65
 --   (2026-10-04): club_poi_types now types it water, and its layer_rules
 --   `plumbed_water` row gives it a season caution downstream
---   (int_points_of_interest__season_cautions), which this model does not
+--   (int_points_of_interest__cautioned), which this model does not
 --   read. A tap CPW marks closed in winter is still not_water. Every water
 --   row that does map is low confidence: no wave 1 layer reports flow.
 -- - PLANNED AND PROPOSED POINTS ARE NOT BUILT: `drop_where` on NPS's

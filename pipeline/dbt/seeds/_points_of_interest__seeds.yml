@@ -113,7 +113,7 @@ seeds:
       among them. TWO ROWS ARE THE dbt PATH'S OWN, not export_nearby_poi.py's:
       NY Parks' 'Water Spigot' and 'Drinking Fountain' type water under
       decision 65 (2026-10-04), each named by a layer_rules `plumbed_water`
-      row, which int_points_of_interest__season_cautions reads to ship them
+      row, which int_points_of_interest__cautioned reads to ship them
       unconfirmed with a season caution. Today's exporter still holds them
       back (`oprhp_water_holdback`), and
       tests/test_dbt_points_of_interest_parity.py holds this seed to its maps

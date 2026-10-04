@@ -30,7 +30,7 @@
 -- - `confidence` high or low on every live POI;
 -- - `water_caution` only on low-confidence water (decision 65): a plumbed
 --   tap or fountain whose layer records no shutoff season
---   (int_points_of_interest__season_cautions) ships low whatever its layer's
+--   (int_points_of_interest__cautioned) ships low whatever its layer's
 --   own public flag says, and carries 'no_shutoff_season' unless the layer's
 --   own winter status says it is open in winter.
 --
@@ -44,8 +44,11 @@
 -- every digit, so their text is the double itself. A coordinate that moves
 -- is a location error, so the pub_ writers copy this text and never
 -- re-derive it. `lat` and `lon` are the source's own doubles.
+--
+-- Described's rows arrive through int_points_of_interest__cautioned, which
+-- carries every one of them and adds decision 65's caution.
 with described as (
-    select * from {{ ref('int_points_of_interest__described') }}
+    select * from {{ ref('int_points_of_interest__cautioned') }}
 ),
 
 miles as (
@@ -68,10 +71,6 @@ photos as (
     select * from {{ ref('int_points_of_interest__photos') }}
 ),
 
-season_cautions as (
-    select * from {{ ref('int_points_of_interest__season_cautions') }}
-),
-
 live as (
     select
         described.poi_id,
@@ -87,12 +86,9 @@ live as (
         described.lon,
         cast(miles.mile as double) as mile,
         described.not_on_at,
-        -- Decision 65: a plumbed tap is unconfirmed water, whatever its
-        -- layer's own public flag rated it (NY Parks' ParksApp 'Y').
-        case
-            when season_cautions.poi_id is not null then 'low'
-            else described.confidence
-        end as confidence,
+        -- Low on a plumbed tap, whatever its layer's own public flag rated
+        -- it (decision 65, int_points_of_interest__cautioned).
+        described.confidence,
         cast(described.capacity as integer) as capacity,
         cast(described.water_distance_ft as integer) as water_distance_ft,
         described.water_distance_source,
@@ -105,7 +101,7 @@ live as (
         described.position_error_m,
         described.off_trail_miles,
         described.water_reliability,
-        season_cautions.water_caution,
+        described.water_caution,
         described.site_id,
         described.site_role,
         described.site_name,
@@ -117,7 +113,6 @@ live as (
         described._loaded_at
     from described
     left join miles on described.poi_id = miles.poi_id
-    left join season_cautions on described.poi_id = season_cautions.poi_id
 ),
 
 tombstones as (

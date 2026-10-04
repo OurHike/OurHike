@@ -290,7 +290,7 @@ models:
       - name: water_caution
         description: >
           Decision 65: 'no_shutoff_season' on a plumbed tap or fountain whose layer records no
-          shutoff season (int_points_of_interest__season_cautions), which the waypoint card reads to
+          shutoff season (int_points_of_interest__cautioned), which the waypoint card reads to
           say taps like it are often off out of season. Only ever on low-confidence water; null on
           every other POI, and on a tap whose layer's own winter status says it is open in winter.
         data_type: varchar

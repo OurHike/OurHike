@@ -1060,7 +1060,7 @@ POI_REASONS = {
         "expected by decision 65 (the maintainer's poll of 2026-10-04): a plumbed tap or fountain whose layer records "
         "no shutoff season, which export_nearby_poi.py holds back as a water holdback (sources.json's "
         "oprhp_water_holdback), ships as unconfirmed water carrying water_caution 'no_shutoff_season' "
-        "(int_points_of_interest__season_cautions); only a record today's file lacks, of a layer whose taps "
+        "(int_points_of_interest__cautioned); only a record today's file lacks, of a layer whose taps "
         "layer_rules names plumbed_water, at low confidence with that caution"
     ),
 }

@@ -116,7 +116,7 @@ unit_tests:
       layer is water only where its Potability code says so, 1 Potable or 2 Treatment required,
       and never by its Feature_Type or the "Potable Water" view's name. A Potability 0 'No water'
       lake maps to nothing; a potable drinking fountain (Feature_Type 11) is water too, and
-      int_points_of_interest__season_cautions gives it decision 65's season caution, because its
+      int_points_of_interest__cautioned gives it decision 65's season caution, because its
       layer records no shutoff season. Every water row ships low.
     given:
       - input: ref('int_points_of_interest__club_unioned')
@@ -369,23 +369,24 @@ unit_tests:
         - {poi_key: 'nc-5', derived_id: 'ncta_points:{NC-5}', source_feature_id: '{NC-5}', name: 'Fixture Shelter 5', poi_type: 'shelter', family_confidence: 'high', phone_files: 'nearby_poi', trail_id: 'NCTA', drop_reason: 'no usable point geometry'}
 
   - name: season_cautions_mark_a_plumbed_tap_unconfirmed_with_a_season_caution
-    model: int_points_of_interest__season_cautions
+    model: int_points_of_interest__cautioned
     description: >
       Decision 65 (the maintainer's poll of 2026-10-04): a tap or fountain whose layer records no
       shutoff season is shown as unconfirmed water with a season caution. NPS's 'Potable Water' and
-      NY Parks' 'Water Spigot' carry 'no_shutoff_season', matched trimmed and case-folded as every
-      layer rule is; CPW's tap whose own winter status reads 'Open' is still plumbed (and so still
-      low) but carries no caution, while its 'Unknown' one does. A spring in the same layer, and a
-      tap-shaped value on a row that is not water, carry nothing.
+      NY Parks' 'Water Spigot' carry 'no_shutoff_season' and go low whatever their layer rated them,
+      matched trimmed and case-folded as every layer rule is; CPW's tap whose own winter status reads
+      'Open' is still plumbed (and so still low) but carries no caution, while its 'Unknown' one does.
+      A spring in the same layer, and a tap-shaped value on a row that is not water, pass through
+      with their own confidence and no caution: every described row comes out.
     given:
       - input: ref('int_points_of_interest__described')
         rows:
-          - {poi_id: 'nps_points_of_interest:g-1', source_key: 'nps_points_of_interest', poi_type: 'water', properties: '{"poitype": "Potable Water"}'}
-          - {poi_id: 'nps_points_of_interest:g-2', source_key: 'nps_points_of_interest', poi_type: 'water', properties: '{"poitype": "Spring"}'}
-          - {poi_id: 'oprhp_facilities:18', source_key: 'oprhp_facilities', poi_type: 'water', properties: '{"sub_asset": " water spigot "}'}
-          - {poi_id: 'cpw_facilities:{C-1}', source_key: 'cpw_facilities', poi_type: 'water', properties: '{"d_fac_type": "Drinking Water", "d_winter_s": "Open"}'}
-          - {poi_id: 'cpw_facilities:{C-2}', source_key: 'cpw_facilities', poi_type: 'water', properties: '{"d_fac_type": "Drinking Water", "d_winter_s": "Unknown"}'}
-          - {poi_id: 'cpw_facilities:{C-3}', source_key: 'cpw_facilities', poi_type: 'privy', properties: '{"d_fac_type": "Drinking Water", "d_winter_s": "Unknown"}'}
+          - {poi_id: 'nps_points_of_interest:g-1', source_key: 'nps_points_of_interest', poi_type: 'water', confidence: 'high', properties: '{"poitype": "Potable Water"}'}
+          - {poi_id: 'nps_points_of_interest:g-2', source_key: 'nps_points_of_interest', poi_type: 'water', confidence: 'low', properties: '{"poitype": "Spring"}'}
+          - {poi_id: 'oprhp_facilities:18', source_key: 'oprhp_facilities', poi_type: 'water', confidence: 'high', properties: '{"sub_asset": " water spigot "}'}
+          - {poi_id: 'cpw_facilities:{C-1}', source_key: 'cpw_facilities', poi_type: 'water', confidence: 'high', properties: '{"d_fac_type": "Drinking Water", "d_winter_s": "Open"}'}
+          - {poi_id: 'cpw_facilities:{C-2}', source_key: 'cpw_facilities', poi_type: 'water', confidence: 'high', properties: '{"d_fac_type": "Drinking Water", "d_winter_s": "Unknown"}'}
+          - {poi_id: 'cpw_facilities:{C-3}', source_key: 'cpw_facilities', poi_type: 'privy', confidence: 'high', properties: '{"d_fac_type": "Drinking Water", "d_winter_s": "Unknown"}'}
       - input: ref('layer_rules')
         rows:
           - {source_key: 'nps_points_of_interest', rule: 'plumbed_water', field: 'poitype', matches: 'Potable Water', evidence: 'a tap'}
@@ -395,7 +396,9 @@ unit_tests:
           - {source_key: 'nps_points_of_interest', rule: 'not_water', field: 'poitype', matches: 'Water Access', evidence: 'a boat launch'}
     expect:
       rows:
-        - {poi_id: 'nps_points_of_interest:g-1', water_caution: 'no_shutoff_season'}
-        - {poi_id: 'oprhp_facilities:18', water_caution: 'no_shutoff_season'}
-        - {poi_id: 'cpw_facilities:{C-1}', water_caution: null}
-        - {poi_id: 'cpw_facilities:{C-2}', water_caution: 'no_shutoff_season'}
+        - {poi_id: 'nps_points_of_interest:g-1', confidence: 'low', water_caution: 'no_shutoff_season'}
+        - {poi_id: 'nps_points_of_interest:g-2', confidence: 'low', water_caution: null}
+        - {poi_id: 'oprhp_facilities:18', confidence: 'low', water_caution: 'no_shutoff_season'}
+        - {poi_id: 'cpw_facilities:{C-1}', confidence: 'low', water_caution: null}
+        - {poi_id: 'cpw_facilities:{C-2}', confidence: 'low', water_caution: 'no_shutoff_season'}
+        - {poi_id: 'cpw_facilities:{C-3}', confidence: 'high', water_caution: null}

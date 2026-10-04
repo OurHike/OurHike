@@ -242,7 +242,8 @@ def test_the_json_api_notice_sources_land_from_their_answers_with_no_nps_key_in_
     root, counts = fixtures
     resources, _ = fixture_resources(root / "raw")
     # extract/_gis_files.py's and extract/_ogc.py's kinds ride the same answers folder; GIS_AND_GEO_API_ROWS holds them.
-    landed = {r.table for r in resources if isinstance(r, JSON_API_KINDS) and type(r).__module__ == "extract._json_apis"}
+    # Section C's content readers (extract/_content.py) are JSON_API_ROWS' too.
+    landed = {r.table for r in resources if isinstance(r, JSON_API_KINDS) and type(r).__module__ not in GIS_AND_GEO_MODULES}
     assert landed == set(JSON_API_ROWS)
     assert all((root / "raw" / "conditions" / JSON_API_DIR / f"{r.key}.json").exists() for r in resources if r.table in landed)
     assert {table: counts[table] for table in JSON_API_ROWS} == JSON_API_ROWS
@@ -279,6 +280,9 @@ def test_section_cs_content_lands_no_author_or_guest_and_none_of_the_prose_a_row
 # with 2 exact copies among them, a KMZ and a zipped GPX arrive whole as ASCII-only zips, and a location with no
 # coordinate lands with no geometry rather than being dropped. FMST's sheet opens with a title line
 # above its header and a row of empty cells between sections, so it lands 2 rows from 3 lines of data.
+#: The modules section G's kinds live in, which is what separates its tables from JSON_API_ROWS': both ride
+#: extract/_fixtures.py's JSON_API_KINDS and the same answers folder.
+GIS_AND_GEO_MODULES = frozenset({"extract._gis_files", "extract._ogc"})
 GIS_AND_GEO_API_ROWS = {
     "raw_nez_perce__usfs_nez_perce_nht_my_map": 4,
     "raw_rmfi__rmfi_project_map": 2,
@@ -317,7 +321,7 @@ def test_every_gis_file_and_geographic_api_lands_from_its_answers_and_no_person_
     """Section G's resources, answered from conditions/json_apis/: every one lands, at its fixture's row count."""
     root, counts = fixtures
     resources, _ = fixture_resources(root / "raw")
-    landed = {r.table for r in resources if isinstance(r, JSON_API_KINDS) and type(r).__module__ != "extract._json_apis"}
+    landed = {r.table for r in resources if isinstance(r, JSON_API_KINDS) and type(r).__module__ in GIS_AND_GEO_MODULES}
     assert landed == set(GIS_AND_GEO_API_ROWS)
     assert {table: counts[table] for table in GIS_AND_GEO_API_ROWS} == GIS_AND_GEO_API_ROWS
     with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:

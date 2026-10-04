@@ -204,8 +204,8 @@ JSON_FEATURES = "json_features"
 # web page (extract/_pages_points.py) or in a PDF (extract/_pdf_points.py), a
 # parser per site or document. Registered for pipeline/extract/ alone, as the
 # kinds above are, and for the same reason: no legacy fetcher, loader or
-# exporter reads them. Neither is a GIS endpoint, so int_sources__publication's
-# rule 3 holds a `public_gis` row of either kind.
+# exporter reads them. Neither is a GIS endpoint, so int_sources__publication
+# refuses a `public_gis` row of either kind (rule 6 of ELT.md's "Who may publish").
 PAGE_POINTS = "page_points"
 PDF_POINTS = "pdf_points"
 

@@ -8734,10 +8734,13 @@ def _mdhta_trail_guide_page() -> str:
             ("waterboxes", "Fixture Water Box &#8217;s"),
             ("river-crossings", "Fixture Crossing"),
             ("points-of-interest", "Fixture Overlook"),
+            # A planned trailhead, its status only in its slug, as the live guide's Crying Butte is: layer_rules'
+            # drop_where_contains on `slug` holds it back.
+            ("trailheads", "Fixture Butte (expected to open)"),
         ]
     ):
         x, y = _point(n)["coordinates"]
-        slug = f"fixture-{kind}-{n}"
+        slug = f"fixture-{kind}-{n}" if "expected" not in title else "fixture-butte-expected-to-open-in-late-2099"
         anchors.append(
             f'<a href="https://mdhta.com/{kind}/{slug}/" data-slug="{slug}" data-title="{title}" data-type="{kind}" '
             f'data-lat="{y}" data-long="{x}"></a>'
@@ -8843,7 +8846,7 @@ def _foothills_coordinates_rest() -> str:
 
 #: Registry key -> (the URL its reader asks, content type, body, rows the parser lands).
 PAGE_POINTS_FIXTURES = {
-    "mdhta_trail_guide_points": ("https://mdhta.com/trail-guide/", PAGE_HTML, _mdhta_trail_guide_page, 5),
+    "mdhta_trail_guide_points": ("https://mdhta.com/trail-guide/", PAGE_HTML, _mdhta_trail_guide_page, 6),
     "foot_trail_shelters": ("https://www.friendsoftheouachita.org/wp-json/wp/v2/pages/326", PAGE_REST, _foot_shelters_rest, 4),
     "amc_wma_at_parking_points": ("https://www.amc-wma.org/documents-more.cgi?id=112", PAGE_HTML, _amc_parking_page, 5),
     "foothills_gps_coordinates": (

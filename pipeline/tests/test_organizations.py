@@ -394,8 +394,8 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
 
     DECISION 54'S WAVES 4 AND 5, POINTS ON CLUB PAGES AND IN CLUB PDFS (section S, 2026-10-04): rows
     registered at `reaches_hikers: false`. `public_gis` for the clubs' own pages and PDFs of points that state
-    no licence (decision 21a's presumption, read as mtsg_map_locations' row reads it; int_sources__publication's
-    rule 3 holds a page or a PDF there, for the maintainer); `unresolved` for the ATA's water cache boxes,
+    no licence (decision 21a's presumption, read as mtsg_map_locations' row reads it; int_sources__publication
+    refuses it on a page or a PDF, rule 6, for the maintainer); `unresolved` for the ATA's water cache boxes,
     whose terms ask written permission for information published online, which no decision answers for points.
 
     DECISION 54'S WAVES 4 AND 5, CONTENT PAGES AND PDFS (section K, 2026-10-04): 12 rows, all

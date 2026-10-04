@@ -604,3 +604,30 @@ def test_the_writer_writes_what_record_writes(test):
     assert list(json.loads(written)) == list(python), "the document's fields in build_output()'s order"
     for record in json.loads(written)["places"]:
         assert None not in record.values()
+
+
+def test_a_place_from_a_layer_no_exporter_reads_is_explained_as_decision_31s_new_data():
+    """places' parity explains a trailhead or parking lot from one of decision 54's wave 1 point layers as new data,
+    and the order with those places left out. A place from a layer export_nearby_poi.py reads, or one with no source,
+    is still a difference, and so is an order that differs once the new places are left out."""
+    import parity
+
+    shared = {"id": "dec_parking_areas:100", "source": "dec_parking_areas", "kind": "parking"}
+    town = {"id": "atc_communities:community-0", "kind": "town"}
+    old = {"places": [shared, town]}
+    club = {"id": "amc_net_parking:5631", "source": "amc_net_parking", "kind": "parking"}
+    today_layer = {"id": "dec_parking_areas:101", "source": "dec_parking_areas", "kind": "parking"}
+    sourceless = {"id": "trail:somewhere", "kind": "trailhead"}
+    new = {"places": [shared, club, today_layer, sourceless, town]}
+
+    reasons = parity._places_reasons(old, new)
+
+    assert set(reasons) == {"id amc_net_parking:5631"}
+    assert reasons["id amc_net_parking:5631"].startswith(parity.NEW_DATA_REASON)
+    # Only the new layer's place added: the order with it left out is today's, so the order is explained too.
+    assert parity._places_reasons(old, {"places": [shared, club, town]}) == {
+        "id amc_net_parking:5631": parity.PLACES_REASONS["new_source"],
+        "order": parity.PLACES_REASONS["new_source"],
+    }
+    # Today's places reordered: the order stays a difference.
+    assert "order" not in parity._places_reasons(old, {"places": [town, club, shared]})

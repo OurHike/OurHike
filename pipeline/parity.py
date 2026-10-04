@@ -484,6 +484,38 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     return reasons
 
 
+#: Why a place can be in the dbt writer's places.json and not in today's. tests/test_dbt_places_parity.py holds it to
+#: the case where the two writers answer that way.
+PLACES_REASONS = {
+    "new_source": (
+        "expected by decision 31 ('Publish new data in this PR'): a trailhead, parking lot or town from a point layer "
+        "no exporter reads, one of decision 54's wave 1 point layers (int_points_of_interest__club_points), so there "
+        "is no old record to compare it with; new_data_report.py counts its layer under nearby_poi"
+    ),
+}
+
+
+def _places_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The places the dbt writer publishes from a point layer today's exporter never reads: decision 31's new data.
+
+    Only a place the new file holds and the old one lacks, whose `source` is set and is neither a layer
+    export_nearby_poi.poi_sources() reads nor a source any place in today's file names. The order is explained only
+    when the new file's order, those places left out, is today's. Anything else is still a difference.
+    """
+    old_records = old.get("places") or []
+    old_ids = [record["id"] for record in old_records]
+    known = _today_poi_sources() | {record.get("source") for record in old_records}
+    reasons = {
+        f"id {record['id']}": PLACES_REASONS["new_source"]
+        for record in new.get("places") or []
+        if record["id"] not in set(old_ids) and record.get("source") and record["source"] not in known
+    }
+    kept = [record["id"] for record in new.get("places") or [] if f"id {record['id']}" not in reasons]
+    if reasons and kept == old_ids:
+        reasons["order"] = PLACES_REASONS["new_source"]
+    return reasons
+
+
 def _places_old() -> dict:
     """export_places.py's document for the input the dbt side reads, through its own build_output().
 
@@ -929,7 +961,9 @@ FAMILIES: dict[str, Family] = {
     # places.json, keyed by each place's `id`, in the file's order (kind, name,
     # id). `trailRadiusMiles` and `trailMilesMeasured`, beside the records, are
     # compared whole as top-level fields.
-    "places": Family(old=_places_old, records="places", key="id", ordered=True, stamps=("generated_at",)),
+    "places": Family(
+        old=_places_old, records="places", key="id", ordered=True, stamps=("generated_at",), explained=_places_reasons
+    ),
 }
 
 

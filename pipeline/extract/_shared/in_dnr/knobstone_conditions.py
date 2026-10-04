@@ -13,9 +13,9 @@ sit inside HTML comments and are not read.
 
 IN.GOV'S TERMS, two sentences, both quoted on the row. One restricts reuse ("No part of any content ...
 may be reproduced ... other than for your personal use"), which is decision 55's case: facts and a
-link. The other lists "bots" among "disruptive activities" a user may not engage in. One request an
-hour under a named agent is read here as not disruptive, which is Reasoned and is the lead's decision-55
-reading of 2026-10-03, not the maintainer's: it goes to the maintainer to confirm.
+link. The other lists "bots" among "disruptive activities" a user may not engage in. Decision 75 (the
+maintainer's poll, 2026-10-04, card Q6) reads it as not a refusal: it sits in a list of malicious
+activity, and one request an hour under a named agent is neither, so this resource keeps to that rate.
 """
 
 from extract._kinds import page_notice

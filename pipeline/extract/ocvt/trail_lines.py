@@ -1,28 +1,19 @@
-"""Outdoor Club at Virginia Tech: trail lines, drawn from another folder's resource (coverage audit
-2026-10-01, batch c3_at_clubs_south).
+"""The Outdoor Club at Virginia Tech's own A.T. tracks, two GPX files linked from its trail-maintenance
+page.
 
-2009 tracks are superseded by ATC's centerline (edited 2026-08-04). Worth keeping only as a dated
-cross-check.
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+files' validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `ocvt_at_tracks`: 'Pine Swamp Branch Shelter to U.S. 460' and 'VA 611 to I-77', GPSBabel output of
+  2009-08-25 with `ele` 0.0 throughout, keyed on the geometry.
+
+Superseded by ATC's centerline (edited 2026-08-04), where the club's portion is drawn in dbt
+(`centerline`, 16 features, 26.9 mi under OCVT, and `side_trails`, 7): a dated cross-check, deduplicated
+after the load. Before this the file was the `via atc` note.
 """
 
-from datetime import date
+from extract._gis_files import gis_file
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`centerline` (16 features, 26.9 mi under `OCVT`) and `side_trails` (7). OCVT's own geometry: 2 GPX "
-        "tracks linked from `/about/trailmaint`: `https://ocvt.club/media/gpx/PineSwampto460.gpx` (227,994 "
-        "bytes) and `https://ocvt.club/media/gpx/611toI77.gpx` (99,426 bytes). Both are GPSBabel output with "
-        "`<time>2009-08-25</time>`, and `ele` is 0.0 throughout.",
-    ),
-    where=(
-        "https://ocvt.club/media/gpx/PineSwampto460.gpx",
-        "https://ocvt.club/media/gpx/611toI77.gpx",
-        "https://outdoor.org.vt.edu/",
-    ),
-    reason="drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in",
-)
+CLAIMS = ("ocvt_at_tracks",)
+RESOURCES = [gis_file(key) for key in CLAIMS]

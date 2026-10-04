@@ -2366,6 +2366,38 @@
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
+      "key": "usfs_nez_perce_nht_my_map",
+      "title": "Nez Perce National Historic Trail: auto tour stops and travel routes (USFS Google My Map)",
+      "provider": "USFS",
+      "kind": "gis_file",
+      "url": "https://www.google.com/maps/d/kml?mid=1rdJCOzX2Wh3yt7E-nVDfrz0CbSc&forcekml=1",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "USDA Forest Service (Nez Perce National Historic Trail administration)",
+      "steward_contact": "https://www.fs.usda.gov/trails/nez-perce-nht",
+      "licence": "PUBLIC DOMAIN on 17 U.S.C. 105, the reading usfs_trails' row records (2026-09-02): the Forest Service's own interactive map for the trail it administers, linked from fs.usda.gov/trails/nez-perce-nht/data-tools/interactive-maps (the coverage audit, 2026-10-01). Reasoned, not stated: the KML itself names no licence, and its document description credits a Park Service mapmaker by name (not copied here). The photos its placemarks link are not loaded as photos and carry no licence of their own. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence_basis": "stated_by_org",
+      "attribution": "USDA Forest Service",
+      "terms": "None stated in the file: the words licence and copyright do not occur in the KML (read 2026-10-04).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.google.com/maps/d/kml?mid=1rdJCOzX2Wh3yt7E-nVDfrz0CbSc&forcekml=1",
+        "notes": "1,184,784 bytes. 200 text/xml; charset=utf-8, no ETag, no Last-Modified, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole export."
+      },
+      "name_field": "name",
+      "type_field": "folder",
+      "key_fields": [
+        "geometry",
+        "name"
+      ],
+      "key_comment": "The geometry with `name`: unique on 135 of 135 (measured 2026-10-04 on the live export, every placemark parsed as the extract parses it). The geometry alone is 134 of 135: 'Gibbon Attack' and 'Big Hole Battlefield to Skinner Meadows' are two Auto Tour Stops at one point.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "135 placemarks in 3 folders, read 2026-10-04: Auto Tour Stops 110 points (each with ExtendedData Meaning, More Context, Auto Tour Route 1 to 4 and up, Trail Foundation, More Web Info, About, Photo, latitude and longitude); Suggested Travel Routes 12 placemarks (10 LineStrings, 2 MultiGeometry); Adventure Routes 13 (11 LineStrings, 2 MultiGeometry). THE LINES ARE DRIVING ROUTES, NOT TREAD: 'Suggested Travel Routes' and 'Adventure Routes' are auto routes along the 1877 flight ('turn west on a dirt road. At any Y, always stick to the more traveled route'), so they never route and never draw as a trail, like NPS's NHT auto-tour lines (pipeline/ELT.md, 'What wave 1's live reads found'). One More Context gives an office telephone (a ferry's information line), not a person's. nez_perce/points_of_interest.py SHARES this resource for the 110 stops.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the 25 driving-route lines need a layer_rules row (historic alignment, never routes) before any line of this table may draw."
+    },
+    {
       "key": "njdep_park_trails",
       "title": "NJ State Park Service Trails (NJDEP Bureau of GIS, Features/Land layer 63)",
       "provider": "NJDEP",
@@ -4148,6 +4180,101 @@
       "notes": "`total` 717 on 2026-10-04. Each tour's `type`: 650 'Standard', 52 'Driving', 13 'Non-Geo-Located', 2 'Test', so test tours are in NPS's live list and dbt must leave them out. Each with its duration range (`durationUnit` m, h or d), activities and topics, its park, and its ordered `stops` (6,782 in all), whose directions, significance and audio transcripts are prose that stops at base_. No tour carries a URL of its own. Museum walks and drives are tours too: 'Guided Tours' and 'Self-Guided Tours - Walking' are the commonest activities and 'Hiking' is on 220 of 717, so each tour's own activities say which is a hike.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model into int_suggested_hikes__club_unioned, and read by no mart yet: a tour is a list of stops, not a route, until a step forms one. Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "nps_api_places",
+      "title": "NPS Data API /places: every place the Park Service lists, nationally",
+      "provider": "NPS",
+      "kind": "json_features",
+      "url": "https://developer.nps.gov/api/v1/places",
+      "paging": "start_limit",
+      "page_size": 500,
+      "items_field": "data",
+      "total_field": "total",
+      "lat_field": "latitude",
+      "lon_field": "longitude",
+      "api_key_env": "NPS_API_KEY",
+      "api_key_header": "X-Api-Key",
+      "api_key_comment": "api.data.gov's gateway refuses a request with no key (API_KEY_MISSING, decision 53's inventory, nps_alerts' row). The key is read from NPS_API_KEY at run time and sent as `X-Api-Key`, never in the URL; with it unset the change check raises Unavailable and the table is withdrawn, never read as empty. refresh-reference.yml's monthly job does not pass NPS_API_KEY yet (extract-notices.yml does), so until a maintainer adds it there this table is unavailable.",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/subjects/developer/",
+      "licence": "PUBLIC DOMAIN on 17 U.S.C. 105, nps_trails' reading: the Park Service's own data, published through its developer API. The photos a place lists (`images`) carry their own credits and licences and are never loaded here.",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "terms": "Not re-read for this row: the API's terms are the gateway's key agreement (api.data.gov), which the maintainer's key accepted for nps_alerts (decision 53).",
+      "person_fields": [
+        "images",
+        "passportStampImages",
+        "multimedia",
+        "contacts",
+        "credit",
+        "audioDescription"
+      ],
+      "person_fields_comment": "Left out by name, read on the API's own item shape 2026-10-04: `images` and `passportStampImages` carry each photo's `credit`, a photographer's name; `contacts` the park's telephone numbers and e-mail addresses, which can be a person's; `multimedia` and `audioDescription` are media, not facts. A photo is never a fact here (decision 21a's presumption does not reach photos).",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://developer.nps.gov/api/v1/places",
+        "notes": "No change check: the list carries no modified date to hash (extract/_ogc.py's JsonFeatures answers UNKNOWN), so every monthly run reads it whole, 500 a page."
+      },
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the API's own UUID for the item. @unvalidated as unique on the live list: no real key has read the whole list (the demo key allows 10 requests an hour); the first monthly read with NPS_API_KEY settles it, and duplicates_are_exact fails loudly if it is not.",
+      "name_field": "title",
+      "category_field": "tags",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places and POI rows naming NPSAPI (coverage audit 2026-10-01), then one request each on 2026-10-04 with api.data.gov's public DEMO_KEY for the total and the item shape; nothing else, because the demo key's 10 requests an hour are shared.",
+      "discovered_date": "2026-10-04",
+      "notes": "17,505 places nationally by the API's own `total`, read 2026-10-04 with api.data.gov's public DEMO_KEY (one request, limit 2; the key is never used by the extract). The coverage audit read 17,483 on 2026-10-01. Fields include id, title, latitude, longitude, latLong, relatedParks (each park code a place belongs to), isOpenToPublic, isManagedByNps, managedByOrg, tags, amenities, url and prose (listingDescription, bodyText). One extraction for every club whose places the NPS lists (decision 34): octa, sfta, osta, ovta, pony_express, ecr_tejas, carta, ala_kahakai, chesapeake, tota, mormon_trails, butterfield, stsp, semo, pohe, natr, lcthf, anza and nez_perce draw their portion by `relatedParks` in dbt. A place that lists several parks (every one of POHE's 332 does, the coverage audit's skeptic) is one row, assigned to each.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: NPS_API_KEY is not passed to the monthly job, so nothing has been read with a real key."
+    },
+    {
+      "key": "nps_api_campgrounds",
+      "title": "NPS Data API /campgrounds: every campground the Park Service lists, nationally",
+      "provider": "NPS",
+      "kind": "json_features",
+      "url": "https://developer.nps.gov/api/v1/campgrounds",
+      "paging": "start_limit",
+      "page_size": 500,
+      "items_field": "data",
+      "total_field": "total",
+      "lat_field": "latitude",
+      "lon_field": "longitude",
+      "api_key_env": "NPS_API_KEY",
+      "api_key_header": "X-Api-Key",
+      "api_key_comment": "api.data.gov's gateway refuses a request with no key (API_KEY_MISSING, decision 53's inventory, nps_alerts' row). The key is read from NPS_API_KEY at run time and sent as `X-Api-Key`, never in the URL; with it unset the change check raises Unavailable and the table is withdrawn, never read as empty. refresh-reference.yml's monthly job does not pass NPS_API_KEY yet (extract-notices.yml does), so until a maintainer adds it there this table is unavailable.",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/subjects/developer/",
+      "licence": "PUBLIC DOMAIN on 17 U.S.C. 105, nps_trails' reading: the Park Service's own data, published through its developer API. The photos a place lists (`images`) carry their own credits and licences and are never loaded here.",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "terms": "Not re-read for this row: the API's terms are the gateway's key agreement (api.data.gov), which the maintainer's key accepted for nps_alerts (decision 53).",
+      "person_fields": [
+        "images",
+        "passportStampImages",
+        "multimedia",
+        "contacts",
+        "credit",
+        "audioDescription"
+      ],
+      "person_fields_comment": "Left out by name, read on the API's own item shape 2026-10-04: `images` and `passportStampImages` carry each photo's `credit`, a photographer's name; `contacts` the park's telephone numbers and e-mail addresses, which can be a person's; `multimedia` and `audioDescription` are media, not facts. A photo is never a fact here (decision 21a's presumption does not reach photos).",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://developer.nps.gov/api/v1/campgrounds",
+        "notes": "No change check: the list carries no modified date to hash (extract/_ogc.py's JsonFeatures answers UNKNOWN), so every monthly run reads it whole, 500 a page."
+      },
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the API's own UUID for the item. @unvalidated as unique on the live list: no real key has read the whole list (the demo key allows 10 requests an hour); the first monthly read with NPS_API_KEY settles it, and duplicates_are_exact fails loudly if it is not.",
+      "name_field": "name",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places and POI rows naming NPSAPI (coverage audit 2026-10-01), then one request each on 2026-10-04 with api.data.gov's public DEMO_KEY for the total and the item shape; nothing else, because the demo key's 10 requests an hour are shared.",
+      "discovered_date": "2026-10-04",
+      "notes": "665 campgrounds nationally by the API's own `total`, read 2026-10-04 with the public DEMO_KEY (one request, limit 2). Fields include id, name, parkCode, latitude, longitude, campsites, numberOfSitesReservable, numberOfSitesFirstComeFirstServe, amenities (potable water among them, as text), fees, operatingHours, reservationUrl and prose. The clubs whose POI cells name it (natr's three, semo's three) draw by `parkCode` in dbt. /visitorcenters, the third list the coverage audit names, answered 429 OVER_RATE_LIMIT on the demo key and is not registered.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: NPS_API_KEY is not passed to the monthly job; water maps only from the amenities' potable-water field."
     },
     {
       "key": "blm_trails",
@@ -10676,6 +10803,47 @@
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
     },
     {
+      "key": "mtsg_map_locations",
+      "title": "Mountains to Sound Greenway map locations: trailheads, campgrounds, parks and heritage sites (WordPress REST)",
+      "provider": "MTSG",
+      "kind": "json_features",
+      "url": "https://mtsgreenway.org/wp-json/wp/v2/cm-map-location",
+      "paging": "wordpress",
+      "page_size": 100,
+      "params": {
+        "_fields": "id,title,location,popup,cat,icon,modified_gmt,slug,link",
+        "_latlng": "acf_loc_address"
+      },
+      "params_comment": "The call the site's own map makes (the coverage audit, 2026-10-01): `_latlng=acf_loc_address` is what adds `location`; without it every item's location is null (read 2026-10-04).",
+      "lat_field": "location.lat",
+      "lon_field": "location.lng",
+      "id_field": "id",
+      "modified_field": "modified_gmt",
+      "trust": "authoritative",
+      "steward": "Mountains to Sound Greenway Trust",
+      "steward_contact": "https://mtsgreenway.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the trust's own map data, its site's public REST route, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. mtsgreenway.org's robots.txt (Yoast's), read 2026-10-04, disallows nothing.",
+      "licence_basis": "public_gis",
+      "attribution": "Mountains to Sound Greenway Trust",
+      "terms": "mtsgreenway.org footer, read 2026-10-04: \"© 2026 Mountains to Sound Greenway Trust\"; no terms page is linked. The trust's ArcGIS items read 'Greenway Trust' (mtsg_heritage_area_boundary's row).",
+      "freshness": {
+        "kind": "set_hash",
+        "url": "https://mtsgreenway.org/wp-json/wp/v2/cm-map-location",
+        "notes": "A hash of every item's (id, modified_gmt), read with the same paging and `_fields=id,modified_gmt`, beside X-WP-Total (extract/_ogc.py's JsonFeatures change check). The site's validators are site-wide (WordPress, decision 53's finding), so none decides FRESH; a location moved without a save would not move `modified_gmt` (Reasoned, @unvalidated)."
+      },
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the WordPress post id: unique on 185 of 185 (measured 2026-10-04 on both pages). A post id is the site's own primary key, kept across edits, not a row number a reload mints.",
+      "name_field": "title",
+      "type_field": "icon",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: both pages of the route as the site's own map asks for them for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "185 items (X-WP-Total, 2 pages at 100), 182 with `location.lat`/`lng`, read 2026-10-04. `icon` is the primary category: trails 47, cultural-and-natural-heritage-sites 40, parks-and-open-spaces 39, campgrounds 28, museums-and-education-centers 17, picnic-or-day-use-areas 8, visitor-information-centers 3, uncategorized 2, wildlife-information-and-viewing-area 1; `cat` holds every category. `popup` carries an image URL and the post's description (prose that stops at the base model). The 2 uncategorized items include 'REI Seattle Flagship Store', a shop.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: campgrounds and trailheads map by `icon`, which the POI mart reads only once a branch exists for it."
+    },
+    {
       "key": "sbts_trail_town_amenities",
       "title": "SBTS Amenities (trail-town services)",
       "provider": "SBTS",
@@ -10830,6 +10998,37 @@
       "notes": "1 polygon feature (returnCountOnly), 31 fields, maxRecordCount 2,000, served in EPSG:2913, layer lastEditDate 2020-10-19, all read 2026-10-03. KEY: NONE: no column but the object id `OBJECTID` is unique and non-null on all 1 rows read 2026-10-03, and a republish renumbers an object id, so phase C keys this table on its geometry or a column combination and says which. MART: kind `park`, one row. Low value: the preserve is not Forest Park itself (coverage audit). One polygon in PAD-US's schema (Own_Name, Mang_Name, GAP_Sts, IUCN_Cat), last edited 2020-10-19. Its own account's item, though the service name begins TNC_CRS. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Mon, 19 Oct 2020 20:23:39 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "fpc_forest_park_trailheads",
+      "title": "Forest Park Trailheads (Forest Park Conservancy's Google My Map)",
+      "provider": "Forest Park Conservancy",
+      "kind": "gis_file",
+      "url": "https://www.google.com/maps/d/kml?mid=1lykYs7fUx9AXn8VZlywlQGo-8fmYJHQ&forcekml=1",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Forest Park Conservancy",
+      "steward_contact": "https://forestparkconservancy.org/forest-park/maps/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The map is embedded on forestparkconservancy.org/forest-park/maps/, which carries no terms (read 2026-10-04). www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence_basis": "public_gis",
+      "attribution": "Forest Park Conservancy",
+      "terms": "None found: /forest-park/maps/ links no terms page and carries no copyright line (read 2026-10-04).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.google.com/maps/d/kml?mid=1lykYs7fUx9AXn8VZlywlQGo-8fmYJHQ&forcekml=1",
+        "notes": "30,745 bytes. 200 text/xml; charset=utf-8, no ETag, no Last-Modified, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole export."
+      },
+      "name_field": "name",
+      "type_field": "folder",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 19 of 19 (measured 2026-10-04 on the live export). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "19 trailhead points in one folder, 'Trail Heads' (e.g. 'Thurman: Leif Erikson Drive', 'Germantown: Wildwood Trail', 'Lower Macleay Park', 'Pittock Mansion site'), read 2026-10-04: 30,745 bytes. Each description is an <img> of the trailhead (gx_media_links), hosted on mymaps.usercontent.google.com; no photo lands as a photo.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trailheads publish once the POI mart's trailhead branch reads this table."
     },
     {
       "key": "ttc_management_areas",
@@ -12299,6 +12498,36 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nc_high_peaks__nchpta_open_trails reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "nchpta_trails",
+      "title": "NC High Peaks trails: the Black Mountains' USFS, state park and MST trails (the association's KML)",
+      "provider": "NCHPTA",
+      "kind": "gis_file",
+      "url": "https://nchighpeaks.org/interactivemaps/TrailSunday3.xml",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "NC High Peaks Trail Association",
+      "steward_contact": "https://nchighpeaks.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. DECISION 37 READING: the site's footer reads 'Copyright 2026- All Rights Reserved' (`terms`), and decision 37 extends 21(a) to a layer served anonymously on a public endpoint whatever such words say, which this file, the one the association's interactive map loads, is. The words stay quoted.",
+      "licence_basis": "public_gis",
+      "attribution": "NC High Peaks Trail Association",
+      "terms": "nchighpeaks.org footer, read 2026-10-04: \"Copyright 2026- All Rights Reserved\". No terms page is linked (decision 53's inventory, batch 2).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://nchighpeaks.org/interactivemaps/TrailSunday3.xml",
+        "notes": "621,078 bytes, ETag \"63e3eec7-97a16\" on GET and \"97a16-5f434ba3b816d-gzip\" on HEAD, Last-Modified 2023-02-08 (read 2026-10-04): the change check compares the HEAD's ETag, a file ETag that moves with the file."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 28 of 28 (measured 2026-10-04). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "28 MultiGeometry lines, read 2026-10-04, last modified 2023-02-08: USFS trails 161 to 201 by number and name ('179-Black Mountain Crest Trail', '178-Colbert Ridge Trail', '190-Mount Mitchell Trail' …), Mount Mitchell State Park's trails and 4 MST pieces ('MSTa-Mountains to Sea Trail (Balsam Gap-NC128)' …). The USFS and MST lines are independent of usfs_trails and nc_mst_trail, which dbt deduplicates.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trail lines publish once int_trail_lines__club_lines reads this table."
+    },
+    {
       "key": "ohta_trail_alerts",
       "title": "Ozark Highlands Trail alerts",
       "provider": "OHTA",
@@ -12350,6 +12579,36 @@
         "excerpt"
       ],
       "person_fields_comment": "Decision 59 leaves a free-text field that carries personal data out whole: on 2026-10-03 these posts' `content` carried a club maintenance e-mail address three times and a telephone number. WordpressPosts drops the row's person_fields before dlt sees the post, so the body never reaches the raw store; the title, dates, categories and link are what a notice publishes anyway (decision 55)."
+    },
+    {
+      "key": "ohta_website_track",
+      "title": "OHTA Website Track: the Ozark Highlands Trail's five sections (Google My Map)",
+      "provider": "OHTA",
+      "kind": "gis_file",
+      "url": "https://www.google.com/maps/d/kml?mid=1T9D3RqcVbXKh8XFmVGrJFF7C6c7wH00&forcekml=1",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Ozark Highlands Trail Association",
+      "steward_contact": "https://www.ozarkhighlandstrail.com/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The coverage audit read the map captioned \"For illustrative purposes only\" (2026-10-01), so it never outranks USFS's line. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence_basis": "public_gis",
+      "attribution": "Ozark Highlands Trail Association",
+      "terms": "ozarkhighlandstrail.com footer, read 2026-10-04: \"© Copyright 2026 OHTA\"; no terms page is linked (decision 53's inventory, batch 2, ohta_trail_alerts' row). The map's caption, as the coverage audit read it: \"For illustrative purposes only\".",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.google.com/maps/d/kml?mid=1T9D3RqcVbXKh8XFmVGrJFF7C6c7wH00&forcekml=1",
+        "notes": "167,342 bytes. 200 text/xml; charset=utf-8, no ETag, no Last-Modified, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole export."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 5 of 5 (measured 2026-10-04 on the live export). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "5 lines in one folder, 'OHT Website Track', read 2026-10-04: Boston Mountains, OHT/BRT, Lower Buffalo Bushwhack, Sylamore, Lake Norfork, each description its own name. The Lower Buffalo Bushwhack is not in USFS's data (the coverage audit); a bushwhack is a route across country, not tread.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: 'for illustrative purposes only' is a caption no decision names, and the bushwhack needs a rule before it draws as trail."
     },
     {
       "key": "palmetto_trail_closures",
@@ -12883,6 +13142,126 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nbatc__nbatc_announcements reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "nbatc_trails",
+      "title": "NBATC trails: the A.T. and side trails the club maintains (KML)",
+      "provider": "NBATC",
+      "kind": "gis_file",
+      "url": "https://home.nbatc.org/MapData/NBATC_Trails_015.kml",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Natural Bridge Appalachian Trail Club",
+      "steward_contact": "https://home.nbatc.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files sit under home.nbatc.org/MapData/, which the club's Maps page links.",
+      "licence_basis": "public_gis",
+      "attribution": "Natural Bridge Appalachian Trail Club",
+      "terms": "home.nbatc.org's footer, read 2026-10-04: \"©2012 - Natural Bridge Appalachian Trail Club\". No terms page; robots.txt answers 404 (read 2026-10-04), which RFC 9309 reads as no rule.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://home.nbatc.org/MapData/NBATC_Trails_015.kml",
+        "notes": "467,784 bytes, Last-Modified Thu, 19 May 2016 19:33:06 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 49 of 49 (measured 2026-10-04). `name` is 48 of 49.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "49 LineStrings in one folder, 'Tracks', read 2026-10-04: the A.T. segments and blue-blazed side trails the club maintains, last modified 2016-05-19. The document puts `xsi:schemaLocation` on its <Document> without declaring `xsi`, which extract/_gis_files.py's parser tolerates. Independent of ATC's centerline and side trails (the club's own GPS lines), so both load and dbt deduplicates; 10 of the club's 20 blue-blazers match no name in ATC's side trails (the coverage audit, 2026-10-01).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: ten years old, and its A.T. segments duplicate ATC's newer centerline."
+    },
+    {
+      "key": "nbatc_trail_features",
+      "title": "NBATC trail features: bridges, parking, summits and crossings (KMZ)",
+      "provider": "NBATC",
+      "kind": "gis_file",
+      "url": "https://home.nbatc.org/MapData/NBATC_Trail_Features_01.kmz",
+      "file_format": "kmz",
+      "trust": "authoritative",
+      "steward": "Natural Bridge Appalachian Trail Club",
+      "steward_contact": "https://home.nbatc.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files sit under home.nbatc.org/MapData/, which the club's Maps page links.",
+      "licence_basis": "public_gis",
+      "attribution": "Natural Bridge Appalachian Trail Club",
+      "terms": "home.nbatc.org's footer, read 2026-10-04: \"©2012 - Natural Bridge Appalachian Trail Club\". No terms page; robots.txt answers 404 (read 2026-10-04), which RFC 9309 reads as no rule.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://home.nbatc.org/MapData/NBATC_Trail_Features_01.kmz",
+        "notes": "1,566 bytes, Last-Modified Tue, 23 Jul 2024 20:50:05 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 25 of 25 (measured 2026-10-04). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "25 placemarks in the KMZ's doc.kml, read 2026-10-04 (22 points, 3 MultiGeometry points): bridges (James River Foot Bridge, Pedlar River Foot Bridge, Upper and Lower Rocky Row Run Bridge), parking (Petites Gap Parking, Trailhead Parking), summits (Apple Orchard Mountain, Bald Knob, Highcock Knob …) and crossings (Punch Bowl BLRI Crossing, Hercules Rd Crossing), last modified 2024-07-23. No type field: a feature's kind is in its name only.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: no type field, so a point's kind would be read from its name, which the POI mart never does."
+    },
+    {
+      "key": "nbatc_shelters",
+      "title": "NBATC shelters (KML, 2013)",
+      "provider": "NBATC",
+      "kind": "gis_file",
+      "url": "https://home.nbatc.org/MapData/NBATC_Shelters_000.kml",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Natural Bridge Appalachian Trail Club",
+      "steward_contact": "https://home.nbatc.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files sit under home.nbatc.org/MapData/, which the club's Maps page links.",
+      "licence_basis": "public_gis",
+      "attribution": "Natural Bridge Appalachian Trail Club",
+      "terms": "home.nbatc.org's footer, read 2026-10-04: \"©2012 - Natural Bridge Appalachian Trail Club\". No terms page; robots.txt answers 404 (read 2026-10-04), which RFC 9309 reads as no rule.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://home.nbatc.org/MapData/NBATC_Shelters_000.kml",
+        "notes": "11,537 bytes, Last-Modified Sun, 17 Feb 2013 19:38:44 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 12 of 12 (measured 2026-10-04). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "12 shelter points, read 2026-10-04, last modified 2013-02-17: Seeley-Woodworth, Bobblets Gap, Cove Mountain, Cornelius Creek, Brown Mountain Creek, Johns Hollow, Thunder Hill, Bryant Ridge, Punchbowl, Matts Creek, The Priest and Cow Camp. ATC's loaded shelters layer carries the same shelters, newer; dbt deduplicates. Thirteen years old: a shelter moved or removed since is not reflected.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: 2013, and ATC's shelters are the newer source for the same 12."
+    },
+    {
+      "key": "nbatc_trail_info",
+      "title": "NBATC trail information points (KML, 2013)",
+      "provider": "NBATC",
+      "kind": "gis_file",
+      "url": "https://home.nbatc.org/MapData/NBATC_TrailInfo_002.kml",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Natural Bridge Appalachian Trail Club",
+      "steward_contact": "https://home.nbatc.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files sit under home.nbatc.org/MapData/, which the club's Maps page links.",
+      "licence_basis": "public_gis",
+      "attribution": "Natural Bridge Appalachian Trail Club",
+      "terms": "home.nbatc.org's footer, read 2026-10-04: \"©2012 - Natural Bridge Appalachian Trail Club\". No terms page; robots.txt answers 404 (read 2026-10-04), which RFC 9309 reads as no rule.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://home.nbatc.org/MapData/NBATC_TrailInfo_002.kml",
+        "notes": "8,965 bytes, Last-Modified Sun, 17 Feb 2013 19:38:44 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 12 of 12 (measured 2026-10-04). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "12 points, read 2026-10-04, last modified 2013-02-17: hike and feature points (Mau-Har Three Ridges Loop, Bluff Mtn -- Ottie Cline Memorial, The Priest, Spy Rock, Cold Mountain, Apple Orchard Falls Trail, Southern end of NBATC section …), each with a description.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: 2013, no type field."
+    },
+    {
       "key": "alaska_state_parks_conditions",
       "title": "Alaska State Parks current park conditions",
       "provider": "Alaska State Parks",
@@ -13265,6 +13644,37 @@
       "notes": "One row: the WordPress page's notice, read through its REST route (extract/_notices.py's PageNotice, `wp_page`), keyed by `url`. Read 2026-10-03: page 42307, title 'Marble Creek', date 2025-01-01 from its modified_gmt (the page's 'Trail Conditions' block stamps its own months, '4/2025 Trail Update', which the reader does not read: a month is not a day). One of the 14 section pages that carry a 'Trail Conditions' block; the site answers X-WP-Total 70 for its pages.",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_ota__ota_marble_creek_conditions reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
+      "key": "ota_trail_map",
+      "title": "Ozark Trail map: trail lines and trailheads (Ozark Trail Association's Google My Map)",
+      "provider": "OTA",
+      "kind": "gis_file",
+      "url": "https://www.google.com/maps/d/kml?mid=1k4nsYuKHFtLk05shVlUX-L9tb-clI7iX&forcekml=1",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Ozark Trail Association",
+      "steward_contact": "https://ozarktrail.com/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The website's terms restrict reproduction (`terms`); that is the site's text, not the map's, and no decision names it, so publication goes to the maintainer. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence_basis": "public_gis",
+      "attribution": "Ozark Trail Association",
+      "terms": "https://ozarktrail.com/terms-of-use/ (modified 2018-04-27), as decision 53's inventory quoted it (batch 5, 2026-10-03) on ota_current_river_conditions' row: \"Reproduction is prohibited other than in accordance with the copyright notice, which forms part of these terms and conditions.\"",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.google.com/maps/d/kml?mid=1k4nsYuKHFtLk05shVlUX-L9tb-clI7iX&forcekml=1",
+        "notes": "1,891,019 bytes. 200 text/xml; charset=utf-8, no ETag, no Last-Modified, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole export."
+      },
+      "name_field": "name",
+      "type_field": "folder",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 161 of 161 (measured 2026-10-04 on the live export). `name` is 158 of 161.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "161 placemarks in 8 folders, read 2026-10-04 (the map embedded on ozarktrail.com/maps/): Trailhead 72 points, each description 'Elevation = … ft <br>Coordinates = … <br>Type = Trailhead'; Main Trail 18 lines, Connecting Trail 38 (2 of them MultiGeometry), Trailhead Spur 24, OT Spur Trail 4, Alternate Trail 2, 'Road - White' 2 and Nearby trail 1. The two 'Road - White' lines are roads, which int_trail_lines__club_lines drops by a layer_rules row before this table may draw. The coverage audit's 14 per-section 'GPS Download' zips are not registered: nobody compared them with this map. ota/points_of_interest.py SHARES this resource for the 72 trailheads.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the site's terms (`terms`) restrict reproduction, which no decision names, and the 2 road lines need a layer_rules row."
     },
     {
       "key": "bta_section_burton",
@@ -13969,6 +14379,37 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_bmecc__bmecc_appalachian_trail reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "bmecc_trail_section_map",
+      "title": "BMECC Trail Section: shelters, springs, parking, vistas and hospital ERs (Google My Map)",
+      "provider": "BMECC",
+      "kind": "gis_file",
+      "url": "https://www.google.com/maps/d/kml?mid=1AhhnnzcYgmH6WVNvJeqcjtgiZRgSd8wg&forcekml=1",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Blue Mountain Eagle Climbing Club",
+      "steward_contact": "https://www.bmecc.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The club's site states nothing (`terms`). The map's own caption, as the coverage audit read it, says it is \"not intended for navigation purposes\". www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence_basis": "public_gis",
+      "attribution": "Blue Mountain Eagle Climbing Club",
+      "terms": "None found: a Google Sites site with no terms page; its robots.txt answers 404 (decision 53's inventory, batch 2, 2026-10-03, bmecc_appalachian_trail's row). The coverage audit read the map's caption as \"not intended for navigation purposes\" (2026-10-01).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.google.com/maps/d/kml?mid=1AhhnnzcYgmH6WVNvJeqcjtgiZRgSd8wg&forcekml=1",
+        "notes": "1,508,180 bytes. 200 text/xml; charset=utf-8, no ETag, no Last-Modified, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole export."
+      },
+      "name_field": "name",
+      "type_field": "folder",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 111 of 111 (measured 2026-10-04 on the live export). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "111 placemarks in 10 folders, read 2026-10-04: Parking 20, Shelters 9, Campsites 4, Springs 16, Vistas 34, Hospital Emergency Rooms 18 and Access Points 7 (points), and 3 lines (BMECC Northern Section, BMECC Southern Section, 'Appalachian Trail - Pennsylvania'). 63 points carry ExtendedData Type, Club ('BMECC'), Name, Latitude and Longitude; `Name` lands as `property_Name` beside the placemark's own `name`. The 18 hospital ERs' descriptions give each hospital's street address and switchboard number, an institution's, not a person's. WATER: a spring here is a place named Spring, with no potability or reliability field, so it never maps to drinking water (pipeline/ELT.md: 'Each maps by the field that says potability, never by a layer's or a type's name'). The shelters and parking overlap ATC's loaded layers; dbt deduplicates. bmecc/trail_lines.py and bmecc/places.py SHARE this resource.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the springs carry no potability field, the lines duplicate ATC's centerline and are captioned not for navigation, and the hospital ERs need a places kind (getting off the trail quickly)."
+    },
+    {
       "key": "bmta_alerts_pdf",
       "title": "BMTA Current Alerts & Advisories",
       "provider": "BMTA",
@@ -14043,6 +14484,227 @@
       "notes": "The one section page of the 33 that carried a NOTE banner on 2026-10-01 and 2026-10-03 (active logging south of the Jay Country Store), read through WordPress page 12414. The other 32 section pages are not read: a banner posted on one of them is missed until it is registered (see catamount/closures.py). Read live at 2026-10-03T22:00:23Z under lib/user_agent.py's agent, robots.txt allows the path for our agent, no Crawl-delay: HTTP 200, 7,329 bytes, no ETag or Last-Modified. Through PageNotice that answer lands one row: title 'Section 31: Jay Pass to Canadian Border', its date 2025-09-18 (wp_modified, stated as '2025-09-18T01:18:50'), region `wp:content` of 2,390 characters. The key is `url`: one row a page, 1 distinct of 1.",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_catamount__catamount_section_31 reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
+      "key": "catamount_main_trail",
+      "title": "Catamount Trail main route, by surface (the association's web map GeoJSON)",
+      "provider": "Catamount Trail Association",
+      "kind": "gis_file",
+      "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_MAINTRAIL_MASTER_WEBMAP.geojson",
+      "file_format": "geojson",
+      "trust": "authoritative",
+      "steward": "Catamount Trail Association",
+      "steward_contact": "https://catamounttrail.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files are the data behind the association's own interactive trail map (`/CTA_TrailMap/`) and its GPX download.",
+      "licence_basis": "public_gis",
+      "attribution": "Catamount Trail Association",
+      "terms": "None found: no terms page found on catamounttrail.org (decision 53's inventory, batch 2, 2026-10-03, catamount_section_31's row).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_MAINTRAIL_MASTER_WEBMAP.geojson",
+        "notes": "871,075 bytes, Last-Modified Tue, 19 Sep 2023 15:33:18 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "name_constant": "Catamount Trail",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 789 of 793 after 4 exact copies (OBJECTID 52 and 53, 127 and 128, 148 and 149, 259 and 260 repeat a line and its SURFACE), measured 2026-10-04; the features' `id` and OBJECTID are an export's row numbers (decision 40), which duplicates_are_exact sets aside.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "793 LineStrings, read 2026-10-04, last modified 2023-09-19, no crs member (RFC 7946 longitude-latitude): OBJECTID, SURFACE (Ungroomed 489, Snowmobile 179, Road Walk 69, Groomed Nordic 30, Unplowed Road 26) and Shape_Length in degrees. No name: every line is the Catamount Trail. A SKI TRAIL: the Catamount Trail is a backcountry and Nordic ski route, much of it on snowmobile corridors and unplowed roads, so a line here is seasonal (winter), like BLM's Iditarod line, and needs layer_rules' season before it draws. The association's own page says the map and GPX 'were last updated in 2021, so some reroutes will not be available' (the coverage audit).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: a winter ski route, which needs layer_rules' season; the road walks are roads."
+    },
+    {
+      "key": "catamount_side_trails",
+      "title": "Catamount Trail side trails, by surface (the association's web map GeoJSON)",
+      "provider": "Catamount Trail Association",
+      "kind": "gis_file",
+      "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_SIDETRAILS_MASTER_WEBMAP.geojson",
+      "file_format": "geojson",
+      "trust": "authoritative",
+      "steward": "Catamount Trail Association",
+      "steward_contact": "https://catamounttrail.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files are the data behind the association's own interactive trail map (`/CTA_TrailMap/`) and its GPX download.",
+      "licence_basis": "public_gis",
+      "attribution": "Catamount Trail Association",
+      "terms": "None found: no terms page found on catamounttrail.org (decision 53's inventory, batch 2, 2026-10-03, catamount_section_31's row).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_SIDETRAILS_MASTER_WEBMAP.geojson",
+        "notes": "803,294 bytes, Last-Modified Mon, 27 Nov 2017 16:35:34 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "name_constant": "Catamount Trail side trail",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 324 of 325 after 1 exact copy (positions 85 and 100, both Snowmobile), measured 2026-10-04.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "325 LineStrings, read 2026-10-04, last modified 2017-11-27, crs CRS84: SURFACE only (Snowmobile 264, Ungroomed 53, Groomed Nordic 4, Unplowed Road 4). A SKI TRAIL: the Catamount Trail is a backcountry and Nordic ski route, much of it on snowmobile corridors and unplowed roads, so a line here is seasonal (winter), like BLM's Iditarod line, and needs layer_rules' season before it draws.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: a winter ski network, mostly snowmobile corridors; needs layer_rules' season."
+    },
+    {
+      "key": "catamount_full_route",
+      "title": "Catamount Trail full route, December 2022 (the association's GPX download)",
+      "provider": "Catamount Trail Association",
+      "kind": "gis_file",
+      "url": "https://catamounttrail.org/wp-content/uploads/CT_fullRoute_gpxKML_122022.zip",
+      "file_format": "zip",
+      "trust": "authoritative",
+      "steward": "Catamount Trail Association",
+      "steward_contact": "https://catamounttrail.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files are the data behind the association's own interactive trail map (`/CTA_TrailMap/`) and its GPX download.",
+      "licence_basis": "public_gis",
+      "attribution": "Catamount Trail Association",
+      "terms": "None found: no terms page found on catamounttrail.org (decision 53's inventory, batch 2, 2026-10-03, catamount_section_31's row).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://catamounttrail.org/wp-content/uploads/CT_fullRoute_gpxKML_122022.zip",
+        "notes": "479,596 bytes, Last-Modified Tue, 20 Dec 2022 17:56:40 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "zip_members": [
+        ".gpx"
+      ],
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 6 of 6 (measured 2026-10-04). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "A zip of the same route twice, 'untitled folder/Catamount_Trail_Route.gpx' (1,092,570 bytes) and .kml (736,653), plus macOS resource forks; the row reads the GPX only (`zip_members`), because the KML is the same 6 lines in another format inside the same download (parsed 2026-10-04: 6 LineStrings each, the same names). 6 tracks: 'CT', 'OLD CT - Camels Hump', 'South Pond Side Trail', 'South Pond Connector South - Unofficial', 'Side Trail - Double Bridges to Burrows Parking', 'Side Trail - to Forest City Parking'. 'OLD CT' is a former alignment and 'Unofficial' a connector the association does not sign; neither draws as trail. A SKI TRAIL: the Catamount Trail is a backcountry and Nordic ski route, much of it on snowmobile corridors and unplowed roads, so a line here is seasonal (winter), like BLM's Iditarod line, and needs layer_rules' season before it draws.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: a winter route; 'OLD CT - Camels Hump' is a former alignment that never routes."
+    },
+    {
+      "key": "catamount_sections",
+      "title": "Catamount Trail sections (the association's web map GeoJSON, polygons)",
+      "provider": "Catamount Trail Association",
+      "kind": "gis_file",
+      "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_SECTIONS_WEBMAP.geojson",
+      "file_format": "geojson",
+      "trust": "authoritative",
+      "steward": "Catamount Trail Association",
+      "steward_contact": "https://catamounttrail.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files are the data behind the association's own interactive trail map (`/CTA_TrailMap/`) and its GPX download.",
+      "licence_basis": "public_gis",
+      "attribution": "Catamount Trail Association",
+      "terms": "None found: no terms page found on catamounttrail.org (decision 53's inventory, batch 2, 2026-10-03, catamount_section_31's row).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_SECTIONS_WEBMAP.geojson",
+        "notes": "10,979 bytes, Last-Modified Mon, 27 Nov 2017 16:35:32 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "name_field": "Section",
+      "place_kind": "section",
+      "place_kind_comment": "The places-mart kind a numbered section of trail maps onto (the places shape's 'a section of trail').",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 31 of 31 (measured 2026-10-04). `Section` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "31 polygons, read 2026-10-04, last modified 2017-11-27, crs CRS84, one field: Section (1 to 31), the trail's numbered sections.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Sections publish once the places mart reads this table as `section` places."
+    },
+    {
+      "key": "catamount_access_points",
+      "title": "Catamount Trail access points (the association's web map CSV)",
+      "provider": "Catamount Trail Association",
+      "kind": "gis_file",
+      "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_ACCESS_MASTER_WEBMAP.csv",
+      "file_format": "csv_points",
+      "trust": "authoritative",
+      "steward": "Catamount Trail Association",
+      "steward_contact": "https://catamounttrail.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files are the data behind the association's own interactive trail map (`/CTA_TrailMap/`) and its GPX download.",
+      "licence_basis": "public_gis",
+      "attribution": "Catamount Trail Association",
+      "terms": "None found: no terms page found on catamounttrail.org (decision 53's inventory, batch 2, 2026-10-03, catamount_section_31's row).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_ACCESS_MASTER_WEBMAP.csv",
+        "notes": "4,257 bytes, Last-Modified Mon, 27 Nov 2017 16:35:31 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "lat_field": "LATITUDE",
+      "lon_field": "LONGITUDE",
+      "name_field": "LOCATION",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 80 of 80 (measured 2026-10-04).",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "80 rows, read 2026-10-04, last modified 2017-11-27: LOCATION, LONGITUDE, LATITUDE and PRIMARY (Yes or No), the trail's access points. Every column lands as text; the Point is made from LATITUDE and LONGITUDE (`lat_field`, `lon_field`).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Access points publish once the POI mart's trailhead branch reads this table."
+    },
+    {
+      "key": "catamount_businesses",
+      "title": "Businesses near the Catamount Trail: lodging, food, Nordic and alpine centres (web map CSV)",
+      "provider": "Catamount Trail Association",
+      "kind": "gis_file",
+      "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_POI_MASTER_WEBMAP.csv",
+      "file_format": "csv_points",
+      "trust": "authoritative",
+      "steward": "Catamount Trail Association",
+      "steward_contact": "https://catamounttrail.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files are the data behind the association's own interactive trail map (`/CTA_TrailMap/`) and its GPX download.",
+      "licence_basis": "public_gis",
+      "attribution": "Catamount Trail Association",
+      "terms": "None found: no terms page found on catamounttrail.org (decision 53's inventory, batch 2, 2026-10-03, catamount_section_31's row).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_POI_MASTER_WEBMAP.csv",
+        "notes": "20,232 bytes, Last-Modified Mon, 27 Nov 2017 16:35:32 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "lat_field": "LATITUDE",
+      "lon_field": "LONGITUDE",
+      "name_field": "NAME",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 77 of 77 (measured 2026-10-04). NAME is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "77 rows, read 2026-10-04, last modified 2017-11-27: NAME, URL, LATITUDE, LONGITUDE, ABSTRACT (the business's own blurb, prose that stops at the base model), LODGING, FOOD, NORDIC, ALPINE and SPONSOR (Yes or No). Businesses, nine years old. Every column lands as text; the Point is made from LATITUDE and LONGITUDE (`lat_field`, `lon_field`).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: commercial listings from 2017, which the places mart has no kind for."
+    },
+    {
+      "key": "catamount_backcountry_zones",
+      "title": "Catamount Trail backcountry ski zones (web map CSV)",
+      "provider": "Catamount Trail Association",
+      "kind": "gis_file",
+      "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_BACKCOUNTRY_MASTER_WEBMAP.csv",
+      "file_format": "csv_points",
+      "trust": "authoritative",
+      "steward": "Catamount Trail Association",
+      "steward_contact": "https://catamounttrail.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The files are the data behind the association's own interactive trail map (`/CTA_TrailMap/`) and its GPX download.",
+      "licence_basis": "public_gis",
+      "attribution": "Catamount Trail Association",
+      "terms": "None found: no terms page found on catamounttrail.org (decision 53's inventory, batch 2, 2026-10-03, catamount_section_31's row).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://catamounttrail.org/CTA_TrailMap/data/CTA_BACKCOUNTRY_MASTER_WEBMAP.csv",
+        "notes": "2,101 bytes, Last-Modified Mon, 27 Nov 2017 16:35:31 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "lat_field": "LATITUDE",
+      "lon_field": "LONGITUDE",
+      "name_field": "NAME",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 6 of 6 (measured 2026-10-04).",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "6 rows, read 2026-10-04: NAME, URL, LATITUDE, LONGITUDE and ABSTRACT (prose): backcountry ski zones such as Braintree Mountain Forest and Brandon Gap (RASTA's). Every column lands as text; the Point is made from LATITUDE and LONGITUDE (`lat_field`, `lon_field`).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: ski zones, which the places mart has no kind for."
     },
     {
       "key": "cfpa_trail_notices",
@@ -15083,6 +15745,315 @@
       "notes": "The child pages of page 2040, `/trails/` (the child pages route, `parent=2040`): X-WP-Total 38, 38 rows in one page of 100, modified 2023-01-31 to 2023-02-05, read 2026-10-04T07:42:14+00:00. 35 of the 38 carry the same four sections, SUMMARY, DESCRIPTION, GETTING THERE and CONDITIONS (the coverage audit); the CONDITIONS are 2020 to 2023 snapshots and must never feed a closure or a warning. The robots.txt is Yoast's `User-agent: * / Disallow:` and asks no Crawl-delay.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "rmfi_project_map",
+      "title": "RMFI Project Map: project sites past, present and ongoing (Google My Map)",
+      "provider": "RMFI",
+      "kind": "gis_file",
+      "url": "https://www.google.com/maps/d/kml?mid=1JYWuK-xRDI4gA8zuREE894PcnZEtMUk&forcekml=1",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Rocky Mountain Field Institute",
+      "steward_contact": "https://www.rmfi.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. rmfi.org's footer reads '© 2026 Rocky Mountain Field Institute, Inc.' (read 2026-10-04), a copyright line and no licence. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence_basis": "public_gis",
+      "attribution": "Rocky Mountain Field Institute",
+      "terms": "rmfi.org footer, read 2026-10-04: \"© 2026 Rocky Mountain Field Institute, Inc.\" No terms page is linked; /privacy-policy is a privacy notice.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.google.com/maps/d/kml?mid=1JYWuK-xRDI4gA8zuREE894PcnZEtMUk&forcekml=1",
+        "notes": "14,475 bytes. 200 text/xml; charset=utf-8, no ETag, no Last-Modified, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole export."
+      },
+      "name_field": "name",
+      "place_kind_comment": "No places-mart kind fits a work-project site; none is set.",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 46 of 46 (measured 2026-10-04 on the live export). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "46 points in one folder, 'RMFI Project Past , Present and Ongoing' (Garden of the Gods, Pikes Peak, Red Rock Canyon Open Space, The Pineries Open Space, Cheesman Canyon ...), read 2026-10-04: 14,475 bytes, no descriptions, no ExtendedData, the coverage audit's 46 again. Work-project sites, which the places mart has no kind for yet: a site is where the institute worked, not a park boundary or a town.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the places mart has no kind for a project site, so it waits for one."
+    },
+    {
+      "key": "bartram_trail_markers_map",
+      "title": "Bartram Trail Markers (Bartram Trail Conference's Google My Map)",
+      "provider": "Bartram Trail Conference",
+      "kind": "gis_file",
+      "url": "https://www.google.com/maps/d/kml?mid=1ek21kngs9TQ-bAbmjDWtpFWGvLw-Cwre&forcekml=1",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Bartram Trail Conference",
+      "steward_contact": "https://bartramtrail.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence_basis": "public_gis",
+      "attribution": "Bartram Trail Conference",
+      "terms": "bartramtrail.org footer, read 2026-10-04: \"© Bartram Trail Conference\" (a Wild Apricot site; no terms page is linked). Neither KML names a licence.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.google.com/maps/d/kml?mid=1ek21kngs9TQ-bAbmjDWtpFWGvLw-Cwre&forcekml=1",
+        "notes": "487,459 bytes. 200 text/xml; charset=utf-8, no ETag, no Last-Modified, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole export."
+      },
+      "name_field": "name",
+      "category_field": "folder",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 127 of 127 (measured 2026-10-04 on the live export). `name` is 70 of 127.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "127 placemarks in 2 folders, read 2026-10-04 (embedded on /page-1647832): 'Just Bartram Markers with Text Support.csv' 88 points, each a historical marker with ExtendedData Part Of Trail, Location Description, Lat. Lng., Marker Text, State, Country, ID and Supporting Text; 'Bartram Trail' 38 lines and 1 polygon, the route of William Bartram's 1773-1777 travels as the conference draws it. A HISTORIC ROUTE, NOT TREAD: the lines never route and never draw as a trail. The markers are places to visit, not trail facilities.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the 38 lines are a historic route and need a layer_rules row; the places mart has no kind for a historical marker."
+    },
+    {
+      "key": "bartram_trail_map",
+      "title": "Bartram Trail: sites, markers, properties and routes (Bartram Trail Conference's Google My Map)",
+      "provider": "Bartram Trail Conference",
+      "kind": "gis_file",
+      "url": "https://www.google.com/maps/d/kml?mid=z-XY_0WikHLg.kpJrukA3Genw&forcekml=1",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Bartram Trail Conference",
+      "steward_contact": "https://bartramtrail.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence_basis": "public_gis",
+      "attribution": "Bartram Trail Conference",
+      "terms": "bartramtrail.org footer, read 2026-10-04: \"© Bartram Trail Conference\" (a Wild Apricot site; no terms page is linked). Neither KML names a licence.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.google.com/maps/d/kml?mid=z-XY_0WikHLg.kpJrukA3Genw&forcekml=1",
+        "notes": "464,280 bytes. 200 text/xml; charset=utf-8, no ETag, no Last-Modified, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole export."
+      },
+      "name_field": "name",
+      "category_field": "folder",
+      "key_fields": [
+        "geometry",
+        "description"
+      ],
+      "key_comment": "The geometry with `description`: unique on 245 of 245 (measured 2026-10-04 on the live export). The geometry alone is 210 of 245, because 35 'Markers' placemarks carry no geometry at all and differ only in their text.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "245 placemarks in 7 folders, read 2026-10-04 (embedded on /page-1647833; the legacy `mid` redirects to mid=1JSaaiHnemeuLmR_vUIjlnM-N_F4, which serves the same export): Bartram Sites 65 points, Markers 41 points and 35 placemarks with no geometry, Bartram Trail 38 lines, 3 points and 1 polygon, John Bartram 1765 14 lines, Properties 5 polygons, Federal_Road 22 lines and Branches 21 lines (one description is a shapefile's attribute dump, 'FID 20 … Source La Tourette'). Every line is a historic route (William and John Bartram's travels, the Federal Road), never tread.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: every line is a historic route and needs a layer_rules row; 35 placemarks have no geometry."
+    },
+    {
+      "key": "phta_trails_map",
+      "title": "PHTA Trails (Potomac Heritage Trail Association's Google My Map)",
+      "provider": "Potomac Heritage Trail Association",
+      "kind": "gis_file",
+      "url": "https://www.google.com/maps/d/kml?mid=1jTNQ94C3mkIAbXihNPY2Wk4j1_W9fPV8&forcekml=1",
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Potomac Heritage Trail Association",
+      "steward_contact": "https://potomacheritage.org/maps",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. No licence is stated (the coverage audit, 2026-10-01). www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence_basis": "public_gis",
+      "attribution": "Potomac Heritage Trail Association",
+      "terms": "Not read: potomacheritage.org did not answer through this session's proxy (502 on the tunnel, 2026-10-04), so no terms page was read; the coverage audit found no licence on the map or the /maps page (2026-10-01).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.google.com/maps/d/kml?mid=1jTNQ94C3mkIAbXihNPY2Wk4j1_W9fPV8&forcekml=1",
+        "notes": "955,075 bytes. 200 text/xml; charset=utf-8, no ETag, no Last-Modified, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole export."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry",
+        "name"
+      ],
+      "key_comment": "The geometry with `name`: unique on 180 of 183 after 3 exact copies, which differ only in their position in the file (measured 2026-10-04 on the live export; duplicates_are_exact sets the position aside). The geometry alone is 173: a GPX import's 'Start of'/'End of' points share a vertex with the next track's.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "183 placemarks in 16 folders, read 2026-10-04: 127 lines and 56 points, the folders named for trails (Potomac Heritage Trail 72 lines, Cross County Trail 13, C&O 13, Bull Run and Sully Loop, West County Trail …) or for the GPX files they were imported from ('BROT_North.gpx', '2TEST_WCT_Compton_LeeHwy.gpx', 'PHNST_AmysMeadow.gpx'). The descriptions are a recorder's timestamps and statistics. FUTURE LINES ARE NOT TOLD APART IN THE FILE: the map's legend separates Existing trail from Future (planned, advocated) (the coverage audit), and the KML carries that only as line styles, which nobody has matched to the legend; one track is named 'WCT_planned_Stone_BRR_Lee'. Planned lines must never render as trail.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: a planned or advocated line cannot be told from an existing one until each style is matched to the map's legend."
+    },
+    {
+      "key": "hhc_tecumseh_waypoints",
+      "title": "Tecumseh Trail points of interest: parking, crossings and a shelter (HHC's GPX)",
+      "provider": "Hoosier Hikers Council",
+      "kind": "gis_file",
+      "url": "https://hoosierhikerscouncil.org/assets/Tecumseh_Trail_POI_Waypts.gpx",
+      "file_format": "gpx",
+      "trust": "authoritative",
+      "steward": "Hoosier Hikers Council",
+      "steward_contact": "https://www.hoosierhikerscouncil.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Hoosier Hikers Council",
+      "terms": "hoosierhikerscouncil.org footer, read 2026-10-04: \"© 2026 Hoosier Hikers Council\". No terms page is linked.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://hoosierhikerscouncil.org/assets/Tecumseh_Trail_POI_Waypts.gpx",
+        "notes": "8,666 bytes, Last-Modified Thu, 05 Oct 2017 12:56:24 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 27 of 27 (measured 2026-10-04). `name` is also unique.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "27 waypoints, read 2026-10-04, last modified 2017-10-05: numbered stops 01_MMSF_Office_Parking to 24_Crooked_Creek_Parking, road crossings, 04_Rock_Shelter/Low_Gap and Foxes_Den_Shelter; every `sym` 'RED MAP PIN', so a point's kind is in its name only. Its parking list predates the 2022 reroute (the coverage audit's skeptic, 2026-10-01).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: from before the 2022 reroute, with no type field."
+    },
+    {
+      "key": "hhc_tecumseh_track",
+      "title": "Tecumseh Trail track, 2023 (HHC's GPX)",
+      "provider": "Hoosier Hikers Council",
+      "kind": "gis_file",
+      "url": "https://hoosierhikerscouncil.org/assets/2023_TecumsehTrailTrack.gpx",
+      "file_format": "gpx",
+      "trust": "authoritative",
+      "steward": "Hoosier Hikers Council",
+      "steward_contact": "https://www.hoosierhikerscouncil.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Hoosier Hikers Council",
+      "terms": "hoosierhikerscouncil.org footer, read 2026-10-04: \"© 2026 Hoosier Hikers Council\". No terms page is linked.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://hoosierhikerscouncil.org/assets/2023_TecumsehTrailTrack.gpx",
+        "notes": "817,229 bytes, Last-Modified Tue, 12 Mar 2024 14:16:37 GMT, Content-Length on HEAD, no ETag (read 2026-10-04): the change check compares the Last-Modified and the Content-Length."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: one track, unique on 1 of 1 (measured 2026-10-04).",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "1 track ('Tecumseh_Trail'), read 2026-10-04, last modified 2024-03-12: the council's own GPS line of the Tecumseh Trail, independent of Indiana DNR's inventory (in_dnr_open_trails), which dbt deduplicates against it.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trail lines publish once int_trail_lines__club_lines reads this table."
+    },
+    {
+      "key": "condor_trail_2020",
+      "title": "Condor Trail, 2020 alignment, by county (the association's four KMLs)",
+      "provider": "Condor Trail Association",
+      "kind": "gis_file",
+      "url": "https://www.condortrail.com/wp-content/uploads/kml/",
+      "files": [
+        "https://www.condortrail.com/wp-content/uploads/kml/CT2020_VenturaCounty.kml",
+        "https://www.condortrail.com/wp-content/uploads/kml/CT2020_SantaBarbaraCounty.kml",
+        "https://www.condortrail.com/wp-content/uploads/kml/CT2020_SanLuisObispoCounty.kml",
+        "https://www.condortrail.com/wp-content/uploads/kml/CT2020_MontereyCounty.kml"
+      ],
+      "file_format": "kml",
+      "trust": "authoritative",
+      "steward": "Condor Trail Association",
+      "steward_contact": "https://www.condortrail.com/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The four files are the association's own downloads; its site states no licence (read 2026-10-04).",
+      "licence_basis": "public_gis",
+      "attribution": "Condor Trail Association",
+      "terms": "None found: condortrail.com's home page links no terms page and carries no copyright line (read 2026-10-04).",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.condortrail.com/wp-content/uploads/kml/",
+        "notes": "Four files, each with Last-Modified 2021-07-29 and a Content-Length, no ETag (read 2026-10-04: Ventura 765,085 bytes, Santa Barbara 691,851, San Luis Obispo 295,225, Monterey 176,578): the change check compares each file's Last-Modified and Content-Length, and FRESH needs all four unchanged."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 154 of 154 across the four files (measured 2026-10-04). `name` is 123 of 154.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "154 placemarks, read 2026-10-04: Ventura 31, Santa Barbara 36, San Luis Obispo 28 and Monterey 59 (151 LineStrings, 1 MultiGeometry line, 2 Polygons in San Luis Obispo). The registry `url` is the folder the four sit in, and `files` names each; a row carries `source_file`. Monterey's lines sit in per-trail folders (Marble Peak Trail, North Coast Ridge Trail …). Not loaded via usfs: the coverage audit's two USFS name matches are other trails.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trail lines publish once int_trail_lines__club_lines reads this table; the 2 polygons are not lines and drop there."
+    },
+    {
+      "key": "mdhta_trail_guide",
+      "title": "Maah Daah Hey Trail and its connectors (the trail guide's 19 GeoJSON files, with elevation)",
+      "provider": "MDHTA",
+      "kind": "gis_file",
+      "url": "https://mdhta.com/trail-guide/",
+      "files": [
+        "https://mdhta.com/wp-content/uploads/2025/07/white-butte-minified-2025-2.geojson",
+        "https://mdhta.com/wp-content/uploads/2024/07/coal-creek-loop-minified-2025-3.geojson",
+        "https://mdhta.com/wp-content/uploads/2016/06/road-to-wannagan-campground-1.geojson",
+        "https://mdhta.com/wp-content/uploads/2016/06/wannagon-connector.geojson",
+        "https://mdhta.com/wp-content/uploads/2016/06/magpie-connector.geojson",
+        "https://mdhta.com/wp-content/uploads/2016/06/juniper-spur-short-1.geojson",
+        "https://mdhta.com/wp-content/uploads/2016/06/coal-creek-connector.geojson",
+        "https://mdhta.com/wp-content/uploads/2016/06/bully-pulpit-connector.geojson",
+        "https://mdhta.com/wp-content/uploads/2016/06/bear-creek-connector.geojson",
+        "https://mdhta.com/wp-content/uploads/2016/06/wolf.geojson",
+        "https://mdhta.com/wp-content/uploads/2016/06/ccc-connector.geojson",
+        "https://mdhta.com/wp-content/uploads/2015/09/overlook-short-1.geojson",
+        "https://mdhta.com/wp-content/uploads/2015/07/buffalo-gap-2.geojson",
+        "https://mdhta.com/wp-content/uploads/2015/07/ice-cave-1.geojson",
+        "https://mdhta.com/wp-content/uploads/2015/07/cottonwood-1.geojson",
+        "https://mdhta.com/wp-content/uploads/2015/07/bennett-1.geojson",
+        "https://mdhta.com/wp-content/uploads/2015/07/summit-fixed-1.geojson",
+        "https://mdhta.com/wp-content/uploads/2015/07/mdht-minified-2025-1.geojson",
+        "https://mdhta.com/wp-content/uploads/2015/07/long-x-1.geojson"
+      ],
+      "file_format": "geojson",
+      "trust": "authoritative",
+      "steward": "Maah Daah Hey Trail Association",
+      "steward_contact": "https://mdhta.com/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The 19 files are the ones the association's own /trail-guide/ map loads (its `data-geojson` attributes, read 2026-10-04).",
+      "licence_basis": "public_gis",
+      "attribution": "Maah Daah Hey Trail Association",
+      "terms": "mdhta.com footer, read 2026-10-04: \"© maah daah hey trail association.\" and a TITLE VI POLICY link; no terms page.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://mdhta.com/trail-guide/",
+        "notes": "Each file sends a strong ETag and a Last-Modified (read 2026-10-04: mdht-minified-2025-1 114,768 bytes, \"7a401dd-1c050-63ab6bee82262\", 2025-07-25; white-butte 2025-07-30; coal-creek-loop 2025-07-25; the other 16 dated 2016-04-14 to 2016-06-18): the change check compares each file's ETag, and FRESH needs all 19 unchanged."
+      },
+      "name_field": "name",
+      "elevation_source": "geometry Z",
+      "elevation_unit": "metres",
+      "elevation_unit_comment": "@unvalidated beyond one vertex: mdht-minified-2025-1's first vertex reads 774.478 where 3DEP through EPQS reads 775.02 m (mdhta/elevation.py's note, 2026-10-03). Whether every file's Z is metres, and whether it came from GPS or a DEM, is settled by a sample along each line against 3DEP; until then nothing calibrates from it.",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 22 of 22 across the 19 files (measured 2026-10-04). `name` is 20 of 22.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "22 LineStrings from 19 files, read 2026-10-04, every vertex three-dimensional: the Maah Daah Hey itself ('Track 040', 3,408 vertices, 2025), White Butte (2025), the Coal Creek Loop (2024) and 16 connectors and spurs from 2016 (Bennett, Buffalo Gap, Cottonwood, Ice Cave, Long X, Summit, Wolf, Coal Creek Connector (3 lines) …). Two files are a lone Feature rather than a FeatureCollection, which the reader takes as one feature; white-butte carries a GPS track's per-vertex `coordinateProperties` times. The registry `url` is the trail guide page that lists them, and `files` names each. The FAQ says the GPX may differ from the 2018 printed map because of reroutes (the coverage audit). mdhta/elevation.py SHARES this resource for the Z.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trail lines publish once int_trail_lines__club_lines reads this table; the Z calibrates nothing until a step compares it with 3DEP."
+    },
+    {
+      "key": "ocvt_at_tracks",
+      "title": "OCVT's A.T. section tracks, 2009 (two GPX files)",
+      "provider": "OCVT",
+      "kind": "gis_file",
+      "url": "https://ocvt.club/media/gpx/PineSwampto460.gpx",
+      "files": [
+        "https://ocvt.club/media/gpx/PineSwampto460.gpx",
+        "https://ocvt.club/media/gpx/611toI77.gpx"
+      ],
+      "file_format": "gpx",
+      "trust": "authoritative",
+      "steward": "Outdoor Club at Virginia Tech",
+      "steward_contact": "https://outdoor.org.vt.edu/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The two files are linked from the club's trail-maintenance page (the coverage audit). ocvt.club's robots.txt, read 2026-10-04, is Cloudflare's content-signals preamble with no signal set and no rule.",
+      "licence_basis": "public_gis",
+      "attribution": "Outdoor Club at Virginia Tech",
+      "terms": "None found: ocvt.club's home page carries no terms or copyright line (read 2026-10-04). Its robots.txt preamble: \"If the website operator does not include a content signal for a corresponding use, the website operator neither grants nor restricts permission via content signal with respect to the corresponding use.\"",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://ocvt.club/media/gpx/PineSwampto460.gpx",
+        "notes": "Each file sends a weak ETag (W/\"37a9a-1a06e0c4120\", W/\"18462-1a06e0c4120\") and a Last-Modified of 2026-09-04, the site's deploy date rather than the track's (read 2026-10-04): the change check compares the ETags, which encode size and modification time, so a redeploy reads the files again."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 2 of 2 (measured 2026-10-04).",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "2 tracks, read 2026-10-04: 'Pine Swamp Branch Shelter to U.S. 460' (227,994 bytes) and 'VA 611 to I-77' (99,426), GPSBabel output with <time>2009-08-25</time> and `ele` 0.0 throughout (the coverage audit), so no elevation. Superseded by ATC's centerline (edited 2026-08-04): a dated cross-check, deduplicated in dbt.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: 2009 tracks of a section ATC's centerline draws, worth keeping as a cross-check only."
     }
   ],
   "usdm_licence": {
@@ -16602,6 +17573,41 @@
         "provider": "NMVFO",
         "name": "New Mexico Volunteers for the Outdoors",
         "note": "A volunteer trail crew organisation in New Mexico. Registered for its Hike New Mexico trail guide pages (decision 54, wave 3, 2026-10-04), at reaches_hikers: false; its CalTopo scouting map stays refused by caltopo.com's robots.txt."
+      },
+      "org:bartram": {
+        "provider": "Bartram Trail Conference",
+        "name": "Bartram Trail Conference",
+        "note": "Promotes the heritage trail of William Bartram's 1773-1777 travels across eight southern states; registered for its two Google My Maps of markers, sites and routes (decision 54, wave 2)."
+      },
+      "org:condor": {
+        "provider": "Condor Trail Association",
+        "name": "Condor Trail Association",
+        "note": "Builds the 400-mile Condor Trail through the Los Padres National Forest; registered for its four county KMLs of the 2020 alignment (decision 54, wave 2)."
+      },
+      "org:hhc": {
+        "provider": "Hoosier Hikers Council",
+        "name": "Hoosier Hikers Council",
+        "note": "Builds and maintains Indiana's Knobstone and Tecumseh trails; registered for its Tecumseh Trail waypoint and track GPX files (decision 54, wave 2)."
+      },
+      "org:mdhta": {
+        "provider": "MDHTA",
+        "name": "Maah Daah Hey Trail Association",
+        "note": "Stewards North Dakota's 144-mile Maah Daah Hey Trail; registered for the trail guide's GeoJSON lines (decision 54, wave 2)."
+      },
+      "org:ocvt": {
+        "provider": "OCVT",
+        "name": "Outdoor Club at Virginia Tech",
+        "note": "Maintains a section of the A.T. in southwest Virginia; registered for its two 2009 GPX tracks (decision 54, wave 2)."
+      },
+      "org:phta": {
+        "provider": "Potomac Heritage Trail Association",
+        "name": "Potomac Heritage Trail Association",
+        "note": "Supports the Potomac Heritage National Scenic Trail network in Virginia, Maryland, DC and Pennsylvania; registered for its 'PHTA Trails' Google My Map (decision 54, wave 2)."
+      },
+      "org:rmfi": {
+        "provider": "RMFI",
+        "name": "Rocky Mountain Field Institute",
+        "note": "A Colorado Springs trail stewardship nonprofit; registered for its project-sites Google My Map (decision 54, wave 2)."
       }
     }
   },

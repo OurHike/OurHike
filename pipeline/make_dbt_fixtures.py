@@ -3004,7 +3004,13 @@ def _fmst_kml_answers() -> dict:
         + placemark("Fixture River Detour", "Temporary detour", "FFA500", 2)
         + "</Folder></Document></kml>"
     )
-    return {"answers": [_answer(FMST_KML_URL, body, {"forcekml": "1"}, "text/xml; charset=utf-8")]}
+    # The mid as well as forcekml: every Google My Maps export shares FMST_KML_URL, and an answer matching on forcekml
+    # alone would serve this map for section G's My Maps too (extract/_fixtures.py takes the first answer that matches).
+    return {
+        "answers": [
+            _answer(FMST_KML_URL, body, {"mid": "1oSH-JQQpOan3r5Km7lJSVDDopenkW6k", "forcekml": "1"}, "text/xml; charset=utf-8")
+        ]
+    }
 
 
 def _json_api_fixtures() -> dict[str, str]:
@@ -8104,6 +8110,570 @@ def content_fixtures(files: dict) -> dict:
     return _content_wordpress_fixtures(files)
 
 
+# --- decision 54, waves 2 and 3: GIS files and the geographic APIs (extract/_gis_files.py, extract/_ogc.py) ---
+#
+# One answers document per registry key under conditions/json_apis/, the shape the JSON API notice sources use,
+# because fixture mode serves extract/_gis_files.py's GisFile and extract/_ogc.py's JsonFeatures and OgcFeatures
+# from that folder (extract/_fixtures.py's JSON_API_KINDS). THE NAMES ARE MEASURED: every folder, element,
+# ExtendedData name, GeoJSON property, CSV header and JSON field below is one the live file or API carried when it
+# was read for registration on 2026-10-04 (each sources.json row's `notes`). THE VALUES ARE INVENTED, start with
+# 'Fixture' wherever they are text, and sit on the fixture grid (_point, _line) so every region box holds them; no
+# real placemark, waypoint, line or place is copied. A zipped file (a KMZ, Catamount's GPX download) is served as
+# text, so it is built from stored members and padded until every byte is ASCII (_ascii_zip): the routed answers
+# carry a body as text and nothing else here changes that. That holds one member per zip: two members' central
+# directory runs past 127 bytes, so Catamount's KML twin and macOS resource fork, which the reader skips, are left
+# to tests/test_extract_gis_files.py.
+
+MY_MAPS_KML_URL = "https://www.google.com/maps/d/kml"
+KML_CONTENT = "text/xml; charset=utf-8"
+
+
+def _kml_coordinates(geometry: dict) -> str:
+    points = [geometry["coordinates"]] if geometry["type"] == "Point" else geometry["coordinates"]
+    return " ".join(f"{x},{y},0" for x, y in points)
+
+
+def _placemark(name: str, geometry: dict, description: str = "", data: dict | None = None, style: str = "#icon-1") -> str:
+    shape = "Point" if geometry["type"] == "Point" else "LineString"
+    extended = ""
+    if data:
+        extended = (
+            "<ExtendedData>" + "".join(f'<Data name="{k}"><value>{v}</value></Data>' for k, v in data.items()) + "</ExtendedData>"
+        )
+    return (
+        f"<Placemark><name>{name}</name><description><![CDATA[{description}]]></description><styleUrl>{style}</styleUrl>"
+        f"{extended}<{shape}><coordinates>{_kml_coordinates(geometry)}</coordinates></{shape}></Placemark>"
+    )
+
+
+def _kml(name: str, folders: dict[str, list[str]], loose: list[str] = ()) -> str:
+    """A KML document: each folder's placemarks, then any outside a folder."""
+    inner = "".join(f"<Folder><name>{folder}</name>{''.join(marks)}</Folder>" for folder, marks in folders.items())
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
+        f"<name>{name}</name>{inner}{''.join(loose)}</Document></kml>"
+    )
+
+
+def _gpx(waypoints: list[tuple[str, dict, dict]] = (), tracks: list[tuple[str, list[dict]]] = ()) -> str:
+    """A GPX 1.1 document: (name, point, extra child elements) waypoints and (name, segments) tracks."""
+    body = ""
+    for name, point, extra in waypoints:
+        x, y = point["coordinates"]
+        children = "".join(f"<{k}>{v}</{k}>" for k, v in extra.items())
+        body += f'<wpt lat="{y}" lon="{x}"><name>{name}</name>{children}</wpt>'
+    for name, segments in tracks:
+        trksegs = "".join(
+            "<trkseg>"
+            + "".join(f'<trkpt lat="{y}" lon="{x}"><ele>{100 + n}.0</ele></trkpt>' for n, (x, y) in enumerate(s["coordinates"]))
+            + "</trkseg>"
+            for s in segments
+        )
+        body += f"<trk><name>{name}</name>{trksegs}</trk>"
+    return f'<?xml version="1.0" encoding="UTF-8"?><gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1" creator="fixture">{body}</gpx>'
+
+
+def _ascii_zip(members: dict[str, str]) -> str:
+    """A zip of stored (uncompressed) members whose every byte is ASCII, returned as text.
+
+    Fixture mode serves a routed answer's body as UTF-8 text, so a zip only arrives whole if no byte of it is 0x80 or
+    above. Stored members of ASCII text, a 1980-01-01 timestamp and DOS attributes leave three numbers per member to
+    chance, each a little-endian field: its CRC-32, its size and the offset of what follows it. So each member in turn
+    gets an XML comment appended, the first that brings all three under 0x80 byte by byte (about one try in 64), and
+    the finished archive is checked whole.
+    """
+    import io
+    import zipfile
+    import zlib
+
+    chosen, offset = {}, 0
+    for name in members:
+        for pad in range(20000):
+            # The comment's length moves the size and the offsets, its number the CRC.
+            data = (members[name] + f"<!-- {pad // 128} {'x' * (pad % 128)} -->").encode("ascii")
+            following = offset + 30 + len(name.encode("ascii")) + len(data)
+            fields = struct.pack("<3I", zlib.crc32(data), len(data), following)
+            if all(byte < 0x80 for byte in fields):
+                chosen[name], offset = data, following
+                break
+        else:
+            raise RuntimeError(f"no padding made {name} ASCII in the fixture zip")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+        for name, data in chosen.items():
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            # DOS's archive bit: writestr() replaces an attribute of 0 with Unix mode 0600, whose bytes are not ASCII.
+            info.create_system, info.external_attr = 0, 0x20
+            archive.writestr(info, data)
+    body = buffer.getvalue()
+    if any(byte >= 0x80 for byte in body):
+        raise RuntimeError("the fixture zip's central directory is not ASCII; rename a member")
+    return body.decode("ascii")
+
+
+def _geojson_text(features: list[dict], crs84: bool = False) -> str:
+    document = {"type": "FeatureCollection", "features": features}
+    if crs84:
+        document["crs"] = {"type": "name", "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}}
+    return json.dumps(document)
+
+
+def _feature(properties: dict, geometry: dict, feature_id=None) -> dict:
+    feature = {"type": "Feature", "properties": properties, "geometry": geometry}
+    if feature_id is not None:
+        feature["id"] = feature_id
+    return feature
+
+
+def _my_map(mid: str, body: str) -> dict:
+    return {"answers": [_answer(MY_MAPS_KML_URL, body, {"mid": mid, "forcekml": "1"}, KML_CONTENT)]}
+
+
+def _files(*answers: tuple[str, str, str]) -> dict:
+    return {"answers": [_answer(url, body, None, content_type) for url, body, content_type in answers]}
+
+
+def _gis_file_documents() -> dict[str, dict]:
+    kml_type = "application/vnd.google-earth.kml+xml"
+    gpx_type = "application/gpx+xml"
+    nez_perce_data = {
+        "description": "Photo: ",
+        "Meaning": "Fixture meaning",
+        "More Context": "Fixture context",
+        "Auto Tour Route": "1",
+        "Trail Foundation": "https://example.org/",
+        "longitude": "-74.0",
+        "latitude": "41.0",
+        "More Web Info": "https://example.org/",
+        "About": "Fixture about",
+        "Photo": "",
+    }
+    bmecc_data = {
+        "description": "",
+        "Type": "Shelter",
+        "Club": "BMECC",
+        "Name": "Fixture Shelter",
+        "Latitude": "41.0",
+        "Longitude": "-74.0",
+    }
+    documents = {
+        "usfs_nez_perce_nht_my_map": _my_map(
+            "1rdJCOzX2Wh3yt7E-nVDfrz0CbSc",
+            _kml(
+                "Fixture Historic Trail",
+                {
+                    "Auto Tour Stops": [
+                        _placemark("Fixture Stop One", _point(0), "", nez_perce_data),
+                        _placemark("Fixture Stop Two", _point(1), "", nez_perce_data),
+                    ],
+                    "Suggested Travel Routes": [
+                        _placemark("Fixture Travel Route", _line(0), "description: Fixture directions", style="#line-1")
+                    ],
+                    "Adventure Routes": [
+                        _placemark("Fixture Adventure Route", _line(1), "description: Fixture directions", style="#line-2")
+                    ],
+                },
+            ),
+        ),
+        "rmfi_project_map": _my_map(
+            "1JYWuK-xRDI4gA8zuREE894PcnZEtMUk",
+            _kml(
+                "Fixture Project Map",
+                {
+                    "RMFI Project Past , Present and Ongoing": [
+                        _placemark("Fixture Open Space", _point(2)),
+                        _placemark("Fixture Canyon", _point(3)),
+                    ]
+                },
+            ),
+        ),
+        "fpc_forest_park_trailheads": _my_map(
+            "1lykYs7fUx9AXn8VZlywlQGo-8fmYJHQ",
+            _kml(
+                "Fixture Trailheads",
+                {"Trail Heads": [_placemark("Fixture Trailhead: Fixture Drive", _point(4), "Fixture trailhead")]},
+            ),
+        ),
+        "ota_trail_map": _my_map(
+            "1k4nsYuKHFtLk05shVlUX-L9tb-clI7iX",
+            _kml(
+                "FixtureTrailMap",
+                {
+                    "Trailhead": [
+                        _placemark(
+                            "Fixture Parking",
+                            _point(5),
+                            "Fixture Parking <br>Elevation = 413.40 ft <br>Coordinates = N41.0, W074.0 <br>Type = Trailhead",
+                        )
+                    ],
+                    "Main Trail": [_placemark("Fixture Section", _line(2), "Fixture Section", style="#line-1")],
+                    "Road - White": [_placemark("Fixture Road", _line(3), "Fixture Road", style="#line-2")],
+                },
+            ),
+        ),
+        "bartram_trail_markers_map": _my_map(
+            "1ek21kngs9TQ-bAbmjDWtpFWGvLw-Cwre",
+            _kml(
+                "Fixture Markers",
+                {
+                    "Bartram Trail": [_placemark("Fixture Path", _line(4), style="#line-1")],
+                    "Just Bartram Markers with Text Support.csv": [
+                        _placemark(
+                            "Point 1",
+                            _point(6),
+                            "Part Of Trail: Yes",
+                            {
+                                "Part Of Trail": "Yes",
+                                "Location Description": "Fixture Marina",
+                                "Lat. Lng.": "41.06, -73.94",
+                                "Marker Text": "Fixture text",
+                                "State": "NY",
+                                "Country": "USA",
+                                "ID": "1",
+                                "Supporting  Text": "Fixture support",
+                            },
+                        )
+                    ],
+                },
+            ),
+        ),
+        "bartram_trail_map": {
+            "answers": [
+                _answer(
+                    MY_MAPS_KML_URL,
+                    _kml(
+                        "Fixture Bartram Trail",
+                        {
+                            "Bartram Sites": [_placemark("Fixture Fort", _point(7), "Fixture site")],
+                            "Markers": [
+                                _placemark(
+                                    "Fixture Marker",
+                                    _point(8),
+                                    "",
+                                    {"Latitude": "41.08", "Longitude": "-73.92", "Description": "Fixture", "Icon": "1"},
+                                )
+                            ],
+                            "Federal_Road": [_placemark("Fixture Road", _line(5), style="#line-1")],
+                        },
+                    ),
+                    {"mid": "z-XY_0WikHLg.kpJrukA3Genw", "forcekml": "1"},
+                    KML_CONTENT,
+                )
+            ]
+        },
+        "bmecc_trail_section_map": _my_map(
+            "1AhhnnzcYgmH6WVNvJeqcjtgiZRgSd8wg",
+            _kml(
+                "Fixture Trail Section",
+                {
+                    "Shelters": [_placemark("Fixture Shelter", _point(9), "description: <br>Type: Shelter", bmecc_data)],
+                    "Springs": [
+                        _placemark(
+                            "Fixture Spring",
+                            _point(10),
+                            "description: <br>Type: Spring",
+                            {**bmecc_data, "Type": "Spring", "Name": "Fixture Spring"},
+                        )
+                    ],
+                    "Hospital Emergency Rooms": [_placemark("Fixture Hospital", _point(11), "1 Fixture Street, Fixture, PA")],
+                    "BMECC Northern Section": [_placemark("Fixture Northern Section", _line(6), style="#line-1")],
+                },
+            ),
+        ),
+        "ohta_website_track": _my_map(
+            "1T9D3RqcVbXKh8XFmVGrJFF7C6c7wH00",
+            _kml(
+                "Fixture Website Track",
+                {"OHT Website Track": [_placemark("Fixture Mountains", _line(7), "Fixture Mountains", style="#line-1")]},
+            ),
+        ),
+        "phta_trails_map": _my_map(
+            "1jTNQ94C3mkIAbXihNPY2Wk4j1_W9fPV8",
+            _kml(
+                "Fixture Trails",
+                {
+                    "Fixture Heritage Trail": [
+                        _placemark(
+                            "Start of Fixture Track",
+                            _point(12),
+                            "Saturday, October 26, 2013 9:53 AM EDT<br>Elevation: 164 feet",
+                            style="#icon-61",
+                        ),
+                        # The live map's 3 exact copies: one placemark repeated in place.
+                        _placemark(
+                            "Fixture Track", _line(8), "Statistics computed from imported data", style="#line-0288D1-5000"
+                        ),
+                        _placemark(
+                            "Fixture Track", _line(8), "Statistics computed from imported data", style="#line-0288D1-5000"
+                        ),
+                    ]
+                },
+            ),
+        ),
+        "nbatc_trails": _files(
+            (
+                "https://home.nbatc.org/MapData/NBATC_Trails_015.kml",
+                # The live file's undeclared `xsi` prefix, which the reader must tolerate.
+                _kml(
+                    "Fixture Trails", {"Tracks": [_placemark("Fixture Side Trail", _line(9), style="#lineStyleTrailWhite_n")]}
+                ).replace("<Document>", '<Document xsi:schemaLocation="http://earth.google.com/kml/2.1 kml21.xsd">', 1),
+                kml_type,
+            )
+        ),
+        "nbatc_trail_features": _files(
+            (
+                "https://home.nbatc.org/MapData/NBATC_Trail_Features_01.kmz",
+                _ascii_zip(
+                    {
+                        "doc.kml": _kml(
+                            "Fixture Features",
+                            {},
+                            [_placemark("Fixture Foot Bridge", _point(13)), _placemark("Fixture Gap Parking", _point(14))],
+                        )
+                    }
+                ),
+                "application/vnd.google-earth.kmz",
+            )
+        ),
+        "nbatc_shelters": _files(
+            (
+                "https://home.nbatc.org/MapData/NBATC_Shelters_000.kml",
+                _kml("Fixture Shelters", {}, [_placemark("Fixture Shelter", _point(15))]),
+                kml_type,
+            )
+        ),
+        "nbatc_trail_info": _files(
+            (
+                "https://home.nbatc.org/MapData/NBATC_TrailInfo_002.kml",
+                _kml("Fixture Trail Info", {}, [_placemark("Fixture Loop", _point(16), "Fixture info")]),
+                kml_type,
+            )
+        ),
+        "catamount_main_trail": _files(
+            (
+                "https://catamounttrail.org/CTA_TrailMap/data/CTA_MAINTRAIL_MASTER_WEBMAP.geojson",
+                # Two features that repeat a line and its SURFACE under new ids: the live file's 4 exact copies.
+                _geojson_text(
+                    [
+                        _feature({"OBJECTID": 1, "SURFACE": "Ungroomed", "Shape_Length": 0.01}, _line(10), 1),
+                        _feature({"OBJECTID": 2, "SURFACE": "Snowmobile", "Shape_Length": 0.01}, _line(11), 2),
+                        _feature({"OBJECTID": 3, "SURFACE": "Snowmobile", "Shape_Length": 0.01}, _line(11), 3),
+                    ]
+                ),
+                "application/geo+json",
+            )
+        ),
+        "catamount_side_trails": _files(
+            (
+                "https://catamounttrail.org/CTA_TrailMap/data/CTA_SIDETRAILS_MASTER_WEBMAP.geojson",
+                _geojson_text([_feature({"SURFACE": "Groomed Nordic"}, _line(12))], crs84=True),
+                "application/geo+json",
+            )
+        ),
+        "catamount_full_route": _files(
+            (
+                "https://catamounttrail.org/wp-content/uploads/CT_fullRoute_gpxKML_122022.zip",
+                _ascii_zip(
+                    {
+                        "untitled folder/Catamount_Trail_Route.gpx": _gpx(
+                            tracks=[("CT", [_line(13)]), ("OLD CT - Fixture", [_line(14)])]
+                        ),
+                    }
+                ),
+                "application/zip",
+            )
+        ),
+        "catamount_sections": _files(
+            (
+                "https://catamounttrail.org/CTA_TrailMap/data/CTA_SECTIONS_WEBMAP.geojson",
+                _geojson_text([_feature({"Section": "1"}, _polygon(0)), _feature({"Section": "2"}, _polygon(1))], crs84=True),
+                "application/geo+json",
+            )
+        ),
+        "catamount_access_points": _files(
+            (
+                "https://catamounttrail.org/CTA_TrailMap/data/CTA_ACCESS_MASTER_WEBMAP.csv",
+                'LOCATION,LONGITUDE,LATITUDE,PRIMARY\nFixture Road,-74.0,41.0,Yes\n"Fixture Route, Fixture Town",-73.99,41.01,No\n',
+                "text/csv",
+            )
+        ),
+        "catamount_businesses": _files(
+            (
+                "https://catamounttrail.org/CTA_TrailMap/data/CTA_POI_MASTER_WEBMAP.csv",
+                "NAME,URL,LATITUDE,LONGITUDE,ABSTRACT,LODGING,FOOD,NORDIC,ALPINE,SPONSOR\nFixture Inn,https://example.org,41.02,-73.98,Fixture abstract.,Yes,Yes,No,No,No\n",
+                "text/csv",
+            )
+        ),
+        "catamount_backcountry_zones": _files(
+            (
+                "https://catamounttrail.org/CTA_TrailMap/data/CTA_BACKCOUNTRY_MASTER_WEBMAP.csv",
+                "NAME,URL,LATITUDE,LONGITUDE,ABSTRACT\nFixture Forest,https://example.org,41.03,-73.97,Fixture zone.\n",
+                "text/csv",
+            )
+        ),
+        "hhc_tecumseh_waypoints": _files(
+            (
+                "https://hoosierhikerscouncil.org/assets/Tecumseh_Trail_POI_Waypts.gpx",
+                _gpx(
+                    waypoints=[
+                        ("01_Fixture_Parking", _point(17), {"sym": "RED MAP PIN"}),
+                        ("Fixture_Shelter", _point(18), {"sym": "RED MAP PIN"}),
+                    ]
+                ),
+                gpx_type,
+            )
+        ),
+        "hhc_tecumseh_track": _files(
+            (
+                "https://hoosierhikerscouncil.org/assets/2023_TecumsehTrailTrack.gpx",
+                _gpx(tracks=[("Fixture_Trail", [_line(15), _line(16)])]),
+                gpx_type,
+            )
+        ),
+        "condor_trail_2020": _files(
+            *(
+                (
+                    f"https://www.condortrail.com/wp-content/uploads/kml/CT2020_{county}County.kml",
+                    _kml(
+                        f"Fixture {county}",
+                        {f"CondorTrail{county}County": [_placemark(f"Fixture {county} Segment", _line(17 + n), style="#line-1")]},
+                    ),
+                    kml_type,
+                )
+                for n, county in enumerate(("Ventura", "SantaBarbara", "SanLuisObispo", "Monterey"))
+            )
+        ),
+        "nchpta_trails": _files(
+            (
+                "https://nchighpeaks.org/interactivemaps/TrailSunday3.xml",
+                _kml("Fixture Trails", {}, [_placemark("179-Fixture Crest Trail", _line(21), style="#line-1")]),
+                "application/xml",
+            )
+        ),
+        "mdhta_trail_guide": _files(
+            *(
+                (
+                    url,
+                    json.dumps(
+                        {
+                            "type": "Feature",
+                            "properties": {"name": f"Fixture Track {n}", "type": "track"},
+                            "geometry": {
+                                "type": "LineString",
+                                "coordinates": [[x, y, 700.0 + n] for x, y in _line(22 + n)["coordinates"]],
+                            },
+                        }
+                        if n == 0
+                        else {
+                            "type": "FeatureCollection",
+                            "features": [
+                                {
+                                    "type": "Feature",
+                                    "properties": {"name": f"fixture-connector-{n}"},
+                                    "geometry": {
+                                        "type": "LineString",
+                                        "coordinates": [[x, y, 700.0 + n] for x, y in _line(22 + n)["coordinates"]],
+                                    },
+                                }
+                            ],
+                        }
+                    ),
+                    "application/geo+json",
+                )
+                for n, url in enumerate(_registry_entry("mdhta_trail_guide")["files"])
+            )
+        ),
+        "ocvt_at_tracks": _files(
+            *(
+                (url, _gpx(tracks=[(f"Fixture Shelter to Fixture Road {n}", [_line(41 + n)])]), gpx_type)
+                for n, url in enumerate(_registry_entry("ocvt_at_tracks")["files"])
+            )
+        ),
+    }
+    return documents
+
+
+def _geo_api_documents() -> dict[str, dict]:
+    def location(n: int, lat: float, lng: float, icon: str) -> dict:
+        return {
+            "id": 900000 + n,
+            "modified_gmt": "2026-09-21T14:13:20",
+            "slug": f"fixture-location-{n}",
+            "link": f"https://mtsgreenway.org/location/fixture-location-{n}/",
+            "title": {"rendered": f"Fixture Location {n}"},
+            "location": {"lat": lat, "lng": lng} if lat is not None else None,
+            "cat": {"ids": [1], "slugs": [icon]},
+            "icon": icon,
+            "popup": {
+                "img": False,
+                "description": "Fixture description.",
+                "link": f"https://mtsgreenway.org/location/fixture-location-{n}/",
+            },
+        }
+
+    def nps_item(n: int, route: str) -> dict:
+        common = {
+            "id": f"00000000-0000-4000-8000-{900 + n:012d}",
+            "latitude": str(41.0 + n * 0.01),
+            "longitude": str(-74.0 + n * 0.01),
+            "url": "https://www.nps.gov/",
+        }
+        if route == "places":
+            # The person fields a live place carries (`images`, a photographer's credit), invented, so the reader's rule runs.
+            return {
+                **common,
+                "title": f"Fixture Place {n}",
+                "relatedParks": [{"parkCode": "fixt"}],
+                "tags": ["fixture"],
+                "isOpenToPublic": "1",
+                "images": [{"credit": "Fixture Photographer"}],
+            }
+        return {
+            **common,
+            "name": f"Fixture Campground {n}",
+            "parkCode": "fixt",
+            "amenities": {"potableWater": ["Yes - year round"]},
+            "contacts": {"phoneNumbers": []},
+        }
+
+    nps = {
+        route: {
+            "answers": [
+                _answer(
+                    f"https://developer.nps.gov/api/v1/{route}",
+                    {"total": "2", "limit": "500", "start": "0", "data": [nps_item(0, route), nps_item(1, route)]},
+                    {"start": "0"},
+                )
+            ]
+        }
+        for route in ("places", "campgrounds")
+    }
+    return {
+        "mtsg_map_locations": {
+            "answers": [
+                _answer(
+                    "https://mtsgreenway.org/wp-json/wp/v2/cm-map-location",
+                    # A location with no coordinate, as 3 of the live 185 are: it lands with no geometry.
+                    [
+                        location(1, 41.04, -73.96, "campgrounds"),
+                        location(2, 41.05, -73.95, "trails"),
+                        location(3, None, None, "uncategorized"),
+                    ],
+                    {"page": "1"},
+                )
+            ]
+        },
+        "nps_api_places": nps["places"],
+        "nps_api_campgrounds": nps["campgrounds"],
+    }
+
+
+def gis_file_and_geo_api_fixtures() -> dict[str, str]:
+    """Decision 54's waves 2 and 3 (section G): one answers document per registered GIS file and geographic API."""
+    documents = {**_gis_file_documents(), **_geo_api_documents()}
+    return {f"conditions/json_apis/{key}.json": json.dumps(document) for key, document in documents.items()}
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -8247,6 +8817,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         **_club_places_fixtures(),
         **_club_trail_lines_fixtures(),
         **{name: _club_point_layer(*spec) for name, spec in CLUB_POINT_FIXTURES.items()},
+        **gis_file_and_geo_api_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)

@@ -17,6 +17,13 @@ hold, and were not compared row by row.
 - `ncta_nearby_trails`: Trails near the North Country Trail (NCTA). 2,243 lines, keyed on geometry + `seg_name` + `updated`.
 - `ncta_superior_hiking_trail`: Superior Hiking Trail, NCTA's public layer (agol_sht_public). 272 lines, keyed on geometry.
 - `ncta_finger_lakes_trail`: North Country Trail segments of the Finger Lakes Trail (NCTA, agol_flt). 417 lines, keyed on geometry.
+
+trail_orgs.json calls NCTA's endpoint `ogc_features`, and no OGC resource is written (decision 54, wave 3, read
+2026-10-04). https://gis.northcountrytrail.org/ is an ArcGIS Hub site over this same organization (orgId
+UfGVyqUm4GHa2zrj; its robots.txt asks `Crawl-delay: 60`), offering "CSV, KML, Zip, GeoJSON" downloads and "API links
+for GeoServices, WMS, and WFS" of its items; the organization's services directory lists 69 FeatureServers and no
+OGCFeatureServer or WFSServer. So the hub's formats are views of the layers above, the same data, and
+extract/_ogc.py's ogc_features kind waits for a publisher whose OGC API Features collection is its own.
 """
 
 from extract._kinds import arcgis_layer

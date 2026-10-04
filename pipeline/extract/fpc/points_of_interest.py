@@ -1,27 +1,14 @@
-"""Forest Park Conservancy: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch c6_regional_3).
+"""Forest Park Conservancy's trailheads, the Google My Map embedded on /forest-park/maps/, read as its KML
+export.
 
-KML is machine-readable. The page also describes the Wildwood's quarter-mile blue blazes and Leif
-Erikson's white mile posts, which are useful wayfinding text.
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+files' validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `fpc_forest_park_trailheads`: 19 trailheads, keyed on the geometry.
 """
 
-from datetime import date
+from extract._gis_files import gis_file
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        'Google My Maps "Forest Park Trailheads", mid `1lykYs7fUx9AXn8VZlywlQGo-8fmYJHQ`, embedded on '
-        "`/forest-park/maps/`. KML export "
-        "`https://www.google.com/maps/d/kml?mid=1lykYs7fUx9AXn8VZlywlQGo-8fmYJHQ&forcekml=1` (30,745 bytes): 19"
-        ' placemarks, e.g. "Thurman: Leif Erikson Drive", "Germantown: Wildwood Trail", "Newberry Road".',
-    ),
-    where=(
-        "https://www.google.com/maps/d/kml?mid=1lykYs7fUx9AXn8VZlywlQGo-8fmYJHQ&forcekml=1",
-        "https://forestparkconservancy.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("fpc_forest_park_trailheads",)
+RESOURCES = [gis_file(key) for key in CLAIMS]

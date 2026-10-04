@@ -1,29 +1,19 @@
-"""Condor Trail Association: trail lines, published, and not landed (coverage audit 2026-10-01, batch
-c7_regional_4).
+"""The Condor Trail Association's 2020 alignment, its four county KMLs under condortrail.com/wp-
+content/uploads/kml/.
 
-Not LOADED via `usfs`. The 2 USFS matches are other trails (correction 1). No licence stated. ArcGIS
-has only a third-party advocacy layer: `ForestWatchGIS` `CCHPA_Condor_Trail`, 1 polyline drawn for a
-legislative map.
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+files' validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `condor_trail_2020`: 154 placemarks from 4 files (Ventura 31, Santa Barbara 36, San Luis Obispo 28,
+  Monterey 59), all last modified 2021-07-29, keyed on the geometry.
+
+Not loaded via `usfs`: the coverage audit's 2 USFS name matches are other trails. ArcGIS has only a
+third-party advocacy layer, `ForestWatchGIS` `CCHPA_Condor_Trail`, 1 polyline drawn for a legislative
+map.
 """
 
-from datetime import date
+from extract._gis_files import gis_file
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "KML, 4 county files at `http://www.condortrail.com/wp-content/uploads/kml/`, all last-modified 2021-07-29:",
-        "`CT2020_VenturaCounty.kml`: 765,085 B, 31 LineStrings",
-        "`…SantaBarbaraCounty.kml`: 691,851 B, 36 LineStrings",
-        "`…SanLuisObispoCounty.kml`: 295,225 B, 26 LineStrings + 2 Polygons",
-        "`…MontereyCounty.kml`: 176,578 B, 59 LineStrings; Total: 152 lines.",
-    ),
-    where=(
-        "https://apps.fs.usda.gov/arcx/rest/services",
-        "https://condortrail.com/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("condor_trail_2020",)
+RESOURCES = [gis_file(key) for key in CLAIMS]

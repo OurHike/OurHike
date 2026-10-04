@@ -1,30 +1,20 @@
-"""Ozark Trail Association: trail lines, published, and not landed (coverage audit 2026-10-01, batch
-c7_regional_4).
+"""The Ozark Trail Association's map, the Google My Map embedded on ozarktrail.com/maps/, read as its KML
+export.
 
-Machine-readable. Partly LOADED via `usfs_trails` (253.7 mi, correction 4). No OTA-owned ArcGIS
-(`jadams007`'s "Ozark Trails Association _merged" is a personal account).
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+files' validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `ota_trail_map`: 161 placemarks: 89 lines (Main Trail 18, Connecting Trail 38, Trailhead Spur 24, OT
+  Spur Trail 4, Alternate Trail 2, Road - White 2, Nearby trail 1) and 72 trailheads, keyed on the
+  geometry.
+
+The site's terms restrict reproduction (`terms` on the row), which no decision names, so the row is held
+for the maintainer. Not landed: the 14 per-section 'GPS Download' zips, which nobody has compared with
+this map.
 """
 
-from datetime import date
+from extract._gis_files import gis_file
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "The OTA's Google My Map, embedded on `/maps/` (`iframe "
-        "src=…/maps/d/embed?mid=1k4nsYuKHFtLk05shVlUX-L9tb-clI7iX`). KML: "
-        "`https://www.google.com/maps/d/kml?mid=1k4nsYuKHFtLk05shVlUX-L9tb-clI7iX&forcekml=1`. Its folders "
-        "hold: Main Trail 18, Connecting Trail 38, Trailhead Spur 24, OT Spur Trail 4, Alternate Trail 2, Road "
-        '2, Nearby trail 1 (89 lines). Also, on each of 14 section pages, a "GPS Download" zip (e.g. '
-        '`wp-content/uploads/2018/02/currentriver_gps.zip`, 43,896 B, 2020-09-14) and a "Google Earth Download"'
-        " KML zip. Free PDFs date from 2018.",
-    ),
-    where=(
-        "https://www.google.com/maps/d/kml?mid=1k4nsYuKHFtLk05shVlUX-L9tb-clI7iX&forcekml=1",
-        "https://ozarktrail.com/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("ota_trail_map",)
+RESOURCES = [gis_file(key) for key in CLAIMS]

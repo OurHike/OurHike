@@ -1,18 +1,14 @@
-"""Catamount Trail Association: points of interest, published, and not landed (coverage audit
-2026-10-01, batch c4_regional_1).
+"""The Catamount Trail Association's access points, from its interactive map's data files.
 
-Trailhead/parking access.
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+files' validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `catamount_access_points`: 80 trailhead and parking access points with a PRIMARY flag (CSV with
+  LATITUDE and LONGITUDE, 2017-11-27), keyed on the geometry.
 """
 
-from datetime import date
+from extract._gis_files import gis_file
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=("`…/data/CTA_ACCESS_MASTER_WEBMAP.csv`: 80 access points with lat/lon and a PRIMARY flag (2017-11-27).",),
-    where=("https://catamounttrail.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("catamount_access_points",)
+RESOURCES = [gis_file(key) for key in CLAIMS]

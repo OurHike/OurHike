@@ -1,27 +1,19 @@
-"""Natural Bridge Appalachian Trail Club: points of interest, published, and not landed (coverage audit
-2026-10-01, batch c2_at_clubs_mid).
+"""The Natural Bridge Appalachian Trail Club's point files under home.nbatc.org/MapData/.
 
-Shelters overlap ATC's. The features file is the only recent one, and its bridges complement ATC's
-`bridges`, which does not reach hikers yet.
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+files' validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `nbatc_trail_features`: 25 bridges, parking areas, summits and crossings (KMZ, 2024-07-23).
+- `nbatc_shelters`: 12 shelters (KML, 2013-02-17), which ATC's loaded shelters layer also carries,
+  newer.
+- `nbatc_trail_info`: 12 hike and feature points (KML, 2013-02-17).
+
+Each keyed on the geometry. None has a type field, so a point's kind is in its name only, which the POI
+mart never reads one from.
 """
 
-from datetime import date
+from extract._gis_files import gis_file
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`MapData/NBATC_Trail_Features_01.kmz`: 25 points (bridges such as James River Foot Bridge, Pedlar "
-        "River Foot Bridge, Rocky Row Run; parking; summits), 2024-07-23. `NBATC_Shelters_000.kml`: 12 shelters"
-        " (2013). `NBATC_TrailInfo_002.kml`: 12 points (2013)",
-    ),
-    where=(
-        "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services",
-        "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services",
-        "https://nbatc.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("nbatc_trail_features", "nbatc_shelters", "nbatc_trail_info")
+RESOURCES = [gis_file(key) for key in CLAIMS]

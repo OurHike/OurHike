@@ -188,6 +188,18 @@ PODCAST_FEED = "podcast_feed"
 # tests/test_lib_source_registry.py fails if any of those readers selects one.
 CLUB_ARCGIS_LAYER = "club_arcgis_layer"
 
+# Decision 54's waves 2 and 3 (pipeline/ELT.md, "Loading everything the clubs
+# publish"), registered for pipeline/extract/ alone, as CLUB_ARCGIS_LAYER is
+# and for the same reason: no legacy fetcher, loader or exporter reads them,
+# so publication is decided in dbt and nowhere else. A GIS file (KML, KMZ, GPX,
+# GeoJSON, a zipped shapefile, a CSV of points) is read by extract/_gis_files.py;
+# an OGC API Features collection and a JSON API whose items carry a coordinate
+# by extract/_ogc.py. Like CLUB_ARCGIS_LAYER's rows, theirs carry no `poi_type`
+# and no `blaze_field`.
+GIS_FILE = "gis_file"
+OGC_FEATURES = "ogc_features"
+JSON_FEATURES = "json_features"
+
 KNOWN_KINDS = frozenset(
     {
         ARCGIS_FEATURE_LAYER,
@@ -202,6 +214,9 @@ KNOWN_KINDS = frozenset(
         SOCRATA_GEOJSON_LAYER,
         PODCAST_FEED,
         CLUB_ARCGIS_LAYER,
+        GIS_FILE,
+        OGC_FEATURES,
+        JSON_FEATURES,
     }
 )
 

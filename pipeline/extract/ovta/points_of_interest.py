@@ -2,6 +2,9 @@
 audit 2026-10-01, batch c11_nht).
 
 Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+
+Decision 54, wave 3 (2026-10-04): the NPS API list this note names is /visitorcenters, which is not
+registered yet.
 """
 
 from datetime import date
@@ -10,10 +13,13 @@ from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
     confirmed=date(2026, 10, 1),
-    checked=("`NPSAPI/visitorcenters` ovvi 6 (Sycamore Shoals, Kings Mountain, Cowpens …)",),
+    checked=(
+        "the NPS Data API's /visitorcenters is not registered: it answered 429 OVER_RATE_LIMIT on api.data.gov's public demo key on 2026-10-04, so nothing of it was read (decision 54, wave 3).",
+        "`NPSAPI/visitorcenters` ovvi 6 (Sycamore Shoals, Kings Mountain, Cowpens …)",
+    ),
     where=(
         "https://mapservices.nps.gov/arcgis/rest/services",
         "https://ovta.org/",
     ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="published and not landed: the NPS API's /visitorcenters is not registered (no read with a real key yet)",
 )

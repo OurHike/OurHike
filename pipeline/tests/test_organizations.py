@@ -382,6 +382,13 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     reaches this use, and ten club hike, itinerary and wiki lists, whose terms nobody has read as
     reaching a published list. Each quotes what it found on its row; publication is the maintainer's
     call, in dbt, once a mart reads them.
+
+    DECISION 54'S WAVES 2 AND 3, GIS FILES AND GEOGRAPHIC APIS (2026-10-04): 29 rows, all
+    `reaches_hikers: false`. 26 `public_gis`: the clubs' own KML, KMZ, GPX, GeoJSON and CSV files and
+    Google My Maps, and MTSG's map-location route, which state no licence or only a copyright line
+    (decision 21a; OTA's and NC High Peaks' restrictive site text quoted on each row, decision 37). 3
+    `stated_by_org`, federal works on 17 U.S.C. 105: the Forest Service's Nez Perce NHT My Map and the
+    NPS Data API's places and campgrounds.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
@@ -390,5 +397,6 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
     # Decision 53's page and post notices, folders n to z and _shared/ (2026-10-03), add 68: 51, 16 and 1 (above).
     # Its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03) add 113: 87 and 26 (above).
-    # Decision 54's wave 3 content feeds and APIs (section C, 2026-10-04) add 34: 11 and 23 (above).
-    assert counts == {"maintainer_authorisation": 186, "public_gis": 217, "stated_by_org": 188, "unresolved": 27}
+    # Decision 54's wave 3 content feeds and APIs (section C) add 34: 11 and 23; waves 2 and 3's GIS files and
+    # geographic APIs add 29: 26 `public_gis` and 3 `stated_by_org` (above).
+    assert counts == {"maintainer_authorisation": 186, "public_gis": 243, "stated_by_org": 191, "unresolved": 27}

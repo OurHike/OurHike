@@ -1,33 +1,19 @@
-"""Potomac Heritage Trail Association: trail lines, drawn from another folder's resource (coverage
-audit 2026-10-01, batch c10_nst_rest).
+"""The Potomac Heritage Trail Association's 'PHTA Trails' Google My Map, read as its KML export.
 
-The catalogue's "the alignment is in the NPS public trails layer" holds only inside NPS units, and
-only by alternate name. The Virginia sections outside NPS land are in the association's KML
-(Reasoned from its legend). No licence is stated. "Future/Advocated" lines must never render as
-trail. …
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+files' validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `phta_trails_map`: 183 placemarks (127 lines, 56 points), keyed on the geometry and `name`.
+
+PLANNED LINES ARE NOT TOLD APART IN THE FILE: the map's legend separates Existing trail from Future
+(planned, advocated), and the KML carries that only as line styles nobody has matched to the legend, so
+the row is held. The trail also arrives via nps `nps_trails`, where 0 features carry UNITCODE 'POHE' and
+446 carry a TRLALTNAME like 'Potomac Heritage' (the coverage audit, 2026-10-01). Before this the file
+was that `via nps` note.
 """
 
-from datetime import date
+from extract._gis_files import gis_file
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "Arrives via `nps` as `nps_trails`, but 0 features carry `UNITCODE='POHE'`. 446 segments carry "
-        '`TRLALTNAME` like "Potomac Heritage", spread over other units: CHOH 233, GWMP 114, GRFA 33, NACE 26, '
-        'ROCR 20, PRWI 17, FODU 1, OXHI 1, null 1. The association\'s own: a Google My Map "PHTA Trails" '
-        "(`mid=1jTNQ94C3mkIAbXihNPY2Wk4j1_W9fPV8`, embedded at `/maps`). Its KML export "
-        "`https://www.google.com/maps/d/kml?mid=…&forcekml=1` returns 200, `PHTA Trails.kml`. The legend "
-        "separates Existing trail (natural surface, hard surface, sidewalk, unpaved road) from Future (planned,"
-        " advocated).",
-    ),
-    where=(
-        "https://mapservices.nps.gov/arcgis/rest/services",
-        "https://nps.gov/pohe/",
-        "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/POHE_Trail_Centerline_FTDS_view/FeatureServer/0",
-    ),
-    reason="drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in",
-)
+CLAIMS = ("phta_trails_map",)
+RESOURCES = [gis_file(key) for key in CLAIMS]

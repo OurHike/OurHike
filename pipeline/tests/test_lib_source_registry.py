@@ -17,7 +17,10 @@ from lib.source_registry import (
     ARCGIS_FEATURE_LAYER,
     CLUB_ARCGIS_LAYER,
     EXTERNAL_ARCGIS_LAYER,
+    GIS_FILE,
+    JSON_FEATURES,
     KNOWN_KINDS,
+    OGC_FEATURES,
     POI_SOURCE_KEYS,
     PUBLISHED_HIKES,
     PUBLISHED_NOTICES,
@@ -512,7 +515,10 @@ def test_no_legacy_reader_selects_a_club_arcgis_layer_row(tmp_path, monkeypatch)
     path = tmp_path / "sources.json"
     path.write_text(json.dumps(registry))
     monkeypatch.setattr(load_raw, "SOURCES_PATH", path)
-    club_keys = {entry["key"] for entry in registry["sources"] if source_kind(entry) == CLUB_ARCGIS_LAYER}
+    # Decision 54's waves 2 and 3 register their GIS files and geographic APIs for the extract alone, as wave 1
+    # registers its ArcGIS layers, so no legacy reader may select those rows either.
+    extract_only = {CLUB_ARCGIS_LAYER, GIS_FILE, OGC_FEATURES, JSON_FEATURES}
+    club_keys = {entry["key"] for entry in registry["sources"] if source_kind(entry) in extract_only}
 
     selected = {
         "fetch_all.arcgis_sources": {e["key"] for e in fetch_all.arcgis_sources(registry)},
@@ -526,4 +532,6 @@ def test_no_legacy_reader_selects_a_club_arcgis_layer_row(tmp_path, monkeypatch)
 
     assert all(selected.values()), f"a reader selected nothing from the real registry, so this proves nothing: {selected}"
     leaked = {reader: sorted(keys & club_keys) for reader, keys in selected.items() if keys & club_keys}
-    assert not leaked, f"legacy readers select club_arcgis_layer rows, which only pipeline/extract/ may read: {leaked}"
+    assert not leaked, (
+        f"legacy readers select extract-only rows (club_arcgis_layer, gis_file, ogc_features, json_features), which only pipeline/extract/ may read: {leaked}"
+    )

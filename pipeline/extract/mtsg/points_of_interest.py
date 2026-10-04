@@ -1,28 +1,17 @@
-"""Mountains to Sound Greenway Trust: points of interest, published, and not landed (coverage audit
-2026-10-01, batch c6_regional_3).
+"""The Mountains to Sound Greenway Trust's map locations, read through WordPress REST as the site's own map
+asks for them (`cm-map-location` with `_latlng=acf_loc_address`).
 
-Machine-readable. The categories overlap. Trailheads and campgrounds belong in POIs, and the rest in
-places, split in dbt.
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+change check, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `mtsg_map_locations`: 185 locations, 182 with a coordinate: trails 47 (many named '…Trailhead'),
+  heritage sites 40, parks 39, campgrounds 28, museums 17, picnic areas 8, visitor centres 3, keyed on
+  the post id. The categories overlap; trailheads and campgrounds are points of interest and the rest
+  places, split in dbt.
 """
 
-from datetime import date
+from extract._ogc import json_features
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "WordPress REST "
-        "`https://mtsgreenway.org/wp-json/wp/v2/cm-map-location?per_page=100&_fields=id,title,location,popup,cat,icon&_latlng=acf_loc_address`,"
-        " which is the call the site's own map makes. `X-WP-Total` = 185, and 182 carry `location.lat`/`lng`. "
-        'Categories: trails 88 (25 named "…Trailhead"), campgrounds 28, picnic or day-use areas 41, wildlife '
-        "viewing 12.",
-    ),
-    where=(
-        "https://mtsgreenway.org/wp-json/wp/v2/cm-map-location?per_page=100&_fields=id,title,location,popup,cat,icon&_latlng=acf_loc_address",
-        "https://mtsgreenway.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("mtsg_map_locations",)
+RESOURCES = [json_features(key) for key in CLAIMS]

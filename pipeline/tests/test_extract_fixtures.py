@@ -241,7 +241,8 @@ def test_the_json_api_notice_sources_land_from_their_answers_with_no_nps_key_in_
     """Every extract/_json_apis.py resource answered from conditions/json_apis/, NPS's two under fixture mode's placeholder key."""
     root, counts = fixtures
     resources, _ = fixture_resources(root / "raw")
-    landed = {r.table for r in resources if isinstance(r, JSON_API_KINDS)}
+    # extract/_gis_files.py's and extract/_ogc.py's kinds ride the same answers folder; GIS_AND_GEO_API_ROWS holds them.
+    landed = {r.table for r in resources if isinstance(r, JSON_API_KINDS) and type(r).__module__ == "extract._json_apis"}
     assert landed == set(JSON_API_ROWS)
     assert all((root / "raw" / "conditions" / JSON_API_DIR / f"{r.key}.json").exists() for r in resources if r.table in landed)
     assert {table: counts[table] for table in JSON_API_ROWS} == JSON_API_ROWS
@@ -271,6 +272,57 @@ def test_section_cs_content_lands_no_author_or_guest_and_none_of_the_prose_a_row
         assert "555-0100" not in values("raw_nmvfo__nmvfo_hike_new_mexico"), "NMVFO's pages carry volunteers' numbers"
         assert "Fixture Person" not in values("raw_gmc__gmc_hikes"), "Spectra's and Yoast's author blocks never load"
         assert "transcript" not in columns("raw_nps__nps_multimedia_audio")
+
+# Decision 54's waves 2 and 3 (section G, 2026-10-04): each GIS file and geographic API, the rows its fixture answers
+# hold (make_dbt_fixtures.py's _gis_file_documents() and _geo_api_documents()). Catamount's main trail lands 3 rows
+# with 2 exact copies among them, a KMZ and a zipped GPX arrive whole as ASCII-only zips, and a location with no
+# coordinate lands with no geometry rather than being dropped.
+GIS_AND_GEO_API_ROWS = {
+    "raw_nez_perce__usfs_nez_perce_nht_my_map": 4,
+    "raw_rmfi__rmfi_project_map": 2,
+    "raw_fpc__fpc_forest_park_trailheads": 1,
+    "raw_ota__ota_trail_map": 3,
+    "raw_bartram__bartram_trail_markers_map": 2,
+    "raw_bartram__bartram_trail_map": 3,
+    "raw_bmecc__bmecc_trail_section_map": 4,
+    "raw_ohta__ohta_website_track": 1,
+    "raw_pohe__phta_trails_map": 3,
+    "raw_nbatc__nbatc_trails": 1,
+    "raw_nbatc__nbatc_trail_features": 2,
+    "raw_nbatc__nbatc_shelters": 1,
+    "raw_nbatc__nbatc_trail_info": 1,
+    "raw_catamount__catamount_main_trail": 3,
+    "raw_catamount__catamount_side_trails": 1,
+    "raw_catamount__catamount_full_route": 2,
+    "raw_catamount__catamount_sections": 2,
+    "raw_catamount__catamount_access_points": 2,
+    "raw_catamount__catamount_businesses": 1,
+    "raw_catamount__catamount_backcountry_zones": 1,
+    "raw_hoosier__hhc_tecumseh_waypoints": 2,
+    "raw_hoosier__hhc_tecumseh_track": 1,
+    "raw_condor__condor_trail_2020": 4,
+    "raw_nc_high_peaks__nchpta_trails": 1,
+    "raw_mdhta__mdhta_trail_guide": 19,
+    "raw_ocvt__ocvt_at_tracks": 2,
+    "raw_mtsg__mtsg_map_locations": 3,
+    "raw_nps__nps_api_places": 2,
+    "raw_nps__nps_api_campgrounds": 2,
+}
+
+
+def test_every_gis_file_and_geographic_api_lands_from_its_answers_and_no_person_field_arrives(fixtures):
+    """Section G's resources, answered from conditions/json_apis/: every one lands, at its fixture's row count."""
+    root, counts = fixtures
+    resources, _ = fixture_resources(root / "raw")
+    landed = {r.table for r in resources if isinstance(r, JSON_API_KINDS) and type(r).__module__ != "extract._json_apis"}
+    assert landed == set(GIS_AND_GEO_API_ROWS)
+    assert {table: counts[table] for table in GIS_AND_GEO_API_ROWS} == GIS_AND_GEO_API_ROWS
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        places = {row[0] for row in con.execute("describe raw.raw_nps__nps_api_places").fetchall()}
+        values = json.dumps(con.execute("select * from raw.raw_nps__nps_api_places").fetchall(), default=str)
+        missing = con.execute("select count(*) from raw.raw_mtsg__mtsg_map_locations where geometry is null").fetchone()[0]
+    assert "images" not in places and "Fixture Photographer" not in values, "a photographer's credit never loads"
+    assert missing == 1
 
 
 def test_a_notice_feed_lands_no_creator_and_no_prose_and_a_page_lands_its_own_title_and_date(fixtures):

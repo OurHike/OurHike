@@ -1,25 +1,17 @@
-"""Hoosier Hikers Council: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch c5_regional_2).
+"""The Hoosier Hikers Council's Tecumseh Trail points, `/assets/Tecumseh_Trail_POI_Waypts.gpx`.
 
-The only shelter in the batch with a coordinate.
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+files' validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `hhc_tecumseh_waypoints`: 27 waypoints (numbered parking areas, road crossings, a rock shelter and
+  Foxes Den Shelter), last modified 2017-10-05, keyed on the geometry. Every `sym` is 'RED MAP PIN', so
+  a point's kind is in its name only. Its parking list predates the 2022 reroute (the coverage audit's
+  skeptic, 2026-10-01). Not landed: `/assets/Tecumseh_Trail_Guide.pdf` (2022-06-30), which covers
+  parking, access, water and camping, a PDF (wave 4).
 """
 
-from datetime import date
+from extract._gis_files import gis_file
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`/assets/Tecumseh_Trail_POI_Waypts.gpx` (GPX, 8,666 bytes): 27 waypoints. They are numbered parking "
-        'areas from 01 MMSF Office to 24 Crooked Creek, road crossings, and "Foxes_Den_Shelter". Every `sym` is'
-        ' "RED MAP PIN". There is also `/assets/Tecumseh_Trail_Guide.pdf` (1,289,157 bytes, 2022-06-30), which '
-        "covers parking, access, water and camping. (Skeptic HEAD, 2026-10-01: the POI GPX is 8,666 bytes with "
-        "Last-Modified 2017-10-05, so its parking list predates the 2022 reroute. The track GPX is 817,229 "
-        "bytes with Last-Modified 2024-03-12. Both are unchanged.)",
-    ),
-    where=("https://hoosierhikerscouncil.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("hhc_tecumseh_waypoints",)
+RESOURCES = [gis_file(key) for key in CLAIMS]

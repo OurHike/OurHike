@@ -99,6 +99,7 @@ from requests.structures import CaseInsensitiveDict
 import export_conditions
 from extract import _content, _json_apis, _kinds, _notices
 from extract._contract import all_resources, discover, discover_shared
+from extract._gis_files import GisFile
 from extract._kinds import (
     CONDITIONS_QUERIES,
     ArcgisLayer,
@@ -117,6 +118,7 @@ from extract._kinds import (
     WordpressTerms,
     registry_entry,
 )
+from extract._ogc import JsonFeatures, OgcFeatures
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.socrata import dataset_url
 
@@ -154,6 +156,9 @@ JSON_API_KINDS = (
     _json_apis.SheetCsvSegments,
     _json_apis.MyMapsPlacemarks,
     _content.PodcastEpisodes,
+    GisFile,
+    OgcFeatures,
+    JsonFeatures,
 )
 # What NPS_API_KEY holds while fixture mode runs, when the environment has none.
 FIXTURE_NPS_KEY = "fixture-mode-key"

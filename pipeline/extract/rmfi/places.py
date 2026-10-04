@@ -1,23 +1,14 @@
-"""Rocky Mountain Field Institute: places, published, and not landed (coverage audit 2026-10-01, batch
-c5_regional_2).
+"""The Rocky Mountain Field Institute's project map, a Google My Map read as its KML export.
 
-No licence is stated. These are project sites, so their value for hikers is low.
+Decision 54, waves 2 and 3: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or
+more between requests to one host) and registered in sources.json, where each row carries the count, the
+files' validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `rmfi_project_map`: 46 project sites (Garden of the Gods, Pikes Peak, Red Rock Canyon Open Space …),
+  keyed on the geometry. Work sites, which the places mart has no kind for yet; the row says so.
 """
 
-from datetime import date
+from extract._gis_files import gis_file
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "Google My Maps KML `https://www.google.com/maps/d/kml?mid=1JYWuK-xRDI4gA8zuREE894PcnZEtMUk&forcekml=1`"
-        ' (14,475 bytes): 46 points in one folder, "RMFI Project Past, Present and Ongoing" (Garden of the '
-        "Gods, Pikes Peak, Red Rock Canyon Open Space …). (Skeptic spot-check, 2026-10-01: again 14,475 bytes "
-        "and 46 `<Placemark>`s.)",
-    ),
-    where=("https://www.google.com/maps/d/kml?mid=1JYWuK-xRDI4gA8zuREE894PcnZEtMUk&forcekml=1",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("rmfi_project_map",)
+RESOURCES = [gis_file(key) for key in CLAIMS]

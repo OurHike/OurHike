@@ -631,3 +631,19 @@ def test_a_place_from_a_layer_no_exporter_reads_is_explained_as_decision_31s_new
     }
     # Today's places reordered: the order stays a difference.
     assert "order" not in parity._places_reasons(old, {"places": [town, club, shared]})
+
+
+def test_a_park_from_a_club_places_layer_is_explained_as_decision_31s_new_data_by_its_own_reason():
+    """A club places layer's park (int_places__club_units) is new data too, and parity names it as a places layer's
+    rather than in the words it uses for a point layer's trailhead."""
+    import parity
+
+    shared = {"id": "dec_parking_areas:100", "source": "dec_parking_areas", "kind": "parking"}
+    park = {"id": "dcnr_state_park_boundaries:k-1", "source": "dcnr_state_park_boundaries", "kind": "park"}
+
+    reasons = parity._places_reasons({"places": [shared]}, {"places": [park, shared]})
+
+    assert reasons["id dcnr_state_park_boundaries:k-1"] == parity.PLACES_REASONS["club_places"]
+    assert reasons["id dcnr_state_park_boundaries:k-1"].startswith(parity.NEW_DATA_REASON)
+    assert "dcnr_state_park_boundaries" in parity._club_places_sources()
+    assert "usgs_gnis_populated_places" in parity._club_places_sources()

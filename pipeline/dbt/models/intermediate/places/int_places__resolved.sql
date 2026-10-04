@@ -39,6 +39,17 @@
 -- everywhere, which would read as "no park holds any trail"; and nothing
 -- is dropped for being far from a line.
 --
+-- THE CLUBS' PARKS AND TOWNS (decision 54's wave 1 places layers,
+-- int_places__club_units, only those whose layer may publish) are measured
+-- the same two ways: a club park by the lines inside its boundary, a club
+-- town by the lines within the radius of its point. Each is kept whatever it
+-- measures, as NY Parks' parks and the waypoint towns are. A club park is
+-- never a `within`: a trailhead inside a national forest still reads the NY
+-- Parks unit it is in, as today's file says, because a club park's layer is
+-- not deduplicated against NY Parks' and the first-listed park would
+-- otherwise turn on a layer's registry order. A club town carries no
+-- `poi_id`: it is a place a hiker names, not a waypoint the app opens.
+--
 -- `lon`, `lat`, `bbox` and `trail_miles` are JSON text, cast back in the
 -- places mart, because a dbt 2.0.6 unit test compares a DOUBLE only to one
 -- decimal (.claude/skills/dbt/SKILL.md, "Contracts, and the traps in
@@ -153,6 +164,121 @@ point_within as (
     group by point_shapes.place_id
 ),
 
+club_units as (
+    select * from {{ ref('int_places__club_units') }}
+),
+
+club_park_shapes as (
+    select
+        place_id,
+        geom,
+        st_centroid(geom) as centroid,
+        st_extent(geom) as extent,
+        st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true) as g
+    from (
+        select
+            place_id,
+            st_geomfromtext(geom_wkt) as geom
+        from club_units
+        where kind = 'park'
+    ) as club_park_geoms
+),
+
+club_park_metres as (
+    select
+        club_park_shapes.place_id,
+        sum(st_length(st_intersection(lines.g, club_park_shapes.g))) as metres
+    from club_park_shapes
+    inner join lines on st_intersects(lines.g, club_park_shapes.g)
+    group by club_park_shapes.place_id
+),
+
+club_town_shapes as (
+    select
+        place_id,
+        geom,
+        st_buffer(
+            st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true),
+            {{ radius_m }}
+        ) as disc
+    from (
+        select
+            place_id,
+            st_geomfromtext(geom_wkt) as geom
+        from club_units
+        where kind = 'town'
+    ) as club_town_geoms
+),
+
+club_town_metres as (
+    select
+        club_town_shapes.place_id,
+        sum(st_length(st_intersection(lines.g, club_town_shapes.disc)))
+            as metres
+    from club_town_shapes
+    inner join lines on st_intersects(lines.g, club_town_shapes.disc)
+    group by club_town_shapes.place_id
+),
+
+club_places as (
+    select
+        club_units.place_id,
+        club_units.name,
+        club_units.kind,
+        cast(null as varchar) as poi_id,
+        club_units.category,
+        club_units.state,
+        cast(null as varchar) as within_park,
+        cast(
+            printf(
+                '%.5f',
+                st_x(coalesce(club_park_shapes.centroid, club_town_shapes.geom))
+            ) as double
+        ) as lon,
+        cast(
+            printf(
+                '%.5f',
+                st_y(coalesce(club_park_shapes.centroid, club_town_shapes.geom))
+            ) as double
+        ) as lat,
+        case
+            when club_units.kind = 'park'
+                then [
+                    cast(
+                        printf('%.5f', st_xmin(club_park_shapes.extent))
+                        as double
+                    ),
+                    cast(
+                        printf('%.5f', st_ymin(club_park_shapes.extent))
+                        as double
+                    ),
+                    cast(
+                        printf('%.5f', st_xmax(club_park_shapes.extent))
+                        as double
+                    ),
+                    cast(
+                        printf('%.5f', st_ymax(club_park_shapes.extent))
+                        as double
+                    )
+                ]
+        end as bbox,
+        coalesce(club_park_metres.metres, club_town_metres.metres, 0)
+            as metres,
+        club_units.source_key as source,
+        club_units.club,
+        club_units.source_key,
+        club_units._loaded_at
+    from club_units
+    left join club_park_shapes
+        on club_units.place_id = club_park_shapes.place_id
+    left join club_park_metres
+        on club_units.place_id = club_park_metres.place_id
+    left join club_town_shapes
+        on club_units.place_id = club_town_shapes.place_id
+    left join club_town_metres
+        on club_units.place_id = club_town_metres.place_id
+),
+
 park_places as (
     select
         parks.place_id,
@@ -228,6 +354,8 @@ all_places as (
     select * from point_rows
     union all
     select * from trail_rows
+    union all
+    select * from club_places
 ),
 
 kept as (

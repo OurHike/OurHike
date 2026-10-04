@@ -524,7 +524,22 @@ PLACES_REASONS = {
         "no exporter reads, one of decision 54's wave 1 point layers (int_points_of_interest__club_points), so there "
         "is no old record to compare it with; new_data_report.py counts its layer under nearby_poi"
     ),
+    "club_places": (
+        "expected by decision 31 ('Publish new data in this PR'): a park or town from one of decision 54's wave 1 "
+        "places layers (int_places__club_units), which no exporter reads, so there is no old record to compare it "
+        "with; new_data_report.py counts its layer under places"
+    ),
 }
+
+
+def _club_places_sources() -> frozenset[str]:
+    """The registry's club places layers: a club or external ArcGIS row whose `place_kind` is a park or a town."""
+    registry = json.loads((Path(__file__).resolve().parent / "sources.json").read_text(encoding="utf-8"))
+    return frozenset(
+        source["key"]
+        for source in registry["sources"]
+        if source.get("kind") in ("club_arcgis_layer", "external_arcgis_layer") and source.get("place_kind") in ("park", "town")
+    )
 
 
 def _places_reasons(old: dict, new: dict) -> dict[str, str]:
@@ -537,8 +552,9 @@ def _places_reasons(old: dict, new: dict) -> dict[str, str]:
     old_records = old.get("places") or []
     old_ids = [record["id"] for record in old_records]
     known = _today_poi_sources() | {record.get("source") for record in old_records}
+    club_places = _club_places_sources()
     reasons = {
-        f"id {record['id']}": PLACES_REASONS["new_source"]
+        f"id {record['id']}": PLACES_REASONS["club_places" if record["source"] in club_places else "new_source"]
         for record in new.get("places") or []
         if record["id"] not in set(old_ids) and record.get("source") and record["source"] not in known
     }

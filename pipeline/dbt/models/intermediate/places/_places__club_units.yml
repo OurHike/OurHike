@@ -1,0 +1,121 @@
+version: 2
+
+# The clubs' parks and towns (decision 54's wave 1 places layers) in
+# places.json. Kept apart from _places__unit_tests.yml on purpose:
+# tests/test_dbt_places_parity.py holds every unit test there to
+# export_places.py's own answer, and export_places.py reads no club layer,
+# so these rows have no Python answer to be held to.
+models:
+  - name: int_places__club_units
+    description: >
+      The parks and towns of the clubs' places layers places.json lists, one row per place, before
+      anything is measured: only a layer whose sources.json row gives a place_kind of park or town,
+      and only where int_sources__publication lets it publish, filtered before any geometry is read.
+      A park keeps its polygon made valid, a town is its geometry's centroid; a row with no name or no
+      geometry is not a place. The id is the layer's key and the row's base-model key.
+    columns:
+      - name: place_id
+        description: "`<source key>:<place key>`, the id places.json publishes."
+        data_tests: [not_null, unique]
+      - name: kind
+        description: park or town, the layer's own sources.json place_kind.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [park, town]
+      - name: name
+        description: The layer's own name for the place, trimmed.
+        data_tests: [not_null]
+      - name: category
+        description: The layer's category field's value, on a park only.
+      - name: state
+        description: The postal code the layer's organization declares, null where it declares none.
+      - name: geom_wkt
+        description: A park's polygon, made valid, or a town's point, as WKT in lon/lat.
+        data_tests: [not_null]
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null]
+      - name: club
+        description: The extract folder that landed the layer.
+      - name: _loaded_at
+        description: When the extract landed the row.
+
+unit_tests:
+  - name: places_club_units_list_a_publishable_layers_parks_and_towns_only
+    model: int_places__club_units
+    description: >
+      A club places layer reaches places.json only through its row's place_kind and its source's
+      may_publish: a park layer's named polygon is a park, a town layer's point is a town, a layer
+      whose source may not publish is not read at all, a layer with no place_kind (a map-sheet
+      index) is not a place, and a row with no name is not one either.
+    given:
+      - input: ref('int_places__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              place_key,
+              name,
+              category,
+              st_geomfromtext(geom_wkt) as geom,
+              cast('{}' as json) as properties,
+              cast('2026-10-04 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('dcnr_state_park_boundaries', 'pasda', 'k-1', ' Laurel Ridge State Park ', null, 'POLYGON ((-79.3 40.0, -79.2 40.0, -79.2 40.1, -79.3 40.0))'),
+              ('dcnr_state_park_boundaries', 'pasda', 'k-2', '  ', null, 'POLYGON ((-79.1 40.0, -79.0 40.0, -79.0 40.1, -79.1 40.0))'),
+              ('azt_gateway_communities', 'ata', 'k-3', 'Patagonia', null, 'POINT (-110.75 31.54)'),
+              ('usgs_gnis_populated_places', 'usgs_tnm', 'k-4', 'Fixture Town', null, 'POINT (-74.0 41.0)'),
+              ('fltc_map_sheet_index', 'fltc', 'k-5', 'M17', null, 'POLYGON ((-77.0 42.0, -76.9 42.0, -76.9 42.1, -77.0 42.0))')
+          ) as unioned (source_key, club, place_key, name, category, geom_wkt)
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: 'dcnr_state_park_boundaries', provider: 'PA DCNR', entry: '{"place_kind": "park"}'}
+          - {source_key: 'azt_gateway_communities', provider: 'ATA', entry: '{"place_kind": "town"}'}
+          - {source_key: 'usgs_gnis_populated_places', provider: 'USGS', entry: '{"place_kind": "town"}'}
+          - {source_key: 'fltc_map_sheet_index', provider: 'FLTC', entry: '{}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: 'dcnr_state_park_boundaries', may_publish: true}
+          - {source_key: 'azt_gateway_communities', may_publish: true}
+          - {source_key: 'usgs_gnis_populated_places', may_publish: false}
+          - {source_key: 'fltc_map_sheet_index', may_publish: true}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {provider: 'PA DCNR', org_state: 'PA'}
+          - {provider: 'ATA', org_state: null}
+    expect:
+      rows:
+        - {place_id: 'dcnr_state_park_boundaries:k-1', kind: 'park', name: 'Laurel Ridge State Park', state: 'PA', source_key: 'dcnr_state_park_boundaries'}
+        - {place_id: 'azt_gateway_communities:k-3', kind: 'town', name: 'Patagonia', state: null, geom_wkt: 'POINT (-110.75 31.54)', source_key: 'azt_gateway_communities'}
+  - name: places_resolved_measures_a_club_park_and_a_club_town_and_lists_neither_as_within
+    model: int_places__resolved
+    description: >
+      A club park carries the miles of published line inside its boundary and its box, as NY Parks'
+      parks do; a club town the miles within the radius of its point (the project's
+      places_trail_radius_miles, 5), and no waypoint id. Neither is a `within`: a trailhead inside a
+      club park still names only a NY Parks unit, which here it is in none of.
+    overrides:
+      vars:
+        places_trail_radius_miles: 5.0
+        trail_lines_network_named_trail_threshold_miles: 50.0
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows:
+          - {"place_id": "dec_lean_tos:th", "kind": "trailhead", "name": "Inside Trailhead", "poi_id": "dec_lean_tos:th", "state": "NY", "lon": -73.96, "lat": 41.02, "source": "dec_lean_tos", "club": "nysdec", "source_key": "dec_lean_tos", "waypoint_order": 0, "_loaded_at": "2026-10-04 00:00:00+00"}
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-04 00:00:00+00", "line_kind": "network", "name": "Pine Trail", "trail_name": "Pine Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9904, 41.02894], [-73.9328, 41.02894]]}"}
+      - input: ref('int_places__club_units')
+        rows:
+          - {"place_id": "dec_lands:k-1", "kind": "park", "name": "Fixture State Forest", "category": "State Forest", "state": "NY", "geom_wkt": "POLYGON ((-74.0 41.0, -73.9232 41.0, -73.9232 41.05788, -74.0 41.05788, -74.0 41.0))", "source_key": "dec_lands", "club": "nysdec", "_loaded_at": "2026-10-04 00:00:00+00"}
+          - {"place_id": "azt_gateway_communities:k-3", "kind": "town", "name": "Fixture Gateway", "category": null, "state": null, "geom_wkt": "POINT (-73.9616 41.02894)", "source_key": "azt_gateway_communities", "club": "ata", "_loaded_at": "2026-10-04 00:00:00+00"}
+    expect:
+      rows:
+        - {"place_id": "dec_lands:k-1", "kind": "park", "name": "Fixture State Forest", "poi_id": null, "category": "State Forest", "state": "NY", "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": "[-74.0,41.0,-73.9232,41.05788]", "trail_miles": "3.0", "trail_miles_measured": true, "source": "dec_lands"}
+        - {"place_id": "azt_gateway_communities:k-3", "kind": "town", "name": "Fixture Gateway", "poi_id": null, "category": null, "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": null, "trail_miles": "3.0", "trail_miles_measured": true, "source": "azt_gateway_communities"}
+        - {"place_id": "dec_lean_tos:th", "kind": "trailhead", "name": "Inside Trailhead", "poi_id": "dec_lean_tos:th", "category": null, "state": "NY", "within_park": null, "lon": "-73.96", "lat": "41.02", "bbox": null, "trail_miles": "3.0", "trail_miles_measured": true, "source": "dec_lean_tos"}

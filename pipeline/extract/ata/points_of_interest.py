@@ -1,31 +1,42 @@
-"""Arizona Trail Association: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch c10_nst_rest).
+"""The Arizona Trail Association's bear boxes for caching water: 22 boxes with their fix, NOBO mile, closest
+FarOut waypoint and land manager, from the PDF its water sources page links.
 
-The water `Type` needs a person-read mapping, like NPS's six spellings of potable water (c9). ATA
-points hikers to FarOut's water report for current flow. FarOut is a third party, and its report is
-not ATA's.
+Decision 54, wave 4: read live on 2026-10-04 (robots.txt first on aztrail.org and on the association's media
+bucket, lib/user_agent.py's agent) and registered in sources.json, where the row carries the count, the
+validators, the measured key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `ata_water_cache_boxes`: 22 boxes, keyed on the FarOut waypoint.
+
+A BOX IS A CACHE, NEVER A WATER SOURCE: "Bear boxes are for caching water only", and what is in one is what
+a hiker or a trail angel left (aztrail.org/explore/water-sources/). The association's terms ask written
+permission for information published online, so the row's licence is unresolved and nothing ships.
+
+NOT HERE, AND THE LEAD'S: the coverage audit's ATA water and point data on ArcGIS, read 2026-10-01 at
+https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services: layer 0, AZT Water Source Locations (312
+points, a free-text `Type`), layer 1, Points (3,041), and layer 2, Trailheads (106). They are ArcGIS layers,
+wave 1's reader, and have no sources.json row yet.
 """
 
 from datetime import date
 
-from extract._contract import NotAvailable
+from extract._contract import SameAs
+from extract._pdf_points import pdf_points
 
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "Layer `/0` AZT Water Source Locations: 312, last edit 2026-09-04 (skeptic: the layer's own "
-        "`editingInfo.lastEditDate` reads 2026-05-10; 2026-09-04 is the layer-`/1`/`/3` date). `Type` is free "
-        "text with about 40 spellings: creek 41, Spring 31, Dirt Tank 25, Structure 20, null 15, Dirt Stock "
-        "Tank 13, Spigot 10… Layer `/1` Points: 3,041 (Milepost 1,664, Road Jct 467, Structure 258, Trail Jct "
-        "252, Water 162, Trailhead 56, Bridge 13, Campground 10), with an `Elevation` field. Layer `/2` "
-        "Trailheads: 106. PDFs: `.../2024/08/water-cache-box-locations-08152024.pdf` (bear-box water caches) "
-        "and …",
+CLAIMS = ("ata_water_cache_boxes",)
+RESOURCES = [pdf_points(key) for key in CLAIMS]
+
+SAME_AS = (
+    SameAs(
+        original="ata_water_cache_boxes",
+        copy=(
+            "https://aztrailmedia.s3.us-west-1.amazonaws.com/wp-content/uploads/2024/08/water-cache-box-locations-08152024.xlsx",
+        ),
+        confirmed=date(2026, 10, 4),
+        checked=(
+            "aztrail.org's media library lists both on 2024-08-15 (wp-json/wp/v2/media, read 2026-10-04): the "
+            "XLSX, 'Water Cache Box Locations_08152024', and the PDF printed from it, whose own /Title is "
+            "'water-cache-box-locations-08152024.xlsx'. The water sources page links the PDF only. The XLSX was "
+            "not downloaded; the PDF's title is what shows they are one table.",
+        ),
     ),
-    where=(
-        "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services",
-        "https://aztrail.org/",
-    ),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
 )

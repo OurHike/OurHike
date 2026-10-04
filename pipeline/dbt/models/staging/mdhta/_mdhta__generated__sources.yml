@@ -30,3 +30,16 @@ sources:
           Maah Daah Hey Trail and its connectors (the trail guide's 19 GeoJSON files, with
           elevation) (sources.json `mdhta_trail_guide`). Key: The geometry alone: unique
           on 22 of 22 across the 19 files (measured 2026-10-04). `name` is 20 of 22.
+      - name: raw_mdhta__mdhta_trail_guide_points
+        data_tests:
+          # Rows sharing base_mdhta__mdhta_trail_guide_points's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'mdhta_trail_guide_points'", "link"]
+        description: >
+          Maah Daah Hey trail guide's points: trailheads, campgrounds, water cache boxes,
+          river crossings (sources.json `mdhta_trail_guide_points`). Key: `link`, each
+          point's own page on mdhta.com (its post permalink): unique on 50 of 50 (measured
+          2026-10-04 on the live page, every anchor parsed as extract/_pages_points.py
+          parses it). The geometry is 50 of 50 too, (`kind`, `name`) 50 of 50 and `slug`
+          39 of 50, because a trailhead and a campground of one name share a slug.

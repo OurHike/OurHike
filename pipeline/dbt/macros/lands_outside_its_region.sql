@@ -70,6 +70,15 @@
     otherwise widen its points' too. The other GIS files sit inside the
     eastern box and have no entry.
 
+    DECISION 54'S WAVES 4 AND 5, POINTS READ OFF CLUB PAGES AND PDFS
+    (2026-10-04), each by every point its parser read off the live page or
+    PDF that day: MDHTA's trail guide lon -103.674 to -103.242 in North
+    Dakota, FoOT's shelters lon -94.863 to -93.540 in Arkansas and Oklahoma,
+    and ATA's water cache boxes lon -112.189 to -110.558 in Arizona, all
+    inside `national`. AMC Berkshire's parking (lon -73.436 to -73.150), the
+    Foothills Trail's access points (lon -83.122 to -82.638) and BMTA's
+    (lon -84.519 to -83.106) sit inside the eastern box and have no entry.
+
     @unvalidated Every margin is picked, not measured. What would settle it
     is the per-club box from trail_orgs.json's `states` that pipeline/ELT.md
     plans. A source loading outside the eastern box without a row in
@@ -223,6 +232,9 @@
     'mtsg_map_locations': 'national',
     'nps_api_campgrounds': 'us_and_territories',
     'bmecc_trail_section_map': 'eastern',
+    'mdhta_trail_guide_points': 'national',
+    'foot_trail_shelters': 'national',
+    'ata_water_cache_boxes': 'national',
 } -%}
 
 with placed as (

@@ -20,6 +20,7 @@ from extract._fixtures import (
     JSON_API_DIR,
     JSON_API_KINDS,
     NOTICES_DIR,
+    PAGE_POINTS_DIR,
     FixtureAdapter,
     FixtureConnection,
     build,
@@ -40,6 +41,7 @@ from extract._kinds import (
     WordpressPosts,
     WordpressTerms,
 )
+from extract._pages_points import PagePoints
 
 
 @pytest.fixture(scope="module")
@@ -65,6 +67,7 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | GuidePages
         | PageNotice
         | FeedNotices
+        | PagePoints
     )
     fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
     assert len(fetched) == 388, (
@@ -330,6 +333,24 @@ def test_every_gis_file_and_geographic_api_lands_from_its_answers_and_no_person_
         missing = con.execute("select count(*) from raw.raw_mtsg__mtsg_map_locations where geometry is null").fetchone()[0]
     assert "images" not in places and "Fixture Photographer" not in values, "a photographer's credit never loads"
     assert missing == 1
+
+
+def test_every_club_page_read_for_its_points_lands_the_rows_its_own_parser_makes(fixtures):
+    """Section S's pages (decision 54's wave 5), answered from conditions/page_points/: each lands exactly its file's
+    `rows` through the site's own parser, a point with no fix lands with no geometry, and AMC Berkshire's parking
+    page, which its notice reads too, still lands that notice's one row from the same body."""
+    root, counts = fixtures
+    resources, _ = fixture_resources(root / "raw")
+    pages = [r for r in resources if isinstance(r, PagePoints)]
+    files = sorted((root / "raw" / "conditions" / PAGE_POINTS_DIR).glob("*.json"))
+    assert {r.key for r in pages} == {path.stem for path in files}
+    for resource in pages:
+        expected = json.loads((root / "raw" / "conditions" / PAGE_POINTS_DIR / f"{resource.key}.json").read_text())["rows"]
+        assert counts[resource.table] == expected, resource.table
+    assert counts["raw_amc_berkshire__amc_wma_at_parking"] == 1
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        unplaced = con.execute("select count(*) from raw.raw_ouachita__foot_trail_shelters where geometry is null").fetchone()[0]
+    assert unplaced == 1
 
 
 def test_a_notice_feed_lands_no_creator_and_no_prose_and_a_page_lands_its_own_title_and_date(fixtures):

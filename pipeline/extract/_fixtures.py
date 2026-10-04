@@ -57,6 +57,11 @@ the HTTP session or the Postgres connection, is swapped:
   its reader must land. The readers' pause between requests to one host and
   each host's Crawl-delay are switched off for the build, as ATC's Crawl-delay
   is, since no host is asked anything;
+- each club page read for its points (extract/_pages_points.py's PagePoints,
+  decision 54's wave 5), from conditions/page_points/<key>.json in the same
+  shape, so the page's own parser, its refusal of a changed layout and the
+  count-as-proof run; a PDF's points (extract/_pdf_points.py) need pypdf and
+  stay out, as the notice PDFs do;
 - a club's other WordPress sources (conditions/<key>.json, the shape NYNJTC's
   take), a custom post type's route (GMC's `alert`, the document's `types`)
   among them;
@@ -119,6 +124,7 @@ from extract._kinds import (
     registry_entry,
 )
 from extract._ogc import JsonFeatures, OgcFeatures
+from extract._pages_points import PagePoints
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.socrata import dataset_url
 
@@ -147,6 +153,10 @@ JSON_API_DIR = "json_apis"
 # _notice_fixtures_n_to_z() for the rest), one file per registry key, the TEXT_FIXTURES shape plus the rows its
 # reader must land: `{"answers": {url: {"content_type", "body"}}, "rows": n}`.
 NOTICES_DIR = "notices"
+# The points read off club pages (extract/_pages_points.py, decision 54's wave 5, make_dbt_fixtures.py's
+# page_points_fixtures()), one file per registry key, the NOTICES_DIR shape: `{"answers": {url: {"content_type",
+# "body"}}, "rows": n}`, served by exact URL, and `rows` what the page's own parser must land.
+PAGE_POINTS_DIR = "page_points"
 JSON_API_KINDS = (
     _json_apis.NpsAlerts,
     _json_apis.NpsRoadEvents,
@@ -511,6 +521,13 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
             document = conditions_fixture(raw_dir, f"{JSON_API_DIR}/{resource.key}.json")
             if document is not None:
                 routed.extend(document["answers"])
+                chosen.append(resource)
+            continue
+        if isinstance(resource, PagePoints):
+            # A club page read for its points, by exact URL as a notice page is; its own parser reads it.
+            document = conditions_fixture(raw_dir, f"{PAGE_POINTS_DIR}/{resource.key}.json")
+            if document is not None:
+                pages.update(text_answers(document))
                 chosen.append(resource)
             continue
         if isinstance(resource, FeedNotices | PageNotice):

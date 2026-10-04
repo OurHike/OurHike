@@ -39,3 +39,15 @@ sources:
           Arizona Trail passages for mountain bikes (ATA) (sources.json
           `ata_mountain_bike_passages`). Key: GlobalID: unique and non-null on all 50 rows
           (measured 2026-10-03 over every row's attributes).
+      - name: raw_ata__ata_water_cache_boxes
+        data_tests:
+          # Rows sharing base_ata__ata_water_cache_boxes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ata_water_cache_boxes'", "farout_waypoint"]
+        description: >
+          Arizona Trail Bear Box/Water Cache Locations (ATA's PDF) (sources.json
+          `ata_water_cache_boxes`). Key: `farout_waypoint`, the FarOut waypoint the table
+          names as closest to each box: unique on 22 of 22 (measured 2026-10-04 on the
+          live PDF, parsed as extract/_pdf_points.py parses it). `name` and the geometry
+          are 22 of 22 too.

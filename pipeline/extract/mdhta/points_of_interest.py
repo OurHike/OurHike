@@ -1,25 +1,21 @@
-"""Maah Daah Hey Trail Association: points of interest, published, and not landed (coverage audit
-2026-10-01, batch c8_regional_5).
+"""The Maah Daah Hey Trail Association's trail guide points: trailheads, campgrounds, water cache boxes, river
+crossings and points of interest, the `data-lat`/`data-long` anchors its own map plots.
 
-Machine-parseable HTML. The waterboxes are water caches, and USFS rec sites publish no water at all
-(`usfs_rec_sites` notes). That makes them this batch's clearest safety gap.
+Decision 54, wave 5: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests to one host) and registered in sources.json, where the row carries the count, the measured
+key, the terms and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `mdhta_trail_guide_points`: 50 points (19 trailheads, 11 campgrounds, 8 waterboxes, 6 river crossings, 6
+  points of interest), keyed on each point's own page.
+
+A WATERBOX IS A CACHE, NEVER A WATER SOURCE: the association's FAQ says its eight water cache sites were
+added by volunteers and that a hiker's surest plan is to cache water before the trip. The campgrounds' hand
+pumps are seasonal ('Pump handles are removed about November 10 through April'), which the row's notes carry
+for decision 65's caution. The same page's trail lines are mdhta/trail_lines.py's `mdhta_trail_guide`, read
+from the GeoJSON files the page links: one page, two datasets.
 """
 
-from datetime import date
+from extract._pages_points import page_points
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`/trail-guide/` carries 50 located points as HTML `data-lat`/`data-long` attributes: 19 trailheads, 11"
-        " campgrounds, 8 waterboxes (Plumely Draw, Long X, Magpie Road, Third Creek, Tom's Wash, Bear Creek, "
-        "Roosevelt, Beicegel Creek Road), 6 river crossings and 6 points of interest. Each also has its own "
-        'page, e.g. `/waterboxes/bear-creek/`, "GPS coordinates 46.72897, -103.52134". FAQ: "Each campground on'
-        ' the trail has hand pumped potable water … Pump handles are removed about November 10 through April."',
-    ),
-    where=("https://mdhta.com/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("mdhta_trail_guide_points",)
+RESOURCES = [page_points(key) for key in CLAIMS]

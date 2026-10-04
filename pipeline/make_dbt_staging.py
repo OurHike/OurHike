@@ -11,8 +11,9 @@ committed file differs from what this would write, so a registry edit and its mo
 
 WHICH LAYERS (registry-driven, by kind, type and measured key). Every resource that a club folder's file for
 one of TYPES extracts as an ArcGIS layer (extract/_kinds.py's ArcgisLayer), a GIS file (extract/_gis_files.py's
-GisFile) or a geographic API (extract/_ogc.py's OgcFeatures and JsonFeatures), a sources.json row of a kind in
-KINDS, unless a hand-written model already reads its raw table: those keep their own (the registry tables
+GisFile), a geographic API (extract/_ogc.py's OgcFeatures and JsonFeatures) or a club page's or PDF's points
+(extract/_pages_points.py's PagePoints and extract/_pdf_points.py's PdfPoints, decision 54's waves 4 and 5,
+section S), a sources.json row of a kind in KINDS, unless a hand-written model already reads its raw table: those keep their own (the registry tables
 staged before decision 54). So a layer registered later is staged by running this again, and by nothing else.
 A file that SHARES a sibling's resource (one upstream feeding two types, such as a My Map of trail lines and
 trailheads) gets a staging model of its own over the sibling's base model, and no second base or source: one
@@ -85,8 +86,19 @@ YAML_MARK = f"# {GENERATED} from sources.json\n# and the extract's club folders;
 JINJA_MARK = f"{{#- {GENERATED} from sources.json\n    and the extract's club folders; edit them or it, never this file. -#}}\n"
 
 #: The registry kinds an ArcgisLayer reads, then decision 54's waves 2 and 3: a GisFile, an OgcFeatures and a
-#: JsonFeatures (lib/source_registry.py's GIS_FILE, OGC_FEATURES and JSON_FEATURES).
-KINDS = ("club_arcgis_layer", "external_arcgis_layer", "gis_file", "ogc_features", "json_features")
+#: JsonFeatures (lib/source_registry.py's GIS_FILE, OGC_FEATURES and JSON_FEATURES), then waves 4 and 5's
+#: PdfPoints and PagePoints (PDF_POINTS and PAGE_POINTS). Fixture mode cannot read a PDF, because the dbt job installs
+#: no pypdf (requirements.in's note), so CI's warehouse never holds a pdf_points table: its base model reads the
+#: absent table as no rows (macros/raw_or_empty.sql), and the build reads its rows only where the extract landed them.
+KINDS = (
+    "club_arcgis_layer",
+    "external_arcgis_layer",
+    "gis_file",
+    "ogc_features",
+    "json_features",
+    "page_points",
+    "pdf_points",
+)
 
 #: The server row ids a key may never hold (decision 40: a truncate-and-reload mints them again), as dlt names them.
 #: `feature_index` is a feature's position in its file (extract/_gis_files.py), which a re-saved file renumbers.
@@ -485,10 +497,12 @@ def tables() -> list[Table]:
     from extract._gis_files import GisFile
     from extract._kinds import ArcgisLayer, registry_entry
     from extract._ogc import JsonFeatures, OgcFeatures
+    from extract._pages_points import PagePoints
+    from extract._pdf_points import PdfPoints
 
     hand_written = _hand_written_raw_tables()
     readers = {reader for _, reader in CONTENT_COLUMNS} | set(CONTENT_LOOKUPS)
-    geographic = ArcgisLayer | GisFile | OgcFeatures | JsonFeatures
+    geographic = ArcgisLayer | GisFile | OgcFeatures | JsonFeatures | PagePoints | PdfPoints
     files = discover()
     by_place = {(club_file.club, club_file.type): club_file for club_file in files}
     found = []

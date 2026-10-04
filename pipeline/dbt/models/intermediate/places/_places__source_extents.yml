@@ -1,0 +1,69 @@
+version: 2
+
+# The clubs' own places layers (decision 54's wave 1), after
+# int_places__unioned. No mart reads them: every layer here is held back by
+# its sources.json row.
+models:
+  - name: int_places__source_extents
+    description: >
+      One row per places layer in int_places__unioned: its rows, how many carry a geometry, the
+      extent of their own vertices, and the narrowest region box those vertices fit
+      (macros/lands_outside_its_region.sql's vertex_region). The evidence a source's region box is
+      set from, never a server's returnExtentOnly.
+    columns:
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null, unique]
+      - name: row_count
+        description: Rows the union holds for the layer.
+      - name: rows_with_geometry
+        description: Of those, rows with a geometry.
+      - name: lon_min
+        description: The smallest longitude of any vertex.
+      - name: lon_max
+        description: The largest longitude of any vertex.
+      - name: lat_min
+        description: The smallest latitude of any vertex.
+      - name: lat_max
+        description: The largest latitude of any vertex.
+      - name: vertex_region
+        description: >
+          The narrowest of the eastern, national and us_and_territories boxes holding every vertex;
+          null when none does, which a lon/lat swap makes so.
+
+unit_tests:
+  - name: places_source_extents_are_read_from_vertices_never_a_server_extent
+    model: int_places__source_extents
+    description: >
+      A server's extent can lie (pipeline/ELT.md, "What wave 1's live reads found"): USFWS's trail
+      segments answered returnExtentOnly with lat -24.99 to 90 while their vertices span lat 13.64
+      to 63.20 and lon -159.48 to 144.87. The extent here is the vertices', so those fit
+      us_and_territories; a New York park's fit the eastern box, a Utah town's the national one,
+      and a swapped point (lat -74) fits none.
+    given:
+      - input: ref('int_places__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              'fixture' as club,
+              place_key,
+              cast(null as varchar) as name,
+              cast(null as varchar) as category,
+              st_geomfromtext(geom_wkt) as geom,
+              cast(null as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('usfws_refuge_boundaries', 'r1', 'POINT (-159.48 22.0)'),
+              ('usfws_refuge_boundaries', 'r2', 'POINT (144.87 13.64)'),
+              ('usfws_refuge_boundaries', 'r3', 'POINT (-150.0 63.20)'),
+              ('dec_lands', 'd1', 'POLYGON ((-74 41, -73.99 41, -73.99 41.01, -74 41))'),
+              ('ugrc_cities_towns', 'u1', 'POINT (-111.89 40.76)'),
+              ('swapped_layer', 's1', 'POINT (41.0 -74.0)')
+          ) as unioned (source_key, place_key, geom_wkt)
+    expect:
+      rows:
+        - {"source_key": "usfws_refuge_boundaries", "row_count": 3, "rows_with_geometry": 3, "lon_min": -159.48, "lon_max": 144.87, "lat_min": 13.64, "lat_max": 63.2, "vertex_region": "us_and_territories"}
+        - {"source_key": "dec_lands", "row_count": 1, "rows_with_geometry": 1, "lon_min": -74.0, "lon_max": -73.99, "lat_min": 41.0, "lat_max": 41.01, "vertex_region": "eastern"}
+        - {"source_key": "ugrc_cities_towns", "row_count": 1, "rows_with_geometry": 1, "lon_min": -111.89, "lon_max": -111.89, "lat_min": 40.76, "lat_max": 40.76, "vertex_region": "national"}
+        - {"source_key": "swapped_layer", "row_count": 1, "rows_with_geometry": 1, "lon_min": 41.0, "lon_max": 41.0, "lat_min": -74.0, "lat_max": -74.0, "vertex_region": null}

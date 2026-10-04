@@ -3737,6 +3737,16 @@ Every folder's `org.py` also loads its catalogue row (145 of 145). Seven files h
 - **Notices hide in POI layers.** FLTC's waypoints hold 76 hunting closures and 7 high-water hazards, and PCTA's 2018 Halfmile water layer still carries a 2018 fire-closure notice: they go to decision 53's notices or are dropped, never published as POIs.
 - **A host whose robots.txt fails is read as refusing.** `arcgisserver.digital.mass.gov` answered 502 twice on 2026-10-03, which RFC 9309 reads as disallow, and `massgis_long_distance_trails` already loads from it. Whether the extract checks robots.txt before a monthly read is `@unvalidated`.
 
+#### Wave 1 through dbt staging (built 2026-10-03)
+
+`pipeline/make_dbt_staging.py` writes the staging layer from the registry, and `pipeline/tests/test_dbt_generated_staging.py` fails when a committed file differs from what it would write. It stages every ArcGIS layer a club folder's places, elevation, points-of-interest or trail-lines file extracts that no hand-written model reads: per layer a source block with `duplicates_are_exact` and a `base_<folder>__<key>`, keyed and deduped on the row's measured key (`key_fields`, else `id_fields`, else `id_field`; it refuses a row with none, or whose key holds a server row id); per folder and type a `stg_<folder>__<type>`; per type an `int_<type>__unioned`; and each source's region box in `dbt/macros/generated_regions.sql`.
+
+- **Keys the wave 1 rows did not record** were measured for staging on 2026-10-03, every row and vertex read as the extract reads them, and written to each row's `key_fields` and `key_comment`: the geometry alone for 9 of the 14 places rows that read NONE and for the one-row `fpc_ancient_forest_preserve`, the geometry with one to three attributes for 3 (WA's public lands inventory needs owner, purchase date and county), and `incounty_id` for GNIS's 176,566 populated places. The six elevation rows named the object id, which decision 40 never keys on; their own notes' other unique columns replace it.
+- **ArcGIS dates** in a row's `date_fields` (21 places rows) are cast from epoch milliseconds to UTC timestamps in the base model.
+- **Elevation's rules** live in `int_elevation__club_samples`: units per row (each sample converted by its own row's `elevation_unit`, and no elevation at all where the row names none), two dimensions (`ST_Force2D`), and no calibration from a Z nothing compared with 3DEP (`usable_for_calibration` is false on every row until a step does).
+- **Region boxes from vertices**: every generated source is held to `us_and_territories`, the widest box that still catches a swapped point, `@unvalidated` as a fit; `int_places__source_extents` and `int_elevation__source_extents` name the narrowest box each source's own vertices fit, which is what a narrower box is set from after a live build.
+- Nothing here reaches a hiker: no mart reads the unions, and every layer's row reads `reaches_hikers: false`.
+
 #### Order of work
 
 1. Wave 1's live read, one worker per type (points of interest, trail lines, places, elevation), once decision 53's inventory has finished with each host.

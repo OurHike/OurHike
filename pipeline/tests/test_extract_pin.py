@@ -24,6 +24,7 @@ from extract import _kinds, _run, _warehouse
 from extract._kinds import ArcgisLayer, OpentrailFeed, SocrataDataset
 from extract._run import ExtractRefused, as_landed_feature, make_pipeline, run_pipeline
 from extract._warehouse import BuildRefused, load_pinned, load_warehouse, pin_raw_inputs
+from lib import http_retry
 from tests.test_extract_run import (
     CLOSURES_URL,
     LINES_URL,
@@ -31,6 +32,9 @@ from tests.test_extract_run import (
     closures,
     feature,
     lines,
+    month,
+    monthly_lines,
+    monthly_points,
 )
 
 
@@ -339,6 +343,29 @@ def test_a_refused_run_is_never_pinned(registry, store, steps, requests_mock):
 
     with pytest.raises(BuildRefused, match="ended refused"):
         pin_raw_inputs(pipeline_of(store), store["bucket_url"], steps, refused[0])
+
+
+def test_a_monthly_run_that_left_one_layer_out_is_pinned_with_that_layers_last_month(
+    registry, store, steps, requests_mock, monkeypatch
+):
+    """Monthly run 16 (refresh-reference.yml 37210020925): the layers it left out logged `refused`, and the pin
+    refused the whole run on their rows, though the rest had loaded and the run check had passed them."""
+    monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+    trails = FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    FakeLayer(requests_mock, CLOSURES_URL, [feature(10), feature(11)])
+    month(store, monthly_lines(), monthly_points())
+    trails.features, trails.etag = [feature(1), feature(2), feature(3)], "v2"
+    requests_mock.get(CLOSURES_URL, status_code=403)
+    partial = month(store, monthly_lines(), monthly_points())
+    assert set(partial.isolated) == {"raw_otherclub__closures_layer"}
+
+    monthly = make_pipeline("monthly", store["bucket_url"], store["pipelines_dir"])
+    manifest, wrote = pin_raw_inputs(monthly, store["bucket_url"], steps, partial.run_id)
+    counts = load_pinned(duckdb.connect(), monthly, steps, partial.run_id)
+
+    assert wrote
+    assert counts == {"raw_testclub__trails": 3, "raw_otherclub__closures_layer": 2}
+    assert manifest["tables"]["raw_otherclub__closures_layer"]["load_id"] != partial.load_id
 
 
 def test_a_proven_zero_is_pinned_without_a_file_and_loads_as_its_hinted_empty_table(registry, store, steps, requests_mock):

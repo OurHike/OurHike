@@ -18,9 +18,11 @@
 --
 -- WHAT IT MISSES, said so: a part of a paragraph shorter than the whole
 -- value, and a value shorter than notice_is_wording()'s threshold
--- (@unvalidated). A value that a source repeats in a fact column, such as a
--- description identical to the title, is not wording (the union leaves it
--- out), so a title can never fail this.
+-- (@unvalidated). A value a fact of its own row already holds, such as a
+-- description identical to the title or a facility name the title names,
+-- is not wording (the union leaves it out). A title can still fail on a
+-- value another row of its source holds outside its facts, which is a red
+-- build to read, never a leak let through.
 with wording as (
     select distinct
         source_key,

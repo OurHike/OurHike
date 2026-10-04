@@ -891,17 +891,27 @@ def render_wording_part(part: list[NoticeSource], number: int, count: int, field
         "        )",
         "),",
         "",
-        "-- A value the source repeats in a fact column, as a description that is",
-        "-- its title again, is a fact, never wording: a window over the one read",
-        "-- rather than a second json_each per value.",
+        "-- A value a fact column of its own row already holds, whole or inside a",
+        "-- longer fact, is a fact, never wording: a description that is its title",
+        "-- again, or a facility's name its own title names. ma_dcr_park_alerts'",
+        "-- FACILITY_ASSETCODE inside its PAdv_HeaderText title failed soak runs",
+        "-- 525 to 527 (publish-conditions.yml 37218044501 the last) while it was",
+        "-- read only as a whole value. Publishing the fact says nothing the fact",
+        "-- does not, and both sides are read as words, as the leak test reads them.",
         "judged as (",
         "    select",
         "        values_read.*,",
-        "        bool_or(values_read.is_fact) over (",
-        "            partition by",
-        "                values_read.source_key,",
-        "                values_read.notice_key,",
-        "                values_read.raw_text",
+        "        exists(",
+        "            select 1",
+        "            from values_read as fact",
+        "            where",
+        "                fact.is_fact",
+        "                and fact.source_key = values_read.source_key",
+        "                and fact.notice_key = values_read.notice_key",
+        "                and contains(",
+        "                    {{ notice_wording_text('fact.raw_text') }},",
+        "                    {{ notice_wording_text('values_read.raw_text') }}",
+        "                )",
         "        ) as repeats_a_fact",
         "    from values_read",
         ")",
@@ -1004,6 +1014,8 @@ def render_wording_yml(sources: list[NoticeSource], fields: dict[str, dict]) -> 
                         " union all select 'k2', 'a2', 'A fixture title that the description repeats',"
                         " 'A fixture title that the description repeats', 'Caution'"
                         " union all select 'k3', 'a3', 'Fixture', 'Too short.', 'Danger'"
+                        " union all select 'k4', 'a4', 'An advisory is in effect for the Fixture Visitor Center"
+                        " by the reservoir.', 'Fixture Visitor Center by the reservoir', 'Advisory'"
                     ),
                 }
             )
@@ -1027,9 +1039,10 @@ def render_wording_yml(sources: list[NoticeSource], fields: dict[str, dict]) -> 
         "name": "int_warnings__notice_wording_unioned_collects_a_sources_paragraph_and_never_its_facts",
         "description": (
             "Generated with the model. A notice's description is its source's wording, read as words; its title, "
-            "id and category are facts and are not; a description that repeats the title is a fact too, and one "
-            "shorter than notice_is_wording()'s threshold is not wording. Every other source's base model in "
-            "the part is given no rows."
+            "id and category are facts and are not; a description that repeats the title is a fact too, and so "
+            "is one the title holds inside a longer sentence (a facility's name its title names); one shorter "
+            "than notice_is_wording()'s threshold is not wording. Every other source's base model in the part "
+            "is given no rows."
         ),
         "model": _part_name(WORDING_MODEL, tested),
         "given": given,

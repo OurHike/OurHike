@@ -485,6 +485,17 @@ PARTIAL_EXIT = 3
 ISOLATED_OUTCOME = "refused"
 
 
+def left_out_on_its_own(row: dict) -> bool:
+    """Whether a run log row is an upstream its run left out on its own, rather than a run refused as a whole.
+
+    Both log `refused`. A whole run that refused logs each table it read with
+    the rows it counted; one left out logs no rows and no load
+    (write_run_log()), and its last committed table stands, so the run that
+    left it out may still be pinned (extract/_warehouse.py's pin_raw_inputs()).
+    """
+    return row.get("outcome") == ISOLATED_OUTCOME and row.get("rows") is None and row.get("load_id") is None
+
+
 def stops_the_leg(resource: Resource) -> bool:
     """Whether a refused or failed read of this resource stops the whole leg, rather than only itself.
 

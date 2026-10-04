@@ -77,6 +77,7 @@ from extract._run import (
     as_landed_path,
     committed_load_ids,
     fs_path,
+    left_out_on_its_own,
     make_pipeline,
     proven_zero,
     raw_store_url,
@@ -619,7 +620,12 @@ RAW_INPUTS_PREFIX = "raw_inputs"
 #: Written last: a pin without it is a pin that did not finish, and is never read.
 PIN_MANIFEST = "raw_inputs.json"
 #: A run that ended either way may not be pinned: its loads are not what the
-#: run check passed (extract/_run.py's run_check and committed()).
+#: run check passed (extract/_run.py's run_check and committed()). A table an
+#: isolating run left out on its own logs `refused` too, and does not stop
+#: the pin: it loaded nothing that run, and its last committed load is what
+#: the pin holds (left_out_on_its_own()). Monthly run 16
+#: (refresh-reference.yml 37210020925) extracted in 112 minutes, left some
+#: layers out, and its pin refused the whole run on their rows.
 UNPINNABLE_OUTCOMES = ("refused", "unverified")
 CHUNK = 1 << 20
 
@@ -710,7 +716,7 @@ def pin_raw_inputs(
     this_run = [row for row in log if row["run_id"] == raw_run]
     if not this_run:
         raise BuildRefused(f"_extract_runs holds no run {raw_run}, so there is nothing to pin")
-    ended = sorted({row["outcome"] for row in this_run} & set(UNPINNABLE_OUTCOMES))
+    ended = sorted({row["outcome"] for row in this_run if not left_out_on_its_own(row)} & set(UNPINNABLE_OUTCOMES))
     if ended:
         raise BuildRefused(f"run {raw_run} ended {', '.join(ended)}; a run the checks did not pass is never pinned")
     by_load = {(row["table_name"], row.get("load_id")): row for row in log}

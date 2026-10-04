@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, last_edi_1),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(last_edi_1 / 1000) as last_edi_1
-    from {{ source('fta', 'raw_fta__fta_gateway_communities') }}
+    from {{ raw_or_empty(
+        source('fta', 'raw_fta__fta_gateway_communities'),
+        ['globalid', 'geometry', 'town_name', 'last_edi_1:bigint']
+    ) }}
 ),
 
 renamed as (

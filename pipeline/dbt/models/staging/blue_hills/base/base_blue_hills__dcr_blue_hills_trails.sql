@@ -19,7 +19,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(created_da / 1000) as created_da,
         to_timestamp(last_edi_1 / 1000) as last_edi_1
-    from {{ source('blue_hills', 'raw_blue_hills__dcr_blue_hills_trails') }}
+    from {{ raw_or_empty(
+        source('blue_hills', 'raw_blue_hills__dcr_blue_hills_trails'),
+        [
+            'globalid',
+            'geometry',
+            'name',
+            'created_da:bigint',
+            'last_edi_1:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

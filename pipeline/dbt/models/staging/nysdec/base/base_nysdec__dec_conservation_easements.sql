@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, date_vest),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(date_vest / 1000) as date_vest
-    from {{ source('nysdec', 'raw_nysdec__dec_conservation_easements') }}
+    from {{ raw_or_empty(
+        source('nysdec', 'raw_nysdec__dec_conservation_easements'),
+        ['lands_uid', 'geometry', 'facility', 'date_vest:bigint']
+    ) }}
 ),
 
 renamed as (

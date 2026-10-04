@@ -20,7 +20,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(createdate / 1000) as createdate,
         to_timestamp(sourcedate / 1000) as sourcedate
-    from {{ source('nps', 'raw_nps__nps_el_camino_tierra_adentro_nht') }}
+    from {{ raw_or_empty(
+        source('nps', 'raw_nps__nps_el_camino_tierra_adentro_nht'),
+        [
+            'globalid',
+            'geometry',
+            'trname',
+            'createdate:bigint',
+            'sourcedate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

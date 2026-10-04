@@ -21,7 +21,17 @@ with source as (
         to_timestamp(updated / 1000) as updated,
         to_timestamp(created_date / 1000) as created_date,
         to_timestamp(last_edited_date / 1000) as last_edited_date
-    from {{ source('ncta', 'raw_ncta__ncta_finger_lakes_trail') }}
+    from {{ raw_or_empty(
+        source('ncta', 'raw_ncta__ncta_finger_lakes_trail'),
+        [
+            'geometry',
+            'seg_name',
+            'built_on:bigint',
+            'updated:bigint',
+            'created_date:bigint',
+            'last_edited_date:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

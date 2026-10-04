@@ -20,7 +20,17 @@ with source as (
         to_timestamp(dt_open / 1000) as dt_open,
         to_timestamp(dt_improved / 1000) as dt_improved,
         to_timestamp(dt_closed / 1000) as dt_closed
-    from {{ source('fpc', 'raw_fpc__ppr_trails') }}
+    from {{ raw_or_empty(
+        source('fpc', 'raw_fpc__ppr_trails'),
+        [
+            'globalid',
+            'geometry',
+            'name',
+            'dt_open:bigint',
+            'dt_improved:bigint',
+            'dt_closed:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

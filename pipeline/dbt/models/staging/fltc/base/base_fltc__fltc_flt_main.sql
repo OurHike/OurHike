@@ -18,7 +18,10 @@ with source as (
         * exclude (geometry, mod_date),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(mod_date / 1000) as mod_date
-    from {{ source('fltc', 'raw_fltc__fltc_flt_main') }}
+    from {{ raw_or_empty(
+        source('fltc', 'raw_fltc__fltc_flt_main'),
+        ['geometry', 'notes', 'mod_date:bigint']
+    ) }}
 ),
 
 renamed as (

@@ -17,8 +17,9 @@ staged before decision 54). So a layer registered later is staged by running thi
 A file that SHARES a sibling's resource (one upstream feeding two types, such as a My Map of trail lines and
 trailheads) gets a staging model of its own over the sibling's base model, and no second base or source: one
 raw table, staged once (decision 34). An elevation file shares only a row that names its `elevation_source`.
-A row whose API needs a key from the environment (`api_key_env`) is not staged: its table is withdrawn whenever
-the key is unset, and a base model over an absent table would stop the build.
+Every base model reads its raw table through raw_or_empty() (dbt/macros/raw_or_empty.sql), so a layer that has
+never landed (one the monthly extract refused on its first run, or a keyed API, `api_key_env`, whose key the job
+lacks) reads as no rows with the columns its models name, and stops nothing else (Table.raw_columns()).
 
 WHAT EACH sources.json ROW GIVES IT:
 - THE KEY (decision 40): `key_fields`, else `id_fields`, else `id_field`, where `geometry` in a list stands for
@@ -430,6 +431,32 @@ class Table:
     def date_columns(self) -> list[str]:
         return [column(field) for field in self.entry.get("date_fields") or []]
 
+    def raw_columns(self) -> list[str]:
+        """Every raw column the base model and the staging models over it name, as raw_or_empty() takes them.
+
+        A table that has never landed reads as no rows with these columns (macros/raw_or_empty.sql), so every
+        column a generated model names is here: the key's fields, the dates (epoch milliseconds, so bigint), the
+        geometry, and each field the registry row conforms. The row's fields are all taken whichever type reads
+        them, because a file that SHARES this table conforms the same row's fields over the same base model."""
+        entry = self.entry
+        names: dict[str, str] = {}
+        for item in self.key_inputs()[1:]:  # the registry key's literal first, then the measured fields
+            if item != "geometry_key('geom')":
+                names.setdefault(item.strip('"'), "varchar")
+        if self.shape.geometry:
+            names.setdefault("geometry", "varchar")
+        conformed = [entry[name] for name in ("name_field", "type_field", "category_field", "id_field") if entry.get(name)]
+        elevation = entry.get("elevation_source") or ""
+        if elevation.startswith("field "):
+            conformed.append(elevation.removeprefix("field ").strip())
+        if not self.shape.geometry and not self.lookup:
+            conformed += [field.split(" ", 1)[0] for field in content_columns(self).values() if field is not None]
+        for field in conformed:
+            names.setdefault(column(field).strip('"'), "varchar")
+        for name in self.date_columns():
+            names[name.strip('"')] = "bigint"
+        return [name if type_ == "varchar" else f"{name}:{type_}" for name, type_ in names.items()]
+
 
 def _raw_key_columns(inputs: list[str]) -> list[str]:
     """The same key over the raw table, as duplicates_are_exact takes it: geometry_key('geom') written out."""
@@ -481,12 +508,9 @@ def tables() -> list[Table]:
                 reader = "ArcgisLayer"
             elif reader not in readers or (reader not in CONTENT_LOOKUPS and (club_file.type, reader) not in CONTENT_COLUMNS):
                 continue
+            # A keyed API's table is withdrawn whenever its key is unset (extract/_ogc.py's JsonFeatures). It is staged
+            # all the same: its base model reads an absent table as no rows (macros/raw_or_empty.sql).
             entry = registry_entry(resource.key)
-            if entry.get("api_key_env"):
-                # A keyed API's table is withdrawn whenever its key is unset (extract/_ogc.py's JsonFeatures), and an
-                # absent raw table stops every model downstream of a base model reading it. NPS_API_KEY does not
-                # reach the monthly job yet, so such a row is extracted and not staged until it does.
-                continue
             if club_file.shares and club_file.type == "elevation" and not entry.get("elevation_source"):
                 continue  # a line layer an elevation file shares carries its heights only where its row says so
             shared_from = owner.type if club_file.shares else None
@@ -555,9 +579,18 @@ def base_sql(table: Table) -> str:
     exclude = f"* exclude ({', '.join(excluded)}),"
     if len(exclude) + 8 > 80:
         exclude = "* exclude (\n" + ",\n".join(f"            {name}" for name in excluded) + "\n        ),"
-    source = f"{{{{ source('{table.folder}', '{table.table}') }}}}"
-    if len(source) + 9 > 80:
-        source = f"{{{{ source('{table.folder}',\n        '{table.table}') }}}}"
+    # Read through raw_or_empty() (macros/raw_or_empty.sql): a table that has never landed reads as no rows with the
+    # columns these models name, rather than stopping every other club's layers.
+    relation = f"source('{table.folder}', '{table.table}')"
+    if len(relation) + 8 > 80:
+        relation = f"source('{table.folder}',\n            '{table.table}')"
+    names = ", ".join(f"'{name}'" for name in table.raw_columns())
+    listed = (
+        f"[{names}]"
+        if len(names) + 10 <= 80
+        else "[\n" + "".join(f"            '{name}',\n" for name in table.raw_columns()) + "        ]"
+    )
+    source = f"{{{{ raw_or_empty(\n        {relation},\n        {listed}\n    ) }}}}"
     casts = "".join(f",\n        to_timestamp({name} / 1000) as {name}" for name in dates)
     key_lines = "".join(f"\n            {_key_item(item)}," for item in inputs)
     if table.shape.geometry:
@@ -656,7 +689,8 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
             "    data_tests:",
             "      # Says how many rows the dedupe dropped. Each is an exact copy",
             "      # (duplicates_are_exact on the raw table), so this only reports.",
-            "      - dbt_utils.equal_rowcount:",
+            "      # A raw table that never landed passes (tests/generic/).",
+            "      - equal_rowcount_to_raw:",
             "          arguments:",
             f"            compare_model: source('{folder}', '{table.table}')",
             "          config:",

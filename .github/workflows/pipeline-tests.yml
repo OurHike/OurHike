@@ -245,6 +245,7 @@ jobs:
             pipeline/row_history_stores.toml
             pipeline/tests/test_dbt_row_dates_builds.py
             pipeline/tests/test_dbt_notice_tables_absent_builds.py
+            pipeline/tests/test_dbt_club_tables_absent_builds.py
             pipeline/step_node_lines.py
             pipeline/build_trail_graph.py
             pipeline/export_poi.py
@@ -495,6 +496,20 @@ jobs:
         run: |
           # The fixture load imports dlt, which only the extract venv holds.
           OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_tables_absent_builds.py
+
+      # A monthly layer that never landed is a missing raw table: one the
+      # extract refused on its first run (extract/_run.py's ISOLATING_LANES),
+      # or a keyed API whose key the job lacks. Every generated base model
+      # reads its raw table through raw_or_empty(), so the build goes on. The
+      # test drops every generated layer's raw table from its own fixture
+      # warehouse and builds every model that reads them. Measured 2026-10-04
+      # on a four-core sandbox: 3 passed in 357 s, about 220 of it the fixture
+      # load and the seeds.
+      - name: Club layers absent from the warehouse (tests/test_dbt_club_tables_absent_builds.py)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          # The fixture load imports dlt, which only the extract venv holds.
+          OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_club_tables_absent_builds.py
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by

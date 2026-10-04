@@ -22,7 +22,10 @@ with source as (
         * exclude (geometry, updated),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(updated / 1000) as updated
-    from {{ source('nysdec', 'raw_nysdec__dec_lands') }}
+    from {{ raw_or_empty(
+        source('nysdec', 'raw_nysdec__dec_lands'),
+        ['geometry', 'facility', 'category', 'updated:bigint']
+    ) }}
 ),
 
 renamed as (

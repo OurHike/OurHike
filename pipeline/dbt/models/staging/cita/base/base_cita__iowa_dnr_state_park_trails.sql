@@ -19,7 +19,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(created_date / 1000) as created_date,
         to_timestamp(last_edited_date / 1000) as last_edited_date
-    from {{ source('cita', 'raw_cita__iowa_dnr_state_park_trails') }}
+    from {{ raw_or_empty(
+        source('cita', 'raw_cita__iowa_dnr_state_park_trails'),
+        [
+            'globalid',
+            'geometry',
+            'trail_name',
+            'created_date:bigint',
+            'last_edited_date:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

@@ -16,8 +16,11 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('alaska_trails',
-        'raw_alaska_trails__alaska_trails_cabins_and_campsites') }}
+    from {{ raw_or_empty(
+        source('alaska_trails',
+            'raw_alaska_trails__alaska_trails_cabins_and_campsites'),
+        ['geometry', 'name', 'type', 'objectid']
+    ) }}
 ),
 
 renamed as (

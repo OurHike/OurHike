@@ -17,7 +17,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('fpc', 'raw_fpc__fpc_ancient_forest_preserve') }}
+    from {{ raw_or_empty(
+        source('fpc', 'raw_fpc__fpc_ancient_forest_preserve'),
+        ['geometry', 'unit_nm']
+    ) }}
 ),
 
 renamed as (

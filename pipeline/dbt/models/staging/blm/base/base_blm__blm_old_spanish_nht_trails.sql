@@ -19,7 +19,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(creation_date / 1000) as creation_date,
         to_timestamp(edition_date / 1000) as edition_date
-    from {{ source('blm', 'raw_blm__blm_old_spanish_nht_trails') }}
+    from {{ raw_or_empty(
+        source('blm', 'raw_blm__blm_old_spanish_nht_trails'),
+        [
+            'globalid',
+            'geometry',
+            'trail_name',
+            'creation_date:bigint',
+            'edition_date:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

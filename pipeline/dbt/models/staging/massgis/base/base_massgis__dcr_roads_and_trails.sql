@@ -18,7 +18,10 @@ with source as (
         * exclude (geometry, gps_date),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(gps_date / 1000) as gps_date
-    from {{ source('massgis', 'raw_massgis__dcr_roads_and_trails') }}
+    from {{ raw_or_empty(
+        source('massgis', 'raw_massgis__dcr_roads_and_trails'),
+        ['globalid', 'geometry', 'name', 'gps_date:bigint']
+    ) }}
 ),
 
 renamed as (

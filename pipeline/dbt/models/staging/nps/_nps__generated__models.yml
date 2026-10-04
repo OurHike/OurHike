@@ -23,9 +23,9 @@ models:
   - name: stg_nps__places
     description: >
       The nps/ folder's places layers (`grsm_municipal_boundaries`,
-      `grsm_park_boundary_lines`, `nps_legislated_wilderness`, `nps_park_boundaries`,
-      `pohe_trail_regions`), one row per base row, renamed to int_places__unioned's columns,
-      with each layer's own columns in `properties`.
+      `grsm_park_boundary_lines`, `nps_api_places`, `nps_legislated_wilderness`,
+      `nps_park_boundaries`, `pohe_trail_regions`), one row per base row, renamed to
+      int_places__unioned's columns, with each layer's own columns in `properties`.
     columns:
       - name: place_key
         description: The base model's key, carried.
@@ -41,9 +41,10 @@ models:
         data_tests: [not_null, unique]
   - name: stg_nps__points_of_interest
     description: >
-      The nps/ folder's points of interest layers (`nps_grsm_backcountry_shelters`), one row
-      per base row, renamed to int_points_of_interest__club_unioned's columns, with each
-      layer's own columns in `properties`.
+      The nps/ folder's points of interest layers (`nps_api_campgrounds`,
+      `nps_grsm_backcountry_shelters`), one row per base row, renamed to
+      int_points_of_interest__club_unioned's columns, with each layer's own columns in
+      `properties`.
     columns:
       - name: poi_key
         description: The base model's key, carried.

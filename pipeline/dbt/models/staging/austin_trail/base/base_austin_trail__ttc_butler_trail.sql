@@ -27,7 +27,18 @@ with source as (
         to_timestamp(modified_date / 1000) as modified_date,
         to_timestamp(creationdate / 1000) as creationdate,
         to_timestamp(editdate / 1000) as editdate
-    from {{ source('austin_trail', 'raw_austin_trail__ttc_butler_trail') }}
+    from {{ raw_or_empty(
+        source('austin_trail', 'raw_austin_trail__ttc_butler_trail'),
+        [
+            'globalid_2',
+            'geometry',
+            'asset_name',
+            'created_date:bigint',
+            'modified_date:bigint',
+            'creationdate:bigint',
+            'editdate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

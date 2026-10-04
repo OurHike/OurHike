@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, sourcedate),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(sourcedate / 1000) as sourcedate
-    from {{ source('nps', 'raw_nps__nps_legislated_wilderness') }}
+    from {{ raw_or_empty(
+        source('nps', 'raw_nps__nps_legislated_wilderness'),
+        ['globalid', 'geometry', 'name', 'sourcedate:bigint']
+    ) }}
 ),
 
 renamed as (

@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, updated),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(updated / 1000) as updated
-    from {{ source('utah_sgid', 'raw_utah_sgid__ugrc_municipal_boundaries') }}
+    from {{ raw_or_empty(
+        source('utah_sgid', 'raw_utah_sgid__ugrc_municipal_boundaries'),
+        ['globalid', 'geometry', 'name', 'updated:bigint']
+    ) }}
 ),
 
 renamed as (

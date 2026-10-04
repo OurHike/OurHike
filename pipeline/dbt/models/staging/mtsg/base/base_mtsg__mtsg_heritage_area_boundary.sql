@@ -13,7 +13,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('mtsg', 'raw_mtsg__mtsg_heritage_area_boundary') }}
+    from {{ raw_or_empty(
+        source('mtsg', 'raw_mtsg__mtsg_heritage_area_boundary'),
+        ['zone', 'geometry']
+    ) }}
 ),
 
 renamed as (

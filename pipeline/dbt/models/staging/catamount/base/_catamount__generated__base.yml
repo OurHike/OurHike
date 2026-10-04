@@ -7,7 +7,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('catamount', 'raw_catamount__catamount_access_points')
           config:
@@ -29,7 +30,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('catamount', 'raw_catamount__catamount_backcountry_zones')
           config:
@@ -50,7 +52,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('catamount', 'raw_catamount__catamount_businesses')
           config:
@@ -72,7 +75,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('catamount', 'raw_catamount__catamount_full_route')
           config:
@@ -94,7 +98,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('catamount', 'raw_catamount__catamount_main_trail')
           config:
@@ -116,7 +121,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('catamount', 'raw_catamount__catamount_sections')
           config:
@@ -137,7 +143,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('catamount', 'raw_catamount__catamount_side_trails')
           config:

@@ -13,7 +13,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('usfws', 'raw_usfws__usfws_refuge_property_points') }}
+    from {{ raw_or_empty(
+        source('usfws', 'raw_usfws__usfws_refuge_property_points'),
+        ['globalid', 'geometry', 'prop_name', 'prop_type']
+    ) }}
 ),
 
 renamed as (

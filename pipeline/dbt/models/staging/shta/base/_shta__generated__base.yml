@@ -7,7 +7,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('shta', 'raw_shta__lake_county_superior_hiking_trail')
           config:
@@ -28,7 +29,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('shta', 'raw_shta__shta_blazing_trail_podcast')
           config:
@@ -49,7 +51,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('shta', 'raw_shta__shta_line_2025')
           config:
@@ -70,7 +73,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('shta', 'raw_shta__shta_spirit_mountain_spur_2025')
           config:
@@ -91,7 +95,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('shta', 'raw_shta__shta_spurs_and_loops')
           config:

@@ -67,6 +67,7 @@
     when {{ column }} = 'nj_place_names' then 'us_and_territories'
     when {{ column }} = 'nj_state_natural_areas' then 'us_and_territories'
     when {{ column }} = 'nj_state_open_space' then 'us_and_territories'
+    when {{ column }} = 'nps_api_places' then 'us_and_territories'
     when {{ column }} = 'nps_legislated_wilderness' then 'us_and_territories'
     when {{ column }} = 'nps_park_boundaries' then 'us_and_territories'
     when {{ column }} = 'pasda_county_max_elevations' then 'us_and_territories'

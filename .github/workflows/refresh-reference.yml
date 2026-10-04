@@ -158,8 +158,8 @@ jobs:
           HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
           # The NPS Data API's places and campgrounds (decision 54 waves 2
           # and 3, extract/_ogc.py's JsonFeatures). Unset, both tables are
-          # withdrawn with a warning and the run stays green; make_dbt_staging.py
-          # stages neither until a run shows them landing.
+          # withdrawn with a warning and the run stays green; their base models
+          # read an absent table as no rows (dbt/macros/raw_or_empty.sql).
           NPS_API_KEY: ${{ secrets.NPS_API_KEY }}
         run: |
           set +e

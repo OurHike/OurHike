@@ -19,7 +19,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('nh_granit', 'raw_nh_granit__nh_conservation_lands') }}
+    from {{ raw_or_empty(
+        source('nh_granit', 'raw_nh_granit__nh_conservation_lands'),
+        ['geometry', 'name']
+    ) }}
 ),
 
 renamed as (

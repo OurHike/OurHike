@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, date_edit),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(date_edit / 1000) as date_edit
-    from {{ source('nps', 'raw_nps__nps_park_boundaries') }}
+    from {{ raw_or_empty(
+        source('nps', 'raw_nps__nps_park_boundaries'),
+        ['globalid', 'geometry', 'unit_name', 'date_edit:bigint']
+    ) }}
 ),
 
 renamed as (

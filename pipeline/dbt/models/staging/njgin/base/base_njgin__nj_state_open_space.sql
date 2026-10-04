@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, last_update),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(last_update / 1000) as last_update
-    from {{ source('njgin', 'raw_njgin__nj_state_open_space') }}
+    from {{ raw_or_empty(
+        source('njgin', 'raw_njgin__nj_state_open_space'),
+        ['globalid', 'geometry', 'feature_name', 'last_update:bigint']
+    ) }}
 ),
 
 renamed as (

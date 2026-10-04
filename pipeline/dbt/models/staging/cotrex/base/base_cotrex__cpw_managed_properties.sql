@@ -13,7 +13,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('cotrex', 'raw_cotrex__cpw_managed_properties') }}
+    from {{ raw_or_empty(
+        source('cotrex', 'raw_cotrex__cpw_managed_properties'),
+        ['globalid_2', 'geometry', 'propname']
+    ) }}
 ),
 
 renamed as (

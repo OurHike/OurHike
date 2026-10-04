@@ -13,7 +13,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('massgis', 'raw_massgis__ma_dcr_blue_hills_intersections') }}
+    from {{ raw_or_empty(
+        source('massgis', 'raw_massgis__ma_dcr_blue_hills_intersections'),
+        ['globalid', 'geometry', 'int_number', 'type']
+    ) }}
 ),
 
 renamed as (

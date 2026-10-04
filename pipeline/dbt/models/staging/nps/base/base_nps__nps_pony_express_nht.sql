@@ -20,7 +20,15 @@ with source as (
         to_timestamp(datesent / 1000) as datesent,
         to_timestamp(creationdate / 1000) as creationdate,
         to_timestamp(editdate / 1000) as editdate
-    from {{ source('nps', 'raw_nps__nps_pony_express_nht') }}
+    from {{ raw_or_empty(
+        source('nps', 'raw_nps__nps_pony_express_nht'),
+        [
+            'geometry',
+            'datesent:bigint',
+            'creationdate:bigint',
+            'editdate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

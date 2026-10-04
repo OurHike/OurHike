@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, desig_date),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(desig_date / 1000) as desig_date
-    from {{ source('blm', 'raw_blm__blm_wilderness_areas') }}
+    from {{ raw_or_empty(
+        source('blm', 'raw_blm__blm_wilderness_areas'),
+        ['globalid', 'geometry', 'nlcs_name', 'desig_date:bigint']
+    ) }}
 ),
 
 renamed as (

@@ -36,6 +36,20 @@ select
 from {{ ref('base_nps__grsm_park_boundary_lines') }}
 union all by name
 select
+    'nps_api_places' as source_key,
+    'nps' as club,
+    place_key,
+    cast(title as varchar) as name,
+    cast(tags as varchar) as category,
+    geom,
+    json_merge_patch(
+        to_json(base_nps__nps_api_places),
+        '{"geom": null}'
+    ) as properties,
+    _loaded_at
+from {{ ref('base_nps__nps_api_places') }}
+union all by name
+select
     'nps_legislated_wilderness' as source_key,
     'nps' as club,
     place_key,

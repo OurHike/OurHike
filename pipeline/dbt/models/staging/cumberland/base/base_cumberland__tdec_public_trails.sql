@@ -19,7 +19,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(created_date / 1000) as created_date,
         to_timestamp(edited_date / 1000) as edited_date
-    from {{ source('cumberland', 'raw_cumberland__tdec_public_trails') }}
+    from {{ raw_or_empty(
+        source('cumberland', 'raw_cumberland__tdec_public_trails'),
+        [
+            'globalid',
+            'geometry',
+            'tr_name',
+            'created_date:bigint',
+            'edited_date:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

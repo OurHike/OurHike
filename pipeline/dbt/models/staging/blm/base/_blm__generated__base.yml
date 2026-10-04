@@ -7,7 +7,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_iditarod_nht')
           config:
@@ -28,7 +29,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_national_monuments_ncas')
           config:
@@ -49,7 +51,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_old_spanish_nht_alignment')
           config:
@@ -70,7 +73,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_old_spanish_nht_trails')
           config:
@@ -91,7 +95,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_on_the_ground_podcast')
           config:
@@ -112,7 +117,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_public_lands_access_lines')
           config:
@@ -133,7 +139,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_recreation_areas')
           config:
@@ -154,7 +161,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_recreation_site_polygons')
           config:
@@ -175,7 +183,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_recreation_sites')
           config:
@@ -196,7 +205,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_wilderness_areas')
           config:
@@ -217,7 +227,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('blm', 'raw_blm__blm_wilderness_study_areas')
           config:

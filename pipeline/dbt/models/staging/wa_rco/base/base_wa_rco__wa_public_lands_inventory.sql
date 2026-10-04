@@ -25,7 +25,17 @@ with source as (
         * exclude (geometry, disposal_date),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(disposal_date / 1000) as disposal_date
-    from {{ source('wa_rco', 'raw_wa_rco__wa_public_lands_inventory') }}
+    from {{ raw_or_empty(
+        source('wa_rco', 'raw_wa_rco__wa_public_lands_inventory'),
+        [
+            'land_owner',
+            'purchase_date',
+            'fips',
+            'geometry',
+            'agency_management_unit',
+            'disposal_date:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

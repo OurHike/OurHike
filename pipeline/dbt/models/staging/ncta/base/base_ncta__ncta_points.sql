@@ -13,7 +13,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('ncta', 'raw_ncta__ncta_points') }}
+    from {{ raw_or_empty(
+        source('ncta', 'raw_ncta__ncta_points'),
+        ['globalid', 'geometry', 'waypointname', 'wpttype']
+    ) }}
 ),
 
 renamed as (

@@ -27,7 +27,20 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(date_compl / 1000) as date_compl,
         to_timestamp(date_upgra / 1000) as date_upgra
-    from {{ source('chesapeake', 'raw_chesapeake__chesapeake_baywide_trails') }}
+    from {{ raw_or_empty(
+        source('chesapeake', 'raw_chesapeake__chesapeake_baywide_trails'),
+        [
+            'rim_bicy_2',
+            'trail_name',
+            'management',
+            'type',
+            'date_upgra:bigint',
+            'state',
+            'surface',
+            'geometry',
+            'date_compl:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

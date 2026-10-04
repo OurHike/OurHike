@@ -7,7 +7,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('mtsg', 'raw_mtsg__mtsg_heritage_area_boundary')
           config:
@@ -28,7 +29,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('mtsg', 'raw_mtsg__mtsg_itineraries')
           config:
@@ -49,7 +51,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('mtsg', 'raw_mtsg__mtsg_itineraries_terms')
           config:
@@ -71,7 +74,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('mtsg', 'raw_mtsg__mtsg_map_locations')
           config:

@@ -101,6 +101,30 @@ sources:
           Juan Bautista de Anza NHT recreation trails (NPS-hosted) (sources.json
           `nps_anza_recreation_trails`). Key: GlobalID: unique and non-null on all 578
           rows (measured 2026-10-03 over every row's attributes).
+      - name: raw_nps__nps_api_campgrounds
+        data_tests:
+          # Rows sharing base_nps__nps_api_campgrounds's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_api_campgrounds'", "id"]
+        description: >
+          NPS Data API /campgrounds: every campground the Park Service lists, nationally
+          (sources.json `nps_api_campgrounds`). Key: `id`, the API's own UUID for the
+          item. @unvalidated as unique on the live list: no real key has read the whole
+          list (the demo key allows 10 requests an hour); the first monthly read with
+          NPS_API_KEY settles it, and duplicates_are_exact fails loudly if it is not.
+      - name: raw_nps__nps_api_places
+        data_tests:
+          # Rows sharing base_nps__nps_api_places's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_api_places'", "id"]
+        description: >
+          NPS Data API /places: every place the Park Service lists, nationally
+          (sources.json `nps_api_places`). Key: `id`, the API's own UUID for the item.
+          @unvalidated as unique on the live list: no real key has read the whole list
+          (the demo key allows 10 requests an hour); the first monthly read with
+          NPS_API_KEY settles it, and duplicates_are_exact fails loudly if it is not.
       - name: raw_nps__nps_butterfield_overland_nht
         data_tests:
           # Rows sharing base_nps__nps_butterfield_overland_nht's key must be exact copies (decision 40).

@@ -7,7 +7,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('tahoe_rim', 'raw_tahoe_rim__tahoe_rim_campgrounds')
           config:
@@ -28,7 +29,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('tahoe_rim', 'raw_tahoe_rim__tahoe_rim_points_of_interest')
           config:
@@ -49,7 +51,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('tahoe_rim', 'raw_tahoe_rim__tahoe_rim_trailheads')
           config:
@@ -70,7 +73,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('tahoe_rim', 'raw_tahoe_rim__tahoe_rim_water_sources')
           config:
@@ -91,7 +95,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('tahoe_rim', 'raw_tahoe_rim__trta_desolation_wilderness_zones')
           config:
@@ -112,7 +117,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('tahoe_rim', 'raw_tahoe_rim__trta_special_management_areas')
           config:
@@ -133,7 +139,8 @@ models:
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
       # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('tahoe_rim', 'raw_tahoe_rim__trta_trail_sections')
           config:

@@ -19,7 +19,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(creationdate / 1000) as creationdate,
         to_timestamp(editdate / 1000) as editdate
-    from {{ source('hoosier', 'raw_hoosier__in_dnr_open_trails') }}
+    from {{ raw_or_empty(
+        source('hoosier', 'raw_hoosier__in_dnr_open_trails'),
+        [
+            'globalid',
+            'geometry',
+            'trailname',
+            'creationdate:bigint',
+            'editdate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

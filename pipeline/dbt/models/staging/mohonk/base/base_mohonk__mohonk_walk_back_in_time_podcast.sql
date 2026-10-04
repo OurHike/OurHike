@@ -13,7 +13,10 @@ with source as (
     -- as dlt landed it (a WordPress date a timestamp, a feed's pubDate the
     -- string it states, which a rewrite here would restate), nested as JSON.
     select *
-    from {{ source('mohonk', 'raw_mohonk__mohonk_walk_back_in_time_podcast') }}
+    from {{ raw_or_empty(
+        source('mohonk', 'raw_mohonk__mohonk_walk_back_in_time_podcast'),
+        ['guid', 'title', 'pubdate', 'link', 'enclosure_url']
+    ) }}
 ),
 
 renamed as (

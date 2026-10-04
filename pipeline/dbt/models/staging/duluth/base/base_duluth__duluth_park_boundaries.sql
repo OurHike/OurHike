@@ -18,7 +18,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(created_data / 1000) as created_data,
         to_timestamp(last_edited_date / 1000) as last_edited_date
-    from {{ source('duluth', 'raw_duluth__duluth_park_boundaries') }}
+    from {{ raw_or_empty(
+        source('duluth', 'raw_duluth__duluth_park_boundaries'),
+        [
+            'globalid',
+            'geometry',
+            'park_name',
+            'created_data:bigint',
+            'last_edited_date:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

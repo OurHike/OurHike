@@ -19,7 +19,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(creationdate / 1000) as creationdate,
         to_timestamp(editdate / 1000) as editdate
-    from {{ source('patc', 'raw_patc__patc_trails_master') }}
+    from {{ raw_or_empty(
+        source('patc', 'raw_patc__patc_trails_master'),
+        [
+            'globalid',
+            'geometry',
+            'trailname',
+            'creationdate:bigint',
+            'editdate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

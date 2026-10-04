@@ -20,7 +20,17 @@ with source as (
         to_timestamp(editdate / 1000) as editdate,
         to_timestamp(creationdate / 1000) as creationdate,
         to_timestamp(editdate_1 / 1000) as editdate_1
-    from {{ source('blm', 'raw_blm__blm_old_spanish_nht_alignment') }}
+    from {{ raw_or_empty(
+        source('blm', 'raw_blm__blm_old_spanish_nht_alignment'),
+        [
+            'globalid',
+            'geometry',
+            'route_name',
+            'editdate:bigint',
+            'creationdate:bigint',
+            'editdate_1:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

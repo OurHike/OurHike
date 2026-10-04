@@ -18,7 +18,10 @@ with source as (
     -- as dlt landed it (a WordPress date a timestamp, a feed's pubDate the
     -- string it states, which a rewrite here would restate), nested as JSON.
     select *
-    from {{ source('nps', 'raw_nps__nps_passport_stamp_locations') }}
+    from {{ raw_or_empty(
+        source('nps', 'raw_nps__nps_passport_stamp_locations'),
+        ['id', 'label']
+    ) }}
 ),
 
 renamed as (

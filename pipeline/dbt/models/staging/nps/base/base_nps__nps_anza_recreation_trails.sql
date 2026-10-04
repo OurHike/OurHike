@@ -29,7 +29,19 @@ with source as (
         to_timestamp(sourcedate / 1000) as sourcedate,
         to_timestamp(creationdate / 1000) as creationdate,
         to_timestamp(editdate_1 / 1000) as editdate_1
-    from {{ source('nps', 'raw_nps__nps_anza_recreation_trails') }}
+    from {{ raw_or_empty(
+        source('nps', 'raw_nps__nps_anza_recreation_trails'),
+        [
+            'globalid',
+            'geometry',
+            'trname',
+            'editdate:bigint',
+            'createdate:bigint',
+            'sourcedate:bigint',
+            'creationdate:bigint',
+            'editdate_1:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

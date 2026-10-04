@@ -21,7 +21,10 @@ with source as (
         * exclude (geometry, last_edit),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(last_edit / 1000) as last_edit
-    from {{ source('fpc', 'raw_fpc__oregon_metro_trails') }}
+    from {{ raw_or_empty(
+        source('fpc', 'raw_fpc__oregon_metro_trails'),
+        ['length', 'geometry', 'trailname', 'last_edit:bigint']
+    ) }}
 ),
 
 renamed as (

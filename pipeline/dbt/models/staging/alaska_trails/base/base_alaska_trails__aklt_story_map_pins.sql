@@ -14,7 +14,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('alaska_trails', 'raw_alaska_trails__aklt_story_map_pins') }}
+    from {{ raw_or_empty(
+        source('alaska_trails', 'raw_alaska_trails__aklt_story_map_pins'),
+        ['displaytitle', 'geometry', 'pintype']
+    ) }}
 ),
 
 renamed as (

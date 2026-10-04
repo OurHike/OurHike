@@ -12,7 +12,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('pcta', 'raw_pcta__pcta_permit_areas') }}
+    from {{ raw_or_empty(
+        source('pcta', 'raw_pcta__pcta_permit_areas'),
+        ['globalid', 'geometry', 'permit_area_name']
+    ) }}
 ),
 
 renamed as (

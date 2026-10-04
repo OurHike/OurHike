@@ -15,7 +15,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('hoosier', 'raw_hoosier__hhc_tecumseh_waypoints') }}
+    from {{ raw_or_empty(
+        source('hoosier', 'raw_hoosier__hhc_tecumseh_waypoints'),
+        ['geometry', 'name']
+    ) }}
 ),
 
 renamed as (

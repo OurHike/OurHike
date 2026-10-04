@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, datelastmodified),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(datelastmodified / 1000) as datelastmodified
-    from {{ source('pcta', 'raw_pcta__pcta_wilderness_areas') }}
+    from {{ raw_or_empty(
+        source('pcta', 'raw_pcta__pcta_wilderness_areas'),
+        ['globalid', 'geometry', 'name', 'datelastmodified:bigint']
+    ) }}
 ),
 
 renamed as (

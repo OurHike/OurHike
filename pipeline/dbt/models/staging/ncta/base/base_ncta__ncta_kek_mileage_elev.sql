@@ -16,7 +16,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('ncta', 'raw_ncta__ncta_kek_mileage_elev') }}
+    from {{ raw_or_empty(
+        source('ncta', 'raw_ncta__ncta_kek_mileage_elev'),
+        ['mile_point', 'geometry', 'objectid', 'z']
+    ) }}
 ),
 
 renamed as (

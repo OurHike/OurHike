@@ -19,7 +19,10 @@ with source as (
         * exclude (geometry, updated),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(updated / 1000) as updated
-    from {{ source('ncta', 'raw_ncta__ncta_nearby_trails') }}
+    from {{ raw_or_empty(
+        source('ncta', 'raw_ncta__ncta_nearby_trails'),
+        ['seg_name', 'updated:bigint', 'geometry']
+    ) }}
 ),
 
 renamed as (

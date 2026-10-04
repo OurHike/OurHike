@@ -18,7 +18,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('atc', 'raw_atc__atc_atx_centerline') }}
+    from {{ raw_or_empty(
+        source('atc', 'raw_atc__atc_atx_centerline'),
+        ['globalid', 'geometry', 'objectid']
+    ) }}
 ),
 
 renamed as (

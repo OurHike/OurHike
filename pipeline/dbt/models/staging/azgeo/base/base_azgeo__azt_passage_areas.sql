@@ -13,7 +13,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('azgeo', 'raw_azgeo__azt_passage_areas') }}
+    from {{ raw_or_empty(
+        source('azgeo', 'raw_azgeo__azt_passage_areas'),
+        ['globalid', 'geometry', 'passage']
+    ) }}
 ),
 
 renamed as (

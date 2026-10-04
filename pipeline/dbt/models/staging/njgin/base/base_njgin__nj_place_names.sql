@@ -19,7 +19,17 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(date_created / 1000) as date_created,
         to_timestamp(date_edited / 1000) as date_edited
-    from {{ source('njgin', 'raw_njgin__nj_place_names') }}
+    from {{ raw_or_empty(
+        source('njgin', 'raw_njgin__nj_place_names'),
+        [
+            'feature_id',
+            'geometry',
+            'feature_name',
+            'feature_class',
+            'date_created:bigint',
+            'date_edited:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

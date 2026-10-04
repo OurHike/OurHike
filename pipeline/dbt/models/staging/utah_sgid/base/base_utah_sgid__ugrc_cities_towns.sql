@@ -14,7 +14,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('utah_sgid', 'raw_utah_sgid__ugrc_cities_towns') }}
+    from {{ raw_or_empty(
+        source('utah_sgid', 'raw_utah_sgid__ugrc_cities_towns'),
+        ['name', 'county', 'geometry']
+    ) }}
 ),
 
 renamed as (

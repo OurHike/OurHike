@@ -19,7 +19,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('ct_deep', 'raw_ct_deep__ct_deep_greenways') }}
+    from {{ raw_or_empty(
+        source('ct_deep', 'raw_ct_deep__ct_deep_greenways'),
+        ['geometry', 'name']
+    ) }}
 ),
 
 renamed as (

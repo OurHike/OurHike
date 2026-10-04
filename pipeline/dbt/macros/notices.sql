@@ -4,45 +4,19 @@
     writes them), and int_closures__club_notices reads.
 -#}
 
-{#- A raw table, or an empty one of the same key columns where the raw table
-    does not exist in this warehouse.
+{#- A notice source's raw table, or no rows where it does not exist in this
+    warehouse: raw_or_empty() (macros/raw_or_empty.sql), which every
+    generated base model reads its raw table through.
 
     A conditions leg withdraws a table whose reader could not be read
     (extract/_warehouse.py's committed_tables(), an `unavailable` outcome),
-    takes on at most ten tables it has never loaded per run
+    takes on a bounded number of tables it has never loaded per run
     (extract/_run.py's NEW_TABLES_PER_LEG_RUN), and leaves out a table whose
-    read failed before its hints. Each of those is a missing table, and a
-    model that selects from a missing table fails the build, which skips
-    every model downstream of it: every club's closures, ATC's and NYNJTC's
-    included. So a generated base model reads its raw table through this,
-    and a missing table reads as no rows. The gate then holds that source
-    back for having no rows that a count of zero proves
-    (int_closures__gate), so absent still means unknown, never "nothing
-    closed".
-
-    `columns` are the raw columns the model itself names (a base model's key
-    and geometry), each typed varchar in the empty table unless written
-    `name:type`; `_loaded_at` and `_dlt_id` are added. dbt's load_relation()
-    answers at run time (measured
-    on dbt 2.0.6, 2026-10-03, a scratch project: a missing source built an
-    empty view and a present one read its rows). Under SQLFluff's jinja
-    templater, where load_relation is not defined, the macro renders the
-    relation, so the lint reads the real query. -#}
+    read failed before its hints. The gate then holds that source back for
+    having no rows that a count of zero proves (int_closures__gate), so
+    absent still means unknown, never "nothing closed". -#}
 {% macro notice_raw_table(relation, columns) -%}
-    {%- if execute is defined and execute and load_relation is defined and load_relation(relation) is none -%}
-        (
-            select
-                {% for column in columns -%}
-                {%- set parts = column.split(':') -%}
-                cast(null as {{ parts[1] if parts | length > 1 else 'varchar' }}) as "{{ parts[0] }}",
-                {% endfor -%}
-                cast(null as timestamptz) as _loaded_at,
-                cast(null as varchar) as _dlt_id
-            where false
-        )
-    {%- else -%}
-        {{ relation }}
-    {%- endif -%}
+    {{ raw_or_empty(relation, columns) }}
 {%- endmacro %}
 
 {#- A source field's text, by its raw column's name, out of a staging model's

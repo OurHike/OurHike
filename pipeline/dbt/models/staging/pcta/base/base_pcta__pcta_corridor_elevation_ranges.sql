@@ -15,7 +15,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('pcta', 'raw_pcta__pcta_corridor_elevation_ranges') }}
+    from {{ raw_or_empty(
+        source('pcta', 'raw_pcta__pcta_corridor_elevation_ranges'),
+        ['gridcode', 'geometry', 'objectid', 'elevation_range']
+    ) }}
 ),
 
 renamed as (

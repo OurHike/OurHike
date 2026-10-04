@@ -14,8 +14,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('cumberland',
-        'raw_cumberland__tdec_state_park_trails_2024') }}
+    from {{ raw_or_empty(
+        source('cumberland', 'raw_cumberland__tdec_state_park_trails_2024'),
+        ['globalid', 'geometry', 'tr_name']
+    ) }}
 ),
 
 renamed as (

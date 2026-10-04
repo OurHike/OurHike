@@ -19,7 +19,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('patc', 'raw_patc__patc_lands_compilation') }}
+    from {{ raw_or_empty(
+        source('patc', 'raw_patc__patc_lands_compilation'),
+        ['geometry', 'label', 'pubaccess']
+    ) }}
 ),
 
 renamed as (

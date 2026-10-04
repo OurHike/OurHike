@@ -18,7 +18,10 @@ with source as (
         * exclude (geometry, lasteddate),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(lasteddate / 1000) as lasteddate
-    from {{ source('gmc', 'raw_gmc__gmc_trail_master') }}
+    from {{ raw_or_empty(
+        source('gmc', 'raw_gmc__gmc_trail_master'),
+        ['globalid', 'geometry', 'trailname', 'lasteddate:bigint']
+    ) }}
 ),
 
 renamed as (

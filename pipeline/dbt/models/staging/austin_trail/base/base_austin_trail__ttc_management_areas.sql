@@ -27,7 +27,18 @@ with source as (
         to_timestamp(contract_end / 1000) as contract_end,
         to_timestamp(creationdate / 1000) as creationdate,
         to_timestamp(editdate / 1000) as editdate
-    from {{ source('austin_trail', 'raw_austin_trail__ttc_management_areas') }}
+    from {{ raw_or_empty(
+        source('austin_trail', 'raw_austin_trail__ttc_management_areas'),
+        [
+            'asset_mgmt_id',
+            'geometry',
+            'location_name',
+            'contract_start:bigint',
+            'contract_end:bigint',
+            'creationdate:bigint',
+            'editdate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

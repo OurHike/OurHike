@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, edit_date),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(edit_date / 1000) as edit_date
-    from {{ source('azgeo', 'raw_azgeo__azt_land_ownership') }}
+    from {{ raw_or_empty(
+        source('azgeo', 'raw_azgeo__azt_land_ownership'),
+        ['owner', 'geometry', 'desc', 'edit_date:bigint']
+    ) }}
 ),
 
 renamed as (

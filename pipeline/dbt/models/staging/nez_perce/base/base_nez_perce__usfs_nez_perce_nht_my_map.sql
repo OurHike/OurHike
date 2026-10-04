@@ -17,7 +17,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('nez_perce', 'raw_nez_perce__usfs_nez_perce_nht_my_map') }}
+    from {{ raw_or_empty(
+        source('nez_perce', 'raw_nez_perce__usfs_nez_perce_nht_my_map'),
+        ['name', 'geometry', 'folder']
+    ) }}
 ),
 
 renamed as (

@@ -20,7 +20,17 @@ with source as (
         to_timestamp(gpsdate / 1000) as gpsdate,
         to_timestamp(createdate / 1000) as createdate,
         to_timestamp(editdate / 1000) as editdate
-    from {{ source('usfws', 'raw_usfws__usfws_trail_segments') }}
+    from {{ raw_or_empty(
+        source('usfws', 'raw_usfws__usfws_trail_segments'),
+        [
+            'globalid',
+            'geometry',
+            'trname',
+            'gpsdate:bigint',
+            'createdate:bigint',
+            'editdate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

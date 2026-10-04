@@ -17,7 +17,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('cdtc', 'raw_cdtc__cdtc_trailheads_and_mail') }}
+    from {{ raw_or_empty(
+        source('cdtc', 'raw_cdtc__cdtc_trailheads_and_mail'),
+        ['wp_type', 'geometry', 'name', 'objectid']
+    ) }}
 ),
 
 renamed as (

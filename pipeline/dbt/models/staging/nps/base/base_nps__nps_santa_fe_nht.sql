@@ -20,7 +20,17 @@ with source as (
         to_timestamp(editdate / 1000) as editdate,
         to_timestamp(createdate / 1000) as createdate,
         to_timestamp(sourcedate / 1000) as sourcedate
-    from {{ source('nps', 'raw_nps__nps_santa_fe_nht') }}
+    from {{ raw_or_empty(
+        source('nps', 'raw_nps__nps_santa_fe_nht'),
+        [
+            'globalid',
+            'geometry',
+            'trname',
+            'editdate:bigint',
+            'createdate:bigint',
+            'sourcedate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

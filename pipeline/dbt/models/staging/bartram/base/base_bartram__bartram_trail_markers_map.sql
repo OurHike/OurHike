@@ -14,7 +14,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('bartram', 'raw_bartram__bartram_trail_markers_map') }}
+    from {{ raw_or_empty(
+        source('bartram', 'raw_bartram__bartram_trail_markers_map'),
+        ['geometry', 'name', 'folder']
+    ) }}
 ),
 
 renamed as (

@@ -16,7 +16,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('iata', 'raw_iata__iata_camping') }}
+    from {{ raw_or_empty(
+        source('iata', 'raw_iata__iata_camping'),
+        ['geometry', 'description', 'camp_type', 'objectid']
+    ) }}
 ),
 
 renamed as (

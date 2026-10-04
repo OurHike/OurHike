@@ -13,7 +13,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('cfpa', 'raw_cfpa__cfpa_overnight_sites') }}
+    from {{ raw_or_empty(
+        source('cfpa', 'raw_cfpa__cfpa_overnight_sites'),
+        ['globalid', 'geometry', 'name', 'type']
+    ) }}
 ),
 
 renamed as (

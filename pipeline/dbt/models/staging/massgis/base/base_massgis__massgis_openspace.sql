@@ -18,7 +18,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(att_date / 1000) as att_date,
         to_timestamp(cal_date_r / 1000) as cal_date_r
-    from {{ source('massgis', 'raw_massgis__massgis_openspace') }}
+    from {{ raw_or_empty(
+        source('massgis', 'raw_massgis__massgis_openspace'),
+        [
+            'os_id',
+            'geometry',
+            'site_name',
+            'att_date:bigint',
+            'cal_date_r:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

@@ -19,7 +19,17 @@ with source as (
         to_timestamp(acs_rghts_exprtn_dt / 1000) as acs_rghts_exprtn_dt,
         to_timestamp(auth_dt / 1000) as auth_dt,
         to_timestamp(title_rec_dt / 1000) as title_rec_dt
-    from {{ source('blm', 'raw_blm__blm_public_lands_access_lines') }}
+    from {{ raw_or_empty(
+        source('blm', 'raw_blm__blm_public_lands_access_lines'),
+        [
+            'globalid',
+            'geometry',
+            'geo_name',
+            'acs_rghts_exprtn_dt:bigint',
+            'auth_dt:bigint',
+            'title_rec_dt:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

@@ -19,7 +19,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(created_date / 1000) as created_date,
         to_timestamp(modified_date / 1000) as modified_date
-    from {{ source('austin_trail', 'raw_austin_trail__austin_pard_trails') }}
+    from {{ raw_or_empty(
+        source('austin_trail', 'raw_austin_trail__austin_pard_trails'),
+        [
+            'asset_mgmt_id',
+            'geometry',
+            'trail_system_name',
+            'created_date:bigint',
+            'modified_date:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

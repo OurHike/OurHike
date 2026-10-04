@@ -19,7 +19,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(actiondate / 1000) as actiondate,
         to_timestamp(expirationdate / 1000) as expirationdate
-    from {{ source('usfs', 'raw_usfs__usfs_special_interest_areas') }}
+    from {{ raw_or_empty(
+        source('usfs', 'raw_usfs__usfs_special_interest_areas'),
+        [
+            'specintmgtareaid',
+            'geometry',
+            'areaname',
+            'actiondate:bigint',
+            'expirationdate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

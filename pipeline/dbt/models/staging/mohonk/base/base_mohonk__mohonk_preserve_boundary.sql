@@ -17,7 +17,10 @@ with source as (
         * exclude (geometry, edit_date),
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(edit_date / 1000) as edit_date
-    from {{ source('mohonk', 'raw_mohonk__mohonk_preserve_boundary') }}
+    from {{ raw_or_empty(
+        source('mohonk', 'raw_mohonk__mohonk_preserve_boundary'),
+        ['globalid', 'geometry', 'owner', 'edit_date:bigint']
+    ) }}
 ),
 
 renamed as (

@@ -20,7 +20,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom,
         to_timestamp(creationdate / 1000) as creationdate,
         to_timestamp(editdate / 1000) as editdate
-    from {{ source('ridgetrail', 'raw_ridgetrail__ridgetrail_official_route') }}
+    from {{ raw_or_empty(
+        source('ridgetrail', 'raw_ridgetrail__ridgetrail_official_route'),
+        [
+            'segment_id',
+            'geometry',
+            'segment_name',
+            'creationdate:bigint',
+            'editdate:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

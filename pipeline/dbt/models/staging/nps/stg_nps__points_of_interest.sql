@@ -9,6 +9,21 @@
 -- patch sets to null, so `properties` is the base row without the geometry
 -- that travels beside it.
 select
+    'nps_api_campgrounds' as source_key,
+    'nps' as club,
+    poi_key,
+    cast(name as varchar) as name,
+    cast(null as varchar) as category,
+    cast(poi_key as varchar) as source_id,
+    geom,
+    json_merge_patch(
+        to_json(base_nps__nps_api_campgrounds),
+        '{"geom": null}'
+    ) as properties,
+    _loaded_at
+from {{ ref('base_nps__nps_api_campgrounds') }}
+union all by name
+select
     'nps_grsm_backcountry_shelters' as source_key,
     'nps' as club,
     poi_key,

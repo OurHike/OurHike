@@ -19,7 +19,16 @@ with source as (
         to_timestamp(sourcedate / 1000) as sourcedate,
         to_timestamp(created_date / 1000) as created_date,
         to_timestamp(last_edited_date / 1000) as last_edited_date
-    from {{ source('nps', 'raw_nps__grsm_park_boundary_lines') }}
+    from {{ raw_or_empty(
+        source('nps', 'raw_nps__grsm_park_boundary_lines'),
+        [
+            'globalid',
+            'geometry',
+            'sourcedate:bigint',
+            'created_date:bigint',
+            'last_edited_date:bigint',
+        ]
+    ) }}
 ),
 
 renamed as (

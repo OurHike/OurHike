@@ -21,7 +21,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('fltc', 'raw_fltc__fltc_waypoints') }}
+    from {{ raw_or_empty(
+        source('fltc', 'raw_fltc__fltc_waypoints'),
+        ['category', 'mapname', 'name', 'geometry', 'objectid']
+    ) }}
 ),
 
 renamed as (

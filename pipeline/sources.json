@@ -4227,7 +4227,7 @@
       "discovered_date": "2026-10-04",
       "notes": "17,505 places nationally by the API's own `total`, read 2026-10-04 with api.data.gov's public DEMO_KEY (one request, limit 2; the key is never used by the extract). The coverage audit read 17,483 on 2026-10-01. Fields include id, title, latitude, longitude, latLong, relatedParks (each park code a place belongs to), isOpenToPublic, isManagedByNps, managedByOrg, tags, amenities, url and prose (listingDescription, bodyText). One extraction for every club whose places the NPS lists (decision 34): octa, sfta, osta, ovta, pony_express, ecr_tejas, carta, ala_kahakai, chesapeake, tota, mormon_trails, butterfield, stsp, semo, pohe, natr, lcthf, anza and nez_perce draw their portion by `relatedParks` in dbt. A place that lists several parks (every one of POHE's 332 does, the coverage audit's skeptic) is one row, assigned to each.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "False on 2026-10-04: extracted and not staged. NPS_API_KEY does not reach refresh-reference.yml's monthly job yet, so the table is withdrawn as unavailable on every run, and pipeline/make_dbt_staging.py stages no keyed API until it does (a base model over an absent table would stop the build). Once the key is passed: staging, then club_poi_types' places have no rules model yet, then decision 63."
+      "reaches_hikers_comment": "False on 2026-10-04: staged, not yet published. NPS_API_KEY reaches refresh-reference.yml's monthly job since 8bcd9a30, and on a run without it the table is withdrawn and its base model reads it as no rows (dbt/macros/raw_or_empty.sql). Still to come: a rules model for places, which club_poi_types does not cover, then decision 63."
     },
     {
       "key": "nps_api_campgrounds",
@@ -4274,7 +4274,7 @@
       "discovered_date": "2026-10-04",
       "notes": "665 campgrounds nationally by the API's own `total`, read 2026-10-04 with the public DEMO_KEY (one request, limit 2). Fields include id, name, parkCode, latitude, longitude, campsites, numberOfSitesReservable, numberOfSitesFirstComeFirstServe, amenities (potable water among them, as text), fees, operatingHours, reservationUrl and prose. The clubs whose POI cells name it (natr's three, semo's three) draw by `parkCode` in dbt. /visitorcenters, the third list the coverage audit names, answered 429 OVER_RATE_LIMIT on the demo key and is not registered.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "False on 2026-10-04: extracted and not staged. NPS_API_KEY does not reach refresh-reference.yml's monthly job yet, so the table is withdrawn as unavailable on every run, and pipeline/make_dbt_staging.py stages no keyed API until it does (a base model over an absent table would stop the build). Once the key is passed: staging, then club_poi_types' layer-wide campsite row is already there, then decision 63."
+      "reaches_hikers_comment": "False on 2026-10-04: staged, not yet published. NPS_API_KEY reaches refresh-reference.yml's monthly job since 8bcd9a30, and on a run without it the table is withdrawn and its base model reads it as no rows (dbt/macros/raw_or_empty.sql). Still to come: decision 63; club_poi_types' layer-wide campsite row is already there."
     },
     {
       "key": "blm_trails",

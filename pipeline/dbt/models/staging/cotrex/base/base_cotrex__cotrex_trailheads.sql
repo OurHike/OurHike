@@ -13,7 +13,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('cotrex', 'raw_cotrex__cotrex_trailheads') }}
+    from {{ raw_or_empty(
+        source('cotrex', 'raw_cotrex__cotrex_trailheads'),
+        ['feature_id', 'geometry', 'name', 'type']
+    ) }}
 ),
 
 renamed as (

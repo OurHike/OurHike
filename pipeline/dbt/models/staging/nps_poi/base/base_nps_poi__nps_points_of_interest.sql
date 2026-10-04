@@ -13,7 +13,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('nps_poi', 'raw_nps_poi__nps_points_of_interest') }}
+    from {{ raw_or_empty(
+        source('nps_poi', 'raw_nps_poi__nps_points_of_interest'),
+        ['geometryid', 'geometry', 'poiname', 'poitype']
+    ) }}
 ),
 
 renamed as (

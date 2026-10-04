@@ -14,7 +14,10 @@ with source as (
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
-    from {{ source('catamount', 'raw_catamount__catamount_sections') }}
+    from {{ raw_or_empty(
+        source('catamount', 'raw_catamount__catamount_sections'),
+        ['geometry', 'section']
+    ) }}
 ),
 
 renamed as (

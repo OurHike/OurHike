@@ -45,6 +45,15 @@
 //    table maps NYNJTC's terms to features yet, and ORG_NOTICES.md §4's rule
 //    is that "an unmapped term places nothing".
 //
+// CLUBS ONLY, FOR AN UNPLACED NOTICE. The maintainer's answer, by poll on
+// 2026-10-04: an agency's notice shows only where it is placed on or near the
+// route, and an unplaced one shows only from a club. An agency posts across a
+// whole forest or state - USFS, NPS, a state's parks - so "it manages a trail
+// you walk" would hand a hiker every notice it has; a club's are about its
+// own trails. notices.json says which (`steward_kind`, from trail_orgs.json's
+// type); a file without the field keeps the provider match, so a missing
+// field shows a notice rather than hiding one.
+//
 // AND IN TIME: a notice whose own start is after the hike's last planned day,
 // or whose own end is before its first, does not touch it. Most notices state
 // neither, and then only the place decides.
@@ -138,7 +147,8 @@ export interface PlannedHikeNotices {
   stretch: PlannedStretch
   /** Placed notices that meet the route, closures first. */
   onRoute: TrailNotice[]
-  /** Unplaced notices from the clubs that maintain its trails. */
+  /** Unplaced notices from the clubs that maintain its trails; never an
+   *  agency's (the module comment's "clubs only"). */
   fromClubs: TrailNotice[]
 }
 
@@ -373,6 +383,7 @@ export function noticeTouches(
   if (!overlapsInTime(notice, stretch)) return null
   const { place } = notice
   if (place.kind === 'unplaced' || place.kind === 'org_terms') {
+    if (notice.steward_kind === 'agency') return null
     const provider = noticeProvider(notice, byKey)
     return provider !== undefined && stretch.providers.has(provider) ? 'from_club' : null
   }

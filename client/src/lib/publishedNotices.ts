@@ -83,6 +83,10 @@ export function validNotice(value: unknown): OrgNotice | null {
     review_state: row.review_state === 'reviewed' ? 'reviewed' : 'unreviewed',
     ...(typeof row.club === 'string' ? { club: row.club } : {}),
     provider: textOrNull(row.provider),
+    steward_kind:
+      row.steward_kind === 'club' || row.steward_kind === 'agency'
+        ? row.steward_kind
+        : null,
     hazard:
       typeof row.hazard === 'string' && HAZARDS.has(row.hazard)
         ? (row.hazard as NoticeHazard)

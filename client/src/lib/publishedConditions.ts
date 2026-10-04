@@ -406,6 +406,11 @@ export interface OrgNotice {
   /** The registry's provider for its source, the key stewards.json groups
    *  by - how lib/plannedNotices.ts finds the club that posted it. */
   provider?: string | null
+  /** Whether a club or an agency posted it (pipeline/dbt/seeds/notice_readers.csv,
+   *  from trail_orgs.json's type). lib/plannedNotices.ts shows an agency's
+   *  notice to a planned hike only where it is placed; null or absent keeps
+   *  the older rule, which matches it by provider. */
+  steward_kind?: 'club' | 'agency' | null
   /** Decision 67's kind of area, or null for an ordinary notice. */
   hazard?: NoticeHazard | null
   /** The notice's own start and end days, ISO, where the club states them. */

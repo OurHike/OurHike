@@ -184,6 +184,7 @@ seeds:
         listing: varchar
         raw_table: varchar
         staged_by: varchar
+        steward_kind: varchar
     columns:
       - name: raw_table
         description: The raw table the resource lands, raw_<club>__<key>.
@@ -203,3 +204,17 @@ seeds:
           - accepted_values:
               arguments:
                 values: [window, full]
+      - name: steward_kind
+        description: >
+          club or agency: club where trail_orgs.json types the folder's
+          organization as one (generate_notice_models.py's CLUB_TYPES), agency
+          for the other types there and for every extract/_shared/ folder.
+          pub_conditions_notices publishes it, and the phone's planned-hike
+          panel shows an agency's notice only where it is placed (decision
+          66's "clubs only"). OurHike's own and NWS's rows read agency and
+          never reach notices.json.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [club, agency]

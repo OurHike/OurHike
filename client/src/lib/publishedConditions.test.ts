@@ -369,6 +369,7 @@ const A_NOTICES_DOCUMENT = {
       source_key: 'usfs_baer_assessments',
       club: 'usfs',
       provider: 'USFS',
+      steward_kind: 'agency',
       title: 'FIXTURE FIRE',
       category: null,
       locality: 'Fixture National Forest',
@@ -396,6 +397,7 @@ const A_NOTICES_DOCUMENT = {
       source_key: 'club_page',
       title: 42,
       place: { kind: 'somewhere_new' },
+      steward_kind: 'federation',
       hazard: 'avalanche',
       obstructs_trail: 'yes',
       review_state: 'reviewed',
@@ -420,6 +422,7 @@ describe('fetchPublishedNotices', () => {
       'club_page:2',
     ])
     expect(published?.items[0].hazard).toBe('burned_area')
+    expect(published?.items[0].steward_kind).toBe('agency')
     expect(published?.items[0].place).toEqual({
       kind: 'geometry',
       geometry: { type: 'Point', coordinates: [-74.1, 41.2] },
@@ -435,6 +438,9 @@ describe('fetchPublishedNotices', () => {
     expect(repaired?.title).toBe('')
     expect(repaired?.place).toEqual({ kind: 'unplaced' })
     expect(repaired?.hazard).toBeNull()
+    // A kind this build does not know is unknown, which the planned-hike
+    // panel reads as the older provider match, never as an agency's.
+    expect(repaired?.steward_kind).toBeNull()
     // Only `true` blocks: a closure is never inferred from a value that is
     // not one.
     expect(repaired?.obstructs_trail).toBe(false)

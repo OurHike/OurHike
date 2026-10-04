@@ -16,6 +16,9 @@
 -- int_warnings__wording_leaks holds the marts to carrying none of a club's
 -- paragraphs; NY Parks' closed areas, which have no title, take their own
 -- `Name` (the mart's closure_reason), then the registry's title for the layer.
+-- `steward_kind` is the readers seed's club or agency (decision 66's "clubs
+-- only": the phone shows an agency's notice to a planned hike only where it
+-- is placed on or near the route).
 -- `locality` is the source's own words for where, ATC's the states it names
 -- (as lib/notices.ts's atcUpdateAsNotice joins them), and '' where it gives
 -- none (ORG_NOTICES.md section 2: no locality, never a guess).
@@ -76,8 +79,13 @@ with readers as (
     from {{ ref('notice_readers') }}
 ),
 
+-- A source's tables all sit in one club folder, so one kind each.
 notice_sources as (
-    select distinct source_key from readers
+    select
+        source_key,
+        any_value(steward_kind) as steward_kind
+    from {{ ref('notice_readers') }}
+    group by source_key
 ),
 
 registry as (
@@ -299,6 +307,7 @@ notice_rows as (
             'source_key', club_notices.source_key,
             'club', club_notices.club,
             'provider', registry.provider,
+            'steward_kind', notice_sources.steward_kind,
             'title', coalesce(club_notices.title, registry.layer_title),
             'category', club_notices.category,
             'locality', coalesce(club_notices.locality, ''),
@@ -350,6 +359,8 @@ notice_rows as (
             end
         ) as notice
     from club_notices
+    inner join notice_sources
+        on club_notices.source_key = notice_sources.source_key
     left join registry on club_notices.source_key = registry.source_key
     left join hazards on club_notices.source_key = hazards.source_key
     left join nynjtc_terms on club_notices.notice_id = nynjtc_terms.notice_id

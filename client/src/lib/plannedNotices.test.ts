@@ -353,6 +353,38 @@ describe('an unplaced notice', () => {
     expect(pick([carried], [], [dayHike(TODAY)]).hikes[0].fromClubs).toHaveLength(1)
   })
 
+  it('of an agency is left out even where the agency manages the route, and kept placed', () => {
+    // The maintainer's "clubs only" (2026-10-04): NYS OPRHP manages the day
+    // hike's trail, and its unplaced notice is not shown; placed on the
+    // route, the same agency's notice is.
+    const agency = { ...oprhp, steward_kind: 'agency' as const }
+    const placed = {
+      ...agency,
+      notice_id: 'oprhp_trail_closures:10',
+      place: {
+        kind: 'geometry' as const,
+        geometry: { type: 'Point' as const, coordinates: [-76.5, 41.15] },
+      },
+    }
+    const { hikes } = pick([agency, placed], [], [dayHike(TODAY)])
+    expect(hikes[0].fromClubs).toEqual([])
+    expect(hikes[0].onRoute.map((n) => n.notice_id)).toEqual(['oprhp_trail_closures:10'])
+  })
+
+  it('of a club, or with no kind at all, is matched by its provider', () => {
+    const club = {
+      ...oprhp,
+      notice_id: 'oprhp_trail_closures:11',
+      steward_kind: 'club' as const,
+    }
+    const unknown = { ...oprhp, notice_id: 'oprhp_trail_closures:12', steward_kind: null }
+    const { hikes } = pick([club, unknown], [], [dayHike(TODAY)])
+    expect(hikes[0].fromClubs.map((n) => n.notice_id).sort()).toEqual([
+      'oprhp_trail_closures:11',
+      'oprhp_trail_closures:12',
+    ])
+  })
+
   it('reads NYNJTC-style terms as unplaced: an unmapped term places nothing', () => {
     const terms = notice({
       notice_id: 'nynjtc_trail_alerts:x',

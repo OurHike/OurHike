@@ -72,6 +72,17 @@ WARNINGS_DIR = DBT_DIR / "models" / "intermediate" / "warnings"
 SEEDS_DIR = DBT_DIR / "seeds"
 FIELDS_SEED = SEEDS_DIR / "notice_source_fields.csv"
 READERS_SEED = SEEDS_DIR / "notice_readers.csv"
+#: Where each club folder's organization type is recorded (stewards_kinds()).
+TRAIL_ORGS = PIPELINE_DIR / "reference" / "trail_orgs.json"
+#: trail_orgs.json's `type`s that are a club: an organization of hikers that
+#: maintains its trails. Every other type there (federal, state_agency,
+#: state_clearinghouse) is an agency, and so is a notice folder trail_orgs.json
+#: has no row for: the folder contract makes a club folder of every
+#: trail_orgs.json row but its umbrellas, route-only trails and aggregators
+#: (the dlt skill, "The folder contract"), so a folder outside it is one of
+#: extract/_shared/'s land managers, ma_dcr and nifc among them (measured
+#: 2026-10-04: 19 such notice folders, every one under extract/_shared/).
+CLUB_TYPES = frozenset({"at_club", "land_trust", "nht_org", "nst_org", "regional_nonprofit"})
 UNION_MODEL = CLOSURES_DIR / "int_closures__club_notices_unioned.sql"
 UNION_YML = CLOSURES_DIR / "_closures__club_notices_unioned.yml"
 WORDING_MODEL = WARNINGS_DIR / "int_warnings__notice_wording_unioned.sql"
@@ -733,10 +744,20 @@ def render_models_yml(club: str, sources: list[NoticeSource]) -> str:
     return f"# {MARKER}; do not edit by hand.\n" + _dump({"version": 2, "models": models})
 
 
+def steward_kinds() -> dict[str, str]:
+    """{club folder: `club` or `agency`}, for each folder trail_orgs.json has a row for (CLUB_TYPES says which)."""
+    rows = json.loads(TRAIL_ORGS.read_text())["orgs"]
+    return {row["slug"].replace("-", "_"): "club" if row["type"] in CLUB_TYPES else "agency" for row in rows}
+
+
 def render_readers_seed(sources: list[NoticeSource]) -> str:
+    """The seed's rows. `steward_kind` is decision 66's "clubs only" (the maintainer's poll, 2026-10-04): the
+    phone's planned-hike panel shows a club's unplaced notice to a hike on that club's trails, and an agency's
+    only where the notice is placed on or near the route (client/src/lib/plannedNotices.ts)."""
+    kinds = steward_kinds()
     handle = io.StringIO()
     writer = csv.writer(handle, lineterminator="\n")
-    writer.writerow(["source_key", "club", "notice_type", "reader", "listing", "raw_table", "staged_by"])
+    writer.writerow(["source_key", "club", "notice_type", "reader", "listing", "raw_table", "staged_by", "steward_kind"])
     for source in sorted(sources, key=lambda s: s.table):
         reader = READERS.get(source.reader_class)
         writer.writerow(
@@ -748,6 +769,7 @@ def render_readers_seed(sources: list[NoticeSource]) -> str:
                 reader.listing if reader else "full",
                 source.table,
                 "hand" if source.hand_staged else source.stg_model,
+                kinds.get(source.club, "agency"),
             ]
         )
     return handle.getvalue()

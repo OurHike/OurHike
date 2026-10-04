@@ -68,6 +68,7 @@ location into one place:
 | `updated_at` | the **org's** own last-updated stamp | unchanged |
 | `source_url` | link back to the org's page | unchanged |
 | `review_state` | `reviewed` \| `unreviewed` | unchanged |
+| `steward_kind` | `club` \| `agency`, from `trail_orgs.json`'s `type` (`pipeline/generate_notice_models.py`'s `CLUB_TYPES`); the planned-hike panel shows an agency's notice only where it is placed on or near the route (decision 66, "clubs only", 2026-10-04) | new |
 
 **`notice_id` is namespaced by the source key rather than by a short org name**, because
 the registry key is the thing that already exists, is unique, and is what

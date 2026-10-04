@@ -142,6 +142,17 @@ def test_a_monthly_types_extract_file_stales_the_publishing_path_that_runs_the_m
         assert f"unclaimed  {changed}" not in verdict, changed
     assert "fresh  refresh-reference.yml" in _verdict(["pipeline/extract/usfs/closures.py"])
     assert "fresh  refresh-reference.yml" in _verdict(["pipeline/extract/_shared/nifc/perimeters.py"])
+    # publish-conditions.yml's monthly-lane run reads the registry alone (`--only`), which is not the lane.
+    assert "fresh  publish-conditions.yml" in _verdict(["pipeline/extract/_shared/osm/geofabrik.py"])
+
+
+def test_a_step_build_marts_runs_stales_every_path_that_runs_build_marts():
+    """build_marts.py starts each step as a subprocess by its STEPS entry's script name, which no import reaches, so
+    step_osm_water.py was unclaimed though the monthly build lands OSM water through it (#1652)."""
+    verdict = _verdict(["pipeline/step_osm_water.py"])
+    assert "STALE  refresh-reference.yml" in verdict and "STALE  publish-conditions.yml" in verdict
+    assert "unclaimed  pipeline/step_osm_water.py" not in verdict
+    assert "fresh  build-dem.yml" in verdict
 
 
 def test_workflows_that_only_mention_the_publisher_are_not_publishing_paths():

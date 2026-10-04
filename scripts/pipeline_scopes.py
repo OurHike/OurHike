@@ -124,7 +124,9 @@ INVOKES_PUBLISH_RE = re.compile(r"(?<![\w.])python3?\s+(?:(?:[\w./-]*/)?publish\
 #: `python -m extract._run`, from any interpreter path: the workflows run the
 #: extract's own venv, `"$RUNNER_TEMP/extract/bin/python" -m extract._run`.
 INVOKES_EXTRACT_RE = re.compile(r"python3?\"?\s+-m\s+extract\._run\b")
-#: The same, running the monthly lane, on one line: refresh-reference.yml's extract step.
+#: The same, running the whole monthly lane: refresh-reference.yml's extract step. Matched per command, its
+#: backslash continuations joined (runs_whole_monthly_lane()), so a run that names `--only` tables, such as
+#: publish-conditions.yml's read of the registry alone, is not taken for the lane.
 INVOKES_MONTHLY_EXTRACT_RE = re.compile(r"python3?\"?\s+-m\s+extract\._run\b[^\n]*--lane\s+monthly\b")
 #: A _shared/ extract file's type, as it declares it.
 SHARED_TYPE_RE = re.compile(r'^TYPE = "([a-z_]+)"', re.M)
@@ -247,11 +249,30 @@ def scope_for(workflow: Path) -> set[str]:
     """Repo-relative paths whose change stales this workflow's output.
     SHARED_ROOTS is global and deliberately not repeated per scope."""
     direct = {n for n in SCRIPT_MENTION_RE.findall(workflow.read_text()) if (PIPELINE / n).is_file()}
+    if BUILD_MARTS in direct:
+        direct |= build_marts_steps()
     files = {f"pipeline/{name}" for name in import_closure(direct)}
     files.add(f".github/workflows/{workflow.name}")
-    if INVOKES_MONTHLY_EXTRACT_RE.search(run_scripts(workflow)):
+    if runs_whole_monthly_lane(workflow):
         files |= monthly_extract_scope()
     return files
+
+
+#: build_marts.py runs each Python step as a subprocess, by the script name in its STEPS entry's `command`, so no
+#: import reaches a step and the mention rule sees only the steps a workflow's comments happen to name.
+BUILD_MARTS = "build_marts.py"
+STEP_COMMAND_RE = re.compile(r'command=\(\s*"([A-Za-z0-9_]+\.py)"')
+
+
+def build_marts_steps() -> set[str]:
+    """The step scripts build_marts.py's STEPS run, read from its source: every lane's, so the answer errs to STALE."""
+    return {name for name in STEP_COMMAND_RE.findall((PIPELINE / BUILD_MARTS).read_text()) if (PIPELINE / name).is_file()}
+
+
+def runs_whole_monthly_lane(workflow: Path) -> bool:
+    """Whether a run script extracts the whole monthly lane: `-m extract._run --lane monthly` with no `--only`."""
+    commands = re.sub(r"\\\n\s*", " ", run_scripts(workflow)).splitlines()
+    return any(INVOKES_MONTHLY_EXTRACT_RE.search(command) and "--only" not in command for command in commands)
 
 
 def rerun_note(workflow: Path) -> str:

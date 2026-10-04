@@ -2,14 +2,13 @@
 3, section C, 2026-10-04).
 
 - `nps_gallery_assets`: NPS's gallery assets (`/multimedia/galleries/assets`) for the park codes
-  nps_alerts' `park_codes` map lists, one manifest row per photo, never its pixels. Each row carries
-  its own `credit` and its own `constraintsInfo` ({constraint, grantingRights}: 'Public domain' with
-  'Full' rights on both sample rows read 2026-10-04), so a photo's licence is that photo's, never a
-  park's or a gallery's. NPS's whole list (206,685 assets on 2026-10-04) is not read: a national
-  read is the maintainer's decision, as nps_alerts' is. The read for the 27 park codes was refused
-  by the DEMO_KEY's shared hourly limit (HTTP 429, 08:42 UTC), so their count, and whether this
-  endpoint honours `parkCode`, are @unvalidated: a list that ignored it would page past
-  NPS_CONTENT_MAX_PAGES and raise, never land the national list by accident.
+  nps_alerts' `park_codes` map lists, one manifest row per photo, never its pixels: 14,630 for the 27
+  codes on 2026-10-04 (NPS's whole list held 206,685, so the API honours `parkCode`), about 30 pages
+  a month. Each row carries its own `credit`, `copyright` and `constraintsInfo` ({constraint,
+  grantingRights}), and THE LICENCE DIFFERS PHOTO BY PHOTO INSIDE ONE PARK'S LIST: of the first 500
+  read, 12 carry 'Restrictions apply on use and/or reproduction (Copyrighted material)' and the rest
+  'Public domain'. So a photo publishes on its own constraintsInfo or not at all, never on a park's
+  or a gallery's. A national read is the maintainer's decision, as nps_alerts' is.
 
 Each list is read by extract/_content.py's NpsContent, NpsAlerts' reader for another endpoint:
 NPS_API_KEY from the environment as the gateway's `X-Api-Key` header, never in a URL, and without it

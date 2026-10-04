@@ -6,14 +6,14 @@
 -- (decision 40), with nothing filtered and nothing joined. A base model,
 -- the one place this dataset is staged (decision 34).
 --
--- Key: `id`, NPS's own GUID for each item: present and unique on the 2 rows
--- of a sample read on 2026-10-04; the full read was refused by the public
--- DEMO_KEY's shared hourly limit (HTTP 429 OVER_RATE_LIMIT, 08:42 UTC). The
--- reader itself raises on a missing or repeated id within a read
--- (extract/_content.py's NpsContent), so a landed table is unique on it by
--- construction; that the whole list is, and that the id is stable from one
--- read to the next, is @unvalidated until the first monthly run under
--- NPS_API_KEY reads every row and re-measures it.
+-- Key: `id`, NPS's own GUID for each item: present and unique on all 500
+-- rows read 2026-10-04 (the first page of 500, asked for the 27 park codes
+-- nps_alerts' map lists), and the reader itself raises on a missing or
+-- repeated id within a read (extract/_content.py's NpsContent), so a landed
+-- table is unique on it by construction. The read was the public
+-- DEMO_KEY's, which allows 10 requests an hour, so the other rows were not
+-- read; the first monthly run under NPS_API_KEY reads every row and re-
+-- measures it.
 with source as (
     -- A content table carries no geometry and is cast nowhere: each column is
     -- as dlt landed it (a WordPress date a timestamp, a feed's pubDate the

@@ -8043,7 +8043,9 @@ def _nps_content_rows(key: str) -> list[dict]:
              "fileInfo": {"url": f"https://www.nps.gov/npgallery/GetAsset/{i}", "fileType": "image/jpeg", "widthPixels": 100,
                           "heightPixels": 80, "fileSizeKb": 12},
              "relatedParks": [_nps_park("lecl")], "tags": [], "credit": "NPS photo",
-             "constraintsInfo": {"constraint": "Public domain", "grantingRights": "Full"},
+             # Each photo its own licence: 12 of the first 500 live rows (2026-10-04) were the second constraint.
+             "constraintsInfo": {"constraint": "Public domain", "grantingRights": "Full"} if n == 1 else
+             {"constraint": "Restrictions apply on use and/or reproduction (Copyrighted material)", "grantingRights": "Partial"},
              "copyright": "Fixture copyright line.", "ordinal": n}
             for n, i in enumerate(ids, 1)
         ]  # fmt: skip

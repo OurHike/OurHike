@@ -181,11 +181,11 @@ def podcast_episodes(key: str, *, crawl_delay: float = 0.0, **overrides) -> Podc
 # The page asked for, NpsAlerts' NPS_PAGE_SIZE: the reader steps by the rows each page returns, so a smaller cap
 # on the server costs a request, never a row.
 NPS_CONTENT_PAGE_SIZE = _json_apis.NPS_PAGE_SIZE
-# @unvalidated: a ceiling, not an ending, picked well above the largest national list these rows read (audio,
-# 5,173 items, 11 pages on 2026-10-04) and below NPS's whole gallery-asset list (206,685, 414 pages), so a
-# park-code read the API ignored raises rather than loading every photo NPS holds; reaching it raises rather
-# than loading a short list. The gallery assets for the clubs' 27 park codes were never counted (the DEMO_KEY's
-# hourly limit refused that read), so whether 120 holds them is what the first run under the key settles.
+# @unvalidated: a ceiling, not an ending, picked above the largest list these rows read (the gallery assets for
+# the clubs' 27 park codes, 14,630 on 2026-10-04, 30 pages) and below NPS's whole gallery-asset list (206,685,
+# 414 pages), so a park-code read the API stopped honouring raises rather than loading every photo NPS holds;
+# reaching it raises rather than loading a short list. What would settle it is the page count a few monthly
+# runs print.
 NPS_CONTENT_MAX_PAGES = 120
 
 

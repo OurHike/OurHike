@@ -424,20 +424,42 @@ def render_base(source: NoticeSource) -> str:
     if len(source_call) + 9 > MAX_LINE:
         source_call = f"source(\n            {_sql_string(source.club)},\n            {_sql_string(source.table)}\n        )"
     empty = ", ".join(_sql_string(column) for column in empty_columns)
+    version_call = f"source({_sql_string(source.club)}, {_sql_string(source.table)})"
+    if len(version_call) + 12 > MAX_LINE:
+        version_call = (
+            f"source(\n                {_sql_string(source.club)},\n                {_sql_string(source.table)}\n            )"
+        )
+    version = ["        {{ notice_row_version(", f"            {version_call}", "        ) }} as row_version"]
     if source.reader.spatial:
         select = [
             "    select",
             "        * exclude (geometry),",
-            "        st_geomfromgeojson(cast(geometry as varchar)) as geom",
+            "        st_geomfromgeojson(cast(geometry as varchar)) as geom,",
+            *version,
         ]
     else:
-        select = ["    select *"]
+        select = ["    select", "        *,", *version]
     lines += ["with source as ("]
     lines += select
     lines += ["    from {{ notice_raw_table(", f"        {source_call},", f"        [{empty}]", "    ) }}", "),", ""]
-    lines += ["renamed as (", "    select", "        {{ dbt_utils.generate_surrogate_key(["]
+    lines += ["keyed as (", "    select", "        {{ dbt_utils.generate_surrogate_key(["]
     lines += [f"            {item}," for item in key_items]
-    lines += ["        ]) }} as notice_key,", "        source.*", "    from source", ")", ""]
+    lines += ["        ]) }} as notice_key,", "        source.*", "    from source", "),", ""]
+    lines += [
+        "-- How many different rows share each key. More than one is what",
+        "-- duplicates_are_exact fails on, which only warns for a club notice",
+        "-- source: int_closures__gate holds the source instead, so one club's",
+        "-- conflicting rows hold that club's notices and nothing else.",
+        "renamed as (",
+        "    select",
+        "        keyed.*,",
+        "        count(distinct keyed.row_version)",
+        "            over (partition by keyed.notice_key)",
+        "            as key_versions",
+        "    from keyed",
+        ")",
+        "",
+    ]
     lines += ["{{ dbt_utils.deduplicate(", "    relation='renamed', partition_by='notice_key', order_by='_dlt_id'", ") }}"]
     return "\n".join(lines) + "\n"
 
@@ -513,6 +535,7 @@ def render_stg(source: NoticeSource, fields: dict[str, dict]) -> str:
         "fields as (",
         "    select",
         "        notice_key,",
+        "        key_versions,",
         "        _loaded_at,",
         "        to_json(attributes) as row_json",
         "    from attributes",
@@ -557,7 +580,7 @@ def render_stg(source: NoticeSource, fields: dict[str, dict]) -> str:
         ]
     else:
         lines.append("    cast(null as varchar) as geom_geojson,")
-    lines += ["    fields._loaded_at", "from fields"]
+    lines += ["    fields.key_versions,", "    fields._loaded_at", "from fields"]
     if source.reader.spatial:
         lines.append("inner join base on fields.notice_key = base.notice_key")
     return "\n".join(lines) + "\n"
@@ -571,16 +594,23 @@ def _duplicates_key(source: NoticeSource) -> list[str]:
 
 
 def _exactness_severity(source: NoticeSource) -> str:
-    """`error` for a source that ships, `warn` for one the registry holds back.
+    """`warn`, for every club notice source, shipping or not, because the gate holds a conflicting source.
 
     A failing test on a raw table skips every model downstream of it, which for
-    a notice source is every club's closures, ATC's and NYNJTC's included. A
-    held source cannot publish a wrong copy, so its conflict warns; once its
-    row says `reaches_hikers: true`, re-running this makes the test fail the
-    build, as duplicates_are_exact's header asks
+    a notice source is every club's closures and warnings, and every
+    conditions file with them: ATC's, NYNJTC's and NWS's in the hourly job,
+    which reads club notices too (decision 61). So the base model counts the
+    different rows on each key itself (`key_versions`, macros/notices.sql's
+    notice_row_version(), the hash duplicates_are_exact compares), and
+    int_closures__gate holds a source with any key over one: its notices are
+    held, never published as one arbitrary copy, and every other source's
+    publish. The test still names the keys, as a warning; its header's "the
+    answer to a failure is a better key" stands, and the hold is what keeps
+    that answer from costing every other club its closures
     (tests/test_generated_notice_models.py holds the two together).
     """
-    return "error" if (source.entry or {}).get("reaches_hikers") is True else "warn"
+    del source
+    return "warn"
 
 
 def _dump(document: dict) -> str:

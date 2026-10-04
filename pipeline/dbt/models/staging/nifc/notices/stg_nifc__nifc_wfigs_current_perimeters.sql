@@ -28,6 +28,7 @@ attributes as (
 fields as (
     select
         notice_key,
+        key_versions,
         _loaded_at,
         to_json(attributes) as row_json
     from attributes
@@ -58,6 +59,7 @@ select
                 st_asgeojson(st_setcrs(base.geom, 'OGC:CRS84')) as varchar
             )
     end as geom_geojson,
+    fields.key_versions,
     fields._loaded_at
 from fields
 inner join base on fields.notice_key = base.notice_key

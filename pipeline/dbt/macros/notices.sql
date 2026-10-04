@@ -123,3 +123,16 @@
         and contains({{ text }}, ' ')
     )
 {%- endmacro %}
+
+{#- One hash of a raw row's content, exactly as duplicates_are_exact compares
+    two rows on a key: macros/row_hash.sql's row_hash() over every column of
+    the raw table but the server's own row ids (row_hash_row_ids()). A club
+    notice source's base model counts the different hashes on each key
+    (`key_versions`), and int_closures__gate holds a source with any key over
+    one, so a conflict holds that source's notices rather than publishing one
+    copy chosen by load order. The column list is read from the warehouse,
+    so a table that does not exist yet hashes as one row(null): no conflict,
+    and no rows to have one. -#}
+{% macro notice_row_version(relation) -%}
+    {{ row_hash(relation, row_hash_row_ids()) }}
+{%- endmacro %}

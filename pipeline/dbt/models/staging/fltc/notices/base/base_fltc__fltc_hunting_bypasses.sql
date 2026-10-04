@@ -21,14 +21,17 @@
 with source as (
     select
         * exclude (geometry),
-        st_geomfromgeojson(cast(geometry as varchar)) as geom
+        st_geomfromgeojson(cast(geometry as varchar)) as geom,
+        {{ notice_row_version(
+            source('fltc', 'raw_fltc__fltc_hunting_bypasses')
+        ) }} as row_version
     from {{ notice_raw_table(
         source('fltc', 'raw_fltc__fltc_hunting_bypasses'),
         ['geometry', 'fid']
     ) }}
 ),
 
-renamed as (
+keyed as (
     select
         {{ dbt_utils.generate_surrogate_key([
             "'fltc_hunting_bypasses'",
@@ -37,6 +40,19 @@ renamed as (
         ]) }} as notice_key,
         source.*
     from source
+),
+
+-- How many different rows share each key. More than one is what
+-- duplicates_are_exact fails on, which only warns for a club notice
+-- source: int_closures__gate holds the source instead, so one club's
+-- conflicting rows hold that club's notices and nothing else.
+renamed as (
+    select
+        keyed.*,
+        count(distinct keyed.row_version)
+            over (partition by keyed.notice_key)
+            as key_versions
+    from keyed
 )
 
 {{ dbt_utils.deduplicate(

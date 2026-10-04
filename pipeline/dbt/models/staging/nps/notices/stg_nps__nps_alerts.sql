@@ -25,6 +25,7 @@ attributes as (
 fields as (
     select
         notice_key,
+        key_versions,
         _loaded_at,
         to_json(attributes) as row_json
     from attributes
@@ -48,5 +49,6 @@ select
     {{ notice_field('url') }} as source_url,
     {{ notice_field('parkcode') }} as locality,
     cast(null as varchar) as geom_geojson,
+    fields.key_versions,
     fields._loaded_at
 from fields

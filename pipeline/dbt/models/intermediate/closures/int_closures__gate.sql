@@ -42,7 +42,11 @@
 --                         as nothing closed. One row that may not publish
 --                         as current (int_closures__club_notices'
 --                         `held_because`, an ended or inactive notice) holds
---                         that row back and not its source
+--                         that row back and not its source; one key two
+--                         different raw rows share (`key_versions`) holds the
+--                         source, which decision 40 allows only for exact
+--                         copies, and its exactness test warns rather than
+--                         stopping every club's build
 -- and, before any of those, a source int_sources__publication does not let
 -- publish, or has no row for. A non-finite number is held because
 -- write_document()'s allow_nan=False refuses it: JSON.parse on a phone
@@ -279,7 +283,8 @@ counts as (
     select
         source_key,
         count(*) as rows_total,
-        count(*) filter (where len(problems) > 0) as rows_invalid
+        count(*) filter (where len(problems) > 0) as rows_invalid,
+        0 as rows_conflicting
     from notices
     where source_key not in (select club_notices.source_key from club_notices)
     group by source_key
@@ -287,7 +292,8 @@ counts as (
     select
         source_key,
         count(*) as rows_total,
-        0 as rows_invalid
+        0 as rows_invalid,
+        count(*) filter (where key_versions > 1) as rows_conflicting
     from club_notices
     group by source_key
 ),
@@ -376,6 +382,15 @@ judged as (
                     gated_sources.source_key || ' has no rows, and no count '
                     || 'of zero from the source itself backs that, so the '
                     || 'read may have broken or not happened yet'
+            when
+                gated_sources.is_generated
+                and coalesce(counts.rows_conflicting, 0) > 0
+                then
+                    counts.rows_conflicting || ' of ' || counts.rows_total
+                    || ' ' || gated_sources.source_key || ' notices share '
+                    || 'their key with a raw row that differs (decision 40 '
+                    || 'allows only exact copies), so which one is current '
+                    || 'cannot be told'
             when
                 gated_sources.source_key = 'nynjtc_trail_alerts'
                 and coalesce(counts.rows_total, 0) = 0

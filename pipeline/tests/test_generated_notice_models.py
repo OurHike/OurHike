@@ -12,7 +12,8 @@ It also holds what the generated models rest on and the generator cannot
 check by itself: every field the ArcGIS seed names is a field the layer's
 measured field list holds; every hand-staged notice table is one the closures
 family reads; no pub_ writer reads a club notice model except through the
-marts; and a source that ships has an exactness test that fails the build.
+marts; and a key two different raw rows share holds that source in the gate
+rather than stopping every club's build.
 """
 
 import csv
@@ -88,18 +89,33 @@ def test_every_status_value_belongs_to_a_source_whose_seed_row_names_a_status_fi
         assert has_status, f"{key}: a status value for a source whose status field is not staged"
 
 
-def test_a_shipping_source_has_an_exactness_test_that_fails_the_build(files):
-    """A held source warns, so one bad table cannot stop every club's closures; a shipping one must fail loudly."""
-    registry = generator._registry()
+def test_a_conflicting_key_holds_its_source_and_never_stops_the_build(files):
+    """Every club notice source's exactness test warns, and the gate holds the source instead.
+
+    A failing test on a raw table skips everything downstream of it, every
+    conditions file included, so one club's conflicting rows would stop ATC's,
+    NYNJTC's and NWS's too. The base model counts the conflict itself with the
+    hash the test compares, the staging model carries the count, and
+    int_closures__gate holds the source on it (its unit test
+    int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log has
+    the case).
+    """
     for path, text in files.items():
-        if not path.name.endswith("__sources.yml"):
-            continue
-        for source in yaml.safe_load(text)["sources"]:
-            for table in source["tables"]:
-                key = re.search(r"sources\.json `([^`]+)`", table["description"]).group(1)
-                (test,) = [t["duplicates_are_exact"] for t in table["data_tests"]]
-                ships = registry.get(key, {}).get("reaches_hikers") is True
-                assert test["config"]["severity"] == ("error" if ships else "warn"), key
+        if path.name.endswith("__sources.yml"):
+            for source in yaml.safe_load(text)["sources"]:
+                for table in source["tables"]:
+                    (test,) = [t["duplicates_are_exact"] for t in table["data_tests"]]
+                    assert test["config"]["severity"] == "warn", table["name"]
+        elif path.name.startswith("base_"):
+            version = re.search(r"notice_row_version\(\s*source\(\s*'[a-z0-9_]+',\s*'([a-z0-9_]+)'\s*\)\s*\)", text)
+            assert version, f"{path.name} does not hash its raw rows with notice_row_version()"
+            raw = re.search(r"notice_raw_table\(\s*source\(\s*'[a-z0-9_]+',\s*'([a-z0-9_]+)'\s*\)", text).group(1)
+            assert version.group(1) == raw, f"{path.name} hashes {version.group(1)} but reads {raw}"
+            assert "count(distinct keyed.row_version)" in text and "as key_versions" in text, path.name
+        elif path.name.startswith("stg_"):
+            assert "fields.key_versions," in text, f"{path.name} does not carry key_versions to the gate"
+    gate = (DBT / "models" / "intermediate" / "closures" / "int_closures__gate.sql").read_text()
+    assert "count(*) filter (where key_versions > 1) as rows_conflicting" in gate
 
 
 def test_no_pub_writer_reads_a_club_notice_model_except_through_the_marts():

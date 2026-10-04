@@ -267,9 +267,23 @@ def test_a_section_page_with_two_trailhead_fixes_refuses_rather_than_choosing_on
         parse_brbtc_section(section_page(fixes=2), SECTION_PREFIX + "fixture/")
 
 
-def passage(*calls: str) -> str:
+#: A passage page's meta line and fact grid as palmettotrail.org draws them (read 2026-10-04): an icon before the
+#: length, an answer and then the foundation's explanation after a <br>, and a grid label this parser does not read.
+GRID = (
+    '<div class="Trail-meta"><span class="Trail-metaItem Trail-length"><svg class="Icon"><use /></svg>\n'
+    '  4.6 miles  </span><span class="Trail-metaItem Trail-difficulty">Moderate</span></div><div class="Trail-detailGrid">'
+    '<div class="Trail-detailGridHeading">Camping Allowed</div>\n<div class="Trail-detailGridData">Depends<br>Fixture '
+    "explanation of where.<br><br>More of it.</div>"
+    '<div class="Trail-detailGridHeading">Offline Map</div><div class="Trail-detailGridData"><a href="x">View</a></div>'
+    '<div class="Trail-detailGridHeading">Region</div><div class="Trail-detailGridData">Fixture Region</div>'
+    '<div class="Trail-detailGridHeading">Trail on Hunting Grounds</div><div class="Trail-detailGridData">Yes</div></div>'
+)
+
+
+def passage(*calls: str, grid: str = GRID) -> str:
     return (
-        f"<h1>Fixture Passage</h1><script>trailPage.helper.init({{lat: 33.0}});\n{''.join(calls)}trailPage.helper.run();</script>"
+        f"<h1>Fixture Passage</h1>{grid}<script>trailPage.helper.init({{lat: 33.0}});\n{''.join(calls)}"
+        "trailPage.helper.run();</script>"
     )
 
 
@@ -287,6 +301,49 @@ def test_a_passage_lands_each_marker_as_typed_and_its_line_and_never_reads_a_wat
     ]
     assert rows[2]["geometry"] == {"type": "LineString", "coordinates": [[-79.6176, 33.0375], [-79.618, 33.0377]]}
     assert {row["passage"] for row in rows} == {"Fixture Passage"}
+
+
+def test_a_passage_lands_its_length_difficulty_and_first_line_answers_alike_on_every_row_and_never_the_explanation():
+    rows = parse_palmetto_passage(passage(MARKER, SEGMENT), "https://trail.example.org/p")
+
+    facts = {
+        "length_miles": 4.6,
+        "length_text": "4.6 miles",
+        "difficulty": "Moderate",
+        "region": "Fixture Region",
+        "surface": None,
+        "pets": None,
+        "fees": None,
+        "camping": "Depends",
+        "hunting_grounds": "Yes",
+    }
+    assert [{name: row[name] for name in facts} for row in rows] == [facts, facts]
+    assert not any("explanation" in str(value) for row in rows for value in row.values())
+
+
+def test_a_passage_with_no_marker_keeps_its_facts_on_its_line_row():
+    # henry-trail is the one passage of 33 whose map plots no marker (the live read of 2026-10-04, 20:42 to 20:44Z).
+    rows = parse_palmetto_passage(passage(SEGMENT), "https://trail.example.org/p")
+
+    assert [(row["kind"], row["region"], row["length_miles"]) for row in rows] == [("segment", "Fixture Region", 4.6)]
+
+
+def test_a_passage_length_with_two_figures_lands_as_its_text_with_no_miles():
+    grid = GRID.replace("4.6 miles", "2 to 4 miles")
+    (row,) = parse_palmetto_passage(passage(SEGMENT, grid=grid), "https://trail.example.org/p")
+
+    assert (row["length_miles"], row["length_text"]) == (None, "2 to 4 miles")
+
+
+def test_a_passage_whose_fact_grid_answers_nothing_it_reads_refuses_rather_than_landing_points_without_facts():
+    with pytest.raises(PageLayoutChanged, match="fact grid answers none"):
+        parse_palmetto_passage(passage(MARKER, SEGMENT, grid=""), "https://trail.example.org/p")
+
+
+def test_a_passage_answer_long_enough_to_be_prose_refuses():
+    grid = GRID.replace("Fixture Region", "Fixture " * 30)
+    with pytest.raises(PageLayoutChanged, match="prose rather than a fact"):
+        parse_palmetto_passage(passage(SEGMENT, grid=grid), "https://trail.example.org/p")
 
 
 def test_a_passage_whose_script_call_no_longer_parses_refuses_rather_than_landing_the_rest():

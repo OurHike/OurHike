@@ -17,6 +17,66 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_amc__challenges') }}
+union all by name
+select
+    source_key,
+    club,
+    challenge_item_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_austin_trail__challenges') }}
+union all by name
+select
+    source_key,
+    club,
+    challenge_item_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_cmc__challenges') }}
+union all by name
+select
+    source_key,
+    club,
+    challenge_item_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_gatc__challenges') }}
+union all by name
+select
+    source_key,
+    club,
+    challenge_item_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_gmc__challenges') }}
+union all by name
+select
+    source_key,
+    club,
+    challenge_item_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_nbatc__challenges') }}
+union all by name
+select
+    source_key,
+    club,
+    challenge_item_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_nps__challenges') }}
 union all by name
 select
@@ -27,4 +87,34 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_pasda__challenges') }}
+union all by name
+select
+    source_key,
+    club,
+    challenge_item_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_standing_stone__challenges') }}
+union all by name
+select
+    source_key,
+    club,
+    challenge_item_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_tehcc__challenges') }}
+union all by name
+select
+    source_key,
+    club,
+    challenge_item_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_tta__challenges') }}

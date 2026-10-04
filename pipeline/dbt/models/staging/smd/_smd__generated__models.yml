@@ -12,3 +12,12 @@ models:
       - name: episode_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_smd__suggested_hikes
+    description: >
+      The smd/ folder's suggested hikes layers (`smd_diablo_range_hikes`), one row per base
+      row, renamed to int_suggested_hikes__club_unioned's columns, with each layer's own
+      columns in `properties`.
+    columns:
+      - name: hike_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

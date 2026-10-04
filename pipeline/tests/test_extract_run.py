@@ -397,6 +397,34 @@ def test_a_store_an_older_build_left_with_a_second_schema_still_loads_one_packag
     assert counts["raw_testclub__closures_layer"] == 1
 
 
+def test_a_store_whose_default_schema_is_the_pipelines_answers_an_unchanged_layer_fresh_on_a_fresh_runner(
+    registry, store, requests_mock, monkeypatch
+):
+    """refresh-reference.yml's monthly runs 16 and 17 (37210020925, 37232256991): "0 fresh" of 545, then of 569.
+
+    dlt keeps resource state under the extract schema's name, which in this
+    store is `ourhike_<lane>`, not the source's own name `extract`.
+    """
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [])
+    layer.count_fails = True
+    with monkeypatch.context() as older:
+        older.setattr(_run, "store_schema", lambda pipeline: None)  # what dlt chose before store_schema()
+        with pytest.raises(ExtractRefused, match="no upstream count"):
+            lane(store, lines(), closures())
+    layer.count_fails, layer.features = False, [feature(10)]
+    shutil.rmtree(store["pipelines_dir"])
+    assert lane(store, lines(), closures()).outcome == "loaded"
+    shutil.rmtree(store["pipelines_dir"])  # CI's runners start with no working directory
+
+    second = lane(store, lines(), closures())
+
+    assert second.verdicts == {"raw_testclub__trails": "fresh", "raw_testclub__closures_layer": "fresh"}
+    assert second.load_id is None
+    _, counts = warehouse(store)
+    assert counts == {"raw_testclub__trails": 1, "raw_testclub__closures_layer": 1}
+
+
 def test_a_load_that_committed_without_its_run_log_is_read_again_rather_than_answered_fresh(
     registry, store, requests_mock, monkeypatch
 ):

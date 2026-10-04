@@ -354,7 +354,15 @@ def test_every_club_page_read_for_its_points_lands_the_rows_its_own_parser_makes
     assert counts["raw_amc_berkshire__amc_wma_at_parking"] == 1
     with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
         unplaced = con.execute("select count(*) from raw.raw_ouachita__foot_trail_shelters where geometry is null").fetchone()[0]
+        # The Palmetto Trail's passage pages are read once for their points and their facts (the lead's ruling of
+        # 2026-10-04): every row carries its page's fact-grid answers, and never the explanation under one.
+        palmetto = con.execute(
+            "select count(distinct source_url), count(*) filter (where region = 'Fixture Region' and camping = 'Depends'"
+            " and length_miles is not null), count(*) filter (where camping like '%explanation%')"
+            " from raw.raw_palmetto__palmetto_trail_passages"
+        ).fetchone()
     assert unplaced == 1
+    assert palmetto == (2, 10, 0)
 
 
 # Decision 54's waves 4 and 5, the content types' pages (section K, 2026-10-04): each ContentPages resource lands the

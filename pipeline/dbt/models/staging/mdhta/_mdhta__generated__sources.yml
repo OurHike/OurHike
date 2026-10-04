@@ -43,3 +43,13 @@ sources:
           2026-10-04 on the live page, every anchor parsed as extract/_pages_points.py
           parses it). The geometry is 50 of 50 too, (`kind`, `name`) 50 of 50 and `slug`
           39 of 50, because a trailhead and a campground of one name share a slug.
+      - name: raw_mdhta__mdhta_trails
+        data_tests:
+          # Rows sharing base_mdhta__mdhta_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'mdhta_trails'", "link"]
+        description: >
+          Maah Daah Hey Trail Association trails (mdhta.com/trails/) (sources.json
+          `mdhta_trails`). Key: `link`, the trail's own page: unique on all 19 rows read
+          2026-10-04, as are the names.

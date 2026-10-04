@@ -19,6 +19,17 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_blue_hills__blue_hills_hikes
+        data_tests:
+          # Rows sharing base_blue_hills__blue_hills_hikes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'blue_hills_hikes'", "name"]
+        description: >
+          Friends of the Blue Hills Suggested Hikes (friendsofthebluehills.org/hiking-
+          near-boston/) (sources.json `blue_hills_hikes`). Key: `name`: unique on all 18
+          rows read 2026-10-04. The link is not, the one hike with no page of its own
+          linking this page.
       - name: raw_blue_hills__dcr_blue_hills_trails
         data_tests:
           # Rows sharing base_blue_hills__dcr_blue_hills_trails's key must be exact copies (decision 40).

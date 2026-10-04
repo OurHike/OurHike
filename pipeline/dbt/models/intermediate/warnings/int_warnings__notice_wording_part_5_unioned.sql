@@ -142,6 +142,8 @@ values_read as (
         rows_as_json.notice_key,
         entry.key as column_name,
         json_extract_string(entry.value, '$') as raw_text,
+        {{ notice_wording_text("json_extract_string(entry.value, '$')") }}
+            as words,
         list_contains(rows_as_json.fact_columns, entry.key) as is_fact
     from rows_as_json
     cross join json_each(rows_as_json.row_json) as entry
@@ -152,27 +154,34 @@ values_read as (
         )
 ),
 
--- A value a fact column of its own row already holds, whole or inside a
+-- Every fact the source's staging model carries, once, as words.
+facts as (
+    select distinct
+        source_key,
+        words
+    from values_read
+    where is_fact
+),
+
+-- A value one of its source's facts already holds, whole or inside a
 -- longer fact, is a fact, never wording: a description that is its title
--- again, or a facility's name its own title names. ma_dcr_park_alerts'
--- FACILITY_ASSETCODE inside its PAdv_HeaderText title failed soak runs
--- 525 to 527 (publish-conditions.yml 37218044501 the last) while it was
--- read only as a whole value. Publishing the fact says nothing the fact
--- does not, and both sides are read as words, as the leak test reads them.
+-- again, or a place's name a title names, in its own row or another. Such
+-- text reaches a file only as the fact that already holds it, so
+-- publishing it says nothing the facts do not. Read as an exact repeat
+-- only, this failed soak runs 525 to 527 on ma_dcr_park_alerts' facility
+-- names (publish-conditions.yml 37218044501 the last); read within a row,
+-- it failed run 530 (37235003315) on wi_dnr_park_closures, whose property
+-- name sits outside the facts of one row and inside two others' titles.
+-- Both sides are read as words, as the leak test reads them.
 judged as (
     select
         values_read.*,
         exists(
             select 1
-            from values_read as fact
+            from facts
             where
-                fact.is_fact
-                and fact.source_key = values_read.source_key
-                and fact.notice_key = values_read.notice_key
-                and contains(
-                    {{ notice_wording_text('fact.raw_text') }},
-                    {{ notice_wording_text('values_read.raw_text') }}
-                )
+                facts.source_key = values_read.source_key
+                and contains(facts.words, values_read.words)
         ) as repeats_a_fact
     from values_read
 )
@@ -184,9 +193,9 @@ select
     judged.source_key,
     judged.notice_key,
     judged.column_name,
-    {{ notice_wording_text('judged.raw_text') }} as wording
+    judged.words as wording
 from judged
 where
     not judged.is_fact
     and not judged.repeats_a_fact
-    and {{ notice_is_wording(notice_wording_text('judged.raw_text')) }}
+    and {{ notice_is_wording('judged.words') }}

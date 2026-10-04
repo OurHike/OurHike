@@ -891,7 +891,6 @@ def render_wording_part(part: list[NoticeSource], number: int, count: int, field
             fact_line,
             *from_lines,
         ]
-    text = "notice_wording_text('judged.raw_text')"
     lines += [
         "),",
         "",
@@ -903,6 +902,8 @@ def render_wording_part(part: list[NoticeSource], number: int, count: int, field
         "        rows_as_json.notice_key,",
         "        entry.key as column_name,",
         "        json_extract_string(entry.value, '$') as raw_text,",
+        "        {{ notice_wording_text(\"json_extract_string(entry.value, '$')\") }}",
+        "            as words,",
         "        list_contains(rows_as_json.fact_columns, entry.key) as is_fact",
         "    from rows_as_json",
         "    cross join json_each(rows_as_json.row_json) as entry",
@@ -913,27 +914,34 @@ def render_wording_part(part: list[NoticeSource], number: int, count: int, field
         "        )",
         "),",
         "",
-        "-- A value a fact column of its own row already holds, whole or inside a",
+        "-- Every fact the source's staging model carries, once, as words.",
+        "facts as (",
+        "    select distinct",
+        "        source_key,",
+        "        words",
+        "    from values_read",
+        "    where is_fact",
+        "),",
+        "",
+        "-- A value one of its source's facts already holds, whole or inside a",
         "-- longer fact, is a fact, never wording: a description that is its title",
-        "-- again, or a facility's name its own title names. ma_dcr_park_alerts'",
-        "-- FACILITY_ASSETCODE inside its PAdv_HeaderText title failed soak runs",
-        "-- 525 to 527 (publish-conditions.yml 37218044501 the last) while it was",
-        "-- read only as a whole value. Publishing the fact says nothing the fact",
-        "-- does not, and both sides are read as words, as the leak test reads them.",
+        "-- again, or a place's name a title names, in its own row or another. Such",
+        "-- text reaches a file only as the fact that already holds it, so",
+        "-- publishing it says nothing the facts do not. Read as an exact repeat",
+        "-- only, this failed soak runs 525 to 527 on ma_dcr_park_alerts' facility",
+        "-- names (publish-conditions.yml 37218044501 the last); read within a row,",
+        "-- it failed run 530 (37235003315) on wi_dnr_park_closures, whose property",
+        "-- name sits outside the facts of one row and inside two others' titles.",
+        "-- Both sides are read as words, as the leak test reads them.",
         "judged as (",
         "    select",
         "        values_read.*,",
         "        exists(",
         "            select 1",
-        "            from values_read as fact",
+        "            from facts",
         "            where",
-        "                fact.is_fact",
-        "                and fact.source_key = values_read.source_key",
-        "                and fact.notice_key = values_read.notice_key",
-        "                and contains(",
-        "                    {{ notice_wording_text('fact.raw_text') }},",
-        "                    {{ notice_wording_text('values_read.raw_text') }}",
-        "                )",
+        "                facts.source_key = values_read.source_key",
+        "                and contains(facts.words, values_read.words)",
         "        ) as repeats_a_fact",
         "    from values_read",
         ")",
@@ -945,12 +953,12 @@ def render_wording_part(part: list[NoticeSource], number: int, count: int, field
         "    judged.source_key,",
         "    judged.notice_key,",
         "    judged.column_name,",
-        "    {{ " + text + " }} as wording",
+        "    judged.words as wording",
         "from judged",
         "where",
         "    not judged.is_fact",
         "    and not judged.repeats_a_fact",
-        "    and {{ notice_is_wording(" + text + ") }}",
+        "    and {{ notice_is_wording('judged.words') }}",
     ]
     return "\n".join(lines) + "\n"
 
@@ -1038,6 +1046,9 @@ def render_wording_yml(sources: list[NoticeSource], fields: dict[str, dict]) -> 
                         " union all select 'k3', 'a3', 'Fixture', 'Too short.', 'Danger'"
                         " union all select 'k4', 'a4', 'An advisory is in effect for the Fixture Visitor Center"
                         " by the reservoir.', 'Fixture Visitor Center by the reservoir', 'Advisory'"
+                        " union all select 'k5', 'a5', 'Closure at the Fixture Lake Scenic Waters Area today',"
+                        " 'Too short.', 'Closure'"
+                        " union all select 'k6', 'a6', 'Fixture', 'Fixture Lake Scenic Waters Area', 'Notice'"
                     ),
                 }
             )
@@ -1062,9 +1073,9 @@ def render_wording_yml(sources: list[NoticeSource], fields: dict[str, dict]) -> 
         "description": (
             "Generated with the model. A notice's description is its source's wording, read as words; its title, "
             "id and category are facts and are not; a description that repeats the title is a fact too, and so "
-            "is one the title holds inside a longer sentence (a facility's name its title names); one shorter "
-            "than notice_is_wording()'s threshold is not wording. Every other source's base model in the part "
-            "is given no rows."
+            "is one the title holds inside a longer sentence (a facility's name its title names), in its own row "
+            "or another row's title (a property's name); one shorter than notice_is_wording()'s threshold is not "
+            "wording. Every other source's base model in the part is given no rows."
         ),
         "model": _part_name(WORDING_MODEL, tested),
         "given": given,

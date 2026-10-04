@@ -37,9 +37,9 @@ unit_tests:
 - name: int_warnings__notice_wording_unioned_collects_a_sources_paragraph_and_never_its_facts
   description: Generated with the model. A notice's description is its source's wording, read as words;
     its title, id and category are facts and are not; a description that repeats the title is a fact too,
-    and so is one the title holds inside a longer sentence (a facility's name its title names); one shorter
-    than notice_is_wording()'s threshold is not wording. Every other source's base model in the part is
-    given no rows.
+    and so is one the title holds inside a longer sentence (a facility's name its title names), in its
+    own row or another row's title (a property's name); one shorter than notice_is_wording()'s threshold
+    is not wording. Every other source's base model in the part is given no rows.
   model: int_warnings__notice_wording_part_3_unioned
   given:
   - input: ref('base_mst_pa__msta_section_13')
@@ -142,7 +142,9 @@ unit_tests:
       Closure'' as category union all select ''k2'', ''a2'', ''A fixture title that the description repeats'',
       ''A fixture title that the description repeats'', ''Caution'' union all select ''k3'', ''a3'', ''Fixture'',
       ''Too short.'', ''Danger'' union all select ''k4'', ''a4'', ''An advisory is in effect for the Fixture
-      Visitor Center by the reservoir.'', ''Fixture Visitor Center by the reservoir'', ''Advisory'''
+      Visitor Center by the reservoir.'', ''Fixture Visitor Center by the reservoir'', ''Advisory'' union
+      all select ''k5'', ''a5'', ''Closure at the Fixture Lake Scenic Waters Area today'', ''Too short.'',
+      ''Closure'' union all select ''k6'', ''a6'', ''Fixture'', ''Fixture Lake Scenic Waters Area'', ''Notice'''
   - input: ref('base_nps__nps_appa_helene_status')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false

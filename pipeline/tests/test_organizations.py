@@ -377,11 +377,13 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
 
     DECISION 54'S WAVE 3, CONTENT FEEDS AND APIS (section C, 2026-10-04): 34 rows, all
     `reaches_hikers: false`. 11 `stated_by_org`, federal works on 17 U.S.C. 105: six podcast feeds
-    (USFS's two, BLM's, USGS's, USFWS's and NPS's Park Postcards) and NPS's five content lists. 23
+    (USFS's two, BLM's, USGS's, USFWS's and NPS's Park Postcards) and NPS's five content lists. 8
+    `maintainer_authorisation`: club hike, itinerary and wiki lists, on decision 70 (the
+    maintainer's poll, 2026-10-04: a club's hike list publishes as facts and a link). 15
     `unresolved`: thirteen podcast feeds whose <copyright> reserves rights or states nothing that
-    reaches this use, and ten club hike, itinerary and wiki lists, whose terms nobody has read as
-    reaching a published list. Each quotes what it found on its row; publication is the maintainer's
-    call, in dbt, once a mart reads them.
+    reaches this use, TEHCC's wiki challenge items, and TKO's spring fundraiser hike posts, kept off
+    decision 70 on the lead's ruling of 2026-10-04 because decision 73 is TKO's. Each quotes what it
+    found on its row; publication is the maintainer's call, in dbt, once a mart reads them.
 
     DECISION 54'S WAVES 2 AND 3, GIS FILES AND GEOGRAPHIC APIS (2026-10-04): 30 rows, registered at
     `reaches_hikers: false`, one of them (Forest Park's trailheads) flipped once its rules were in dbt.
@@ -398,11 +400,13 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     a club's own page or PDF of points on 2026-10-04); `unresolved` for the ATA's water cache boxes,
     whose terms ask written permission for information published online, which no decision answers for points.
 
-    DECISION 54'S WAVES 4 AND 5, CONTENT PAGES AND PDFS (section K, 2026-10-04): 12 rows, all
-    `reaches_hikers: false`: 10 read by extract/_pages_content.py, 1 by extract/_pdf_content.py and
-    1 WordPress post types; 12 `unresolved`. A club's hike list, challenge list or episode page
-    publishes on no decision yet, so each quotes the terms it found on its row and waits on the
-    maintainer, in dbt, once a mart reads it.
+    DECISION 54'S WAVES 4 AND 5, CONTENT PAGES AND PDFS (section K, 2026-10-04): 34 rows, all
+    `reaches_hikers: false`: 28 read by extract/_pages_content.py, 5 by extract/_pdf_content.py and
+    1 WordPress post types; 24 `maintainer_authorisation`, 10 `unresolved`. Decision 70 (the
+    maintainer's poll, 2026-10-04) publishes a club's hike list as facts and a link, so 24 of its 25
+    suggested-hike rows are `maintainer_authorisation` and CDTC's stays `unresolved` until its terms
+    can be read. A challenge list publishes on no decision yet, so each of those quotes the terms it
+    found on its row and waits on the maintainer, in dbt, once a mart reads it.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
@@ -411,13 +415,13 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
     # Decision 53's page and post notices, folders n to z and _shared/ (2026-10-03), add 68: 51, 16 and 1 (above).
     # Its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03) add 113: 87 and 26 (above).
-    # Decision 54's wave 3 content feeds and APIs (section C) add 34: 11 and 23; waves 2 and 3's GIS files and
-    # geographic APIs add 30: 26 `public_gis` and 4 `stated_by_org` (above). Waves 4 and 5's points (section S)
-    # add 6: 5 `public_gis` and 1 `unresolved`; their content pages and PDFs (section K) add 12, all `unresolved`
-    # (above). Section S's second batch adds 3 `public_gis` (BRBTC's sections, the Palmetto Trail's passages and
-    # OHTA's trailheads), and its fourth 1 `public_gis` (PATC's Tuscarora access points and camping), recounted
-    # from the registry 2026-10-04.
-    assert counts == {"maintainer_authorisation": 186, "public_gis": 252, "stated_by_org": 192, "unresolved": 40}
+    # Decision 54's wave 3 content feeds and APIs (section C) add 34: 11, 8 (decision 70's hike lists) and 15; waves 2
+    # and 3's GIS files and geographic APIs add 30: 26 `public_gis` and 4 `stated_by_org` (above). Waves 4 and 5's
+    # points (section S) add 6: 5 `public_gis` and 1 `unresolved`; their content pages and PDFs (section K) add 34: 24
+    # `maintainer_authorisation` (decision 70's hike lists) and 10 `unresolved` (above). Section S's second batch adds
+    # 3 `public_gis` (BRBTC's sections, the Palmetto Trail's passages and OHTA's trailheads), and its fourth 1
+    # `public_gis` (PATC's Tuscarora access points and camping), recounted from the registry 2026-10-04.
+    assert counts == {"maintainer_authorisation": 218, "public_gis": 252, "stated_by_org": 192, "unresolved": 30}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

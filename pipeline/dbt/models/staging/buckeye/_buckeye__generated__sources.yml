@@ -28,3 +28,13 @@ sources:
         description: >
           Buckeye Trail retail map outlines (sources.json `buckeye_retail_map_outlines`).
           Key: `MAP_NAME` is unique and non-null on all 26 rows read 2026-10-03.
+      - name: raw_buckeye__buckeye_sections
+        data_tests:
+          # Rows sharing base_buckeye__buckeye_sections's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'buckeye_sections'", "link"]
+        description: >
+          Buckeye Trail sections (buckeyetrail.org/sections) (sources.json
+          `buckeye_sections`). Key: `link`, the section's own page: unique on all 26 rows
+          read 2026-10-04, as are the names.

@@ -268,3 +268,44 @@ def test_every_content_union_is_a_club_union_beside_the_marts_own_path():
     for type_ in ("podcasts", "suggested_hikes", "challenges", "photos"):
         shape = make_dbt_staging.SHAPES[type_]
         assert not shape.geometry and shape.union == f"int_{type_}__club_unioned"
+
+
+# --- a club page's points shared by a content type (the lead's Palmetto ruling, 2026-10-04) -------------------------
+
+PAGE_ROWS = {"suggested_hikes": {"name": "passage", "link": "source_url", "distance_mi": "length_miles", "place": "region"}}
+
+
+def _shared(type_: str, entry: dict) -> Table:
+    return Table("club", type_, entry["key"], f"raw_club__{entry['key']}", "monthly", entry, "PagePoints", "points_of_interest")
+
+
+def test_a_content_type_sharing_a_pages_points_is_one_row_per_page_with_only_the_fields_its_row_names():
+    hikes = _shared(
+        "suggested_hikes", {"key": "passages", "key_fields": ["source_url", "geometry"], "shared_page_rows": PAGE_ROWS}
+    )
+
+    staging = make_dbt_staging.stg_sql("club", "suggested_hikes", [hikes])
+
+    assert hikes.page_rows and hikes.key_inputs() == ["'passages'", "source_url"]
+    assert "cast(passage as varchar) as name" in staging and "cast(source_url as varchar) as link" in staging
+    assert "'place', region" in staging and "'distance_mi', length_miles" in staging
+    assert "to_json(" not in staging, "a marker's own columns stay in the points' staging model"
+    assert staging.rstrip().endswith("group by\n    source_url,\n    passage,\n    length_miles,\n    region")
+    assert "from {{ ref('base_club__passages') }}" in staging
+
+
+def test_the_shared_pages_fields_are_raw_columns_of_the_points_base_model_so_an_absent_table_still_builds():
+    entry = {"key": "passages", "key_fields": ["source_url", "geometry"], "name_field": "name", "shared_page_rows": PAGE_ROWS}
+    points = Table("club", "points_of_interest", "passages", "raw_club__passages", "monthly", entry)
+
+    assert {"passage", "length_miles", "region", "source_url"} <= set(points.raw_columns())
+
+
+def test_a_pages_points_feed_only_the_content_types_their_row_names_fields_for():
+    tables = make_dbt_staging.tables()
+
+    assert ("suggested_hikes", "palmetto_trail_passages") in {(t.type, t.key) for t in tables if t.folder == "palmetto"}
+    shared = [table for table in tables if table.reader == "PagePoints"]
+    assert shared and all(table.type in table.entry["shared_page_rows"] for table in shared)
+    with pytest.raises(ValueError, match="names no fields"):
+        make_dbt_staging.page_rows_fields(_shared("challenges", {"key": "passages"}))

@@ -187,3 +187,150 @@ def test_a_wall_in_front_of_the_file_is_unknown(registry, requests_mock):
 def test_a_family_that_is_not_registered_is_refused_at_import(registry):
     with pytest.raises(KeyError, match="no family"):
         content_pdf("rmc_recommended_hikes", family="no_such_family")
+
+
+# --- The Wasatch Mountain Club's hike ratings table -----------------------------------------------------------------
+
+WMC = "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf"
+WMC_HEADER_TEXT = (
+    "Name\nNew \nRating\nRT \nMiles\nEst \nHrs\nHiking \nTime\nTotal \nAscent\nTH \nElev\nMax \nElev\nOther \n"
+    "Factors\nWilderness \nGroup Size \nLimit\nAvg Gain \nPer Mile Location\n1 =   Oneway   \n2 = Roundtrip\n"
+)
+#: An invented layer laid out as WMCHikesCopyToWeb.pdf is: a key page naming its compilers, then the table, its header
+#: repeated on each page, one hike a line; one row with a cell empty, and two rows sharing a name.
+WMC_TEXT = (
+    "Trail Ratings\nNTD   =   0.1 ‐ 4.0  Not to Difficult\nInformation compiled by Fixture Compiler\n",
+    WMC_HEADER_TEXT + "FIXTURE LAKE FROM FIXTURE TH 4.5 4.4 1.9 2.4 1,660 7536 8,976 None Yes 755 UTAH  COUNTY 2\n"
+    "FIXTURE RIDGE (FIXTURE TO FIXTURE PASS) FROM FIXTURE 7.5 7.5 6.1 5.7 3,378 8765 10,795 BRS No 450 BIG  "
+    "COTTONWOOD CANYON  1\n",
+    WMC_HEADER_TEXT + "FIXTURE PEAK FROM FIXTURE MOUNTAIN. 6.6 8.3 5.0 2,774 6162 7,491 None No 668 FIXTURE CANYON 2\n"
+    "FIXTURE PASS FROM FIXTURE LAKES TH. 3.9 4.6 2.0 2.3 1,344 8765 10,048 None No 292 BIG COTTONWOOD CANYON 2\n"
+    "FIXTURE PASS FROM FIXTURE LAKES TH. 3.8 4.6 2.0 2.3 1,312 8765 10,040 None No 285 BIG COTTONWOOD CANYON 2\n",
+)
+
+
+def wmc_rows(texts=WMC_TEXT) -> list[dict]:
+    return PDF_FAMILIES["wmc_hike_ratings"].read(PdfFacts(texts=texts), WMC)
+
+
+def test_a_wasatch_row_lands_its_figures_and_its_way_and_never_its_pace_or_its_compilers():
+    rows = wmc_rows()
+
+    assert len(rows) == 5
+    first, ridge = rows[0], rows[1]
+    assert (first["name"], first["place"], first["distance_mi"], first["elevation_gain_ft"]) == (
+        "FIXTURE LAKE FROM FIXTURE TH",
+        "UTAH COUNTY",
+        4.4,
+        1660.0,
+    )
+    assert (first["difficulty"], first["route_type"], first["trailhead_elevation_ft"], first["max_elevation_ft"]) == (
+        "4.5",
+        "round trip",
+        7536.0,
+        8976.0,
+    )
+    assert (first["other_factors"], first["wilderness_group_limit"], first["gain_per_mile_ft"]) == (None, "Yes", 755.0)
+    assert (ridge["route_type"], ridge["other_factors"]) == ("one way", "BRS")
+    landed = json.dumps(rows)
+    assert "Fixture Compiler" not in landed
+    assert not {"1.9", "2.4"} & {str(value) for row in rows for value in row.values()}, "the hour estimates land nowhere"
+
+
+def test_a_wasatch_row_with_a_cell_empty_lands_its_rating_and_miles_as_unknown():
+    peak = next(row for row in wmc_rows() if row["name"].startswith("FIXTURE PEAK"))
+    assert (peak["difficulty"], peak["distance_mi"], peak["distance_text"]) == (None, None, None)
+    assert (peak["elevation_gain_ft"], peak["max_elevation_ft"]) == (2774.0, 7491.0), "the cells after are unambiguous"
+
+
+def test_two_wasatch_rows_that_share_a_name_are_kept_apart_by_their_ascent():
+    passes = [(row["name"], row["elevation_gain_text"]) for row in wmc_rows() if row["name"].startswith("FIXTURE PASS")]
+    assert passes == [
+        ("FIXTURE PASS FROM FIXTURE LAKES TH.", "1,344 Total Ascent"),
+        ("FIXTURE PASS FROM FIXTURE LAKES TH.", "1,312 Total Ascent"),
+    ]
+
+
+def test_a_wasatch_line_that_is_neither_header_nor_row_refuses():
+    broken = (WMC_TEXT[0], WMC_HEADER_TEXT + "FIXTURE LAKE FROM FIXTURE TH 4.5 4.4 1,660 7536 None Yes\n")
+    with pytest.raises(PdfLayoutChanged, match="neither the table's header nor one of its rows"):
+        wmc_rows(broken)
+    with pytest.raises(PdfLayoutChanged, match="no 'Name' header"):
+        wmc_rows(("Fixture page with no table\n",))
+
+
+# --- Challenges: GMC's Side-to-Side tracker and NBATC's Blue Blazer form ---------------------------------------------
+
+GMC = "https://www.greenmountainclub.org/wp-content/uploads/2026/04/Long-Trail-Side-to-Side-Tracker.pdf"
+GMC_TEXT = (
+    "Trail Date(s) Comments\nFixture Brook Trail\nFixture Pond Loop\nLong Trail Side-to-Side Tracker\nFixture Gap to "
+    "Fixture Mountain\nThe Green Mountain Club recognizes the achievement of hiking all 4 designated Long Trail side "
+    "trails (9\nmiles) in the Side-to-Side Challenge.\nFill out this tracker.\nFixture Rock to Fixture Peak\n"
+    "Trail Date(s) Comments\nFixture Ridge Trail\n*Fixture Ski Area trails\n",
+    "Fixture Notch to Fixture Lake\nTrail Date(s) Comments\nFixture Spur\nTotal mileage of the 4 trails is 9 miles!\n"
+    "Hiker Information\nFirst Name:\n",
+)
+NBATC = "https://home.nbatc.org/pdfs/BlueBlazeTrailHike.pdf"
+NBATC_TEXT = (
+    "NBATC BLUE BLAZER PROGRAM\nWhen completed, email to: fixture@example.org\nName ______\n",
+    "No. Name\n(miles north of Black\nHorse Gap)\nDescription 88\nMilers\n1 Fixture Mine Trail\n(@ 1.8 mi.)\n"
+    "Connects the Fixture Parkway to FS 1\n9\n2 Fixture Creek Connects AT with US 1 south of Fixture Bridge 8\n",
+    "(@ 41.4mi.)\n3 Fixture Pleasant/Fixture\nLanum Loop\nLoop Trail with Spur to Fixture Summits\n10\n"
+    "4 Fixture Springs (N)\n(@ 36mi. and 38.4 mi.)\nConnects AT with AT\nTotal Miles ____\n"
+    "*Do not duplicate miles\n",
+)
+
+
+def test_a_side_to_side_tracker_lands_its_trails_and_never_a_panel_title_or_a_placeholder():
+    rows = PDF_FAMILIES["gmc_side_to_side"].read(PdfFacts(texts=GMC_TEXT), GMC)
+
+    assert [row["name"] for row in rows] == ["Fixture Brook Trail", "Fixture Pond Loop", "Fixture Ridge Trail", "Fixture Spur"]
+    assert {row["challenge"] for row in rows} == {"Long Trail Side-to-Side Challenge"}
+
+
+def test_a_side_to_side_tracker_whose_list_is_not_the_count_it_states_refuses():
+    shorter = (GMC_TEXT[0].replace("Fixture Ridge Trail\n", ""), GMC_TEXT[1])
+    with pytest.raises(PdfLayoutChanged, match="lists 3 side trails and states 4"):
+        PDF_FAMILIES["gmc_side_to_side"].read(PdfFacts(texts=shorter), GMC)
+
+
+def test_a_blue_blazer_trail_lands_its_number_name_and_mile_and_never_the_form_or_its_contact():
+    rows = PDF_FAMILIES["nbatc_blue_blazer"].read(PdfFacts(texts=NBATC_TEXT), NBATC)
+
+    assert [(row["number"], row["name"], row["at_mile"], row["at_mile_text"]) for row in rows] == [
+        (1, "Fixture Mine Trail", 1.8, "1.8 mi."),
+        (2, "Fixture Creek", 41.4, "41.4mi."),
+        (3, "Fixture Pleasant/Fixture Lanum Loop", None, None),
+        (4, "Fixture Springs (N)", None, "36mi. and 38.4 mi."),
+    ]
+    assert "fixture@example.org" not in json.dumps(rows)
+
+
+def test_a_blue_blazer_table_with_no_header_refuses():
+    with pytest.raises(PdfLayoutChanged, match="no 'No. Name' table header"):
+        PDF_FAMILIES["nbatc_blue_blazer"].read(PdfFacts(texts=("Fixture page\n",)), NBATC)
+
+
+TTA = "https://tennesseetrails.org/wp-content/uploads/2020/08/FranWallasQualificationForm.pdf"
+TTA_TEXT = (
+    "Fixture Person's 3 Great Hikes\n“I hiked 'em all”\nName:\ne-mail: phone:\nCheck List of the Hikes\n"
+    "* Until the ban is lifted, entry to state owned caves is forbidden.\nI attest to having hiked all the trails "
+    "listed above:\nFixture Falls – Fixture Trail\nFixture Cove -Fixture Cave*\nFixture Lake\n",
+)
+
+
+def test_a_great_hikes_form_lands_each_hike_and_its_cave_mark_and_never_the_person_it_honours():
+    rows = PDF_FAMILIES["tta_great_hikes"].read(PdfFacts(texts=TTA_TEXT), TTA)
+
+    assert [(row["name"], row["cave_entry_forbidden"]) for row in rows] == [
+        ("Fixture Falls – Fixture Trail", False),
+        ("Fixture Cove -Fixture Cave", True),
+        ("Fixture Lake", False),
+    ]
+    assert "Fixture Person" not in json.dumps(rows)
+
+
+def test_a_great_hikes_form_whose_list_is_not_its_titles_count_refuses():
+    longer = (TTA_TEXT[0] + "Fixture Extra\n",)
+    with pytest.raises(PdfLayoutChanged, match="lists 4 hikes and its title states 3"):
+        PDF_FAMILIES["tta_great_hikes"].read(PdfFacts(texts=longer), TTA)

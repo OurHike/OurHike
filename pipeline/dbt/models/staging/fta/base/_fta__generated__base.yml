@@ -25,6 +25,29 @@ models:
           fta_campsites, globalid, the registry key first and then the fields measured
           unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_fta__fta_day_hikes
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('fta', 'raw_fta__fta_day_hikes')
+          config:
+            severity: warn
+    description: >
+      FTA Day & Section Hike: Grab-and-Go and other trail hikes (floridatrail.org/day-hike/),
+      every row, keyed and deduped (decision 40), the layer's own columns under dlt's names.
+      Its sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_suggested_hikes__club_unioned reads it through
+      stg_fta__suggested_hikes.
+    columns:
+      - name: hike_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          fta_day_hikes, section, name, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_fta__fta_gateway_communities
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

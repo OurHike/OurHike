@@ -5000,7 +5000,14 @@ CLUB_PLACES_NUMERIC_KEYS = {
     "nj_place_names": {"FEATURE_ID": float},
     "azt_land_ownership": {"OWNER": int},
     "nh_recreation_areas": {"NHRECPOL_": int},
+    "ugrc_local_parks": {"ACRES": float},
+    "usgs_gnis_populated_places": {"incounty_id": int},
 }
+# An ArcGIS date lands as epoch milliseconds (extract/_kinds.py's ESRI_TYPES),
+# so each field a row lists in `date_fields` gets an invented one: 2025-10-01
+# UTC, a day apart per feature. pipeline/make_dbt_staging.py's base models
+# cast exactly these columns, so the fixture build exercises the cast.
+CLUB_PLACES_DATE_MS = 1759276800000
 
 
 def _multipoint(i):
@@ -5011,18 +5018,26 @@ CLUB_PLACES_GEOMETRY = {"polygon": _polygon, "point": _point, "line": _line, "mu
 
 
 def _club_places_fixtures() -> dict[str, dict]:
-    """One `<key>.geojson` per CLUB_PLACES_KEYS row, with the columns its registry row declares."""
+    """One `<key>.geojson` per CLUB_PLACES_KEYS row, with the columns its registry row declares.
+
+    The key's columns are `id_fields` (or `id_field`) and, where phase C measured a key the row did not
+    have, the attribute columns of its `key_fields` (`geometry` there is the shape, which every fixture
+    feature has). Each `date_fields` column carries an epoch-millisecond date.
+    """
     sources = {s["key"]: s for s in json.loads((Path(__file__).parent / "sources.json").read_text())["sources"]}
     files = {}
     for key in CLUB_PLACES_KEYS:
         entry = sources[key]
         numeric = CLUB_PLACES_NUMERIC_KEYS.get(key, {})
-        id_fields = entry.get("id_fields") or ([entry["id_field"]] if entry.get("id_field") else [])
+        id_fields = list(entry.get("id_fields") or ([entry["id_field"]] if entry.get("id_field") else []))
+        id_fields += [field for field in entry.get("key_fields") or [] if field != "geometry" and field not in id_fields]
         features = []
         for i in range(2):
             properties = {"OBJECTID": i + 1}
             for field in id_fields:
                 properties[field] = numeric[field](100 + i) if field in numeric else f"fixture-{key}-{i}"
+            for field in entry.get("date_fields") or []:
+                properties[field] = CLUB_PLACES_DATE_MS + i * 86_400_000
             if entry.get("name_field") and entry["name_field"] not in properties:
                 properties[entry["name_field"]] = f"Fixture {entry['title']} {i}"
             if entry.get("category_field") and entry["category_field"] not in properties:

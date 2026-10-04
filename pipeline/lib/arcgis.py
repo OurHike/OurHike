@@ -31,18 +31,26 @@ PAGE_SIZE = 1000
 # sent by GET exactly as before, so no layer read today changes request.
 GET_URL_LIMIT = 2000
 
-# A PAGE ABOVE THIS MANY FEATURES THAT ANSWERS 5xx IS HALVED AT
-# ONCE, rather than retried at its size over the caller's whole backoff.
+# A PAGE THAT ANSWERS 5xx IS HALVED AT ONCE, down to one feature, rather
+# than retried at its size over the caller's whole backoff.
 # Measured 2026-10-03 on apps.fs.usda.gov's EDW_Wilderness_02/MapServer/0
 # (449 polygons): returnCountOnly answered 449 in 6.7 s, while a page of 1,000
 # answered "Error performing query operation" (500) in 19 s, 250 answered 500
 # in 8.7 s, and 100 answered 200 with 12,757,608 bytes in 7.2 s. Monthly run 10
 # (refresh-reference.yml 37156600376) spent the monthly lane's 18-minute
-# ladder retrying the page of 1,000 and failed the run. At or below the floor
-# the caller's backoff applies as before, so a server that is really down still
-# gets its full wait. 50 is @unvalidated: a layer whose features are larger
-# still would need a smaller floor, and the first one to fail at 50 says so.
-HALVE_FLOOR = 50
+# ladder retrying the page of 1,000 and failed the run.
+#
+# ONE FEATURE THAT STILL ANSWERS 5xx IS ASKED ONCE MORE AT
+# PRECISION_FALLBACK decimal places, with the caller's whole backoff, so a
+# server that is really down still gets its full wait. Measured 2026-10-04 on
+# EDW_OtherNationalDesignatedArea_01/MapServer/0 (227 polygons), which monthly
+# run 11 (37177022235) failed on at a page of 31: every feature answered alone
+# but the one at offset 83, which answered 500 in 10.3 s, 80 bytes as Esri JSON,
+# and 200 with 27,015,430 bytes at geometryPrecision=6. Six decimal places of a
+# degree is at most 0.11 m, finer than a phone's GPS fix (Reasoned), and only
+# that feature is rounded: the next page goes back to the last size that
+# answered. A caller that sets its own geometry_precision keeps it.
+PRECISION_FALLBACK = 6
 
 
 def query_page(
@@ -198,6 +206,8 @@ def iter_layer_pages(
         return
     offset = 0
     previous = None
+    last_good = None  # the last page size that answered, to go back to after one rounded feature
+    rounded = False  # this one feature is being asked at PRECISION_FALLBACK
     while True:
         params = {
             "where": where,
@@ -212,19 +222,28 @@ def iter_layer_pages(
             params["returnZ"] = "true"
         if geometry_precision is not None:
             params["geometryPrecision"] = geometry_precision
+        elif rounded:
+            params["geometryPrecision"] = PRECISION_FALLBACK
+        # A 5xx is not retried at a size it can be halved from, nor before the rounded ask; that
+        # last ask gets the caller's whole backoff. A timeout keeps the backoff at every size: a
+        # stalled server, as DEC's was on 2026-10-03, hung its count query too.
+        last_chance = rounded or (records <= 1 and geometry_precision is not None)
+        statuses = DEFAULT_RETRYABLE_STATUSES if last_chance else (429,)
         try:
-            # Above the floor a 5xx is not retried at this size (it is halved below); a timeout still is.
-            statuses = DEFAULT_RETRYABLE_STATUSES if records <= HALVE_FLOOR else (429,)
             resp = query_page(query_url, params, session=session, backoff=backoff, retryable_statuses=statuses)
         except requests.HTTPError as failure:
-            # A 5xx only: a timeout is a stalled server, as DEC's was on 2026-10-03, whose count
-            # query hung too, and it keeps the caller's whole backoff at the size asked.
             status = failure.response.status_code if failure.response is not None else None
-            if records <= HALVE_FLOOR or status is None or status < 500:
+            if last_chance or status is None or status < 500:
                 raise
-            smaller = records // 2
-            print(f"  {query_url} answered {status} at a page of {records}; retrying at {smaller}")
-            records = smaller
+            if records > 1:
+                smaller = records // 2
+                print(f"  {query_url} answered {status} at a page of {records}; retrying at {smaller}")
+                records = smaller
+            else:
+                print(
+                    f"  {query_url} answered {status} for the feature at offset {offset}; asking it at {PRECISION_FALLBACK} decimals"
+                )
+                rounded = True
             continue
         refusal = page_refusal(resp)
         if refusal is not None:
@@ -244,6 +263,11 @@ def iter_layer_pages(
         yield batch
         previous = batch
         offset += len(batch)
+        if rounded:
+            rounded = False
+            records = last_good or records
+        else:
+            last_good = records
 
 
 def _feature_object_id(feature: dict, oid_field: str | None):

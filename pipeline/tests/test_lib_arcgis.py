@@ -627,11 +627,8 @@ def test_a_page_query_too_long_for_a_get_goes_as_a_post_form_and_a_short_one_sta
     assert post.method == "POST" and "field_number_199" in post.text and "?" not in post.url
 
 
-def test_a_page_that_answers_500_is_halved_at_once_and_one_at_the_floor_still_fails(requests_mock, monkeypatch):
-    """USFS's EDW_Wilderness_02 answered 500 to pages of 1,000 and 250 and 200 to 100 (2026-10-03).
-
-    Above HALVE_FLOOR the page is halved with no retry; at the floor the caller's backoff applies and then it raises.
-    """
+def test_a_page_that_answers_500_is_halved_at_once_and_a_down_server_still_gets_its_retries(requests_mock, monkeypatch):
+    """USFS's EDW_Wilderness_02 answered 500 to pages of 1,000 and 250 and 200 to 100 (2026-10-03)."""
     monkeypatch.setattr("lib.http_retry.time.sleep", lambda seconds: None)
     layer = "https://example.test/arcgis/rest/services/W/MapServer/0"
 
@@ -651,8 +648,33 @@ def test_a_page_that_answers_500_is_halved_at_once_and_one_at_the_floor_still_fa
     sizes = [int(r.qs["resultrecordcount"][0]) for r in requests_mock.request_history]
     assert sizes[:4] == [1000, 500, 250, 125], "halved at once, never retried at a size that failed"
 
+    requests_mock.reset_mock()
     requests_mock.get(layer + "/query", status_code=500, json={"error": "down"})
     with pytest.raises(requests.HTTPError):
-        list(arcgis.iter_layer_pages(layer, page_size=arcgis.HALVE_FLOOR, backoff=(1, 1)))
-    at_floor = [r for r in requests_mock.request_history if int(r.qs["resultrecordcount"][0]) == arcgis.HALVE_FLOOR]
-    assert len(at_floor) == 3, "the floor gets the caller's two retries before it raises"
+        list(arcgis.iter_layer_pages(layer, page_size=4, backoff=(1, 1)))
+    asks = [(int(r.qs["resultrecordcount"][0]), "geometryprecision" in r.qs) for r in requests_mock.request_history]
+    assert asks == [(4, False), (2, False), (1, False), (1, True), (1, True), (1, True)], (
+        "halved to one feature, then the rounded ask gets the caller's two retries before it raises"
+    )
+
+
+def test_one_feature_no_page_can_hold_is_asked_once_at_six_decimals_and_only_it(requests_mock):
+    """EDW_OtherNationalDesignatedArea_01's feature at offset 83 answered 500 alone and 200 at geometryPrecision=6."""
+    layer = "https://example.test/arcgis/rest/services/D/MapServer/0"
+
+    def answer(request, context):
+        count = int(request.qs["resultrecordcount"][0])
+        offset = int(request.qs["resultoffset"][0])
+        rows = range(offset, min(offset + count, 10))
+        if 6 in rows and "geometryprecision" not in request.qs:
+            context.status_code = 500
+            return {"error": "Error performing query operation"}
+        return {"features": [{"properties": {"n": n}} for n in rows]}
+
+    requests_mock.get(layer + "/query", json=answer)
+
+    pages = list(arcgis.iter_layer_pages(layer, page_size=4, backoff=(1, 1)))
+
+    assert [feature["properties"]["n"] for page in pages for feature in page] == list(range(10))
+    rounded = [r for r in requests_mock.request_history if "geometryprecision" in r.qs]
+    assert [(r.qs["resultoffset"][0], r.qs["geometryprecision"][0]) for r in rounded] == [("6", "6")]

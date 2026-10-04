@@ -15,7 +15,10 @@ const BASE = 'https://cdn.example.org'
 async function loadWithBase(base: string | undefined) {
   vi.resetModules()
   vi.stubEnv('VITE_DATA_BASE_URL', base ?? '')
-  return await import('./publishedConditions')
+  return {
+    ...(await import('./publishedConditions')),
+    ...(await import('./publishedNotices')),
+  }
 }
 
 function mockResponse(body: unknown, { status = 200 } = {}) {
@@ -353,5 +356,95 @@ describe('fetchPublishedNynjtcAlerts', () => {
     const { fetchPublishedNynjtcAlerts } = await loadWithBase(BASE)
 
     expect(await fetchPublishedNynjtcAlerts()).toBeNull()
+  })
+})
+
+// conditions/notices.json (#1805, decision 53 phase D): every club's notices,
+// in the shape pipeline/dbt's pub_conditions_notices writes.
+const A_NOTICES_DOCUMENT = {
+  generated_at: '2026-10-04T12:00:00Z',
+  notices: [
+    {
+      notice_id: 'usfs_baer_assessments:1',
+      source_key: 'usfs_baer_assessments',
+      club: 'usfs',
+      provider: 'USFS',
+      title: 'FIXTURE FIRE',
+      category: null,
+      locality: 'Fixture National Forest',
+      place: {
+        kind: 'geometry',
+        geometry: { type: 'Point', coordinates: [-74.1, 41.2] },
+      },
+      hazard: 'burned_area',
+      obstructs_trail: false,
+      starts_on: '2026-08-26',
+      ends_on: null,
+      updated_at: null,
+      checked_at: null,
+      first_seen_at: '2026-10-03T00:00:00Z',
+      changed_at: '2026-10-03T00:00:00Z',
+      carried_since: null,
+      source_url: null,
+      review_state: 'unreviewed',
+    },
+    // No id: nothing could key it, so it is the one row refused.
+    { source_key: 'club_page', title: 'Fixture' },
+    // A place and a hazard this build cannot read repair to unplaced and none.
+    {
+      notice_id: 'club_page:2',
+      source_key: 'club_page',
+      title: 42,
+      place: { kind: 'somewhere_new' },
+      hazard: 'avalanche',
+      obstructs_trail: 'yes',
+      review_state: 'reviewed',
+    },
+  ],
+}
+
+describe('fetchPublishedNotices', () => {
+  it('reads the file under its own key and keeps every row it can key', async () => {
+    const fetchSpy = mockResponse(A_NOTICES_DOCUMENT)
+    const { fetchPublishedNotices, PUBLISHED_NOTICES_KEY } = await loadWithBase(BASE)
+
+    const published = await fetchPublishedNotices()
+
+    expect(PUBLISHED_NOTICES_KEY).toBe('conditions/notices.json')
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${BASE}/conditions/notices.json`,
+      expect.anything(),
+    )
+    expect(published?.items.map((notice) => notice.notice_id)).toEqual([
+      'usfs_baer_assessments:1',
+      'club_page:2',
+    ])
+    expect(published?.items[0].hazard).toBe('burned_area')
+    expect(published?.items[0].place).toEqual({
+      kind: 'geometry',
+      geometry: { type: 'Point', coordinates: [-74.1, 41.2] },
+    })
+  })
+
+  it('repairs a field it cannot read to its honest empty value, never a guess', async () => {
+    mockResponse(A_NOTICES_DOCUMENT)
+    const { fetchPublishedNotices } = await loadWithBase(BASE)
+
+    const repaired = (await fetchPublishedNotices())?.items[1]
+
+    expect(repaired?.title).toBe('')
+    expect(repaired?.place).toEqual({ kind: 'unplaced' })
+    expect(repaired?.hazard).toBeNull()
+    // Only `true` blocks: a closure is never inferred from a value that is
+    // not one.
+    expect(repaired?.obstructs_trail).toBe(false)
+    expect(repaired?.updated_at).toBeNull()
+  })
+
+  it('is null on the exporters’ bucket, which writes no such file', async () => {
+    mockResponse('', { status: 404 })
+    const { fetchPublishedNotices } = await loadWithBase(BASE)
+
+    expect(await fetchPublishedNotices()).toBeNull()
   })
 })

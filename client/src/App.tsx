@@ -1530,6 +1530,8 @@ function App() {
     atcUpdates,
     atcReviewedAt,
     orgNotices,
+    clubNotices,
+    clubNoticesGeneratedAt,
     drought,
     droughtWeek,
     workProjects,
@@ -3449,6 +3451,17 @@ function App() {
     trailIndex,
     bbox,
     now,
+    // Decision 66's panel and decision 67's areas (#1805), from
+    // conditions/notices.json when it has reached this phone: the hikes it
+    // picks notices for, and the trails it checks an area against. The graph
+    // with its vertices where the builder has pulled them, else the topology
+    // alone, which routes nothing - the panel then says so.
+    clubNotices,
+    clubNoticesGeneratedAt,
+    trips: tripStore.trips,
+    dayHikes: dayHikeStore.hikes,
+    graph: dayHikeIndex ?? graphIndex,
+    clubSections,
   })
   /** The closure tape's and the warning pin's sheets (#1373, F12) - the two
    *  the map drew marks for and never opened. */
@@ -3694,6 +3707,9 @@ function App() {
   }, [])
 
   const line = useTappedLinePanel({
+    // Decision 67's drawn areas (#1805), whose advisory the card prints on
+    // the stretch inside one.
+    hazardAdvisoriesAt: atc.hazardAdvisoriesAt,
     spurs,
     pois,
     units,

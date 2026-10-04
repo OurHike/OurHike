@@ -175,6 +175,11 @@ import {
 import { buildRouteLayers, buildRouteSource, ROUTE_SOURCE_ID } from './routeLayers'
 import { buildDroughtSource, DROUGHT_SOURCE_ID } from './droughtLayers'
 import {
+  buildHazardLayers,
+  buildHazardSource,
+  HAZARD_SOURCE_ID,
+} from './hazardAreaLayers'
+import {
   buildCoverageSeamLayers,
   buildCoverageSeamSource,
   COVERAGE_SEAM_LABEL_LAYER_ID,
@@ -2391,6 +2396,12 @@ export function buildMapStyle({
       // credit somebody asked for in particular wording is worse than putting
       // it where it fits.
       [DROUGHT_SOURCE_ID]: buildDroughtSource(),
+      // Decision 67's hunting areas, shooting sites and burned areas (#1805),
+      // empty until the shell fills it with the ones a downloaded trail runs
+      // through. No `attribution`, for the ATC notices' reason below: what a
+      // hiker needs is the organization's name on the specific area, which
+      // chrome/HazardAreaSheet.tsx renders from the registry.
+      [HAZARD_SOURCE_ID]: buildHazardSource(),
       // Where the downloaded map ends (#557), empty until the shell knows
       // which cells are on the phone and empty on every phone that holds the
       // whole sheet or nothing. No attribution: the line is a fact about
@@ -2481,6 +2492,11 @@ export function buildMapStyle({
       // sit in the style unconditionally - see lib/droughtStyle.ts for why the
       // switch is a visibility flip rather than an add and remove.
       buildDroughtLayer(DROUGHT_SOURCE_ID, sheetIsDark(appearance), showDrought),
+      // Decision 67's areas (#1805), in the drought wash's register and for its
+      // reason: OVER the ground, UNDER every trail line, closure and pin, so
+      // the trail inside a hunting area is drawn over it whole and open
+      // (map/hazardAreaLayers.ts). Always in the style; empty is no area.
+      ...buildHazardLayers(HAZARD_SOURCE_ID, sheetIsDark(appearance)),
       // The edge of what is downloaded (#557), and its place in the stack is
       // features/OFFLINE_COVERAGE.md §8 in paint: OVER the ground it is an
       // edge of, UNDER every trail line, closure and pin. A seam takes away

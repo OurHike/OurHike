@@ -477,6 +477,22 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
+  // Decision 66's panel and decision 67's area card (#1805). PLANNED, and
+  // the reason is the data rather than the drive: both render only when
+  // conditions/notices.json is on the phone, which only the dbt path
+  // publishes, so the release e2e/data/ reads has none until the cutover.
+  // Their spec is mapSheets.spec.ts's notices case with the file routed in,
+  // as preview-shots/planned-hike-notices.mjs routes it for the camera; the
+  // rule underneath is held by lib/plannedNotices.test.ts and
+  // lib/hazardAreas.test.ts in the meantime.
+  'chrome/PlannedNoticeList.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned' },
+  },
+  'chrome/HazardAreaSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned' },
+  },
   'chrome/LineSheet.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },

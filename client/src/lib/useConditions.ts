@@ -36,6 +36,7 @@ import {
   fetchPublishedReports,
   fetchPublishedWorkProjects,
   type OrgNotice,
+  type PublishedConditions,
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
@@ -135,6 +136,22 @@ export interface Conditions {
    */
   orgNotices: readonly OrgNotice[]
   /**
+   * Every club's notices, from conditions/notices.json (#1805, decision 53
+   * phase D), or null when that file has not reached this phone.
+   *
+   * NULL IS THE ORDINARY STATE WHILE THE EXPORTERS PUBLISH: no exporter
+   * writes the file, only the dbt path does, so on such a bucket it 404s and
+   * the notices panel keeps reading `atcUpdates` and `orgNotices` exactly as
+   * before. An EMPTY list is a different claim - the file arrived and no
+   * club has a notice - and the two are kept apart for that reason.
+   *
+   * The map's A.T. bands and dots still come from `atcUpdates`: ATC's own
+   * file, unchanged (decision 51), is what draws them.
+   */
+  clubNotices: readonly OrgNotice[] | null
+  /** When conditions/notices.json was baked, for the panel's "as of". */
+  clubNoticesGeneratedAt: Date | null
+  /**
    * This week's drought bands, and the week they describe (#720).
    *
    * Empty rather than null when there is nothing: unlike a closure, an
@@ -166,7 +183,7 @@ export interface Conditions {
 
 /**
  * @param ready Whether the launch is past its first frame (#1302,
- *   lib/useAfterFirstFrame.ts). The eight published reads and the four live
+ *   lib/useAfterFirstFrame.ts). The nine published reads and the four live
  *   ones below wait for it; nothing they feed changes what the first frame
  *   is, and every line they fill renders "unknown" until they land anyway.
  *   Defaults to true so a screen or a test that mounts this hook alone
@@ -192,6 +209,9 @@ export function useConditions(online: boolean, ready = true): Conditions {
     useState<ConditionState<DisputeSummary>>(UNAVAILABLE)
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
   const [orgNotices, setOrgNotices] = useState<readonly OrgNotice[]>([])
+  const [clubNotices, setClubNotices] = useState<PublishedConditions<OrgNotice> | null>(
+    null,
+  )
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
@@ -351,6 +371,21 @@ export function useConditions(online: boolean, ready = true): Conditions {
       setOrgNotices(published.items)
     })
 
+    // Every club's notices in one file (#1805). A null keeps whatever this
+    // phone already holds: a 404 on a bucket the exporters publish is the
+    // ordinary state, and a dead spot must not take a held list away. The
+    // reader comes in behind import(), for the launch budget
+    // (lib/publishedNotices.ts says why); a chunk that cannot load reads as
+    // no file, exactly as a 404 does.
+    void import('./publishedNotices')
+      .then(({ fetchPublishedNotices }) => fetchPublishedNotices(undefined, how))
+      .then(
+        (published) => {
+          if (!cancelled && published !== null) setClubNotices(published)
+        },
+        () => undefined,
+      )
+
     // The volunteer workdays (#760). Reviewed-file data like the ATC
     // notices, so a plain set - and the generated_at travels because the
     // 48-hour opportunity ceiling is judged against it.
@@ -464,6 +499,8 @@ export function useConditions(online: boolean, ready = true): Conditions {
     atcUpdates,
     atcReviewedAt,
     orgNotices,
+    clubNotices: clubNotices?.items ?? null,
+    clubNoticesGeneratedAt: clubNotices?.generatedAt ?? null,
     drought,
     droughtWeek,
     workProjects,

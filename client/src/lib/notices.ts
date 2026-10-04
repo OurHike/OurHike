@@ -248,13 +248,17 @@ export function scopedNotices(
  *  unreadable date to the bottom is the conservative direction: it cannot
  *  claim to be the newest thing an organization has posted. */
 function noticeTime(notice: TrailNotice): number {
+  if (notice.updated_at === null) return 0
   const at = new Date(notice.updated_at).getTime()
   return Number.isNaN(at) ? 0 : at
 }
 
 /** The parsed `updated_at`, or null when the organization's stamp is
- *  unreadable - which renders as no date rather than as today. */
+ *  unreadable or absent (conditions/notices.json carries null where a club
+ *  gives none) - which renders as no date rather than as today, and never as
+ *  1970, which is what `new Date(null)` would have made of it. */
 export function noticeUpdatedAt(notice: TrailNotice): Date | null {
+  if (notice.updated_at === null) return null
   const at = new Date(notice.updated_at)
   return Number.isNaN(at.getTime()) ? null : at
 }

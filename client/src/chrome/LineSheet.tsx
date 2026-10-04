@@ -107,6 +107,13 @@ export interface LineSheetProps {
   /** Let a tapped trail go - the plate back to the place or to "No trail
    *  taken". Passed only when `taken` is 'tap'. */
   onLetGo?: () => void
+  /**
+   * Decision 67's advisories for the stretch tapped (#1805): one per hunting
+   * area, shooting site or burned area the tapped point is inside or beside,
+   * each a heading and OurHike's own sentence (lib/hazardAreas.ts). Empty or
+   * absent, nothing is drawn. Never a closure: each says the trail is open.
+   */
+  advisories?: ReadonlyArray<{ id: string; heading: string; body: string }>
 }
 
 export function LineSheet({
@@ -116,6 +123,7 @@ export function LineSheet({
   taken,
   onTakeTrail,
   onLetGo,
+  advisories = [],
 }: LineSheetProps) {
   // The registry's mark wins; the steward's is what a line it does not name
   // can still wear.
@@ -161,6 +169,18 @@ export function LineSheet({
           {detail.name}
         </p>
       )}
+
+      {/* The stretch's advisories first among the facts (#1805, decision
+          67): the mock the maintainer chose puts "Hunting allowed · Advisory"
+          on the card for the stretch, and it is the line a hiker acts on. */}
+      {advisories.map((advisory) => (
+        <p className="line-sheet__advisory" key={advisory.id}>
+          <span className="planned-notices__tag planned-notices__tag--warn">
+            Advisory
+          </span>{' '}
+          <strong>{advisory.heading}.</strong> {advisory.body}
+        </p>
+      ))}
 
       {detail.destinationLine !== null && (
         <p className="closure-sheet__range">{detail.destinationLine}</p>

@@ -157,7 +157,7 @@ function Notice({
         <p className="atc-notices__offmap">Not drawn on the map &mdash; read it here.</p>
       )}
 
-      {isSafeLink(notice.source_url) && (
+      {notice.source_url !== null && isSafeLink(notice.source_url) && (
         <a
           className="closure-sheet__link"
           href={notice.source_url}

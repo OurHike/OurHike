@@ -19,8 +19,22 @@
 --
 -- The properties and coordinates are JSON text, so a unit test can hold
 -- them (a 2.0.6 unit test refuses a list column).
+--
+-- THE CLUBS' LINES COME LAST (decision 64): int_trail_lines__club_overview's
+-- rows, grouped the same way, after every network group, so the network's
+-- features keep their order. A club group carries `line_kind` 'club', the
+-- mark nearby_trails.geojson's club lines carry, and no `trail_status`
+-- member: a club line's status is unknown, never open.
 with seam as (
-    select * from {{ ref('int_trail_lines__network_overview_seam') }}
+    select
+        *,
+        false as is_club
+    from {{ ref('int_trail_lines__network_overview_seam') }}
+    union all by name
+    select
+        *,
+        true as is_club
+    from {{ ref('int_trail_lines__club_overview') }}
 ),
 
 lines as (
@@ -47,6 +61,7 @@ listed as (
 
 parts as (
     select
+        is_club,
         source_key,
         route_name,
         blaze_color,
@@ -74,13 +89,14 @@ rounded as (
 
 grouped as (
     select
+        is_club,
         source_key,
         route_name,
         blaze_color,
         trail_status,
         list(cut_part order by trail_line_id, part_index) as group_lines
     from rounded
-    group by source_key, route_name, blaze_color, trail_status
+    group by is_club, source_key, route_name, blaze_color, trail_status
 )
 
 select
@@ -89,21 +105,29 @@ select
     blaze_color,
     trail_status,
     row_number() over (
-        order by source_key, route_name, blaze_color, trail_status
+        order by is_club, source_key, route_name, blaze_color, trail_status
     ) - 1 as feature_order,
     cast(
-        json_merge_patch(
-            json_object(
-                'source', source_key,
-                'blaze_color', blaze_color,
-                'trail_status', trail_status
-            ),
-            -- Null members are dropped, so a haze group carries neither.
-            json_object(
-                'name', nullif(route_name, ''),
-                'through_route', case when route_name != '' then true end
+        case
+            when is_club
+                then json_object(
+                    'source', source_key,
+                    'blaze_color', blaze_color,
+                    'line_kind', 'club'
+                )
+            else json_merge_patch(
+                json_object(
+                    'source', source_key,
+                    'blaze_color', blaze_color,
+                    'trail_status', trail_status
+                ),
+                -- Null members are dropped, so a haze group carries neither.
+                json_object(
+                    'name', nullif(route_name, ''),
+                    'through_route', case when route_name != '' then true end
+                )
             )
-        ) as varchar
+        end as varchar
     ) as properties_json,
     cast(to_json(group_lines) as varchar) as coordinates_json
 from grouped

@@ -477,6 +477,15 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
+  // A CLUB LINE'S SHEET (decision 64, 2026-10-04) is a state of this module
+  // the flow suite does not reach yet: the data suite reads the release
+  // lib/dataRelease.ts pins, and no pinned release carries a `line_kind`
+  // 'club' line until one is published from the change that writes it.
+  // Until then LineSheet.test.tsx ('says a club line is drawn and not
+  // routed') and lineDetail.test.ts hold the tag, the sentence and the
+  // missing day-hike point; mapSheets.spec.ts is where a club-line tap
+  // belongs once the pin moves. preview-shots/club-line-sketch.mjs
+  // photographs the line drawn in the sketch, from a fixture, not the sheet.
   'chrome/LineSheet.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },

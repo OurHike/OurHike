@@ -485,6 +485,37 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     return reasons
 
 
+def _club_line_reasons(old: dict, new: dict, family_key: str, key_of: Callable[[dict], str]) -> dict[str, str]:
+    """The records the dbt writer adds that are club lines, and the order once they are left out.
+
+    Only a record the new file holds and the old one lacks, marked `line_kind` 'club': a network line either side
+    adds or drops is still a difference. The order is explained only when the new file is the old file's records in
+    their order with the club lines after them, as the writers put club lines after every network line.
+    """
+    old_keys = [key_of(feature) for feature in old.get("features") or []]
+    new_keys = [key_of(feature) for feature in new.get("features") or []]
+    club = {
+        key_of(feature)
+        for feature in new.get("features") or []
+        if (feature.get("properties") or {}).get("line_kind") == "club" and key_of(feature) not in set(old_keys)
+    }
+    reasons = {f"{family_key} {key}": CLUB_LINE_REASON for key in club}
+    if club and new_keys[: len(old_keys)] == old_keys and set(new_keys[len(old_keys) :]) <= club:
+        reasons["order"] = CLUB_LINE_REASON
+    return reasons
+
+
+def _nearby_trails_reasons(old: dict, new: dict) -> dict[str, str]:
+    """nearby_trails' two explained kinds: a line whose id alone differs, and decision 64's club lines."""
+    club = _club_line_reasons(old, new, "properties.id", lambda feature: str(feature["properties"]["id"]))
+    return {**_network_id_reasons(old, new), **club}
+
+
+def _network_overview_reasons(old: dict, new: dict) -> dict[str, str]:
+    """network_overview's one explained kind: decision 64's club groups, after every network group."""
+    return _club_line_reasons(old, new, "properties (source, name, blaze_color, trail_status)", _overview_key)
+
+
 #: Why a place can be in the dbt writer's places.json and not in today's. tests/test_dbt_places_parity.py holds it to
 #: the case where the two writers answer that way.
 PLACES_REASONS = {
@@ -921,7 +952,7 @@ FAMILIES: dict[str, Family] = {
         records="features",
         key="properties.id",
         key_of=lambda feature: str(feature["properties"]["id"]),
-        explained=_network_id_reasons,
+        explained=_nearby_trails_reasons,
     ),
     "network_overview": Family(
         old=lambda: _network_old("network_overview.geojson"),
@@ -930,6 +961,7 @@ FAMILIES: dict[str, Family] = {
         ordered=True,
         key_of=_overview_key,
         normalize=_overview_parts_as_a_set,
+        explained=_network_overview_reasons,
     ),
     "trails": Family(old=_trails_old, records="features", key="id", ordered=True, new_shape=_trails_records),
     "trail_miles": Family(old=_trail_miles_old, records="miles", key="id", ordered=True, new_shape=_trail_miles_records),
@@ -983,6 +1015,15 @@ def _poi_id(feature: dict) -> str:
 #: cannot check (pipeline/ELT.md, "The go/no-go gate") and new_data_report.py counts. gate_report.py lists every
 #: difference so explained once, as new data, and never as a safety field changed.
 NEW_DATA_REASON = "expected by decision 31 ('Publish new data in this PR')"
+
+#: Why a club's own line is in the dbt writers' nearby_trails.geojson and network_overview.geojson and in neither of
+#: today's (decision 64, the maintainer's poll of 2026-10-04: "draw now, route later"). Starts with NEW_DATA_REASON:
+#: no exporter reads a club's trail-line layer, so there is no old record to compare it with.
+CLUB_LINE_REASON = (
+    f"{NEW_DATA_REASON}, and drawn by decision 64: a line from one of decision 54's wave 1 trail-line layers "
+    "(int_trail_lines__club_published), carrying `line_kind` 'club', which no junction graph routes on "
+    "(build_trail_graph.py refuses it, and int_trail_network__routable reads only the network's rows)"
+)
 
 #: Why a POI can be in today's file and not in the dbt writer's, by case.
 #: tests/test_dbt_points_of_interest_parity.py holds each to the fixture row

@@ -129,7 +129,16 @@ models:
           arguments:
             expression: "trail_status is null"
           config:
-            where: "line_kind <> 'network'"
+            where: "line_kind not in ('network', 'club')"
+      # A club line's status is unknown, never open (decision 64): no club
+      # layer's own status field is read yet, and a layer that has one is held
+      # by its sources.json row until it is.
+      - dbt_utils.expression_is_true:
+          name: trail_lines_club_lines_carry_no_status
+          arguments:
+            expression: "trail_status is null and closure_kind is null"
+          config:
+            where: "line_kind = 'club'"
       # Miles come with their count of backward steps, and only on the
       # centerline (ELT.md's safety-field table). Not tested for increasing:
       # monotonic_breaks is that count.
@@ -168,13 +177,14 @@ models:
           arguments:
             combination_of_columns: [feature_order]
           config:
-            where: "line_kind <> 'network'"
+            where: "line_kind not in ('network', 'club')"
       - dbt_utils.unique_combination_of_columns:
           name: trail_lines_network_feature_order_is_unique
           arguments:
             combination_of_columns: [feature_order]
           config:
-            where: "line_kind = 'network'"
+            # One order for nearby_trails.geojson, which draws both.
+            where: "line_kind in ('network', 'club')"
     columns:
       - name: trail_line_id
         description: >
@@ -215,16 +225,19 @@ models:
         description: >
           Which line, and so which file draws it: `centerline`, a chain of
           the A.T.'s own line, and `side_trail` or `spur`, in trails.geojson;
-          `network`, in nearby_trails.geojson. A spur is a side trail whose
-          `Type` decodes to 3 (lib/spurs.py's SPUR_TYPE_CODE), and spurs.json
-          says where it leads.
+          `network`, in nearby_trails.geojson; and `club`, a club's own line
+          (decision 64), in nearby_trails.geojson too, drawn and never routed:
+          no junction graph, route distance or trail mile reads a club row,
+          and the file carries `line_kind` on it so the phone can say so. A
+          spur is a side trail whose `Type` decodes to 3 (lib/spurs.py's
+          SPUR_TYPE_CODE), and spurs.json says where it leads.
         data_type: varchar
         constraints:
           - type: not_null
         data_tests:
           - accepted_values:
               arguments:
-                values: [centerline, side_trail, spur, network]
+                values: [centerline, side_trail, spur, network, club]
       - name: feature_order
         description: >
           The row's place in the file it is drawn in, from 0: in
@@ -255,7 +268,8 @@ models:
           'open' or 'closed' on a network line, where the steward's own status
           column gives it or, for a layer with no such column, as the default
           trail_status_basis names. Null on every A.T. line: trails.geojson
-          publishes no status, and absent means unknown, never open.
+          publishes no status, and absent means unknown, never open. Null on
+          every club line too, for the same reason.
         data_type: varchar
         data_tests:
           - accepted_values:

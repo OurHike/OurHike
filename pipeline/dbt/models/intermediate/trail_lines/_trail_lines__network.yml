@@ -655,7 +655,9 @@ models:
         description: The feature's place in the file, from 0, sorted() order of the group's key.
         data_tests: [not_null, unique]
       - name: properties_json
-        description: The feature's properties, `name` and `through_route` only on a through route.
+        description: >
+          The feature's properties, `name` and `through_route` only on a through route; on a club
+          group (decision 64), `source`, `blaze_color` and `line_kind` 'club', and no status.
         data_tests: [not_null]
       - name: coordinates_json
         description: Every line of the group, each a part, at three decimals.
@@ -1535,6 +1537,9 @@ unit_tests:
           - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_the_threshold_sums_every_segment_of_the_same_name[1]", "source_key": "oprhp_trails", "blaze_color": "Red", "trail_status": "open", "through_route": "Long Path", "seam_wkt": "LINESTRING (-74.4 40.8, -74.4 41.1)"}
           - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_the_threshold_sums_every_segment_of_the_same_name[2]", "source_key": "oprhp_trails", "blaze_color": "Red", "trail_status": "open", "through_route": "Long Path", "seam_wkt": "LINESTRING (-74.4 41.1, -74.4 41.3)"}
           - {"trail_line_id": "dec_hiking_trails:sql::groups_sort_as_sorted_sorts_their_tuples", "source_key": "dec_hiking_trails", "blaze_color": "Blue", "trail_status": "open", "through_route": null, "seam_wkt": "LINESTRING (-74.6 42.1, -74.56 42.14)"}
+      # Decision 64's club lines, which write_overview() never sees.
+      - input: ref('int_trail_lines__club_overview')
+        rows: []
     expect:
       rows:
         - {"feature_order": 0, "properties_json": "{\"source\":\"dec_hiking_trails\",\"blaze_color\":\"Blue\",\"trail_status\":\"open\"}", "coordinates_json": "[[[-74.6,42.1],[-74.56,42.14]]]"}

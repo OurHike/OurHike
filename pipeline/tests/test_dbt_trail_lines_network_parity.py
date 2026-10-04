@@ -735,3 +735,46 @@ def test_parity_compares_a_sketch_features_parts_as_a_set():
     one, two = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]
     assert parity.differences(sketch(one, two), sketch(two, one), family) == []
     assert parity.differences(sketch(one, two), sketch(one), family) != []
+
+
+def test_parity_explains_a_club_line_as_decision_64s_new_data_and_nothing_else():
+    """Decision 64 draws the clubs' own lines in nearby_trails.geojson, each marked `line_kind` 'club'. Parity explains
+    a club line the new file adds, and never a network line it adds."""
+    family = parity.FAMILIES["nearby_trails"]
+    network = _line("s:1", "A", [[0.0, 0.0], [1.0, 1.0]])
+    club = _line("fltc_flt_main:k", "Finger Lakes Trail", [[2.0, 2.0], [3.0, 3.0]])
+    club["properties"]["line_kind"] = "club"
+    added_network = _line("s:2", "B", [[4.0, 4.0], [5.0, 5.0]])
+    old = {"features": [network]}
+    new = {"features": [network, club, added_network]}
+
+    assert {what for what, _, _ in parity.differences(old, new, family)} == {
+        "properties.id fltc_flt_main:k",
+        "properties.id s:2",
+    }
+    assert family.explained(old, new) == {"properties.id fltc_flt_main:k": parity.CLUB_LINE_REASON}
+    assert parity.CLUB_LINE_REASON.startswith(parity.NEW_DATA_REASON)
+
+
+def test_parity_explains_a_club_group_after_the_network_in_the_sketch_and_not_before_it():
+    family = parity.FAMILIES["network_overview"]
+
+    def group(source: str, **properties) -> dict:
+        return {
+            "type": "Feature",
+            "properties": {"source": source, "blaze_color": "Unknown", **properties},
+            "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, 0.0], [1.0, 1.0]]]},
+        }
+
+    network = group("dec_hiking_trails", trail_status="open")
+    club = group("fltc_flt_main", line_kind="club")
+    old = {"features": [network]}
+
+    after = {"features": [network, club]}
+    reasons = family.explained(old, after)
+    assert set(reasons) == {f"{family.key} {parity._overview_key(club)}", "order"}
+    assert {what for what, _, _ in parity.differences(old, after, family)} <= set(reasons)
+
+    # A club group drawn ahead of the network moves the network's own features: not explained.
+    before = {"features": [club, network]}
+    assert "order" not in family.explained(old, before)

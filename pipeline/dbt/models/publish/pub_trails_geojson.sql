@@ -16,7 +16,7 @@
 -- Python's.
 with lines as (
     select * from {{ ref('trail_lines', v=1) }}
-    where line_kind != 'network'
+    where line_kind not in ('network', 'club')
 )
 
 -- The struct's fields as the file's top-level members: COPY's JSON format

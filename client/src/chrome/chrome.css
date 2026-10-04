@@ -186,6 +186,22 @@
   margin-right: 6px;
 }
 
+/* A club's own line (decision 64): the tag the card the maintainer chose
+   from drew beside the trail's name, small capitals on the sunken panel, so
+   a hiker comparing two sheets can tell a club line from the network's at a
+   glance; the sentence after it says what the tag means. */
+.line-sheet__tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-radius: 4px;
+}
+
 .map-plate__position {
   margin: 2px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);

@@ -3,8 +3,10 @@ version: 2
 # The clubs' own trail-line layers (decision 54's wave 1), after
 # int_trail_lines__unioned: the rules pipeline/ELT.md's "What wave 1's live
 # reads found that phase C must honour" gives them, each with a unit test
-# below. Neither model is read by a mart or by the routable network: every
-# layer here is held back by its sources.json row.
+# below. Decision 64 (2026-10-04, "draw now, route later") draws them:
+# int_trail_lines__club_published is the trail_lines mart's third half, and
+# int_trail_lines__club_overview puts them in the overview sketch. Nothing in
+# the routable network (int_trail_network__*) reads a club line.
 models:
   - name: int_trail_lines__club_lines
     description: >
@@ -50,6 +52,58 @@ models:
                 values: ['winter']
       - name: _loaded_at
         description: When the extract landed the line.
+  - name: int_trail_lines__club_published
+    description: >
+      Decision 64: every club line that may draw, in the trail_lines mart's columns with line_kind
+      'club', simplified at 1 m and cut to six decimals as the network's lines are. A historic
+      alignment and a seasonal line never draw. Drawn and never routed: no junction graph, route
+      distance or trail mile reads a club row, and the phone reads the mark to say so. Its status is
+      null (unknown), its blaze 'Unknown', and it follows the network's lines in feature order.
+    data_tests:
+      # The rules club_lines sets hold here too: nothing that may not draw is drawn.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "line_kind = 'club' and trail_status is null and closure_kind is null"
+    columns:
+      - name: trail_line_id
+        description: "`<source key>:<the line's key>`, the id nearby_trails.geojson publishes."
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null]
+      - name: feature_order
+        description: The line's place in nearby_trails.geojson, after every network line.
+        data_tests: [not_null, unique]
+      - name: geom_geojson
+        description: The line the phone draws, as GeoJSON text at six decimals.
+        data_tests: [not_null]
+      - name: navigation_wkt
+        description: The 1 m line at full precision, which the overview sketch is simplified from.
+        data_tests: [not_null]
+  - name: int_trail_lines__club_overview
+    description: >
+      Decision 64: the club lines network_overview.geojson's sketch keeps, in
+      int_trail_lines__network_overview_seam's columns: the 100 m coarse line, the z5 floor and the
+      seam's pass, as the network's, and never a through route. Only a line whose source may publish.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "through_route is null"
+    columns:
+      - name: trail_line_id
+        description: The club line's published id.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The layer's sources.json key.
+      - name: blaze_color
+        description: "'Unknown', as the mart's club rows carry it."
+      - name: trail_status
+        description: Null, as the mart's club rows carry it.
+      - name: through_route
+        description: Null on every row.
+      - name: seam_wkt
+        description: The line at the seam's tolerance, as WKT.
+        data_tests: [not_null]
   - name: int_trail_lines__source_extents
     description: >
       One row per trail-line layer in int_trail_lines__unioned: its rows, how many carry a geometry,
@@ -229,3 +283,48 @@ unit_tests:
     expect:
       rows:
         - {"source_key": "usfws_trail_segments", "row_count": 3, "rows_with_geometry": 3, "lon_min": -159.48, "lon_max": 144.87, "lat_min": 13.64, "lat_max": 63.2, "vertex_region": "us_and_territories"}
+  - name: trail_lines_club_published_draws_a_club_line_and_never_an_alignment_or_a_winter_trail
+    model: int_trail_lines__club_published
+    description: >
+      Decision 64 ("draw now, route later"): a walkable club line draws as a club line, with
+      line_kind 'club', no status and no decoded blaze, numbered after the network's lines so
+      nearby_trails.geojson writes the network first. A historic alignment never draws as a trail,
+      a winter trail waits until a drawing can say its season, and a row with no line has nothing
+      to draw.
+    given:
+      - input: ref('int_trail_lines__club_lines')
+        rows:
+          - {trail_segment_key: 'k-b', source_key: 'shta_line_2025', club: 'shta', name: '  Superior Hiking Trail ', geom_wkt: 'LINESTRING (-91.5 47.3, -91.4 47.4)', had_z: false, historic_alignment: false, may_route: true, draws_as_trail: true, season: null}
+          - {trail_segment_key: 'k-a', source_key: 'gmc_trail_master', club: 'gmc', name: '', geom_wkt: 'MULTILINESTRING ((-72.9 44.5, -72.9 44.6), (-72.8 44.6, -72.8 44.7))', had_z: false, historic_alignment: false, may_route: true, draws_as_trail: true, season: null}
+          - {trail_segment_key: 'k-c', source_key: 'nps_oregon_nht', club: 'nps', name: 'Oregon National Historic Trail', geom_wkt: 'LINESTRING (-116.5 43.6, -116.4 43.7)', had_z: false, historic_alignment: true, may_route: false, draws_as_trail: false, season: null}
+          - {trail_segment_key: 'k-d', source_key: 'blm_iditarod_nht', club: 'blm', name: 'Iditarod', geom_wkt: 'LINESTRING (-150 61.5, -151 62)', had_z: false, historic_alignment: false, may_route: true, draws_as_trail: true, season: 'winter'}
+          - {trail_segment_key: 'k-e', source_key: 'portland_parks_trails', club: 'portland', name: 'No line', geom_wkt: null, had_z: false, historic_alignment: false, may_route: true, draws_as_trail: true, season: null}
+          - {trail_segment_key: 'k-f', source_key: 'gmc_trail_master', club: 'gmc', name: 'A point', geom_wkt: 'POINT (-72.9 44.5)', had_z: false, historic_alignment: false, may_route: true, draws_as_trail: true, season: null}
+      - input: ref('int_trail_lines__network_published')
+        rows:
+          - {trail_line_id: 'oprhp_trails:1'}
+          - {trail_line_id: 'oprhp_trails:2'}
+          - {trail_line_id: 'dec_hiking_trails:1'}
+    expect:
+      rows:
+        - {trail_line_id: 'gmc_trail_master:k-a', line_kind: 'club', feature_order: 3, name: null, blaze_color: 'Unknown', trail_status: null, trail_status_basis: null, closure_kind: null, geom_geojson: '{"type":"MultiLineString","coordinates":[[[-72.9,44.5],[-72.9,44.6]],[[-72.8,44.6],[-72.8,44.7]]]}'}
+        - {trail_line_id: 'shta_line_2025:k-b', line_kind: 'club', feature_order: 4, name: 'Superior Hiking Trail', blaze_color: 'Unknown', trail_status: null, trail_status_basis: null, closure_kind: null, geom_geojson: '{"type":"LineString","coordinates":[[-91.5,47.3],[-91.4,47.4]]}'}
+  - name: trail_lines_club_overview_keeps_a_long_club_line_as_haze_and_never_a_held_back_one
+    model: int_trail_lines__club_overview
+    description: >
+      Decision 64's lines in the overview sketch: a club line long enough to clear the z5 floor is
+      kept, as haze and never a through route; one shorter than a z5 pixel is a dot there and is
+      dropped, as the network's are; and a line whose source may not publish is not drawn at all.
+    given:
+      - input: ref('int_trail_lines__club_published')
+        rows:
+          - {trail_line_id: 'fltc_flt_main:long', source_key: 'fltc_flt_main', blaze_color: 'Unknown', trail_status: null, navigation_wkt: 'LINESTRING (-76.5 42.3, -76.4 42.4)'}
+          - {trail_line_id: 'fltc_flt_main:short', source_key: 'fltc_flt_main', blaze_color: 'Unknown', trail_status: null, navigation_wkt: 'LINESTRING (-76.5 42.3, -76.5 42.305)'}
+          - {trail_line_id: 'onda_odt_tracks:held', source_key: 'onda_odt_tracks', blaze_color: 'Unknown', trail_status: null, navigation_wkt: 'LINESTRING (-119 43, -118.9 43.1)'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: 'fltc_flt_main', may_publish: true}
+          - {source_key: 'onda_odt_tracks', may_publish: false}
+    expect:
+      rows:
+        - {trail_line_id: 'fltc_flt_main:long', source_key: 'fltc_flt_main', through_route: null}

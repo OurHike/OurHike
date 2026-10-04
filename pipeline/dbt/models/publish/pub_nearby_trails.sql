@@ -9,7 +9,8 @@
 -- docstring counts read it as the network's topology.
 --
 -- Reads the trail_lines mart's network rows (`line_kind = 'network'`),
--- which int_trail_lines__network_published gives it.
+-- which int_trail_lines__network_published gives it, then its club rows
+-- (`line_kind = 'club'`, decision 64: int_trail_lines__club_published).
 --
 -- THE PROPERTIES, records_to_geojson()'s:
 -- - `id`, `source`, `name` (null where nothing names the line, never left
@@ -22,7 +23,11 @@
 --   (int_trail_lines__network_area_closures: the area's reason verbatim, and
 --   the closure layer's registry key, #1142), the reason only where the
 --   steward wrote one; and `duplicate_of` only on a line that swallowed
---   another source's copy. Each is left out rather than null.
+--   another source's copy. Each is left out rather than null;
+-- - `line_kind` 'club' on a club line only, the mark that it is drawn and
+--   never routed: build_trail_graph.py refuses a feature carrying it, and
+--   the phone's line sheet says so. A network line carries no `line_kind`,
+--   so every record today's exporter writes is unchanged.
 -- The shared-ground pairs' `concurrent_*` were never in this file.
 --
 -- THE ORDER is `feature_order`. map/style.ts draws by `line-sort-key`, not
@@ -30,7 +35,7 @@
 -- its TRAIL_SORT_KEY_EXPRESSION comment).
 with published as (
     select * from {{ ref('trail_lines', v=1) }}
-    where line_kind = 'network'
+    where line_kind in ('network', 'club')
 ),
 
 features as (
@@ -56,7 +61,9 @@ features as (
                     'closure_kind', nullif(closure_kind, ''),
                     'closure_reason', nullif(closure_reason, ''),
                     'closure_source', nullif(closure_source, ''),
-                    'duplicate_of', nullif(duplicate_of, '')
+                    'duplicate_of', nullif(duplicate_of, ''),
+                    'line_kind',
+                    case when line_kind = 'club' then line_kind end
                 )
             ),
             'geometry', cast(geom_geojson as json)

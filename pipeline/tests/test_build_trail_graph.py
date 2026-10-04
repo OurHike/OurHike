@@ -151,6 +151,25 @@ def test_a_closed_trail_is_never_routable_and_the_refusal_is_counted():
     assert all(edge["trail_id"] != "oprhp_trails:9" for edge in graph["edges"])
 
 
+def test_a_club_line_is_drawn_and_never_an_edge():
+    """Decision 64: nearby_trails.geojson carries the clubs' own lines with `line_kind` 'club', and none routes,
+    even where it meets a network line end to end, until a dedupe step has checked it against the network."""
+    network = _feature([(LON, LAT), (LON + 0.01, LAT)])
+    club = _feature(
+        [(LON + 0.01, LAT), (LON + 0.02, LAT)],
+        feature_id="fltc_flt_main:abc",
+        source="fltc_flt_main",
+        trail_status=None,
+        line_kind="club",
+    )
+
+    graph, stats = _build(network, club)
+
+    assert stats["lines_routable"] == 1
+    assert stats["refused"]["club_line"] == 1
+    assert all(edge["trail_id"] != "fltc_flt_main:abc" for edge in graph["edges"])
+
+
 def test_closed_matching_ignores_case_and_padding_because_stewards_publish_both():
     for status in ("closed", "CLOSED", " Closed "):
         _, stats = _build(_feature([(LON, LAT), (LON + 0.01, LAT)], trail_status=status))

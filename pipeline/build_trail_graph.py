@@ -161,6 +161,13 @@ SWEEP_TOLERANCES_M = (0.0, 2.0, 5.0, 8.0, 12.0, 20.0, 35.0, 60.0, 100.0)
 
 CLOSED_STATUS = "closed"
 
+#: The `line_kind` a club's own line carries in nearby_trails.geojson (decision 64, the maintainer's poll of
+#: 2026-10-04: "draw now, route later"). A club line draws on the map and is never an edge: many repeat a line already
+#: in the network (FLTC's and NCTA's shared stretch, three copies of the Superior Hiking Trail), and a route could jump
+#: between two copies, until a dedupe step checks each against the lines already there. dbt's junction graph reads
+#: only the trail_lines mart's network rows, so this refusal is the same rule for anything that reads the file.
+CLUB_LINE_KIND = "club"
+
 
 def _transformers() -> tuple[Transformer, Transformer]:
     """to-projected and back. always_xy because every coordinate in this
@@ -223,10 +230,13 @@ def routable_lines(collection: dict) -> tuple[list[dict], dict]:
     account for exactly.
     """
     kept: list[dict] = []
-    refused = {"closed": 0, "not_a_line": 0, "empty": 0}
+    refused = {"club_line": 0, "closed": 0, "not_a_line": 0, "empty": 0}
 
     for feature in collection.get("features", []):
         properties = feature.get("properties") or {}
+        if properties.get("line_kind") == CLUB_LINE_KIND:
+            refused["club_line"] += 1
+            continue
         if (properties.get("trail_status") or "").strip().lower() == CLOSED_STATUS:
             refused["closed"] += 1
             continue

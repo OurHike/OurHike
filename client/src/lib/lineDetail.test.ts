@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildLineDetail,
+  CLUB_LINE_SENTENCE,
   CHOSEN_SYSTEM_SOURCES,
   THROUGH_ROUTE_SOURCES,
   type TappedLineFacts,
@@ -221,6 +222,26 @@ const SOURCES: TrailSourceTable = {
     edited: '2026-08-04T12:00:00Z',
   },
 }
+
+describe('a club’s own line (decision 64)', () => {
+  it('says it is drawn and not used for routes or distances, in the mock’s words', () => {
+    const detail = buildLineDetail({ ...NEARBY_LINE, lineKind: 'club' }, {}, [])
+    expect(detail.clubLine).toBe(
+      'Shown on the map. Not used for routes or distances until it is checked against the lines already there.',
+    )
+    expect(detail.clubLine).toBe(CLUB_LINE_SENTENCE)
+  })
+
+  it('says nothing of the kind on a network line, or on a release that predates the mark', () => {
+    expect(buildLineDetail(NEARBY_LINE, {}, []).clubLine).toBeNull()
+    expect(
+      buildLineDetail({ ...NEARBY_LINE, lineKind: null }, {}, []).clubLine,
+    ).toBeNull()
+    expect(
+      buildLineDetail({ ...NEARBY_LINE, lineKind: 'network' }, {}, []).clubLine,
+    ).toBeNull()
+  })
+})
 
 describe('a nearby trail’s sheet', () => {
   it('names its length and its park on one line', () => {

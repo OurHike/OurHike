@@ -207,6 +207,17 @@ export function LineSheet({
         <p className="closure-sheet__range">{detail.sharedLine}</p>
       )}
 
+      {/* A club's own line (decision 64): drawn and not routed, said under
+          what the line is and above the closure and the source, the order
+          the card the maintainer chose put it in. A tag and a sentence,
+          because the tag is what a hiker comparing two sheets scans for and
+          the sentence is what it means. */}
+      {detail.clubLine !== null && (
+        <p className="closure-sheet__meta line-sheet__club" role="note">
+          <span className="line-sheet__tag">Club line</span> {detail.clubLine}
+        </p>
+      )}
+
       {/* The long-term closure (§3). On `closure-sheet__status`, which is the
           class ClosureSheet gives its own "Closed" line - one vocabulary for
           "do not walk this", which is the argument §3 won: a hiker learns one
@@ -259,12 +270,15 @@ export function LineSheet({
           line is right above this, and offering a hiker a walk down a trail
           the router will then decline to route is worse than offering
           nothing - it is the app promising with one sentence what it refuses
-          with the next. */}
-      {onAddToDayHike !== undefined && detail.closureLine === null && (
-        <button type="button" className="line-sheet__add" onClick={onAddToDayHike}>
-          Add this point to a day hike
-        </button>
-      )}
+          with the next. A club line the same (decision 64): the day-hike
+          builder routes on the graph, which no club line is in. */}
+      {onAddToDayHike !== undefined &&
+        detail.closureLine === null &&
+        detail.clubLine === null && (
+          <button type="button" className="line-sheet__add" onClick={onAddToDayHike}>
+            Add this point to a day hike
+          </button>
+        )}
 
       {/* Taking the trail (the review of #1374): what puts its name and mark
           on the plate. A sentence where it is already taken, a button where

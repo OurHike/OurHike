@@ -493,7 +493,8 @@ jobs:
       - name: Notices absent from the warehouse (tests/test_dbt_notice_tables_absent_builds.py)
         if: steps.scope.outputs.run == 'true'
         run: |
-          OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_tables_absent_builds.py
+          # The fixture load imports dlt, which only the extract venv holds.
+          OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_tables_absent_builds.py
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by

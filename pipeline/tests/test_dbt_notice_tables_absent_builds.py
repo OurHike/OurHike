@@ -44,6 +44,10 @@ import pytest
 PIPELINE_DIR = Path(__file__).resolve().parent.parent
 DBT_DIR = PIPELINE_DIR / "dbt"
 DBT = os.environ.get("OURHIKE_DBT")
+#: The Python that runs extract._fixtures, which imports dlt: CI's dbt job keeps dlt in its extract venv, apart from the
+#: pipeline venv that runs these tests (and whose conftest.py imports export_poi, so this file cannot run on the extract
+#: venv instead). Unset, it is this interpreter, which in a sandbox holds both.
+EXTRACT_PYTHON = os.environ.get("OURHIKE_EXTRACT_PYTHON") or sys.executable
 pytestmark = pytest.mark.skipif(not DBT, reason="OURHIKE_DBT names no dbt (the dbt job and scripts/test.sh set it)")
 
 #: The sources int_closures__gate answers that read no club notice table: ATC's, NYNJTC's and NYS Parks' hand
@@ -84,7 +88,7 @@ def build(tmp_path_factory) -> dict:
     _run([sys.executable, "make_dbt_fixtures.py", "--raw-dir", str(raw)], PIPELINE_DIR, env)
     _run(
         [
-            sys.executable,
+            EXTRACT_PYTHON,
             "-m",
             "extract._fixtures",
             "--raw-dir",

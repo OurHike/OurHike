@@ -245,10 +245,19 @@ carried_checks as (
 ),
 
 -- Each geometry as a phone needs it (the header says why 10 m).
+-- Made valid first: GEOS's simplifier and precision reducer throw on a
+-- ring that crosses itself, and one source's did (soak run 531,
+-- publish-conditions.yml 37237506320: "TopologyException: side location
+-- conflict at -115.664878 45.267286"), which stopped every club's file.
+-- ST_MakeValid keeps every vertex and splits a crossed ring into the
+-- polygons it encloses, a bowtie into two triangles, so the area the phone
+-- asks a trail to meet is the area the source drew (Reasoned; a bowtie
+-- through the same chain, measured on DuckDB 1.5.5's spatial, 2026-10-04,
+-- raises without it and comes back a valid MultiPolygon with it).
 shaped as (
     select
         notice_id,
-        st_geomfromgeojson(geom_geojson) as geom
+        st_makevalid(st_geomfromgeojson(geom_geojson)) as geom
     from club_notices
     where geom_geojson is not null
 ),

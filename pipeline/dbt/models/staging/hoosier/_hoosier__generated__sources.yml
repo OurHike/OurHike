@@ -19,6 +19,27 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_hoosier__hhc_tecumseh_track
+        data_tests:
+          # Rows sharing base_hoosier__hhc_tecumseh_track's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'hhc_tecumseh_track'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+        description: >
+          Tecumseh Trail track, 2023 (HHC's GPX) (sources.json `hhc_tecumseh_track`). Key:
+          The geometry alone: one track, unique on 1 of 1 (measured 2026-10-04).
+      - name: raw_hoosier__hhc_tecumseh_waypoints
+        data_tests:
+          # Rows sharing base_hoosier__hhc_tecumseh_waypoints's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'hhc_tecumseh_waypoints'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+        description: >
+          Tecumseh Trail points of interest: parking, crossings and a shelter (HHC's GPX)
+          (sources.json `hhc_tecumseh_waypoints`). Key: The geometry alone: unique on 27
+          of 27 (measured 2026-10-04). `name` is also unique.
       - name: raw_hoosier__in_dnr_open_trails
         data_tests:
           # Rows sharing base_hoosier__in_dnr_open_trails's key must be exact copies (decision 40).

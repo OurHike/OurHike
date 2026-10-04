@@ -126,3 +126,11 @@ tahoe_rim_campgrounds,drop_where,campground_type,"No Fee, Dispersed USFS Campgro
 ncta_points,drop_where,iconset,dispersed_camp,"iconSet 'dispersed_camp', one of the layer's own icons: dispersed camping, which usfs_dispersed_camping_holdback holds back (sources.json, #1207)"
 ncta_points,drop_where,iconset,no_camping,"iconSet 'no_camping', one of the layer's own icons: a point where camping is not allowed"
 blm_recreation_sites,drop_where_contains,fet_subtype,Campsite - Primitive,FET_SUBTYPE 'Campsite - Primitive - ...': 'may be dispersed camping and needs the review usfs_dispersed_camping_holdback records before any of it ships' (the row's notes)
+usfs_nez_perce_nht_my_map,historic_alignment,,,"Its 25 lines are the Nez Perce NHT's 'Suggested Travel Routes' and 'Adventure Routes', driving routes along the 1877 flight ('turn west on a dirt road. At any Y, always stick to the more traveled route', the row's notes): never tread a hiker walks."
+catamount_main_trail,winter_trail,,,"The Catamount Trail is a backcountry and Nordic ski route, SURFACE Ungroomed 489, Snowmobile 179, Road Walk 69, Groomed Nordic 30, Unplowed Road 26 of 793 lines (the row's notes)."
+catamount_side_trails,winter_trail,,,"The Catamount Trail's side trails, SURFACE Snowmobile 264 of 325 lines (the row's notes): a winter ski network."
+catamount_full_route,winter_trail,,,The Catamount Trail's December 2022 GPX download: the same ski route (the row's notes).
+catamount_full_route,drop_where,name,OLD CT - Camels Hump,A former alignment the download still carries beside the current 'CT' (the row's notes): an old route never draws as trail.
+catamount_full_route,drop_where,name,South Pond Connector South - Unofficial,The association names it 'Unofficial' (the row's notes): a connector it does not stand behind.
+ota_trail_map,drop_where,folder,Road - White,"Folder 'Road - White', 2 of the map's 89 lines (the row's notes): roads, not trail."
+ohta_website_track,drop_where,name,Lower Buffalo Bushwhack,"One of the map's 5 lines is a bushwhack, a route across country with no tread, which USFS's data does not carry (the coverage audit, in the row's notes)."

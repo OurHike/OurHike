@@ -1,4 +1,4 @@
-"""Write the dbt staging layer for the clubs' registered ArcGIS layers from the registry, and check it.
+"""Write the dbt staging layer for the clubs' registered layers from the registry, and check it.
 
 pipeline/ELT.md, "Loading everything the clubs publish (decision 54)": "dbt models are generated, not
 hand-written, wherever a layer has a measured key: a `base_<folder>__<key>` per raw table from one template,
@@ -10,9 +10,15 @@ committed file differs from what this would write, so a registry edit and its mo
     python make_dbt_staging.py --check   write nothing; exit 1 naming each file that would change
 
 WHICH LAYERS (registry-driven, by kind, type and measured key). Every resource that a club folder's file for
-one of TYPES extracts as an ArcGIS layer (extract/_kinds.py's ArcgisLayer, a sources.json row of a kind in
-KINDS), unless a hand-written model already reads its raw table: those keep their own (the registry tables
+one of TYPES extracts as an ArcGIS layer (extract/_kinds.py's ArcgisLayer), a GIS file (extract/_gis_files.py's
+GisFile) or a geographic API (extract/_ogc.py's OgcFeatures and JsonFeatures), a sources.json row of a kind in
+KINDS, unless a hand-written model already reads its raw table: those keep their own (the registry tables
 staged before decision 54). So a layer registered later is staged by running this again, and by nothing else.
+A file that SHARES a sibling's resource (one upstream feeding two types, such as a My Map of trail lines and
+trailheads) gets a staging model of its own over the sibling's base model, and no second base or source: one
+raw table, staged once (decision 34). An elevation file shares only a row that names its `elevation_source`.
+A row whose API needs a key from the environment (`api_key_env`) is not staged: its table is withdrawn whenever
+the key is unset, and a base model over an absent table would stop the build.
 
 WHAT EACH sources.json ROW GIVES IT:
 - THE KEY (decision 40): `key_fields`, else `id_fields`, else `id_field`, where `geometry` in a list stands for
@@ -77,11 +83,20 @@ SQL_MARK = f"-- {GENERATED} from sources.json\n-- and the extract's club folders
 YAML_MARK = f"# {GENERATED} from sources.json\n# and the extract's club folders; edit them or it, never this file.\n"
 JINJA_MARK = f"{{#- {GENERATED} from sources.json\n    and the extract's club folders; edit them or it, never this file. -#}}\n"
 
-#: The registry kinds an ArcgisLayer reads.
-KINDS = ("club_arcgis_layer", "external_arcgis_layer")
+#: The registry kinds an ArcgisLayer reads, then decision 54's waves 2 and 3: a GisFile, an OgcFeatures and a
+#: JsonFeatures (lib/source_registry.py's GIS_FILE, OGC_FEATURES and JSON_FEATURES).
+KINDS = ("club_arcgis_layer", "external_arcgis_layer", "gis_file", "ogc_features", "json_features")
 
 #: The server row ids a key may never hold (decision 40: a truncate-and-reload mints them again), as dlt names them.
-ROW_IDS = frozenset({"objectid", "objectid_1", "objectid_12", "fid", "oid", "esri_oid", "ogc_fid"})
+#: `feature_index` is a feature's position in its file (extract/_gis_files.py), which a re-saved file renumbers.
+ROW_IDS = frozenset({"objectid", "objectid_1", "objectid_12", "fid", "oid", "esri_oid", "ogc_fid", "feature_index"})
+
+#: What duplicates_are_exact sets aside on a file's or an OGC collection's rows, beside macros/row_hash.sql's
+#: row_hash_row_ids(): two copies of one feature differ in their position in the file (`feature_index`) and in
+#: the id an exporter mints per feature (`feature_id`: Catamount's GeoJSON repeats a line under ids 52 and 53,
+#: measured 2026-10-04), and in nothing else.
+FILE_ROW_IDS = ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+FILE_KINDS = frozenset({"gis_file", "ogc_features"})
 
 #: The region every generated source's rows are held to. The widest of the three boxes
 #: macros/lands_outside_its_region.sql draws, and still one that catches a swapped United States point (its
@@ -337,9 +352,12 @@ class Table:
     table: str
     cadence: str
     entry: dict
-    # The extract reader's class name: ArcgisLayer for wave 1's layers, a content reader for section C's
-    # (CONTENT_COLUMNS), which decides how the staging model conforms the table's columns.
+    # The extract reader's class name: ArcgisLayer for every geographic layer (an ArcGIS layer, a GIS file or a
+    # geographic API), a content reader for section C's (CONTENT_COLUMNS), which decides how the staging model
+    # conforms the table's columns.
     reader: str = "ArcgisLayer"
+    # The sibling type whose base model this staging reads, for a file that SHARES that sibling's resource.
+    shared_from: str | None = None
 
     @property
     def shape(self) -> Shape:
@@ -353,6 +371,11 @@ class Table:
     @property
     def key_column(self) -> str:
         return "term_key" if self.lookup else self.shape.key_column
+
+    @property
+    def base_key_column(self) -> str:
+        """The key column the base model carries: its own type's, or the sibling's for a shared resource."""
+        return "term_key" if self.lookup else SHAPES[self.shared_from or self.type].key_column
 
     @property
     def base(self) -> str:
@@ -432,27 +455,45 @@ def tables() -> list[Table]:
     """Every layer this stages, sorted by folder and key; stops on the first row with no usable key."""
     sys.path.insert(0, str(PIPELINE))
     from extract._contract import discover
+    from extract._gis_files import GisFile
     from extract._kinds import ArcgisLayer, registry_entry
+    from extract._ogc import JsonFeatures, OgcFeatures
 
     hand_written = _hand_written_raw_tables()
     readers = {reader for _, reader in CONTENT_COLUMNS} | set(CONTENT_LOOKUPS)
+    geographic = ArcgisLayer | GisFile | OgcFeatures | JsonFeatures
+    files = discover()
+    by_place = {(club_file.club, club_file.type): club_file for club_file in files}
     found = []
-    for club_file in discover():
+    for club_file in files:
         if club_file.type not in SHAPES:
             continue
-        for resource in club_file.resources:
+        owner = by_place.get((club_file.club, club_file.shares)) if club_file.shares else club_file
+        if owner is None or owner.type not in SHAPES:
+            continue
+        for resource in owner.resources:
             if resource.table in hand_written:
                 continue
             reader = type(resource).__name__
             if SHAPES[club_file.type].geometry:
-                if not isinstance(resource, ArcgisLayer) or resource.entry.get("kind") not in KINDS:
+                if not isinstance(resource, geographic) or resource.entry.get("kind") not in KINDS:
                     continue
                 reader = "ArcgisLayer"
             elif reader not in readers or (reader not in CONTENT_LOOKUPS and (club_file.type, reader) not in CONTENT_COLUMNS):
                 continue
             entry = registry_entry(resource.key)
-            found.append(Table(club_file.club, club_file.type, resource.key, resource.table, resource.cadence, entry, reader))
-    found.sort(key=lambda table: (table.folder, table.key, table.table))
+            if entry.get("api_key_env"):
+                # A keyed API's table is withdrawn whenever its key is unset (extract/_ogc.py's JsonFeatures), and an
+                # absent raw table stops every model downstream of a base model reading it. NPS_API_KEY does not
+                # reach the monthly job yet, so such a row is extracted and not staged until it does.
+                continue
+            if club_file.shares and club_file.type == "elevation" and not entry.get("elevation_source"):
+                continue  # a line layer an elevation file shares carries its heights only where its row says so
+            shared_from = owner.type if club_file.shares else None
+            found.append(
+                Table(club_file.club, club_file.type, resource.key, resource.table, resource.cadence, entry, reader, shared_from)
+            )
+    found.sort(key=lambda table: (table.folder, table.key, table.table, table.shared_from or ""))
     refused = []
     for table in found:
         try:
@@ -592,6 +633,7 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
             "          - duplicates_are_exact:",
             "              arguments:",
             f"                key_columns: {_yaml_list(_raw_key_columns(table.key_inputs()))}",
+            *([f"                row_id_columns: {_yaml_list(FILE_ROW_IDS)}"] if table.entry.get("kind") in FILE_KINDS else []),
             "        description: >",
             _folded(f"{table.title} (sources.json `{table.key}`). Key: {table.key_comment()}", 10),
         ]
@@ -679,7 +721,7 @@ def _conformed(table: Table) -> list[str]:
         if id_field and column(id_field).strip('"') not in ROW_IDS:
             source_id = f"cast({column(id_field)} as varchar)"
         else:
-            source_id = f"cast({table.shape.key_column} as varchar)"
+            source_id = f"cast({table.base_key_column} as varchar)"
         return [_name(entry), f"{category} as category", f"{source_id} as source_id"]
     if table.type == "places":
         category = (
@@ -736,11 +778,12 @@ def stg_sql(folder: str, type_: str, type_tables: list[Table]) -> str:
     branches = []
     for table in type_tables:
         conformed = "".join(f"\n    {line}," for line in _conformed(table))
+        key = shape.key_column if table.base_key_column == shape.key_column else f"{table.base_key_column} as {shape.key_column}"
         branches.append(
             f"""select
     '{table.key}' as source_key,
     '{folder}' as club,
-    {shape.key_column},{conformed}
+    {key},{conformed}
     geom,
     json_merge_patch(
         to_json({table.base}),
@@ -838,7 +881,7 @@ def union_sql(type_: str, staging_models: list[str]) -> str:
         "properties",
         "_loaded_at",
     ]
-    what = "registered ArcGIS layers" if shape.geometry else "registered feeds, APIs and WordPress and wiki sources"
+    what = "registered layers" if shape.geometry else "registered feeds, APIs and WordPress and wiki sources"
     head = _comment(
         f"Every {type_.replace('_', ' ')} row of the clubs' {what} that pipeline/make_dbt_staging.py "
         "stages, one row each, unfiltered: a `union all by name` of every stg_<folder>__"
@@ -855,7 +898,7 @@ def union_yaml(type_: str, type_tables: list[Table]) -> str:
     shape = SHAPES[type_]
     if shape.geometry:
         description = (
-            f"Every {type_.replace('_', ' ')} row of the {len(type_tables)} registered ArcGIS layers "
+            f"Every {type_.replace('_', ' ')} row of the {len(type_tables)} registered layers "
             f"pipeline/make_dbt_staging.py stages, unioned by name: {shape.row}. Each row carries its layer's "
             "registry key, the club folder that extracted it, the base model's key, the conformed columns below, "
             "its geometry as landed and its layer's own columns as `properties`. Unfiltered: whatever reads it keeps "
@@ -937,9 +980,11 @@ def hand_set_regions() -> set[str]:
 def regions_macro(all_tables: list[Table]) -> str:
     by_hand = hand_set_regions()
     keys = sorted(
-        table.key
-        for table in all_tables
-        if table.key not in by_hand and table.type not in REGIONS_DECIDED_BY_HAND and table.shape.geometry
+        {
+            table.key
+            for table in all_tables
+            if table.key not in by_hand and table.type not in REGIONS_DECIDED_BY_HAND and table.shape.geometry
+        }
     )
     cases = "\n".join(f"    when {{{{ column }}}} = '{key}' then '{DEFAULT_REGION}'" for key in keys)
     return (
@@ -978,11 +1023,14 @@ def render() -> dict[Path, str]:
     tables_by_type: dict[str, list[Table]] = {}
     for folder, folder_tables in sorted(by_folder.items()):
         root = STAGING / folder
-        files[root / f"_{folder}__generated__sources.yml"] = sources_yaml(folder, folder_tables)
-        files[root / "base" / f"_{folder}__generated__base.yml"] = base_yaml(folder, folder_tables)
+        # A shared resource is one raw table: its source and base come from the type that extracts it.
+        owned = [table for table in folder_tables if table.shared_from is None]
+        files[root / f"_{folder}__generated__sources.yml"] = sources_yaml(folder, owned)
+        files[root / "base" / f"_{folder}__generated__base.yml"] = base_yaml(folder, owned)
         by_type: dict[str, list[Table]] = {}
         for table in folder_tables:
-            files[root / "base" / f"{table.base}.sql"] = base_sql(table)
+            if table.shared_from is None:
+                files[root / "base" / f"{table.base}.sql"] = base_sql(table)
             if not table.lookup:
                 by_type.setdefault(table.type, []).append(table)
         for type_, type_tables in sorted(by_type.items()):

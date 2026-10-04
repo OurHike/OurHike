@@ -5,10 +5,10 @@ version: 2
 models:
   - name: int_elevation__unioned
     description: >
-      Every elevation row of the 6 registered ArcGIS layers pipeline/make_dbt_staging.py
-      stages, unioned by name: one feature of an elevation layer: a point with a height, a
-      line whose vertices carry one, or a band. Each row carries its layer's registry key, the
-      club folder that extracted it, the base model's key, the conformed columns below, its
+      Every elevation row of the 7 registered layers pipeline/make_dbt_staging.py stages,
+      unioned by name: one feature of an elevation layer: a point with a height, a line whose
+      vertices carry one, or a band. Each row carries its layer's registry key, the club
+      folder that extracted it, the base model's key, the conformed columns below, its
       geometry as landed and its layer's own columns as `properties`. Unfiltered: whatever
       reads it keeps int_sources__publication's verdict.
     data_tests:

@@ -5,7 +5,7 @@ version: 2
 models:
   - name: int_places__unioned
     description: >
-      Every places row of the 83 registered ArcGIS layers pipeline/make_dbt_staging.py stages,
+      Every places row of the 90 registered layers pipeline/make_dbt_staging.py stages,
       unioned by name: one feature of a places layer: a park, a public land unit, a town, a
       section of trail. Each row carries its layer's registry key, the club folder that
       extracted it, the base model's key, the conformed columns below, its geometry as landed

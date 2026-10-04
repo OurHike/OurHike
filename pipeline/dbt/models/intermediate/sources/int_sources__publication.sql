@@ -21,9 +21,13 @@
 --   OPRHP alone, so another steward's row with that basis is refused.
 -- - `public_gis` (decision 21a) needs a GIS endpoint: an ArcGIS or Socrata
 --   layer (`club_arcgis_layer` is a club's ArcGIS layer that only the
---   extract reads, lib/source_registry.py), or a source with no `kind`,
---   which the fetcher reads as an ArcGIS layer. A photo, audio or page
---   source is refused (rule 6).
+--   extract reads, lib/source_registry.py), a GIS file or an OGC API
+--   Features collection (`gis_file`, `ogc_features`, decision 54's waves 2
+--   and 3: a club's own KML, GPX or GeoJSON on a public URL is a GIS layer
+--   it publishes, Reasoned), or a source with no `kind`, which the fetcher
+--   reads as an ArcGIS layer. A JSON API's items (`json_features`), a
+--   photo, audio or page source is refused (rule 6): whether a website's
+--   own map route is a GIS endpoint is the maintainer's to say.
 -- - RULE 5: restrictive words that no decision answers. Read from the row's
 --   own fields: the words it quotes (`terms`, and `terms_verbatim` where a
 --   row carries the whole text), its `licence_basis`, and the decisions and
@@ -250,7 +254,9 @@ decided as (
                 not in (
                     'external_arcgis_layer',
                     'club_arcgis_layer',
-                    'socrata_geojson_layer'
+                    'socrata_geojson_layer',
+                    'gis_file',
+                    'ogc_features'
                 )
                 then 'public_gis_needs_a_gis_endpoint'
             when rule_five.unanswered_restrictions is not null

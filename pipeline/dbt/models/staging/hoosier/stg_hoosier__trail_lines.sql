@@ -9,6 +9,19 @@
 -- null, so `properties` is the base row without the geometry that travels
 -- beside it.
 select
+    'hhc_tecumseh_track' as source_key,
+    'hoosier' as club,
+    trail_segment_key,
+    cast(name as varchar) as name,
+    geom,
+    json_merge_patch(
+        to_json(base_hoosier__hhc_tecumseh_track),
+        '{"geom": null}'
+    ) as properties,
+    _loaded_at
+from {{ ref('base_hoosier__hhc_tecumseh_track') }}
+union all by name
+select
     'in_dnr_open_trails' as source_key,
     'hoosier' as club,
     trail_segment_key,

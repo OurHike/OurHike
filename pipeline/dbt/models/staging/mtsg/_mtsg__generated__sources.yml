@@ -52,3 +52,15 @@ sources:
           its `id`: WordPress numbers terms within one site, and the reader lands each
           taxonomy's terms with its name (extract/_content.py's SiteTerms), so the pair is
           one term.
+      - name: raw_mtsg__mtsg_map_locations
+        data_tests:
+          # Rows sharing base_mtsg__mtsg_map_locations's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'mtsg_map_locations'", "id"]
+        description: >
+          Mountains to Sound Greenway map locations: trailheads, campgrounds, parks and
+          heritage sites (WordPress REST) (sources.json `mtsg_map_locations`). Key: `id`,
+          the WordPress post id: unique on 185 of 185 (measured 2026-10-04 on both pages).
+          A post id is the site's own primary key, kept across edits, not a row number a
+          reload mints.

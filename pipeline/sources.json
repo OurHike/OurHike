@@ -2395,7 +2395,7 @@
       "discovered_date": "2026-10-04",
       "notes": "135 placemarks in 3 folders, read 2026-10-04: Auto Tour Stops 110 points (each with ExtendedData Meaning, More Context, Auto Tour Route 1 to 4 and up, Trail Foundation, More Web Info, About, Photo, latitude and longitude); Suggested Travel Routes 12 placemarks (10 LineStrings, 2 MultiGeometry); Adventure Routes 13 (11 LineStrings, 2 MultiGeometry). THE LINES ARE DRIVING ROUTES, NOT TREAD: 'Suggested Travel Routes' and 'Adventure Routes' are auto routes along the 1877 flight ('turn west on a dirt road. At any Y, always stick to the more traveled route'), so they never route and never draw as a trail, like NPS's NHT auto-tour lines (pipeline/ELT.md, 'What wave 1's live reads found'). One More Context gives an office telephone (a ferry's information line), not a person's. nez_perce/points_of_interest.py SHARES this resource for the 110 stops.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the 25 driving-route lines need a layer_rules row (historic alignment, never routes) before any line of this table may draw."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header), its 25 lines are driving routes (layer_rules historic_alignment), and its 110 tour stops carry no POI type. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "njdep_park_trails",
@@ -4227,7 +4227,7 @@
       "discovered_date": "2026-10-04",
       "notes": "17,505 places nationally by the API's own `total`, read 2026-10-04 with api.data.gov's public DEMO_KEY (one request, limit 2; the key is never used by the extract). The coverage audit read 17,483 on 2026-10-01. Fields include id, title, latitude, longitude, latLong, relatedParks (each park code a place belongs to), isOpenToPublic, isManagedByNps, managedByOrg, tags, amenities, url and prose (listingDescription, bodyText). One extraction for every club whose places the NPS lists (decision 34): octa, sfta, osta, ovta, pony_express, ecr_tejas, carta, ala_kahakai, chesapeake, tota, mormon_trails, butterfield, stsp, semo, pohe, natr, lcthf, anza and nez_perce draw their portion by `relatedParks` in dbt. A place that lists several parks (every one of POHE's 332 does, the coverage audit's skeptic) is one row, assigned to each.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: NPS_API_KEY is not passed to the monthly job, so nothing has been read with a real key."
+      "reaches_hikers_comment": "False on 2026-10-04: extracted and not staged. NPS_API_KEY does not reach refresh-reference.yml's monthly job yet, so the table is withdrawn as unavailable on every run, and pipeline/make_dbt_staging.py stages no keyed API until it does (a base model over an absent table would stop the build). Once the key is passed: staging, then club_poi_types' places have no rules model yet, then decision 63."
     },
     {
       "key": "nps_api_campgrounds",
@@ -4274,7 +4274,7 @@
       "discovered_date": "2026-10-04",
       "notes": "665 campgrounds nationally by the API's own `total`, read 2026-10-04 with the public DEMO_KEY (one request, limit 2). Fields include id, name, parkCode, latitude, longitude, campsites, numberOfSitesReservable, numberOfSitesFirstComeFirstServe, amenities (potable water among them, as text), fees, operatingHours, reservationUrl and prose. The clubs whose POI cells name it (natr's three, semo's three) draw by `parkCode` in dbt. /visitorcenters, the third list the coverage audit names, answered 429 OVER_RATE_LIMIT on the demo key and is not registered.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: NPS_API_KEY is not passed to the monthly job; water maps only from the amenities' potable-water field."
+      "reaches_hikers_comment": "False on 2026-10-04: extracted and not staged. NPS_API_KEY does not reach refresh-reference.yml's monthly job yet, so the table is withdrawn as unavailable on every run, and pipeline/make_dbt_staging.py stages no keyed API until it does (a base model over an absent table would stop the build). Once the key is passed: staging, then club_poi_types' layer-wide campsite row is already there, then decision 63."
     },
     {
       "key": "blm_trails",
@@ -10841,7 +10841,7 @@
       "discovered_date": "2026-10-04",
       "notes": "185 items (X-WP-Total, 2 pages at 100), 182 with `location.lat`/`lng`, read 2026-10-04. `icon` is the primary category: trails 47, cultural-and-natural-heritage-sites 40, parks-and-open-spaces 39, campgrounds 28, museums-and-education-centers 17, picnic-or-day-use-areas 8, visitor-information-centers 3, uncategorized 2, wildlife-information-and-viewing-area 1; `cat` holds every category. `popup` carries an image URL and the post's description (prose that stops at the base model). The 2 uncategorized items include 'REI Seattle Flagship Store', a shop.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: campgrounds and trailheads map by `icon`, which the POI mart reads only once a branch exists for it."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and its campgrounds typed (club_poi_types, `icon` 'campgrounds' only), and held, because int_sources__publication's rule 3 admits `public_gis` only for a GIS endpoint and this is a WordPress route behind the trust's own map (`json_features`): whether such a route is a GIS layer the trust publishes under decision 21a is the maintainer's to say. Decision 63 turns it true once that is answered."
     },
     {
       "key": "sbts_trail_town_amenities",
@@ -11012,7 +11012,7 @@
       "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The map is embedded on forestparkconservancy.org/forest-park/maps/, which carries no terms (read 2026-10-04). www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
       "licence_basis": "public_gis",
       "attribution": "Forest Park Conservancy",
-      "terms": "None found: /forest-park/maps/ links no terms page and carries no copyright line (read 2026-10-04).",
+      "terms": "None found: /forest-park/maps/ links no terms page and quotes no terms of its own (read 2026-10-04).",
       "freshness": {
         "kind": "per_file_validator",
         "url": "https://www.google.com/maps/d/kml?mid=1lykYs7fUx9AXn8VZlywlQGo-8fmYJHQ&forcekml=1",
@@ -11027,8 +11027,8 @@
       "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
       "discovered_date": "2026-10-04",
       "notes": "19 trailhead points in one folder, 'Trail Heads' (e.g. 'Thurman: Leif Erikson Drive', 'Germantown: Wildwood Trail', 'Lower Macleay Park', 'Pittock Mansion site'), read 2026-10-04: 30,745 bytes. Each description is an <img> of the trailhead (gx_media_links), hosted on mymaps.usercontent.google.com; no photo lands as a photo.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trailheads publish once the POI mart's trailhead branch reads this table."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (trailhead, every point), an allowlist by the value the file lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds."
     },
     {
       "key": "ttc_management_areas",
@@ -12525,7 +12525,7 @@
       "discovered_date": "2026-10-04",
       "notes": "28 MultiGeometry lines, read 2026-10-04, last modified 2023-02-08: USFS trails 161 to 201 by number and name ('179-Black Mountain Crest Trail', '178-Colbert Ridge Trail', '190-Mount Mitchell Trail' …), Mount Mitchell State Park's trails and 4 MST pieces ('MSTa-Mountains to Sea Trail (Balsam Gap-NC128)' …). The USFS and MST lines are independent of usfs_trails and nc_mst_trail, which dbt deduplicates.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trail lines publish once int_trail_lines__club_lines reads this table."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "ohta_trail_alerts",
@@ -12608,7 +12608,7 @@
       "discovered_date": "2026-10-04",
       "notes": "5 lines in one folder, 'OHT Website Track', read 2026-10-04: Boston Mountains, OHT/BRT, Lower Buffalo Bushwhack, Sylamore, Lake Norfork, each description its own name. The Lower Buffalo Bushwhack is not in USFS's data (the coverage audit); a bushwhack is a route across country, not tread.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: 'for illustrative purposes only' is a caption no decision names, and the bushwhack needs a rule before it draws as trail."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header), the map is captioned 'For illustrative purposes only', which no decision names, and its bushwhack is dropped (layer_rules). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "palmetto_trail_closures",
@@ -13169,7 +13169,7 @@
       "discovered_date": "2026-10-04",
       "notes": "49 LineStrings in one folder, 'Tracks', read 2026-10-04: the A.T. segments and blue-blazed side trails the club maintains, last modified 2016-05-19. The document puts `xsi:schemaLocation` on its <Document> without declaring `xsi`, which extract/_gis_files.py's parser tolerates. Independent of ATC's centerline and side trails (the club's own GPS lines), so both load and dbt deduplicates; 10 of the club's 20 blue-blazers match no name in ATC's side trails (the coverage audit, 2026-10-01).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: ten years old, and its A.T. segments duplicate ATC's newer centerline."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header); the lines are from 2016 and their A.T. segments duplicate ATC's newer centerline. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "nbatc_trail_features",
@@ -13199,7 +13199,7 @@
       "discovered_date": "2026-10-04",
       "notes": "25 placemarks in the KMZ's doc.kml, read 2026-10-04 (22 points, 3 MultiGeometry points): bridges (James River Foot Bridge, Pedlar River Foot Bridge, Upper and Lower Rocky Row Run Bridge), parking (Petites Gap Parking, Trailhead Parking), summits (Apple Orchard Mountain, Bald Knob, Highcock Knob …) and crossings (Punch Bowl BLRI Crossing, Hercules Rd Crossing), last modified 2024-07-23. No type field: a feature's kind is in its name only.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: no type field, so a point's kind would be read from its name, which the POI mart never does."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because it has no type field, so club_poi_types maps none of its points and nothing of it would publish (a type is never read from a name). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "nbatc_shelters",
@@ -13229,7 +13229,7 @@
       "discovered_date": "2026-10-04",
       "notes": "12 shelter points, read 2026-10-04, last modified 2013-02-17: Seeley-Woodworth, Bobblets Gap, Cove Mountain, Cornelius Creek, Brown Mountain Creek, Johns Hollow, Thunder Hill, Bryant Ridge, Punchbowl, Matts Creek, The Priest and Cow Camp. ATC's loaded shelters layer carries the same shelters, newer; dbt deduplicates. Thirteen years old: a shelter moved or removed since is not reflected.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: 2013, and ATC's shelters are the newer source for the same 12."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because its 12 shelters are typed (club_poi_types, low) but date from 2013, and ATC's loaded shelters layer carries the same 12, newer: a point from 2013 adds only the risk of a shelter since moved. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "nbatc_trail_info",
@@ -13259,7 +13259,7 @@
       "discovered_date": "2026-10-04",
       "notes": "12 points, read 2026-10-04, last modified 2013-02-17: hike and feature points (Mau-Har Three Ridges Loop, Bluff Mtn -- Ottie Cline Memorial, The Priest, Spy Rock, Cold Mountain, Apple Orchard Falls Trail, Southern end of NBATC section …), each with a description.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: 2013, no type field."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because it has no type field, so club_poi_types maps none of its points and nothing of it would publish (a type is never read from a name). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "alaska_state_parks_conditions",
@@ -13674,7 +13674,7 @@
       "discovered_date": "2026-10-04",
       "notes": "161 placemarks in 8 folders, read 2026-10-04 (the map embedded on ozarktrail.com/maps/): Trailhead 72 points, each description 'Elevation = … ft <br>Coordinates = … <br>Type = Trailhead'; Main Trail 18 lines, Connecting Trail 38 (2 of them MultiGeometry), Trailhead Spur 24, OT Spur Trail 4, Alternate Trail 2, 'Road - White' 2 and Nearby trail 1. The two 'Road - White' lines are roads, which int_trail_lines__club_lines drops by a layer_rules row before this table may draw. The coverage audit's 14 per-section 'GPS Download' zips are not registered: nobody compared them with this map. ota/points_of_interest.py SHARES this resource for the 72 trailheads.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the site's terms (`terms`) restrict reproduction, which no decision names, and the 2 road lines need a layer_rules row."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because the site's terms restrict reproduction ('Reproduction is prohibited other than in accordance with the copyright notice'), which no decision names, so it goes to the maintainer; its 72 trailheads are typed (club_poi_types) and its 2 road lines dropped (layer_rules), and no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "bta_section_burton",
@@ -14407,7 +14407,7 @@
       "discovered_date": "2026-10-04",
       "notes": "111 placemarks in 10 folders, read 2026-10-04: Parking 20, Shelters 9, Campsites 4, Springs 16, Vistas 34, Hospital Emergency Rooms 18 and Access Points 7 (points), and 3 lines (BMECC Northern Section, BMECC Southern Section, 'Appalachian Trail - Pennsylvania'). 63 points carry ExtendedData Type, Club ('BMECC'), Name, Latitude and Longitude; `Name` lands as `property_Name` beside the placemark's own `name`. The 18 hospital ERs' descriptions give each hospital's street address and switchboard number, an institution's, not a person's. WATER: a spring here is a place named Spring, with no potability or reliability field, so it never maps to drinking water (pipeline/ELT.md: 'Each maps by the field that says potability, never by a layer's or a type's name'). The shelters and parking overlap ATC's loaded layers; dbt deduplicates. bmecc/trail_lines.py and bmecc/places.py SHARE this resource.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the springs carry no potability field, the lines duplicate ATC's centerline and are captioned not for navigation, and the hospital ERs need a places kind (getting off the trail quickly)."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because the map is captioned 'not intended for navigation purposes', a condition no decision names (as USFS's PNT line's 'not intended for trip planning' holds it); its shelters, campsites, parking and vistas are typed (club_poi_types), its springs carry no potability field and map to nothing, its hospital ERs wait for a places kind, and its lines duplicate ATC's centerline. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "bmta_alerts_pdf",
@@ -14513,7 +14513,7 @@
       "discovered_date": "2026-10-04",
       "notes": "793 LineStrings, read 2026-10-04, last modified 2023-09-19, no crs member (RFC 7946 longitude-latitude): OBJECTID, SURFACE (Ungroomed 489, Snowmobile 179, Road Walk 69, Groomed Nordic 30, Unplowed Road 26) and Shape_Length in degrees. No name: every line is the Catamount Trail. A SKI TRAIL: the Catamount Trail is a backcountry and Nordic ski route, much of it on snowmobile corridors and unplowed roads, so a line here is seasonal (winter), like BLM's Iditarod line, and needs layer_rules' season before it draws. The association's own page says the map and GPX 'were last updated in 2021, so some reroutes will not be available' (the coverage audit).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: a winter ski route, which needs layer_rules' season; the road walks are roads."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header); it is a winter ski route (layer_rules winter_trail). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "catamount_side_trails",
@@ -14543,7 +14543,7 @@
       "discovered_date": "2026-10-04",
       "notes": "325 LineStrings, read 2026-10-04, last modified 2017-11-27, crs CRS84: SURFACE only (Snowmobile 264, Ungroomed 53, Groomed Nordic 4, Unplowed Road 4). A SKI TRAIL: the Catamount Trail is a backcountry and Nordic ski route, much of it on snowmobile corridors and unplowed roads, so a line here is seasonal (winter), like BLM's Iditarod line, and needs layer_rules' season before it draws.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: a winter ski network, mostly snowmobile corridors; needs layer_rules' season."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header); it is a winter ski network (layer_rules winter_trail). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "catamount_full_route",
@@ -14576,7 +14576,7 @@
       "discovered_date": "2026-10-04",
       "notes": "A zip of the same route twice, 'untitled folder/Catamount_Trail_Route.gpx' (1,092,570 bytes) and .kml (736,653), plus macOS resource forks; the row reads the GPX only (`zip_members`), because the KML is the same 6 lines in another format inside the same download (parsed 2026-10-04: 6 LineStrings each, the same names). 6 tracks: 'CT', 'OLD CT - Camels Hump', 'South Pond Side Trail', 'South Pond Connector South - Unofficial', 'Side Trail - Double Bridges to Burrows Parking', 'Side Trail - to Forest City Parking'. 'OLD CT' is a former alignment and 'Unofficial' a connector the association does not sign; neither draws as trail. A SKI TRAIL: the Catamount Trail is a backcountry and Nordic ski route, much of it on snowmobile corridors and unplowed roads, so a line here is seasonal (winter), like BLM's Iditarod line, and needs layer_rules' season before it draws.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: a winter route; 'OLD CT - Camels Hump' is a former alignment that never routes."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header); it is a winter ski route (layer_rules winter_trail), its former alignment and unofficial connector dropped (layer_rules). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "catamount_sections",
@@ -14608,7 +14608,7 @@
       "discovered_date": "2026-10-04",
       "notes": "31 polygons, read 2026-10-04, last modified 2017-11-27, crs CRS84, one field: Section (1 to 31), the trail's numbered sections.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Sections publish once the places mart reads this table as `section` places."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads int_places__unioned yet. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "catamount_access_points",
@@ -14640,7 +14640,7 @@
       "discovered_date": "2026-10-04",
       "notes": "80 rows, read 2026-10-04, last modified 2017-11-27: LOCATION, LONGITUDE, LATITUDE and PRIMARY (Yes or No), the trail's access points. Every column lands as text; the Point is made from LATITUDE and LONGITUDE (`lat_field`, `lon_field`).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Access points publish once the POI mart's trailhead branch reads this table."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because a ski trail's access points are not typed as trailheads (club_poi_types maps none): the Catamount Trail is a winter route, and a hiker should not be sent to one. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "catamount_businesses",
@@ -14672,7 +14672,7 @@
       "discovered_date": "2026-10-04",
       "notes": "77 rows, read 2026-10-04, last modified 2017-11-27: NAME, URL, LATITUDE, LONGITUDE, ABSTRACT (the business's own blurb, prose that stops at the base model), LODGING, FOOD, NORDIC, ALPINE and SPONSOR (Yes or No). Businesses, nine years old. Every column lands as text; the Point is made from LATITUDE and LONGITUDE (`lat_field`, `lon_field`).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: commercial listings from 2017, which the places mart has no kind for."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads int_places__unioned yet; commercial listings from 2017, which the places mart has no kind for. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "catamount_backcountry_zones",
@@ -14704,7 +14704,7 @@
       "discovered_date": "2026-10-04",
       "notes": "6 rows, read 2026-10-04: NAME, URL, LATITUDE, LONGITUDE and ABSTRACT (prose): backcountry ski zones such as Braintree Mountain Forest and Brandon Gap (RASTA's). Every column lands as text; the Point is made from LATITUDE and LONGITUDE (`lat_field`, `lon_field`).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: ski zones, which the places mart has no kind for."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads int_places__unioned yet; ski zones, which the places mart has no kind for. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "cfpa_trail_notices",
@@ -15775,7 +15775,7 @@
       "discovered_date": "2026-10-04",
       "notes": "46 points in one folder, 'RMFI Project Past , Present and Ongoing' (Garden of the Gods, Pikes Peak, Red Rock Canyon Open Space, The Pineries Open Space, Cheesman Canyon ...), read 2026-10-04: 14,475 bytes, no descriptions, no ExtendedData, the coverage audit's 46 again. Work-project sites, which the places mart has no kind for yet: a site is where the institute worked, not a park boundary or a town.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the places mart has no kind for a project site, so it waits for one."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads int_places__unioned yet, and the places mart has no kind for a work-project site. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "bartram_trail_markers_map",
@@ -15806,7 +15806,7 @@
       "discovered_date": "2026-10-04",
       "notes": "127 placemarks in 2 folders, read 2026-10-04 (embedded on /page-1647832): 'Just Bartram Markers with Text Support.csv' 88 points, each a historical marker with ExtendedData Part Of Trail, Location Description, Lat. Lng., Marker Text, State, Country, ID and Supporting Text; 'Bartram Trail' 38 lines and 1 polygon, the route of William Bartram's 1773-1777 travels as the conference draws it. A HISTORIC ROUTE, NOT TREAD: the lines never route and never draw as a trail. The markers are places to visit, not trail facilities.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: the 38 lines are a historic route and need a layer_rules row; the places mart has no kind for a historical marker."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads int_places__unioned yet; its lines are a historic route and its markers have no places kind. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "bartram_trail_map",
@@ -15838,7 +15838,7 @@
       "discovered_date": "2026-10-04",
       "notes": "245 placemarks in 7 folders, read 2026-10-04 (embedded on /page-1647833; the legacy `mid` redirects to mid=1JSaaiHnemeuLmR_vUIjlnM-N_F4, which serves the same export): Bartram Sites 65 points, Markers 41 points and 35 placemarks with no geometry, Bartram Trail 38 lines, 3 points and 1 polygon, John Bartram 1765 14 lines, Properties 5 polygons, Federal_Road 22 lines and Branches 21 lines (one description is a shapefile's attribute dump, 'FID 20 … Source La Tourette'). Every line is a historic route (William and John Bartram's travels, the Federal Road), never tread.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: every line is a historic route and needs a layer_rules row; 35 placemarks have no geometry."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads int_places__unioned yet; every line is a historic route, and 35 placemarks have no geometry. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "phta_trails_map",
@@ -15869,7 +15869,7 @@
       "discovered_date": "2026-10-04",
       "notes": "183 placemarks in 16 folders, read 2026-10-04: 127 lines and 56 points, the folders named for trails (Potomac Heritage Trail 72 lines, Cross County Trail 13, C&O 13, Bull Run and Sully Loop, West County Trail …) or for the GPX files they were imported from ('BROT_North.gpx', '2TEST_WCT_Compton_LeeHwy.gpx', 'PHNST_AmysMeadow.gpx'). The descriptions are a recorder's timestamps and statistics. FUTURE LINES ARE NOT TOLD APART IN THE FILE: the map's legend separates Existing trail from Future (planned, advocated) (the coverage audit), and the KML carries that only as line styles, which nobody has matched to the legend; one track is named 'WCT_planned_Stone_BRR_Lee'. Planned lines must never render as trail.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: a planned or advocated line cannot be told from an existing one until each style is matched to the map's legend."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header), and a planned or advocated line cannot be told from an existing one until each line style is matched to the map's legend. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "hhc_tecumseh_waypoints",
@@ -15899,7 +15899,7 @@
       "discovered_date": "2026-10-04",
       "notes": "27 waypoints, read 2026-10-04, last modified 2017-10-05: numbered stops 01_MMSF_Office_Parking to 24_Crooked_Creek_Parking, road crossings, 04_Rock_Shelter/Low_Gap and Foxes_Den_Shelter; every `sym` 'RED MAP PIN', so a point's kind is in its name only. Its parking list predates the 2022 reroute (the coverage audit's skeptic, 2026-10-01).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: from before the 2022 reroute, with no type field."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because every `sym` is 'RED MAP PIN', so club_poi_types maps none of its points and nothing of it would publish (a type is never read from a name); and its parking list predates the 2022 reroute. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "hhc_tecumseh_track",
@@ -15929,7 +15929,7 @@
       "discovered_date": "2026-10-04",
       "notes": "1 track ('Tecumseh_Trail'), read 2026-10-04, last modified 2024-03-12: the council's own GPS line of the Tecumseh Trail, independent of Indiana DNR's inventory (in_dnr_open_trails), which dbt deduplicates against it.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trail lines publish once int_trail_lines__club_lines reads this table."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "condor_trail_2020",
@@ -15965,7 +15965,7 @@
       "discovered_date": "2026-10-04",
       "notes": "154 placemarks, read 2026-10-04: Ventura 31, Santa Barbara 36, San Luis Obispo 28 and Monterey 59 (151 LineStrings, 1 MultiGeometry line, 2 Polygons in San Luis Obispo). The registry `url` is the folder the four sit in, and `files` names each; a row carries `source_file`. Monterey's lines sit in per-trail folders (Marble Peak Trail, North Coast Ridge Trail …). Not loaded via usfs: the coverage audit's two USFS name matches are other trails.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trail lines publish once int_trail_lines__club_lines reads this table; the 2 polygons are not lines and drop there."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header); its 2 polygons drop there (a trail line is a line). Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "mdhta_trail_guide",
@@ -16019,7 +16019,7 @@
       "discovered_date": "2026-10-04",
       "notes": "22 LineStrings from 19 files, read 2026-10-04, every vertex three-dimensional: the Maah Daah Hey itself ('Track 040', 3,408 vertices, 2025), White Butte (2025), the Coal Creek Loop (2024) and 16 connectors and spurs from 2016 (Bennett, Buffalo Gap, Cottonwood, Ice Cave, Long X, Summit, Wolf, Coal Creek Connector (3 lines) …). Two files are a lone Feature rather than a FeatureCollection, which the reader takes as one feature; white-butte carries a GPS track's per-vertex `coordinateProperties` times. The registry `url` is the trail guide page that lists them, and `files` names each. The FAQ says the GPX may differ from the 2018 printed map because of reroutes (the coverage audit). mdhta/elevation.py SHARES this resource for the Z.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Trail lines publish once int_trail_lines__club_lines reads this table; the Z calibrates nothing until a step compares it with 3DEP."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header), and int_elevation__club_samples calibrates nothing from its Z until a step compares it with 3DEP. Decision 63 turns it true once that is no longer so."
     },
     {
       "key": "ocvt_at_tracks",
@@ -16053,7 +16053,7 @@
       "discovered_date": "2026-10-04",
       "notes": "2 tracks, read 2026-10-04: 'Pine Swamp Branch Shelter to U.S. 460' (227,994 bytes) and 'VA 611 to I-77' (99,426), GPSBabel output with <time>2009-08-25</time> and `ele` 0.0 throughout (the coverage audit), so no elevation. Superseded by ATC's centerline (edited 2026-08-04): a dated cross-check, deduplicated in dbt.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for decision 54, not shipped yet: decision 63 turns this true once this layer's rules are in dbt and tested, and its generated staging model is phase C's (pipeline/make_dbt_staging.py). Held besides: 2009 tracks of a section ATC's centerline draws, worth keeping as a cross-check only."
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header); 2009 tracks of a section ATC's centerline draws. Decision 63 turns it true once that is no longer so."
     }
   ],
   "usdm_licence": {
@@ -16463,7 +16463,7 @@
       },
       "Forest Park Conservancy": {
         "state": "not_asked",
-        "note": "Not asked. Registered for its places layers under decision 54, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+        "note": "Not asked. Registered for its places layers under decision 54, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent. From 2026-10-04 its 19 trailheads (fpc_forest_park_trailheads) reach hikers (decision 63), so the sentence above no longer holds for them; still not asked, and nothing an org mark would need has been sent."
       },
       "The Trail Conservancy": {
         "state": "not_asked",
@@ -16652,6 +16652,34 @@
       "NMVFO": {
         "state": "not_asked",
         "note": "Not asked. Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Bartram Trail Conference": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its GIS files under decision 54's wave 2 (2026-10-04), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Condor Trail Association": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its GIS files under decision 54's wave 2 (2026-10-04), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Hoosier Hikers Council": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its GIS files under decision 54's wave 2 (2026-10-04), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "MDHTA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its GIS files under decision 54's wave 2 (2026-10-04), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "OCVT": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its GIS files under decision 54's wave 2 (2026-10-04), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Potomac Heritage Trail Association": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its GIS files under decision 54's wave 2 (2026-10-04), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "RMFI": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its GIS files under decision 54's wave 2 (2026-10-04), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -22677,6 +22705,287 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "Bartram Trail Conference": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two Google My Maps (historical markers, Bartram sites, properties and routes) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two Google My Maps (historical markers, Bartram sites, properties and routes) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two Google My Maps (historical markers, Bartram sites, properties and routes) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two Google My Maps (historical markers, Bartram sites, properties and routes) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two Google My Maps (historical markers, Bartram sites, properties and routes) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two Google My Maps (historical markers, Bartram sites, properties and routes) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two Google My Maps (historical markers, Bartram sites, properties and routes) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two Google My Maps (historical markers, Bartram sites, properties and routes) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          }
+        }
+      },
+      "Condor Trail Association": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its four county KMLs (lines and 2 polygons) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its four county KMLs (lines and 2 polygons) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its four county KMLs (lines and 2 polygons) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its four county KMLs (lines and 2 polygons) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its four county KMLs (lines and 2 polygons) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its four county KMLs (lines and 2 polygons) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its four county KMLs (lines and 2 polygons) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its four county KMLs (lines and 2 polygons) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          }
+        }
+      },
+      "Hoosier Hikers Council": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "available",
+            "source_key": "hhc_tecumseh_waypoints",
+            "measured": {
+              "features": 1,
+              "date": "2026-10-04"
+            },
+            "note": "Foxes_Den_Shelter, one waypoint of 27, typed by its name only (04_Rock_Shelter/Low_Gap is a rock overhang by its name, not counted)."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its Tecumseh Trail waypoint and track GPX files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its Tecumseh Trail waypoint and track GPX files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its Tecumseh Trail waypoint and track GPX files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its Tecumseh Trail waypoint and track GPX files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "available",
+            "source_key": "hhc_tecumseh_waypoints",
+            "measured": {
+              "features": 10,
+              "date": "2026-10-04"
+            },
+            "note": "10 of the 27 waypoints are named '…_Parking' (01_MMSF_Office_Parking to 24_Crooked_Creek_Parking); every `sym` is 'RED MAP PIN', so the type is in the name only, which club_poi_types never maps. The list predates the 2022 reroute (the row's notes)."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its Tecumseh Trail waypoint and track GPX files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its Tecumseh Trail waypoint and track GPX files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          }
+        }
+      },
+      "MDHTA": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its trail guide's 19 GeoJSON line files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "available",
+            "measured": {
+              "features": 11,
+              "date": "2026-10-01"
+            },
+            "note": "11 campgrounds on the same page (the coverage audit, 2026-10-01): wave 5's."
+          },
+          "water": {
+            "status": "available",
+            "measured": {
+              "features": 8,
+              "date": "2026-10-01"
+            },
+            "note": "8 waterboxes (Plumely Draw, Long X, Magpie Road, Third Creek, Tom's Wash, Bear Creek, Roosevelt …) as HTML data-lat/data-long attributes on /trail-guide/ (the coverage audit, 2026-10-01, in mdhta/points_of_interest.py's note): an HTML page, decision 54's wave 5. A waterbox is a cached box that can be empty, so it would ship as a cache, never a source."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its trail guide's 19 GeoJSON line files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its trail guide's 19 GeoJSON line files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its trail guide's 19 GeoJSON line files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its trail guide's 19 GeoJSON line files and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "available",
+            "measured": {
+              "features": 19,
+              "date": "2026-10-01"
+            },
+            "note": "19 trailheads on the same page, and 19 trailhead pages in the sitemap (the coverage audit, 2026-10-01): wave 5's."
+          }
+        }
+      },
+      "OCVT": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two 2009 GPX tracks and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two 2009 GPX tracks and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two 2009 GPX tracks and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two 2009 GPX tracks and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two 2009 GPX tracks and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two 2009 GPX tracks and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two 2009 GPX tracks and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its two 2009 GPX tracks and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          }
+        }
+      },
+      "Potomac Heritage Trail Association": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its 'PHTA Trails' Google My Map, whose 56 points are a GPS recorder's track starts and ends and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its 'PHTA Trails' Google My Map, whose 56 points are a GPS recorder's track starts and ends and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its 'PHTA Trails' Google My Map, whose 56 points are a GPS recorder's track starts and ends and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its 'PHTA Trails' Google My Map, whose 56 points are a GPS recorder's track starts and ends and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its 'PHTA Trails' Google My Map, whose 56 points are a GPS recorder's track starts and ends and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its 'PHTA Trails' Google My Map, whose 56 points are a GPS recorder's track starts and ends and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its 'PHTA Trails' Google My Map, whose 56 points are a GPS recorder's track starts and ends and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its 'PHTA Trails' Google My Map, whose 56 points are a GPS recorder's track starts and ends and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          }
+        }
+      },
+      "RMFI": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its project-sites Google My Map (46 work sites) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its project-sites Google My Map (46 work sites) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its project-sites Google My Map (46 work sites) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its project-sites Google My Map (46 work sites) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its project-sites Google My Map (46 work sites) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its project-sites Google My Map (46 work sites) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its project-sites Google My Map (46 work sites) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Decision 54's wave 2 (2026-10-04) read its project-sites Google My Map (46 work sites) and found no point of this type in it. Nothing else of this organization's was looked at for points, so `unprobed` is the literal state, not a finding that it publishes none."
           }
         }
       }

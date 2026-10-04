@@ -869,9 +869,11 @@ class TestTheRegistryTheConsoleReads:
         # registered 13 more; their other 4 stewards (Indiana DNR, SHTA, TKO, TPWD) already had rows.
         # 104 since its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03)
         # registered 12 more; their other 3 stewards (ATA, CFPA, GMC) already had rows.
-        # 106 since decision 54's wave 3 content feeds (section C, 2026-10-04) registered Save Mount
-        # Diablo (its podcast) and NMVFO (its Hike New Mexico pages).
-        assert len(orgs) == 106
+        # 113 since decision 54's wave 3 content feeds (section C, 2026-10-04) registered Save Mount
+        # Diablo (its podcast) and NMVFO (its Hike New Mexico pages), and waves 2 and 3's GIS files
+        # (2026-10-04) registered 7: the Bartram Trail Conference, the Condor Trail Association, the
+        # Hoosier Hikers Council, MDHTA, OCVT, the Potomac Heritage Trail Association and RMFI.
+        assert len(orgs) == 113
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -880,6 +882,7 @@ class TestTheRegistryTheConsoleReads:
             "org:atc",
             "org:austinpard",
             "org:azgeo",
+            "org:bartram",
             "org:blackhillstrails",
             "org:blm",
             "org:bmecc",
@@ -891,6 +894,7 @@ class TestTheRegistryTheConsoleReads:
             "org:cfpa",
             "org:chesapeakeconservancy",
             "org:cohos",
+            "org:condor",
             "org:cpw",
             "org:ctc",
             "org:ctdeep",
@@ -906,6 +910,7 @@ class TestTheRegistryTheConsoleReads:
             "org:fta",
             "org:gatc",
             "org:gmc",
+            "org:hhc",
             "org:iata",
             "org:indnr",
             "org:iowadnr",
@@ -915,6 +920,7 @@ class TestTheRegistryTheConsoleReads:
             "org:madcr",
             "org:massgis",
             "org:matc",
+            "org:mdhta",
             "org:mcomd",
             "org:midpen",
             "org:mohonk",
@@ -938,6 +944,7 @@ class TestTheRegistryTheConsoleReads:
             "org:nysdec",
             "org:nysoprhp",
             "org:octa",
+            "org:ocvt",
             "org:odfw",
             "org:ohta",
             "org:onda",
@@ -949,9 +956,11 @@ class TestTheRegistryTheConsoleReads:
             "org:patc",
             "org:pcf",
             "org:pcta",
+            "org:phta",
             "org:pnta",
             "org:portlandparks",
             "org:ridgetrail",
+            "org:rmfi",
             "org:sbts",
             "org:sccparks",
             "org:shta",

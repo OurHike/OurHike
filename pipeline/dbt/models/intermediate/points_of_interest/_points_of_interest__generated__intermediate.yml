@@ -5,12 +5,12 @@ version: 2
 models:
   - name: int_points_of_interest__club_unioned
     description: >
-      Every points of interest row of the 69 registered ArcGIS layers
-      pipeline/make_dbt_staging.py stages, unioned by name: one point of a points-of-interest
-      layer: a shelter, a campsite, a water source, a trailhead, a parking area. Each row
-      carries its layer's registry key, the club folder that extracted it, the base model's
-      key, the conformed columns below, its geometry as landed and its layer's own columns as
-      `properties`. Unfiltered: whatever reads it keeps int_sources__publication's verdict.
+      Every points of interest row of the 79 registered layers pipeline/make_dbt_staging.py
+      stages, unioned by name: one point of a points-of-interest layer: a shelter, a campsite,
+      a water source, a trailhead, a parking area. Each row carries its layer's registry key,
+      the club folder that extracted it, the base model's key, the conformed columns below,
+      its geometry as landed and its layer's own columns as `properties`. Unfiltered: whatever
+      reads it keeps int_sources__publication's verdict.
     data_tests:
       # The lon/lat swap test, against the box each source's rows are held
       # to (macros/generated_regions.sql, read by

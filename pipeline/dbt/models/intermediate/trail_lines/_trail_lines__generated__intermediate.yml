@@ -5,9 +5,9 @@ version: 2
 models:
   - name: int_trail_lines__unioned
     description: >
-      Every trail lines row of the 98 registered ArcGIS layers pipeline/make_dbt_staging.py
-      stages, unioned by name: one line of a trail-line layer: a trail, a section, a route or
-      an alignment, as the layer draws it. Each row carries its layer's registry key, the club
+      Every trail lines row of the 112 registered layers pipeline/make_dbt_staging.py stages,
+      unioned by name: one line of a trail-line layer: a trail, a section, a route or an
+      alignment, as the layer draws it. Each row carries its layer's registry key, the club
       folder that extracted it, the base model's key, the conformed columns below, its
       geometry as landed and its layer's own columns as `properties`. Unfiltered: whatever
       reads it keeps int_sources__publication's verdict.

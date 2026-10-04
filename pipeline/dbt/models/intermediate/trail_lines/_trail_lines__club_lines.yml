@@ -173,6 +173,39 @@ unit_tests:
         - {"trail_segment_key": "dcr-1"}
         - {"trail_segment_key": "dcr-3"}
         - {"trail_segment_key": "other-1"}
+  - name: trail_lines_club_lines_keep_only_the_lines_a_mixed_gis_file_carries
+    model: int_trail_lines__club_lines
+    description: >
+      A trail line is a line (decision 54's wave 2): OTA's Google My Map carries trailhead points and
+      Condor's KMLs carry polygons beside their lines, so only a LINESTRING or MULTILINESTRING row
+      stays, and a row with no geometry stays as it always has.
+    given:
+      - input: ref('int_trail_lines__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              trail_segment_key,
+              name,
+              case when geom_wkt is not null then st_geomfromtext(geom_wkt) end as geom,
+              cast('{}' as json) as properties,
+              cast('2026-10-04 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('ota_trail_map', 'ota', 'ota-line', 'Fixture Section', 'LINESTRING (-91.0 37.0, -91.0 37.1)'),
+              ('ota_trail_map', 'ota', 'ota-trailhead', 'Fixture Parking', 'POINT (-91.0 37.0)'),
+              ('condor_trail_2020', 'condor', 'condor-multi', 'Fixture Segment', 'MULTILINESTRING ((-119.0 34.5, -119.0 34.6), (-119.1 34.6, -119.1 34.7))'),
+              ('condor_trail_2020', 'condor', 'condor-polygon', 'Fixture Area', 'POLYGON ((-119.0 34.5, -119.0 34.6, -118.9 34.6, -119.0 34.5))'),
+              ('atc_centerline', 'atc', 'atc-none', 'No geometry', null)
+          ) as unioned (source_key, club, trail_segment_key, name, geom_wkt)
+      - input: ref('layer_rules')
+        rows:
+          - {"source_key": "none", "rule": "winter_trail", "field": null, "matches": null, "evidence": "none"}
+    expect:
+      rows:
+        - {"trail_segment_key": "ota-line"}
+        - {"trail_segment_key": "condor-multi"}
+        - {"trail_segment_key": "atc-none"}
   - name: trail_lines_club_lines_force_every_line_to_two_dimensions
     model: int_trail_lines__club_lines
     description: >

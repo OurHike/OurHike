@@ -57,6 +57,19 @@
     Pacific refuges either side of the antimeridian), and TDEC's three
     Tennessee State Parks layers reach lon -90.13 near Memphis.
 
+    DECISION 54'S WAVES 2 AND 3 (2026-10-04) follow tn_state_parks_campsites,
+    each by every vertex of its live file or API read that day: the Nez
+    Perce NHT map lat 43.99 to 48.59 and lon -118.09 to -108.47, OTA's map
+    lon -92.17 to -90.34, OHTA's lon -94.12 to -92.22, Condor's California
+    KMLs, MDHTA's North Dakota lines, Forest Park's Portland trailheads and
+    MTSG's Seattle-area locations, all inside `national`; NPS's campgrounds,
+    which no real key has read whole, get `us_and_territories`, the box the
+    Park Service's other national layers need. BMECC's map is listed as
+    `eastern` (all 111 placemarks lat 39.72 to 40.98, lon -77.51 to -75.13)
+    because its places file shares it, and a generated places box would
+    otherwise widen its points' too. The other GIS files sit inside the
+    eastern box and have no entry.
+
     @unvalidated Every margin is picked, not measured. What would settle it
     is the per-club box from trail_orgs.json's `states` that pipeline/ELT.md
     plans. A source loading outside the eastern box without a row in
@@ -201,6 +214,15 @@
     'tn_state_parks_hiking_assets': 'national',
     'tn_state_parks_campgrounds': 'national',
     'tn_state_parks_campsites': 'national',
+    'usfs_nez_perce_nht_my_map': 'national',
+    'ota_trail_map': 'national',
+    'ohta_website_track': 'national',
+    'condor_trail_2020': 'national',
+    'mdhta_trail_guide': 'national',
+    'fpc_forest_park_trailheads': 'national',
+    'mtsg_map_locations': 'national',
+    'nps_api_campgrounds': 'us_and_territories',
+    'bmecc_trail_section_map': 'eastern',
 } -%}
 
 with placed as (

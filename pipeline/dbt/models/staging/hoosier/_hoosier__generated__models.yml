@@ -3,11 +3,20 @@
 version: 2
 
 models:
+  - name: stg_hoosier__points_of_interest
+    description: >
+      The hoosier/ folder's points of interest layers (`hhc_tecumseh_waypoints`), one row per
+      base row, renamed to int_points_of_interest__club_unioned's columns, with each layer's
+      own columns in `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_hoosier__trail_lines
     description: >
-      The hoosier/ folder's trail lines layers (`in_dnr_open_trails`), one row per base row,
-      renamed to int_trail_lines__unioned's columns, with each layer's own columns in
-      `properties`.
+      The hoosier/ folder's trail lines layers (`hhc_tecumseh_track`, `in_dnr_open_trails`),
+      one row per base row, renamed to int_trail_lines__unioned's columns, with each layer's
+      own columns in `properties`.
     columns:
       - name: trail_segment_key
         description: The base model's key, carried.

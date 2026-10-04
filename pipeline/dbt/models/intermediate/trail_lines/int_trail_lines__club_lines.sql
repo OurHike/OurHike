@@ -24,6 +24,12 @@
 -- - TWO DIMENSIONS. geom_wkt is ST_Force2D of the line, so a Z-enabled
 --   layer's heights (ATA's Z is feet, ATC's metres) never ride into a
 --   network built from it; had_z says which lines arrived with one.
+-- - A TRAIL LINE IS A LINE. A GIS file mixes kinds (decision 54's wave 2:
+--   OTA's My Map carries 72 trailheads beside its 89 lines, Condor's KMLs 2
+--   polygons, the Nez Perce NHT's map 110 tour stops), so a row whose
+--   geometry is not a LINESTRING or MULTILINESTRING is left out here; its
+--   points reach the POI branch through their own file. A row with no
+--   geometry is kept, as before.
 with unioned as (
     select * from {{ ref('int_trail_lines__unioned') }}
 ),
@@ -70,4 +76,8 @@ left join layer_flags on unioned.source_key = layer_flags.source_key
 where
     unioned.trail_segment_key not in (
         select dropped.trail_segment_key from dropped
+    )
+    and (
+        unioned.geom is null
+        or st_geometrytype(unioned.geom) in ('LINESTRING', 'MULTILINESTRING')
     )

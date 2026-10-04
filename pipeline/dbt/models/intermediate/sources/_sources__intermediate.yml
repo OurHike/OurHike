@@ -306,6 +306,8 @@ unit_tests:
           - {source_key: gis_socrata, provider: 'F', kind: socrata_geojson_layer, reaches_hikers: true, licence_basis: public_gis}
           - {source_key: gis_no_kind, provider: 'G', kind: null, reaches_hikers: true, licence_basis: public_gis}
           - {source_key: gis_on_a_podcast, provider: 'A', kind: podcast_feed, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_file_on_a_club_site, provider: 'F', kind: gis_file, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_on_a_json_api, provider: 'A', kind: json_features, reaches_hikers: true, licence_basis: public_gis}
       - input: ref('stg_registry__organizations')
         rows:
           - {provider: 'A', steward_id: 'org:atc'}
@@ -417,6 +419,8 @@ unit_tests:
         - {source_key: gis_socrata, may_publish: true, publication_rule: registered_and_publishable}
         - {source_key: gis_no_kind, may_publish: true, publication_rule: registered_and_publishable}
         - {source_key: gis_on_a_podcast, may_publish: false, publication_rule: public_gis_needs_a_gis_endpoint}
+        - {source_key: gis_file_on_a_club_site, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: gis_on_a_json_api, may_publish: false, publication_rule: public_gis_needs_a_gis_endpoint}
         - {source_key: opentrail_at, may_publish: true, publication_rule: publishing_before_registration}
   - name: int_sources__publication_holds_words_no_decision_answers
     description: >

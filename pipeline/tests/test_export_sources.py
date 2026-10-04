@@ -876,7 +876,9 @@ class TestTheRegistryTheConsoleReads:
         # 116 since decision 54's waves 4 and 5 content pages and PDFs (section K, 2026-10-04) registered
         # the Mazamas (its Hike List View), the Randolph Mountain Club (its Recommended Hikes PDF) and the
         # Keystone Trails Association (its Favorite Hikes in Pennsylvania).
-        assert len(orgs) == 116
+        # 117 since decision 76 (section B, 2026-10-04) registered the U.S. Census Bureau (org:census), for the
+        # TIGER/Line state boundaries a state-wide notice is placed by.
+        assert len(orgs) == 117
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -893,6 +895,7 @@ class TestTheRegistryTheConsoleReads:
             "org:bta",
             "org:catamount",
             "org:cdpr",
+            "org:census",
             "org:cdtc",
             "org:cfpa",
             "org:chesapeakeconservancy",

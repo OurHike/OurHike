@@ -144,20 +144,32 @@ models:
 
   - name: int_warnings__unioned
     description: >
-      The warnings that are not organization notices, one row each, by name:
-      NWS's relayed alerts and OurHike's serious reports. No hazard POI
-      branch: ELT.md's warnings ledger, "No hazard POI exists to port".
+      The warnings that are not notices a club files under closures, one row
+      each, by name: NWS's relayed alerts, OurHike's serious reports, and
+      every club's warnings.py notice (int_closures__club_notices). No hazard
+      POI branch: ELT.md's warnings ledger, "No hazard POI exists to port".
     columns:
       - name: notice_id
         description: Unique across both branches.
         data_tests: [not_null, unique]
       - name: source_key
-        description: nws_alerts or ourhike_reports, the keys int_sources__publication reads them under.
+        description: >
+          nws_alerts or ourhike_reports, the keys int_sources__publication
+          reads them under, or a club notice source's key
+          (seeds/notice_readers.csv).
         data_tests:
           - not_null
           - accepted_values:
               arguments:
                 values: [nws_alerts, ourhike_reports]
+              config:
+                where: "not starts_with(notice_kind, 'club_')"
+          - relationships:
+              arguments:
+                to: ref('notice_readers')
+                field: source_key
+              config:
+                where: "starts_with(notice_kind, 'club_')"
   - name: int_warnings__final
     description: >
       The warnings mart's rows before their row dates (decision 57):

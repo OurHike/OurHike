@@ -8,6 +8,10 @@
 -- closure that obstructs it, from a source that passed int_closures__gate
 -- and may publish (int_sources__publication).
 --
+-- A CLUB NOTICE THAT MAY NOT PUBLISH AS CURRENT IS LEFT OUT: one whose own
+-- end date has passed, or whose own status says it is not current
+-- (int_closures__club_notices' `held_because`, decision 53's phase C).
+--
 -- DECISION 7'S SPLIT, CLOSURES' HALF: only rows whose `obstructs_trail` is
 -- true. A null (nobody has classified it, every NYNJTC alert today) and a
 -- false go to the warnings mart, never dropped, and the partition is held by
@@ -78,3 +82,4 @@ where
     gate.passed
     and publication.may_publish
     and notices.obstructs_trail
+    and notices.notice_held_because is null

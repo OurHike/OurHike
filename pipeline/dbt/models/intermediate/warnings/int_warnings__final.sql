@@ -17,6 +17,12 @@
 -- block. assert_every_notice_lands_in_exactly_one_of_closures_or_warnings
 -- holds the partition.
 --
+-- EVERY CLUB'S WARNINGS-TYPE NOTICES too (int_warnings__unioned's club
+-- branch, decision 53's phase C), through the same gate and publication
+-- check as the notices above. A club notice whose own end date has passed,
+-- or whose own status says it is not current, is left out, from either
+-- branch.
+--
 -- REBUILT WHOLE EACH RUN, as int_closures__final is, so a lifted notice
 -- leaves both, and both marts, in the same run.
 with notices as (
@@ -82,6 +88,38 @@ org_notices as (
         gate.passed
         and publication.may_publish
         and not coalesce(notices.obstructs_trail, false)
+        and notices.notice_held_because is null
+),
+
+club_warnings as (
+    select
+        others.notice_id as warning_id,
+        'org_notice' as warning_kind,
+        others.club,
+        others.source_key,
+        others._loaded_at,
+        others.notice_kind,
+        others.obstructs_trail,
+        case
+            when others.obstructs_trail is null then 'not_reviewed'
+            else others.review_state
+        end as review_state,
+        others.title,
+        others.category,
+        others.locality,
+        others.source_edited_at,
+        others.updated_at,
+        others.source_url,
+        others.geom_geojson,
+        others.source_row_key
+    from others
+    inner join gate on others.source_key = gate.source_key
+    inner join publication on others.source_key = publication.source_key
+    where
+        starts_with(others.notice_kind, 'club_')
+        and gate.passed
+        and publication.may_publish
+        and others.notice_held_because is null
 ),
 
 relayed as (
@@ -135,7 +173,9 @@ relayed as (
         others.source_row_key
     from others
     inner join publication on others.source_key = publication.source_key
-    where publication.may_publish
+    where
+        publication.may_publish
+        and not starts_with(others.notice_kind, 'club_')
 )
 
 -- `union all by name` matches the branches' columns by name, and a branch
@@ -147,3 +187,7 @@ select * from org_notices  -- noqa: AM07
 union all by name
 
 select * from relayed
+
+union all by name
+
+select * from club_warnings

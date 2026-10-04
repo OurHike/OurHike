@@ -213,12 +213,23 @@ models:
           the closures and warnings marts' key.
         data_tests: [not_null, unique]
       - name: source_key
-        description: The registry key, or the unregistered key int_sources__publication reads it under.
+        description: >
+          The registry key, or the unregistered key int_sources__publication
+          reads it under. The hand-written branches' four are held to their
+          list; a club notice's is any notice source's (seeds/notice_readers.csv).
         data_tests:
           - not_null
           - accepted_values:
               arguments:
                 values: [atc_trail_updates, nynjtc_trail_alerts, oprhp_trail_closures, ourhike_closures]
+              config:
+                where: "not starts_with(notice_kind, 'club_')"
+          - relationships:
+              arguments:
+                to: ref('notice_readers')
+                field: source_key
+              config:
+                where: "starts_with(notice_kind, 'club_')"
       - name: review_state
         description: Who stands behind the row; `auto` for an ATC update nobody here has read, which its gate published.
         data_tests:
@@ -233,6 +244,45 @@ models:
       - name: problems
         description: Why the row cannot publish, from its source's checks; empty where it can.
         data_tests: [not_null]
+
+  - name: int_closures__club_notices
+    description: >
+      Every generated club notice source's rows, read by decision 53's phase
+      C rules (pipeline/ELT.md): one row per notice in the closures family's
+      columns, with `obstructs_trail` true only where the source's own status
+      says closed and its own end has not passed, and `held_because` set where
+      the notice may not publish as current. Nothing is dropped here; the
+      finals leave out a held row. Place is the source's own geometry only.
+    columns:
+      - name: notice_id
+        description: "`<source key>:<the source's own id>`, unique across every source."
+        data_tests: [not_null, unique]
+      - name: notice_type
+        description: closures or warnings, the club file that declares the source.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [closures, warnings]
+      - name: obstructs_trail
+        description: >
+          True only where the source files the notice under closures, its own
+          status field holds a value notice_status_values reads as
+          `closes_trail`, and its own end date has not passed. Null
+          otherwise, never false: nobody here classified it.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true]
+      - name: held_because
+        description: >
+          Why the notice may not publish as current, in words for the job log:
+          its own end date has passed, its own order was rescinded, or its own
+          status says not current. Null where it may.
+      - name: geom_geojson
+        description: The source's own geometry, in OGC:CRS84 as GeoJSON, or null where it gives none.
+      - name: updated_at
+        description: The source's own edit stamp, ISO 8601 UTC, or null where it gives none; never the load time.
 
   - name: int_closures__gate
     description: >
@@ -257,9 +307,11 @@ models:
     columns:
       - name: source_key
         description: >
-          The source: one row for each branch of int_closures__unioned, and
-          one each for OurHike's reports, NWS's alerts and
-          reference/work_projects.json, whose files no notice feeds.
+          The source: one row for every registered notice source
+          seeds/notice_readers.csv names (decision 53, phase C), held where
+          the run log never shows its table being read, and one each for
+          OurHike's closures and reports, NWS's alerts and
+          reference/work_projects.json, which have no sources.json row.
         data_tests: [not_null, unique]
       - name: rows_total
         description: >
@@ -606,6 +658,24 @@ unit_tests:
         format: sql
         rows: |
           select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 2, rows_invalid: 1, passed: false, held_because: '1 of 2 rows cannot publish, and a partial set of safety notices is worse than none'}
@@ -659,6 +729,24 @@ unit_tests:
         format: sql
         rows: |
           select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, reviewed_at: '  ', passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page', awaiting_review: true}
@@ -713,6 +801,24 @@ unit_tests:
         format: sql
         rows: |
           select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 0, reviewed_at: '2026-08-24', passed: true, held_because: null}
@@ -761,6 +867,24 @@ unit_tests:
         format: sql
         rows: |
           select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: '`updates` is missing or is not a list'}
@@ -819,6 +943,24 @@ unit_tests:
         format: sql
         rows: |
           select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: 'reference/atc_updates.json lists 1 updates and 2 landed as rows, so the two landings are of different files'}
@@ -868,6 +1010,24 @@ unit_tests:
         format: sql
         rows: |
           select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, may_publish: true, passed: true, held_because: null}
@@ -932,6 +1092,24 @@ unit_tests:
         format: sql
         rows: |
           select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 1, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
@@ -982,6 +1160,24 @@ unit_tests:
         format: sql
         rows: |
           select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: true, held_because: null, awaiting_review: false}
@@ -1014,6 +1210,10 @@ unit_tests:
           select '20261003T010000.000000Z', 'raw_nynjtc__nynjtc_trail_alerts', 'skipped', null, null
           union all
           select '20261003T020000.000000Z', 'raw_ourhike__closures', 'loaded', 0, 3
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
       - input: ref('int_closures__atc_checked')
         rows: []
       - input: ref('base_atc__atc_updates')
@@ -1038,6 +1238,20 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 0, passed: true, held_because: null}
@@ -1065,6 +1279,10 @@ unit_tests:
           select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(4 as bigint) as rows_loaded, cast(4 as bigint) as count_proof
           union all
           select '20261003T010000.000000Z', 'raw_nynjtc__nynjtc_trail_alerts', 'refused', null, 0
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'skipped', null, null
       - input: ref('int_closures__atc_checked')
         rows: []
       - input: ref('base_atc__atc_updates')
@@ -1089,6 +1307,20 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key where false
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: true, held_because: null}
@@ -1343,3 +1575,212 @@ unit_tests:
         - {work_projects_document_key: r09, row_position: null, is_reviewed: false}
         - {work_projects_document_key: r10, row_position: null, is_reviewed: false}
         - {work_projects_document_key: r11, row_position: null, is_reviewed: false}
+
+  - name: int_closures__club_notices_holds_back_what_its_own_dates_and_status_say_is_not_current
+    description: >
+      Decision 53's phase C rules on a club notice, one row each: a stated
+      end date already past holds the notice back with that reason, and
+      USFS R06's 'Active' or CDPR's 'Full Closure' beside it is never read
+      as closed now; the same status before its end, or with none, closes
+      the trail; a status the source uses for not current (CDPR's OPEN)
+      holds it; an unlisted status (Partial Closure) is a warning nobody
+      reviewed; a rescinded order is held; a notice its club files under
+      warnings never closes a trail; place is the source's own geometry or
+      nothing, its locality its own words; the title's entities are read
+      as Python's html.unescape reads them; the edit stamp is printed in
+      UTC; a row with no id of its own is named by its key. The status
+      seed is mocked as the seed file is
+      (tests/test_dbt_closures_club_notices.py).
+    model: int_closures__club_notices
+    given:
+      - input: ref('int_closures__club_notices_unioned')
+        rows:
+          - {notice_key: 'k01', source_key: 'usfs_r06_fire_closure_lines', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: '2001-06-01 07:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'g01', title: 'Fixture Fire Area Closure', status: 'Active'}
+          - {notice_key: 'k02', source_key: 'usfs_r06_fire_closure_lines', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: '2999-12-31 07:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'g02', title: 'Fixture Fire Area Closure', status: 'Active'}
+          - {notice_key: 'k03', source_key: 'usfs_r06_fire_closure_lines', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'g03', title: 'Fixture Fire Area Closure', status: 'Active'}
+          - {notice_key: 'k04', source_key: 'cdpr_park_unit_status', club: 'cdpr', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: '2001-01-15 08:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'c04', title: 'Fixture State Park', status: 'Full Closure'}
+          - {notice_key: 'k05', source_key: 'cdpr_park_unit_status', club: 'cdpr', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'c05', title: 'Fixture State Park', status: 'OPEN'}
+          - {notice_key: 'k06', source_key: 'cdpr_park_unit_status', club: 'cdpr', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'c06', title: 'Fixture State Park', status: 'Partial Closure'}
+          - {notice_key: 'k07', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: '2999-12-31 07:00:00+00', rescinded_at: '2001-03-01 07:00:00+00', source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'o07', title: 'Fixture Forest Order', status: null}
+          - {notice_key: 'k08', source_key: 'tdec_trail_closures', club: 'tdec', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 't08', title: 'Fixture Trail', status: 'Temporarily Closed'}
+          - {notice_key: 'k09', source_key: 'ncta_trail_alerts', club: 'ncta', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: '2026-09-21 14:13:20+00', source_url: null, locality: 'CR-17 to Fixture Beach', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '9', title: 'Trail Alert: CR&#8211;17 to Fixture Beach', status: null}
+          - {notice_key: 'k10', source_key: 'ncta_trail_alerts', club: 'ncta', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Point","coordinates":[-76.5,42.4]}', _loaded_at: '2026-10-03 00:00:00+00', source_id: '10', title: 'Trail Alert: Fixture Road', status: null}
+          - {notice_key: 'k11', source_key: 'ncta_trail_alerts', club: 'ncta', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: null, title: 'Trail Alert: no id', status: null}
+      - input: ref('notice_status_values')
+        rows:
+          - {source_key: 'usfs_r06_fire_closure_points', status_value: 'Active', reads_as: 'closes_trail', why: 'An active fire closure order: the area, line or point is closed (the extraction keeps only ClosureStatus ''Active'')'}
+          - {source_key: 'usfs_r06_fire_closure_lines', status_value: 'Active', reads_as: 'closes_trail', why: 'As usfs_r06_fire_closure_points'}
+          - {source_key: 'usfs_r06_fire_closure_areas', status_value: 'Active', reads_as: 'closes_trail', why: 'As usfs_r06_fire_closure_points'}
+          - {source_key: 'usfs_r01_kootenai_inaccessible', status_value: 'Inaccessible', reads_as: 'closes_trail', why: 'The one value the inventory read, on a road and trail status layer: a line nobody can get through'}
+          - {source_key: 'usfs_rec_opportunities_status', status_value: 'open', reads_as: 'not_current', why: 'Kept out at extraction too (`where` openstatus NOT IN (''open'', ''none''))'}
+          - {source_key: 'usfs_rec_opportunities_status', status_value: 'none', reads_as: 'not_current', why: 'As above'}
+          - {source_key: 'nps_grca_closures', status_value: 'Closed', reads_as: 'closes_trail', why: 'The sample row: ''River Trail'', status Closed, ''Closed until further notice'''}
+          - {source_key: 'nps_yell_bear_management_areas', status_value: 'Closed', reads_as: 'closes_trail', why: 'A bear management area''s seasonal closure, read inside its ClosureDate_Begin to ClosureDate_End'}
+          - {source_key: 'grsm_trails_access', status_value: 'Closed', reads_as: 'closes_trail', why: 'ACCESS Closed 12 of 549 (the row''s notes): closed trails'}
+          - {source_key: 'grsm_trails_access', status_value: 'Open', reads_as: 'not_current', why: 'Kept out at extraction too (`where` ACCESS <> ''Open'')'}
+          - {source_key: 'usace_sam_closed_rec_areas', status_value: 'Closed', reads_as: 'closes_trail', why: '''TRAIL SECTION CLOSED'', Laurel Ridge Trail (the row''s notes)'}
+          - {source_key: 'usace_sam_closed_rec_areas', status_value: 'Temporary Closure', reads_as: 'closes_trail', why: 'One of projectAreaStatus''s four values (the row''s notes)'}
+          - {source_key: 'usace_sam_closed_rec_areas', status_value: 'Open', reads_as: 'not_current', why: 'One of projectAreaStatus''s four values: nothing to tell a hiker'}
+          - {source_key: 'cdpr_park_unit_status', status_value: 'Full Closure', reads_as: 'closes_trail', why: 'A park unit closed whole; read only before its StatusReopenDate (phase C''s rule on CDPR)'}
+          - {source_key: 'cdpr_park_unit_status', status_value: 'OPEN', reads_as: 'not_current', why: 'OPEN 246 of 281 (the row''s notes)'}
+          - {source_key: 'king_county_parks_alerts_points', status_value: 'Full Closure', reads_as: 'closes_trail', why: 'AlertType''s closure value; Closure with Detour and Intermittent Closure leave a way through, so they stay warnings'}
+          - {source_key: 'king_county_parks_alerts_lines', status_value: 'Full Closure', reads_as: 'closes_trail', why: 'As king_county_parks_alerts_points'}
+          - {source_key: 'king_county_parks_alerts_areas', status_value: 'Full Closure', reads_as: 'closes_trail', why: 'As king_county_parks_alerts_points'}
+          - {source_key: 'midpen_preserve_access', status_value: 'Closed', reads_as: 'closes_trail', why: 'ACCESS Closed 133 of 195: closed to the public, most of them standing closed areas (the row''s notes)'}
+          - {source_key: 'midpen_preserve_access', status_value: 'Open', reads_as: 'not_current', why: 'ACCESS Open 60 of 195'}
+          - {source_key: 'tdec_trail_closures', status_value: 'Temporarily Closed', reads_as: 'closes_trail', why: 'TRSTAT ''Temporarily Closed'' 21 of 22 (the row''s notes)'}
+          - {source_key: 'tdec_trail_closures', status_value: 'Closed Repairs', reads_as: 'closes_trail', why: 'TRSTAT ''Closed Repairs'' 1 of 22'}
+          - {source_key: 'ctsst_public_hazards_closures', status_value: 'C', reads_as: 'closes_trail', why: 'H_C ''C'' is a closure, ''H'' a hazard (the row''s notes)'}
+          - {source_key: 'fta_fnst_closed_segments', status_value: 'Closed', reads_as: 'closes_trail', why: '3 closed of 745 segments (the row''s notes)'}
+          - {source_key: 'fta_fnst_closed_segments', status_value: 'Open', reads_as: 'not_current', why: 'Kept out at extraction too (`where` Open_Statu <> ''Open'')'}
+          - {source_key: 'njdep_wma_restrictions', status_value: 'Closed', reads_as: 'closes_trail', why: 'TYPE Closed 20 of 206 (the row''s notes), read inside SDATE to EDATE'}
+          - {source_key: 'njdep_park_status', status_value: 'Open', reads_as: 'not_current', why: 'Status Open 51 of 53; the two Closed rows are historic houses, park-level and never trail-level, so Closed is not read as closing a trail'}
+          - {source_key: 'njdep_fire_danger', status_value: 'N', reads_as: 'not_current', why: 'RECFIRE_RESTRICTION ''N'' on all 3 divisions: a warning only when a restriction is set (the row''s notes)'}
+          - {source_key: 'ct_deep_property_access_status', status_value: 'Open', reads_as: 'not_current', why: 'STATUS Open 384 of 385 access points'}
+          - {source_key: 'wa_rco_trailhead_status', status_value: 'open', reads_as: 'not_current', why: 'trailhead_status open 89 of 202'}
+          - {source_key: 'cdtc_alert_points', status_value: 'No', reads_as: 'not_current', why: 'Active No: the club''s own flag says the alert is not current'}
+          - {source_key: 'cdtc_alert_lines', status_value: 'No', reads_as: 'not_current', why: 'As cdtc_alert_points'}
+          - {source_key: 'cdtc_area_closures', status_value: 'No', reads_as: 'not_current', why: 'As cdtc_alert_points'}
+          - {source_key: 'cdtc_reroutes', status_value: 'No', reads_as: 'not_current', why: 'Active No 22 of 30 (the row''s notes)'}
+          - {source_key: 'wi_dnr_park_closures', status_value: 'No', reads_as: 'not_current', why: 'Active_Flag No: Wisconsin DNR''s own flag (every row read Yes on 2026-10-03)'}
+          - {source_key: 'iata_trail_conditions', status_value: 'no', reads_as: 'not_current', why: 'posted no 57 of 80: the club has not posted it (the row''s notes)'}
+          - {source_key: 'iata_trail_conditions', status_value: 'pending', reads_as: 'not_current', why: 'posted pending 2 of 80: not yet posted'}
+          - {source_key: 'utah_ffsl_fire_restrictions', status_value: 'Rescinded', reads_as: 'not_current', why: 'Kept out at extraction too (`where` Status NOT IN (''Rescinded'', ''Superseded''))'}
+          - {source_key: 'utah_ffsl_fire_restrictions', status_value: 'Superseded', reads_as: 'not_current', why: 'As above'}
+    expect:
+      rows:
+        - {notice_id: 'usfs_r06_fire_closure_lines:g01', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own end date, 2001-06-01, has passed', title: 'Fixture Fire Area Closure', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'usfs_r06_fire_closure_lines:g02', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Fire Area Closure', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'usfs_r06_fire_closure_lines:g03', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Fire Area Closure', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'cdpr_park_unit_status:c04', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own end date, 2001-01-15, has passed', title: 'Fixture State Park', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'cdpr_park_unit_status:c05', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads OPEN, which the source uses for a notice that is not current', title: 'Fixture State Park', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'cdpr_park_unit_status:c06', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture State Park', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'usfs_r03_forest_orders:o07', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own order was rescinded on 2001-03-01', title: 'Fixture Forest Order', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'tdec_trail_closures:t08', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Trail', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'ncta_trail_alerts:9', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Trail Alert: CR–17 to Fixture Beach', locality: 'CR-17 to Fixture Beach', geom_geojson: null, updated_at: '2026-09-21T14:13:20Z'}
+        - {notice_id: 'ncta_trail_alerts:10', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Trail Alert: Fixture Road', locality: null, geom_geojson: '{"type":"Point","coordinates":[-76.5,42.4]}', updated_at: null}
+        - {notice_id: 'ncta_trail_alerts:key-k11', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Trail Alert: no id', locality: null, geom_geojson: null, updated_at: null}
+
+  - name: int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log
+    description: >
+      Decision 53's phase C: every registered notice source gets a gate row
+      without an edit here, and an unregistered key gets none (held back by
+      the marts' inner join, never published unchecked). One whose table the
+      run log never shows the extract running is held with that reason,
+      ahead of any count. A generated club
+      notice source with rows passes; one with none passes only where the
+      latest load read the source's own count of zero; one whose table was
+      never loaded (a leg's ten-a-run limit, or a withdrawn table, read as
+      empty by notice_raw_table) is held; and one the registry holds back is
+      held by int_sources__publication first. ATC's, NYNJTC's and NYS Parks'
+      rows come from the same three inputs.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems, 'atc_trail_update' as notice_kind
+          union all
+          select 'nynjtc_trail_alerts', cast([] as varchar[]), 'nynjtc_trail_alert'
+          union all
+          select 'ourhike_closures', cast([] as varchar[]), 'ourhike_closure'
+          union all
+          select 'club_with_rows', cast([] as varchar[]), 'club_arcgis_layer'
+      - input: ref('int_closures__atc_checked')
+        format: sql
+        rows: |
+          select 0 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": [{}]}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
+          - {source_key: club_with_rows, may_publish: true}
+          - {source_key: club_proven_empty, may_publish: true}
+          - {source_key: club_unproven_empty, may_publish: true}
+          - {source_key: club_never_loaded, may_publish: true}
+          - {source_key: club_never_run, may_publish: true}
+          - {source_key: club_held_by_the_registry, may_publish: false, publication_rule: held_back_by_the_registry}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'loaded', 0, 0
+          union all
+          select '20261003T000000.000000Z', 'raw_a__club_with_rows', 'loaded', 2, 2
+          union all
+          select '20261002T000000.000000Z', 'raw_a__club_proven_empty', 'loaded', 3, 3
+          union all
+          select '20261003T000000.000000Z', 'raw_a__club_proven_empty', 'loaded', 0, 0
+          union all
+          select '20261003T000000.000000Z', 'raw_a__club_unproven_empty', 'loaded', 2, 2
+          union all
+          select '20261003T000000.000000Z', 'raw_a__club_never_loaded', 'incomplete', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_a__club_held_by_the_registry', 'loaded', 1, 1
+          union all
+          select '20261003T000000.000000Z', 'raw_a__club_not_registered', 'loaded', 1, 1
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+          - {source_key: club_with_rows, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_with_rows, staged_by: stg_a__club_with_rows}
+          - {source_key: club_proven_empty, club: a, notice_type: warnings, reader: arcgis_layer, listing: full, raw_table: raw_a__club_proven_empty, staged_by: stg_a__club_proven_empty}
+          - {source_key: club_unproven_empty, club: a, notice_type: closures, reader: page_notice, listing: full, raw_table: raw_a__club_unproven_empty, staged_by: stg_a__club_unproven_empty}
+          - {source_key: club_never_loaded, club: a, notice_type: closures, reader: feed_notices, listing: window, raw_table: raw_a__club_never_loaded, staged_by: stg_a__club_never_loaded}
+          - {source_key: club_held_by_the_registry, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_held_by_the_registry, staged_by: stg_a__club_held_by_the_registry}
+          - {source_key: club_not_registered, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_not_registered, staged_by: stg_a__club_not_registered}
+          - {source_key: club_never_run, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_never_run, staged_by: stg_a__club_never_run}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+          - {source_key: club_with_rows}
+          - {source_key: club_proven_empty}
+          - {source_key: club_unproven_empty}
+          - {source_key: club_never_loaded}
+          - {source_key: club_held_by_the_registry}
+          - {source_key: club_never_run}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select 'club_with_rows' as source_key
+          union all
+          select 'club_with_rows'
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, club: atc, passed: true, held_because: null}
+        - {source_key: nynjtc_trail_alerts, club: nynjtc, rows_total: 1, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, club: nysparks, rows_total: 0, passed: true, held_because: null}
+        - {source_key: ourhike_closures, club: ourhike, passed: true, held_because: null}
+        - {source_key: ourhike_reports, club: ourhike, passed: true, held_because: null}
+        - {source_key: nws_alerts, club: nws, passed: true, held_because: null}
+        - {source_key: 'reference/work_projects.json', club: ourhike, passed: true, held_because: null}
+        - {source_key: club_with_rows, club: a, rows_total: 2, passed: true, held_because: null}
+        - {source_key: club_proven_empty, club: a, rows_total: 0, passed: true, held_because: null}
+        - {source_key: club_unproven_empty, club: a, rows_total: 0, passed: false, held_because: 'club_unproven_empty has no rows, and no count of zero from the source itself backs that, so the read may have broken or not happened yet'}
+        - {source_key: club_never_loaded, club: a, rows_total: 0, passed: false, held_because: 'club_never_loaded has no rows, and no count of zero from the source itself backs that, so the read may have broken or not happened yet'}
+        - {source_key: club_held_by_the_registry, club: a, passed: false, held_because: 'int_sources__publication holds club_held_by_the_registry back (held_back_by_the_registry)'}
+        - {source_key: club_never_run, club: a, rows_total: 0, passed: false, held_because: 'the run log shows no run of raw_a__club_never_run, so nothing says club_never_run was read'}

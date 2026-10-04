@@ -2,8 +2,11 @@
 -- from (pipeline/ELT.md, "The eleven marts"), one row each, by name: ATC's
 -- reviewed Trail Updates and the ones ATC posted since that review which
 -- publish without a person, NYNJTC's Trail Alerts, NYS Parks' temporary
--- closed areas and OurHike's own verified closures. Nothing is filtered here
--- but ATC's refused automatic rows (their branch says why). Each branch keeps
+-- closed areas, OurHike's own verified closures, and every other club's
+-- notice its club files under closures (int_closures__club_notices, decision
+-- 53's phase C; a club's warnings.py notices are int_warnings__unioned's).
+-- Nothing is filtered here but ATC's refused automatic rows (their branch
+-- says why). Each branch keeps
 -- its source's own words and adds what the split needs:
 --
 --   obstructs_trail  whether a hiker is stopped from walking through, as the
@@ -19,6 +22,11 @@
 --                    `not_reviewed` (NYNJTC, unread by anyone here).
 --   problems         why a row cannot publish, from its source's checks;
 --                    int_closures__gate holds back a source with any.
+--   notice_held_because
+--                    why one club notice may not publish as current (its own
+--                    end date passed, its own status says not current), set
+--                    only on the club notices' branch; the finals leave such
+--                    a row out and the gate does not hold its source for it.
 --
 -- `notice_id` is `<source key>:<the source's own id>` (features/ORG_NOTICES.md
 -- §2, the form nynjtc_alerts.json already publishes), and the marts' keys are
@@ -46,6 +54,11 @@ oprhp as (
 
 ourhike as (
     select * from {{ ref('int_closures__ourhike_checked') }}
+),
+
+club_notices as (
+    select * from {{ ref('int_closures__club_notices') }}
+    where notice_type = 'closures'
 )
 
 -- `union all by name` matches the branches' columns by name, and a branch
@@ -182,3 +195,29 @@ select
     problems,
     _loaded_at
 from ourhike
+
+union all by name
+
+-- Every generated club notice source's closures-type notices (decision 53,
+-- phase C): `obstructs_trail` is true only where the source's own status
+-- says closed and its own end has not passed, and null otherwise, so most
+-- land in warnings as not reviewed (decision 7).
+select
+    notice_id,
+    source_row_key,
+    notice_kind,
+    club,
+    source_key,
+    obstructs_trail,
+    review_state,
+    title,
+    category,
+    locality,
+    source_edited_at,
+    updated_at,
+    source_url,
+    geom_geojson,
+    held_because as notice_held_because,
+    cast([] as varchar[]) as problems,
+    _loaded_at
+from club_notices

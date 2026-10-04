@@ -33,6 +33,16 @@
 --   reference/work_projects.json
 --                         a file that did not land as one row, a file nobody
 --                         reviewed, then any of file_problems()'s problems
+--   every generated club  no rows, unless the run that last loaded its table
+--   notice source         read a count of zero from the source itself (the
+--                         dlt skill's rule 4: an allowed zero needs the
+--                         upstream's own count). A table a leg withdrew or
+--                         has not loaded reads as no rows (macros/notices.sql's
+--                         notice_raw_table), so it is held here, never read
+--                         as nothing closed. One row that may not publish
+--                         as current (int_closures__club_notices'
+--                         `held_because`, an ended or inactive notice) holds
+--                         that row back and not its source
 -- and, before any of those, a source int_sources__publication does not let
 -- publish, or has no row for. A non-finite number is held because
 -- write_document()'s allow_nan=False refuses it: JSON.parse on a phone
@@ -42,11 +52,22 @@
 -- The test below warns rather than fails, because failing the build would
 -- hold back every source for one.
 --
--- THE SOURCE LIST IS TYPED BY HAND, one row per branch of
--- int_closures__unioned and one per other conditions file, so a source with
--- no rows today still gets its answer. A branch added there without a row
--- here has no gate row, and the marts' inner join drops it: held back, never
--- published unchecked.
+-- THE REGISTERED SOURCES COME FROM THE REGISTRY AND THE RUN LOG (decision
+-- 53, phase C): one row for every sources.json key that
+-- seeds/notice_readers.csv names as a closures or warnings resource
+-- (generate_notice_models.py writes it from the extract's own declarations),
+-- so a source registered in a club's closures.py or warnings.py gets its
+-- answer without an edit here, and one with no rows still gets one. The run
+-- log says whether the extract has run its raw table, in any outcome: one
+-- it never ran is held with that reason, never read as nothing closed, and
+-- publish.py names it rather than refusing over a missing row. ATC's,
+-- NYNJTC's and NYS Parks' rows come this way too. FOUR ROWS STAY TYPED:
+-- OurHike's closures and reports, NWS's alerts and
+-- reference/work_projects.json have no sources.json row
+-- (unregistered_publishing_sources), and their raw tables are named for the
+-- extract's own keys (`closures`, `reports`, `alerts`), not for these. A
+-- notice whose source has no row here is dropped by the marts' inner join:
+-- held back, never published unchecked.
 with notices as (
     select * from {{ ref('int_closures__unioned') }}
 ),
@@ -171,15 +192,80 @@ work_projects as (
     from work_projects_rows
 ),
 
+readers as (
+    select * from {{ ref('notice_readers') }}
+),
+
+runs as (
+    select * from {{ ref('base_extract__runs') }}
+),
+
+registry as (
+    select source_key from {{ ref('stg_registry__sources') }}
+),
+
+club_notices as (
+    select * from {{ ref('int_closures__club_notices') }}
+),
+
+-- Every registered notice source. `is_generated` marks the ones
+-- generate_notice_models.py stages, which the club-notice checks read;
+-- `ran` whether the run log shows the extract running its table at all.
+registered_sources as (
+    select
+        readers.source_key,
+        any_value(readers.club) as club,
+        bool_or(readers.staged_by != 'hand') as is_generated,
+        bool_or(readers.raw_table in (select runs.table_name from runs))
+            as ran,
+        any_value(readers.raw_table) as raw_table
+    from readers
+    inner join registry on readers.source_key = registry.source_key
+    group by readers.source_key
+),
+
+-- Whether the latest load of each table read none beside the source's own
+-- count of none.
+latest_loads as (
+    select
+        table_name,
+        arg_max(rows_loaded = 0 and count_proof = 0, run_id) as proven_empty
+    from runs
+    where outcome = 'loaded'
+    group by table_name
+),
+
+-- Whether the latest load of each generated source's table read the
+-- source's own count of zero: the one proof an empty notice table may stand.
+club_loads as (
+    select
+        readers.source_key,
+        coalesce(
+            bool_and(latest_loads.proven_empty), false
+        ) as proven_empty
+    from readers
+    left join latest_loads on readers.raw_table = latest_loads.table_name
+    where readers.staged_by != 'hand'
+    group by readers.source_key
+),
+
 gated_sources as (
     select
+        source_key,
+        club,
+        is_generated,
+        ran,
+        raw_table
+    from registered_sources
+    union all
+    select
         gated.source_key,
-        gated.club
+        gated.club,
+        false as is_generated,
+        true as ran,
+        cast(null as varchar) as raw_table
     from (
         values
-        ('atc_trail_updates', 'atc'),
-        ('nynjtc_trail_alerts', 'nynjtc'),
-        ('oprhp_trail_closures', 'nysparks'),
         ('ourhike_closures', 'ourhike'),
         ('ourhike_reports', 'ourhike'),
         ('nws_alerts', 'nws'),
@@ -187,12 +273,22 @@ gated_sources as (
     ) as gated (source_key, club)
 ),
 
+-- A generated source's rows are counted where all of them are, both types
+-- together; int_closures__unioned holds only its closures-type ones.
 counts as (
     select
         source_key,
         count(*) as rows_total,
         count(*) filter (where len(problems) > 0) as rows_invalid
     from notices
+    where source_key not in (select club_notices.source_key from club_notices)
+    group by source_key
+    union all
+    select
+        source_key,
+        count(*) as rows_total,
+        0 as rows_invalid
+    from club_notices
     group by source_key
 ),
 
@@ -267,6 +363,19 @@ judged as (
                     || atc_document.updates_listed || ' updates and '
                     || atc_rows.rows_total || ' landed as rows, so the two '
                     || 'landings are of different files'
+            when not gated_sources.ran
+                then
+                    'the run log shows no run of ' || gated_sources.raw_table
+                    || ', so nothing says ' || gated_sources.source_key
+                    || ' was read'
+            when
+                gated_sources.is_generated
+                and coalesce(counts.rows_total, 0) = 0
+                and not coalesce(club_loads.proven_empty, false)
+                then
+                    gated_sources.source_key || ' has no rows, and no count '
+                    || 'of zero from the source itself backs that, so the '
+                    || 'read may have broken or not happened yet'
             when
                 gated_sources.source_key = 'nynjtc_trail_alerts'
                 and coalesce(counts.rows_total, 0) = 0
@@ -319,6 +428,7 @@ judged as (
     cross join nws_alerts
     cross join work_projects
     left join counts on gated_sources.source_key = counts.source_key
+    left join club_loads on gated_sources.source_key = club_loads.source_key
     left join publication
         on gated_sources.source_key = publication.source_key
 )

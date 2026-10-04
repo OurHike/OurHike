@@ -100,7 +100,8 @@ seeds:
       staging model that stages it (`hand` for ATC's, NYNJTC's, NYS Parks',
       OurHike's and NWS's, which have their own). Written by
       pipeline/generate_notice_models.py from extract/_contract.py's
-      discover().
+      discover(); int_closures__gate reads its sources from it, the registry
+      and the run log.
     config:
       column_types:
         source_key: varchar

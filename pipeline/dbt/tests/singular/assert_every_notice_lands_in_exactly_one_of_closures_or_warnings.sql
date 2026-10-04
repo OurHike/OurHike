@@ -10,14 +10,32 @@
 -- contain. The test reads the union joined to the passing sources, not the
 -- whole union. Returns one row per notice that lands in no mart, in both, or
 -- in a mart it should not.
-with notices as (
+--
+-- THE CLUB NOTICES (decision 53, phase C) are counted as they land: a
+-- closures-type one through int_closures__unioned like any notice, unless
+-- its own end date or status holds it back (`notice_held_because`), which
+-- lands it in neither; and a warnings-type one through int_warnings__unioned,
+-- which only the warnings mart takes.
+with passing as (
+    select gate.source_key
+    from {{ ref('int_closures__gate') }} as gate
+    inner join {{ ref('int_sources__publication') }} as publishable
+        on gate.source_key = publishable.source_key
+    where gate.passed and publishable.may_publish
+),
+
+notices as (
     select notices.notice_id
     from {{ ref('int_closures__unioned') }} as notices
-    inner join {{ ref('int_closures__gate') }} as gate
-        on notices.source_key = gate.source_key
-    inner join {{ ref('int_sources__publication') }} as publishable
-        on notices.source_key = publishable.source_key
-    where gate.passed and publishable.may_publish
+    inner join passing on notices.source_key = passing.source_key
+    where notices.notice_held_because is null
+    union all
+    select warning_notices.notice_id
+    from {{ ref('int_warnings__unioned') }} as warning_notices
+    inner join passing on warning_notices.source_key = passing.source_key
+    where
+        starts_with(warning_notices.notice_kind, 'club_')
+        and warning_notices.notice_held_because is null
 ),
 
 landed as (

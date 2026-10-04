@@ -25,9 +25,16 @@
 --   Features collection (`gis_file`, `ogc_features`, decision 54's waves 2
 --   and 3: a club's own KML, GPX or GeoJSON on a public URL is a GIS layer
 --   it publishes, Reasoned), or a source with no `kind`, which the fetcher
---   reads as an ArcGIS layer. A JSON API's items (`json_features`), a
---   photo, audio or page source is refused (rule 6): whether a website's
---   own map route is a GIS endpoint is the maintainer's to say.
+--   reads as an ArcGIS layer. Decision 69 (the maintainer's poll,
+--   2026-10-04) extends it to the points a club prints on its own public
+--   web page or PDF, and to the route its own website's map reads them
+--   from: `page_points`, `pdf_points` and `json_features`, published as
+--   facts only (name, kind, the fix as the page states it, mile), credited
+--   and linked, none of the page's prose. That these kinds carry a club's
+--   own points and no prose is held in tests/test_organizations.py, since
+--   no model here knows an organization's type. A photo, audio, hike-list,
+--   notice or other page source is still refused (rule 6): the
+--   presumption does not reach prose.
 -- - RULE 5: restrictive words that no decision answers. Read from the row's
 --   own fields: the words it quotes (`terms`, and `terms_verbatim` where a
 --   row carries the whole text), its `licence_basis`, and the decisions and
@@ -35,11 +42,16 @@
 --   phrase, each with the row it was written from:
 --     licence_restriction_phrases  which restriction a phrase is:
 --                                  commercial, no_reuse, permission,
---                                  purpose_limited, condition,
+--                                  purpose_limited, condition, conduct
+--                                  (a site's bar on disruptive or
+--                                  malicious use, decision 75),
 --                                  cannot_be_met, or not_a_restriction (a
 --                                  warranty, liability, accuracy or credit
 --                                  line, cut out first so its words never
---                                  count); and `unclassified`, the backstop
+--                                  count: decision 71 reads a hold-harmless
+--                                  or indemnity clause as one, decision 72
+--                                  "at your own risk" and "may be out of
+--                                  date"); and `unclassified`, the backstop
 --     licence_restriction_answers  which decision answers a restriction on
 --                                  which basis, and the words a row's
 --                                  `licence` names it by
@@ -69,6 +81,14 @@
 --   what those 95 texts needed, and its coverage of a wording nobody has
 --   read is what the backstop is for; what would show it too loose is a
 --   restriction a person finds in a row this rule passed.
+--   Re-measured 2026-10-04 on the registry after decisions 69 to 75, 670
+--   rows, with the seeds' patterns run in DuckDB over sources.json as these
+--   CTEs run them (a reproduction, not a dbt run): 424 quote words; 149
+--   carry a restriction; 77 are unanswered, every one held by its own
+--   `reaches_hikers`. The answers took three off that list: OHTA's
+--   copyright footer (decision 69), FMST's "updated only when" (decision
+--   72) and IN.gov's clause on bots (decision 75). Decision 71 moved no
+--   verdict: rule 5 already read a hold-harmless line as a liability line.
 --
 -- ONE ROW IS NOT IN THE REGISTRY. The unregistered_publishing_sources seed
 -- lists the sources an exporter publishes today with no sources.json row,
@@ -256,7 +276,11 @@ decided as (
                     'club_arcgis_layer',
                     'socrata_geojson_layer',
                     'gis_file',
-                    'ogc_features'
+                    'ogc_features',
+                    -- Decision 69: a club's own page, PDF or map route.
+                    'page_points',
+                    'pdf_points',
+                    'json_features'
                 )
                 then 'public_gis_needs_a_gis_endpoint'
             when rule_five.unanswered_restrictions is not null

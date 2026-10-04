@@ -769,7 +769,7 @@ unit_tests:
           - {source_key: 'usfs_rec_sites', poi_key: 'c-n-20', source_row: 0, geom: 'POINT (-71.3 44.2)', properties: '{"objectid": 20, "site_name": "Fixture Notch Trailhead", "site_type": "TRAILHEAD", "recarea_name": "Fixture National Forest"}'}
           - {source_key: 'usfs_rec_sites', poi_key: 'c-n-21', source_row: 1, geom: 'POINT (-71.3 44.21)', properties: '{"objectid": 21, "site_name": "Fixture Lookout", "site_type": "OBSERVATION SITE", "recarea_name": null}'}
           - {source_key: 'nyc_drinking_fountains', poi_key: 'c-n-22', source_row: 0, geom: 'POINT (-73.97 40.77)', properties: '{"_socrata_id": "row-abc", "propertyna": "Fixture Park"}'}
-      - input: ref('poi_sources')
+      - input: ref('int_points_of_interest__sources')
         rows:
           - {source_key: 'shelters', file_order: '1', club: 'atc', source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}
           - {source_key: 'campsites', file_order: '2', club: 'atc', source: 'atc_campsites', phone_files: 'poi_by_type', trail_id: 'AT', id_field: 'GlobalID', name_field: 'Name', type_field: null, poi_type: null, confidence: null, unified: null}

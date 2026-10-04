@@ -9,12 +9,19 @@ version: 2
 seeds:
   - name: layer_rules
     description: >
-      One row per rule a registered layer carries beyond its key: `historic_alignment` (the whole
-      layer is an alignment, not tread: it never routes and never draws as a trail a hiker can
-      walk), `winter_trail` (the whole layer is seasonal and draws only with that said), and
-      `drop_where` (its rows whose `field`, by dlt's name in the row's `properties`, equals
-      `matches` are left out, such as the public roads a trail layer carries). `evidence` says what
-      the rule rests on, mostly the layer's own sources.json notes.
+      One row per rule a registered layer carries beyond its key. For trail lines
+      (int_trail_lines__club_lines): `historic_alignment` (the whole layer is an alignment, not
+      tread: it never routes and never draws as a trail a hiker can walk) and `winter_trail` (the
+      whole layer is seasonal and draws only with that said). For trail lines and points of
+      interest: `drop_where` (its rows whose `field`, by dlt's name in the row's `properties`,
+      equals `matches` are left out, such as the public roads a trail layer carries or a proposed
+      trailhead). For points of interest only (int_points_of_interest__club_points), each matched
+      case-insensitively: `drop_where_contains` (left out where the field's text contains
+      `matches`, a status written into a name), `keep_only_where` (left out unless the field equals
+      one of the layer's rows' `matches` for that field, such as USFWS's Public_Use), `drop_layer`
+      (every row left out: a planning layer) and `not_water` (never typed water, on every row with
+      no field, or where the field equals `matches`). `evidence` says what the rule rests on,
+      mostly the layer's own sources.json notes.
     config:
       column_types:
         source_key: varchar
@@ -23,10 +30,17 @@ seeds:
         matches: varchar
         evidence: varchar
     data_tests:
-      # A row-level rule names its field and value; a layer-wide one names neither.
+      # A row-level rule names its field and value; a layer-wide one names neither; not_water
+      # may be either, never half of one.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "(rule = 'drop_where') = (field is not null and matches is not null)"
+            expression: >-
+              case
+                  when rule in ('drop_where', 'drop_where_contains', 'keep_only_where')
+                      then field is not null and matches is not null
+                  when rule = 'not_water' then (field is null) = (matches is null)
+                  else field is null and matches is null
+              end
     columns:
       - name: source_key
         description: The layer's sources.json key.
@@ -37,16 +51,23 @@ seeds:
                 to: ref('stg_registry__sources')
                 field: source_key
       - name: rule
-        description: historic_alignment, winter_trail or drop_where.
+        description: historic_alignment, winter_trail, drop_where, drop_where_contains, keep_only_where, drop_layer or not_water.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: ['historic_alignment', 'winter_trail', 'drop_where']
+                values:
+                  - historic_alignment
+                  - winter_trail
+                  - drop_where
+                  - drop_where_contains
+                  - keep_only_where
+                  - drop_layer
+                  - not_water
       - name: field
-        description: For drop_where, the row field the rule reads, by dlt's name; null for a layer-wide rule.
+        description: For a row-level rule, the row field it reads, by dlt's name; null for a layer-wide rule.
       - name: matches
-        description: For drop_where, the field's value that leaves a row out; null for a layer-wide rule.
+        description: For a row-level rule, the field's value it matches; null for a layer-wide rule.
       - name: evidence
         description: What the rule rests on, quoted or cited.
         data_tests: [not_null]

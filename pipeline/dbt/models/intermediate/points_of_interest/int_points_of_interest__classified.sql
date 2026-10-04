@@ -23,6 +23,13 @@
 -- asset that is one of DEC's null sentinels (var `poi_null_sentinels`) is
 -- no name.
 --
+-- Decision 54's wave 1 point layers (int_points_of_interest__club_points)
+-- arrive as unified records too: their type, confidence, id and name were
+-- set there from the club_poi_types and layer_rules seeds, and a row a rule
+-- held back carries its reason as `rule_drop_reason`, which is the first
+-- drop reason it gets here. Their layer facts are
+-- int_points_of_interest__sources' rows after the seed's.
+--
 -- Ids are `{source}:{id field's value}`, as lib/poi_schema.py's unify_poi()
 -- mints them (PO04): the poi_sources seed's id field for A.T. POIs, the
 -- sources.json `id_field` (default OBJECTID) for the others.
@@ -31,7 +38,7 @@ with unioned as (
 ),
 
 sources as (
-    select * from {{ ref('poi_sources') }}
+    select * from {{ ref('int_points_of_interest__sources') }}
 ),
 
 registry as (
@@ -252,6 +259,13 @@ select
     cleaned.properties,
     cleaned.entry as registry_entry,
     case
+        -- A wave 1 point a layer_rules row holds back
+        -- (int_points_of_interest__club_points).
+        when
+            cleaned.is_unified
+            and json_extract_string(cleaned.properties, '$.rule_drop_reason')
+            is not null
+            then json_extract_string(cleaned.properties, '$.rule_drop_reason')
         -- unify_all_sources() reads opentrail's icon before it asks
         -- has_geometry(), so an icon that publishes nothing is skipped
         -- uncounted whether or not the row has a geometry

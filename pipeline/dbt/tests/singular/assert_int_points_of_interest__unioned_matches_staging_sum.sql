@@ -11,7 +11,8 @@
 -- branches since stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
 -- seven contracted marts, a monthly refresh, published docs, and lighter
 -- phone downloads (thirteen before it, as assert_int_pois_unioned_matches_
--- staging_sum).
+-- staging_sum), and a twenty-second for decision 54's wave 1 point layers,
+-- which reads every one of them through int_points_of_interest__club_points.
 with expected as (
     select
         (select count(*) from {{ ref('stg_atc__shelters') }})
@@ -42,6 +43,11 @@ with expected as (
         + (
             select count(*) from {{ ref('stg_derived__site_water') }}
             where has_water
+        )
+        -- Decision 54's wave 1 point layers, one branch for all of them.
+        + (
+            select count(*)
+            from {{ ref('int_points_of_interest__club_points') }}
         ) as row_count
 ),
 

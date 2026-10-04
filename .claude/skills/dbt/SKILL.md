@@ -620,7 +620,10 @@ one `stg_<club>__<type>` per folder and type, the type's
 fails when a committed file differs from what it would write. A rule a
 layer needs beyond its key, such as a historic alignment that may not route
 or a road a trail layer carries, is a row of the `layer_rules` seed, read by
-the type's intermediate, never an edit to a generated file. The steps
+the type's intermediate, never an edit to a generated file; a point's POI
+type is a row of the `club_poi_types` seed, an allowlist by the code the
+layer lands, which `int_points_of_interest__club_points` applies, and a
+`layer_rules` hold wins over any mapping. The steps
 below are for everything else.
 
 1. **`staging/<club>/_<club>__sources.yml`** declares every raw table dlt

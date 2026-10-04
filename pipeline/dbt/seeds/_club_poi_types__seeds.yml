@@ -1,0 +1,69 @@
+version: 2
+
+# Which POI type each of decision 54's wave 1 point layers publishes a row as
+# (pipeline/ELT.md, "Loading everything the clubs publish"), one row per value
+# that maps. An allowlist: a value no row names publishes nothing, so a type a
+# person has not read never reaches a phone. A judgement somebody reviews row
+# by row, so it is a seed and not a generated file; the rules that hold a
+# mapped row back anyway (a planned trailhead, a water type that is not
+# water, a closed site, a notice) are layer_rules rows, which win over it.
+seeds:
+  - name: club_poi_types
+    description: >
+      One row per value of a wave 1 point layer's own field that maps to a POI type:
+      int_points_of_interest__club_points types a row by the rows here whose `field` (dlt's name,
+      read from the row's `properties`) equals `value`, case-insensitively and trimmed, or by the
+      layer's one row with neither, which types every row of a layer that is one kind of thing.
+      Values are what the layer lands, so a coded field is matched by its code (IATA's Potability
+      2 is "Treatment required"), each read off the layer's cached metadata of 2026-10-03.
+      `evidence` gives the label and the count from the row's sources.json notes.
+    config:
+      column_types:
+        source_key: varchar
+        field: varchar
+        value: varchar
+        poi_type: varchar
+        confidence: varchar
+        evidence: varchar
+    data_tests:
+      # One value of one field types a row once.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_key, field, value]
+      # A field-level row names its value; a layer-wide row names neither.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(field is null) = (value is null)"
+    columns:
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_registry__sources')
+                field: source_key
+      - name: field
+        description: The row field the type is read from, by dlt's name; null where every row of the layer is the type.
+      - name: value
+        description: The field's value, as the layer lands it, that types a row; null with a null field.
+      - name: poi_type
+        description: The POI type a row with that value publishes as.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('poi_types')
+                field: poi_type
+      - name: confidence
+        description: >
+          `high`, or `low` (the phone's hollow pin: never confirmed to exist) for every water row,
+          none of which reports flow, and for a layer that is stale or a draft by its own notes.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [high, low]
+      - name: evidence
+        description: The value's label and count, from the row's sources.json notes or its cached metadata.
+        data_tests: [not_null]

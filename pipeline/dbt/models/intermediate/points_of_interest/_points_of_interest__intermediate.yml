@@ -27,7 +27,7 @@ models:
           - not_null
           - relationships:
               arguments:
-                to: ref('poi_sources')
+                to: ref('int_points_of_interest__sources')
                 field: source_key
       - name: source_row
         description: >

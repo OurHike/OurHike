@@ -1,9 +1,10 @@
 {{ config(materialized='table') }}
 -- Every staged row of every layer a POI file publishes from, one row each,
 -- unfiltered and unclassified: the A.T. family export_poi.py writes as the
--- eight poi_<type>.geojson files, and the other organizations' layers
--- export_nearby_poi.py writes as nearby_poi.geojson. A row here is not a
--- publishable POI; int_points_of_interest__classified and
+-- eight poi_<type>.geojson files, the other organizations' layers
+-- export_nearby_poi.py writes as nearby_poi.geojson, and decision 54's wave
+-- 1 point layers, which no exporter reads (the last branch). A row here is
+-- not a publishable POI; int_points_of_interest__classified and
 -- int_points_of_interest__publishable decide that.
 --
 -- A ROW IS ITS SOURCE'S PROPERTIES, AS JSON. Each branch keeps its staging
@@ -128,3 +129,31 @@ select
     site._loaded_at
 from {{ ref('stg_derived__site_water') }} as site
 where site.has_water
+union all by name
+-- Decision 54's wave 1 point layers, every row of the clubs' registered
+-- ArcGIS point layers that no exporter reads: int_points_of_interest__
+-- club_points, which types each row from the club_poi_types seed and holds
+-- it back by the layer_rules seed. Each is a record already typed, as the
+-- Long Path guide's are: its layer's own properties with the poi_type,
+-- confidence, published id and name that model set written over them, and
+-- its `rule_drop_reason` where a rule holds it back, which the classifier
+-- reads first. A null member is dropped by json_merge_patch, which is what
+-- a null name or type should be: absent.
+select
+    club.source_key,
+    club.poi_key,
+    cast(null as bigint) as source_row,
+    st_geomfromtext(club.geom_wkt) as geom,
+    json_merge_patch(
+        club.properties,
+        json_object(
+            'id', club.derived_id,
+            'source_id', club.source_id,
+            'name', club.name,
+            'poi_type', club.poi_type,
+            'confidence', club.confidence,
+            'rule_drop_reason', club.rule_drop_reason
+        )
+    ) as properties,
+    club._loaded_at
+from {{ ref('int_points_of_interest__club_points') }} as club

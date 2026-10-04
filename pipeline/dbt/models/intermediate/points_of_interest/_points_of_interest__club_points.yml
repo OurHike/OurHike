@@ -1,0 +1,368 @@
+version: 2
+
+# Decision 54's wave 1 point layers on their way into the points_of_interest
+# family: int_points_of_interest__club_points types each row and applies the
+# rules pipeline/ELT.md's "What wave 1's live reads found that phase C must
+# honour" gives points of interest, each a unit test below, and
+# int_points_of_interest__sources adds the layers to the ones the classifier
+# reads its layer facts from.
+models:
+  - name: int_points_of_interest__club_points
+    description: >
+      Every point of the clubs' registered ArcGIS point layers (int_points_of_interest__club_unioned),
+      with the POI type the club_poi_types seed maps it to, the confidence it ships at, the id it
+      publishes under, and, where a layer_rules row holds it back whatever it maps to, the reason:
+      a water type that is not water, a planned or proposed point, a point that is not public, a
+      notice in a POI layer, a closed site or dispersed camping. int_points_of_interest__unioned
+      reads it as one branch of already-typed records.
+    data_tests:
+      # Water is never high confidence from a wave 1 layer: none reports flow.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "poi_type is distinct from 'water' or confidence = 'low'"
+      # A type and its confidence come together.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(poi_type is null) = (confidence is null)"
+    columns:
+      - name: poi_key
+        description: The point's key, from its base model (decision 40).
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null]
+      - name: club
+        description: The extract folder that landed the layer.
+        data_tests: [not_null]
+      - name: name
+        description: The layer's own name for the point, trimmed; null where it gives none.
+      - name: source_id
+        description: The id the point publishes under within its layer (make_dbt_staging.py's source_id).
+        data_tests: [not_null]
+      - name: derived_id
+        description: "`<source_key>:<source_id>`, the id the point publishes under, as unify_poi() shapes one."
+        data_tests: [not_null, unique]
+      - name: poi_type
+        description: >
+          The POI type exactly one club_poi_types row maps the point to; null where none does, or two
+          disagree.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('poi_types')
+                field: poi_type
+      - name: confidence
+        description: "`low` where any mapping row says so (every water row does), else `high`; null with no type."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [high, low]
+      - name: rule_drop_reason
+        description: >
+          Why a layer_rules row holds the point back, or why its type maps cannot be read; null where
+          nothing does. The classifier makes it the point's first drop reason.
+      - name: geom_wkt
+        description: The point in OGC:CRS84 as WKT; null where the layer gave none.
+      - name: properties
+        description: The point's own columns as JSON, under dlt's names.
+      - name: _loaded_at
+        description: When the extract landed the point.
+  - name: int_points_of_interest__sources
+    description: >
+      Every layer a POI file publishes from: the poi_sources seed's rows (today's exporters' layers),
+      then one per wave 1 point layer, a `nearby_poi` layer of records already typed (`unified`).
+      int_points_of_interest__classified reads its layer facts from here.
+    columns:
+      - name: source_key
+        description: The sources.json key, or opentrail_at or nhd_stream.
+        data_tests: [not_null, unique]
+      - name: file_order
+        description: The seed's reading order, then the wave 1 layers' in source_key order after it.
+        data_tests: [not_null, unique]
+      - name: club
+        description: The extract folder that lands the layer.
+        data_tests: [not_null]
+      - name: source
+        description: What the layer's published ids start with.
+        data_tests: [not_null, unique]
+      - name: phone_files
+        description: "`poi_by_type` or `nearby_poi`; every wave 1 layer is `nearby_poi`."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [poi_by_type, nearby_poi]
+      - name: trail_id
+        description: The trail_id every row of the layer publishes; a wave 1 layer's is its club folder in capitals.
+        data_tests: [not_null]
+      - name: id_field
+        description: The field the layer's ids are read from; `source_id` on a wave 1 layer.
+      - name: name_field
+        description: The field the layer's names are read from; `name` on a wave 1 layer.
+      - name: type_field
+        description: The field a typed layer's rows are typed by; null on a wave 1 layer, typed before the union.
+      - name: poi_type
+        description: The type every row of a derived layer publishes as; null on a wave 1 layer.
+      - name: confidence
+        description: The confidence every row of a derived layer ships at; null on a wave 1 layer.
+      - name: unified
+        description: True for a layer whose rows arrive as typed records (the Long Path guide's, and every wave 1 layer's).
+
+unit_tests:
+  - name: club_points_map_water_only_by_the_potability_field
+    model: int_points_of_interest__club_points
+    description: >
+      A water type is not water (pipeline/ELT.md, "What wave 1's live reads found"): IATA's water
+      layer is water only where its Potability code says so, 1 Potable or 2 Treatment required,
+      and never by its Feature_Type or the "Potable Water" view's name. A Potability 0 'No water'
+      lake maps to nothing; a potable drinking fountain (Feature_Type 11) is plumbing whose seasonal
+      shutoff the layer does not record, and is held back. Every water row ships low.
+    given:
+      - input: ref('int_points_of_interest__club_unioned')
+        rows:
+          - {source_key: 'iata_water', club: 'iata', poi_key: 'iw-1', name: 'Fixture Creek', category: '1', source_id: 'iw-1', geom: 'POINT (-89.5 44.5)', properties: '{"potability": 2, "feature_type": 1, "reliability": 9}'}
+          - {source_key: 'iata_water', club: 'iata', poi_key: 'iw-2', name: 'Fixture Spring', category: '3', source_id: 'iw-2', geom: 'POINT (-89.5 44.51)', properties: '{"potability": 1, "feature_type": 3, "reliability": 1}'}
+          - {source_key: 'iata_water', club: 'iata', poi_key: 'iw-3', name: 'Fixture Pond', category: '2', source_id: 'iw-3', geom: 'POINT (-89.5 44.52)', properties: '{"potability": 0, "feature_type": 2, "reliability": 9}'}
+          - {source_key: 'iata_water', club: 'iata', poi_key: 'iw-4', name: 'Fixture Fountain', category: '11', source_id: 'iw-4', geom: 'POINT (-89.5 44.53)', properties: '{"potability": 1, "feature_type": 11, "reliability": 2}'}
+          - {source_key: 'iata_water', club: 'iata', poi_key: 'iw-5', name: 'Fixture Unknown', category: '99', source_id: 'iw-5', geom: 'POINT (-89.5 44.54)', properties: '{"potability": 9, "feature_type": 99, "reliability": 9}'}
+      - input: ref('club_poi_types')
+        rows:
+          - {source_key: 'iata_water', field: 'potability', value: '1', poi_type: 'water', confidence: 'low', evidence: 'Potability 1 Potable'}
+          - {source_key: 'iata_water', field: 'potability', value: '2', poi_type: 'water', confidence: 'low', evidence: 'Potability 2 Treatment required'}
+      - input: ref('layer_rules')
+        rows:
+          - {source_key: 'iata_water', rule: 'not_water', field: 'potability', matches: '0', evidence: 'No water'}
+          - {source_key: 'iata_water', rule: 'not_water', field: 'feature_type', matches: '11', evidence: 'drinking fountain'}
+    expect:
+      rows:
+        - {poi_key: 'iw-1', poi_type: 'water', confidence: 'low', rule_drop_reason: null, derived_id: 'iata_water:iw-1'}
+        - {poi_key: 'iw-2', poi_type: 'water', confidence: 'low', rule_drop_reason: null, derived_id: 'iata_water:iw-2'}
+        - {poi_key: 'iw-3', poi_type: null, confidence: null, rule_drop_reason: null, derived_id: 'iata_water:iw-3'}
+        - {poi_key: 'iw-4', poi_type: 'water', confidence: 'low', rule_drop_reason: 'layer_rules not_water: feature_type is 11', derived_id: 'iata_water:iw-4'}
+        - {poi_key: 'iw-5', poi_type: null, confidence: null, rule_drop_reason: null, derived_id: 'iata_water:iw-5'}
+
+  - name: club_points_never_type_a_water_name_as_water
+    model: int_points_of_interest__club_points
+    description: >
+      A water type is not water, whatever a type map says (pipeline/ELT.md, "What wave 1's live
+      reads found"): a not_water rule wins over a club_poi_types row that would make the point water.
+      GNIS's springs are names on a map and CDTC's caches can be empty (layer-wide rules); PA DCNR's
+      'Potable Water' buildings are plumbing while its trail shelters stay shelters; BLM's
+      water-based sites hold its firefighting 'Staging Area' while its toilets stay privies; and an
+      NJDEP point named 'NonFunctional' is left out whatever it is.
+    given:
+      - input: ref('int_points_of_interest__club_unioned')
+        rows:
+          - {source_key: 'usgs_gnis_springs', club: 'usgs_tnm', poi_key: 'gn-1', name: 'Fixture Spring', category: null, source_id: 'gn-1', geom: 'POINT (-105 39)', properties: '{"gaz_id": 1, "county_name": "Fixture"}'}
+          - {source_key: 'cdtc_water_caches', club: 'cdtc', poi_key: 'wc-1', name: 'Fixture Cache', category: null, source_id: 'wc-1', geom: 'POINT (-108 32)', properties: '{"name": "Fixture Cache"}'}
+          - {source_key: 'pasda_state_park_buildings', club: 'pasda', poi_key: 'pa-1', name: 'Fixture Well House', category: 'Potable Water', source_id: '{PA-1}', geom: 'POINT (-79 40)', properties: '{"use1": "Potable Water"}'}
+          - {source_key: 'pasda_state_park_buildings', club: 'pasda', poi_key: 'pa-2', name: 'Fixture Shelter', category: 'Trail Shelter', source_id: '{PA-2}', geom: 'POINT (-79 40.01)', properties: '{"use1": "Trail Shelter"}'}
+          - {source_key: 'blm_recreation_sites', club: 'blm', poi_key: 'bl-1', name: 'Fixture Staging', category: '2', source_id: '{BL-1}', geom: 'POINT (-115 40)', properties: '{"fet_type": 2, "fet_subtype": "Staging Area"}'}
+          - {source_key: 'blm_recreation_sites', club: 'blm', poi_key: 'bl-2', name: 'Fixture Toilet', category: '5', source_id: '{BL-2}', geom: 'POINT (-115 40.01)', properties: '{"fet_type": 5, "fet_subtype": "Toilet"}'}
+          - {source_key: 'nj_open_space_points_of_interest', club: 'njgin', poi_key: 'nj-1', name: 'Potable Water NOTE NonFunctional', category: 'Water', source_id: '{NJ-1}', geom: 'POINT (-74.5 41)', properties: '{"feature_type": "Water", "feature_name": "Potable Water NOTE NonFunctional"}'}
+      - input: ref('club_poi_types')
+        rows:
+          - {source_key: 'usgs_gnis_springs', field: null, value: null, poi_type: 'water', confidence: 'low', evidence: 'a mapping somebody might write'}
+          - {source_key: 'cdtc_water_caches', field: null, value: null, poi_type: 'water', confidence: 'low', evidence: 'a mapping somebody might write'}
+          - {source_key: 'pasda_state_park_buildings', field: 'use1', value: 'Potable Water', poi_type: 'water', confidence: 'low', evidence: 'a mapping somebody might write'}
+          - {source_key: 'pasda_state_park_buildings', field: 'use1', value: 'Trail Shelter', poi_type: 'shelter', confidence: 'high', evidence: 'Trail Shelter'}
+          - {source_key: 'blm_recreation_sites', field: 'fet_subtype', value: 'Staging Area', poi_type: 'water', confidence: 'low', evidence: 'a mapping somebody might write'}
+          - {source_key: 'blm_recreation_sites', field: 'fet_type', value: '5', poi_type: 'privy', confidence: 'high', evidence: 'TOILET'}
+          - {source_key: 'nj_open_space_points_of_interest', field: 'feature_type', value: 'Water', poi_type: 'water', confidence: 'low', evidence: 'a mapping somebody might write'}
+      - input: ref('layer_rules')
+        rows:
+          - {source_key: 'usgs_gnis_springs', rule: 'not_water', field: null, matches: null, evidence: 'a name on a map'}
+          - {source_key: 'cdtc_water_caches', rule: 'not_water', field: null, matches: null, evidence: 'a cache can be empty'}
+          - {source_key: 'pasda_state_park_buildings', rule: 'not_water', field: 'use1', matches: 'Potable Water', evidence: 'plumbing'}
+          - {source_key: 'blm_recreation_sites', rule: 'not_water', field: 'fet_type', matches: '2', evidence: 'firefighting water'}
+          - {source_key: 'nj_open_space_points_of_interest', rule: 'drop_where_contains', field: 'feature_name', matches: 'NonFunctional', evidence: 'the status lives in the name'}
+    expect:
+      rows:
+        - {poi_key: 'gn-1', poi_type: 'water', rule_drop_reason: 'layer_rules not_water: the whole layer'}
+        - {poi_key: 'wc-1', poi_type: 'water', rule_drop_reason: 'layer_rules not_water: the whole layer'}
+        - {poi_key: 'pa-1', poi_type: 'water', rule_drop_reason: 'layer_rules not_water: use1 is Potable Water'}
+        - {poi_key: 'pa-2', poi_type: 'shelter', rule_drop_reason: null}
+        - {poi_key: 'bl-1', poi_type: 'water', rule_drop_reason: 'layer_rules not_water: fet_type is 2'}
+        - {poi_key: 'bl-2', poi_type: 'privy', rule_drop_reason: null}
+        - {poi_key: 'nj-1', poi_type: 'water', rule_drop_reason: 'layer_rules drop_where_contains: feature_name contains NonFunctional'}
+
+  - name: club_points_never_render_a_planned_or_proposed_point
+    model: int_points_of_interest__club_points
+    description: >
+      Planned and proposed points are not built (pipeline/ELT.md, "What wave 1's live reads
+      found"): NPS's POISTATUS 'Planned', Alaska Trails' Status 'Proposed' and the Cumberland Trail's
+      'Trailhead Proposed' are held back while their built neighbours ship, and every point of SBTS's
+      planning layer is held back whatever it maps to.
+    given:
+      - input: ref('int_points_of_interest__club_unioned')
+        rows:
+          - {source_key: 'nps_points_of_interest', club: 'nps_poi', poi_key: 'np-1', name: 'Fixture Trailhead', category: 'Trailhead', source_id: 'g-1', geom: 'POINT (-110 44)', properties: '{"poitype": "Trailhead", "poistatus": "Planned"}'}
+          - {source_key: 'nps_points_of_interest', club: 'nps_poi', poi_key: 'np-2', name: 'Fixture Trailhead 2', category: 'Trailhead', source_id: 'g-2', geom: 'POINT (-110 44.01)', properties: '{"poitype": "Trailhead", "poistatus": "Existing"}'}
+          - {source_key: 'nps_points_of_interest', club: 'nps_poi', poi_key: 'np-3', name: 'Fixture Trailhead 3', category: 'Trailhead', source_id: 'g-3', geom: 'POINT (-110 44.02)', properties: '{"poitype": "Trailhead", "poistatus": null}'}
+          - {source_key: 'alaska_trails_access_points', club: 'alaska_trails', poi_key: 'ak-1', name: 'Fixture Access', category: 'Trailhead', source_id: 'ak-1', geom: 'POINT (-149 61)', properties: '{"accesstype": "Trailhead", "status": "Proposed"}'}
+          - {source_key: 'alaska_trails_access_points', club: 'alaska_trails', poi_key: 'ak-2', name: 'Fixture Access 2', category: 'Trailhead', source_id: 'ak-2', geom: 'POINT (-149 61.01)', properties: '{"accesstype": "Trailhead", "status": "Exists"}'}
+          - {source_key: 'cumberland_trail_trailheads', club: 'cumberland', poi_key: 'ct-1', name: 'Fixture Proposed', category: 'Trailhead Proposed', source_id: 'ct-1', geom: 'POINT (-84.5 36)', properties: '{"status": "Trailhead Proposed"}'}
+          - {source_key: 'cumberland_trail_trailheads', club: 'cumberland', poi_key: 'ct-2', name: 'Fixture Open', category: 'Trailhead Open', source_id: 'ct-2', geom: 'POINT (-84.5 36.01)', properties: '{"status": "Trailhead Open"}'}
+          - {source_key: 'sbts_connected_community_trailheads', club: 'sbts', poi_key: 'sb-1', name: 'Fixture Downtown TH', category: 'existing', source_id: 'sb-1', geom: 'POINT (-120.7 39.6)', properties: '{"th_category": "existing"}'}
+      - input: ref('club_poi_types')
+        rows:
+          - {source_key: 'nps_points_of_interest', field: 'poitype', value: 'Trailhead', poi_type: 'trailhead', confidence: 'high', evidence: 'Trailhead'}
+          - {source_key: 'alaska_trails_access_points', field: 'accesstype', value: 'Trailhead', poi_type: 'trailhead', confidence: 'high', evidence: 'Trailhead'}
+          - {source_key: 'cumberland_trail_trailheads', field: 'status', value: 'Trailhead Open', poi_type: 'trailhead', confidence: 'high', evidence: 'Trailhead Open'}
+          - {source_key: 'cumberland_trail_trailheads', field: 'status', value: 'Trailhead Proposed', poi_type: 'trailhead', confidence: 'high', evidence: 'a mapping somebody might write'}
+          - {source_key: 'sbts_connected_community_trailheads', field: null, value: null, poi_type: 'trailhead', confidence: 'high', evidence: 'a mapping somebody might write'}
+      - input: ref('layer_rules')
+        rows:
+          - {source_key: 'nps_points_of_interest', rule: 'drop_where', field: 'poistatus', matches: 'Planned', evidence: 'planned'}
+          - {source_key: 'alaska_trails_access_points', rule: 'drop_where', field: 'status', matches: 'Proposed', evidence: 'proposed'}
+          - {source_key: 'cumberland_trail_trailheads', rule: 'drop_where', field: 'status', matches: 'Trailhead Proposed', evidence: 'proposed'}
+          - {source_key: 'sbts_connected_community_trailheads', rule: 'drop_layer', field: null, matches: null, evidence: 'a planning inventory'}
+    expect:
+      rows:
+        - {poi_key: 'np-1', poi_type: 'trailhead', rule_drop_reason: 'layer_rules drop_where: poistatus is Planned'}
+        - {poi_key: 'np-2', poi_type: 'trailhead', rule_drop_reason: null}
+        - {poi_key: 'np-3', poi_type: 'trailhead', rule_drop_reason: null}
+        - {poi_key: 'ak-1', poi_type: 'trailhead', rule_drop_reason: 'layer_rules drop_where: status is Proposed'}
+        - {poi_key: 'ak-2', poi_type: 'trailhead', rule_drop_reason: null}
+        - {poi_key: 'ct-1', poi_type: 'trailhead', rule_drop_reason: 'layer_rules drop_where: status is Trailhead Proposed'}
+        - {poi_key: 'ct-2', poi_type: 'trailhead', rule_drop_reason: null}
+        - {poi_key: 'sb-1', poi_type: 'trailhead', rule_drop_reason: 'layer_rules drop_layer: the whole layer is held back'}
+
+  - name: club_points_never_publish_a_point_that_is_not_public
+    model: int_points_of_interest__club_points
+    description: >
+      Not public is not shown (pipeline/ELT.md, "What wave 1's live reads found"): USFWS's points
+      ship only where Public_Use reads 'Public Use', so 'Non-public Use', 'Public Use Limited' and a
+      null are all held back; a USFWS sewage plant is held back even where it is public; PA DCNR's
+      staff residences are held back; and a publisher's own withhold (GMC's PublicMap 'N') is
+      honoured.
+    given:
+      - input: ref('int_points_of_interest__club_unioned')
+        rows:
+          - {source_key: 'usfws_refuge_property_points', club: 'usfws', poi_key: 'fw-1', name: 'Fixture Lot', category: '40660100', source_id: '{FW-1}', geom: 'POINT (-76 39)', properties: '{"prop_type": "40660100", "public_use": "Public Use"}'}
+          - {source_key: 'usfws_refuge_property_points', club: 'usfws', poi_key: 'fw-2', name: 'Fixture Lot 2', category: '40660100', source_id: '{FW-2}', geom: 'POINT (-76 39.01)', properties: '{"prop_type": "40660100", "public_use": "Non-public Use"}'}
+          - {source_key: 'usfws_refuge_property_points', club: 'usfws', poi_key: 'fw-3', name: 'Fixture Lot 3', category: '40660100', source_id: '{FW-3}', geom: 'POINT (-76 39.02)', properties: '{"prop_type": "40660100", "public_use": "Public Use Limited"}'}
+          - {source_key: 'usfws_refuge_property_points', club: 'usfws', poi_key: 'fw-4', name: 'Fixture Lot 4', category: '40660100', source_id: '{FW-4}', geom: 'POINT (-76 39.03)', properties: '{"prop_type": "40660100", "public_use": null}'}
+          - {source_key: 'usfws_refuge_property_points', club: 'usfws', poi_key: 'fw-5', name: 'Fixture Plant', category: '40710800', source_id: '{FW-5}', geom: 'POINT (-76 39.04)', properties: '{"prop_type": "40710800", "public_use": "Public Use"}'}
+          - {source_key: 'pasda_state_park_buildings', club: 'pasda', poi_key: 'pr-1', name: 'Fixture House', category: 'Residence', source_id: '{PR-1}', geom: 'POINT (-79 40)', properties: '{"use1": "Residence"}'}
+          - {source_key: 'gmc_overnight_sites', club: 'gmc', poi_key: 'gm-1', name: 'Fixture Shelter', category: 'SH', source_id: '{GM-1}', geom: 'POINT (-72.8 44)', properties: '{"ostype": "SH", "publicmap": "N"}'}
+          - {source_key: 'gmc_overnight_sites', club: 'gmc', poi_key: 'gm-2', name: 'Fixture Shelter 2', category: 'SH', source_id: '{GM-2}', geom: 'POINT (-72.8 44.01)', properties: '{"ostype": "SH", "publicmap": "Y"}'}
+      - input: ref('club_poi_types')
+        rows:
+          - {source_key: 'usfws_refuge_property_points', field: 'prop_type', value: '40660100', poi_type: 'parking', confidence: 'high', evidence: 'Parking Lot'}
+          - {source_key: 'usfws_refuge_property_points', field: 'prop_type', value: '40710800', poi_type: 'privy', confidence: 'high', evidence: 'a mapping somebody might write'}
+          - {source_key: 'pasda_state_park_buildings', field: 'use1', value: 'Residence', poi_type: 'shelter', confidence: 'high', evidence: 'a mapping somebody might write'}
+          - {source_key: 'gmc_overnight_sites', field: 'ostype', value: 'SH', poi_type: 'shelter', confidence: 'high', evidence: 'SH'}
+      - input: ref('layer_rules')
+        rows:
+          - {source_key: 'usfws_refuge_property_points', rule: 'keep_only_where', field: 'public_use', matches: 'Public Use', evidence: 'Public_Use'}
+          - {source_key: 'usfws_refuge_property_points', rule: 'drop_where', field: 'prop_type', matches: '40710800', evidence: 'a sewage plant'}
+          - {source_key: 'pasda_state_park_buildings', rule: 'drop_where', field: 'use1', matches: 'Residence', evidence: 'staff housing'}
+          - {source_key: 'gmc_overnight_sites', rule: 'drop_where', field: 'publicmap', matches: 'N', evidence: 'the publisher withholds it'}
+    expect:
+      rows:
+        - {poi_key: 'fw-1', poi_type: 'parking', rule_drop_reason: null}
+        - {poi_key: 'fw-2', poi_type: 'parking', rule_drop_reason: 'layer_rules keep_only_where: public_use is not Public Use'}
+        - {poi_key: 'fw-3', poi_type: 'parking', rule_drop_reason: 'layer_rules keep_only_where: public_use is not Public Use'}
+        - {poi_key: 'fw-4', poi_type: 'parking', rule_drop_reason: 'layer_rules keep_only_where: public_use is not Public Use'}
+        - {poi_key: 'fw-5', poi_type: 'privy', rule_drop_reason: 'layer_rules drop_where: prop_type is 40710800'}
+        - {poi_key: 'pr-1', poi_type: 'shelter', rule_drop_reason: 'layer_rules drop_where: use1 is Residence'}
+        - {poi_key: 'gm-1', poi_type: 'shelter', rule_drop_reason: 'layer_rules drop_where: publicmap is N'}
+        - {poi_key: 'gm-2', poi_type: 'shelter', rule_drop_reason: null}
+
+  - name: club_points_never_publish_a_notice_as_a_poi
+    model: int_points_of_interest__club_points
+    description: >
+      Notices hide in POI layers (pipeline/ELT.md, "What wave 1's live reads found"): FLTC's hunting
+      closures and high-water advisories are held back while its lean-tos ship, and a PCTA Halfmile
+      water point whose popup carries the 2018 Mountain Fire closure is held back while one whose
+      popup is only a description ships.
+    given:
+      - input: ref('int_points_of_interest__club_unioned')
+        rows:
+          - {source_key: 'fltc_waypoints', club: 'fltc', poi_key: 'fl-1', name: 'Fixture Closure', category: 'HuntingClosures', source_id: 'fl-1', geom: 'POINT (-77 42.3)', properties: '{"category": "HuntingClosures", "symbol_name": "Hunting Closure"}'}
+          - {source_key: 'fltc_waypoints', club: 'fltc', poi_key: 'fl-2', name: 'Fixture Hazard', category: 'Advisory', source_id: 'fl-2', geom: 'POINT (-77 42.31)', properties: '{"category": "Advisory", "symbol_name": "High Water Hazard"}'}
+          - {source_key: 'fltc_waypoints', club: 'fltc', poi_key: 'fl-3', name: 'Fixture Lean-to', category: 'Camping', source_id: 'fl-3', geom: 'POINT (-77 42.32)', properties: '{"category": "Camping", "symbol_name": "Lean-to"}'}
+          - {source_key: 'pcta_halfmile_water_sources', club: 'pcta', poi_key: 'hm-1', name: 'WR1', category: '7', source_id: 'WR1', geom: 'POINT (-116.6 33.7)', properties: '{"symbolid": 7, "popupinfo": "Fixture Creek<br/>---<br/>MOUNTAIN FIRE CLOSURE: the trail will remain closed in 2018."}'}
+          - {source_key: 'pcta_halfmile_water_sources', club: 'pcta', poi_key: 'hm-2', name: 'WR2', category: '7', source_id: 'WR2', geom: 'POINT (-116.6 33.71)', properties: '{"symbolid": 7, "popupinfo": "Fixture Spring, trough, shade."}'}
+      - input: ref('club_poi_types')
+        rows:
+          - {source_key: 'fltc_waypoints', field: 'symbol_name', value: 'Lean-to', poi_type: 'shelter', confidence: 'high', evidence: 'Lean-to'}
+          - {source_key: 'fltc_waypoints', field: 'symbol_name', value: 'Hunting Closure', poi_type: 'campsite', confidence: 'high', evidence: 'a mapping somebody might write'}
+          - {source_key: 'pcta_halfmile_water_sources', field: 'symbolid', value: '7', poi_type: 'water', confidence: 'low', evidence: 'SymbolID 7'}
+      - input: ref('layer_rules')
+        rows:
+          - {source_key: 'fltc_waypoints', rule: 'drop_where', field: 'category', matches: 'HuntingClosures', evidence: 'a notice'}
+          - {source_key: 'fltc_waypoints', rule: 'drop_where', field: 'category', matches: 'Advisory', evidence: 'a notice'}
+          - {source_key: 'pcta_halfmile_water_sources', rule: 'drop_where_contains', field: 'popupinfo', matches: 'CLOSURE', evidence: 'a notice'}
+    expect:
+      rows:
+        - {poi_key: 'fl-1', poi_type: 'campsite', rule_drop_reason: 'layer_rules drop_where: category is HuntingClosures'}
+        - {poi_key: 'fl-2', poi_type: null, rule_drop_reason: 'layer_rules drop_where: category is Advisory'}
+        - {poi_key: 'fl-3', poi_type: 'shelter', rule_drop_reason: null}
+        - {poi_key: 'hm-1', poi_type: 'water', rule_drop_reason: 'layer_rules drop_where_contains: popupinfo contains CLOSURE'}
+        - {poi_key: 'hm-2', poi_type: 'water', rule_drop_reason: null}
+
+  - name: club_points_type_by_an_allowlist_and_drop_two_types_that_disagree
+    model: int_points_of_interest__club_points
+    description: >
+      A POI type is an allowlist: a value nobody mapped gives no type, a layer-wide row types every
+      row of its layer, the published id is `<source_key>:<source_id>` and a name is trimmed, and a
+      row two mappings type differently (GMC's VISTA and TOWER flags, here made to disagree) is held
+      back rather than given one of them.
+    given:
+      - input: ref('int_points_of_interest__club_unioned')
+        rows:
+          - {source_key: 'cdtc_parking', club: 'cdtc', poi_key: 'cp-1', name: '  Fixture Lot  ', category: 'Engineered parking area', source_id: 'cp-1', geom: 'POINT (-108 33)', properties: '{"prktype": "Engineered parking area"}'}
+          - {source_key: 'cdtc_parking', club: 'cdtc', poi_key: 'cp-2', name: ' ', category: '<Null>', source_id: 'cp-2', geom: 'POINT (-108 33.01)', properties: '{"prktype": "<Null>"}'}
+          - {source_key: 'utah_trailheads', club: 'utah_sgid', poi_key: 'ut-1', name: 'Fixture Trailhead', category: null, source_id: 'ut-1', geom: 'POINT (-111.7 40.6)', properties: '{"primaryname": "Fixture Trailhead"}'}
+          - {source_key: 'gmc_viewpoints', club: 'gmc', poi_key: 'gv-1', name: 'Fixture Tower', category: '1', source_id: '{GV-1}', geom: 'POINT (-72.8 44.2)', properties: '{"vista": 1, "tower": 1}'}
+      - input: ref('club_poi_types')
+        rows:
+          - {source_key: 'cdtc_parking', field: 'prktype', value: 'Engineered parking area', poi_type: 'parking', confidence: 'high', evidence: 'Engineered parking area'}
+          - {source_key: 'utah_trailheads', field: null, value: null, poi_type: 'trailhead', confidence: 'high', evidence: 'every point'}
+          - {source_key: 'gmc_viewpoints', field: 'vista', value: '1', poi_type: 'viewpoint', confidence: 'high', evidence: 'VISTA'}
+          - {source_key: 'gmc_viewpoints', field: 'tower', value: '1', poi_type: 'shelter', confidence: 'high', evidence: 'made to disagree'}
+      - input: ref('layer_rules')
+        rows: []
+    expect:
+      rows:
+        - {poi_key: 'cp-1', name: 'Fixture Lot', poi_type: 'parking', confidence: 'high', rule_drop_reason: null, derived_id: 'cdtc_parking:cp-1'}
+        - {poi_key: 'cp-2', name: null, poi_type: null, confidence: null, rule_drop_reason: null, derived_id: 'cdtc_parking:cp-2'}
+        - {poi_key: 'ut-1', name: 'Fixture Trailhead', poi_type: 'trailhead', confidence: 'high', rule_drop_reason: null, derived_id: 'utah_trailheads:ut-1'}
+        - {poi_key: 'gv-1', name: 'Fixture Tower', poi_type: null, confidence: null, rule_drop_reason: 'two club_poi_types rows type it differently', derived_id: 'gmc_viewpoints:{GV-1}'}
+
+  - name: classified_reads_a_wave_1_point_as_a_typed_record
+    model: int_points_of_interest__classified
+    description: >
+      A wave 1 point reaches the classifier as a record int_points_of_interest__club_points already
+      typed: its poi_type, confidence, id and name are read as they stand, a layer_rules reason is
+      its first drop reason, a point no type map names is 'not a published POI type', and one with
+      no point is 'no usable point geometry', as for every other organization's layer.
+    given:
+      - input: ref('int_points_of_interest__unioned')
+        rows:
+          - {source_key: 'ncta_points', poi_key: 'nc-1', source_row: null, geom: 'POINT (-85 46)', properties: '{"wpttype": "Shelter", "id": "ncta_points:{NC-1}", "source_id": "{NC-1}", "name": "Fixture Shelter", "poi_type": "shelter", "confidence": "high"}'}
+          - {source_key: 'ncta_points', poi_key: 'nc-2', source_row: null, geom: 'POINT (-85 46.01)', properties: '{"wpttype": "Water", "id": "ncta_points:{NC-2}", "source_id": "{NC-2}", "name": "Fixture Spring", "poi_type": "water", "confidence": "low"}'}
+          - {source_key: 'ncta_points', poi_key: 'nc-3', source_row: null, geom: 'POINT (-85 46.02)', properties: '{"wpttype": "Camping", "iconset": "dispersed_camp", "id": "ncta_points:{NC-3}", "source_id": "{NC-3}", "name": "Fixture Camp", "poi_type": "campsite", "confidence": "high", "rule_drop_reason": "layer_rules drop_where: iconset is dispersed_camp"}'}
+          - {source_key: 'ncta_points', poi_key: 'nc-4', source_row: null, geom: 'POINT (-85 46.03)', properties: '{"wpttype": "POI", "id": "ncta_points:{NC-4}", "source_id": "{NC-4}", "name": "Fixture Thing"}'}
+          - {source_key: 'ncta_points', poi_key: 'nc-5', source_row: null, geom: null, properties: '{"wpttype": "Shelter", "id": "ncta_points:{NC-5}", "source_id": "{NC-5}", "name": "Fixture Shelter 5", "poi_type": "shelter", "confidence": "high"}'}
+      - input: ref('int_points_of_interest__sources')
+        rows:
+          - {source_key: 'ncta_points', file_order: '22', club: 'ncta', source: 'ncta_points', phone_files: 'nearby_poi', trail_id: 'NCTA', id_field: 'source_id', name_field: 'name', type_field: null, poi_type: null, confidence: null, unified: 'true'}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: 'ncta_points', entry: '{"key": "ncta_points", "provider": "NCTA", "id_field": "GlobalID", "name_field": "waypointName", "type_field": "wptType"}'}
+      - input: ref('poi_type_mapping')
+        rows: []
+      - input: ref('poi_value_types')
+        rows: []
+      - input: ref('poi_named_exclusions')
+        rows: []
+    expect:
+      rows:
+        - {poi_key: 'nc-1', derived_id: 'ncta_points:{NC-1}', source_feature_id: '{NC-1}', name: 'Fixture Shelter', poi_type: 'shelter', family_confidence: 'high', phone_files: 'nearby_poi', trail_id: 'NCTA', drop_reason: null}
+        - {poi_key: 'nc-2', derived_id: 'ncta_points:{NC-2}', source_feature_id: '{NC-2}', name: 'Fixture Spring', poi_type: 'water', family_confidence: 'low', phone_files: 'nearby_poi', trail_id: 'NCTA', drop_reason: null}
+        - {poi_key: 'nc-3', derived_id: 'ncta_points:{NC-3}', source_feature_id: '{NC-3}', name: 'Fixture Camp', poi_type: 'campsite', family_confidence: 'high', phone_files: 'nearby_poi', trail_id: 'NCTA', drop_reason: 'layer_rules drop_where: iconset is dispersed_camp'}
+        - {poi_key: 'nc-4', derived_id: 'ncta_points:{NC-4}', source_feature_id: '{NC-4}', name: 'Fixture Thing', poi_type: null, family_confidence: null, phone_files: 'nearby_poi', trail_id: 'NCTA', drop_reason: 'not a published POI type'}
+        - {poi_key: 'nc-5', derived_id: 'ncta_points:{NC-5}', source_feature_id: '{NC-5}', name: 'Fixture Shelter 5', poi_type: 'shelter', family_confidence: 'high', phone_files: 'nearby_poi', trail_id: 'NCTA', drop_reason: 'no usable point geometry'}

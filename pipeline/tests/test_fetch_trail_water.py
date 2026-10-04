@@ -506,6 +506,89 @@ def test_extracts_already_on_disk_cost_nothing(tmp_path, monkeypatch):
     trail_water.ensure_state_extracts()
 
 
+# --- --derive: the monthly build's form, from files on disk alone (#1652) ----
+
+
+def _as_landed(raw_dir, layer, features):
+    """An as-landed ATC layer as extract/_run.py writes it: GeoJSON, the server's own field names."""
+    (raw_dir / f"{layer}.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+
+
+def _landed_site(global_id, name, lon=-74.0, lat=41.0):
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+        "properties": {"GlobalID": global_id, "Name": name},
+    }
+
+
+def _derive_on_disk(tmp_path, monkeypatch, states=("georgia", "maine")):
+    monkeypatch.setattr(trail_water, "AT_STATES", list(states))
+    monkeypatch.setattr(trail_water, "OSM_RAW_DIR", tmp_path / "osm")
+    monkeypatch.setattr(trail_water, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(trail_water, "OUT_PATH", tmp_path / "trail_water.json")
+    (tmp_path / "osm").mkdir()
+
+    def never(*args, **kwargs):
+        raise AssertionError("--derive fetches nothing: not ATC's layers, not an extract")
+
+    monkeypatch.setattr(trail_water, "fetch_atc_features", never)
+    monkeypatch.setattr(trail_water, "fetch_states", never)
+
+
+def test_derive_reads_the_as_landed_sites_in_fetch_atc_features_shape_and_order(tmp_path, monkeypatch):
+    _derive_on_disk(tmp_path, monkeypatch)
+    _as_landed(
+        tmp_path,
+        "shelters",
+        [
+            _landed_site("{B}", "Zeta Shelter"),
+            _landed_site("{A}", "Alpha Shelter"),
+            {"type": "Feature", "geometry": None, "properties": {"GlobalID": "{C}"}},
+        ],
+    )
+    _as_landed(tmp_path, "campsites", [_landed_site("{D}", None, lon=-74.5, lat=41.5)])
+
+    sites = trail_water.from_disk_sites(tmp_path)
+
+    assert [row["global_id"] for row in sites["shelters"]] == ["{A}", "{B}"], "by name then id, and no point no row"
+    assert sites["campsites"] == [{"global_id": "{D}", "name": None, "lat": 41.5, "lon": -74.5}]
+
+
+def test_derive_refuses_a_missing_extract_rather_than_fetching_it(tmp_path, monkeypatch, capsys):
+    _derive_on_disk(tmp_path, monkeypatch)
+    (tmp_path / "osm" / "georgia-latest.osm.pbf").write_bytes(b"present")
+
+    assert trail_water.main(["--derive"]) == 1
+    assert "no extract on disk for maine" in capsys.readouterr().out
+    assert not (tmp_path / "trail_water.json").exists()
+
+
+def test_derive_writes_the_same_file_from_the_sites_and_extracts_on_disk(tmp_path, monkeypatch):
+    _derive_on_disk(tmp_path, monkeypatch)
+    for state in ("georgia", "maine"):
+        (tmp_path / "osm" / f"{state}-latest.osm.pbf").write_bytes(b"present")
+    _as_landed(tmp_path, "shelters", [_landed_site("shelter-1", "Test Shelter")])
+    _as_landed(tmp_path, "campsites", [_landed_site("camp-1", "Test Camp", lat=42.0)])
+    asked = []
+
+    def streams(sites, fetch_extracts=True):
+        asked.append(fetch_extracts)
+        return {"shelter-1": [_stream_beside(_site())]}
+
+    monkeypatch.setattr(trail_water, "collect_streams", streams)
+    monkeypatch.setattr(trail_water, "elevation_ft", lambda lat, lon: 2000.0)
+
+    assert trail_water.main(["--derive"]) == 0
+
+    written = json.loads((tmp_path / "trail_water.json").read_text())
+    assert asked == [False], "the extracts are read off disk, never fetched"
+    assert [(site["atc_global_id"], site["water"] is not None) for site in written["sites"]] == [
+        ("shelter-1", True),
+        ("camp-1", False),
+    ]
+
+
 # --- the elevation cache is written in batches (#1768) ----------------------
 
 

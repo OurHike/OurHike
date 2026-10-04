@@ -179,13 +179,16 @@ class Step:
     """A Python step: its name, the `derived.<table>` it writes, and how it runs.
 
     `command` is the script and its arguments, run with --python from
-    pipeline/; `fixture_args` are added under --fixtures. Both may hold
+    pipeline/; `fixture_args` are added under --fixtures, and a lane's
+    `lane_args` under --lane without --fixtures, where a scheduled build
+    reads an input from somewhere a fixture build does not. All may hold
     `{warehouse}` and `{raw_dir}`."""
 
     name: str
     table: str
     command: tuple[str, ...]
     fixture_args: tuple[str, ...] = ()
+    lane_args: tuple[tuple[str, tuple[str, ...]], ...] = ()
     # The lane that runs it under --lane: the lane of the nodes its table
     # unblocks, which lane_problems() holds it to. Without --lane every step runs.
     lane: str = MONTHLY
@@ -217,7 +220,10 @@ STEPS: list[Step] = [
     # PO07 and PO17: which A.T. shelters and campsites have water a hiker can
     # walk to, fetch_trail_water.py's rule over int_points_of_interest__water_sites.
     # Under --fixtures it reads each site's candidate reaches and the EPQS
-    # answers make_dbt_fixtures.py wrote, never the network.
+    # answers make_dbt_fixtures.py wrote, never the network. The monthly lane
+    # lands the site water refresh-reference.yml's build job derived from the
+    # Geofabrik extracts the raw store keeps (fetch_trail_water.py --derive,
+    # #1652), pinned with the build's raw inputs, or the last landed one.
     Step(
         name="step_site_water",
         table="site_water",
@@ -228,15 +234,19 @@ STEPS: list[Step] = [
             "--elevations",
             "{raw_dir}/site_water/epqs_elevations.json",
         ),
+        lane_args=((MONTHLY, ("--from-file", "{raw_dir}/derived/trail_water.json")),),
     ),
-    # PO03: OSM's water points, a stand-in for the extract that waits on
-    # #1652. Under --fixtures it lands make_dbt_fixtures.py's points; otherwise
-    # it lands none (step_osm_water.py's docstring says why).
+    # PO03: OSM's water points. Under --fixtures it lands make_dbt_fixtures.py's
+    # points; the monthly lane lands the build job's scan of the Geofabrik
+    # extracts (fetch_osm_water.py, #1652), pinned with its raw inputs, or the
+    # last landed one, and warns when none has ever landed (step_osm_water.py's
+    # docstring says how).
     Step(
         name="step_osm_water",
         table="osm_water",
         command=("step_osm_water.py", "--warehouse", "{warehouse}"),
         fixture_args=("--points", "{raw_dir}/osm_water/points.geojson"),
+        lane_args=((MONTHLY, ("--landed", "{raw_dir}/derived/osm_water.geojson")),),
         reads_no_model=True,
     ),
     # PO06 and PO07: the grade half of OSM water's reach, over
@@ -453,7 +463,7 @@ def plan(
         label = "stage A of the hourly lane: every node an hourly or daily source reaches, no step reads back"
     runs.append(Run(label, (dbt, "build", *common, *selection, "--exclude", *stage_a_exclude, *after), DBT_DIR))
     for position, step in enumerate(running):
-        arguments = step.command + (step.fixture_args if fixtures else ())
+        arguments = step.command + (step.fixture_args if fixtures else dict(step.lane_args).get(lane, ()))
         runs.append(Run(step.name, (python, *(argument.format(**fields) for argument in arguments)), PIPELINE_DIR))
         later = [f"source:{DERIVED_SOURCE}.{following.table}+" for following in running[position + 1 :]]
         unblocks = ("-s", f"source:{DERIVED_SOURCE}.{step.table}+", "--exclude", "path:models/publish", *later, *held)

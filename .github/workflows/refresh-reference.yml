@@ -19,10 +19,12 @@
 #   extract  R2_RAW_* and HIKEFINDER_PASSWORD, no public-bucket key. Lands
 #            every monthly resource in the private raw store (`our-hike-raw`,
 #            decision 43), checked before and after the load, plus the
-#            as-landed copy the parity job reads.
+#            as-landed copy the parity job reads, and OSM's fourteen
+#            Geofabrik extracts as files at most once in 30 days (#1652).
 #   build    R2_RAW_* only, writing only under steps/ and history/monthly/.
-#            Pins the raw inputs, builds the warehouse and marts from the
-#            pin with the row history restored and saved, hands files on.
+#            Scans the extracts for water, pins the raw inputs and the
+#            scans, builds the warehouse and marts from the pin with the row
+#            history restored and saved, hands files on.
 #   publish  The public bucket's R2_* only: publish.py, OURHIKE_PHONE_FILES=dbt.
 #   confirm  No credential. Fails unless UA's latest.json names every phone
 #            file the build wrote.
@@ -86,6 +88,14 @@ jobs:
     # and each request ArcGIS Online throttles may wait 450 s (lib/arcgis.py's
     # THROTTLE_WAITS_SECONDS). 240 keeps run 13's figure with 78 minutes to
     # spare while the first run's "Seconds:" line settles what it now takes.
+    #
+    # OSM'S EXTRACTS ADD TO IT ONCE IN 30 DAYS (#1652, extract/_geofabrik.py):
+    # 3.44 GB from Geofabrik, which build-basemap.yml fetched in under 1.5 min
+    # (run 30957719854: 12.5 min end to end, Planetiler about 11 of them), then
+    # put into R2 (@unvalidated: the runner-to-R2 rate for a file this size is
+    # unmeasured). The resource starts no download after 20 minutes
+    # (DOWNLOAD_BUDGET_SECONDS), so its worst case is about 20 min plus one
+    # extract's own transfer, say 30: 161.5 + 30 = 191.5 of the 240.
     timeout-minutes: 240
     outputs:
       raw_run: ${{ steps.extract.outputs.raw_run }}
@@ -201,7 +211,27 @@ jobs:
     # @unvalidated: the dbt build on real data is untimed (ELT.md, "Runtime").
     # The DEM index is 3m45s (publish-vector-data.yml, run #120) and the
     # profile's sampling 1m01s; the vector build's own timeout is 180 min.
-    timeout-minutes: 180
+    # Measured: the steps before build_marts.py took 31-43 min (runs
+    # 37109384156, 37121837559, 37132427696 and 37182708502, the pin 27-38 of
+    # them); build_marts.py has failed within 9 min on every run so far, so
+    # its own share has never been timed.
+    #
+    # THE WATER SCANS ADD, ON A FIRST ATTEMPT (#1652), bounded from figures
+    # this repository already holds rather than measured here:
+    #   - the pull of 3.44 GB from R2: @unvalidated, 6 min at 10 MB/s;
+    #   - fetch_osm_water.py's scan: under 15 min, the ~15 min
+    #     publish-vector-data.yml's include_osm_water gives for download and
+    #     scan together;
+    #   - fetch_trail_water.py --derive: ~30 min, include_trail_water's own
+    #     figure (21 NHD subregions, the OSM stream scan, EPQS);
+    #   - step_osm_water_grade.py, now with points to grade: about 207 points
+    #     passed the distance gate in the 2026-08-18 census (146 reachable, 61
+    #     refused on grade; build_osm_water_reach.py), at 2 EPQS calls of
+    #     ~1.9 s each, ~13 min (Reasoned).
+    # About 64 min in all, on top of 43: 107 min before dbt's untimed share,
+    # which 180 would leave 73 min; 240 leaves 133. The step timings of the
+    # first run with the scans are what replace this arithmetic.
+    timeout-minutes: 240
     defaults:
       run:
         working-directory: pipeline
@@ -268,14 +298,119 @@ jobs:
 
       # THE PIN: a write-once copy of this run's raw inputs (ELT.md, "Storage
       # tiers", the raw_inputs row). A rerun builds from the first attempt's
-      # pin. Otherwise the as-landed files come down first, because
-      # fetch_elevation.py computes the DEM tile index from the A.T. corridor
+      # pin, so every step down to the pin runs only when there is none.
+      - name: Is this raw_run pinned already
+        id: pinned
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          if "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse has-pin --lane monthly \
+            --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" --steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN"; then
+            echo "raw_run $RAW_RUN is already pinned; building from that pin."
+            echo "pinned=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pinned=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The as-landed files come down first, because fetch_elevation.py
+      # computes the DEM tile index from the A.T. corridor
       # (data/raw/centerline.geojson) and the network's cells
       # (data/processed/nearby_trails.geojson, which export_nearby_trails.py
       # writes first, as publish-vector-data.yml does; used for the cell list
-      # only). The index is pinned beside the tables. DEM tiles are read in
-      # place (decision 35), so the pin freezes which tiles, not their bytes.
+      # only), and fetch_trail_water.py --derive reads ATC's shelters and
+      # campsites from them. DEM tiles are read in place (decision 35), so the
+      # pin freezes which tiles, not their bytes.
+      - name: Today's fetchers' files for this raw_run, and the DEM tile index
+        if: steps.pinned.outputs.pinned != 'true'
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse as-landed --lane monthly \
+            --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" --steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN" --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" export_nearby_trails.py
+          "$RUNNER_TEMP/pipeline/bin/python" fetch_elevation.py
+
+      # OSM'S WATER, FROM THE EXTRACTS THE RAW STORE KEEPS (#1652 - Download
+      # OSM's Geofabrik extracts at most once a month, into a private raw
+      # bucket that outlives the 7-day Actions cache; extract/_geofabrik.py).
+      # Each copy the store's index names comes down into data/raw/osm/, held
+      # to its sha256, and the last landed scans (the newest earlier pin's)
+      # are put where the two scanners write, so each scan's own drop guard
+      # compares against them and a refusal leaves them standing. A missing
+      # or unreadable copy warns, and the build lands the last landed scans
+      # rather than scanning a partial set; with none it says so here, in the
+      # run summary, and publishes no OSM water, as before #1652.
+      - name: OSM's Geofabrik extracts and the last landed water scans, from the raw store
+        id: osm
+        if: steps.pinned.outputs.pinned != 'true'
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: >-
+          "$RUNNER_TEMP/extract/bin/python" -m extract._geofabrik pull --lane monthly
+          --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" --steps-url "s3://$R2_RAW_BUCKET/steps"
+          --raw-run "$RAW_RUN" --raw-dir data/raw
+          --summary "$GITHUB_STEP_SUMMARY" --github-output "$GITHUB_OUTPUT"
+
+      # The two scans today's publish runs behind include_osm_water and
+      # include_trail_water, over the copies just pulled and nothing fetched:
+      # fetch_osm_water.py finds every extract on disk, and --derive reads
+      # ATC's sites from the as-landed copy and refuses a missing extract. NHD's
+      # subregions and EPQS are read as always. A scan that refuses or fails
+      # leaves the last landed one in place (the next step says which landed),
+      # so this step never fails the build, and its own timeout is the bound
+      # in the job's comment: ~15 + ~30 min, with 30 to spare.
+      #
+      # DISK: the 14 extracts are 3.44 GB (pipeline/BASEMAP.md, run
+      # 30957719854), and fetch_trail_water.py holds one NHD subregion at a
+      # time, its ~270 MB zip and the GeoPackage unpacked from it, each
+      # deleted before the next (collect_streams). Even all of the "~5.7 GB of
+      # USGS subregions" include_trail_water quotes, at once, beside the
+      # extracts is 9.1 GB, inside the 14 GB GitHub documents for a hosted
+      # runner's disk (and the 88 GB free BASEMAP.md measured on one). The
+      # extracts are deleted here, before dbt and the warehouse need the disk.
+      - name: Scan the extracts for water (fetch_osm_water.py, fetch_trail_water.py --derive)
+        if: steps.pinned.outputs.pinned != 'true' && steps.osm.outputs.extracts == 'complete'
+        timeout-minutes: 75
+        continue-on-error: true
+        run: |
+          set +e
+          "$RUNNER_TEMP/pipeline/bin/python" fetch_osm_water.py
+          osm=$?
+          "$RUNNER_TEMP/pipeline/bin/python" fetch_trail_water.py --derive
+          site=$?
+          set -e
+          rm -f data/raw/osm/*-latest.osm.pbf
+          if [ "$osm" -ne 0 ]; then
+            echo "::warning title=OSM water scan refused or failed::fetch_osm_water.py exited $osm; the build lands the last landed points, if any"
+          fi
+          if [ "$site" -ne 0 ]; then
+            echo "::warning title=Site water derivation refused or failed::fetch_trail_water.py --derive exited $site; the build lands the last landed site water, if any"
+          fi
+
+      - name: Say which water scans this build lands
+        if: always() && steps.pinned.outputs.pinned == 'false'
+        run: |
+          rm -f data/raw/osm/*-latest.osm.pbf
+          "$RUNNER_TEMP/extract/bin/python" -m extract._geofabrik landed --raw-dir data/raw --summary "$GITHUB_STEP_SUMMARY"
+
+      # The tables, their as-landed files, the DEM index and the water scans,
+      # at the paths extract/_geofabrik.py's SCANS names: not the scanners'
+      # own, because parity.py's old side would find osm_water.geojson there
+      # without the reach file export_poi.py refuses to run without.
       - name: Pin this run's raw inputs
+        if: steps.pinned.outputs.pinned != 'true'
         env:
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
@@ -285,15 +420,14 @@ jobs:
         run: |
           store=(--lane monthly --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly")
           pinned=(--steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN")
-          if "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse has-pin "${store[@]}" "${pinned[@]}"; then
-            echo "raw_run $RAW_RUN is already pinned; building from that pin."
-          else
-            "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse as-landed "${store[@]}" "${pinned[@]}" --raw-dir data/raw
-            "$RUNNER_TEMP/pipeline/bin/python" export_nearby_trails.py
-            "$RUNNER_TEMP/pipeline/bin/python" fetch_elevation.py
-            "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse pin "${store[@]}" "${pinned[@]}" \
-              --extra elevation/tile_index.json=data/raw/elevation/tile_index.json
+          extras=(--extra elevation/tile_index.json=data/raw/elevation/tile_index.json)
+          if [ -f data/raw/osm_water.geojson ]; then
+            extras+=(--extra derived/osm_water.geojson=data/raw/osm_water.geojson)
           fi
+          if [ -f data/raw/trail_water.json ]; then
+            extras+=(--extra derived/trail_water.json=data/raw/trail_water.json)
+          fi
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse pin "${store[@]}" "${pinned[@]}" "${extras[@]}"
 
       # From the pin alone, as the promotion will, and the pin's as-landed
       # files and DEM index replace whatever the step above left in data/raw.
@@ -313,7 +447,9 @@ jobs:
       # --lane monthly leaves out every node an hourly or daily source
       # reaches, so UA's conditions/ files stay as the conditions lane wrote
       # them. The pub_ writers run last, so dbt's last manifest and run
-      # results, which publish.py reads, are theirs.
+      # results, which publish.py reads, are theirs. Its steps land the pin's
+      # water scans, which the step above wrote under data/raw/derived/
+      # (build_marts.py's lane_args for step_osm_water and step_site_water).
       #
       # THE ROW HISTORY (pipeline/row_history.py): build_marts.py restores
       # the snapshots from history/monthly/ in the raw store's bucket before

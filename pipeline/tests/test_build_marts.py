@@ -194,8 +194,24 @@ def test_each_step_script_takes_every_flag_its_entry_gives_it(step):
         [sys.executable, step.command[0], "--help"], cwd=PIPELINE_DIR, capture_output=True, text=True, check=True
     ).stdout
 
-    for flag in (argument for argument in step.command[1:] + step.fixture_args if argument.startswith("--")):
+    given = step.command[1:] + step.fixture_args + tuple(argument for _, args in step.lane_args for argument in args)
+    for flag in (argument for argument in given if argument.startswith("--")):
         assert re.search(rf"(^|\s|\[){re.escape(flag)}\b", help_text), f"{step.command[0]} --help names no {flag}"
+
+
+def test_the_monthly_lane_lands_the_water_scans_its_build_job_pinned_and_fixtures_land_their_own():
+    """#1652: refresh-reference.yml's build job scans the Geofabrik extracts the raw store keeps and pins the scans as
+    derived/osm_water.geojson and derived/trail_water.json; build_marts.py --lane monthly names exactly those, and the
+    fixture build and the hourly lane never do."""
+
+    def args_of(name: str, **options) -> tuple[str, ...]:
+        (run,) = [run for run in plan(STEPS, dbt="dbt", python="python", paths=PATHS, **options) if run.label == name]
+        return run.argv[2:]
+
+    assert args_of("step_osm_water", fixtures=False, lane="monthly")[2:] == ("--landed", "/w/raw/derived/osm_water.geojson")
+    assert args_of("step_site_water", fixtures=False, lane="monthly")[2:] == ("--from-file", "/w/raw/derived/trail_water.json")
+    assert args_of("step_osm_water", fixtures=True, lane="monthly")[2:] == ("--points", "/w/raw/osm_water/points.geojson")
+    assert args_of("step_osm_water", fixtures=False)[2:] == ()
 
 
 class _Recorder:

@@ -295,6 +295,22 @@ class TestDownloadWithRetry:
         sent = [request.headers.get("User-Agent") for request in requests_mock.request_history]
         assert sent == ["OurHike-pipeline", "OurHike-pipeline"]
 
+    def test_the_headers_handed_back_are_the_ones_of_the_response_whose_body_was_kept(self, requests_mock, naps, tmp_path):
+        """The third caller (#1652): extract/_geofabrik.py records the Last-Modified of the bytes it keeps, so a
+        retried transfer must hand back the second response's headers, never the first's."""
+        requests_mock.get(
+            self.PBF,
+            [
+                {"status_code": 503, "headers": {"Last-Modified": "the failed attempt"}},
+                {"content": b"osm-pbf-bytes", "headers": {"Last-Modified": "Fri, 02 Oct 2026 20:00:00 GMT"}},
+            ],
+        )
+        headers = {"stale": "from an earlier call"}
+
+        download_with_retry(self.PBF, tmp_path / "new-york-latest.osm.pbf", sleep=naps.append, response_headers=headers)
+
+        assert headers.get("Last-Modified") == "Fri, 02 Oct 2026 20:00:00 GMT" and "stale" not in headers
+
 
 class TestEveryRequestNamesThePipeline:
     """`named()`: a request carries lib/user_agent.py's `USER_AGENT` unless its caller chose an agent.

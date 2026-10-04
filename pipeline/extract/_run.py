@@ -94,7 +94,7 @@ from dlt.common.schema.exceptions import DataValidationError  # noqa: E402
 from dlt.common.storages.fsspec_filesystem import glob_files  # noqa: E402
 from dlt.pipeline.exceptions import PipelineStepFailed  # noqa: E402
 
-from extract import _kinds  # noqa: E402
+from extract import _geofabrik, _kinds  # noqa: E402
 from extract._contract import (  # noqa: E402
     CADENCES,
     Carried,
@@ -1470,6 +1470,8 @@ def run_pipeline(
             except AttributeError:
                 pass  # an exception type that keeps no attributes; the caller reports without it
         raise
+    finally:
+        _geofabrik.unbind_store()
     return report
 
 
@@ -1511,6 +1513,11 @@ def _run(
         # One listing of the store for every FRESH verdict's served-files check,
         # not one per table: each was a request to R2.
         listing = table_listing(pipeline, [resource.table for resource in plan_resources])
+        # A resource that keeps files rather than rows (extract/_geofabrik.py's
+        # extracts) writes them through dlt's own client, under this lane's own
+        # prefix: the same credentials, R2 settings and one writer as its tables.
+        # Bound here, on the run's thread; run_pipeline() unbinds it.
+        _geofabrik.bind_store(_client(pipeline).fs_client, fs_path(bucket_url))
     planned, unavailable = [], []
     with timed(report, "change checks"):
 

@@ -32,6 +32,8 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
     reviewed_dir(path)      a folder of reviewed files, one row per file (a
                             club's challenges)
     podcast_feed(key)       a podcast's RSS feed, one row per episode
+    geofabrik_extracts(key) OSM's state extracts kept as files in the raw store, one manifest
+                            row each, never the bytes (extract/_geofabrik.py)
     feed_notices(key)       a club's RSS or Atom notices, one row per item (extract/_notices.py)
     page_notice(key)        a club's notice page or PDF, one notice per page (extract/_notices.py)
     catalogue_row()         the club's own trail_orgs.json row, for org.py

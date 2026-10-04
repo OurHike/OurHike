@@ -700,6 +700,22 @@ def test_plan_with_a_history_store_restores_before_the_seeds_and_saves_after_the
     assert runs[-2].argv[-2:] == ("-s", "path:models/publish"), "the save waits for the writers"
 
 
+def test_no_history_save_restores_and_builds_with_the_history_and_saves_nothing(monkeypatch, tmp_path, capsys):
+    """publish-conditions.yml's hourly build when the notices legs' newest served copy was not read: a notice
+    missing from that build must never be closed in the history, so the save is left out and nothing else moves."""
+    history = History("s3://bucket/history/conditions_ua", False, "python")
+    saved = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, history=history)
+    unsaved = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, history=history, save_history=False)
+
+    assert argvs(unsaved) == argvs(saved)[:-1] and saved[-1].label == build_marts.SAVE_LABEL
+
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), extra=("--no-history-save",))
+
+    assert code == 0
+    assert [argv[2] for argv, _, _ in recorder.calls if argv[:2] == RESTORE] == ["restore"]
+    assert "::warning title=Row history not saved::" in capsys.readouterr().out
+
+
 def test_a_cold_start_reaches_the_restore_as_its_flag():
     runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=True, history=History("/h", True, "python"))
 

@@ -7,10 +7,12 @@ Usage: python -m extract._run --lane monthly --bucket-url file:///path/to/raw-st
            --bucket-url file:///tmp/registry-store --warehouse data/warehouse.duckdb
 
 A lane is one scheduled extract job and the cadences it carries (LANES):
-`monthly`, or `hourly`, which also runs daily resources when due. A
-conditions leg (LEGS) is the hourly lane for one data environment, as a dlt
-pipeline of its own. `--help` describes each flag; `--summary` is written on
-a refused run too.
+`monthly`, or `hourly`, which also runs daily resources when due. A leg
+(LEGS) is one job's share of the hourly lane for one data environment, as a
+dlt pipeline of its own: a conditions leg reads the upstreams that stay
+hourly (HOURLY_JOB_TABLES), a notices leg every other club's and agency's
+notices, every 4 hours (decision 61, job_of()). `--help` describes each
+flag; `--summary` is written on a refused run too.
 
 The steps, as pipeline/ELT.md designs them in "Change checks, verdicts and
 `_loaded_at`" and "A full reload that cannot empty a safety table" (#1793 —
@@ -31,7 +33,7 @@ refresh, published docs, and lighter phone downloads):
    extract/_warehouse.py refuses to read the tables.
 5. One `_extract_runs` row per resource per run, skipped ones included.
 
-A conditions leg isolates each upstream (_extract_and_load()): one that
+A leg isolates each upstream (_extract_and_load()): one that
 fails or is refused is left out while the rest load, and the leg exits
 PARTIAL_EXIT (3) so its job still goes red, unless every one refused has a
 sources.json row saying reaches_hikers false (exit_status()). OurHike's own
@@ -114,36 +116,135 @@ from lib.source_registry import is_arcgis_feature_layer, is_external_source  # n
 # runs when due (DUE_AFTER). No resource is weekly yet, so no lane carries
 # `weekly` and tests/test_extract_layout.py refuses a resource that is.
 LANES = {"monthly": ("monthly",), "hourly": ("hourly", "daily")}
-# The conditions legs: publish-conditions.yml runs the hourly lane once per
-# data environment, each leg its own dlt pipeline (own raw-store prefix,
-# markers and `_extract_runs`), because each reads its own environment's
-# Postgres (CONDITIONS_DATABASE_URL) and one pipeline would swap production's
-# closures table for UA's every hour (ELT.md, "The hourly lanes"). A prefix
-# per leg, rather than ELT.md's `raw_ourhike_production__*` table names,
-# keeps every dbt source unchanged (Reasoned). Not in LANES, so fixture mode
-# does not run the hourly resources three times.
-LEGS = {"conditions_production": "hourly", "conditions_ua": "hourly"}
+
+# THE HOURLY LANE IS READ BY TWO JOBS (decision 61, the maintainer by poll,
+# 2026-10-04): the conditions job, publish-conditions.yml, hourly, and the
+# notices job, extract-notices.yml, every 4 hours with up to an hour to read.
+# A resource's job is job_of(): the conditions job keeps HOURLY_JOB_TABLES,
+# the upstreams the conditions bake published before decision 53, and the
+# notices job takes every other hourly or daily resource, so a club source
+# wired later goes to the notices job without being named anywhere.
+# tests/test_extract_layout.py holds the split against discover().
+CONDITIONS_JOB, NOTICES_JOB = "conditions", "notices"
+JOBS = (CONDITIONS_JOB, NOTICES_JOB)
+
+
+@dataclass(frozen=True)
+class Leg:
+    """One job's read of a lane for one data environment: the lane whose cadences it carries, and the job whose
+    resources it reads (job_of())."""
+
+    lane: str
+    job: str
+
+
+# THE LEGS. Each job runs once per data environment, and each leg is its own
+# dlt pipeline (own raw-store prefix, markers and `_extract_runs`). The
+# conditions legs are split by environment because each reads its own
+# environment's Postgres (CONDITIONS_DATABASE_URL), and one pipeline would
+# swap production's closures table for UA's every hour (ELT.md, "The hourly
+# lanes"). A prefix per leg, rather than ELT.md's `raw_ourhike_production__*`
+# table names, keeps every dbt source unchanged (Reasoned). The notices legs
+# read no database, and are split by environment anyway so that each
+# environment's hourly build reads a store only its own legs write, as
+# publish-conditions.yml's legs do. Not in LANES, so fixture mode, which runs
+# the lanes, does not run the hourly resources more than once.
+LEGS = {
+    "conditions_production": Leg("hourly", CONDITIONS_JOB),
+    "conditions_ua": Leg("hourly", CONDITIONS_JOB),
+    "notices_production": Leg("hourly", NOTICES_JOB),
+    "notices_ua": Leg("hourly", NOTICES_JOB),
+}
+
+#: THE CONDITIONS JOB'S OWN UPSTREAMS, by raw table, each with why it stays
+#: hourly. Exactly what the conditions legs read at 52835a44 that the bake had
+#: published before decision 53 (every other hourly resource there was a
+#: decision 53 phase B layer, landed 2026-10-03), and the seven sources
+#: int_closures__gate types by hand. Decision 61 keeps these in the short
+#: hourly job because what a storm or a moderator's closure turns on cannot
+#: wait four hours: most severe thunderstorm warnings last less than that, and
+#: a verified closure would take up to about 5 hours to reach a phone.
+#: Anything not named here is the notices job's.
+HOURLY_JOB_TABLES: dict[str, str] = {
+    "raw_nws__alerts": "NWS's active alerts: a warning shorter than about 4 hours would expire unseen on a 4-hourly read",
+    "raw_ourhike__closures": "OurHike's own moderator-verified closures, which reach a phone within the hour",
+    "raw_ourhike__reports": "OurHike's own verified reports, moderated as the closures are",
+    "raw_ourhike__notes": "OurHike's own field notes, read by the same queries as the closures",
+    "raw_ourhike__disputes": "OurHike's own disputes, read by the same queries as the closures",
+    "raw_ourhike__work_projects": "the reviewed volunteer work projects (#760), a file in git the bake has published since",
+    "raw_atc__atc_updates": "ATC's reviewed trail updates file, reference/atc_updates.json (#460)",
+    "raw_atc__atc_trail_updates": "ATC's reviewed trail updates, one row per update (#460)",
+    "raw_atc__atc_trail_updates_pages": "what ATC's site shows since the review, which the bake has published since #963",
+    "raw_nynjtc__nynjtc_trail_alerts": "NYNJTC's trail alerts (#1078), published by the bake before decision 53",
+    "raw_nynjtc__nynjtc_trail_alerts_terms": "NYNJTC's alert taxonomy terms, daily, which place NYNJTC's alerts",
+    "raw_nysparks__oprhp_trail_closures": (
+        "OPRHP's temporary trail closures (#1152 - Move OPRHP's temporary closures onto the conditions clock, "
+        "where a safety layer belongs)"
+    ),
+}
+
+
+def job_of(resource: Resource) -> str:
+    """Which job reads this hourly-lane resource (decision 61): CONDITIONS_JOB for HOURLY_JOB_TABLES, else NOTICES_JOB."""
+    return CONDITIONS_JOB if resource.table in HOURLY_JOB_TABLES else NOTICES_JOB
+
+
 # A LEG TAKES ON AT MOST THIS MANY TABLES IT HAS NEVER LOADED IN ONE RUN, after
 # every table it has (take_on_new_tables()); the rest wait, logged
-# INCOMPLETE as "not yet loaded", and come on over the next runs. Soak run 506
-# (publish-conditions.yml 37154645937, 2026-10-03) met 70 new hourly layers
-# at once: 85 resources to read, the 150 s read budget spent, and the extract
-# step killed at its 4-minute cap during dlt's load, so nothing committed and
-# the next run would have met the same 85. Run 505, an hour earlier, read 13
-# and loaded them inside 58 s. 10 is @unvalidated: it keeps a run near 505's
-# size plus ten, and the step summary's per-part timings on the runs that take
-# the new tables on will settle whether it is too many or too few.
-NEW_TABLES_PER_LEG_RUN = 10
-# A CONDITIONS LEG'S CHANGE CHECKS END AFTER THIS MANY SECONDS, as its reads do
-# after --read-seconds (by_folder()). A check still out is refused on its own:
-# its last committed table stands and it is not read this run. Soak run 512
-# (publish-conditions.yml 37179583519) waited 2 m 12 s on one change check,
-# dnrmaps.wi.gov refusing connections (a 30 s connect timeout, three attempts,
-# 5 and 30 s apart), and the 150 s read budget that followed ran past the
-# extract step's 4-minute cap. Run 510's 89 checks, a folder per thread, took
-# well under this (Reasoned from its 2 m 49 s whole step). 45 is @unvalidated:
-# the step summary's "change checks" timing settles whether it is too tight.
-LEG_CHECK_SECONDS = 45
+# INCOMPLETE as "not yet loaded", and come on over the next runs. One number
+# per job, because the two jobs have different budgets.
+#
+# The conditions job's 10: soak run 506 (publish-conditions.yml 37154645937,
+# 2026-10-03) met 70 new hourly layers at once: 85 resources to read, the
+# 150 s read budget spent, and the extract step killed at its 4-minute cap
+# during dlt's load, so nothing committed and the next run would have met the
+# same 85. Run 505, an hour earlier, read 13 and loaded them inside 58 s. 10
+# is @unvalidated: it keeps a run near 505's size plus ten. Since decision 61
+# a conditions leg carries twelve tables, so the limit bites only on a new
+# store's first two runs, or when a source joins HOURLY_JOB_TABLES.
+#
+# The notices job's 150, Reasoned from run 506 and @unvalidated. In 506 the
+# read budget ended at 21:22:23Z and the step was killed at 21:23:42Z, and in
+# those 78 s dlt normalized and loaded the 83 tables it had read (68 of them
+# new), the after-run check and the run log committed, and the warehouse read
+# had begun: at most 0.94 s a table. extract-notices.yml's extract step has
+# 50 minutes: up to 10 for the change checks (LEG_CHECK_SECONDS) and 30 for
+# the reads, so about 9 are left for the sync and the load, and 150 new
+# tables at that rate take about 2.4 of them. At 150 a run, the 80 layers
+# decision 61 moved here and phase B's 181 page, feed and WordPress sources
+# come on in two runs, where 10 a run would take 27. What would settle it:
+# the "Seconds:" line of the first two notices runs' summaries, against the
+# tables each took on.
+NEW_TABLES_PER_LEG_RUN = {CONDITIONS_JOB: 10, NOTICES_JOB: 150}
+# A LEG'S CHANGE CHECKS END AFTER THIS MANY SECONDS, as its reads do after
+# --read-seconds (by_folder()). A check still out is refused on its own: its
+# last committed table stands and it is not read this run. One number per
+# job, because the notices job's folders are far slower to check.
+#
+# The conditions job's 45: soak run 512 (publish-conditions.yml 37179583519)
+# waited 2 m 12 s on one change check, dnrmaps.wi.gov refusing connections (a
+# 30 s connect timeout, three attempts, 5 and 30 s apart), and the 150 s read
+# budget that followed ran past the extract step's 4-minute cap. Run 510's 89
+# checks, a folder per thread, took well under this (Reasoned from its 2 m
+# 49 s whole step). 45 is @unvalidated: the step summary's "change checks"
+# timing settles whether it is too tight. Its twelve tables since decision 61
+# hold no page behind a Crawl-delay.
+#
+# The notices job's 600, Reasoned from the registry at 377e981a and
+# @unvalidated. A page or feed notice's change check IS its one request a run
+# (extract/_notices.py: the read reuses what the check fetched), and a
+# folder's checks run one after another behind its host's Crawl-delay, so a
+# folder's pass costs at least its pages' gaps: buckeyetrail.org's 26 pages
+# and blm.gov's 26 at 2 s are 50 s each, hike-mst.org's 23 are 44 s, and
+# bmta's 2 pages behind a 60 s Crawl-delay are 60 s, before any request's own
+# time. 45 would refuse all four every run. 600 covers the slowest of them
+# several times over, and one request that runs lib/http_retry.py's whole
+# ladder (3 attempts of 60 s with 5 and 30 s between, 215 s; more under a
+# Retry-After) on top. It is ten minutes of extract-notices.yml's 50-minute
+# step, whose read budget is 30 (1800 s): the reads that follow a page's check
+# reuse its answer, so most of a notices run's waiting is here. The
+# "change checks" timing of the first notices runs settles it.
+LEG_CHECK_SECONDS = {CONDITIONS_JOB: 45, NOTICES_JOB: 600}
 # A daily resource has no job of its own: it rides the hourly lane and runs
 # when its last good check is a day old, so no second job writes the hourly
 # lane's raw store (ELT.md, "Every node carries its cadence"). NYNJTC's alert
@@ -236,7 +337,7 @@ class RunReport:
     # checks, read, extract, normalize, load, after-run check, run log,
     # warehouse). A part a run did not reach is absent.
     timings: dict[str, float] = field(default_factory=dict)
-    # A conditions leg only: resources refused on their own while the rest
+    # A leg only: resources refused on their own while the rest
     # loaded, by name, with why. Each keeps its last committed table, is logged
     # ISOLATED_OUTCOME, and makes the command line exit PARTIAL_EXIT.
     isolated: dict[str, str] = field(default_factory=dict)
@@ -247,7 +348,7 @@ class RunReport:
     # with how far it got. Not a refusal, so the exit stays 0; a read that fit
     # no page at all raises instead, and is isolated.
     incomplete: dict[str, str] = field(default_factory=dict)
-    # A conditions leg only: resources whose table has never loaded and that
+    # A leg only: resources whose table has never loaded and that
     # this run did not take on (take_on_new_tables()), by name, with why. They
     # are logged INCOMPLETE with no column hints, so nothing lands, no marker
     # moves and no metadata is asked for; not a refusal, so the exit stays 0.
@@ -279,16 +380,29 @@ def utc_now_naive() -> datetime:
 
 
 def cadences_of(lane: str) -> tuple[str, ...]:
-    """The cadences a lane, or a conditions leg's lane, carries."""
+    """The cadences a lane, or a leg's lane, carries."""
     if lane in LEGS:
-        return LANES[LEGS[lane]]
+        return LANES[LEGS[lane].lane]
     if lane not in LANES:
         raise ValueError(f"no lane {lane!r}; lanes are {sorted(LANES)} and legs {sorted(LEGS)}")
     return LANES[lane]
 
 
 def lane_resources(lane: str, resources: list[Resource]) -> list[Resource]:
-    return [resource for resource in resources if resource.cadence in cadences_of(lane)]
+    """The resources a lane runs: those of its cadences, and on a leg only those of the leg's job (job_of())."""
+    leg = LEGS.get(lane)
+    return [
+        resource
+        for resource in resources
+        if resource.cadence in cadences_of(lane) and (leg is None or job_of(resource) == leg.job)
+    ]
+
+
+def leg_tables(leg: str, resources: list[Resource]) -> set[str]:
+    """The raw tables a leg's job reads now: what a build may take from that leg's store, and nothing else in it."""
+    if leg not in LEGS:
+        raise ValueError(f"no leg {leg!r}; legs are {sorted(LEGS)}")
+    return {resource.table for resource in lane_resources(leg, resources)}
 
 
 def cross_lane_resources(lane: str, resources: list[Resource], own: list[Resource]) -> list[Resource]:
@@ -322,7 +436,7 @@ def raw_store_url(bucket: str, lane: str) -> str:
     return f"s3://{bucket}/{RAW_STORE_PREFIX}/{lane}"
 
 
-#: The exit status of a conditions leg that loaded, and left at least one
+#: The exit status of a leg that loaded, and left at least one
 #: resource out as refused: not 0, so the job goes red, and not 1, so the
 #: workflow can tell "the rest loaded" from "nothing loaded" and still build
 #: and publish what did. 2 is argparse's own.
@@ -391,7 +505,7 @@ def quiet_refusals(report: RunReport, resources: list[Resource]) -> set[str]:
 
 
 class CheckTimedOut(Exception):
-    """A change check by_folder() stopped waiting for: the leg's LEG_CHECK_SECONDS ran out first."""
+    """A change check by_folder() stopped waiting for: the leg's job's LEG_CHECK_SECONDS ran out first."""
 
 
 def by_folder(resources: list[Resource], work: Callable, seconds: float | None = None) -> list:
@@ -644,7 +758,7 @@ def to_dlt(
 ):
     """Wrap one Resource in the dlt settings every resource shares. `hints` collects each table's column hints.
 
-    `read` is the resource's rows already read (a conditions leg reads each
+    `read` is the resource's rows already read (a leg reads each
     upstream on its own first, read_each()); None reads them here, through
     rows_carried() with `carried` and no budget for a resource that carries.
     `as_landed`, an AsLanded, copies each row it yields, read here or before
@@ -763,7 +877,7 @@ class AsLanded:
         handle.write(json.dumps(as_landed_feature(resource, row), separators=(",", ":"), default=str))
 
     def reset(self) -> None:
-        """Forget every staged file: a conditions leg that refused a table on its own extracts what is left again
+        """Forget every staged file: a leg that refused a table on its own extracts what is left again
         (_extract_and_load), and the copy starts again with that extract, so no row is copied twice."""
         for handle in self._open.values():
             handle.close()
@@ -1235,11 +1349,11 @@ def run_pipeline(
     as_landed: bool = False,
     cross_lane: bool = False,
 ) -> RunReport:
-    """One lane, or one conditions leg, end to end. Raises ExtractRefused, after logging, when either check fails.
+    """One lane, or one leg, end to end. Raises ExtractRefused, after logging, when either check fails.
 
     Whatever it raises carries the run's RunReport as `.report` where the
     exception takes one, so a caller can say how far the run got.
-    `read_seconds` is a conditions leg's read budget (read_each()); the lanes
+    `read_seconds` is a leg's read budget (read_each()); the lanes
     ignore it. `as_landed` also writes the as-landed copy (the module
     docstring). `cross_lane` also reads ALSO_READS' resources for this lane.
     """
@@ -1322,7 +1436,7 @@ def _run(
 
         # The upstreams are asked one folder per thread (by_folder()), and
         # everything that touches the store or the report happens here, in order.
-        budget = LEG_CHECK_SECONDS if lane in LEGS else None
+        budget = LEG_CHECK_SECONDS[LEGS[lane].job] if lane in LEGS else None
         for resource, outcome in zip(plan_resources, by_folder(plan_resources, ask, budget)):
             if isinstance(outcome, CheckTimedOut):
                 # Refused on its own, as a read that ran out of time is (read_each()): its last
@@ -1359,7 +1473,7 @@ def _run(
         f"{len(planned) - len(to_run)} fresh, {len(unavailable)} unavailable"
     )
     if lane in LEGS:
-        to_run = take_on_new_tables(report, to_run, current, log, NEW_TABLES_PER_LEG_RUN)
+        to_run = take_on_new_tables(report, to_run, current, log, NEW_TABLES_PER_LEG_RUN[LEGS[lane].job])
     # A resource that reads only what moved (Resource.carries) is handed its
     # last committed rows and what an earlier incomplete read kept, and every
     # run log written below carries PROGRESS_TABLE forward: unchanged where the
@@ -1589,13 +1703,19 @@ def summary_markdown(report: RunReport | None, lane: str, *, failure: BaseExcept
 
 
 def load_committed(
-    lane: str, bucket_url: str, warehouse: Path, pipelines_dir: str | None = None, log: list[dict] | None = None
+    lane: str,
+    bucket_url: str,
+    warehouse: Path,
+    pipelines_dir: str | None = None,
+    log: list[dict] | None = None,
+    tables: set[str] | None = None,
 ) -> dict[str, int]:
     """Every table the lane's pipeline has committed, into `warehouse`'s raw schema. Returns {table: rows}.
 
     extract/_warehouse.py's committed-file read, which refuses a table whose
     recorded load left no file rather than loading it empty. `log` is the run
     log as a run just left it (RunReport.run_log), so it is not read again.
+    `tables`, for a leg, is leg_tables(): the store's other tables stay out.
     Imported here rather than at the top, because that module imports this one."""
     import duckdb
 
@@ -1604,7 +1724,8 @@ def load_committed(
     warehouse.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(warehouse)) as con:
         readers = LEG_READERS if lane in LEGS else 1
-        return load_warehouse(con, make_pipeline(lane, bucket_url, pipelines_dir), log=log, readers=readers)
+        pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
+        return load_warehouse(con, pipeline, log=log, readers=readers, tables=tables)
 
 
 def main(argv: list[str] | None = None) -> RunReport:
@@ -1620,7 +1741,7 @@ def main(argv: list[str] | None = None) -> RunReport:
     parser.add_argument(
         "--read-seconds",
         type=float,
-        help="a conditions leg's budget for reading its upstreams; one not read in time is refused on its own",
+        help="a leg's budget for reading its upstreams; one not read in time is refused on its own",
     )
     parser.add_argument(
         "--as-landed",
@@ -1641,9 +1762,10 @@ def main(argv: list[str] | None = None) -> RunReport:
         # which --only removed, by a name the command line never gave.
         parser.error("--only keeps only the tables it names, so it cannot also read --cross-lane-inputs' tables")
     bucket_url = args.bucket_url or raw_store_url(args.raw_bucket, args.lane)
-    resources = all_resources(discover() + discover_shared())
-    if args.only:
-        resources = only_tables(resources, args.only, args.lane)
+    discovered = all_resources(discover() + discover_shared())
+    resources = only_tables(discovered, args.only, args.lane) if args.only else discovered
+    # A leg's warehouse holds its job's tables alone, whatever else its store kept (load_warehouse()'s `tables`).
+    keep = leg_tables(args.lane, discovered) if args.lane in LEGS else None
     report = None
     try:
         try:
@@ -1667,7 +1789,7 @@ def main(argv: list[str] | None = None) -> RunReport:
             args.report_json.write_text(json.dumps(report_document(report), indent=2, sort_keys=True, default=str))
         if args.warehouse is not None:
             with timed(report, "warehouse"):
-                loaded = load_committed(args.lane, bucket_url, args.warehouse, args.pipelines_dir, report.run_log)
+                loaded = load_committed(args.lane, bucket_url, args.warehouse, args.pipelines_dir, report.run_log, keep)
             print(f"{len(loaded)} tables, {sum(loaded.values())} rows, into {args.warehouse}")
     except Exception as failure:
         if args.summary is not None:

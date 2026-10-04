@@ -40,8 +40,8 @@ from extract._contract import (
     raw_table,
     slug_for_folder,
 )
-from extract._kinds import ORGS_TABLE, _registry, _trail_orgs
-from extract._run import LANES
+from extract._kinds import ORGS_TABLE, ConditionsQuery, NwsAlerts, _registry, _trail_orgs
+from extract._run import CONDITIONS_JOB, HOURLY_JOB_TABLES, LANES, LEGS, NOTICES_JOB, job_of, lane_resources, leg_tables
 from lib.socrata import dataset_url
 
 REGISTRY_PATH = PIPELINE_DIR / "sources.json"
@@ -184,6 +184,54 @@ def test_every_resource_is_on_a_lane_and_an_override_says_why():
         assert resource.cadence in carried, f"{resource.table}: no lane runs {resource.cadence!r} resources yet"
         if resource.cadence_override is not None:
             assert resource.cadence_reason, f"{resource.table}: a cadence override needs cadence_reason"
+
+
+#: Decision 61's conditions job, by raw table: the upstreams the conditions bake published before decision 53,
+#: read off the conditions legs at 52835a44 (every other hourly resource there was a phase B layer of
+#: 2026-10-03). Written out here as well as in HOURLY_JOB_TABLES, so that moving a source between the two
+#: jobs is a change a reviewer sees twice, never a rename that quietly turns a closure four-hourly.
+CONDITIONS_JOB_TABLES = frozenset(
+    {
+        "raw_nws__alerts",
+        "raw_ourhike__closures",
+        "raw_ourhike__reports",
+        "raw_ourhike__notes",
+        "raw_ourhike__disputes",
+        "raw_ourhike__work_projects",
+        "raw_atc__atc_updates",
+        "raw_atc__atc_trail_updates",
+        "raw_atc__atc_trail_updates_pages",
+        "raw_nynjtc__nynjtc_trail_alerts",
+        "raw_nynjtc__nynjtc_trail_alerts_terms",
+        "raw_nysparks__oprhp_trail_closures",
+    }
+)
+
+
+def test_the_conditions_job_keeps_exactly_the_sources_published_before_decision_53():
+    assert set(HOURLY_JOB_TABLES) == CONDITIONS_JOB_TABLES
+    assert all(reason.strip() for reason in HOURLY_JOB_TABLES.values()), "each table says why it stays hourly"
+
+
+def test_every_hourly_lane_resource_is_read_by_exactly_one_job_and_each_named_table_exists():
+    """The notices job is everything else on the lane, so a source wired later goes there without being named, and a
+    named table that no resource lands (a rename) would silently move its source off the hourly job."""
+    hourly = lane_resources("hourly", all_resources(EVERY_FILE))
+    tables = {resource.table for resource in hourly}
+    assert CONDITIONS_JOB_TABLES <= tables, f"named and not landed on the hourly lane: {sorted(CONDITIONS_JOB_TABLES - tables)}"
+    conditions, notices = leg_tables("conditions_ua", hourly), leg_tables("notices_ua", hourly)
+    assert conditions == CONDITIONS_JOB_TABLES
+    assert not conditions & notices and conditions | notices == tables
+    for name, leg in LEGS.items():
+        assert leg_tables(name, hourly) == (conditions if leg.job == CONDITIONS_JOB else notices), name
+    assert {leg.job for leg in LEGS.values()} == {CONDITIONS_JOB, NOTICES_JOB}
+
+
+def test_ourhikes_own_rows_and_nws_never_wait_four_hours():
+    """Decision 61's reason for the split: a verified closure within the hour, and a short warning before it expires."""
+    for resource in all_resources(EVERY_FILE):
+        if isinstance(resource, ConditionsQuery | NwsAlerts):
+            assert job_of(resource) == CONDITIONS_JOB, resource.table
 
 
 def test_no_table_is_written_by_two_resources_except_the_shared_org_table():

@@ -89,12 +89,13 @@ def store(tmp_path):
 
 
 def leg(store, *resources):
-    return run_pipeline("conditions_ua", store["url"], resources=list(resources), pipelines_dir=store["dir"])
+    """A notices leg, where every club's feed, page and WordPress notices run since decision 61."""
+    return run_pipeline("notices_ua", store["url"], resources=list(resources), pipelines_dir=store["dir"])
 
 
 def landed(store, table: str) -> list[dict]:
     with duckdb.connect() as con:
-        load_warehouse(con, make_pipeline("conditions_ua", store["url"], store["dir"]))
+        load_warehouse(con, make_pipeline("notices_ua", store["url"], store["dir"]))
         cursor = con.execute(f'select * from raw."{table}"')
         names = [column[0] for column in cursor.description]
         return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]

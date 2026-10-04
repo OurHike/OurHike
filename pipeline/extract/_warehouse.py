@@ -23,17 +23,36 @@ and an expired or purged pin stops it (ELT.md, "Storage tiers" and "Why a
 scheduled run cannot reach production"). DuckLake replaces this for the
 monthly tables at stage 3's first step, once its three go/no-go runs pass
 (ELT.md, "DuckLake at phases 3 and 4").
+
+THE SERVED COPY (`serve`, `add-served`) is how the hourly build reads a
+notices leg (decision 61). The notices job, extract-notices.yml, writes its
+store every 4 hours, in runs that may overlap publish-conditions.yml's. A
+`replace` load deletes a table's files before it writes the new ones, and
+the run log lands after both (extract/_run.py's _extract_and_load()), so a
+read of the store itself in that window finds the logged load's files gone,
+or some of them: a torn read. So once its run has committed, the notices job
+copies what a build reads of it, write-once, to
+`<bucket-url>/served/<run_id>/`: each committed table of its job as one
+Parquet file, the hints of each table created empty (a proven zero, a table
+not yet loaded), and the run log rows of those tables, with `manifest.json`
+last, holding each file's sha256 (write_served_copy()). The hourly build
+reads the newest finished copy, which no load in flight can touch, and a
+copy that will not read falls back to the one before, the notices' last good
+rows (load_served()). SERVED_KEEP copies are kept.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import sys
+import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import islice
 from pathlib import Path
@@ -41,6 +60,7 @@ from urllib.parse import urlsplit
 
 import duckdb
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from extract._run import (
@@ -48,6 +68,8 @@ from extract._run import (
     INCOMPLETE,
     ISOLATED_OUTCOME,
     LANES,
+    LEGS,
+    PARTIAL_EXIT,
     RUNS_TABLE,
     UNAVAILABLE,
     _client,
@@ -57,6 +79,7 @@ from extract._run import (
     fs_path,
     make_pipeline,
     proven_zero,
+    raw_store_url,
     run_log_rows,
     table_files,
     table_listing,
@@ -175,7 +198,12 @@ def not_yet_loaded(pipeline, committed: dict[str, str], log: list[dict] | None =
 
 
 def load_warehouse(
-    con: duckdb.DuckDBPyConnection, pipeline, schema: str = "raw", log: list[dict] | None = None, readers: int = 1
+    con: duckdb.DuckDBPyConnection,
+    pipeline,
+    schema: str = "raw",
+    log: list[dict] | None = None,
+    readers: int = 1,
+    tables: set[str] | None = None,
 ) -> dict[str, int]:
     """Replace each extracted table in `schema` with its committed rows. Returns {table: rows}.
 
@@ -184,15 +212,25 @@ def load_warehouse(
     `readers` tables are read from the store at once, in a window that holds
     no more than that many tables' rows: one for the monthly lane, whose
     tables run to hundreds of megabytes and whose ninth run ran out of memory,
-    and LEG_READERS for a conditions leg, whose 92 tables took about 55 s one
-    after another in soak run 508 (publish-conditions.yml 37158027469). The
-    files are listed once (table_listing()), and only this thread writes to
-    `con`, so the window changes how long the read takes, never what lands.
+    and LEG_READERS for a leg, whose 92 tables took about 55 s one after
+    another in soak run 508 (publish-conditions.yml 37158027469). The files
+    are listed once (table_listing()), and only this thread writes to `con`,
+    so the window changes how long the read takes, never what lands.
+
+    `tables`, for a leg, is the tables its job reads now (extract/_run.py's
+    leg_tables()): only those, and only their run log rows, are loaded. A
+    leg's store keeps every table it ever loaded, one whose resource has
+    moved to the other job included: the conditions legs' stores keep the 80
+    notice layers decision 61 moved to the notices legs, frozen at the last
+    run before the move, and reading them would serve rows days old as this
+    hour's.
     """
     client = _client(pipeline)
     con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
     loaded = {}
     log = run_log_rows(pipeline) if log is None else log
+    if tables is not None:
+        log = [row for row in log if row["table_name"] in tables]
     log_rows = {(row["table_name"], row.get("load_id")): row for row in log}
     committed = committed_tables(pipeline, log=log)
     listing = table_listing(pipeline, list(committed))
@@ -261,6 +299,318 @@ def windowed(work, items: list, size: int):
             if following is not None:
                 pending.append((following, pool.submit(work, following)))
             yield item, answer
+
+
+# --- The served copy (the module docstring, "THE SERVED COPY") ---
+
+SERVED_PREFIX = "served"
+#: Written last, as a pin's raw_inputs.json is: a copy without it did not finish, and is never read.
+SERVED_MANIFEST = "manifest.json"
+#: Finished copies kept after each write, the newest first. 3 at a 4-hourly
+#: cadence is about 12 hours of them. A reader picks the newest when it starts,
+#: so a purge reaches the copy it is reading only if the reader is slower than
+#: two notices runs; publish-conditions.yml caps its read step at minutes
+#: (Reasoned).
+SERVED_KEEP = 3
+#: add-served's exits besides 0 (the newest copy read) and 1 (none could be):
+#: an older copy was read because the newest could not be, or no copy has been
+#: written yet. Neither stops the hourly build; publish-conditions.yml says which.
+SERVED_OLDER_EXIT, SERVED_NONE_EXIT = 5, 6
+#: How many times load_served() lists the copies and reads the newest before it
+#: falls back to an older one, and the seconds between. A copy is write-once,
+#: so what this waits out is a transient error from the store, or a copy that
+#: vanished under the read (a purge). 3 x 5 s is a round figure, @unvalidated:
+#: no served read has run yet, so none has failed.
+SERVED_ATTEMPTS, SERVED_WAIT_SECONDS = 3, 5.0
+
+
+def served_root(bucket_url: str) -> str:
+    """`<bucket-url>/served`, as the raw store's filesystem client names it."""
+    return f"{fs_path(bucket_url)}/{SERVED_PREFIX}"
+
+
+def served_copies(fs, bucket_url: str) -> list[str]:
+    """The run ids of every finished copy (one with a manifest), newest first; run ids sort in time order.
+
+    The listing is asked of the store each time: s3fs keeps a listings cache
+    per filesystem, which would answer a re-list with the copies it saw first.
+    """
+    fs.invalidate_cache(served_root(bucket_url))
+    try:
+        found = fs.glob(f"{served_root(bucket_url)}/*/{SERVED_MANIFEST}")
+    except FileNotFoundError:
+        return []
+    return sorted({os.path.basename(os.path.dirname(path.rstrip("/"))) for path in found}, reverse=True)
+
+
+def _log_arrow(pipeline, tables: set[str]) -> pa.Table | None:
+    """`_extract_runs` as dlt wrote it, every file, with its column types, less the rows of tables not in `tables`.
+
+    Kept as Arrow, never as Python rows, so a column that is null on every
+    row keeps the type dlt declared for it (RUNS_COLUMNS) instead of landing
+    as DuckDB's INTEGER.
+    """
+    client = _client(pipeline)
+    files = table_files(pipeline, RUNS_TABLE)
+    if not files:
+        return None
+    arrow = pa.concat_tables([pq.read_table(client.fs_client.open(path)) for path in files], promote_options="permissive")
+    return arrow.filter(pc.is_in(arrow["table_name"], value_set=pa.array(sorted(tables), pa.string())))
+
+
+def _previous_manifest(fs, bucket_url: str, before: str) -> tuple[str, dict] | None:
+    """The newest finished copy older than run `before`, and its manifest, or None."""
+    for run_id in served_copies(fs, bucket_url):
+        if run_id < before:
+            with fs.open(f"{served_root(bucket_url)}/{run_id}/{SERVED_MANIFEST}", "r") as handle:
+                return run_id, json.load(handle)
+    return None
+
+
+@dataclass
+class ServedWrite:
+    """What write_served_copy() did: the copy's manifest, whether this call wrote it, and each table it could not
+    copy from the store, with why and what it did instead (carried from the copy before, or left out)."""
+
+    manifest: dict
+    wrote: bool
+    problems: list[str] = field(default_factory=list)
+
+
+def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrite:
+    """Copy what a build reads of this leg, as of its newest run, to `<bucket-url>/served/<run_id>/`, manifest last.
+
+    WRITE-ONCE, as a pin is: a copy that exists is read back, never rewritten.
+    `tables` is the leg's job's tables (extract/_run.py's leg_tables()); a
+    table outside it, and its run log rows, are never copied.
+
+    A TABLE THE STORE CANNOT GIVE BACK WHOLE DOES NOT HOLD BACK THE OTHERS.
+    One whose logged load has no file, or whose files hold another count of
+    rows than the run log says that load landed, is a table a run left torn:
+    killed between its load, which deletes a table's files before it writes
+    the new ones, and its run log. That table is carried from the copy
+    before, its last good rows, and named in `problems`; with no copy
+    before, it is left out and named. The next run that reads it whole mends
+    the store.
+
+    Then every finished copy past the newest SERVED_KEEP is deleted, and so
+    is any unfinished one older than this.
+    """
+    fs = _client(pipeline).fs_client
+    log_arrow = _log_arrow(pipeline, tables)
+    if log_arrow is None or log_arrow.num_rows == 0:
+        raise BuildRefused("the run log holds no run of this leg's tables, so there is nothing to serve")
+    log = log_arrow.to_pylist()
+    run_id = max(row["run_id"] for row in log)
+    root = f"{served_root(bucket_url)}/{run_id}"
+    if fs.exists(f"{root}/{SERVED_MANIFEST}"):
+        with fs.open(f"{root}/{SERVED_MANIFEST}", "r") as handle:
+            return ServedWrite(json.load(handle), False)
+    committed = committed_tables(pipeline, log=log)
+    listing = table_listing(pipeline, list(committed))
+    by_load = {(row["table_name"], row.get("load_id")): row for row in log}
+    previous = _previous_manifest(fs, bucket_url, run_id)
+    entries: dict[str, dict] = {}
+    problems: list[str] = []
+    fs.makedirs(f"{root}/tables", exist_ok=True)
+    for table, load_id in sorted(committed.items()):
+        files = [path for path in listing.get(table, []) if os.path.basename(path).startswith(f"{load_id}.")]
+        row = by_load.get((table, load_id)) or {}
+        if not files and proven_zero(row):
+            entries[table] = {"load_id": load_id, "rows": 0, "file": None, "column_hints": json.loads(row["column_hints"])}
+            continue
+        arrow = None
+        if files:
+            arrow = pa.concat_tables([pq.read_table(fs.open(path)) for path in files], promote_options="permissive")
+        if arrow is None or arrow.num_rows != row.get("rows"):
+            found = "no file" if arrow is None else f"{arrow.num_rows} rows in its files"
+            why = f"{table}: load {load_id} has {found}, and the run log says it landed {row.get('rows')}"
+            carried = previous[1]["tables"].get(table) if previous else None
+            if carried is None:
+                problems.append(f"{why}; no copy before this one has it, so it is left out")
+                continue
+            if carried.get("file"):
+                fs.copy(f"{served_root(bucket_url)}/{previous[0]}/{carried['file']}", f"{root}/{carried['file']}")
+            entries[table] = dict(carried, carried_from=previous[0])
+            problems.append(f"{why}; carried from copy {previous[0]}, its last good rows")
+            continue
+        relative = f"tables/{table}.parquet"
+        with fs.open(f"{root}/{relative}", "wb") as handle:
+            pq.write_table(arrow, handle, compression="zstd")
+        entries[table] = {
+            "load_id": load_id,
+            "rows": arrow.num_rows,
+            "file": relative,
+            "sha256": _sha256(fs, f"{root}/{relative}"),
+        }
+    for table, hints in sorted(not_yet_loaded(pipeline, committed, log).items()):
+        entries[table] = {"load_id": None, "rows": 0, "file": None, "column_hints": hints, "not_yet_loaded": True}
+    with fs.open(f"{root}/{RUNS_TABLE}.parquet", "wb") as handle:
+        pq.write_table(log_arrow, handle, compression="zstd")
+    manifest = {
+        "run_id": run_id,
+        "written_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "tables": entries,
+        "problems": problems,
+        "extract_runs": {
+            "file": f"{RUNS_TABLE}.parquet",
+            "rows": log_arrow.num_rows,
+            "sha256": _sha256(fs, f"{root}/{RUNS_TABLE}.parquet"),
+        },
+    }
+    with fs.open(f"{root}/{SERVED_MANIFEST}", "w") as handle:
+        handle.write(json.dumps(manifest, indent=2, sort_keys=True))
+    purge_served(fs, bucket_url, run_id)
+    return ServedWrite(manifest, True, problems)
+
+
+def purge_served(fs, bucket_url: str, newest: str) -> list[str]:
+    """Delete every finished copy past the newest SERVED_KEEP, and every unfinished one older than `newest`. Returns them."""
+    root = served_root(bucket_url)
+    keep = set(served_copies(fs, bucket_url)[:SERVED_KEEP])
+    try:
+        children = [os.path.basename(path.rstrip("/")) for path in fs.ls(root, detail=False)]
+    except FileNotFoundError:
+        return []
+    doomed = sorted(run_id for run_id in children if run_id not in keep and run_id < newest)
+    for run_id in doomed:
+        fs.rm(f"{root}/{run_id}", recursive=True)
+    return doomed
+
+
+def _verified_bytes(fs, path: str, sha256: str) -> bytes:
+    with fs.open(path, "rb") as handle:
+        data = handle.read()
+    if hashlib.sha256(data).hexdigest() != sha256:
+        raise BuildRefused(f"{path} does not match the sha256 its served copy recorded")
+    return data
+
+
+def _read_served(fs, bucket_url: str, run_id: str, tables: set[str]) -> tuple[dict, dict[str, pa.Table], pa.Table]:
+    """One copy's manifest, its tables of `tables` that have a file, and its run log rows of `tables`, each verified."""
+    root = f"{served_root(bucket_url)}/{run_id}"
+    with fs.open(f"{root}/{SERVED_MANIFEST}", "r") as handle:
+        manifest = json.load(handle)
+    wanted = sorted(
+        (table, entry["file"], entry["sha256"])
+        for table, entry in manifest["tables"].items()
+        if table in tables and entry.get("file")
+    )
+
+    def read(item):
+        _, path, sha256 = item
+        return pq.read_table(io.BytesIO(_verified_bytes(fs, f"{root}/{path}", sha256)))
+
+    arrows = {item[0]: arrow for item, arrow in windowed(read, wanted, LEG_READERS)}
+    runs = manifest["extract_runs"]
+    log = pq.read_table(io.BytesIO(_verified_bytes(fs, f"{root}/{runs['file']}", runs["sha256"])))
+    log = log.filter(pc.is_in(log["table_name"], value_set=pa.array(sorted(tables), pa.string())))
+    return manifest, arrows, log
+
+
+@dataclass
+class ServedRead:
+    """What load_served() read: the copy (None when none had been written), whether it was the newest, each table's
+    rows, and why each copy it could not read could not be read."""
+
+    run_id: str | None
+    newest: bool
+    loaded: dict[str, int] = field(default_factory=dict)
+    problems: list[str] = field(default_factory=list)
+
+
+#: What load_served() may meet reading a copy, each a reason to try again or try the one before.
+SERVED_READ_ERRORS = (OSError, BuildRefused, ValueError, KeyError, pa.ArrowException)
+
+
+def load_served(
+    con: duckdb.DuckDBPyConnection,
+    pipeline,
+    bucket_url: str,
+    tables: set[str],
+    schema: str = "raw",
+    attempts: int = SERVED_ATTEMPTS,
+    wait: float = SERVED_WAIT_SECONDS,
+    sleep=time.sleep,
+) -> ServedRead:
+    """Add a leg's served copy to a warehouse another leg has loaded: its tables of `tables`, each replaced, and its run
+    log rows of `tables` beside the rows `_extract_runs` already holds. Read-only on the store.
+
+    The newest finished copy is read up to `attempts` times, `wait` seconds
+    apart, listing the copies again each time; then each older copy in turn,
+    whose rows are the leg's last good ones. Nothing is written to `con`
+    until one copy has read whole. Raises BuildRefused when copies exist and
+    none could be read; a store with no copy yet answers a ServedRead whose
+    run_id is None.
+    """
+    fs = _client(pipeline).fs_client
+    problems: list[str] = []
+    found = None
+    copies: list[str] = []
+    for attempt in range(attempts):
+        copies = served_copies(fs, bucket_url)
+        if not copies:
+            return ServedRead(None, False, problems=problems)
+        try:
+            found = (copies[0], True, *_read_served(fs, bucket_url, copies[0], tables))
+            break
+        except SERVED_READ_ERRORS as failure:
+            problems.append(f"copy {copies[0]}: {type(failure).__name__}: {failure}")
+            if attempt + 1 < attempts:
+                sleep(wait)
+    if found is None:
+        for run_id in copies[1:]:
+            try:
+                found = (run_id, False, *_read_served(fs, bucket_url, run_id, tables))
+                break
+            except SERVED_READ_ERRORS as failure:
+                problems.append(f"copy {run_id}: {type(failure).__name__}: {failure}")
+    if found is None:
+        raise BuildRefused("no served copy could be read: " + "; ".join(problems))
+    run_id, newest, manifest, arrows, log = found
+    con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    loaded: dict[str, int] = {}
+    for table, entry in sorted(manifest["tables"].items()):
+        if table not in tables:
+            continue
+        if table in arrows:
+            con.register("_served", arrows[table])
+            con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{table}" AS SELECT * FROM _served')
+            con.unregister("_served")
+            loaded[table] = arrows[table].num_rows
+            continue
+        if entry.get("not_yet_loaded"):
+            print(f"::warning title={table} not yet loaded::no load of it has committed yet, so it is empty in this build")
+        _create_proven_empty(con, schema, table, entry["column_hints"], pipeline)
+        loaded[table] = 0
+    if log.num_rows:
+        con.register("_runs", log)
+        (exists,) = con.execute(
+            "select count(*) from information_schema.tables where table_schema = ? and table_name = ?", [schema, RUNS_TABLE]
+        ).fetchone()
+        # BY NAME, because the two logs' column types need not agree: the
+        # conditions leg's lands through Python rows (load_warehouse()), so a
+        # column null on every row there is INTEGER, which DuckDB widens to
+        # this one's type.
+        union = f'SELECT * FROM "{schema}"."{RUNS_TABLE}" UNION ALL BY NAME ' if exists else ""
+        con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{RUNS_TABLE}" AS {union}SELECT * FROM _runs')
+        con.unregister("_runs")
+    return ServedRead(run_id, newest, loaded, problems)
+
+
+def served_summary(leg: str, read: ServedRead | None, failure: BaseException | None = None) -> str:
+    """add-served's evidence, as Markdown, for `$GITHUB_STEP_SUMMARY`."""
+    lines = [f"### The served copy: `{leg}`", ""]
+    if read is None:
+        lines += [f"**Not read**, so this build has none of its tables: `{type(failure).__name__}: {failure}`", ""]
+    elif read.run_id is None:
+        lines += ["**No copy has been written yet**, so this build has none of its tables.", ""]
+    else:
+        which = "the newest" if read.newest else "**an older copy**, because the newest could not be read"
+        lines += [f"Copy `{read.run_id}`, {which}: {len(read.loaded)} tables, {sum(read.loaded.values())} rows.", ""]
+    if read is not None and read.problems:
+        lines += ["**Could not be read:**", "", *[f"- {problem}" for problem in read.problems], ""]
+    return "\n".join(lines) + "\n"
 
 
 # --- A pinned raw_run (the module docstring, "A PINNED RAW_RUN") ---
@@ -536,6 +886,57 @@ def fetch_stored(pipeline, steps_url: str, key: str, names: list[str], out: Path
     return fetched
 
 
+def _leg_command(args) -> int:
+    """`serve` and `add-served`, on the tables the leg's job reads now (extract/_run.py's leg_tables())."""
+    from extract._contract import all_resources, discover, discover_shared
+    from extract._run import leg_tables
+
+    bucket_url = args.bucket_url or raw_store_url(args.raw_bucket, args.lane)
+    pipeline = make_pipeline(args.lane, bucket_url, args.pipelines_dir)
+    tables = leg_tables(args.lane, all_resources(discover() + discover_shared()))
+
+    def summarise(text: str) -> None:
+        if args.summary is not None:
+            with open(args.summary, "a", encoding="utf-8") as handle:
+                handle.write(text)
+
+    if args.command == "serve":
+        written = write_served_copy(pipeline, bucket_url, tables)
+        manifest = written.manifest
+        rows = sum(entry["rows"] for entry in manifest["tables"].values())
+        verb = "copied" if written.wrote else "was already copied, so it was read back and not rewritten:"
+        line = f"{args.lane} run {manifest['run_id']} {verb} {len(manifest['tables'])} tables, {rows} rows, for the hourly build"
+        print(line)
+        for problem in written.problems:
+            print(f"::error title=A table was not copied from the store::{problem}")
+        summarise(
+            f"### The served copy: `{args.lane}`\n\n{line}\n\n"
+            + "".join(f"- {problem}\n" for problem in written.problems)
+            + ("\n" if written.problems else "")
+        )
+        return PARTIAL_EXIT if written.problems else 0
+    try:
+        with duckdb.connect(str(args.warehouse)) as con:
+            read = load_served(con, pipeline, bucket_url, tables)
+    except BuildRefused as refused:
+        summarise(served_summary(args.lane, None, refused))
+        raise
+    summarise(served_summary(args.lane, read))
+    if read.run_id is None:
+        print(f"::warning title=No served copy yet::{args.lane} has written no copy yet, so this build has none of its tables")
+        return SERVED_NONE_EXIT
+    print(
+        f"{len(read.loaded)} tables, {sum(read.loaded.values())} rows, from {args.lane}'s copy {read.run_id} into {args.warehouse}"
+    )
+    if not read.newest:
+        print(
+            f"::error title=An older served copy was read::{args.lane}'s newest copy could not be read, so this build has "
+            f"its last good rows, from copy {read.run_id}: {'; '.join(read.problems)}"
+        )
+        return SERVED_OLDER_EXIT
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="The raw store into the warehouse, and a raw_run's pin (this module's docstring)."
@@ -573,8 +974,24 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--key", required=True)
     fetch.add_argument("--out", type=Path, required=True)
     fetch.add_argument("names", nargs="+")
+
+    def add_leg(name: str, help_: str) -> argparse.ArgumentParser:
+        command = commands.add_parser(name, help=help_)
+        command.add_argument("--lane", required=True, choices=sorted(LEGS), help="the leg whose store this reads")
+        where = command.add_mutually_exclusive_group(required=True)
+        where.add_argument("--bucket-url", help="the leg's raw store, as extract/_run.py was given it")
+        where.add_argument("--raw-bucket", help="the private raw bucket's name, as R2_RAW_BUCKET holds it")
+        command.add_argument("--pipelines-dir", help="dlt's working directory (default: dlt's own)")
+        command.add_argument("--summary", type=Path, help="append what was copied or read, as Markdown, to this file")
+        return command
+
+    add_leg("serve", "after a leg's run: copy what a build reads of it under <bucket-url>/served/<run_id>/ (write-once)")
+    served = add_leg("add-served", "add a leg's newest readable served copy to --warehouse, beside what is there")
+    served.add_argument("--warehouse", type=Path, required=True)
     args = parser.parse_args(argv)
 
+    if args.command in ("serve", "add-served"):
+        return _leg_command(args)
     pipeline = make_pipeline(args.lane, args.bucket_url, args.pipelines_dir)
     if args.command == "has-pin":
         found = has_pin(pipeline, args.steps_url, args.raw_run)

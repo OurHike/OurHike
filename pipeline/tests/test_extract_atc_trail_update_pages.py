@@ -51,7 +51,7 @@ from lib import http_retry
 from lib.atc_scrape import LISTING_URL, listing_url, update_url
 from lib.freshness_state import Freshness
 from lib.user_agent import USER_AGENT
-from tests.test_extract_conditions_legs import club_closures
+from tests.test_extract_conditions_legs import nynjtc_alerts
 from tests.test_extract_run import lane, warehouse
 
 SITEMAP_URL = "https://appalachiantrail.org/trail-updates-sitemap.xml"
@@ -570,8 +570,8 @@ def test_a_first_run_lands_nothing_until_every_page_is_read_and_completes_over_s
 
     seen: list[int] = []
     for run in range(3):
-        report = leg(store, resource(), club_closures("nynjtc", f"n{run}", count=1), read_seconds=60)
-        assert report.rows["raw_nynjtc__closures"] == 1, "the other club loads every run"
+        report = leg(store, resource(), nynjtc_alerts(f"n{run}", count=1), read_seconds=60)
+        assert report.rows["raw_nynjtc__nynjtc_trail_alerts"] == 1, "the other club loads every run"
         con, counts = leg_warehouse(store)
         if run < 2:
             assert TABLE in report.incomplete and "not yet loaded" in report.incomplete[TABLE]

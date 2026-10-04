@@ -98,6 +98,16 @@ OURHIKE_BUILT_BY, the git commit and workflow run, which each snapshot
 version records as `_built_by` (never hashed), so a reader can tell a change
 upstream from a change to this project's rules.
 
+--no-history-save restores the history and builds with it, and saves
+nothing back: for a build that knows some of its inputs are missing, so that
+a row's absence is never recorded as its removal. publish-conditions.yml
+passes it when the notices legs' served copy was not the newest
+(extract/_warehouse.py, "THE SERVED COPY"), because the closures and
+warnings marts then lack, or hold older, notices; saved, the history would
+close those rows and reopen them an hour later with a new `_changed_at`.
+What it costs is the date of a row that did change: it is dated by the next
+build that saves (Reasoned).
+
 --history-on-failure degrade IS THE CONDITIONS LEGS' (the maintainer, by poll,
 2026-10-03): closures and warnings must still publish when their history
 cannot be restored. Then the restore's failure is printed as an error, every
@@ -405,10 +415,12 @@ def plan(
     without: tuple[str, ...] = (),
     history: History | None = None,
     snapshots: bool = True,
+    save_history: bool = True,
 ) -> list[Run]:
     """Every command of the build, in order, for these steps, in `lane` (None: every node), less the steps `without` names,
-    between the row history's restore and its save when `history` names a store, and with no snapshot built when
-    `snapshots` is false (the module docstring, "--history-on-failure degrade")."""
+    between the row history's restore and its save when `history` names a store (the save left out when
+    `save_history` is false: --no-history-save), and with no snapshot built when `snapshots` is false (the module
+    docstring, "--history-on-failure degrade")."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
     if state is not None and lane != HOURLY:
@@ -464,7 +476,8 @@ def plan(
         store = ("--url", history.url, "--warehouse", str(paths.warehouse))
         restore = (history.python, "row_history.py", "restore", *store, *(("--cold-start",) if history.cold_start else ()))
         runs.insert(0, Run(RESTORE_LABEL, restore, PIPELINE_DIR))
-        runs.append(Run(SAVE_LABEL, (history.python, "row_history.py", "save", *store), PIPELINE_DIR))
+        if save_history:
+            runs.append(Run(SAVE_LABEL, (history.python, "row_history.py", "save", *store), PIPELINE_DIR))
     return runs
 
 
@@ -623,6 +636,11 @@ def main(argv: list[str] | None = None) -> int:
         default="fail",
         help="degrade: a failed restore builds and publishes with null row dates and exits DEGRADED_EXIT (conditions legs)",
     )
+    parser.add_argument(
+        "--no-history-save",
+        action="store_true",
+        help="restore the row history and build with it, but save nothing back: some of this build's inputs are missing",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the commands and run none")
     args = parser.parse_args(argv)
 
@@ -650,7 +668,7 @@ def main(argv: list[str] | None = None) -> int:
             "state": args.state.resolve() if args.state else None,
             "without": tuple(args.without_step),
         }
-        runs = plan(STEPS, **options, history=history)
+        runs = plan(STEPS, **options, history=history, save_history=not args.no_history_save)
     except ValueError as refused:
         parser.error(str(refused))
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
@@ -660,6 +678,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"-- build_marts: OURHIKE_BUILT_BY={env['OURHIKE_BUILT_BY']}", flush=True)
     if notice:
         print(f"-- build_marts: {notice}", flush=True)
+    if args.no_history_save:
+        print(
+            "::warning title=Row history not saved::--no-history-save: this build restores the row history and saves "
+            "nothing back, so a row missing from its inputs is never recorded as removed. A row that changed is dated "
+            "by the next build that saves.",
+            flush=True,
+        )
     if args.dry_run:
         for run in runs:
             print(f"{run.label}: (cd {run.cwd} && {' '.join(run.argv)})")

@@ -232,9 +232,13 @@ def polite(http: requests.Session, delay: float) -> requests.Session:
 # --- One request a run: the check's answer, kept for the read ---------------
 
 # How long the read may use what the change check read, instead of asking
-# again. Reasoned: a conditions leg's job is held to 10 minutes (ELT.md,
-# decision 53 phase F), so an answer older than that is not this run's.
-REUSE_SECONDS = 600
+# again. Reasoned: since decision 61 these readers run on the notices legs,
+# whose job is held to 60 minutes (extract-notices.yml), so an answer older
+# than that is not this run's. It was 600, the conditions job's 10 minutes;
+# on a notices leg the change checks alone may take 600 s
+# (extract/_run.py's LEG_CHECK_SECONDS) before the first read starts, so 600
+# would have sent the earliest-checked pages a second request every run.
+REUSE_SECONDS = 3600
 
 _ANSWERS: dict[str, tuple[float, object]] = {}
 _ANSWERS_LOCK = threading.Lock()

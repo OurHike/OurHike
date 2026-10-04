@@ -122,7 +122,7 @@ def test_a_refused_run_uploads_no_as_landed_copy(registry, store, requests_mock)
     assert not landed_root(store).exists(), "a copy of a load that never committed is not an input anybody may read"
 
 
-def test_a_conditions_leg_uploads_no_as_landed_copy_of_a_table_it_refused_on_its_own(registry, store, requests_mock):
+def test_a_leg_uploads_no_as_landed_copy_of_a_table_it_refused_on_its_own(registry, store, requests_mock):
     """A leg refuses a club's table on its own and extracts the rest again (_run.py's _extract_and_load), and the
     copy starts again with that second extract: the refused closures layer's first-pass file, an empty
     FeatureCollection, must never be uploaded as if that layer had loaded empty, and no row is copied twice."""
@@ -130,7 +130,7 @@ def test_a_conditions_leg_uploads_no_as_landed_copy_of_a_table_it_refused_on_its
     FakeLayer(requests_mock, CLOSURES_URL, [], count_fails=True)
 
     report = run_pipeline(
-        "conditions_ua",
+        "notices_ua",
         store["bucket_url"],
         resources=[lines(), closures()],
         pipelines_dir=store["pipelines_dir"],

@@ -1,16 +1,21 @@
-"""extract/_run.py's conditions legs and its command line, as publish-conditions.yml runs them.
+"""extract/_run.py's legs and its command line, as publish-conditions.yml and extract-notices.yml run them.
 
-Each leg is the hourly lane for one data environment, in a dlt pipeline of
-its own (`LEGS`), so production's and UA's OurHike rows never share a raw
-table. A leg isolates each upstream (read_each): one club's failed, slow or
-refused read is left out with its last committed table standing, and the
-rest load, except OurHike's own Postgres rows, whose failure stops the leg
-as it stops today's bake. The command line adds what the workflow's hourly
-job needs around a run: the raw bucket's per-leg prefix (`--raw-bucket`),
-one table of a lane (`--only`), the committed-file load into the warehouse
-(`--warehouse`), and the run's evidence in the job summary (`--summary`),
-written on a refused run too. Everything runs against a `file://` raw store
-under tmp_path, under conftest.py's socket guard.
+Each leg is one job's share of the hourly lane for one data environment, in
+a dlt pipeline of its own (`LEGS`), so production's and UA's OurHike rows
+never share a raw table. Decision 61 splits the lane between two jobs
+(job_of()): the conditions legs keep HOURLY_JOB_TABLES, and the notices legs
+take every other club's and agency's notices. A leg isolates each upstream
+(read_each): one club's failed, slow or refused read is left out with its
+last committed table standing, and the rest load, except OurHike's own
+Postgres rows, whose failure stops the leg as it stops today's bake. Those
+mechanics are the same on both jobs, so the club cases below run on a
+notices leg, where a club's notices now are, and OurHike's on a conditions
+leg. The command line adds what the workflows need around a run: the raw
+bucket's per-leg prefix (`--raw-bucket`), one table of a lane (`--only`),
+the committed-file load into the warehouse (`--warehouse`), and the run's
+evidence in the job summary (`--summary`), written on a refused run too.
+Everything runs against a `file://` raw store under tmp_path, under
+conftest.py's socket guard.
 """
 
 from __future__ import annotations
@@ -96,6 +101,7 @@ def ourhike_closures(*ids: str, count: int | None = None, error: str | None = No
 
 
 def club_closures(club: str, *ids: str, count: int | None = None, error: str | None = None, delay: float = 0.0):
+    """A club's closures notices: a notices leg's resource, since no `raw_<club>__closures` is in HOURLY_JOB_TABLES."""
     return ClubAnswer(
         key="closures",
         club=club,
@@ -104,6 +110,18 @@ def club_closures(club: str, *ids: str, count: int | None = None, error: str | N
         count=count,
         error=error,
         delay=delay,
+    )
+
+
+def nynjtc_alerts(*ids: str, count: int | None = None, error: str | None = None) -> ClubAnswer:
+    """NYNJTC's trail alerts, under the table that keeps them on the conditions legs (HOURLY_JOB_TABLES)."""
+    return ClubAnswer(
+        key="nynjtc_trail_alerts",
+        club="nynjtc",
+        type="closures",
+        answer=tuple({"id": i} for i in ids),
+        count=count,
+        error=error,
     )
 
 
@@ -116,15 +134,19 @@ def store(tmp_path):
     return {"url": (tmp_path / "raw-store").as_uri(), "dir": str(tmp_path / "pipelines")}
 
 
-def leg(store, *resources, read_seconds=None):
-    return run_pipeline(
-        "conditions_ua", store["url"], resources=list(resources), pipelines_dir=store["dir"], read_seconds=read_seconds
-    )
+#: The leg the club cases run on: a club's notices are the notices legs' since decision 61.
+CLUBS = "notices_ua"
+#: The leg OurHike's own rows run on.
+CONDITIONS = "conditions_ua"
+
+
+def leg(store, *resources, read_seconds=None, name=CLUBS):
+    return run_pipeline(name, store["url"], resources=list(resources), pipelines_dir=store["dir"], read_seconds=read_seconds)
 
 
 def warehouse_ids(store) -> dict[str, list[str]]:
     with duckdb.connect() as con:
-        load_warehouse(con, make_pipeline("conditions_ua", store["url"], store["dir"]))
+        load_warehouse(con, make_pipeline(CLUBS, store["url"], store["dir"]))
         tables = [
             name
             for (name,) in con.execute(
@@ -155,12 +177,55 @@ def test_each_conditions_leg_runs_the_hourly_resources_in_a_pipeline_of_its_own(
 
 
 def test_a_conditions_leg_carries_the_hourly_lane_and_leaves_a_monthly_layer_out(store):
-    report = leg(store, ourhike_closures("u1", count=1), a_monthly_layer())
+    report = leg(store, ourhike_closures("u1", count=1), a_monthly_layer(), name=CONDITIONS)
     assert set(report.verdicts) == {"raw_ourhike__closures"}
 
 
+def test_the_conditions_legs_read_the_hourly_job_tables_and_the_notices_legs_every_other_hourly_resource(store):
+    """Decision 61's split, by job_of(): OurHike's rows and NYNJTC's alerts stay hourly, a club's notices move to
+    the notices legs, and a monthly layer is on neither."""
+    resources = (ourhike_closures("u1", count=1), nynjtc_alerts("n1", count=1), club_closures("usfs", "f1", count=1))
+
+    conditions = run_pipeline(
+        CONDITIONS, store["url"] + "/c", resources=[*resources, a_monthly_layer()], pipelines_dir=store["dir"]
+    )
+    notices = run_pipeline(CLUBS, store["url"] + "/n", resources=[*resources, a_monthly_layer()], pipelines_dir=store["dir"])
+
+    assert set(conditions.verdicts) == {"raw_ourhike__closures", "raw_nynjtc__nynjtc_trail_alerts"}
+    assert set(notices.verdicts) == {"raw_usfs__closures"}
+    assert [_run.job_of(resource) for resource in resources] == [_run.CONDITIONS_JOB, _run.CONDITIONS_JOB, _run.NOTICES_JOB]
+    assert _run.leg_tables("notices_production", list(resources)) == {"raw_usfs__closures"}
+    with pytest.raises(ValueError, match="no leg 'hourly'"):
+        _run.leg_tables("hourly", list(resources))
+
+
+def test_a_conditions_legs_warehouse_leaves_out_a_notice_table_its_store_kept_from_before_the_split(tmp_path, monkeypatch):
+    """The conditions legs' stores still hold the 80 notice layers they loaded before decision 61, frozen at the
+    move; read as this hour's, they would be days old. The command line's warehouse load takes the leg's job's
+    tables alone, and only their run log rows."""
+    usfs = club_closures("usfs", "f1", count=1)
+    store, warehouse = (tmp_path / "store").as_uri(), tmp_path / "warehouse.duckdb"
+    with monkeypatch.context() as before:
+        before.setitem(_run.HOURLY_JOB_TABLES, usfs.table, "on the conditions legs before decision 61")
+        run_pipeline(CONDITIONS, store, resources=[ourhike_closures("o1", count=1), usfs], pipelines_dir=str(tmp_path / "dlt"))
+    resources = [ourhike_closures("o1", count=1), usfs]
+    monkeypatch.setattr(_run, "discover", list)
+    monkeypatch.setattr(_run, "discover_shared", list)
+    monkeypatch.setattr(_run, "all_resources", lambda files: resources)
+
+    _run.main(
+        ["--lane", CONDITIONS, "--bucket-url", store, "--pipelines-dir", str(tmp_path / "dlt"), "--warehouse", str(warehouse)]
+    )
+
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        tables = {name for (name,) in con.execute("select table_name from information_schema.tables").fetchall()}
+        logged = {name for (name,) in con.execute("select distinct table_name from raw._extract_runs").fetchall()}
+    assert tables == {"raw_ourhike__closures", "_extract_runs"}
+    assert logged == {"raw_ourhike__closures"}
+
+
 def test_one_clubs_failed_read_leaves_its_last_table_and_the_other_clubs_closures_still_load(store):
-    """The coordinator's case: ATC failing must not hold back NYNJTC. ATC keeps its first run's rows."""
+    """The coordinator's case: one club failing must not hold back another. The first keeps its first run's rows."""
     leg(store, club_closures("atc", "a1", count=1), club_closures("nynjtc", "n1", count=1))
 
     report = leg(store, club_closures("atc", error="ATC answered 503"), club_closures("nynjtc", "n1", "n2", count=2))
@@ -170,9 +235,7 @@ def test_one_clubs_failed_read_leaves_its_last_table_and_the_other_clubs_closure
     assert "ATC answered 503" in report.isolated["raw_atc__closures"]
     assert report.rows == {"raw_nynjtc__closures": 2}
     assert warehouse_ids(store) == {"raw_atc__closures": ["a1"], "raw_nynjtc__closures": ["n1", "n2"]}
-    latest = [
-        row for row in run_log_rows(make_pipeline("conditions_ua", store["url"], store["dir"])) if row["run_id"] == report.run_id
-    ]
+    latest = [row for row in run_log_rows(make_pipeline(CLUBS, store["url"], store["dir"])) if row["run_id"] == report.run_id]
     assert {row["table_name"]: row["outcome"] for row in latest} == {
         "raw_atc__closures": "refused",
         "raw_nynjtc__closures": "loaded",
@@ -224,7 +287,7 @@ def test_a_club_whose_first_run_was_refused_and_whose_second_loaded_is_read_from
 def test_a_whole_leg_refused_on_its_first_run_creates_no_empty_tables_for_a_later_build(store):
     """OurHike's own rows stop the leg; an empty raw_ourhike__closures would publish as "no OurHike closures"."""
     with pytest.raises(ExtractRefused):
-        leg(store, ourhike_closures(), club_closures("nynjtc", "n1", count=1))
+        leg(store, ourhike_closures(), nynjtc_alerts("n1", count=1), name=CONDITIONS)
 
     assert warehouse_ids(store) == {}
 
@@ -250,7 +313,7 @@ def test_an_arcgis_field_retyped_upstream_refuses_that_layer_only_and_the_rest_l
     assert "contract" in report.isolated["raw_testclub__closures_layer"]
     assert report.rows == {"raw_nynjtc__closures": 2}
     with duckdb.connect() as con:
-        counts = load_warehouse(con, make_pipeline("conditions_ua", store["url"], store["dir"]))
+        counts = load_warehouse(con, make_pipeline(CLUBS, store["url"], store["dir"]))
     assert counts == {"raw_nynjtc__closures": 2, "raw_testclub__closures_layer": 1}, "the layer's first-run row stands"
     again = leg(store, closures(), club_closures("nynjtc", "n1", "n2", count=2), read_seconds=60)
     assert again.verdicts["raw_testclub__closures_layer"] != "fresh", "the refused layer advanced no marker"
@@ -301,12 +364,23 @@ def test_ourhikes_own_rows_still_stop_the_whole_leg_when_their_read_fails(store)
     assert stops_the_leg(ourhike_closures())
     assert not stops_the_leg(club_closures("atc"))
     with pytest.raises(RuntimeError, match="permission denied"):
-        leg(store, ourhike_closures(error="permission denied for table closures"), club_closures("nynjtc", "n1", count=1))
+        leg(store, ourhike_closures(error="permission denied for table closures"), nynjtc_alerts("n1", count=1), name=CONDITIONS)
 
 
 def test_ourhikes_own_rows_refused_by_the_run_check_refuse_the_whole_leg(store):
     with pytest.raises(ExtractRefused, match="raw_ourhike__closures: 0 rows and no upstream count"):
-        leg(store, ourhike_closures(), club_closures("nynjtc", "n1", count=1))
+        leg(store, ourhike_closures(), nynjtc_alerts("n1", count=1), name=CONDITIONS)
+
+
+def test_a_failed_read_on_the_conditions_leg_is_its_own_too(store):
+    """NYNJTC's alerts stay on the conditions legs (decision 61), and a failure there still holds back nobody else."""
+    leg(store, ourhike_closures("o1", count=1), nynjtc_alerts("n1", count=1), name=CONDITIONS)
+
+    report = leg(store, ourhike_closures("o1", "o2", count=2), nynjtc_alerts(error="NYNJTC answered 503"), name=CONDITIONS)
+
+    assert set(report.isolated) == {"raw_nynjtc__nynjtc_trail_alerts"}
+    assert report.rows == {"raw_ourhike__closures": 2}
+    assert warehouse_ids(store) == {"raw_nynjtc__nynjtc_trail_alerts": ["n1"], "raw_ourhike__closures": ["o1", "o2"]}
 
 
 def test_the_hourly_lane_still_refuses_the_whole_run_on_one_refusal(store):
@@ -323,6 +397,8 @@ def test_the_hourly_lane_still_refuses_the_whole_run_on_one_refusal(store):
 def test_raw_store_url_puts_each_lane_and_leg_under_raw_at_the_prefix_elt_md_names():
     assert raw_store_url("our-hike-raw", "conditions_ua") == "s3://our-hike-raw/raw/dlt/conditions_ua"
     assert raw_store_url("our-hike-raw", "conditions_production") == "s3://our-hike-raw/raw/dlt/conditions_production"
+    assert raw_store_url("our-hike-raw", "notices_ua") == "s3://our-hike-raw/raw/dlt/notices_ua"
+    assert raw_store_url("our-hike-raw", "notices_production") == "s3://our-hike-raw/raw/dlt/notices_production"
     assert raw_store_url("our-hike-raw", "monthly") == "s3://our-hike-raw/raw/dlt/monthly"
 
 
@@ -340,6 +416,8 @@ def test_raw_store_url_refuses_a_lane_that_does_not_exist():
 def test_only_refuses_a_table_its_lane_does_not_carry():
     with pytest.raises(ValueError, match="raw_testclub__lines: not a table the conditions_ua lane carries"):
         _run.only_tables([ourhike_closures("u1"), a_monthly_layer()], ["raw_testclub__lines"], "conditions_ua")
+    with pytest.raises(ValueError, match="raw_usfs__closures: not a table the conditions_ua lane carries"):
+        _run.only_tables([ourhike_closures("u1"), club_closures("usfs")], ["raw_usfs__closures"], "conditions_ua")
 
 
 def test_a_leg_run_and_its_warehouse_read_each_run_log_file_once_and_no_dlt_loads_file(tmp_path, monkeypatch):
@@ -355,7 +433,7 @@ def test_a_leg_run_and_its_warehouse_read_each_run_log_file_once_and_no_dlt_load
     monkeypatch.setattr(_run, "discover_shared", list)
     monkeypatch.setattr(_run, "all_resources", lambda files: resources)
     store, warehouse = (tmp_path / "store").as_uri(), str(tmp_path / "warehouse.duckdb")
-    args = ["--lane", "conditions_ua", "--bucket-url", store, "--pipelines-dir", str(tmp_path / "dlt"), "--warehouse", warehouse]
+    args = ["--lane", CLUBS, "--bucket-url", store, "--pipelines-dir", str(tmp_path / "dlt"), "--warehouse", warehouse]
     for _ in range(5):
         _run.main(args)
     opened = {"_extract_runs": 0, "_dlt_loads": 0}
@@ -410,8 +488,8 @@ def test_the_command_line_loads_the_registry_alone_into_the_warehouse_and_summar
 def test_a_refused_run_still_writes_its_summary_with_the_reason(store):
     """An empty OurHike closures table with no upstream count refuses the leg, and the summary says why, by table."""
     with pytest.raises(ExtractRefused) as refused:
-        leg(store, ourhike_closures())
-    text = summary_markdown(refused.value.report, "conditions_ua", failure=refused.value)
+        leg(store, ourhike_closures(), name=CONDITIONS)
+    text = summary_markdown(refused.value.report, CONDITIONS, failure=refused.value)
     assert "outcome **refused**" in text
     assert "**Refused:**" in text and "raw_ourhike__closures: 0 rows and no upstream count" in text
     assert "| `raw_ourhike__closures` | unknown | 0 |  |" in text
@@ -420,7 +498,7 @@ def test_a_refused_run_still_writes_its_summary_with_the_reason(store):
 def test_a_summary_names_each_club_refused_on_its_own_and_says_its_last_table_stands(store):
     leg(store, club_closures("atc", "a1", count=1), club_closures("nynjtc", "n1", count=1))
     report = leg(store, club_closures("atc", error="ATC answered 503"), club_closures("nynjtc", "n1", count=1))
-    text = summary_markdown(report, "conditions_ua")
+    text = summary_markdown(report, CLUBS)
     assert "**Refused on its own**" in text and "ATC answered 503" in text
     assert "| `raw_atc__closures` | unknown | refused, last table stands |  |" in text
     assert "| `raw_nynjtc__closures` | unknown | 1 | 1 |" in text
@@ -430,8 +508,8 @@ def test_a_run_ourhikes_reader_stops_says_what_stopped_it_and_leaves_its_rows_bl
     """The summary names the error, and writes no row count for a run that never normalized, rather than a zero
     that reads as "no closures"."""
     with pytest.raises(RuntimeError) as stopped:
-        leg(store, ourhike_closures(error="permission denied for table closures"))
-    text = summary_markdown(stopped.value.report, "conditions_ua", failure=stopped.value)
+        leg(store, ourhike_closures(error="permission denied for table closures"), name=CONDITIONS)
+    text = summary_markdown(stopped.value.report, CONDITIONS, failure=stopped.value)
     assert "outcome **failed**" in text and "permission denied for table closures" in text
     assert "| `raw_ourhike__closures` | unknown |  |  |" in text
 
@@ -444,7 +522,7 @@ def test_a_summary_with_no_run_says_the_run_never_began():
 def test_a_leg_takes_on_its_limit_of_never_loaded_tables_and_the_rest_wait_for_the_next_run(store, monkeypatch):
     """Soak run 506 met 70 new layers at once and overran its step; a leg now takes on a few per run."""
     leg(store, club_closures("atc", "a1", count=1))
-    monkeypatch.setattr(_run, "NEW_TABLES_PER_LEG_RUN", 2)
+    monkeypatch.setitem(_run.NEW_TABLES_PER_LEG_RUN, _run.NOTICES_JOB, 2)
     clubs = [club_closures("atc", "a1", count=1), *(club_closures(club, f"{club}-1", count=1) for club in ("c1", "c2", "c3"))]
 
     second = leg(store, *clubs)
@@ -454,12 +532,12 @@ def test_a_leg_takes_on_its_limit_of_never_loaded_tables_and_the_rest_wait_for_t
     assert not second.isolated and _run.exit_status(second) == 0
     (c3,) = [
         row
-        for row in run_log_rows(make_pipeline("conditions_ua", store["url"], store["dir"]))
+        for row in run_log_rows(make_pipeline(CLUBS, store["url"], store["dir"]))
         if row["run_id"] == second.run_id and row["table_name"] == "raw_c3__closures"
     ]
     assert (c3["outcome"], c3["load_id"], c3["column_hints"]) == ("incomplete", None, None)
     assert "raw_c3__closures" not in warehouse_ids(store)
-    assert "**Waiting**" in summary_markdown(second, "conditions_ua")
+    assert "**Waiting**" in summary_markdown(second, CLUBS)
 
     third = leg(store, *clubs)
 
@@ -468,13 +546,28 @@ def test_a_leg_takes_on_its_limit_of_never_loaded_tables_and_the_rest_wait_for_t
 
 def test_a_never_loaded_table_refused_last_run_waits_behind_one_never_tried(store, monkeypatch):
     """So a layer that fails every run goes to the back each time, and cannot hold the others out."""
-    monkeypatch.setattr(_run, "NEW_TABLES_PER_LEG_RUN", 1)
+    monkeypatch.setitem(_run.NEW_TABLES_PER_LEG_RUN, _run.NOTICES_JOB, 1)
     first = leg(store, club_closures("c1", error="answered 500"), club_closures("c2", "c2-1", count=1))
     assert set(first.isolated) == {"raw_c1__closures"} and set(first.waiting) == {"raw_c2__closures"}
 
     second = leg(store, club_closures("c1", error="answered 500"), club_closures("c2", "c2-1", count=1))
 
     assert set(second.waiting) == {"raw_c1__closures"} and second.rows == {"raw_c2__closures": 1}
+
+
+def test_each_job_takes_on_new_tables_by_its_own_limit(store, monkeypatch):
+    """The notices legs' hour holds more first reads than the conditions legs' 150 seconds (NEW_TABLES_PER_LEG_RUN)."""
+    assert set(_run.NEW_TABLES_PER_LEG_RUN) == set(_run.JOBS)
+    monkeypatch.setitem(_run.NEW_TABLES_PER_LEG_RUN, _run.CONDITIONS_JOB, 1)
+    monkeypatch.setitem(_run.NEW_TABLES_PER_LEG_RUN, _run.NOTICES_JOB, 2)
+
+    conditions = leg(store, ourhike_closures("o1", count=1), nynjtc_alerts("n1", count=1), name=CONDITIONS)
+    notices = leg(
+        {**store, "url": store["url"] + "/n"}, *(club_closures(club, f"{club}-1", count=1) for club in ("c1", "c2", "c3"))
+    )
+
+    assert set(conditions.waiting) == {"raw_ourhike__closures"}, "1 a run: nynjtc's by name, then OurHike's"
+    assert set(notices.waiting) == {"raw_c3__closures"}, "2 a run"
 
 
 def test_a_refusal_fails_the_exit_only_when_its_source_may_reach_a_hiker(monkeypatch):
@@ -502,7 +595,7 @@ def test_one_listing_of_the_store_gives_each_table_the_files_table_files_lists(s
     """table_listing() replaces a request per table with one glob, so it must list exactly what table_files() does."""
     leg(store, club_closures("atc", "a1", count=1), club_closures("nynjtc", "n1", count=1))
     leg(store, club_closures("atc", "a1", "a2", count=2), club_closures("nynjtc", "n1", count=1))
-    pipeline = make_pipeline("conditions_ua", store["url"], store["dir"])
+    pipeline = make_pipeline(CLUBS, store["url"], store["dir"])
     tables = ["raw_atc__closures", "raw_nynjtc__closures", "raw_never__closures", "_extract_runs"]
 
     listing = _run.table_listing(pipeline, tables)
@@ -566,7 +659,7 @@ class HangingCheck(ClubAnswer):
 
 
 def test_a_change_check_that_never_answers_is_refused_on_its_own_and_the_rest_load(store, monkeypatch):
-    monkeypatch.setattr(_run, "LEG_CHECK_SECONDS", 1)
+    monkeypatch.setitem(_run.LEG_CHECK_SECONDS, _run.NOTICES_JOB, 1)
     leg(store, club_closures("atc", "a1", count=1), club_closures("nynjtc", "n1", count=1))
     hanging = HangingCheck(key="closures", club="atc", type="closures", answer=({"id": "a2"},), count=1)
     started = time.monotonic()
@@ -577,10 +670,28 @@ def test_a_change_check_that_never_answers_is_refused_on_its_own_and_the_rest_lo
     assert set(report.isolated) == {"raw_atc__closures"} and "change-check budget" in report.isolated["raw_atc__closures"]
     assert report.rows == {"raw_nynjtc__closures": 2}
     assert warehouse_ids(store) == {"raw_atc__closures": ["a1"], "raw_nynjtc__closures": ["n1", "n2"]}
-    latest = [
-        row for row in run_log_rows(make_pipeline("conditions_ua", store["url"], store["dir"])) if row["run_id"] == report.run_id
-    ]
+    latest = [row for row in run_log_rows(make_pipeline(CLUBS, store["url"], store["dir"])) if row["run_id"] == report.run_id]
     assert {row["table_name"]: row["outcome"] for row in latest} == {
         "raw_atc__closures": "refused",
         "raw_nynjtc__closures": "loaded",
     }
+
+
+def test_each_job_ends_its_change_checks_by_its_own_budget(store, monkeypatch):
+    """The notices legs' folders hold up to 26 pages behind a 2 s Crawl-delay, or pages behind 60 s, so their
+    checks get far longer than the conditions legs' (LEG_CHECK_SECONDS)."""
+    assert set(_run.LEG_CHECK_SECONDS) == set(_run.JOBS)
+    assert _run.LEG_CHECK_SECONDS[_run.NOTICES_JOB] > _run.LEG_CHECK_SECONDS[_run.CONDITIONS_JOB]
+    asked = []
+    first = _run.by_folder
+
+    def by_folder(resources, work, seconds=None):
+        asked.append(seconds)
+        return first(resources, work, seconds)
+
+    monkeypatch.setattr(_run, "by_folder", by_folder)
+
+    leg(store, ourhike_closures("o1", count=1), name=CONDITIONS)
+    leg({**store, "url": store["url"] + "/n"}, club_closures("usfs", "f1", count=1))
+
+    assert asked == [_run.LEG_CHECK_SECONDS[_run.CONDITIONS_JOB], _run.LEG_CHECK_SECONDS[_run.NOTICES_JOB]]

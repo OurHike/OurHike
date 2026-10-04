@@ -293,6 +293,10 @@ CONTENT_COLUMNS = {
     # Section K's PDF reader (decision 54 wave 4, extract/_pdf_content.py): the same type columns as its page reader.
     ("suggested_hikes", "ContentPdf"): {"name": "name", "link": "link"},
     ("challenges", "ContentPdf"): {"name": "name", "link": "link"},
+    # A club page's points (extract/_pages_points.py's PagePoints) that a content file SHARES: one row per page, its
+    # columns the ones the points row names for the type in `shared_page_rows` (page_rows_columns()), as NPS's are
+    # its endpoint's. The Palmetto Trail's passages: the lead's ruling of 2026-10-04, one reader of its 33 pages.
+    ("suggested_hikes", "PagePoints"): {},
 }
 #: NPS's lists, one reader for five endpoints, conformed by (type, the endpoint's path under /api/v1/), each field
 #: one extract/_content.py's NPS_CONTENT_COLUMNS hints so the column exists on every run.
@@ -409,6 +413,11 @@ class Table:
         return self.reader in CONTENT_LOOKUPS
 
     @property
+    def page_rows(self) -> bool:
+        """A content type's rows from a page's points table it SHARES: one row per page, not one per point."""
+        return self.reader == "PagePoints" and not self.shape.geometry
+
+    @property
     def key_column(self) -> str:
         return "term_key" if self.lookup else self.shape.key_column
 
@@ -440,6 +449,8 @@ class Table:
         entry = self.entry
         if self.lookup:
             return [f"'{self.key}'", *(column(field) for field in LOOKUP_KEY_FIELDS)]
+        if self.page_rows:
+            return [f"'{self.key}'", "source_url"]  # one row per page: every PagePoints row carries its page's URL
         if "key_fields" in entry:
             fields, home = list(entry["key_fields"]), "key_fields"
         elif entry.get("id_fields"):
@@ -499,6 +510,8 @@ class Table:
             conformed.append(elevation.removeprefix("field ").strip())
         if not self.shape.geometry and not self.lookup:
             conformed += [field.split(" ", 1)[0] for field in content_columns(self).values() if field is not None]
+        for fields in (entry.get("shared_page_rows") or {}).values():
+            conformed += [field for field in fields.values() if field is not None]
         for field in conformed:
             names.setdefault(column(field).strip('"'), "varchar")
         for name in self.date_columns():
@@ -558,6 +571,8 @@ def tables() -> list[Table]:
                 reader = "ArcgisLayer"
             elif reader not in readers or (reader not in CONTENT_LOOKUPS and (club_file.type, reader) not in CONTENT_COLUMNS):
                 continue
+            elif reader == "PagePoints" and club_file.type not in (resource.entry.get("shared_page_rows") or {}):
+                continue  # a page's points feed a content type only through the fields their row names for it
             # A keyed API's table is withdrawn whenever its key is unset (extract/_ogc.py's JsonFeatures). It is staged
             # all the same: its base model reads an absent table as no rows (macros/raw_or_empty.sql).
             entry = registry_entry(resource.key)
@@ -842,7 +857,18 @@ def content_columns(table: Table) -> dict[str, str | None]:
         if found is None:
             raise ValueError(f"{table.key}: no NPS_COLUMNS row for {table.type} from {path!r}")
         return found
+    if table.page_rows:
+        fields = page_rows_fields(table)
+        return {name: fields.get(name) for name, _ in table.shape.columns}
     return CONTENT_COLUMNS[(table.type, table.reader)]
+
+
+def page_rows_fields(table: Table) -> dict[str, str]:
+    """{the type's column: the raw column}, as the points row's `shared_page_rows` names them for the type."""
+    fields = (table.entry.get("shared_page_rows") or {}).get(table.type)
+    if not fields or "link" not in fields:
+        raise ValueError(f"{table.key}: `shared_page_rows` names no fields (and no link) for {table.type}")
+    return fields
 
 
 def _content_conformed(table: Table) -> list[str]:
@@ -919,8 +945,18 @@ def _content_stg_sql(folder: str, type_: str, type_tables: list[Table]) -> str:
         "json_merge_patch drops each member the patch sets to null, so a body, an episode's notes or a page's "
         "wikitext stops at the base model (decision 55)."
     )
+    for table in type_tables:
+        if table.page_rows:
+            head += "\n" + _comment(
+                f"`{table.key}` is a page's points table this folder's {type_.replace('_', ' ')} file SHARES (one read "
+                "of each page, decision 34): it gives one row per page, grouped on `source_url` and the fields its "
+                "row's `shared_page_rows` names, and only those fields ride in `properties`."
+            )
     branches = []
     for table in type_tables:
+        if table.page_rows:
+            branches.append(_page_rows_branch(folder, table))
+            continue
         conformed = "".join(f"\n    {line}," for line in _conformed(table))
         prose = ", ".join(f'"{column(name).strip(chr(34))}": null' for name in CONTENT_PROSE.get(table.reader, ()))
         patch = "\n".join(f"        {line}" for line in _patch_lines(prose))
@@ -939,24 +975,60 @@ from {{{{ ref('{table.base}') }}}}"""
     return SQL_MARK + head + "\n" + "\nunion all by name\n".join(branches) + "\n"
 
 
+def _page_rows_branch(folder: str, table: Table) -> str:
+    """A content type's branch over a page's points table it SHARES: one row per page (`source_url`), grouped.
+
+    Every row of one page carries that page's facts alike (the points row's `shared_page_rows_comment` says how that
+    was measured), so grouping on the page and the fields named keeps one row a page; a page whose rows ever
+    disagreed would group into two rows under one key, which the staging model's unique test refuses. `properties`
+    is those fields alone, under the type's names: a marker's type and place stay in the points' staging model.
+    """
+    fields = page_rows_fields(table)
+    raw = list(dict.fromkeys(["source_url", *(field for field in fields.values() if field is not None)]))
+    conformed = "".join(f"\n    {line}," for line in _content_conformed(table))
+    members = ",\n".join(f"        '{name}', {column(field)}" for name, field in fields.items() if field is not None)
+    key_lines = "".join(f"\n        {_key_item(item)}," for item in table.key_inputs())
+    group = ",\n".join(f"    {column(field)}" for field in raw)
+    return f"""select
+    '{table.key}' as source_key,
+    '{folder}' as club,
+    {{{{ dbt_utils.generate_surrogate_key([{key_lines}
+    ]) }}}} as {table.shape.key_column},{conformed}
+    json_object(
+{members}
+    ) as properties,
+    max(_loaded_at) as _loaded_at
+from {{{{ ref('{table.base}') }}}}
+group by
+{group}"""
+
+
 def models_yaml(folder: str, by_type: dict[str, list[Table]]) -> str:
     lines = [YAML_MARK + "version: 2", "", "models:"]
     for type_, type_tables in sorted(by_type.items()):
         shape = SHAPES[type_]
         keys = ", ".join(f"`{table.key}`" for table in type_tables)
+        paged = [table for table in type_tables if table.page_rows]
+        grain = "one row per base row"
+        if paged:
+            grain += " (one per page for " + ", ".join(f"`{table.key}`" for table in paged) + ", whose points it shares)"
         lines += [
             f"  - name: stg_{folder}__{type_}",
             "    description: >",
             _folded(
-                f"The {folder}/ folder's {type_.replace('_', ' ')} layers ({keys}), one row per base row, renamed to "
+                f"The {folder}/ folder's {type_.replace('_', ' ')} layers ({keys}), {grain}, renamed to "
                 f"{shape.union}'s columns, with each layer's own columns in `properties`.",
                 6,
             ),
             "    columns:",
             f"      - name: {shape.key_column}",
-            "        description: The base model's key, carried.",
-            "        data_tests: [not_null, unique]",
+            "        description: The base model's key, carried." if not paged else "        description: >-",
         ]
+        if paged:
+            lines.append(
+                _folded("The base model's key, carried; for a shared page's points, the page's: (its key, `source_url`).", 10)
+            )
+        lines.append("        data_tests: [not_null, unique]")
     return "\n".join(lines) + "\n"
 
 

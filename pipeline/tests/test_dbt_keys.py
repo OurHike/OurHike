@@ -129,10 +129,12 @@ def _row_tables() -> frozenset[str]:
 @cache
 def _content_tables() -> frozenset[str]:
     """Section C's content tables (decision 54 wave 3): the raw tables pipeline/make_dbt_staging.py stages for a type
-    whose shape carries no geometry (podcast episodes, write-ups, list items, photo manifest rows)."""
+    whose shape carries no geometry (podcast episodes, write-ups, list items, photo manifest rows). A club page's points
+    table a content type SHARES (Table.page_rows, the Palmetto Trail's passages) is not one: it is the points' own raw
+    table, geometry and all, and its base model is the points'."""
     import make_dbt_staging
 
-    return frozenset(table.table for table in make_dbt_staging.tables() if not table.shape.geometry)
+    return frozenset(table.table for table in make_dbt_staging.tables() if not table.shape.geometry and not table.page_rows)
 
 
 #: The derived tables a Python step writes with no geometry column (build_marts.py's STEPS): step_form_route's

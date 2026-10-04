@@ -19,6 +19,16 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_onda__onda_hikes
+        data_tests:
+          # Rows sharing base_onda__onda_hikes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'onda_hikes'", "link"]
+        description: >
+          ONDA hikes (onda.org/hike/, listed by hike-sitemap.xml) (sources.json
+          `onda_hikes`). Key: `link`, the hike's own page: unique on all 24 rows read
+          2026-10-04, as are the names.
       - name: raw_onda__onda_odt_tracks
         data_tests:
           # Rows sharing base_onda__onda_odt_tracks's key must be exact copies (decision 40).

@@ -343,7 +343,9 @@ def test_every_site_parser_reads_its_fixture_markup_into_the_rows_fixture_mode_l
     assert len(rows) == make_dbt_fixtures.K_PAGES_ROWS[resource.key]
     landed = json.dumps(rows, ensure_ascii=False).lower()
     assert not [word for word in ("fixture prose", "fixture description", "fixture directions", "fixture paragraph",
-                                  "fixture highlights", "fixture note", "fixture water prose", "descripción")
+                                  "fixture highlights", "fixture note", "fixture water prose", "descripción",
+                                  "fixture supervisor", "fixture@example.org", "555.0100", "fixture credit",
+                                  "fixture explanation", "fixture camp", "34.9", "36.72036")
                 if word in landed], resource.key  # fmt: skip
 
 
@@ -435,6 +437,128 @@ def test_an_amc_card_that_links_off_the_itineraries_is_not_a_trip():
     )
     (row,) = SITE_PARSERS["amc_itineraries"].read(page, None)
     assert (row["name"], row["difficulty"], row["duration"]) == ("Fixture Trip", "Easy", "1 Day")
+
+
+def test_a_distance_with_two_figures_lands_as_its_words_and_no_number():
+    single = _pages_content.single_miles
+    assert single("1.8 miles, one way") == (1.8, "1.8 miles, one way")
+    assert single(".53 miles") == (0.53, ".53 miles")
+    assert single("4 ½-mile loop") == (4.5, "4 ½-mile loop")
+    for text in ("Pink trail, 2 to 4 miles", "0.6 miles, 0.4 paved", "11.5 miles in 2 loops", "27+ miles"):
+        assert single(text) == (None, text), text
+    assert single(None) == (None, None)
+
+
+def test_a_florida_map_whose_tooltips_do_not_match_its_stated_count_refuses():
+    tip = '<span class="uael-tooltip-text"><p><strong>Fixture Trail</strong></p><p>Length: 1 mile</p></span>'
+    page = Page(
+        "https://floridatrail.org/day-hike/",
+        parse_html(
+            f'<h3>Grab-And-Go FT Hikes:</h3><div class="uael-hotspot-container" data-length="2">{tip}</div>'
+            f'<h3>Other Trail Hikes:</h3><div class="uael-hotspot-container" data-length="1">{tip}</div>'
+        ),
+    )
+    with pytest.raises(LayoutChanged, match="states 2 hikes and holds 1"):
+        SITE_PARSERS["fta_day_hikes"].read(page, None)
+
+
+def test_a_florida_shape_lands_only_where_the_line_names_one():
+    assert _pages_content._fta_route("4.8 mile loop") == "loop"
+    assert _pages_content._fta_route("3.6 miles round trip") == "round trip"
+    for text in ("8.1 miles linear", "10.2 miles loop/linear", "1.7 mile loop + 1.2 mile spur", "11.2 miles loop and linear"):
+        assert _pages_content._fta_route(text) is None, text
+
+
+def test_a_wisconsin_trail_heading_with_no_length_lands_no_row():
+    found = parse_html(
+        "<h1>Hiking</h1><h2>Fixture State Park</h2><h3>Fixture trail (Pink trail, 2 to 4 miles)</h3>"
+        "<h3>Fixture Ridge Trail — 0.55 miles</h3><h3>Fixture Hollow trail</h3><h3>Trail safety</h3>"
+    )
+    pages = {"https://dnr.wisconsin.gov/topic/parks/fixture/recreation/hiking": Page("https://dnr.wisconsin.gov/x", found)}
+    index = Page(
+        "https://dnr.wisconsin.gov/sitemap.xml",
+        parse_html("<sitemapindex><sitemap><loc>https://dnr.wisconsin.gov/sitemap.xml?page=1</loc></sitemap></sitemapindex>"),
+    )
+    listing = Page(
+        "https://dnr.wisconsin.gov/sitemap.xml?page=1",
+        parse_html("<urlset><url><loc>https://dnr.wisconsin.gov/topic/parks/fixture/recreation/hiking</loc></url></urlset>"),
+    )
+    pages["https://dnr.wisconsin.gov/sitemap.xml?page=1"] = listing
+
+    rows = SITE_PARSERS["wi_dnr_hiking"].read(index, pages.get)
+
+    assert [(r["name"], r["distance_mi"], r["distance_text"]) for r in rows] == [
+        ("Fixture trail", None, "Pink trail, 2 to 4 miles"),
+        ("Fixture Ridge Trail", 0.55, "0.55 miles"),
+    ]
+
+
+def test_an_ozark_ascent_written_with_a_prime_is_read_and_n_a_lands_as_text():
+    assert _pages_content._ota_feet("4200′") == (4200.0, "4200′")
+    assert _pages_content._ota_feet("N/A") == (None, "N/A")
+
+
+def test_a_buckeye_section_reads_its_miles_and_counties_and_never_its_supervisor():
+    section = Page(
+        "https://buckeyetrail.org/sections/fixture",
+        parse_html(
+            '<h1>Fixture</h1><dl class="facts-table"><dt>Miles</dt><dd>66.1total miles / 45.2 off-road miles (68%)</dd>'
+            "<dt>Section supervisor</dt><dd>Fixture Supervisor</dd><dt>Counties</dt><dd>Fixture, Fixture Two</dd></dl>"
+        ),
+    )
+    index = Page("https://buckeyetrail.org/sections", parse_html('<a href="/sections/fixture">Fixture</a>'))
+
+    (row,) = SITE_PARSERS["buckeye_sections"].read(index, {section.url: section}.get)
+
+    assert (row["distance_mi"], row["off_road_mi"], row["place"]) == (66.1, 45.2, "Fixture, Fixture Two")
+    assert "Fixture Supervisor" not in json.dumps(row)
+
+
+def test_an_estimated_four_thousand_footer_keeps_its_asterisk_beside_its_number():
+    index = Page(
+        "https://www.amc4000footer.org/the-lists-we-recognize.html",
+        parse_html(
+            '<a href="whitemountainfourk.html">The White Mountain Four Thousand Footers</a>'
+            '<a href="newenglandfourk.html">The New England Four Thousand Footers</a>'
+            '<a href="newenglandhundredhighest.html">The New England Hundred Highest*</a>'
+        ),
+    )
+    table = "<table><tr><td>Rank</td><td>Name</td><td>Elev</td></tr><tr><td>4</td><td>Fixture</td><td>5384*</td></tr></table>"
+    pages = {f"https://www.amc4000footer.org/{tail}": Page(f"https://www.amc4000footer.org/{tail}", parse_html(table))
+             for tail in _pages_content._AMC_LISTS}  # fmt: skip
+
+    rows = SITE_PARSERS["amc_four_thousand_footer_lists"].read(index, pages.get)
+
+    assert {(r["challenge"], r["elevation_ft"], r["elevation_text"], r["elevation_estimated"]) for r in rows} == {
+        ("The White Mountain Four Thousand Footers", 5384.0, "5384*", True),
+        ("The New England Four Thousand Footers", 5384.0, "5384*", True),
+        ("The New England Hundred Highest", 5384.0, "5384*", True),
+    }
+
+
+def test_a_four_thousand_footer_index_missing_a_list_refuses():
+    index = Page("https://www.amc4000footer.org/x.html", parse_html('<a href="whitemountainfourk.html">The White</a>'))
+    with pytest.raises(LayoutChanged, match="not the three list pages"):
+        SITE_PARSERS["amc_four_thousand_footer_lists"].read(index, None)
+
+
+def test_a_georgia_peak_lands_its_land_area_and_trails_and_never_its_notes():
+    page = Page(
+        "https://georgia-atclub.org/x/",
+        parse_html(
+            "<h5>Fixture Knob - 4,643 ft.</h5><p>Land Area: Fixture Wilderness</p><p>Trail (s): Bushwhack</p>"
+            "<p>Notes: Fixture note, elev may be overstated</p><h5>Fixture Bald - 4,458 ft.</h5><p>Trail(s): AT</p>"
+        ),
+    )
+    first, second = SITE_PARSERS["gatc_georgia_4000"].read(page, None)
+    assert (first["name"], first["elevation_ft"], first["place"], first["trails"]) == (
+        "Fixture Knob",
+        4643.0,
+        "Fixture Wilderness",
+        "Bushwhack",
+    )
+    assert (second["place"], second["trails"]) == (None, "AT")
+    assert "overstated" not in json.dumps([first, second])
 
 
 def test_every_content_page_resource_rides_its_types_monthly_lane_with_a_parser_for_its_type():

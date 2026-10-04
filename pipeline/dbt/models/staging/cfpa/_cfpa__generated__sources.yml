@@ -39,3 +39,13 @@ sources:
           Blue-Blazed Hiking Trail parking (CFPA's own layer) (sources.json
           `cfpa_parking`). Key: the registry's `id_field`; its row records no measurement
           of it.
+      - name: raw_cfpa__cfpa_trails
+        data_tests:
+          # Rows sharing base_cfpa__cfpa_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'cfpa_trails'", "name"]
+        description: >
+          CFPA Find a Trail: the Blue-Blazed Hiking Trail System (ctwoodlands.org/trails/)
+          (sources.json `cfpa_trails`). Key: `name`: unique on all 57 rows read
+          2026-10-04, as are the links (one trail page each).

@@ -5,7 +5,7 @@ version: 2
 models:
   - name: int_suggested_hikes__club_unioned
     description: >
-      Every suggested hikes row of the 23 registered sources pipeline/make_dbt_staging.py
+      Every suggested hikes row of the 37 registered sources pipeline/make_dbt_staging.py
       stages for this type (decision 54 wave 3), unioned by name: one hike a club or NPS
       publishes: a WordPress write-up, a wiki trail or hike page, an NPS thing to do or tour.
       Each row carries its source's registry key, the club folder that extracted it, the base

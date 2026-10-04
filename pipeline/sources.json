@@ -305,6 +305,35 @@
       "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): a news feed that mixes notices with the club's or office's news, so every item lands as a warning nobody reviewed, and a feed is a window that phase C never reads as lifted: each press release or club post would stand as a current warning for good. Settled by decision 7's classifier, or a reviewed list of which items are notices, as its notes say."
     },
     {
+      "key": "gatc_georgia_4000",
+      "title": "GATC Georgia 4000 Challenge: the 32 peaks (georgia-atclub.org/for-hikers/georgia-4000/georgia-4000-foot-peaks/)",
+      "provider": "GATC",
+      "kind": "published_notices",
+      "url": "https://georgia-atclub.org/for-hikers/georgia-4000/georgia-4000-foot-peaks/",
+      "steward": "Georgia Appalachian Trail Club",
+      "attribution": "Georgia Appalachian Trail Club",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, elevation and the link) and never the club's prose. PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first.",
+      "licence_basis": "unresolved",
+      "terms": "None found: no terms page found on georgia-atclub.org (decision 53 inventory, batch 4, 2026-10-03, as gatc_alerts quotes it).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `gatc_georgia_4000`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the peak: unique on all 32 rows read 2026-10-04.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://georgia-atclub.org/for-hikers/georgia-4000/georgia-4000-foot-peaks/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T18:01:39Z at the host's `Crawl-delay: 10` (HTTP 200, 93,632 bytes): 32 h5 peaks, each an elevation in feet, a Land Area and its Trail(s) (7 of them a bushwhack, the page's word for no trail). The Notes under each, the club's prose (elevation caveats among them: 'USGS ... does not show 4640 line (elev may be overstated)'), are not read, so the elevation lands as the page states it. The challenge's own page, /for-hikers/georgia-4000/, and its CalTopo map 'GA 4000 Challenge' are not read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
+    },
+    {
       "key": "osm_water",
       "title": "OSM water point sources (fourteen A.T. states)",
       "provider": "OpenStreetMap contributors",
@@ -993,6 +1022,36 @@
       "notes": "12 episodes, published all 2018-05-20, read 2026-10-04T07:27:59+00:00 (46,429 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
+      "key": "mohonk_suggested_hikes",
+      "title": "Mohonk Preserve Suggested Hikes (mohonkpreserve.org/visit/activities/suggested-hikes/)",
+      "provider": "Mohonk Preserve",
+      "kind": "published_hikes",
+      "url": "https://www.mohonkpreserve.org/visit/activities/suggested-hikes/",
+      "steward": "Mohonk Preserve",
+      "attribution": "Mohonk Preserve",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Mohonk Preserve; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None of the website's own found: a WordPress search for a terms page found none (decision 53 inventory, batch 3, 2026-10-03, as mohonk_alerts quotes it).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `mohonk_suggested_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "section",
+        "name"
+      ],
+      "key_comment": "The trailhead and the hike's name (`section`, `name`): unique on all 13 rows read 2026-10-04. The name alone is not: Undercliff-Overcliff Loop is suggested from two trailheads.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.mohonkpreserve.org/visit/activities/suggested-hikes/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T16:33:43Z (HTTP 200, 128,084 bytes, after a 301 from mohonkpreserve.org) at the host's `Crawl-delay: 10`: 8 hikes under 5 trailheads and 5 under Other Hikes, 12 with a printable PDF map on the host (the row's link; Bonticou Crag shares the map linked after Table Rocks and gets the page). One hike states distances, three return routes for Millbrook Ridge Loops, so no distance lands for any.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "dec_hiking_trails",
@@ -6772,8 +6831,8 @@
       "url": "https://www.ncparks.gov/state-parks",
       "steward": "North Carolina Division of Parks and Recreation",
       "attribution": "North Carolina Division of Parks and Recreation",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from North Carolina Division of Parks and Recreation; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "https://www.nc.gov/disclaimer-terms-use, as decision 53's inventory quoted it (batch 3, 2026-10-03): \"Unless otherwise noted on an individual document, the State of North Carolina grants permission to copy and distribute non-image files, documents, and information for non-commercial use, provided they are copied and distributed without alteration and appropriately cite to the source.\"",
       "reader": "ContentPages (extract/_pages_content.py), site parser `nc_parks_trails`",
       "person_fields": [],
@@ -6792,7 +6851,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T15:34:12Z to 15:47:44Z: the index /state-parks (HTTP 200, 113,676 bytes) links 46 parks; each park's /trails page answered 200 for 42 and 404 for 4 (Bob's Creek, Lower Haw River and Salmon Creek State Natural Areas, and Pisgah View State Park), and 41 of the 42 hold one trail table (one holds none): 407 trails. Nine header sets, every one 'Trail Name' and 'Length' with some of Blaze, Difficulty, Trail Use, (ADA) Accessible, Access or Access Location, and on 11 pages a Description, Descriptions or Additional Information column of the park's prose, which is not read. ETags are Dynatrace-agent values ('1791118081:dtagent...') and Last-Modified the render time, so neither decides FRESH. robots.txt (Drupal's) disallows /admin/, /search/ and the like and asks no Crawl-delay; decision 53's inventory found www.ncparks.gov/rss.xml behind CloudFront's 403, a path not read here.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "azgeo_arizona_trail",
@@ -7119,8 +7178,8 @@
       "url": "https://tahoerimtrail.org/day-hiking/",
       "steward": "Tahoe Rim Trail Association",
       "attribution": "Tahoe Rim Trail Association",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Tahoe Rim Trail Association; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None of the website's own found: a WordPress page search for 'terms' (2026-10-04) returned only 'SMS Terms and Conditions' and 'Share Your Story Terms and Conditions', neither of which reaches reading or reusing the site's pages, and the pages carry no copyright line.",
       "reader": "ContentPages (extract/_pages_content.py), site parser `tahoe_rim_day_hikes`",
       "person_fields": [],
@@ -7138,7 +7197,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T14:51:16Z to 15:02:02Z: the index (HTTP 200, 157,511 bytes) and its four theme pages (/day-hiking/alpine-lakes/ 4 hikes, /day-hiking/wildflowers/ 4, /day-hiking/peaks-vistas/ 4, /day-hiking/waterfalls-hikes/ 3; /alpine-lakes/ and /wildflowers/ as linked answer 301 to those). Every Last-Modified was the request time and no page sent an ETag. robots.txt allows / for every agent and asks no Crawl-delay. Each hike states Classification, Distance (all 15 'round trip'), Location, Access from and, on 13, Bike(s) Allowed; Highlights and Description are the association's prose and are not read. The index's 'How to break the Tahoe Rim Trail into 14 Day Hikes' PDF is not read.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "duluth_superior_hiking_trail",
@@ -7879,7 +7938,7 @@
       "url": "https://cdtcoalition.org/explore-the-trail/day-section-hiking/",
       "steward": "Continental Divide Trail Coalition",
       "attribution": "Continental Divide Trail Coalition",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence": "Decision 70 (the maintainer's poll of 2026-10-04) publishes a club's hike list as facts and a link, and keeps this row out by name: 'CDTC stays `unresolved` until its terms can be read'. Its terms page renders its text by script, which no read here runs (`terms`, 2026-10-04), so this row is `unresolved` until a person reads them.",
       "licence_basis": "unresolved",
       "terms": "Not read: /terms-of-service/ renders a heading and a Termly embed (`termly-embed`, data-id 83099c18-6c84-41b5-a576-c44958931ce7) that loads its text by script, and the embed's viewer page (app.termly.io/policy-viewer/policy.html) answered a 1,583-byte script shell with no text (2026-10-04). The footer reads '© 2025 Continental Divide Trail Coalition | All Rights Reserved'.",
       "reader": "WordpressPosts (extract/_kinds.py), with SiteTerms (extract/_content.py) for its taxonomy",
@@ -7901,7 +7960,7 @@
       "discovered_date": "2026-10-04",
       "notes": "The page /explore-the-trail/day-section-hiking/ (HTTP 200, 197,517 bytes) lists the `hike_suggestion` post type, which /wp-json/wp/v2/types names with the taxonomy `hike_suggestion_category`. /wp-json/wp/v2/hike_suggestion?per_page=100 answered X-WP-Total 60 in one page (2026-10-04T14:55:37Z), modified 2024-05-14 to 2026-09-10. Four posts are per-state 'Day & Overnight Hikes Guide' entries rather than one hike; dbt tells them apart by title and category. `acf` is empty on every row. robots.txt asks `Crawl-delay: 10` of every agent and disallows /wp-admin/ only.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: its licence is `unresolved` (decision 70 names it), and no mart reads int_suggested_hikes__club_unioned yet. Decision 63 turns it true once its terms are read and a mart reads it under decision 70's rules, tested."
     },
     {
       "key": "wi_ice_age_trail",
@@ -8039,6 +8098,35 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_pasda__pa_dcnr_tioga_advisories reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "dcnr_geotrail",
+      "title": "PA DCNR GeoTrail: Celebrating America's 250th (pa.gov/agencies/dcnr/.../dcnr-geo-trail)",
+      "provider": "PA DCNR",
+      "kind": "published_notices",
+      "url": "https://www.pa.gov/agencies/dcnr/recreation/what-to-do/geocaching/dcnr-geo-trail",
+      "steward": "Pennsylvania Department of Conservation and Natural Resources",
+      "attribution": "Pennsylvania Department of Conservation and Natural Resources",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, elevation and the link) and never the club's prose. PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first.",
+      "licence_basis": "unresolved",
+      "terms": "None found: pa.gov's linked policies (privacy, security, accessibility) were not read; none found names automated collection (decision 53 inventory, batch 4, as pa_dcnr_tioga_advisories quotes it). The caches themselves are on geocaching.com, under its terms, which were not read and govern the coordinates this row does not take.",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `dcnr_geotrail`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the park or environmental education center: unique on all 25 rows read 2026-10-04, as are the geocaching.com links.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.pa.gov/agencies/dcnr/recreation/what-to-do/geocaching/dcnr-geo-trail",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T18:02:01Z (HTTP 200, 285,714 bytes; an ETag of '<hex>-gzip', the AEM render's): 25 accordion items, each a place, a 'Geocache Theme:' line (2 marked '♿'), a paragraph and a link to the cache on geocaching.com. Run with America250PA. The hike lengths are inside the prose and are not read. The folder is pasda/, the coverage audit's cell; the steward is DCNR, whose provider row this is.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
+    },
+    {
       "key": "tehcc_wiki_announcements",
       "title": "TEHCC club wiki announcements",
       "provider": "TEHCC",
@@ -8124,8 +8212,8 @@
       "template": "Template:Trail",
       "steward": "Tennessee Eastman Hiking & Canoeing Club",
       "attribution": "Tennessee Eastman Hiking & Canoeing Club",
-      "licence": "The wiki's rightsinfo is empty (the coverage audit, 2026-10-01) and no terms were found; tehcc_wiki_announcements, the same wiki's notices, publish on decision 53's facts and a link, which does not reach a club's trail pages. No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Tennessee Eastman Hiking & Canoeing Club; the terms as found stay quoted in `terms`. Its posts' and pages' own prose (a WordPress body and excerpt, a wiki page's wikitext) lands in the private raw store and stops at its base model (make_dbt_staging.py's CONTENT_PROSE, decision 55), so no description reaches a staging model's `properties`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: the wiki's rightsinfo is empty (coverage audit, 2026-10-01).",
       "reader": "MediawikiTemplatePages (extract/_content.py)",
       "person_fields": [],
@@ -8143,7 +8231,7 @@
       "discovered_date": "2026-10-04",
       "notes": "148 pages transclude `Template:Trail` (embeddedin, one batch, batchcomplete), every one with content, read 2026-10-04 through the generator the reader uses, 50 pages a request.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "tehcc_wiki_hikes",
@@ -8154,8 +8242,8 @@
       "template": "Template:Hike",
       "steward": "Tennessee Eastman Hiking & Canoeing Club",
       "attribution": "Tennessee Eastman Hiking & Canoeing Club",
-      "licence": "The wiki's rightsinfo is empty (the coverage audit, 2026-10-01) and no terms were found; tehcc_wiki_announcements, the same wiki's notices, publish on decision 53's facts and a link, which does not reach a club's hike pages. No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Tennessee Eastman Hiking & Canoeing Club; the terms as found stay quoted in `terms`. Its posts' and pages' own prose (a WordPress body and excerpt, a wiki page's wikitext) lands in the private raw store and stops at its base model (make_dbt_staging.py's CONTENT_PROSE, decision 55), so no description reaches a staging model's `properties`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: the wiki's rightsinfo is empty (coverage audit, 2026-10-01).",
       "reader": "MediawikiTemplatePages (extract/_content.py)",
       "person_fields": [],
@@ -8173,7 +8261,7 @@
       "discovered_date": "2026-10-04",
       "notes": "52 pages transclude `Template:Hike` (embeddedin, one batch, batchcomplete), every one with content, read 2026-10-04 through the generator the reader uses, 50 pages a request.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "tehcc_wiki_challenge_items",
@@ -8476,6 +8564,36 @@
       "notes": "71 episodes, published 2020-06-12 to 2026-10-01, read 2026-10-04T07:28:20+00:00 (264,768 bytes, HTTP 200). The host's robots.txt answered HTTP 404, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
+      "key": "wi_dnr_hiking",
+      "title": "Wisconsin DNR property hiking pages (dnr.wisconsin.gov/topic/<kind>/<property>/recreation/hiking)",
+      "provider": "Wisconsin DNR",
+      "kind": "published_hikes",
+      "url": "https://dnr.wisconsin.gov/sitemap.xml",
+      "steward": "Wisconsin Department of Natural Resources",
+      "attribution": "Wisconsin Department of Natural Resources",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Wisconsin Department of Natural Resources; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "https://dnr.wisconsin.gov/legal (read 2026-10-04): disclaimers of liability, of warranties and accuracy (maps and AI use among them), of endorsement and of external links, and Wisconsin law as the choice of law; it states no restriction on reuse. It opens: \"Access to and use of the Department of Natural Resources (\"department\") website is provided subject to these terms and conditions.\"",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `wi_dnr_hiking`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "link",
+        "name"
+      ],
+      "key_comment": "The property's hiking page and the trail's name (`link`, `name`): unique on all 170 rows read 2026-10-04. The name alone is not ('Blue trail' is in two parks, 'Ice Age National Scenic Trail' in more).",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://dnr.wisconsin.gov/sitemap.xml",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T16:33:14Z to 16:52:29Z (the sitemap index at 16:48:05Z): the index (HTTP 200, 1,585 bytes) and its 10 pages (19,670 URLs) list 47 /recreation/hiking pages, 46 of them a property's; each answered 200. 20 of the 46 name trails in headings with the length ('Balanced Rock trail (0.4 miles) - Most difficult'): 170 trails, 161 with one figure that lands as a number and 9 with a range or two routes, as text. The other 26 name their trails with the length in the paragraph under the heading, or not at all, and land no row: a gap this row states rather than fills from the department's prose. robots.txt (Drupal's) disallows /admin/, /search/ and the like, no query string, and asks no Crawl-delay; ETags are '<epoch>-gzip' render values.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "fws_hunt_units",
@@ -10368,6 +10486,36 @@
       }
     },
     {
+      "key": "fta_day_hikes",
+      "title": "FTA Day & Section Hike: Grab-and-Go and other trail hikes (floridatrail.org/day-hike/)",
+      "provider": "FTA",
+      "kind": "published_hikes",
+      "url": "https://floridatrail.org/day-hike/",
+      "steward": "Florida Trail Association",
+      "attribution": "Florida Trail Association",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Florida Trail Association; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: a WordPress page search for 'terms' found none (decision 53 inventory, batch 3, 2026-10-03, as the fta_closures_* rows quote it).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `fta_day_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "section",
+        "name"
+      ],
+      "key_comment": "The map and the hike's name (`section`, `name`): unique on all 46 rows read 2026-10-04. The name alone is not: Big Oak Trail is on both maps.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://floridatrail.org/day-hike/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T14:52:03Z (HTTP 200, 573,891 bytes): two hotspot maps of 16 and 35 tooltips, each container's data-length matching its tooltips. 46 hikes land: 11 of the 16 Grab-and-Go tooltips name a hike (5 open 'Location: ...' and name none) and all 35 others. 26 state one distance figure, which lands as a number; 18 more state a range, several loops or no unit ('11.2', 'loops of 10, 12, 14 and 26 miles') and land as text only; 2 state none. 8 Grab-and-Go hikes link a PDF on floridatrail.org (the grab-and-go map, with trailhead coordinates and camping), which is the row's link and is not read here.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "nh_conservation_lands",
       "title": "NH Conservation/Public Lands (CL: Management Status)",
       "provider": "NH GRANIT",
@@ -10786,8 +10934,8 @@
       "url": "https://www.outdoors.org/resources/itineraries/",
       "steward": "Appalachian Mountain Club",
       "attribution": "Appalachian Mountain Club",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Appalachian Mountain Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "https://www.outdoors.org/terms-of-use/ ('Last updated: January 24, 2023'), read by decision 53's inventory (batches 4 and 5, 2026-10-03) and again on 2026-10-04: no clause on automated access, scraping, crawling or reproduction (age 18 and over, 'By accessing or using the Service You agree to be bound by these Terms and Conditions', liability and governing law). The footer reads 'Copyright © 2024, Appalachian Mountain Club'.",
       "reader": "ContentPages (extract/_pages_content.py), site parser `amc_itineraries`",
       "person_fields": [],
@@ -10805,7 +10953,37 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T14:51:48Z: HTTP 200, 147,888 bytes, no validators. robots.txt disallows /wp/wp-admin/ and asks no Crawl-delay. Three regions, ten trips with an itinerary page: four in the White Mountains (Presidential Traverse, Pemi Loop, Family Hut Hike, Hike the 48), four in the North Maine Woods (two lodge-to-lodge ski trips, a gravel-bike trip, paddle and hike) and two across the region (Day Hikes for All Occasions, Hike the Appalachian Trail); eight state a difficulty and a duration. The store's books and maps card links off the itineraries and is not a row. The itinerary pages themselves are not read.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
+      "key": "amc_four_thousand_footer_lists",
+      "title": "AMC Four Thousand Footer Club lists (amc4000footer.org)",
+      "provider": "AMC",
+      "kind": "published_notices",
+      "url": "https://www.amc4000footer.org/the-lists-we-recognize.html",
+      "steward": "AMC Four Thousand Footer Committee (Appalachian Mountain Club)",
+      "attribution": "AMC Four Thousand Footer Committee (Appalachian Mountain Club)",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, elevation and the link) and never the club's prose. PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the site links no terms page; its footer reads '© Copyright 2003-2026. All rights reserved. amc4000footer.org' (read 2026-10-04). robots.txt answers 404, which RFC 9309 reads as no rule.",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `amc_four_thousand_footer_lists`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "challenge",
+        "rank"
+      ],
+      "key_comment": "The list and the peak's rank on it (`challenge`, `rank`): unique on all 148 rows read 2026-10-04. The list and the name are not: the New England list has two peaks named Abraham (Maine's, 53rd, and Vermont's, 64th).",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.amc4000footer.org/the-lists-we-recognize.html",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T18:01:43Z (the index, HTTP 200, 13,018 bytes) to 18:02:31Z: three list pages, each one table, the White Mountain 48 (Last-Modified 2024-12-06), the New England 67 and the New England Hundred Highest's 33 below 4,000 feet. 52 elevations are marked '*', estimated by half a contour interval as the pages explain, and land with `elevation_estimated`. On the Hundred Highest, 11 peaks have no trail and 2 a herd path, per its Trail column. The Northeast 111's list is a PDF (/ne-111-list-of-peaks.pdf), not read; the applications are PDFs too. The club's finishers are never read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
     },
     {
       "key": "spnhf_public_access_properties",
@@ -10964,6 +11142,35 @@
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
+      "key": "trustees_hikers_top_ten",
+      "title": "The Trustees Hikers Top Ten (thetrustees.org/program/the-trustee-hikers-top-ten/)",
+      "provider": "The Trustees",
+      "kind": "published_hikes",
+      "url": "https://thetrustees.org/program/the-trustee-hikers-top-ten/",
+      "steward": "The Trustees of Reservations",
+      "attribution": "The Trustees of Reservations",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from The Trustees of Reservations; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: the page links no terms page (read 2026-10-04); decision 53's inventory read none for thetrustees.org either (trustees_hunting, batch 1).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `trustees_hikers_top_ten`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the property: unique on all 10 rows read 2026-10-04, as are the ranks and the links.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://thetrustees.org/program/the-trustee-hikers-top-ten/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T15:38:03Z (HTTP 200, 359,781 bytes, no ETag or Last-Modified): ten h5 properties ranked 10 to 1, each linking its /place/ page. The quotes under them attribute members by first name ('Trustee Hiker Simone said') and are not read. robots.txt (Yoast's) disallows nothing and asks no Crawl-delay.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "mtsg_heritage_area_boundary",
       "title": "Mountains to Sound Greenway National Heritage Area boundary",
       "provider": "MTSG",
@@ -10995,8 +11202,8 @@
       "url": "https://mtsgreenway.org/wp-json/wp/v2/itinerary",
       "steward": "Mountains to Sound Greenway Trust",
       "attribution": "Mountains to Sound Greenway Trust",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Mountains to Sound Greenway Trust; the terms as found stay quoted in `terms`. Its posts' and pages' own prose (a WordPress body and excerpt, a wiki page's wikitext) lands in the private raw store and stops at its base model (make_dbt_staging.py's CONTENT_PROSE, decision 55), so no description reaches a staging model's `properties`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: a WordPress page search for 'terms' on the site returned only unrelated pages (2026-10-04).",
       "reader": "WordpressPosts (extract/_kinds.py)",
       "person_fields": [],
@@ -11014,7 +11221,7 @@
       "discovered_date": "2026-10-04",
       "notes": "The `itinerary` custom post type, read whole: X-WP-Total 28, 28 rows in one page of 100, modified 2022-05-13 to 2026-05-28, read 2026-10-04T07:42:05+00:00. Not every itinerary is a hike: the `itinerary_type` taxonomy (5 terms: Culture and History; Nature, Plants, and Wildlife; Scenic Drives; Trails, Parks, and Recreation; Walking Tours) says which, resolved against `mtsg_itineraries`' terms table, and a scenic drive never becomes a suggested hike. The robots.txt asks no Crawl-delay.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "mtsg_map_locations",
@@ -11323,6 +11530,35 @@
       "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, with int_trail_lines__club_published reading the table: its ASSET_STATUS and MXSTATUS values were never read."
     },
     {
+      "key": "ttc_scavenger_hunt",
+      "title": "The Trail Conservancy History of the Trail Scavenger Hunt (thetrailconservancy.org/programs/scavenger-hunt/)",
+      "provider": "The Trail Conservancy",
+      "kind": "published_notices",
+      "url": "https://thetrailconservancy.org/programs/scavenger-hunt/",
+      "steward": "The Trail Conservancy (Austin)",
+      "attribution": "The Trail Conservancy (Austin)",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, elevation and the link) and never the club's prose. PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first.",
+      "licence_basis": "unresolved",
+      "terms": "None found: a WordPress page search for 'terms' returned 3 unrelated pages (decision 53 inventory, batch 5, 2026-10-03, as ttc_butler_trail_detours quotes it).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `ttc_scavenger_hunt`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the clue location: unique on all 15 rows read 2026-10-04, as are their clue sheets' links.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://thetrailconservancy.org/programs/scavenger-hunt/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T18:01:58Z at the host's `Crawl-delay: 10` (HTTP 200, 296,217 bytes; the coverage audit's REST answer had the page modified 2023-09-21): 15 clue locations on the Butler Trail, three loops of five, each a button linking its clue sheet (a PDF under /wp-content/uploads/2023/09/), which is not read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
+    },
+    {
       "key": "patc_lands_compilation",
       "title": "PATC Lands Compilation (v1.0.0)",
       "provider": "PATC",
@@ -11431,8 +11667,8 @@
       "url": "https://www.hikethetuscarora.org/",
       "steward": "Potomac Appalachian Trail Club",
       "attribution": "Potomac Appalachian Trail Club",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Potomac Appalachian Trail Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: none recorded for this Wix site (decision 53 inventory, batch 5, 2026-10-03); the footer reads '© 2017 by PATC.'",
       "reader": "ContentPages (extract/_pages_content.py), site parser `patc_tuscarora_sections`",
       "person_fields": [],
@@ -11450,7 +11686,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T15:32:05Z to 15:49:18Z: the home page (HTTP 200, 403,965 bytes, a Wix weak ETag) links seven pages of sections, /section-1-3 to /section-20-22, holding 22 sections, 250 miles. robots.txt (Wix's) disallows `*?lightbox=` for every agent and asks no Crawl-delay. Each section states its span, miles, PATC map and maximum and minimum elevation; section 8's heading has no colon; section 10's stated maximum (395 ft) is below its minimum (415 ft), landed as stated. The home page carries a closure, 'The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission' (the Doll Ridge section), pointing to /updates, which decision 53 registers as patc_tuscarora_updates.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "patc_tuscarora_points",
@@ -12464,6 +12700,35 @@
       "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, with int_trail_lines__club_published reading the table: an open question in pipeline/ELT.md's go/no-go gate, and last edited 2021-08-13."
     },
     {
+      "key": "onda_hikes",
+      "title": "ONDA hikes (onda.org/hike/, listed by hike-sitemap.xml)",
+      "provider": "ONDA",
+      "kind": "published_hikes",
+      "url": "https://onda.org/hike-sitemap.xml",
+      "steward": "Oregon Natural Desert Association",
+      "attribution": "Oregon Natural Desert Association",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Oregon Natural Desert Association; the terms as found stay quoted in `terms`. ELT.md's 'Who may publish' rule 7 still holds it: `onda` is one of the four `refuse` orgs, which never publish until their permission is recorded, and decision 70 does not record it.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: onda.org links a Privacy Policy (https://onda.org/privacy-policy/) and no terms of use (read 2026-10-04). The waiver ONDA puts before its Oregon Desert Trail GPX, CalTopo maps and Databook covers those downloads, which are not read (onda_odt_tracks' licence).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `onda_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "link"
+      ],
+      "key_comment": "`link`, the hike's own page: unique on all 24 rows read 2026-10-04, as are the names.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://onda.org/hike-sitemap.xml",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T16:34:03Z to 17:07:15Z at the host's `Crawl-delay: 10`: hike-sitemap.xml (HTTP 200, 7,019 bytes) lists the /hike/ archive and 24 hike pages, each HTTP 200 with a five-item fact list. 15 distances are one figure and land as a number; 9 state an option or a range ('16 miles round-trip (10 miles one-way w/ shuttle option)', 'Variable') and land as text. 'Dificulty' is a number from 1 to 5 the page does not explain. Each page's hero photograph credits a person by name, which is not read. ONDA is one of the four `refuse` organizations, so this row never publishes until its permission is recorded (rule 7).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested. Rule 7 holds it after that, until the club's permission is recorded."
+    },
+    {
       "key": "ridgetrail_official_route",
       "title": "Bay Area Ridge Trail official route, public (Bay Area Ridge Trail Council)",
       "provider": "Bay Area Ridge Trail Council",
@@ -12518,8 +12783,8 @@
       "url": "https://ridgetrail.org/wp-json/wp/v2/trail-section",
       "steward": "Bay Area Ridge Trail Council",
       "attribution": "Bay Area Ridge Trail Council",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Bay Area Ridge Trail Council; the terms as found stay quoted in `terms`. Its posts' and pages' own prose (a WordPress body and excerpt, a wiki page's wikitext) lands in the private raw store and stops at its base model (make_dbt_staging.py's CONTENT_PROSE, decision 55), so no description reaches a staging model's `properties`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: a WordPress page search for 'terms' on the site returned only unrelated pages (2026-10-04).",
       "reader": "WordpressPosts (extract/_kinds.py)",
       "person_fields": [],
@@ -12537,7 +12802,7 @@
       "discovered_date": "2026-10-04",
       "notes": "The `trail-section` custom post type, read whole: X-WP-Total 86, 86 rows in one page of 100, modified 2025-02-11 to 2026-09-02, read 2026-10-04T07:42:07+00:00. Each section's distance, ends and land manager are in its body, not in fields (`acf` is empty on every row). The robots.txt disallows only its calendar views and asks no Crawl-delay.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "ridgetrail_curated_adventures",
@@ -12547,8 +12812,8 @@
       "url": "https://ridgetrail.org/category/curated-adventures/",
       "steward": "Bay Area Ridge Trail Council",
       "attribution": "Bay Area Ridge Trail Council",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Bay Area Ridge Trail Council; the terms as found stay quoted in `terms`. Its posts' and pages' own prose (a WordPress body and excerpt, a wiki page's wikitext) lands in the private raw store and stops at its base model (make_dbt_staging.py's CONTENT_PROSE, decision 55), so no description reaches a staging model's `properties`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: a WordPress page search for 'terms' on the site returned only unrelated pages (2026-10-04).",
       "reader": "WordpressPosts (extract/_kinds.py)",
       "person_fields": [
@@ -12569,7 +12834,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Category 21, `curated-adventures`: X-WP-Total 33, 33 rows in one page of 100, modified 2017-10-03 to 2026-09-30, read 2026-10-04T07:43:26+00:00. Multi-day treks, day-hike sets and bikepacking routes; a bikepacking post is not a hike, which the post's own title and tags say and dbt decides.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "shta_line_2025",
@@ -13021,7 +13286,7 @@
       "freshness": {
         "kind": "read_and_hash",
         "url": "https://www.palmettotrail.org/sitemap.xml",
-        "notes": "The sitemap and the 33 passage pages it lists, every monthly run (34 requests, 2 s apart). The pages send `cache-control: no-store` and a Last-Modified that 30 of 33 share (Mon, 13 Jul 2026 18:25:50 GMT, read 2026-10-04), a site's date and not a page's, so only the hash of the parsed markers and lines decides FRESH."
+        "notes": "The sitemap and the 33 passage pages it lists, every monthly run (34 requests, 2 s apart). The pages send `cache-control: no-store` and a Last-Modified that 30 of 33 share (Mon, 13 Jul 2026 18:25:50 GMT, read 2026-10-04), a site's date and not a page's, so only the hash of the parsed markers, lines and page facts decides FRESH."
       },
       "name_field": "name",
       "type_field": "marker_type",
@@ -13030,11 +13295,21 @@
         "geometry"
       ],
       "key_comment": "(`source_url`, the geometry): unique on 396 of 396 (measured 2026-10-04 on the 33 live pages, parsed as extract/_pages_points.py parses them). The geometry alone is 357 of 396, because a marker at a passage's end is on both passages' pages; each page's copy is a row of that page.",
+      "shared_page_rows": {
+        "suggested_hikes": {
+          "name": "passage",
+          "link": "source_url",
+          "distance_mi": "length_miles",
+          "distance_text": "length_text",
+          "place": "region"
+        }
+      },
+      "shared_page_rows_comment": "palmetto/suggested_hikes.py SHARES this table (the lead's ruling of 2026-10-04: one reader of the 33 passage pages). pipeline/make_dbt_staging.py stages it into int_suggested_hikes__club_unioned as one row per page, keyed on (this key, `source_url`): each suggested-hike column is the raw column named here, alike on every row of one page (measured 2026-10-04 on the 33 live pages: 33 pages, 33 names, every page's facts identical across its rows). Name, distance, the link and the place only, never the description (the round brief).",
       "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 4 and 5, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, the host's Crawl-delay or two seconds or more between requests: the site's sitemap and all 33 passage pages it lists, each read whole for its map calls.",
       "discovered_date": "2026-10-04",
-      "notes": "396 rows from 33 passages, read 2026-10-04: 363 markers (`kind` 'marker', Point) typed in `marker_type` as the page types them, Parking 72, Trail Head 52, Information Sign 40, Point of Interest 39, Camping 34, Water Launch 19, Restrooms 16, Scenic Observation 16, Picnic Area 14, 'NULL' 14, Fishing 12, 'High Hills 2018 v2' 11, Waterfall 7, Visitor Center 7 and 7 others; and 33 lines (`kind` 'segment', LineString, 70,104 vertices), one a passage, each under the segment's own name. Bbox lon -83.125 to -79.561, lat 33.030 to 35.215. palmetto/trail_lines.py SHARES this table for its lines. A WATER LAUNCH IS A BOAT LAUNCH, never drinking water; no marker type on any page says water. The pages carry the site's Google Maps API key in their script, which no column loads.",
+      "notes": "396 rows from 33 passages, read 2026-10-04: 363 markers (`kind` 'marker', Point) typed in `marker_type` as the page types them, Parking 72, Trail Head 52, Information Sign 40, Point of Interest 39, Camping 34, Water Launch 19, Restrooms 16, Scenic Observation 16, Picnic Area 14, 'NULL' 14, Fishing 12, 'High Hills 2018 v2' 11, Waterfall 7, Visitor Center 7 and 7 others; and 33 lines (`kind` 'segment', LineString, 70,104 vertices), one a passage, each under the segment's own name. Bbox lon -83.125 to -79.561, lat 33.030 to 35.215. palmetto/trail_lines.py SHARES this table for its lines. A WATER LAUNCH IS A BOAT LAUNCH, never drinking water; no marker type on any page says water. The pages carry the site's Google Maps API key in their script, which no column loads. Every row also carries its page's facts (extract/_pages_points.py's PALMETTO_FACT_COLUMNS), read in the same fetch on the lead's ruling of 2026-10-04 (one reader of the 33 passage pages) for palmetto/suggested_hikes.py: length_text and length_miles (where the text states one figure), difficulty, region, surface, pets, fees, camping and hunting_grounds, the fact grid's first lines only, never the explanation under an answer nor the description. Read live again 2026-10-04T20:42:34Z to 20:44:10Z: 396 rows (363 markers, 33 lines, one a page), the key unique on 396 of 396; one passage, henry-trail, plots no marker and keeps its facts on its line's row; all 33 pages state one length in miles, a difficulty (Easy 15, Moderate 13, Moderate to Strenuous 4, Strenuous 1), a region, pets, fees, camping and hunting grounds, and 31 a surface. 'Trail on Hunting Grounds' is Yes on 18, No on 13 and Depends on 2; which seasons and whose land are the explanation, not read, and decision 53's palmetto_hunting_season row is the hunting notice.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "False on 2026-10-04: extracted by extract/_pages_points.py and staged by pipeline/make_dbt_staging.py, as points and as trail lines. club_poi_types types six marker types (Parking, Trail Head, Trailhead, Camping, Restrooms, Scenic Observation) and leaves the rest untyped, so they publish nothing, and layer_rules holds its 'Water Launch' boat launches from ever typing as water. Its 33 lines are also held until int_trail_lines__club_lines marks a club line as drawn and never routed (decision 64), which section M of the decision 64 round builds and this branch does not carry. It is held because its basis is `public_gis`, decision 21a's presumption for a GIS layer (rule 3 of ELT.md's 'Who may publish'), which int_sources__publication refuses on a source that is not a GIS endpoint (rule 6), and a club's web page is not one. Decision 63 turns it true once the maintainer has said whether a club's page of points publishes under decision 21a."
+      "reaches_hikers_comment": "False on 2026-10-04: extracted by extract/_pages_points.py and staged by pipeline/make_dbt_staging.py, as points and as trail lines. club_poi_types types six marker types (Parking, Trail Head, Trailhead, Camping, Restrooms, Scenic Observation) and leaves the rest untyped, so they publish nothing, and layer_rules holds its 'Water Launch' boat launches from ever typing as water. Its 33 lines are also held until int_trail_lines__club_lines marks a club line as drawn and never routed (decision 64), which section M of the decision 64 round builds and this branch does not carry. It is held because its basis is `public_gis`, decision 21a's presumption for a GIS layer (rule 3 of ELT.md's 'Who may publish'), which int_sources__publication refuses on a source that is not a GIS endpoint (rule 6), and a club's web page is not one. Decision 63 turns it true once the maintainer has said whether a club's page of points publishes under decision 21a. The page facts palmetto/suggested_hikes.py stages from it are a club's hike list, which decision 70 (the maintainer's poll of 2026-10-04) publishes as facts and a link: the passage's name, its length beside the text it was read from, and the page, never the description. They wait, as section K's suggested-hike rows do, on a mart that reads int_suggested_hikes__club_unioned under those rules, tested."
     },
     {
       "key": "pnta_trail_alerts",
@@ -13121,8 +13396,8 @@
       "url": "https://www.pnt.org/category/trail-topics/day-hikes/",
       "steward": "Pacific Northwest Trail Association",
       "attribution": "Pacific Northwest Trail Association",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Pacific Northwest Trail Association; the terms as found stay quoted in `terms`. Its posts' and pages' own prose (a WordPress body and excerpt, a wiki page's wikitext) lands in the private raw store and stops at its base model (make_dbt_staging.py's CONTENT_PROSE, decision 55), so no description reaches a staging model's `properties`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: no terms page is linked (decision 53's inventory, batch 4, as pnta_trail_alerts records).",
       "reader": "WordpressChildPages (extract/_content.py)",
       "person_fields": [],
@@ -13140,7 +13415,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Category 117, `day-hikes`, a child of `trail-topics`: X-WP-Total 1, 1 rows in one page of 100, modified 2024-09-16 to 2024-09-16, read 2026-10-04T07:56:02+00:00. One post today, 'Winter Trips on the Pacific Northwest Trail' (2024-09-16). The category's archive sits under /category/trail-topics/, so the resource names its slug (`category_slugs`) rather than reading it off the url.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "ebrpd_alerts_closures",
@@ -13316,6 +13591,35 @@
       "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): three of Standing Stone's pages disagree about which notice stands, and two still serve closures that ended in 2022 and 2023 in prose the reader does not parse (inventory, batch 4). Settled by the club saying which page is current, as its notes say."
     },
     {
+      "key": "sstc_sweet_16",
+      "title": "Standing Stone Trail Sweet Sixteen Trail Challenge (standingstonetrail.org/sweet-16-trail-challenge)",
+      "provider": "SSTC",
+      "kind": "published_notices",
+      "url": "https://www.standingstonetrail.org/sweet-16-trail-challenge",
+      "steward": "Standing Stone Trail Club",
+      "attribution": "Standing Stone Trail Club",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, elevation and the link) and never the club's prose. PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first.",
+      "licence_basis": "unresolved",
+      "terms": "None found: no terms page found on this Wix site (decision 53 inventory, batch 4, as sstc_trail_alerts quotes it); the footer reads '© 2022 by SSTC' (read 2026-10-04).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `sstc_sweet_16`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the point: unique on all 16 rows read 2026-10-04.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.standingstonetrail.org/sweet-16-trail-challenge",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T18:01:47Z (HTTP 200, 828,712 bytes, a weak Wix ETag): 16 points of interest under 'POINTS OF INTEREST', each an h2 and, for 10, continuation lines Wix sets apart (11 in all), joined into the name. The brochure, the printable form (each point's question) and the maps are not read. The End 2 End honorees page is a roster and is never read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
+    },
+    {
       "key": "tatc_ridgerunner_reports",
       "title": "Tye River ridgerunner reports (index)",
       "provider": "TATC",
@@ -13376,7 +13680,7 @@
       "url": "https://trailkeepersoforegon.org/category/oregon-hikers-spring-fundraiser/",
       "steward": "Trailkeepers of Oregon",
       "attribution": "Trailkeepers of Oregon",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence": "Decision 70 (the maintainer's poll of 2026-10-04) publishes a club's hike list as facts and a link, and this row stays `unresolved` all the same, on the lead's ruling of 2026-10-04, rather than stretch decision 70 over a Trailkeepers of Oregon row: decision 73 leaves TKO's Oregon Hikers Field Guide a dated note and sends no letter, and whether TKO's spring fundraiser hike posts, which are not the Field Guide, publish is the maintainer's to say.",
       "licence_basis": "unresolved",
       "terms": "None found: no terms page is linked (decision 53's inventory, batch 4, as tko_oct_trail_conditions records).",
       "reader": "WordpressPosts (extract/_kinds.py)",
@@ -13638,6 +13942,35 @@
       "notes": "12 points, read 2026-10-04, last modified 2013-02-17: hike and feature points (Mau-Har Three Ridges Loop, Bluff Mtn -- Ottie Cline Memorial, The Priest, Spy Rock, Cold Mountain, Apple Orchard Falls Trail, Southern end of NBATC section …), each with a description.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because it has no type field, so club_poi_types maps none of its points and nothing of it would publish (a type is never read from a name). Decision 63 turns it true once that is no longer so."
+    },
+    {
+      "key": "nbatc_blue_blazer",
+      "title": "NBATC Blue Blazer Program form (home.nbatc.org/pdfs/BlueBlazeTrailHike.pdf)",
+      "provider": "NBATC",
+      "kind": "published_notices",
+      "url": "https://home.nbatc.org/pdfs/BlueBlazeTrailHike.pdf",
+      "steward": "Natural Bridge Appalachian Trail Club",
+      "attribution": "Natural Bridge Appalachian Trail Club",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, elevation and the link) and never the club's prose. PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first.",
+      "licence_basis": "unresolved",
+      "terms": "home.nbatc.org's footer, read 2026-10-04: \"©2012 - Natural Bridge Appalachian Trail Club\". No terms page; robots.txt answers 404, which RFC 9309 reads as no rule (as nbatc_trails quotes it).",
+      "reader": "ContentPdf (extract/_pdf_content.py), family `nbatc_blue_blazer`",
+      "person_fields": [],
+      "person_fields_comment": "None: the family reads the table's numbers, names and A.T. miles. Page 1's form fields (a hiker's name, signature, e-mail, telephone and address) are blank and never read, nor is the club officer's e-mail address the form says to send it to; the PDF's /Author names a person, and no metadata field lands but the two dates.",
+      "key_fields": [
+        "number"
+      ],
+      "key_comment": "`number`, the trail's place in the table: unique on all 20 rows read 2026-10-04, as are the names.",
+      "freshness": {
+        "kind": "file_validator",
+        "url": "https://home.nbatc.org/pdfs/BlueBlazeTrailHike.pdf",
+        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T18:05:57Z: HTTP 200, application/pdf, 79,282 bytes, Last-Modified 2026-07-09, no ETag; 3 pages, the metadata's dates 2026-03-29. 20 trails numbered 1 to 20; 18 state the A.T. mile they join at, 2 of them two miles (landed as text), and 2 (Mount Pleasant/Henry Lanum Loop and Flat Top In/Out) none, as they do not connect with the A.T. A note under the table says the Little Rocky Row Trail was dropped from the program because walking US 501 to its trailhead, or backing onto US 501 from it, 'puts hikers at risk' (safety-relevant, not read here). The 88 Miler Award (/pdfs/NBATC88milerform.pdf) is a completion award, not read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
     },
     {
       "key": "alaska_state_parks_conditions",
@@ -14053,6 +14386,35 @@
       "notes": "161 placemarks in 8 folders, read 2026-10-04 (the map embedded on ozarktrail.com/maps/): Trailhead 72 points, each description 'Elevation = … ft <br>Coordinates = … <br>Type = Trailhead'; Main Trail 18 lines, Connecting Trail 38 (2 of them MultiGeometry), Trailhead Spur 24, OT Spur Trail 4, Alternate Trail 2, 'Road - White' 2 and Nearby trail 1. The two 'Road - White' lines are roads, which int_trail_lines__club_lines drops by a layer_rules row before this table may draw. The coverage audit's 14 per-section 'GPS Download' zips are not registered: nobody compared them with this map. ota/points_of_interest.py SHARES this resource for the 72 trailheads.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because the site's terms restrict reproduction ('Reproduction is prohibited other than in accordance with the copyright notice'), which no decision names, so it goes to the maintainer; its 72 trailheads are typed (club_poi_types) and its 2 road lines dropped (layer_rules), and no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header). Decision 63 turns it true once that is no longer so."
+    },
+    {
+      "key": "ota_sections",
+      "title": "Ozark Trail Association Trail Directory sections (ozarktrail.com/trail-directory/)",
+      "provider": "OTA",
+      "kind": "published_hikes",
+      "url": "https://ozarktrail.com/trail-directory/",
+      "steward": "Ozark Trail Association",
+      "attribution": "Ozark Trail Association",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Ozark Trail Association; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "https://ozarktrail.com/terms-of-use/ (modified 2018-04-27), as decision 53's inventory quoted it (batch 5, 2026-10-03) and as it read on 2026-10-04: \"Reproduction is prohibited other than in accordance with the copyright notice, which forms part of these terms and conditions.\"",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `ota_sections`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "link"
+      ],
+      "key_comment": "`link`, the section's page after its redirect: unique on all 14 rows read 2026-10-04, as are the names.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://ozarktrail.com/trail-directory/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T16:45:38Z to 17:00:22Z: the directory (HTTP 200, 217,935 bytes) links 14 section cards, 13 by '?page_id=N', each a 301 to the section's page on the same host (robots.txt disallows only '?add-to-cart=' query strings and /wp-admin/). Every page states its miles and difficulty; 8 state the ascent each way ('4200′'), one 'N/A' for both, 5 none. The Trail Conditions paragraphs are decision 53's ota_*_conditions rows and are not read here.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "bta_section_burton",
@@ -14679,6 +15041,35 @@
       "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): buckeye is one of the four `refuse` organizations, and its rows never publish until its permission is recorded (ELT.md, 'Who may publish', rule 7), as its notes say. Settled by that permission."
     },
     {
+      "key": "buckeye_sections",
+      "title": "Buckeye Trail sections (buckeyetrail.org/sections)",
+      "provider": "Buckeye Trail Association",
+      "kind": "published_hikes",
+      "url": "https://buckeyetrail.org/sections",
+      "steward": "Buckeye Trail Association",
+      "attribution": "Buckeye Trail Association",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Buckeye Trail Association; the terms as found stay quoted in `terms`. ELT.md's 'Who may publish' rule 7 still holds it: `buckeye` is one of the four `refuse` orgs, which never publish until their permission is recorded, and decision 70 does not record it.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "https://buckeyetrail.org/terms, as the bta_section_* rows quote it: \"You are granted a limited license to access and make personal, non-commercial use of this Site. You may not download, modify, reproduce, or resell any portion of the Site’s content without our express written consent.\"",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `buckeye_sections`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "link"
+      ],
+      "key_comment": "`link`, the section's own page: unique on all 26 rows read 2026-10-04, as are the names.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://buckeyetrail.org/sections",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T16:33:09Z to 16:58:50Z: the index (HTTP 200, 114,653 bytes) and its 26 section pages, each HTTP 200 with no ETag or Last-Modified. Each page's facts table states 'N total miles / N off-road miles (N%)', in four spellings, and its counties; both are read. The index's own sentence for a section can disagree with its page (Burton: 'spans 57 miles' on the index, '61.3 total miles' on the page), and the page's table is what lands. The table's Section supervisor and Contact entries (a volunteer's name, e-mail and telephone) are never read. buckeye is one of the four `refuse` organizations, so this row never publishes until its permission is recorded (rule 7), whatever its licence comes to say.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested. Rule 7 holds it after that, until the club's permission is recorded."
+    },
+    {
       "key": "ata_closures_reroutes",
       "title": "Arizona Trail: Current Closures, Restrictions, and Reroutes",
       "provider": "ATA",
@@ -14716,8 +15107,8 @@
       "url": "https://aztrail.org/explore/passages/",
       "steward": "Arizona Trail Association",
       "attribution": "Arizona Trail Association",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Arizona Trail Association; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "https://aztrail.org/store/terms-and-conditions/, as decision 53's inventory quoted it: \"We grant you a limited license to access and make personal use of this website. You are allowed to download content for personal use only. Commercial use of information, logos, photographs or other content can only be granted with written consent from us. Information taken from this website and published online or in written form requires written permission from us.\"",
       "reader": "ContentPages (extract/_pages_content.py), site parser `ata_passages`",
       "person_fields": [],
@@ -14735,7 +15126,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T15:55:35Z to 16:04:28Z at the host's `Crawl-delay: 10`: the index (HTTP 200, 164,714 bytes) and its 44 passage pages (1 to 43 and 11e, the Pusch Ridge Wilderness bypass). robots.txt disallows WooCommerce paths and /wp-admin/ only. Every page states a Location, a Length (or, on 1, a Distance) and a Difficulty, 43 their seasons, and its ends under 'Southern/Northern Trailhead', 'Access Point' or 'Terminus' headings with GPS coordinates on 43 south and 42 north ends, landed as stated. Each page also links three GPX waypoint and track files on aztrailmedia.s3.us-west-1.amazonaws.com and a PDF map, which are not read here, and a Water section of the association's prose. The Day Hiker's Guide is a download for ATA members only.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "bmecc_fluorescent_orange",
@@ -15197,6 +15588,35 @@
       "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): 'CLEARED' titles are reopenings and must not render as hazards, as its notes say, and no rule reads a title for one. Settled by a reviewed reading of CFPA's 'CLEARED' prefix."
     },
     {
+      "key": "cfpa_trails",
+      "title": "CFPA Find a Trail: the Blue-Blazed Hiking Trail System (ctwoodlands.org/trails/)",
+      "provider": "CFPA",
+      "kind": "published_hikes",
+      "url": "https://ctwoodlands.org/trails/",
+      "steward": "Connecticut Forest & Park Association",
+      "attribution": "Connecticut Forest & Park Association",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Connecticut Forest & Park Association; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: no terms page is linked from ctwoodlands.org, only https://ctwoodlands.org/privacy/ (decision 53 inventory, batch 5, 2026-10-03, as cfpa_trail_notices quotes it; the /trails/ page links none either, read 2026-10-04).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `cfpa_trails`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`: unique on all 57 rows read 2026-10-04, as are the links (one trail page each).",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://ctwoodlands.org/trails/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T14:51:45Z (HTTP 200, 103,313 bytes, Last-Modified the request time): div#trails-list holds 57 trail cards, each a link to /trails/<name>/ around an h3 and a mileage. 56 of the 57 mileages are one figure ('56.6 miles'); Sleeping Giant State Park Trails reads '27+ miles', which lands as its text with no number. robots.txt asks `Crawl-delay: 10`, so the 57 trail pages are not fetched; one request a run.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "cohos_trail_changes",
       "title": "Cohos Trail: Trail Changes and Updates",
       "provider": "Cohos Trail Association",
@@ -15252,8 +15672,8 @@
       "url": "https://www.cohostrail.org/day-hike/",
       "steward": "The Cohos Trail Association",
       "attribution": "The Cohos Trail Association",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from The Cohos Trail Association; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: no terms page on cohostrail.org (decision 53 inventory, batch 4, 2026-10-03); the footer reads 'Copyright © 2020 Cohos Trail Association | All Rights Reserved'.",
       "reader": "ContentPages (extract/_pages_content.py), site parser `cohos_day_hikes`",
       "person_fields": [],
@@ -15272,7 +15692,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T15:32:14Z (cohostrail.org answers 301 to www.cohostrail.org): HTTP 200, 98,769 bytes, no validators. robots.txt asks no Crawl-delay. The page's twelve favourites are paragraphs of the association's prose and are not read; its table 'Trail or Destination | Where | Rank | Feature' holds 22 rows, Rank one of Easy, Moderate, Tough, Lengthy and Strenuous.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "cvatc_news",
@@ -15311,8 +15731,8 @@
       "url": "https://www.cvatclub.org/some-great-fall-foliage-hikes-in-south-central-pa.html",
       "steward": "Cumberland Valley Appalachian Trail Club",
       "attribution": "Cumberland Valley Appalachian Trail Club",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Cumberland Valley Appalachian Trail Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: no terms page is linked from cvatclub.org (decision 53 inventory, batch 5, 2026-10-03, and the page itself, 2026-10-04).",
       "reader": "ContentPages (extract/_pages_content.py), site parser `cvatc_foliage_hikes`",
       "person_fields": [],
@@ -15330,7 +15750,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T15:32:02Z (cvatclub.org answers 301 to www.cvatclub.org): HTTP 200, 38,547 bytes, Last-Modified the request time, no ETag. robots.txt asks no Crawl-delay. Four hikes, each a paragraph whose first clause is its facts: Pole Steeple 6 miles moderate, Flat Rock 5 miles out and back strenuous in places, Cumberland Valley Overlook 6 miles out and back moderate, Perry County Overlook 7 miles out and back moderate. A seasonal page; the directions after each clause are not read.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "foothills_trail_conditions",
@@ -15395,8 +15815,8 @@
       "url": "https://foothillstrail.org/section-by-section-2/",
       "steward": "Foothills Trail Conservancy",
       "attribution": "Foothills Trail Conservancy",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Foothills Trail Conservancy; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: no terms page is linked from foothillstrail.org (decision 53 inventory, batch 1, 2026-10-03); the footer reads '© 2026 Foothills Trail Conservancy'.",
       "reader": "ContentPages (extract/_pages_content.py), site parser `foothills_sections`",
       "person_fields": [],
@@ -15414,7 +15834,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T15:32:39Z to 15:52:43Z at the host's `Crawl-delay: 10`: the index (HTTP 200, 161,510 bytes) and its 19 /portfolio/ pages, 13 sections A1 to A14 and 6 spurs and connectors. robots.txt (WPStaq's) disallows every URL with a query string (`Disallow: /*?`), so the WordPress REST list is not read. Every page states its Distance and Difficulty, and 6 their Blazes; the difficulty of a section is given per direction on 4, both kept.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "gmc_trail_alerts",
@@ -15456,8 +15876,8 @@
       "url": "https://greenmountainclub.org/wp-json/wp/v2/hikes",
       "steward": "Green Mountain Club",
       "attribution": "Green Mountain Club",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Green Mountain Club; the terms as found stay quoted in `terms`. Its posts' and pages' own prose (a WordPress body and excerpt, a wiki page's wikitext) lands in the private raw store and stops at its base model (make_dbt_staging.py's CONTENT_PROSE, decision 55), so no description reaches a staging model's `properties`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: a WordPress page search for 'terms' on the site returned only unrelated pages (2026-10-04).",
       "reader": "WordpressPosts (extract/_kinds.py)",
       "person_fields": [],
@@ -15475,7 +15895,36 @@
       "discovered_date": "2026-10-04",
       "notes": "The `hikes` custom post type, read whole: X-WP-Total 57, 57 rows in one page of 100, modified 2026-06-10 to 2026-09-30, read 2026-10-04T07:42:04+00:00. Facts are taxonomy ids (difficulty 3 terms, distance 5, hike-feature 11, hike-status 1, hike-type 4, region 8, read 2026-10-04), resolved against `gmc_hikes`' terms table (raw_gmc__gmc_hikes_terms, read monthly beside the posts). `acf` is empty on every row. greenmountainclub.org's robots.txt opens with `Crawl-delay: 10` before any User-agent line; it is honoured as if it applied to every agent.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
+      "key": "gmc_side_to_side",
+      "title": "GMC Long Trail Side-to-Side Tracker (Long-Trail-Side-to-Side-Tracker.pdf)",
+      "provider": "GMC",
+      "kind": "published_notices",
+      "url": "https://www.greenmountainclub.org/wp-content/uploads/2026/04/Long-Trail-Side-to-Side-Tracker.pdf",
+      "steward": "Green Mountain Club",
+      "attribution": "Green Mountain Club",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, elevation and the link) and never the club's prose. PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first.",
+      "licence_basis": "unresolved",
+      "terms": "None found: a WordPress page search for 'terms' on greenmountainclub.org returned only unrelated pages (2026-10-04, as gmc_hikes quotes it).",
+      "reader": "ContentPdf (extract/_pdf_content.py), family `gmc_side_to_side`",
+      "person_fields": [],
+      "person_fields_comment": "None: the family reads the side trails' names and nothing else. The form's own fields (a hiker's name and completion date) are blank and never read, and the PDF's /Author names a person; no metadata field lands but the two dates.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the side trail: unique on all 88 rows read 2026-10-04.",
+      "freshness": {
+        "kind": "file_validator",
+        "url": "https://www.greenmountainclub.org/wp-content/uploads/2026/04/Long-Trail-Side-to-Side-Tracker.pdf",
+        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T18:06:08Z at the host's `Crawl-delay: 10`: HTTP 200, application/pdf, 264,810 bytes, Last-Modified 2026-08-12, ETag \"6a7c6d8d-40a6a\"; 4 pages made in Canva, the metadata's dates 2026-02-06. 88 side-trail names, matching the 88 the document states ('hiking all 88 designated Long Trail side trails (166 miles)'); two '*Stratton Ski Area trails' placeholder lines left out. The 8 map panels' titles are set before their trails on some pages and after on others, so no panel lands. The Long Trail End-to-Ender certification (more than 7,000 certified) is a completion award with a roster, never read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
     },
     {
       "key": "lsht_thru_hike_notes",
@@ -15665,6 +16114,36 @@
       "notes": "The club's weekly 'Activities and Information' posts, which carry hunting-season dates among events: warnings at most, by decision 7's classifier. Cloudflare serves the feed up to 7 days stale (max-age 604800), so a notice can reach it late. Its descriptions carry personal e-mail addresses (measured 2026-10-03), and FeedNotices lands no description. Read live at 2026-10-03T22:09:24Z under lib/user_agent.py's agent, robots.txt allows the path for our agent, no Crawl-delay: HTTP 200, 21,505 bytes, no ETag or Last-Modified. Through FeedNotices that answer lands 20 rows, one an item, `item_id` taken from the guid on 20 and distinct on 20 of 20: the key. The proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero, and every row carries `listing = 'window'`.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): a news feed that mixes notices with the club's or office's news, so every item lands as a warning nobody reviewed, and a feed is a window that phase C never reads as lifted: each press release or club post would stand as a current warning for good. Settled by decision 7's classifier, or a reviewed list of which items are notices, as its notes say."
+    },
+    {
+      "key": "mratc_suggested_hikes",
+      "title": "MRATC Suggested Hikes in the Mt. Rogers Area (mratc.org/suggested-hikes)",
+      "provider": "MRATC",
+      "kind": "published_hikes",
+      "url": "https://www.mratc.org/suggested-hikes",
+      "steward": "Mount Rogers Appalachian Trail Club",
+      "attribution": "Mount Rogers Appalachian Trail Club",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Mount Rogers Appalachian Trail Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "https://www.mratc.org/terms-and-conditions is Wix's unedited placeholder (\"The explanations and information provided on this page are only general and high-level explanations…\"), read by the decision 53 inventory (batch 5, 2026-10-03): no terms of the club's own. The footer reads '© 2035 by MRATC', the Wix template's year (read 2026-10-04).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `mratc_suggested_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "section",
+        "name"
+      ],
+      "key_comment": "The kind of hike and its name (`section`, `name`): unique on all 7 rows read 2026-10-04; the names alone are too, but the page numbers hikes within each kind, so the pair is what the page itself keeps apart.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.mratc.org/suggested-hikes",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T14:51:51Z (HTTP 200, 995,982 bytes, a Wix page rendered on the server, a weak ETag): 7 hikes under 3 of the page's 7 h2 kinds (2 Appalachian Trail, 3 A.T.-linked, 2 Iron Mountain); High Points, Damascus, Grayson Highlands and Backpacking render no hike. Each hike's facts line ('8 miles | One way | Moderate') is read; its turn-by-turn paragraph is not, nor the 15 coordinate pairs written in it without a sign. robots.txt asks no Crawl-delay. This one page is also the usfs folder's MRATC cell (two of the hikes on Iron Mountain, in the Mount Rogers NRA); that file is left as it is, for the lead to point at this row.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "msgtc_trail_conditions",
@@ -16272,6 +16751,36 @@
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
+      "key": "smd_diablo_range_hikes",
+      "title": "Save Mount Diablo field guide: Hikes in the Diablo Range",
+      "provider": "Save Mount Diablo",
+      "kind": "published_hikes",
+      "url": "https://savemountdiablo.org/experience/field-guides/hikes-in-the-diablo-range/",
+      "steward": "Save Mount Diablo",
+      "attribution": "Save Mount Diablo",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Save Mount Diablo; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: the field guide page links no terms, legal or copyright page (read 2026-10-04).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `smd_diablo_range_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "section",
+        "name"
+      ],
+      "key_comment": "The region's part and the hike's name (`section`, `name`): unique on all 47 rows read 2026-10-04. The name alone is not (Marsh Creek Regional Trail and Morgan Territory Regional Preserve are each listed under two parts), nor the link (one post, '8 great places to hike at sunrise and sunset', is linked by six hikes).",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://savemountdiablo.org/experience/field-guides/hikes-in-the-diablo-range/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T16:33:50Z (HTTP 200, 156,654 bytes) at the host's `Crawl-delay: 3`: 2 h3 regions and 10 h4 parts, 47 numbered, linked hikes. The posts the hikes link (blog, hike and press-release pages on savemountdiablo.org) are Save Mount Diablo's writing and are not fetched; no distance is stated on the page itself.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "nmvfo_hike_new_mexico",
       "title": "Hike New Mexico trail guide (child pages of nmvfo.org/trails/)",
       "provider": "NMVFO",
@@ -16279,8 +16788,8 @@
       "url": "https://nmvfo.org/trails/",
       "steward": "New Mexico Volunteers for the Outdoors",
       "attribution": "New Mexico Volunteers for the Outdoors",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from New Mexico Volunteers for the Outdoors; the terms as found stay quoted in `terms`. Its posts' and pages' own prose (a WordPress body and excerpt, a wiki page's wikitext) lands in the private raw store and stops at its base model (make_dbt_staging.py's CONTENT_PROSE, decision 55), so no description reaches a staging model's `properties`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: a WordPress page search for 'terms' returned only the club's bylaws (2026-10-04).",
       "reader": "WordpressChildPages (extract/_content.py)",
       "person_fields": [
@@ -16301,7 +16810,7 @@
       "discovered_date": "2026-10-04",
       "notes": "The child pages of page 2040, `/trails/` (the child pages route, `parent=2040`): X-WP-Total 38, 38 rows in one page of 100, modified 2023-01-31 to 2023-02-05, read 2026-10-04T07:42:14+00:00. 35 of the 38 carry the same four sections, SUMMARY, DESCRIPTION, GETTING THERE and CONDITIONS (the coverage audit); the CONDITIONS are 2020 to 2023 snapshots and must never feed a closure or a warning. The robots.txt is Yoast's `User-agent: * / Disallow:` and asks no Crawl-delay.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "rmfi_project_map",
@@ -16641,6 +17150,35 @@
       "reaches_hikers_comment": "False on 2026-10-04: extracted by extract/_pages_points.py and staged by pipeline/make_dbt_staging.py. club_poi_types types two kinds, trailheads (trailhead) and campgrounds (campsite), and leaves the others untyped, so they publish nothing. layer_rules holds the waterboxes from ever typing as water (they are caches) and drops the planned Crying Butte trailhead by its slug, both shown on the fixture build. A campground's seasonal pump is mapped to no water type, so decision 65's season caution has nothing to reach yet. It is held because its basis is `public_gis`, decision 21a's presumption for a GIS layer (rule 3 of ELT.md's 'Who may publish'), which int_sources__publication refuses on a source that is not a GIS endpoint (rule 6), and a club's web page is not one. Decision 63 turns it true once the maintainer has said whether a club's page of points publishes under decision 21a."
     },
     {
+      "key": "mdhta_trails",
+      "title": "Maah Daah Hey Trail Association trails (mdhta.com/trails/)",
+      "provider": "MDHTA",
+      "kind": "published_hikes",
+      "url": "https://mdhta.com/trails/",
+      "steward": "Maah Daah Hey Trail Association",
+      "attribution": "Maah Daah Hey Trail Association",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Maah Daah Hey Trail Association; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "mdhta.com footer, read 2026-10-04: \"© maah daah hey trail association.\" and a TITLE VI POLICY link; no terms page (as mdhta_trail_guide quotes it).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `mdhta_trails`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "link"
+      ],
+      "key_comment": "`link`, the trail's own page: unique on all 19 rows read 2026-10-04, as are the names.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://mdhta.com/trails/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T15:39:46Z to 17:03:15Z: the archive's two pages (/trails/, HTTP 200, 53,021 bytes, and /trails/page/2/) link 19 trail pages, each HTTP 200. 12 state a Distance under its h5 label, landed as stated (from 'Juniper Spur' 0.08 miles to the 'Maah Daah Hey' 144 miles); 7 state none. The pages' Campgrounds entries are camps, read for points of interest by section S's mdhta rows and not here.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "ocvt_at_tracks",
       "title": "OCVT's A.T. section tracks, 2009 (two GPX files)",
       "provider": "OCVT",
@@ -16682,8 +17220,8 @@
       "url": "https://mazamas.org/hikelist/",
       "steward": "Mazamas",
       "attribution": "Mazamas",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Mazamas; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None of the content's found: the footer's 'Privacy & Terms of Use' link (/privacy/) holds only a two-item privacy policy about member information, and the footer reads '© Copyright 2017 Mazamas' (read 2026-10-04).",
       "reader": "ContentPages (extract/_pages_content.py), site parser `mazamas_hike_list`",
       "person_fields": [],
@@ -16701,7 +17239,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T14:50:48Z: HTTP 200, 106,951 bytes, no ETag or Last-Modified. robots.txt asks `Crawl-delay: 15` of every agent and disallows /profile/, /dashboard/, /?next, /draft/ and /calendar/csv/ only. Four region blocks (Columbia River Gorge Hikes 71, Mt. Hood 49, Clackamas River 18, Oregon Coast 24) hold 162 items, each 'name miles feet drive, fee'; the coverage audit counted 161. The page's 'Hike Details' block: hiking and driving mileage are round-trip unless noted, elevation gain is cumulative, driving miles are from Gateway P&R for the Gorge, Hood, Gifford Pinchot and Clackamas hikes and from Tanasborne for the coast, or Durham P&R where a coast figure carries an asterisk (8 rows). Two items state 'varies' (Dalles Mountain Ranch's distance and gain, Timberline Trail's driving miles) and one gain is written '1.300 feet' (Augspurger Mountain-Dog Mountain), all landed as text with no number. The page names a fifth destination, Gifford Pinchot National Forest, with no block of its own.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "rmc_recommended_hikes",
@@ -16711,8 +17249,8 @@
       "url": "https://randolphmountainclub.org/wp-content/uploads/Recommended-Hikes-1.pdf",
       "steward": "Randolph Mountain Club",
       "attribution": "Randolph Mountain Club",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Randolph Mountain Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None found: a WordPress page search for 'terms' returned only the Board of Directors page (2026-10-04), and the site's footer reads '© 1999-2023 Randolph Mountain Club, P.O. Box 279, Gorham, NH 03581'.",
       "reader": "ContentPdf (extract/_pdf_content.py), family `rmc_recommended_hikes`",
       "person_fields": [],
@@ -16731,7 +17269,7 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T14:52:04Z: HTTP 200, application/pdf, 104,747 bytes, Last-Modified 'Mon, 20 Feb 2023 22:09:17 GMT', Content-Length 104747, no ETag; metadata CreationDate and ModDate 2023-02-20 (Word on macOS). robots.txt is Yoast's `User-agent: * / Disallow:` and asks no Crawl-delay. Eight pages with a text layer; 47 walks: Easy 9, Moderate 10, Strenuous 6, and the Northern Peaks' routes Madison 6, Adams 10, Jefferson 6, whose distances the document says 'are one-way to the summit'. Five peak routes from a hut or camp name no trailhead. Two route names wrap onto a second line in the text layer and are joined.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules. Its table lands only where pypdf is installed, the monthly extract job's venv, so the fixture build's base model reads it as no rows (dbt/macros/raw_or_empty.sql)."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
       "key": "kta_favorite_hikes",
@@ -16741,8 +17279,8 @@
       "url": "https://www.kta-hike.org/favorite-hikes-in-pennsylvania.html",
       "steward": "Keystone Trails Association",
       "attribution": "Keystone Trails Association",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Keystone Trails Association; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
       "terms": "None of the content's found: the footer reads '© COPYRIGHT 2023. ALL RIGHTS RESERVED.' and links no terms page (2026-10-04).",
       "reader": "ContentPages (extract/_pages_content.py), site parser `kta_favorite_hikes`",
       "person_fields": [],
@@ -16761,7 +17299,124 @@
       "discovered_date": "2026-10-04",
       "notes": "Read 2026-10-04T15:31:48Z (kta-hike.org answers 301 to www.kta-hike.org): HTTP 200, 160,481 bytes, Last-Modified the request time. robots.txt asks no Crawl-delay. Seven groups (beginner's 5, backpacking 5, universally accessible 5, trail running 2, dog friendly 5, streamside 5, children's 5 hikes), each hike its bold name, county, the URL of another organisation's page about it (linked, never fetched) and an English and a Spanish description, which are not read. The southcentralaccessible.html and accessible-philadelphia.html pages the coverage audit names are not read.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
+      "key": "blue_hills_hikes",
+      "title": "Friends of the Blue Hills Suggested Hikes (friendsofthebluehills.org/hiking-near-boston/)",
+      "provider": "Friends of the Blue Hills",
+      "kind": "published_hikes",
+      "url": "https://friendsofthebluehills.org/hiking-near-boston/",
+      "steward": "Friends of the Blue Hills",
+      "attribution": "Friends of the Blue Hills",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Friends of the Blue Hills; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: the page links no terms page; its footer reads '© 2026 Friends of the Blue Hills' (read 2026-10-04).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `blue_hills_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`: unique on all 18 rows read 2026-10-04. The link is not, the one hike with no page of its own linking this page.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://friendsofthebluehills.org/hiking-near-boston/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T14:51:54Z (HTTP 200, 316,638 bytes): 18 h4 hikes under the h2 'Hikes', 17 linking a page under friendsofthebluehills.org (two outside /hiking-near-boston/). The pages (Chickatawbut's read 2026-10-04T16:45:48Z) are a paragraph of the Friends' prose with no stated distance, so none is fetched. The hikes are in the DCR's Blue Hills Reservation, which the page names as a whole and not per hike, so no place lands.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
+      "key": "wmc_hike_ratings",
+      "title": "Wasatch Mountain Club Hiking Trail Database (WMCHikesCopyToWeb.pdf)",
+      "provider": "WMC",
+      "kind": "published_hikes",
+      "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf",
+      "steward": "Wasatch Mountain Club",
+      "attribution": "Wasatch Mountain Club",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Wasatch Mountain Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: the hike ratings page (/dan-smiths-hike-ratings-table) and the PDF state no terms or licence (read 2026-10-04); the coverage audit found the club's trip reports 'written by members' with no licence.",
+      "reader": "ContentPdf (extract/_pdf_content.py), family `wmc_hike_ratings`",
+      "person_fields": [],
+      "person_fields_comment": "None: the family reads the table's rows (the columns in extract/_pdf_content.py's TYPE_COLUMNS, its own and DOCUMENT_COLUMNS) and nothing else. The document's first page names the members who compiled the table, and its /Author metadata a member's first name; neither is read, and no metadata field lands but the two dates.",
+      "key_fields": [
+        "name",
+        "elevation_gain_text"
+      ],
+      "key_comment": "The hike's name and its total ascent (`name`, `elevation_gain_text`): unique on all 157 rows read 2026-10-04. The name alone is not: 'SNAKE CREEK PASS FROM BRIGHTON LAKES TH.' is two rows, 1,344 and 1,312 feet of ascent, and the table carries no id.",
+      "freshness": {
+        "kind": "file_validator",
+        "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf",
+        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T17:34:11Z at the host's `Crawl-delay: 10`: HTTP 200, application/pdf, 252,399 bytes, Last-Modified 2012-09-17, no ETag; 5 pages, the metadata's dates 2012-09-17 and its title 'WMCHikesCopyToWeb.xlsx'. The text layer reads cleanly: 157 rows on pages 2 to 5 under a repeated header, 155 with all four leading figures and 2 (Perkins Peak, Twin Lakes) with three, whose rating and miles land as unknown. 42 rows carry other-factor codes. The table's two hour estimates (the document's pace model, 'Estimated Only!') are not read. The ratings page says the PDF is 'The HIKES tab from the spreadsheet'; the spreadsheet (Last-Modified 2023-06-15, 66,121 bytes) is not read, as the extract venv has no spreadsheet reader, and whether its HIKES tab differs from the 2012 PDF is unchecked.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
+      "key": "cmc_lookout_towers",
+      "title": "Carolina Mountain Club Lookout Tower Challenge (carolinamountainclub.org/hiking/hiking-challenges/...)",
+      "provider": "Carolina Mountain Club",
+      "kind": "published_notices",
+      "url": "https://carolinamountainclub.org/hiking/hiking-challenges/lookout-tower-challenge-ltc/",
+      "steward": "Carolina Mountain Club",
+      "attribution": "Carolina Mountain Club",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, elevation and the link) and never the club's prose. PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the page links only https://carolinamountainclub.org/privacy/ and /cookie-policy/, and its footer reads '© 2026. All Rights Reserved.' (read 2026-10-04).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `cmc_lookout_towers`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the tower: unique on all 23 rows read 2026-10-04.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://carolinamountainclub.org/hiking/hiking-challenges/lookout-tower-challenge-ltc/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T18:03:34Z at the host's `Crawl-delay: 10` (HTTP 200, 178,065 bytes): five accordion items (Nantahala National Forest, Great Smoky Mountains, Central NC Highlands, Blue Ridge & Black Mountains, Northwestern NC) list 7, 6, 2, 5 and 3 towers. Each tower's routes and their one-way miles are in the blocks after, beside the club's prose, and are not read. The challenge coordinator's name, the photo credits and the club's completers are never read. The club's seven other challenges are notes in cmc/challenges.py.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
+    },
+    {
+      "key": "tta_great_hikes",
+      "title": "Tennessee Trails Association 36 Great Hikes qualification form ('I hiked 'em all')",
+      "provider": "TTA",
+      "kind": "published_notices",
+      "url": "https://tennesseetrails.org/wp-content/uploads/2020/08/FranWallasQualificationForm.pdf",
+      "steward": "Tennessee Trails Association",
+      "attribution": "Tennessee Trails Association",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, elevation and the link) and never the club's prose. PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first.",
+      "licence_basis": "unresolved",
+      "terms": "https://tennesseetrails.org/terms-of-service/ (read 2026-10-04): \"You agree not to reproduce, duplicate, copy, sell, resell or exploit any portion of the Site, use of the Site, or access to the Site or any contact on the Site, without express written permission by us.\" and \"You may not modify, publish, transmit, reverse engineer, participate in the transfer or sale, create derivative works, or in any way exploit any of the content, in whole or in part, found on the Site. ... You will use protected content solely for your personal use, and will make no other use of the content without the express written permission of TTA and the copyright owner.\" They restrict reuse and refuse nothing a polite reader does; their one rule on robots forbids bypassing 'the robot exclusion headers', which this reader keeps.",
+      "reader": "ContentPdf (extract/_pdf_content.py), family `tta_great_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the family reads the hikes' names and the form's cave mark. The form's fields (a hiker's name, address, e-mail and telephone) are blank and never read; its title names the person the hikes honour, which no row carries, and the PDF's /Author names a person, and no metadata field lands but the dates.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the hike: unique on all 36 rows read 2026-10-04.",
+      "freshness": {
+        "kind": "file_validator",
+        "url": "https://tennesseetrails.org/wp-content/uploads/2020/08/FranWallasQualificationForm.pdf",
+        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T18:19:06Z at the host's `Crawl-delay: 60`: HTTP 200, application/pdf, 95,680 bytes, Last-Modified 2020-12-21, ETag \"5fe12e77-175c0\"; 1 page, OpenOffice 4.0.0, created 2013-08-23. 36 hikes in Tennessee state parks and on the Cumberland Trail, matching the title's 36. One ('S. Cumberland -Buggytop Cave') is marked '*', whose footnote reads that entry to state owned caves is forbidden 'Until the ban is lifted' for white nose syndrome, and lands with `cave_entry_forbidden` (safety-relevant: a closure as of the form's 2020 upload, not checked against the park's notices). The programme is 2026's 15th year (the coverage audit); its page is HTML and is not read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
     }
   ],
   "usdm_licence": {
@@ -17400,6 +18055,22 @@
       "KTA": {
         "state": "not_asked",
         "note": "Not asked. Registered for its Favorite Hikes in Pennsylvania page under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Friends of the Blue Hills": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "WMC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Carolina Mountain Club": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its Lookout Tower Challenge page under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "TTA": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -18371,6 +19042,26 @@
         "provider": "KTA",
         "name": "Keystone Trails Association",
         "note": "Pennsylvania's hiking trail federation, which maintains trails and coordinates the clubs that do; registered for its Favorite Hikes in Pennsylvania page (decision 54, wave 5, section K, 2026-10-04), at reaches_hikers: false."
+      },
+      "org:fbh": {
+        "provider": "Friends of the Blue Hills",
+        "name": "Friends of the Blue Hills",
+        "note": "A nonprofit friends group for the DCR's Blue Hills Reservation south of Boston; registered for its Suggested Hikes page (decision 54, wave 5, section K, 2026-10-04), at reaches_hikers: false."
+      },
+      "org:wmc": {
+        "provider": "WMC",
+        "name": "Wasatch Mountain Club",
+        "note": "A Salt Lake City outdoor club; registered for its Hiking Trail Database PDF, the hike ratings table of its spreadsheet (decision 54, wave 4, section K, 2026-10-04), at reaches_hikers: false."
+      },
+      "org:cmc": {
+        "provider": "Carolina Mountain Club",
+        "name": "Carolina Mountain Club",
+        "note": "An Asheville, North Carolina hiking club that maintains A.T. and Mountains-to-Sea Trail miles and administers eight challenge programmes; registered for its Lookout Tower Challenge page (decision 54, wave 5, section K, 2026-10-04), at reaches_hikers: false."
+      },
+      "org:tta": {
+        "provider": "TTA",
+        "name": "Tennessee Trails Association",
+        "note": "Tennessee's statewide hiking trails association, which builds and maintains the Cumberland Trail with the state; registered for its 36 Great Hikes qualification form (decision 54, wave 4, section K, 2026-10-04), at reaches_hikers: false."
       }
     }
   },
@@ -23842,6 +24533,154 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its Favorite Hikes in Pennsylvania page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "Friends of the Blue Hills": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "WMC": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "Carolina Mountain Club": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its Lookout Tower Challenge page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its Lookout Tower Challenge page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its Lookout Tower Challenge page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its Lookout Tower Challenge page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its Lookout Tower Challenge page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its Lookout Tower Challenge page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its Lookout Tower Challenge page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its Lookout Tower Challenge page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "TTA": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
           }
         }
       }

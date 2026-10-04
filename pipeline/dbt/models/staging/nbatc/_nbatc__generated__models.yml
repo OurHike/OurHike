@@ -3,6 +3,15 @@
 version: 2
 
 models:
+  - name: stg_nbatc__challenges
+    description: >
+      The nbatc/ folder's challenges layers (`nbatc_blue_blazer`), one row per base row,
+      renamed to int_challenges__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: challenge_item_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_nbatc__points_of_interest
     description: >
       The nbatc/ folder's points of interest layers (`nbatc_shelters`, `nbatc_trail_features`,

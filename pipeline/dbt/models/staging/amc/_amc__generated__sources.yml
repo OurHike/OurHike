@@ -40,6 +40,18 @@ sources:
           the extract reads the layer (f=geojson, outSR 4326), under lib/user_agent.py's
           USER_AGENT, robots.txt first). `id_field` names the object id, which a reload
           mints again (decision 40).
+      - name: raw_amc__amc_four_thousand_footer_lists
+        data_tests:
+          # Rows sharing base_amc__amc_four_thousand_footer_lists's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'amc_four_thousand_footer_lists'", "challenge", "rank"]
+        description: >
+          AMC Four Thousand Footer Club lists (amc4000footer.org) (sources.json
+          `amc_four_thousand_footer_lists`). Key: The list and the peak's rank on it
+          (`challenge`, `rank`): unique on all 148 rows read 2026-10-04. The list and the
+          name are not: the New England list has two peaks named Abraham (Maine's, 53rd,
+          and Vermont's, 64th).
       - name: raw_amc__amc_itineraries
         data_tests:
           # Rows sharing base_amc__amc_itineraries's key must be exact copies (decision 40).

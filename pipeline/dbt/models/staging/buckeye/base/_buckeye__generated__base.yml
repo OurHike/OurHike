@@ -25,3 +25,25 @@ models:
           buckeye_retail_map_outlines, map_name, the registry key first and then the
           fields measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_buckeye__buckeye_sections
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('buckeye', 'raw_buckeye__buckeye_sections')
+          config:
+            severity: warn
+    description: >
+      Buckeye Trail sections (buckeyetrail.org/sections), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_suggested_hikes__club_unioned reads it through stg_buckeye__suggested_hikes.
+    columns:
+      - name: hike_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          buckeye_sections, link, the registry key first and then the fields measured
+          unique for this layer.
+        data_tests: [not_null, unique]

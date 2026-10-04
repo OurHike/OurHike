@@ -3,6 +3,15 @@
 version: 2
 
 models:
+  - name: stg_pasda__challenges
+    description: >
+      The pasda/ folder's challenges layers (`dcnr_geotrail`), one row per base row, renamed
+      to int_challenges__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: challenge_item_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_pasda__elevation
     description: >
       The pasda/ folder's elevation layers (`pasda_county_max_elevations`), one row per base

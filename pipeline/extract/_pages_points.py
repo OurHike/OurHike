@@ -57,6 +57,7 @@ import requests
 
 from extract import _kinds, _notices
 from extract._contract import Resource
+from extract._pages_content import MAX_FACT_CHARS, single_miles
 from lib.freshness_state import Freshness, compare_marker
 from lib.http_retry import request_with_retry
 
@@ -175,6 +176,9 @@ def number(text: str | None) -> float | None:
 Parser = Callable[[str, str], list[dict]]
 
 PAGE_PARSERS: dict[str, Parser] = {}
+#: The columns a parser writes that may be unknown on every row of a load, by key, with dlt's data type for each, so
+#: the column exists whatever one read found (PagePoints.column_hints()).
+PAGE_COLUMN_TYPES: dict[str, dict[str, str]] = {}
 
 
 def _parser(key: str):
@@ -460,6 +464,70 @@ PALMETTO_SEGMENT = re.compile(
     r"(?s)trailPage\.helper\.addSegment\(\s*'(?P<name>(?:[^'\\]|\\.)*)'\s*,\s*(?P<points>\[\{.*?\}\])\s*,\s*\[[^\]]*\]\s*\)"
 )
 PALMETTO_CALL = re.compile(r"trailPage\.helper\.(addMarker|addSegment)\(")
+#: The same page's facts, read in the same fetch for palmetto/suggested_hikes.py, which SHARES this table (the lead's
+#: ruling of 2026-10-04: one reader of the 33 passage pages). Under the title, div.Trail-meta holds
+#: span.Trail-length ('7.1 miles', with an icon before it) and span.Trail-difficulty ('Easy'); then div.Trail-detailGrid
+#: pairs each div.Trail-detailGridHeading ('Camping Allowed') with the div.Trail-detailGridData after it, whose first
+#: line is the answer ('Depends') and whose lines after a <br> are the foundation's explanation, which is not read.
+PALMETTO_LENGTH = re.compile(r'(?is)<span class="[^"]*\bTrail-length\b[^"]*">(?P<text>.*?)</span>')
+PALMETTO_DIFFICULTY = re.compile(r'(?is)<span class="[^"]*\bTrail-difficulty\b[^"]*">(?P<text>.*?)</span>')
+PALMETTO_GRID = re.compile(
+    r'(?is)<div class="Trail-detailGridHeading">(?P<label>.*?)</div>\s*<div class="Trail-detailGridData">(?P<data>.*?)</div>'
+)
+#: The grid's labels read, each to the column it lands in; Activities, Offline Map and Printable Maps are not read.
+PALMETTO_FACTS = {
+    "Region": "region",
+    "Surface": "surface",
+    "Pets": "pets",
+    "Fees": "fees",
+    "Camping Allowed": "camping",
+    "Trail on Hunting Grounds": "hunting_grounds",
+}
+#: Every fact column a passage's rows carry, with its type, so each exists on a load where every value is unknown.
+PALMETTO_FACT_COLUMNS = {
+    "length_miles": "double",
+    "length_text": "text",
+    "difficulty": "text",
+    **{name: "text" for name in PALMETTO_FACTS.values()},
+}
+PAGE_COLUMN_TYPES["palmetto_trail_passages"] = PALMETTO_FACT_COLUMNS
+
+
+def _palmetto_first_line(fragment: str, url: str, what: str) -> str | None:
+    """A fragment's first visible line, or None for none; a line longer than a fact refuses (it caught prose)."""
+    lines = html_lines(fragment)
+    if not lines:
+        return None
+    if len(lines[0]) > MAX_FACT_CHARS:
+        raise PageLayoutChanged(f"{url}: {what} is {len(lines[0])} characters, prose rather than a fact")
+    return lines[0]
+
+
+def palmetto_passage_facts(page: str, url: str) -> dict:
+    """The passage's length (its text, and its miles where the text states one figure), difficulty and the grid's
+    first-line answers. A page whose grid answers none of PALMETTO_FACTS' labels refuses: all 33 answered at least
+    Region on 2026-10-04, so a page with none no longer looks the way this was written against."""
+    length = PALMETTO_LENGTH.search(page)
+    difficulty = PALMETTO_DIFFICULTY.search(page)
+    length_text = _palmetto_first_line(length["text"], url, "the length") if length else None
+    facts = {name: None for name in PALMETTO_FACT_COLUMNS}
+    found = 0
+    for pair in PALMETTO_GRID.finditer(page):
+        label = " ".join(html_lines(pair["label"]))
+        if label in PALMETTO_FACTS:
+            facts[PALMETTO_FACTS[label]] = _palmetto_first_line(pair["data"], url, label)
+            found += 1
+    if not found:
+        raise PageLayoutChanged(f"{url}: a passage page whose fact grid answers none of {sorted(PALMETTO_FACTS)}")
+    miles, _ = single_miles(length_text)
+    facts.update(
+        {
+            "length_miles": miles,
+            "length_text": length_text,
+            "difficulty": _palmetto_first_line(difficulty["text"], url, "the difficulty") if difficulty else None,
+        }
+    )
+    return facts
 
 
 @_parser("palmetto_trail_passages")
@@ -471,6 +539,9 @@ def parse_palmetto_passage(page: str, url: str) -> list[dict]:
     resource). A 'NULL' marker type lands as the page writes it, untyped: no type is guessed for it. Every call the
     page makes must parse, so a page whose script changed shape refuses rather than landing the calls that still
     happen to match.
+
+    Every row also carries the page's facts (palmetto_passage_facts()), alike on each row of one page, for
+    palmetto/suggested_hikes.py: a page always yields its line's row, so no page's facts are lost with its markers.
     """
     title = re.search(r"(?is)<h1[^>]*>(?P<title>.*?)</h1>", page)
     if title is None:
@@ -510,7 +581,8 @@ def parse_palmetto_passage(page: str, url: str) -> list[dict]:
                 "geometry": {"type": "LineString", "coordinates": vertices},
             }
         )
-    return rows
+    facts = palmetto_passage_facts(page, url)
+    return [{**row, **facts} for row in rows]
 
 
 #: OHTA's trail page (WordPress page 15, read 2026-10-04, modified 2026-09-10): a "Major trail heads" `<h4>` and
@@ -736,7 +808,8 @@ class PagePoints(Resource):
         return max(_notices.DEFAULT_HOST_GAP_SECONDS, float(self.entry.get("crawl_delay") or 0))
 
     def column_hints(self) -> dict:
-        return {"geometry": {"data_type": "json"}, "source_url": {"data_type": "text"}}
+        extra = {name: {"data_type": type_} for name, type_ in PAGE_COLUMN_TYPES.get(self.key, {}).items()}
+        return {"geometry": {"data_type": "json"}, "source_url": {"data_type": "text"}, **extra}
 
     def _get(self, http: requests.Session, url: str) -> requests.Response:
         """One guarded GET: a wall, another host or a status that is not a page raises NoticeUnreadable."""

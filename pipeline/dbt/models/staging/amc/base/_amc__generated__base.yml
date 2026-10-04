@@ -47,6 +47,28 @@ models:
           amc_destinations, geometry_key('geom'), the registry key first and then the
           fields measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_amc__amc_four_thousand_footer_lists
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('amc', 'raw_amc__amc_four_thousand_footer_lists')
+          config:
+            severity: warn
+    description: >
+      AMC Four Thousand Footer Club lists (amc4000footer.org), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_challenges__club_unioned reads it through stg_amc__challenges.
+    columns:
+      - name: challenge_item_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          amc_four_thousand_footer_lists, challenge, rank, the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_amc__amc_itineraries
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

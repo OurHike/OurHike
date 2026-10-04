@@ -3,6 +3,15 @@
 version: 2
 
 models:
+  - name: stg_austin_trail__challenges
+    description: >
+      The austin_trail/ folder's challenges layers (`ttc_scavenger_hunt`), one row per base
+      row, renamed to int_challenges__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: challenge_item_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_austin_trail__places
     description: >
       The austin_trail/ folder's places layers (`ttc_management_areas`), one row per base row,

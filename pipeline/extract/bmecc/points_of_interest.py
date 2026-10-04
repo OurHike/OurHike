@@ -8,9 +8,16 @@ files' validators, the measured key, the terms and what holds it back.
 - `bmecc_trail_section_map`: 111 placemarks (108 points, 3 lines), keyed on the geometry.
 
 A SPRING IS NOT DRINKING WATER here: the 16 springs carry no potability or reliability field, so none
-maps to water (the row's notes). The club's shelters page (`/appalachian-trail/shelters`: build year,
-water, privy, caretaker, 'sleeps N' for 5 of 8) is an HTML page, wave 5's. bmecc/trail_lines.py and
-bmecc/places.py SHARE this resource.
+maps to water (the row's notes). bmecc/trail_lines.py and bmecc/places.py SHARE this resource.
+
+NOT LANDED, read live 2026-10-04 for decision 54's wave 5 (no robots.txt on www.bmecc.org: 404, no rules):
+the club's shelters page, https://www.bmecc.org/appalachian-trail/shelters, 8 A.T. shelters south to north,
+each in prose (build year, water, privy, caretaker, 'Sleeps 6' on 4) with no coordinate and only a distance
+from a road ('9.1 miles south of Port Clinton'). ATC's layers place the same shelters, so its facts need a join
+to those points by name, which a person reviews; needs a per-site reader, not built in this pull request. A
+HIKER'S SAFETY: the page says the Route 501 Shelter "was retired in November of 2025. NO Camping is permitted in
+or around the 501 Shelter!" ("Closed by the NPS"), while ATC's shelters layer (ANST_Facilities/FeatureServer/4,
+loaded as `shelters`) still lists '501 Shelter' as 'Official A.T. Shelter' (read 2026-10-04).
 """
 
 from extract._gis_files import gis_file

@@ -43,3 +43,15 @@ sources:
           Bartram Trail Markers (Bartram Trail Conference's Google My Map) (sources.json
           `bartram_trail_markers_map`). Key: The geometry alone: unique on 127 of 127
           (measured 2026-10-04 on the live export). `name` is 70 of 127.
+      - name: raw_bartram__brbtc_section_trailheads
+        data_tests:
+          # Rows sharing base_bartram__brbtc_section_trailheads's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'brbtc_section_trailheads'", "section"]
+        description: >
+          Bartram Trail section trailheads (Blue Ridge Bartram Trail Conservancy's 13
+          section pages) (sources.json `brbtc_section_trailheads`). Key: `section`, the
+          page's own section number, 1 to 13: unique on 13 of 13 (measured 2026-10-04 on
+          the live pages, parsed as extract/_pages_points.py parses them). `name` and the
+          geometry are 13 of 13 too.

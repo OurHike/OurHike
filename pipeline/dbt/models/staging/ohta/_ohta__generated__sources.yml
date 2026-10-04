@@ -19,6 +19,18 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_ohta__ohta_major_trailheads
+        data_tests:
+          # Rows sharing base_ohta__ohta_major_trailheads's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ohta_major_trailheads'", "segment", "name"]
+        description: >
+          Ozark Highlands Trail major trailheads (OHTA's trail page) (sources.json
+          `ohta_major_trailheads`). Key: (`segment`, `name`): unique on 41 of 41 (measured
+          2026-10-04 on the live REST answer, parsed as extract/_pages_points.py parses
+          it). `name` alone is 38 of 41: Woolum ford, Spring Creek and Matney Knob end one
+          segment and start the next, and are listed under both.
       - name: raw_ohta__ohta_website_track
         data_tests:
           # Rows sharing base_ohta__ohta_website_track's key must be exact copies (decision 40).

@@ -3,6 +3,15 @@
 version: 2
 
 models:
+  - name: stg_ohta__points_of_interest
+    description: >
+      The ohta/ folder's points of interest layers (`ohta_major_trailheads`), one row per base
+      row, renamed to int_points_of_interest__club_unioned's columns, with each layer's own
+      columns in `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_ohta__trail_lines
     description: >
       The ohta/ folder's trail lines layers (`ohta_website_track`), one row per base row,

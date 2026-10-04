@@ -95,7 +95,9 @@ JINJA_MARK = f"{{#- {GENERATED} from sources.json\n    and the extract's club fo
 #: JsonFeatures (lib/source_registry.py's GIS_FILE, OGC_FEATURES and JSON_FEATURES), then waves 4 and 5's
 #: PdfPoints and PagePoints (PDF_POINTS and PAGE_POINTS). Fixture mode cannot read a PDF, because the dbt job installs
 #: no pypdf (requirements.in's note), so CI's warehouse never holds a pdf_points table: its base model reads the
-#: absent table as no rows (macros/raw_or_empty.sql), and the build reads its rows only where the extract landed them.
+#: absent table as no rows (macros/raw_or_empty.sql), the build reads its rows only where the extract landed them, and
+#: its source table carries `freshness: null` (Table.read_from_pdf).
+PDF_POINTS_KIND = "pdf_points"
 KINDS = (
     "club_arcgis_layer",
     "external_arcgis_layer",
@@ -103,7 +105,7 @@ KINDS = (
     "ogc_features",
     "json_features",
     "page_points",
-    "pdf_points",
+    PDF_POINTS_KIND,
 )
 
 #: The server row ids a key may never hold (decision 40: a truncate-and-reload mints them again), as dlt names them.
@@ -424,6 +426,15 @@ class Table:
         title = self.entry.get("title") or self.key
         return f"{title}: its taxonomy terms" if self.lookup else title
 
+    @property
+    def read_from_pdf(self) -> bool:
+        """A table its reader takes off a PDF through pypdf: extract/_pdf_points.py's PdfPoints (a `pdf_points` row)
+        or extract/_pdf_content.py's ContentPdf. Fixture mode's Python need not have pypdf, so the fixture warehouse
+        never holds the table, and `dbt source freshness` would fail on it (CI's dbt job did, 2026-10-04, on
+        ata_water_cache_boxes, bmta_access_points and rmc_recommended_hikes). So its source table carries
+        `freshness: null`, as generate_notice_models.py's is_pdf_notice() gives a PDF notice's."""
+        return self.entry.get("kind") == PDF_POINTS_KIND or self.reader == "ContentPdf"
+
     def key_inputs(self) -> list[str]:
         """The key's inputs as generate_surrogate_key takes them: the registry key, then each measured field."""
         entry = self.entry
@@ -700,6 +711,16 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
     for table in folder_tables:
         lines += [
             f"      - name: {table.table}",
+            *(
+                [
+                    "        config:",
+                    "          # Read off a PDF, which the fixture warehouse never holds (Table.read_from_pdf):",
+                    "          # its fct_sources_without_freshness row in dbt_project_evaluator_exceptions.csv says why.",
+                    "          freshness: null",
+                ]
+                if table.read_from_pdf
+                else []
+            ),
             "        data_tests:",
             f"          # Rows sharing {table.base}'s key must be exact copies (decision 40).",
             "          - duplicates_are_exact:",

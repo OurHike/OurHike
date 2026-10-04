@@ -76,10 +76,13 @@
     (2026-10-04), each by every point its parser read off the live page or
     PDF that day: MDHTA's trail guide lon -103.674 to -103.242 in North
     Dakota, FoOT's shelters lon -94.863 to -93.540 in Arkansas and Oklahoma,
-    and ATA's water cache boxes lon -112.189 to -110.558 in Arizona, all
-    inside `national`. AMC Berkshire's parking (lon -73.436 to -73.150), the
-    Foothills Trail's access points (lon -83.122 to -82.638) and BMTA's
-    (lon -84.519 to -83.106) sit inside the eastern box and have no entry.
+    ATA's water cache boxes lon -112.189 to -110.558 in Arizona and OHTA's
+    trailheads lon -94.118 to -92.241 in Arkansas, all inside `national`.
+    AMC Berkshire's parking (lon -73.436 to -73.150), the Foothills Trail's
+    access points (lon -83.122 to -82.638), BMTA's (lon -84.519 to -83.106),
+    the Bartram Trail's section trailheads (lon -83.694 to -83.169) and the
+    Palmetto Trail's markers and lines (lon -83.125 to -79.561, lat 33.030
+    to 35.215) sit inside the eastern box and have no entry.
 
     @unvalidated Every margin is picked, not measured. What would settle it
     is the per-club box from trail_orgs.json's `states` that pipeline/ELT.md
@@ -237,6 +240,7 @@
     'mdhta_trail_guide_points': 'national',
     'foot_trail_shelters': 'national',
     'ata_water_cache_boxes': 'national',
+    'ohta_major_trailheads': 'national',
 } -%}
 
 with placed as (

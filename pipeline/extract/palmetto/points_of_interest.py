@@ -1,21 +1,20 @@
-"""Palmetto Conservation Foundation: points of interest, published, and not landed (coverage audit
-2026-10-01, batch c7_regional_4).
+"""The Palmetto Trail's map markers and passage lines, from the 33 passage pages, each read for the
+`addMarker` and `addSegment` calls its own map script makes.
 
-Includes camping. Typed markers.
+Decision 54, wave 5: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent, 2 s or more
+between requests) and registered in sources.json, where the row carries the count, the measured key and what
+holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `palmetto_trail_passages`: 396 rows, 363 typed markers (parking, trailheads, camping, restrooms, water
+  launches and more) and 33 passage lines, keyed on the page and the geometry; the pages are the ones the
+  site's sitemap lists under /trails/trail/.
+
+A WATER LAUNCH IS A BOAT LAUNCH, never drinking water, and no marker on any page is typed as water.
+palmetto/trail_lines.py SHARES this resource for its lines, and palmetto/places.py says why the passages'
+trailheads are points rather than places.
 """
 
-from datetime import date
+from extract._pages_points import page_points
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "Inline markers on each passage page. On Eastatoe: Parking ×2, Trail Head ×2, Visitor Center, Fishing, "
-        "Scenic Observation, Camping. Plus printed trailhead and parking lat/lon.",
-    ),
-    where=("https://palmettoconservation.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("palmetto_trail_passages",)
+RESOURCES = [page_points(key) for key in CLAIMS]

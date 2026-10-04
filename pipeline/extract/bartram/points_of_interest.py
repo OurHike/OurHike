@@ -1,23 +1,20 @@
-"""Bartram Trail Conference: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch c8_regional_5).
+"""The Bartram Trail's section trailheads, from the Blue Ridge Bartram Trail Conservancy's 13 section pages: each
+section's number, name and length, and the fix of the trailhead it starts at.
 
-Page. About 13 trailheads. Water is prose, not points.
+Decision 54, wave 5: read live on 2026-10-04 (robots.txt first, a Crawl-delay of 10 s honoured,
+lib/user_agent.py's agent) and registered in sources.json, where the row carries the count, the measured key
+and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `brbtc_section_trailheads`: 13 trailheads, keyed on the section number; the pages are the ones the
+  Conservancy's trail-section sitemap lists, so a section it adds is read without a registry edit.
+
+The Conservancy is the trail's steward; this folder is named for the Bartram Trail Conference, the umbrella
+the coverage audit found in its row (2026-10-01, c8_regional_5). Water and camping are prose on the pages
+("Campsites and water are sparse and in gaps"), so no water point is published to load. Each page's map also
+loads a GeoJSON of the section's line, a GIS file bartram/trail_lines.py does not read yet.
 """
 
-from datetime import date
+from extract._pages_points import page_points
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "13 BRBTC section pages (`crb_trail-sitemap.xml`, newest `lastmod` 2026-03-19). Each names a trailhead "
-        'with decimal coordinates, e.g. `/trail/sandy-ford-to-warwoman-dell/`: "Sandy Ford Trailhead 34.8671, '
-        '-83.2523". Each also gives length and prose on camping and water ("Campsites and water are sparse and '
-        'in gaps…").',
-    ),
-    where=("https://bartramtrail.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("brbtc_section_trailheads",)
+RESOURCES = [page_points(key) for key in CLAIMS]

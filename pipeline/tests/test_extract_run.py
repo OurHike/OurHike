@@ -1380,6 +1380,12 @@ def water():
 
 def test_a_club_pdf_lands_its_parsed_rows_each_with_the_documents_manifest(registry, requests_mock, monkeypatch):
     monkeypatch.setattr(_kinds, "extract_page_texts", lambda body: [PAGE_1, PAGE_2])
+    # An invented title and date: pypdf is the extract job's, not this suite's (requirements.in's note).
+    monkeypatch.setattr(
+        _kinds,
+        "club_pdf_document_info",
+        lambda body: {"title": "Fixture Water Update May 2011.xlsx", "created": "2026-03-02T15:00:00-05:00"},
+    )
     requests_mock.get(
         PDF_URL, content=b"%PDF-1.7 water", headers={"ETag": '"w1"', "Last-Modified": "Mon, 02 Mar 2026 00:00:00 GMT"}
     )
@@ -1387,6 +1393,9 @@ def test_a_club_pdf_lands_its_parsed_rows_each_with_the_documents_manifest(regis
     assert [row["mile"] for row in rows] == [0.8, 7.3, 0.2, 2.8, 38.0, 80.7]
     assert rows[0]["_document"]["etag"] == '"w1"' and rows[0]["_document"]["bytes"] == 14
     assert rows[0]["_document"]["last_modified"] == "Mon, 02 Mar 2026 00:00:00 GMT", "the club's own date is in the warehouse"
+    # The HTTP date is the file's; the title is what says how old the data in it is (decision 75).
+    assert rows[0]["_document"]["title"] == "Fixture Water Update May 2011.xlsx"
+    assert rows[0]["_document"]["created"] == "2026-03-02T15:00:00-05:00"
 
 
 def test_a_club_pdf_is_fresh_on_a_304_or_the_same_bytes_and_stale_on_new_ones(registry, requests_mock):

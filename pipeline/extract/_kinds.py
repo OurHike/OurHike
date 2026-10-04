@@ -46,6 +46,7 @@ The kinds built so far for stage 2 (#1793 — Rebuild the data platform as dlt �
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import tempfile
@@ -1071,6 +1072,15 @@ class ClubPdf(Resource):
     text comes from fetch_club_pdfs.py's `extract_page_texts`, which needs
     pypdf: requirements-extract.in pins it, and requirements.in's note says
     why the build jobs do not.
+
+    THE DOCUMENT'S OWN TITLE AND CREATION DATE ride `_document` too
+    (club_pdf_document_info), because the HTTP date is not the data's date.
+    GATC's file, read 2026-10-04: `Last-Modified` Mon, 02 Mar 2026, and its
+    embedded title "GATC Water Update July 2020.xlsx" (WATER_SOURCES.md §4),
+    so a card that printed only the first would present six-year-old water
+    data as this year's. Decision 75 publishes that list at low confidence
+    with its document date; the title is the half of that date a hiker
+    needs. Either is null where the PDF does not state it.
     """
 
     def _get(self, headers: dict | None = None) -> requests.Response:
@@ -1115,9 +1125,35 @@ class ClubPdf(Resource):
             "last_modified": response.headers.get("Last-Modified"),
             "sha256": hashlib.sha256(body).hexdigest(),
             "bytes": len(body),
+            **club_pdf_document_info(body),
         }
         for row in rows:
             yield {**row, "_document": document}
+
+
+def club_pdf_document_info(body: bytes) -> dict:
+    """The PDF's own `/Title` and creation date (ISO 8601), each None where the file states none.
+
+    Read with pypdf, as the text is (extract_page_texts). A metadata block
+    pypdf cannot read is None for both rather than a failed load: the rows
+    were already read from the same bytes, and a missing title only means
+    the card says less about the document's age, never something wrong.
+    """
+    from pypdf import PdfReader
+    from pypdf.errors import PdfReadError
+
+    try:
+        metadata = PdfReader(io.BytesIO(body)).metadata
+    except (PdfReadError, ValueError):
+        metadata = None
+    if metadata is None:
+        return {"title": None, "created": None}
+    title = (metadata.title or "").strip() or None
+    try:
+        created = metadata.creation_date
+    except ValueError:
+        created = None
+    return {"title": title, "created": created.isoformat() if created else None}
 
 
 def club_pdf(key: str, **overrides) -> ClubPdf:

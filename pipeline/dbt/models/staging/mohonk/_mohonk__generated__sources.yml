@@ -28,3 +28,14 @@ sources:
         description: >
           Mohonk Preserve boundary (sources.json `mohonk_preserve_boundary`). Key:
           `GlobalID` is unique and non-null on all 1 rows read 2026-10-03.
+      - name: raw_mohonk__mohonk_walk_back_in_time_podcast
+        data_tests:
+          # Rows sharing base_mohonk__mohonk_walk_back_in_time_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'mohonk_walk_back_in_time_podcast'", "guid"]
+        description: >
+          Walk Back in Time: the Trapps Mountain Hamlet Path audio tour (podcast feed)
+          (sources.json `mohonk_walk_back_in_time_podcast`). Key: `guid`: present and
+          unique on all 12 items read 2026-10-04, the feed's own id for an episode, which
+          a podcast app keys on too.

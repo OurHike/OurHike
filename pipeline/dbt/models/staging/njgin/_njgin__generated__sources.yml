@@ -79,3 +79,14 @@ sources:
           State Protected Open Space (Generalized) and Recreation Areas in New Jersey
           (sources.json `nj_state_open_space`). Key: `GLOBALID` is unique and non-null on
           all 373 rows read 2026-10-03.
+      - name: raw_njgin__njdep_discover_dep_podcast
+        data_tests:
+          # Rows sharing base_njgin__njdep_discover_dep_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'njdep_discover_dep_podcast'", "guid"]
+        description: >
+          Discover DEP: the Official Podcast of the NJ Department of Environmental
+          Protection (podcast feed) (sources.json `njdep_discover_dep_podcast`). Key:
+          `guid`: present and unique on all 95 items read 2026-10-04, the feed's own id
+          for an episode, which a podcast app keys on too.

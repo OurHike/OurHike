@@ -24,6 +24,48 @@ models:
           usfs_forest_boundaries, adminforestid, the registry key first and then the
           fields measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_usfs__usfs_forest_focus_podcast
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usfs', 'raw_usfs__usfs_forest_focus_podcast')
+          config:
+            severity: warn
+    description: >
+      Forest Focus (podcast feed, USDA Forest Service Pacific Southwest Region), every row,
+      keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_podcasts__club_unioned reads it through stg_usfs__podcasts.
+    columns:
+      - name: episode_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usfs_forest_focus_podcast, guid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_usfs__usfs_forestcast_podcast
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usfs', 'raw_usfs__usfs_forestcast_podcast')
+          config:
+            severity: warn
+    description: >
+      Forestcast (podcast feed, USDA Forest Service research), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_podcasts__club_unioned reads it through stg_usfs__podcasts.
+    columns:
+      - name: episode_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usfs_forestcast_podcast, guid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_usfs__usfs_national_grasslands
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

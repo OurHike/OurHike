@@ -11,6 +11,15 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_sbts__podcasts
+    description: >
+      The sbts/ folder's podcasts layers (`sbts_dirt_magic_podcast`), one row per base row,
+      renamed to int_podcasts__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: episode_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_sbts__points_of_interest
     description: >
       The sbts/ folder's points of interest layers (`sbts_connected_community_trailheads`),

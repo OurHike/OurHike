@@ -97,3 +97,14 @@ sources:
           (f=geojson, outSR 4326), under lib/user_agent.py's USER_AGENT, robots.txt
           first). `id_field` names the object id, which a reload mints again (decision
           40).
+      - name: raw_amc__amc_unlikely_stories_podcast
+        data_tests:
+          # Rows sharing base_amc__amc_unlikely_stories_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'amc_unlikely_stories_podcast'", "guid"]
+        description: >
+          Unlikely Stories Podcast (podcast feed, Appalachian Mountain Club) (sources.json
+          `amc_unlikely_stories_podcast`). Key: `guid`: present and unique on all 11 items
+          read 2026-10-04, the feed's own id for an episode, which a podcast app keys on
+          too.

@@ -45,6 +45,27 @@ models:
           usgs_gnis_springs, gaz_id, county_name, the registry key first and then the
           fields measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_usgs_tnm__usgs_outstanding_in_the_field_podcast
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usgs_tnm', 'raw_usgs_tnm__usgs_outstanding_in_the_field_podcast')
+          config:
+            severity: warn
+    description: >
+      Outstanding in the Field (podcast feed, USGS), every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_podcasts__club_unioned reads it through stg_usgs_tnm__podcasts.
+    columns:
+      - name: episode_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usgs_outstanding_in_the_field_podcast, guid, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_usgs_tnm__usgs_structures_cabins
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

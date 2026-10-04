@@ -45,6 +45,14 @@ and its YAML, a `union all by name` of every staging model this writes for the t
 each generated source's rows are held to (macros/lands_outside_its_region.sql).
 
 Every file it writes opens with GENERATED, which is how it knows which files are its own.
+
+SECTION C'S CONTENT TYPES (decision 54 wave 3, 2026-10-04): podcasts, suggested_hikes, challenges and photos, whose
+rows are episodes, write-ups, list items and photo manifest rows from feeds, APIs, WordPress and a wiki, not ArcGIS
+layers. Their shapes carry `geometry=False`: no geom, no CRS cast, no region box. The tables staged are those a club
+file's content reader extracts (CONTENT_COLUMNS' readers, and NPS's lists by endpoint in NPS_COLUMNS), each keyed on
+its row's measured `key_fields`; a hike type's taxonomy terms (SiteTerms) are a lookup, staged in base only and keyed
+on (taxonomy, id). Each type's union is `int_<type>__club_unioned`, beside the path its mart reads today, and each
+staging model leaves the source's prose (CONTENT_PROSE) out of `properties`, so a body stops at the base model.
 """
 
 from __future__ import annotations
@@ -104,6 +112,9 @@ class Shape:
     row: str  # what one row is, in words
     union: str
     columns: tuple[tuple[str, str], ...]  # (column, description) beside the key, source_key, club, geom, properties, _loaded_at
+    # False for a content type (section C, decision 54 wave 3): its rows are episodes, write-ups, list items and
+    # photo manifest rows, with no geometry column, so no geom, no region box and no CRS cast.
+    geometry: bool = True
 
 
 SHAPES = {
@@ -160,7 +171,133 @@ SHAPES = {
             ),
         ),
     ),
+    # Section C's content types (decision 54 wave 3, 2026-10-04). Each union is `__club_unioned`, as
+    # points_of_interest's is, because the type's mart reads another path today (the podcasts mart reads
+    # reference/podcast_episodes.json's editorial picks, suggested_hikes the Hike Finder and the highlights,
+    # challenges the reviewed challenge files through int_challenges__unioned) and these rows are the clubs' own
+    # datasets beside it. photos has no mart: its union is the photo manifest a later step reads.
+    "podcasts": Shape(
+        key_column="episode_key",
+        row="one episode of a club's own podcast feed, or one item of NPS's audio list",
+        union="int_podcasts__club_unioned",
+        columns=(
+            ("title", "The episode's title as its feed or list states it."),
+            (
+                "published",
+                "The episode's publication date as its feed states it, unparsed (RSS pubDate); null for an NPS audio item, which states none.",
+            ),
+            ("link", "The episode's own page, as its feed or list links it; null where it links none."),
+            ("audio_url", "The audio file's URL (an RSS enclosure, or NPS's first version), linked and never fetched."),
+        ),
+        geometry=False,
+    ),
+    "suggested_hikes": Shape(
+        key_column="hike_key",
+        row="one hike a club or NPS publishes: a WordPress write-up, a wiki trail or hike page, an NPS thing to do or tour",
+        union="int_suggested_hikes__club_unioned",
+        columns=(
+            ("name", "The hike's name as its source titles it (WordPress's rendered title, a wiki page's title, NPS's title)."),
+            ("link", "The page a hiker reads it on, as the source links it."),
+        ),
+        geometry=False,
+    ),
+    "challenges": Shape(
+        key_column="challenge_item_key",
+        row="one item of a challenge list a club or NPS publishes: an NPS passport stamp location, or a club wiki's challenge page",
+        union="int_challenges__club_unioned",
+        columns=(
+            ("name", "The item's name as its source states it (NPS's label, a wiki page's title)."),
+            ("link", "The page it is published on; null where the source links none (NPS's stamp locations)."),
+        ),
+        geometry=False,
+    ),
+    "photos": Shape(
+        key_column="photo_key",
+        row="one photo's manifest row: its URL, its own credit and licence and its page, never its pixels",
+        union="int_photos__club_unioned",
+        columns=(
+            ("title", "The photo's title as its source states it."),
+            ("image_url", "The image file's URL, linked and never fetched (bytes never enter DuckDB, decision 4)."),
+            ("credit", "The photo's own credit line, as its source states it for that photo."),
+            (
+                "licence",
+                "The photo's own licence or constraint, as its source states it for that photo (NPS's constraintsInfo.constraint): never a park's, an account's or a site's licence.",
+            ),
+            ("link", "The photo's own page."),
+        ),
+        geometry=False,
+    ),
 }
+
+#: The content readers whose tables section C stages, by class name, and each type's conformed columns per
+#: reader: a raw field (written as the registry and the live answers name it, normalized as dlt lands it), a
+#: JSON path into one (`field $.path`), or None for a column the reader's rows never carry.
+CONTENT_COLUMNS = {
+    ("podcasts", "PodcastEpisodes"): {"title": "title", "published": "pubDate", "link": "link", "audio_url": "enclosure_url"},
+    ("podcasts", "NpsContent"): {},
+    ("suggested_hikes", "WordpressPosts"): {"name": "title $.rendered", "link": "link"},
+    ("suggested_hikes", "WordpressChildPages"): {"name": "title $.rendered", "link": "link"},
+    ("suggested_hikes", "NpsContent"): {},
+    ("suggested_hikes", "MediawikiTemplatePages"): {"name": "title", "link": "fullurl"},
+    ("challenges", "NpsContent"): {},
+    ("challenges", "MediawikiTemplatePages"): {"name": "title", "link": "fullurl"},
+    ("photos", "NpsContent"): {},
+}
+#: NPS's lists, one reader for five endpoints, conformed by (type, the endpoint's path under /api/v1/), each field
+#: one extract/_content.py's NPS_CONTENT_COLUMNS hints so the column exists on every run.
+NPS_COLUMNS = {
+    ("podcasts", "multimedia/audio"): {
+        "title": "title",
+        "published": None,
+        "link": "permalinkUrl",
+        "audio_url": "versions $[0].url",
+    },
+    ("suggested_hikes", "thingstodo"): {"name": "title", "link": "url"},
+    ("suggested_hikes", "tours"): {"name": "title", "link": None},
+    ("challenges", "passportstamplocations"): {"name": "label", "link": None},
+    ("photos", "multimedia/galleries/assets"): {
+        "title": "title",
+        "image_url": "fileInfo $.url",
+        "credit": "credit",
+        "licence": "constraintsInfo $.constraint",
+        "link": "permalinkUrl",
+    },
+}
+#: The prose each reader's rows carry, by the field names the live sources served on 2026-10-04. It lands in the
+#: private raw store and stops at `base_` (decision 55; the round brief's item 3: "a WordPress post's or an
+#: episode's body lands in the private raw store and stops at base_"), so a staging model's `properties` sets
+#: each to null, which json_merge_patch drops. A wiki page's wikitext is its prose and its template's fields
+#: at once: it stops at base_ too, so a later rule that reads a trail's distance from its template parses the
+#: base model, never a published column.
+CONTENT_PROSE = {
+    "PodcastEpisodes": ("description", "content_encoded", "itunes_summary", "itunes_subtitle", "ns_description"),
+    "NpsContent": (
+        "description",
+        "transcript",
+        "shortDescription",
+        "longDescription",
+        "accessibilityInformation",
+        "feeDescription",
+        "reservationDescription",
+        "seasonDescription",
+        "petsDescription",
+        "locationDescription",
+        "activityDescription",
+        "ageDescription",
+        "timeOfDayDescription",
+        "durationDescription",
+        "altText",
+        "images",
+        "stops",
+    ),
+    "WordpressPosts": ("content", "excerpt", "uagb_excerpt"),
+    "WordpressChildPages": ("content", "excerpt"),
+    "MediawikiTemplatePages": ("content",),
+}
+#: The readers whose tables are lookups beside a type's rows, staged in base only: a hike type's taxonomy terms.
+CONTENT_LOOKUPS = ("SiteTerms",)
+#: The key of a lookup table: each term is one id within one taxonomy.
+LOOKUP_KEY_FIELDS = ("taxonomy", "id")
 
 
 class KeyRefused(ValueError):
@@ -200,22 +337,37 @@ class Table:
     table: str
     cadence: str
     entry: dict
+    # The extract reader's class name: ArcgisLayer for wave 1's layers, a content reader for section C's
+    # (CONTENT_COLUMNS), which decides how the staging model conforms the table's columns.
+    reader: str = "ArcgisLayer"
 
     @property
     def shape(self) -> Shape:
         return SHAPES[self.type]
 
     @property
+    def lookup(self) -> bool:
+        """A lookup beside a type's rows (a hike type's terms): staged in base only, never a union branch."""
+        return self.reader in CONTENT_LOOKUPS
+
+    @property
+    def key_column(self) -> str:
+        return "term_key" if self.lookup else self.shape.key_column
+
+    @property
     def base(self) -> str:
-        return f"base_{self.folder}__{self.key}"
+        return f"base_{self.folder}__{self.table.removeprefix(f'raw_{self.folder}__')}"
 
     @property
     def title(self) -> str:
-        return self.entry.get("title") or self.key
+        title = self.entry.get("title") or self.key
+        return f"{title}: its taxonomy terms" if self.lookup else title
 
     def key_inputs(self) -> list[str]:
         """The key's inputs as generate_surrogate_key takes them: the registry key, then each measured field."""
         entry = self.entry
+        if self.lookup:
+            return [f"'{self.key}'", *(column(field) for field in LOOKUP_KEY_FIELDS)]
         if "key_fields" in entry:
             fields, home = list(entry["key_fields"]), "key_fields"
         elif entry.get("id_fields"):
@@ -241,6 +393,11 @@ class Table:
 
     def key_comment(self) -> str:
         entry = self.entry
+        if self.lookup:
+            return (
+                "a term's `taxonomy` and its `id`: WordPress numbers terms within one site, and the reader lands each "
+                "taxonomy's terms with its name (extract/_content.py's SiteTerms), so the pair is one term."
+            )
         text = entry.get("key_comment") or entry.get("id_comment")
         if text:
             return text
@@ -275,21 +432,27 @@ def tables() -> list[Table]:
     """Every layer this stages, sorted by folder and key; stops on the first row with no usable key."""
     sys.path.insert(0, str(PIPELINE))
     from extract._contract import discover
-    from extract._kinds import ArcgisLayer
+    from extract._kinds import ArcgisLayer, registry_entry
 
     hand_written = _hand_written_raw_tables()
+    readers = {reader for _, reader in CONTENT_COLUMNS} | set(CONTENT_LOOKUPS)
     found = []
     for club_file in discover():
         if club_file.type not in SHAPES:
             continue
         for resource in club_file.resources:
-            if not isinstance(resource, ArcgisLayer) or resource.table in hand_written:
+            if resource.table in hand_written:
                 continue
-            entry = resource.entry
-            if entry.get("kind") not in KINDS:
+            reader = type(resource).__name__
+            if SHAPES[club_file.type].geometry:
+                if not isinstance(resource, ArcgisLayer) or resource.entry.get("kind") not in KINDS:
+                    continue
+                reader = "ArcgisLayer"
+            elif reader not in readers or (reader not in CONTENT_LOOKUPS and (club_file.type, reader) not in CONTENT_COLUMNS):
                 continue
-            found.append(Table(club_file.club, club_file.type, resource.key, resource.table, resource.cadence, entry))
-    found.sort(key=lambda table: (table.folder, table.key))
+            entry = registry_entry(resource.key)
+            found.append(Table(club_file.club, club_file.type, resource.key, resource.table, resource.cadence, entry, reader))
+    found.sort(key=lambda table: (table.folder, table.key, table.table))
     refused = []
     for table in found:
         try:
@@ -356,30 +519,38 @@ def base_sql(table: Table) -> str:
         source = f"{{{{ source('{table.folder}',\n        '{table.table}') }}}}"
     casts = "".join(f",\n        to_timestamp({name} / 1000) as {name}" for name in dates)
     key_lines = "".join(f"\n            {_key_item(item)}," for item in inputs)
-    return (
-        SQL_MARK
-        + "\n".join(head)
-        + f"""
-with source as (
-    -- dlt lands geometry as GeoJSON text and an ArcGIS date as epoch
+    if table.shape.geometry:
+        select_source = f"""    -- dlt lands geometry as GeoJSON text and an ArcGIS date as epoch
     -- milliseconds (extract/_kinds.py's ESRI_TYPES); both are cast here, as
     -- decision 40 has staging do.
     select
         {exclude}
         st_geomfromgeojson(cast(geometry as varchar)) as geom{casts}
-    from {source}
+    from {source}"""
+    else:
+        select_source = f"""    -- A content table carries no geometry and is cast nowhere: each column is
+    -- as dlt landed it (a WordPress date a timestamp, a feed's pubDate the
+    -- string it states, which a rewrite here would restate), nested as JSON.
+    select *
+    from {source}"""
+    return (
+        SQL_MARK
+        + "\n".join(head)
+        + f"""
+with source as (
+{select_source}
 ),
 
 renamed as (
     select
         {{{{ dbt_utils.generate_surrogate_key([{key_lines}
-        ]) }}}} as {table.shape.key_column},
+        ]) }}}} as {table.key_column},
         source.*
     from source
 )
 
 {{{{ dbt_utils.deduplicate(
-    relation='renamed', partition_by='{table.shape.key_column}', order_by='_dlt_id'
+    relation='renamed', partition_by='{table.key_column}', order_by='_dlt_id'
 ) }}}}
 """
     )
@@ -451,11 +622,16 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
             "    description: >",
             _folded(
                 f"{table.title}, every row, keyed and deduped (decision 40), the layer's own columns under dlt's "
-                f"names. {_held_back(table.entry)} {table.shape.union} reads it through stg_{folder}__{table.type}.",
+                f"names. {_held_back(table.entry)} "
+                + (
+                    f"A lookup beside stg_{folder}__{table.type}'s rows, which carry its ids; no union reads it."
+                    if table.lookup
+                    else f"{table.shape.union} reads it through stg_{folder}__{table.type}."
+                ),
                 6,
             ),
             "    columns:",
-            f"      - name: {table.shape.key_column}",
+            f"      - name: {table.key_column}",
             "        description: >",
             _folded(
                 f"The row's key (decision 40): dbt_utils.generate_surrogate_key over {inputs}, the registry key "
@@ -517,11 +693,39 @@ def _conformed(table: Table) -> list[str]:
         if source == "geometry Z":
             return ["cast(null as varchar) as published_elevation"]
         raise ValueError(f"{table.key}: elevation_source {source!r} is neither 'field <name>' nor 'geometry Z'")
+    if not table.shape.geometry:
+        return _content_conformed(table)
     raise ValueError(f"{table.key}: no staging shape for type {table.type}")
+
+
+def content_columns(table: Table) -> dict[str, str | None]:
+    """A content table's conformed columns: CONTENT_COLUMNS for its reader, an NPS list's by its endpoint."""
+    if table.reader == "NpsContent":
+        path = table.entry["url"].rstrip("/").split("/api/v1/", 1)[-1]
+        found = NPS_COLUMNS.get((table.type, path))
+        if found is None:
+            raise ValueError(f"{table.key}: no NPS_COLUMNS row for {table.type} from {path!r}")
+        return found
+    return CONTENT_COLUMNS[(table.type, table.reader)]
+
+
+def _content_conformed(table: Table) -> list[str]:
+    lines = []
+    for name, field in content_columns(table).items():
+        if field is None:
+            lines.append(f"cast(null as varchar) as {name}")
+        elif " " in field:
+            raw, path = field.split(" ", 1)
+            lines.append(f"json_extract_string({column(raw)}, '{path}') as {name}")
+        else:
+            lines.append(f"cast({column(field)} as varchar) as {name}")
+    return lines
 
 
 def stg_sql(folder: str, type_: str, type_tables: list[Table]) -> str:
     shape = SHAPES[type_]
+    if not shape.geometry:
+        return _content_stg_sql(folder, type_, type_tables)
     head = _comment(
         f"The {folder}/ folder's {type_.replace('_', ' ')} layers, conformed to {shape.union}'s columns: each "
         "layer's rename to the union's names and its key, nothing filtered (decision 40; a club's review gate is "
@@ -541,6 +745,56 @@ def stg_sql(folder: str, type_: str, type_tables: list[Table]) -> str:
     json_merge_patch(
         to_json({table.base}),
         '{{"geom": null}}'
+    ) as properties,
+    _loaded_at
+from {{{{ ref('{table.base}') }}}}"""
+        )
+    return SQL_MARK + head + "\n" + "\nunion all by name\n".join(branches) + "\n"
+
+
+def _patch_lines(members: str) -> list[str]:
+    """A JSON object literal, `'{...}'`, cut at its commas into lines SQLFluff's 80 columns hold (`||` joined)."""
+    if not members:
+        return ["'{}'"]
+    parts = members.split(", ")
+    lines, line = [], ""
+    for part in parts:
+        candidate = f"{line}, {part}" if line else part
+        if line and len(candidate) > 56:
+            lines.append(line + ",")
+            line = part
+        else:
+            line = candidate
+    lines.append(line)
+    if len(lines) == 1:
+        return ["'{" + lines[0] + "}'"]
+    quoted = ["'{" + lines[0] + " '"] + [f"|| '{text} '" for text in lines[1:-1]] + [f"|| '{lines[-1]}}}'"]
+    return quoted
+
+
+def _content_stg_sql(folder: str, type_: str, type_tables: list[Table]) -> str:
+    """A content type's staging model: each table's rename to the union's columns and its key, as text."""
+    shape = SHAPES[type_]
+    head = _comment(
+        f"The {folder}/ folder's {type_.replace('_', ' ')} sources, conformed to {shape.union}'s columns: each "
+        "source's rename to the union's names and its key, nothing filtered (decision 40; a club's review gate is "
+        "an intermediate's). The source's own columns ride in `properties`, under dlt's names, all but its prose: "
+        "json_merge_patch drops each member the patch sets to null, so a body, an episode's notes or a page's "
+        "wikitext stops at the base model (decision 55)."
+    )
+    branches = []
+    for table in type_tables:
+        conformed = "".join(f"\n    {line}," for line in _conformed(table))
+        prose = ", ".join(f'"{column(name).strip(chr(34))}": null' for name in CONTENT_PROSE.get(table.reader, ()))
+        patch = "\n".join(f"        {line}" for line in _patch_lines(prose))
+        branches.append(
+            f"""select
+    '{table.key}' as source_key,
+    '{folder}' as club,
+    {shape.key_column},{conformed}
+    json_merge_patch(
+        to_json({table.base}),
+{patch}
     ) as properties,
     _loaded_at
 from {{{{ ref('{table.base}') }}}}"""
@@ -574,9 +828,19 @@ def models_yaml(folder: str, by_type: dict[str, list[Table]]) -> str:
 
 def union_sql(type_: str, staging_models: list[str]) -> str:
     shape = SHAPES[type_]
-    columns = ["source_key", "club", shape.key_column, *(name for name, _ in shape.columns), "geom", "properties", "_loaded_at"]
+    geometry = ["geom"] if shape.geometry else []
+    columns = [
+        "source_key",
+        "club",
+        shape.key_column,
+        *(name for name, _ in shape.columns),
+        *geometry,
+        "properties",
+        "_loaded_at",
+    ]
+    what = "registered ArcGIS layers" if shape.geometry else "registered feeds, APIs and WordPress and wiki sources"
     head = _comment(
-        f"Every {type_.replace('_', ' ')} row of the clubs' registered ArcGIS layers that pipeline/make_dbt_staging.py "
+        f"Every {type_.replace('_', ' ')} row of the clubs' {what} that pipeline/make_dbt_staging.py "
         "stages, one row each, unfiltered: a `union all by name` of every stg_<folder>__"
         f"{type_} it writes. The branch list is the registry's, written by the generator from sources.json and the "
         "extract's club folders, so a layer registered later joins by running it again. Nothing here is filtered "
@@ -589,27 +853,41 @@ def union_sql(type_: str, staging_models: list[str]) -> str:
 
 def union_yaml(type_: str, type_tables: list[Table]) -> str:
     shape = SHAPES[type_]
+    if shape.geometry:
+        description = (
+            f"Every {type_.replace('_', ' ')} row of the {len(type_tables)} registered ArcGIS layers "
+            f"pipeline/make_dbt_staging.py stages, unioned by name: {shape.row}. Each row carries its layer's "
+            "registry key, the club folder that extracted it, the base model's key, the conformed columns below, "
+            "its geometry as landed and its layer's own columns as `properties`. Unfiltered: whatever reads it keeps "
+            "int_sources__publication's verdict."
+        )
+        region_test = [
+            "    data_tests:",
+            "      # The lon/lat swap test, against the box each source's rows are held",
+            "      # to (macros/generated_regions.sql, read by",
+            "      # macros/lands_outside_its_region.sql).",
+            "      - lands_in_the_region_its_source_publishes_in:",
+            "          arguments:",
+            "            geometry: geom",
+        ]
+    else:
+        description = (
+            f"Every {type_.replace('_', ' ')} row of the {len(type_tables)} registered sources "
+            f"pipeline/make_dbt_staging.py stages for this type (decision 54 wave 3), unioned by name: {shape.row}. "
+            "Each row carries its source's registry key, the club folder that extracted it, the base model's key, "
+            "the conformed columns below and its source's own columns, prose left out, as `properties`. No "
+            "geometry: a row is placed, where it is placed at all, by its own fields in `properties`. Unfiltered: "
+            "whatever reads it keeps int_sources__publication's verdict."
+        )
+        region_test = []
     lines = [
         YAML_MARK + "version: 2",
         "",
         "models:",
         f"  - name: {shape.union}",
         "    description: >",
-        _folded(
-            f"Every {type_.replace('_', ' ')} row of the {len(type_tables)} registered ArcGIS layers "
-            f"pipeline/make_dbt_staging.py stages, unioned by name: {shape.row}. Each row carries its layer's "
-            "registry key, the club folder that extracted it, the base model's key, the conformed columns below, "
-            "its geometry as landed and its layer's own columns as `properties`. Unfiltered: whatever reads it keeps "
-            "int_sources__publication's verdict.",
-            6,
-        ),
-        "    data_tests:",
-        "      # The lon/lat swap test, against the box each source's rows are held",
-        "      # to (macros/generated_regions.sql, read by",
-        "      # macros/lands_outside_its_region.sql).",
-        "      - lands_in_the_region_its_source_publishes_in:",
-        "          arguments:",
-        "            geometry: geom",
+        _folded(description, 6),
+        *region_test,
         "    columns:",
         f"      - name: {shape.key_column}",
         "        description: The base model's key, carried; unique across the union because the registry key is its first input.",
@@ -628,11 +906,19 @@ def union_yaml(type_: str, type_tables: list[Table]) -> str:
     ]
     for name, description in shape.columns:
         lines += [f"      - name: {name}", "        description: >", _folded(description, 10)]
+    if shape.geometry:
+        lines += [
+            "      - name: geom",
+            "        description: The feature's geometry as the layer published it, in OGC:CRS84, with a Z where the layer's vertices carry one.",
+            "      - name: properties",
+            "        description: The base row's own columns, under dlt's names, as JSON, the geometry left out.",
+        ]
+    else:
+        lines += [
+            "      - name: properties",
+            "        description: The base row's own columns, under dlt's names, as JSON, its prose left out (decision 55).",
+        ]
     lines += [
-        "      - name: geom",
-        "        description: The feature's geometry as the layer published it, in OGC:CRS84, with a Z where the layer's vertices carry one.",
-        "      - name: properties",
-        "        description: The base row's own columns, under dlt's names, as JSON, the geometry left out.",
         "      - name: _loaded_at",
         "        description: When the extract landed the row (dlt's load stamp).",
     ]
@@ -650,7 +936,11 @@ def hand_set_regions() -> set[str]:
 
 def regions_macro(all_tables: list[Table]) -> str:
     by_hand = hand_set_regions()
-    keys = sorted(table.key for table in all_tables if table.key not in by_hand and table.type not in REGIONS_DECIDED_BY_HAND)
+    keys = sorted(
+        table.key
+        for table in all_tables
+        if table.key not in by_hand and table.type not in REGIONS_DECIDED_BY_HAND and table.shape.geometry
+    )
     cases = "\n".join(f"    when {{{{ column }}}} = '{key}' then '{DEFAULT_REGION}'" for key in keys)
     return (
         JINJA_MARK
@@ -693,7 +983,8 @@ def render() -> dict[Path, str]:
         by_type: dict[str, list[Table]] = {}
         for table in folder_tables:
             files[root / "base" / f"{table.base}.sql"] = base_sql(table)
-            by_type.setdefault(table.type, []).append(table)
+            if not table.lookup:
+                by_type.setdefault(table.type, []).append(table)
         for type_, type_tables in sorted(by_type.items()):
             files[root / f"stg_{folder}__{type_}.sql"] = stg_sql(folder, type_, type_tables)
             staging_by_type.setdefault(type_, []).append(f"stg_{folder}__{type_}")

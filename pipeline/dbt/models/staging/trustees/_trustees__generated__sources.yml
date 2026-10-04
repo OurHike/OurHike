@@ -19,6 +19,17 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_trustees__trustees_on_the_coast_podcast
+        data_tests:
+          # Rows sharing base_trustees__trustees_on_the_coast_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'trustees_on_the_coast_podcast'", "guid"]
+        description: >
+          Trustees On The Coast (podcast feed) (sources.json
+          `trustees_on_the_coast_podcast`). Key: `guid`: present and unique on all 2 items
+          read 2026-10-04, the feed's own id for an episode, which a podcast app keys on
+          too.
       - name: raw_trustees__trustees_properties
         data_tests:
           # Rows sharing base_trustees__trustees_properties's key must be exact copies (decision 40).

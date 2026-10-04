@@ -48,6 +48,16 @@ sources:
         description: >
           DEC Conservation Easements (sources.json `dec_conservation_easements`). Key:
           `LANDS_UID` is unique and non-null on all 93 rows read 2026-10-03.
+      - name: raw_nysdec__dec_does_what_podcast
+        data_tests:
+          # Rows sharing base_nysdec__dec_does_what_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dec_does_what_podcast'", "guid"]
+        description: >
+          DEC Does What?! (podcast feed, NYS DEC) (sources.json `dec_does_what_podcast`).
+          Key: `guid`: present and unique on all 39 items read 2026-10-04, the feed's own
+          id for an episode, which a podcast app keys on too.
       - name: raw_nysdec__dec_lands
         data_tests:
           # Rows sharing base_nysdec__dec_lands's key must be exact copies (decision 40).

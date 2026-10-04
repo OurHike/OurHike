@@ -28,6 +28,17 @@ sources:
         description: >
           COTREX trailheads (CPW) (sources.json `cotrex_trailheads`). Key: the registry's
           `id_field`; its row records no measurement of it.
+      - name: raw_cotrex__cpw_colorado_outdoors_podcast
+        data_tests:
+          # Rows sharing base_cotrex__cpw_colorado_outdoors_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'cpw_colorado_outdoors_podcast'", "guid"]
+        description: >
+          Colorado Outdoors, the Podcast for Colorado Parks and Wildlife (podcast feed)
+          (sources.json `cpw_colorado_outdoors_podcast`). Key: `guid`: present and unique
+          on all 54 items read 2026-10-04, the feed's own id for an episode, which a
+          podcast app keys on too.
       - name: raw_cotrex__cpw_facilities
         data_tests:
           # Rows sharing base_cotrex__cpw_facilities's key must be exact copies (decision 40).

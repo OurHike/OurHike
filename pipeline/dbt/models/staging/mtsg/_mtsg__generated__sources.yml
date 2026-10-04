@@ -29,3 +29,26 @@ sources:
           Mountains to Sound Greenway National Heritage Area boundary (sources.json
           `mtsg_heritage_area_boundary`). Key: `Zone` is unique and non-null on all 1 rows
           read 2026-10-03.
+      - name: raw_mtsg__mtsg_itineraries
+        data_tests:
+          # Rows sharing base_mtsg__mtsg_itineraries's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'mtsg_itineraries'", "id"]
+        description: >
+          Mountains to Sound Greenway itineraries (the `itinerary` post type)
+          (sources.json `mtsg_itineraries`). Key: `id`, the WordPress post id: unique on
+          all 28 rows read 2026-10-04, with X-WP-Total 28 in the same answer. The site's
+          own primary key, never minted again by a reload (decision 40).
+      - name: raw_mtsg__mtsg_itineraries_terms
+        data_tests:
+          # Rows sharing base_mtsg__mtsg_itineraries_terms's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'mtsg_itineraries'", "taxonomy", "id"]
+        description: >
+          Mountains to Sound Greenway itineraries (the `itinerary` post type): its
+          taxonomy terms (sources.json `mtsg_itineraries`). Key: a term's `taxonomy` and
+          its `id`: WordPress numbers terms within one site, and the reader lands each
+          taxonomy's terms with its name (extract/_content.py's SiteTerms), so the pair is
+          one term.

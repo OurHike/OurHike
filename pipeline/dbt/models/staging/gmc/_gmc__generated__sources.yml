@@ -19,6 +19,28 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_gmc__gmc_hikes
+        data_tests:
+          # Rows sharing base_gmc__gmc_hikes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'gmc_hikes'", "id"]
+        description: >
+          GMC Hikes (the `hikes` post type, greenmountainclub.org) (sources.json
+          `gmc_hikes`). Key: `id`, the WordPress post id: unique on all 57 rows read
+          2026-10-04, with X-WP-Total 57 in the same answer. The site's own primary key,
+          never minted again by a reload (decision 40).
+      - name: raw_gmc__gmc_hikes_terms
+        data_tests:
+          # Rows sharing base_gmc__gmc_hikes_terms's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'gmc_hikes'", "taxonomy", "id"]
+        description: >
+          GMC Hikes (the `hikes` post type, greenmountainclub.org): its taxonomy terms
+          (sources.json `gmc_hikes`). Key: a term's `taxonomy` and its `id`: WordPress
+          numbers terms within one site, and the reader lands each taxonomy's terms with
+          its name (extract/_content.py's SiteTerms), so the pair is one term.
       - name: raw_gmc__gmc_map_features
         data_tests:
           # Rows sharing base_gmc__gmc_map_features's key must be exact copies (decision 40).

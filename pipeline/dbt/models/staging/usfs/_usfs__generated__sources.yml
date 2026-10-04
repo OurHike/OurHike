@@ -29,6 +29,27 @@ sources:
           Administrative Forest Boundaries - National Extent (sources.json
           `usfs_forest_boundaries`). Key: `adminforestid` is unique and non-null on all
           112 rows read 2026-10-03.
+      - name: raw_usfs__usfs_forest_focus_podcast
+        data_tests:
+          # Rows sharing base_usfs__usfs_forest_focus_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usfs_forest_focus_podcast'", "guid"]
+        description: >
+          Forest Focus (podcast feed, USDA Forest Service Pacific Southwest Region)
+          (sources.json `usfs_forest_focus_podcast`). Key: `guid`: present and unique on
+          all 38 items read 2026-10-04, the feed's own id for an episode, which a podcast
+          app keys on too.
+      - name: raw_usfs__usfs_forestcast_podcast
+        data_tests:
+          # Rows sharing base_usfs__usfs_forestcast_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usfs_forestcast_podcast'", "guid"]
+        description: >
+          Forestcast (podcast feed, USDA Forest Service research) (sources.json
+          `usfs_forestcast_podcast`). Key: `guid`: present and unique on all 36 items read
+          2026-10-04, the feed's own id for an episode, which a podcast app keys on too.
       - name: raw_usfs__usfs_national_grasslands
         data_tests:
           # Rows sharing base_usfs__usfs_national_grasslands's key must be exact copies (decision 40).

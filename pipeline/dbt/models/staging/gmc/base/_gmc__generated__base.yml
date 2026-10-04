@@ -3,6 +3,48 @@
 version: 2
 
 models:
+  - name: base_gmc__gmc_hikes
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('gmc', 'raw_gmc__gmc_hikes')
+          config:
+            severity: warn
+    description: >
+      GMC Hikes (the `hikes` post type, greenmountainclub.org), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_suggested_hikes__club_unioned reads it through stg_gmc__suggested_hikes.
+    columns:
+      - name: hike_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over gmc_hikes,
+          id, the registry key first and then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_gmc__gmc_hikes_terms
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('gmc', 'raw_gmc__gmc_hikes_terms')
+          config:
+            severity: warn
+    description: >
+      GMC Hikes (the `hikes` post type, greenmountainclub.org): its taxonomy terms, every row,
+      keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. A lookup beside stg_gmc__suggested_hikes's rows, which carry its
+      ids; no union reads it.
+    columns:
+      - name: term_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over gmc_hikes,
+          taxonomy, id, the registry key first and then the fields measured unique for
+          this layer.
+        data_tests: [not_null, unique]
   - name: base_gmc__gmc_map_features
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

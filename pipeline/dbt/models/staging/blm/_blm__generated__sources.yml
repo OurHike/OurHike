@@ -59,6 +59,17 @@ sources:
           Old Spanish NHT trails (BLM) (sources.json `blm_old_spanish_nht_trails`). Key:
           GlobalID: unique and non-null on all 101 rows (measured 2026-10-03 over every
           row's attributes).
+      - name: raw_blm__blm_on_the_ground_podcast
+        data_tests:
+          # Rows sharing base_blm__blm_on_the_ground_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'blm_on_the_ground_podcast'", "guid"]
+        description: >
+          On the Ground (podcast feed, Bureau of Land Management) (sources.json
+          `blm_on_the_ground_podcast`). Key: `guid`: present and unique on all 26 items
+          read 2026-10-04, the feed's own id for an episode, which a podcast app keys on
+          too.
       - name: raw_blm__blm_public_lands_access_lines
         data_tests:
           # Rows sharing base_blm__blm_public_lands_access_lines's key must be exact copies (decision 40).

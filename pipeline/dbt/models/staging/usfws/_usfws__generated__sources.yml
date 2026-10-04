@@ -19,6 +19,17 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_usfws__usfws_future_of_conservation_podcast
+        data_tests:
+          # Rows sharing base_usfws__usfws_future_of_conservation_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usfws_future_of_conservation_podcast'", "guid"]
+        description: >
+          Future of Conservation (podcast feed, USFWS National Conservation Training
+          Center) (sources.json `usfws_future_of_conservation_podcast`). Key: `guid`:
+          present and unique on all 13 items read 2026-10-04, the feed's own id for an
+          episode, which a podcast app keys on too.
       - name: raw_usfws__usfws_refuge_access_points
         data_tests:
           # Rows sharing base_usfws__usfws_refuge_access_points's key must be exact copies (decision 40).

@@ -11,6 +11,15 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_usfws__podcasts
+    description: >
+      The usfws/ folder's podcasts layers (`usfws_future_of_conservation_podcast`), one row
+      per base row, renamed to int_podcasts__club_unioned's columns, with each layer's own
+      columns in `properties`.
+    columns:
+      - name: episode_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_usfws__points_of_interest
     description: >
       The usfws/ folder's points of interest layers (`usfws_refuge_access_points`,

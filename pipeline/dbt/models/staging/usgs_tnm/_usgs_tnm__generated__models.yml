@@ -12,6 +12,15 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_usgs_tnm__podcasts
+    description: >
+      The usgs_tnm/ folder's podcasts layers (`usgs_outstanding_in_the_field_podcast`), one
+      row per base row, renamed to int_podcasts__club_unioned's columns, with each layer's own
+      columns in `properties`.
+    columns:
+      - name: episode_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_usgs_tnm__points_of_interest
     description: >
       The usgs_tnm/ folder's points of interest layers (`usgs_gnis_springs`,

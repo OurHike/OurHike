@@ -32,6 +32,16 @@ sources:
           (f=geojson, outSR 4326), under lib/user_agent.py's USER_AGENT, robots.txt
           first). `id_field` names the object id, which a reload mints again (decision
           40).
+      - name: raw_sbts__sbts_dirt_magic_podcast
+        data_tests:
+          # Rows sharing base_sbts__sbts_dirt_magic_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'sbts_dirt_magic_podcast'", "guid"]
+        description: >
+          Dirt Magic (podcast feed, Sierra Buttes Trail Stewardship) (sources.json
+          `sbts_dirt_magic_podcast`). Key: `guid`: present and unique on all 40 items read
+          2026-10-04, the feed's own id for an episode, which a podcast app keys on too.
       - name: raw_sbts__sbts_maintained
         data_tests:
           # Rows sharing base_sbts__sbts_maintained's key must be exact copies (decision 40).

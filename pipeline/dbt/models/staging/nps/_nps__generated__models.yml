@@ -3,6 +3,23 @@
 version: 2
 
 models:
+  - name: stg_nps__challenges
+    description: >
+      The nps/ folder's challenges layers (`nps_passport_stamp_locations`), one row per base
+      row, renamed to int_challenges__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: challenge_item_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
+  - name: stg_nps__photos
+    description: >
+      The nps/ folder's photos layers (`nps_gallery_assets`), one row per base row, renamed to
+      int_photos__club_unioned's columns, with each layer's own columns in `properties`.
+    columns:
+      - name: photo_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_nps__places
     description: >
       The nps/ folder's places layers (`grsm_municipal_boundaries`,
@@ -13,6 +30,15 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_nps__podcasts
+    description: >
+      The nps/ folder's podcasts layers (`nps_multimedia_audio`,
+      `nps_park_postcards_goga_podcast`), one row per base row, renamed to
+      int_podcasts__club_unioned's columns, with each layer's own columns in `properties`.
+    columns:
+      - name: episode_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_nps__points_of_interest
     description: >
       The nps/ folder's points of interest layers (`nps_grsm_backcountry_shelters`), one row
@@ -20,6 +46,15 @@ models:
       layer's own columns in `properties`.
     columns:
       - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
+  - name: stg_nps__suggested_hikes
+    description: >
+      The nps/ folder's suggested hikes layers (`nps_things_to_do`, `nps_tours`), one row per
+      base row, renamed to int_suggested_hikes__club_unioned's columns, with each layer's own
+      columns in `properties`.
+    columns:
+      - name: hike_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
   - name: stg_nps__trail_lines

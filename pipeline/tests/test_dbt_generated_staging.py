@@ -176,8 +176,68 @@ def test_a_region_set_by_hand_in_the_macro_is_not_generated_again():
     files = make_dbt_staging.render()
     generated = set(re.findall(r"= '([a-z0-9_]+)' then", files[make_dbt_staging.REGIONS_MACRO]))
     assert not generated & make_dbt_staging.hand_set_regions()
-    undecided = {table.key for table in make_dbt_staging.tables() if table.type not in make_dbt_staging.REGIONS_DECIDED_BY_HAND}
+    # A content type's rows carry no geometry (section C, decision 54 wave 3), so no box is drawn for them.
+    undecided = {
+        table.key
+        for table in make_dbt_staging.tables()
+        if table.type not in make_dbt_staging.REGIONS_DECIDED_BY_HAND and table.shape.geometry
+    }
     assert generated | make_dbt_staging.hand_set_regions() >= undecided
     # A type whose boxes the macro decides gets none generated, so a row it leaves out stays eastern.
     decided = {table.key for table in make_dbt_staging.tables() if table.type in make_dbt_staging.REGIONS_DECIDED_BY_HAND}
     assert not generated & decided
+
+
+# --- section C's content types (decision 54 wave 3, 2026-10-04) ---------------------------------------------------
+
+
+def _content(type_: str, reader: str, entry: dict, table: str | None = None) -> Table:
+    return Table(
+        folder="club",
+        type=type_,
+        key=entry["key"],
+        table=table or f"raw_club__{entry['key']}",
+        cadence="monthly",
+        entry=entry,
+        reader=reader,
+    )
+
+
+def test_a_content_table_is_staged_with_no_geometry_and_its_prose_left_out_of_properties():
+    feed = _content("podcasts", "PodcastEpisodes", {"key": "show", "key_fields": ["guid"]})
+
+    base = make_dbt_staging.base_sql(feed)
+    staging = make_dbt_staging.stg_sql("club", "podcasts", [feed])
+
+    assert "st_geomfromgeojson" not in base and "geom" not in staging.split("json_merge_patch")[0]
+    assert '"description": null' in staging and '"content_encoded": null' in staging, "an episode's notes stop at base_"
+    assert "cast(pubdate as varchar) as published" in staging and "cast(enclosure_url as varchar) as audio_url" in staging
+    assert make_dbt_staging.union_sql("podcasts", ["stg_club__podcasts"]).count("geom") == 0
+
+
+def test_a_hike_types_terms_are_a_base_model_keyed_on_taxonomy_and_id_and_no_union_branch():
+    terms = _content("suggested_hikes", "SiteTerms", {"key": "hikes", "key_fields": ["id"]}, table="raw_club__hikes_terms")
+
+    assert terms.lookup and terms.base == "base_club__hikes_terms" and terms.key_column == "term_key"
+    assert terms.key_inputs() == ["'hikes'", "taxonomy", "id"]
+    assert "lookup beside stg_club__suggested_hikes" in make_dbt_staging.base_yaml("club", [terms])
+
+
+def test_each_nps_list_is_conformed_by_its_endpoint_and_a_photo_by_its_own_licence():
+    assets = _content(
+        "photos", "NpsContent", {"key": "assets", "key_fields": ["id"], "url": "https://x/api/v1/multimedia/galleries/assets"}
+    )
+    tours = _content("suggested_hikes", "NpsContent", {"key": "tours", "key_fields": ["id"], "url": "https://x/api/v1/tours"})
+
+    photo = make_dbt_staging._conformed(assets)
+    assert "json_extract_string(constraintsinfo, '$.constraint') as licence" in photo
+    assert "cast(credit as varchar) as credit" in photo
+    assert "cast(null as varchar) as link" in make_dbt_staging._conformed(tours)
+    with pytest.raises(ValueError, match="no NPS_COLUMNS row"):
+        make_dbt_staging._conformed(_content("photos", "NpsContent", {"key": "z", "url": "https://x/api/v1/alerts"}))
+
+
+def test_every_content_union_is_a_club_union_beside_the_marts_own_path():
+    for type_ in ("podcasts", "suggested_hikes", "challenges", "photos"):
+        shape = make_dbt_staging.SHAPES[type_]
+        assert not shape.geometry and shape.union == f"int_{type_}__club_unioned"

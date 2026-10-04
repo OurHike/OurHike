@@ -29,3 +29,15 @@ sources:
           Oregon Coast Trail route and gaps, 2022 (Trailkeepers of Oregon) (sources.json
           `tko_oregon_coast_trail`). Key: geometry with TrailType: 204 of 204 (measured
           2026-10-03); geometry alone is 203.
+      - name: raw_tko__tko_spring_fundraiser_hike_posts
+        data_tests:
+          # Rows sharing base_tko__tko_spring_fundraiser_hike_posts's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'tko_spring_fundraiser_hike_posts'", "id"]
+        description: >
+          Trailkeepers of Oregon: Oregon Hikers Spring Fundraiser posts (category)
+          (sources.json `tko_spring_fundraiser_hike_posts`). Key: `id`, the WordPress post
+          id: unique on all 12 rows read 2026-10-04, with X-WP-Total 12 in the same
+          answer. The site's own primary key, never minted again by a reload (decision
+          40).

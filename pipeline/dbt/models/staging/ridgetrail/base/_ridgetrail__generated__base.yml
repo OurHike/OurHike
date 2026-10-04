@@ -25,6 +25,27 @@ models:
           ridgetrail_campsites, globalid, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_ridgetrail__ridgetrail_curated_adventures
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ridgetrail', 'raw_ridgetrail__ridgetrail_curated_adventures')
+          config:
+            severity: warn
+    description: >
+      Bay Area Ridge Trail Curated Adventures (category), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_suggested_hikes__club_unioned reads it through stg_ridgetrail__suggested_hikes.
+    columns:
+      - name: hike_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ridgetrail_curated_adventures, id, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_ridgetrail__ridgetrail_official_route
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -46,4 +67,26 @@ models:
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
           ridgetrail_official_route, segment_id, the registry key first and then the
           fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_ridgetrail__ridgetrail_trail_sections
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ridgetrail', 'raw_ridgetrail__ridgetrail_trail_sections')
+          config:
+            severity: warn
+    description: >
+      Bay Area Ridge Trail sections (the `trail-section` post type), every row, keyed and
+      deduped (decision 40), the layer's own columns under dlt's names. Its sources.json row
+      reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_suggested_hikes__club_unioned reads it through
+      stg_ridgetrail__suggested_hikes.
+    columns:
+      - name: hike_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ridgetrail_trail_sections, id, the registry key first and then the fields
+          measured unique for this layer.
         data_tests: [not_null, unique]

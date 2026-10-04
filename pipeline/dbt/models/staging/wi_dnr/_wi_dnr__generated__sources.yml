@@ -19,6 +19,17 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_wi_dnr__silvicast_podcast
+        data_tests:
+          # Rows sharing base_wi_dnr__silvicast_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'silvicast_podcast'", "guid"]
+        description: >
+          SilviCast (podcast feed, Wisconsin Forestry Center and Wisconsin DNR)
+          (sources.json `silvicast_podcast`). Key: `guid`: present and unique on all 71
+          items read 2026-10-04, the feed's own id for an episode, which a podcast app
+          keys on too.
       - name: raw_wi_dnr__wdnr_managed_properties
         data_tests:
           # Rows sharing base_wi_dnr__wdnr_managed_properties's key must be exact copies (decision 40).
@@ -33,3 +44,14 @@ sources:
           (f=geojson, outSR 4326), under lib/user_agent.py's USER_AGENT, robots.txt
           first). The geometry stands alone because it is the smallest key: phase C's base
           model keys and dedupes on it.
+      - name: raw_wi_dnr__wdnr_wild_wisconsin_podcast
+        data_tests:
+          # Rows sharing base_wi_dnr__wdnr_wild_wisconsin_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'wdnr_wild_wisconsin_podcast'", "guid"]
+        description: >
+          Wild Wisconsin, Off the Record (podcast feed, Wisconsin DNR) (sources.json
+          `wdnr_wild_wisconsin_podcast`). Key: `guid`: present and unique on all 59 items
+          read 2026-10-04, the feed's own id for an episode, which a podcast app keys on
+          too.

@@ -3,6 +3,27 @@
 version: 2
 
 models:
+  - name: base_wi_dnr__silvicast_podcast
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('wi_dnr', 'raw_wi_dnr__silvicast_podcast')
+          config:
+            severity: warn
+    description: >
+      SilviCast (podcast feed, Wisconsin Forestry Center and Wisconsin DNR), every row, keyed
+      and deduped (decision 40), the layer's own columns under dlt's names. Its sources.json
+      row reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_podcasts__club_unioned reads it through stg_wi_dnr__podcasts.
+    columns:
+      - name: episode_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          silvicast_podcast, guid, the registry key first and then the fields measured
+          unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_wi_dnr__wdnr_managed_properties
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -23,4 +44,25 @@ models:
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
           wdnr_managed_properties, geometry_key('geom'), the registry key first and then
           the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_wi_dnr__wdnr_wild_wisconsin_podcast
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('wi_dnr', 'raw_wi_dnr__wdnr_wild_wisconsin_podcast')
+          config:
+            severity: warn
+    description: >
+      Wild Wisconsin, Off the Record (podcast feed, Wisconsin DNR), every row, keyed and
+      deduped (decision 40), the layer's own columns under dlt's names. Its sources.json row
+      reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_podcasts__club_unioned reads it through stg_wi_dnr__podcasts.
+    columns:
+      - name: episode_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          wdnr_wild_wisconsin_podcast, guid, the registry key first and then the fields
+          measured unique for this layer.
         data_tests: [not_null, unique]

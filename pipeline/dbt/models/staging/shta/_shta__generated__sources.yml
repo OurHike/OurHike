@@ -30,6 +30,17 @@ sources:
           `lake_county_superior_hiking_trail`). Key: the geometry (every vertex at 6
           decimal places): 574 of 574 after 2 exact copies, no attribute being unique
           (measured 2026-10-03 over every row).
+      - name: raw_shta__shta_blazing_trail_podcast
+        data_tests:
+          # Rows sharing base_shta__shta_blazing_trail_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'shta_blazing_trail_podcast'", "guid"]
+        description: >
+          Blazing Trail: 40 Years on the Superior Hiking Trail (podcast feed, SHTA with
+          WTIP) (sources.json `shta_blazing_trail_podcast`). Key: `guid`: present and
+          unique on all 12 items read 2026-10-04, the feed's own id for an episode, which
+          a podcast app keys on too.
       - name: raw_shta__shta_line_2025
         data_tests:
           # Rows sharing base_shta__shta_line_2025's key must be exact copies (decision 40).

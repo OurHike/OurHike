@@ -165,6 +165,22 @@ sources:
           designated alignment (NPS and BLM) (sources.json
           `nps_el_camino_tierra_adentro_nht`). Key: GlobalID: unique and non-null on all 5
           rows (measured 2026-10-03 over every row's attributes).
+      - name: raw_nps__nps_gallery_assets
+        data_tests:
+          # Rows sharing base_nps__nps_gallery_assets's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_gallery_assets'", "id"]
+        description: >
+          NPS gallery assets, one per photo (the API's /multimedia/galleries/assets, for
+          the clubs' park codes) (sources.json `nps_gallery_assets`). Key: `id`, NPS's own
+          GUID for each item: present and unique on the 2 rows of a sample read on
+          2026-10-04; the full read was refused by the public DEMO_KEY's shared hourly
+          limit (HTTP 429 OVER_RATE_LIMIT, 08:42 UTC). The reader itself raises on a
+          missing or repeated id within a read (extract/_content.py's NpsContent), so a
+          landed table is unique on it by construction; that the whole list is, and that
+          the id is stable from one read to the next, is @unvalidated until the first
+          monthly run under NPS_API_KEY reads every row and re-measures it.
       - name: raw_nps__nps_grsm_backcountry_shelters
         data_tests:
           # Rows sharing base_nps__nps_grsm_backcountry_shelters's key must be exact copies (decision 40).
@@ -216,6 +232,22 @@ sources:
           (NPS) (sources.json `nps_mormon_pioneer_nht`). Key: One row, so the registry key
           alone is the key, as for pcta_centerline (measured 2026-10-03: returnCountOnly
           1).
+      - name: raw_nps__nps_multimedia_audio
+        data_tests:
+          # Rows sharing base_nps__nps_multimedia_audio's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_multimedia_audio'", "id"]
+        description: >
+          NPS audio (the API's /multimedia/audio, national) (sources.json
+          `nps_multimedia_audio`). Key: `id`, NPS's own GUID for each item: present and
+          unique on the 2 rows of a sample read on 2026-10-04; the full read was refused
+          by the public DEMO_KEY's shared hourly limit (HTTP 429 OVER_RATE_LIMIT, 08:42
+          UTC). The reader itself raises on a missing or repeated id within a read
+          (extract/_content.py's NpsContent), so a landed table is unique on it by
+          construction; that the whole list is, and that the id is stable from one read to
+          the next, is @unvalidated until the first monthly run under NPS_API_KEY reads
+          every row and re-measures it.
       - name: raw_nps__nps_old_spanish_nht
         data_tests:
           # Rows sharing base_nps__nps_old_spanish_nht's key must be exact copies (decision 40).
@@ -256,6 +288,33 @@ sources:
         description: >
           NPS Boundary (Land Resources Division) (sources.json `nps_park_boundaries`).
           Key: `GlobalID` is unique and non-null on all 442 rows read 2026-10-03.
+      - name: raw_nps__nps_park_postcards_goga_podcast
+        data_tests:
+          # Rows sharing base_nps__nps_park_postcards_goga_podcast's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_park_postcards_goga_podcast'", "guid"]
+        description: >
+          Park Postcards Podcast, Golden Gate National Recreation Area (podcast feed, NPS)
+          (sources.json `nps_park_postcards_goga_podcast`). Key: `guid`: present and
+          unique on all 9 items read 2026-10-04, the feed's own id for an episode, which a
+          podcast app keys on too.
+      - name: raw_nps__nps_passport_stamp_locations
+        data_tests:
+          # Rows sharing base_nps__nps_passport_stamp_locations's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_passport_stamp_locations'", "id"]
+        description: >
+          NPS passport stamp locations (the API's /passportstamplocations, national)
+          (sources.json `nps_passport_stamp_locations`). Key: `id`, NPS's own GUID for
+          each item: present and unique on the 2 rows of a sample read on 2026-10-04; the
+          full read was refused by the public DEMO_KEY's shared hourly limit (HTTP 429
+          OVER_RATE_LIMIT, 08:42 UTC). The reader itself raises on a missing or repeated
+          id within a read (extract/_content.py's NpsContent), so a landed table is unique
+          on it by construction; that the whole list is, and that the id is stable from
+          one read to the next, is @unvalidated until the first monthly run under
+          NPS_API_KEY reads every row and re-measures it.
       - name: raw_nps__nps_pony_express_nht
         data_tests:
           # Rows sharing base_nps__nps_pony_express_nht's key must be exact copies (decision 40).
@@ -287,6 +346,36 @@ sources:
           (NPS) (sources.json `nps_star_spangled_banner_nht`). Key: One row, so the
           registry key alone is the key, as for pcta_centerline (measured 2026-10-03:
           returnCountOnly 1).
+      - name: raw_nps__nps_things_to_do
+        data_tests:
+          # Rows sharing base_nps__nps_things_to_do's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_things_to_do'", "id"]
+        description: >
+          NPS things to do (the API's /thingstodo, national) (sources.json
+          `nps_things_to_do`). Key: `id`, NPS's own GUID for each item: present and unique
+          on the 1 rows of a sample read on 2026-10-04; the full read was refused by the
+          public DEMO_KEY's shared hourly limit (HTTP 429 OVER_RATE_LIMIT, 08:42 UTC). The
+          reader itself raises on a missing or repeated id within a read
+          (extract/_content.py's NpsContent), so a landed table is unique on it by
+          construction; that the whole list is, and that the id is stable from one read to
+          the next, is @unvalidated until the first monthly run under NPS_API_KEY reads
+          every row and re-measures it.
+      - name: raw_nps__nps_tours
+        data_tests:
+          # Rows sharing base_nps__nps_tours's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_tours'", "id"]
+        description: >
+          NPS tours (the API's /tours, national) (sources.json `nps_tours`). Key: `id`,
+          NPS's own GUID for each item: present and unique on all 717 rows read 2026-10-04
+          (every page, two of 500), and the reader itself raises on a missing or repeated
+          id within a read (extract/_content.py's NpsContent), so a landed table is unique
+          on it by construction. The read was the public DEMO_KEY's, which allows 10
+          requests an hour, so every row was read; the first monthly run under NPS_API_KEY
+          reads every row and re-measures it.
       - name: raw_nps__nps_trail_of_tears_nht
         data_tests:
           # Rows sharing base_nps__nps_trail_of_tears_nht's key must be exact copies (decision 40).

@@ -13,6 +13,15 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_blm__podcasts
+    description: >
+      The blm/ folder's podcasts layers (`blm_on_the_ground_podcast`), one row per base row,
+      renamed to int_podcasts__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: episode_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_blm__points_of_interest
     description: >
       The blm/ folder's points of interest layers (`blm_recreation_sites`), one row per base

@@ -398,9 +398,9 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     refuses it on a page or a PDF, rule 6, for the maintainer); `unresolved` for the ATA's water cache boxes,
     whose terms ask written permission for information published online, which no decision answers for points.
 
-    DECISION 54'S WAVES 4 AND 5, CONTENT PAGES AND PDFS (section K, 2026-10-04): 35 rows, all
-    `reaches_hikers: false`: 29 read by extract/_pages_content.py, 5 by extract/_pdf_content.py and
-    1 WordPress post types; 35 `unresolved`. A club's hike list, challenge list or episode page
+    DECISION 54'S WAVES 4 AND 5, CONTENT PAGES AND PDFS (section K, 2026-10-04): 34 rows, all
+    `reaches_hikers: false`: 28 read by extract/_pages_content.py, 5 by extract/_pdf_content.py and
+    1 WordPress post types; 34 `unresolved`. A club's hike list, challenge list or episode page
     publishes on no decision yet, so each quotes the terms it found on its row and waits on the
     maintainer, in dbt, once a mart reads it.
     """
@@ -413,8 +413,8 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03) add 113: 87 and 26 (above).
     # Decision 54's wave 3 content feeds and APIs (section C) add 34: 11 and 23; waves 2 and 3's GIS files and
     # geographic APIs add 30: 26 `public_gis` and 4 `stated_by_org` (above). Waves 4 and 5's points (section S)
-    # add 6: 5 `public_gis` and 1 `unresolved`; their content pages and PDFs (section K) add 35, all `unresolved`
+    # add 6: 5 `public_gis` and 1 `unresolved`; their content pages and PDFs (section K) add 34, all `unresolved`
     # (above). Section S's second batch adds 3 `public_gis` (BRBTC's sections, the Palmetto Trail's passages and
     # OHTA's trailheads), and its fourth 1 `public_gis` (PATC's Tuscarora access points and camping), recounted
     # from the registry 2026-10-04.
-    assert counts == {"maintainer_authorisation": 186, "public_gis": 252, "stated_by_org": 192, "unresolved": 63}
+    assert counts == {"maintainer_authorisation": 186, "public_gis": 252, "stated_by_org": 192, "unresolved": 62}

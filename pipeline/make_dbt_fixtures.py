@@ -8896,15 +8896,34 @@ PALMETTO_PAGES = (
 )
 
 
+#: A passage page's meta line and fact grid, as palmettotrail.org draws them under the title (read 2026-10-04):
+#: an answer, then the foundation's explanation after a <br>, and labels the reader does not read.
+PALMETTO_GRID = (
+    '<div class="Trail-meta"><span class="Trail-metaItem Trail-length"><svg class="Icon"><use /></svg> {miles} miles'
+    '</span><span class="Trail-metaItem Trail-difficulty">Moderate</span></div><div class="Trail-detailGrid">'
+    '<div class="Trail-detailGridHeading">Activities</div><div class="Trail-detailGridData"><div class="Trail-activityIcons">'
+    '<span class="inline-flex" data-tip-below-center="Hiking"><svg><title>Hiking</title></svg></span></div></div>'
+    '<div class="Trail-detailGridHeading">Camping Allowed</div><div class="Trail-detailGridData">Depends<br>Fixture '
+    "explanation.</div>"
+    '<div class="Trail-detailGridHeading">Fees</div><div class="Trail-detailGridData">No</div>'
+    '<div class="Trail-detailGridHeading">Pets</div><div class="Trail-detailGridData">Yes</div>'
+    '<div class="Trail-detailGridHeading">Region</div><div class="Trail-detailGridData">Fixture Region</div>'
+    '<div class="Trail-detailGridHeading">Surface</div><div class="Trail-detailGridData">Natural Surface</div>'
+    '<div class="Trail-detailGridHeading">Trail on Hunting Grounds</div><div class="Trail-detailGridData">Depends<br>'
+    "Fixture explanation.</div></div><h2>Trail Description</h2><p>Fixture paragraph.</p>"
+)
+
+
 def _palmetto_passage(n: int) -> str:
-    """A passage page as its map script draws it: typed addMarker calls (one 'NULL') and the line's addSegment."""
+    """A passage page as its map script draws it: typed addMarker calls (one 'NULL') and the line's addSegment,
+    under the fact grid palmetto/suggested_hikes.py's rows come from (one page, both readers' parts)."""
     markers = "".join(
         f"trailPage.helper.addMarker({_point(i)['coordinates'][1]}, {_point(i)['coordinates'][0]}, '{kind}', '', []);\n"
         for i, kind in enumerate(("Parking", "Trail Head", "Water Launch", "NULL"), 4 * n)
     )
     vertices = json.dumps([{"lng": str(x), "lat": str(y)} for x, y in _line(n)["coordinates"]], separators=(",", ":"))
     return (
-        f"<html><body><h1>Fixture Passage {n}</h1><p>Fixture prose.</p><script>\nloadjs.ready('mapDisplay', {{\n"
+        f"<html><body><h1>Fixture Passage {n}</h1>{PALMETTO_GRID.format(miles=4 + n / 10)}<script>\nloadjs.ready('mapDisplay', {{\n"
         f"trailPage.helper.init({{lat: 41.0, lng: -74.0, zoom: 14}});\n{markers}"
         f"trailPage.helper.addSegment('Fixture Segment {n}', {vertices}, []);\ntrailPage.helper.run();\n}});\n</script>"
         "</body></html>"
@@ -9171,7 +9190,7 @@ def _ata_pages() -> list[tuple[str, str, str]]:
 XML = "application/xml; charset=UTF-8"
 
 
-def _sitemap(locs: list[str], index: bool = False) -> str:
+def _k_sitemap(locs: list[str], index: bool = False) -> str:
     """A sitemap (or, with `index`, a sitemap index) listing `locs`, as WordPress, Drupal and Aptuitiv serve them."""
     outer, inner = ("sitemapindex", "sitemap") if index else ("urlset", "url")
     entries = "".join(f"<{inner}><loc>{loc}</loc><lastmod>2026-09-30T21:29:52-05:00</lastmod></{inner}>" for loc in locs)
@@ -9295,7 +9314,7 @@ def _onda_pages() -> list[tuple[str, str, str]]:
         f'<div class="hike-info"><ul class="hike-info__list">{items}</ul></div><h4>Description</h4>'
         '<div class="entry-content"><p>Fixture paragraph.</p></div>',
     )
-    return [(sitemap_url, XML, _sitemap(["https://onda.org/hike/", hike_url])), (hike_url, HTML, hike)]
+    return [(sitemap_url, XML, _k_sitemap(["https://onda.org/hike/", hike_url])), (hike_url, HTML, hike)]
 
 
 def _ota_pages() -> list[tuple[str, str, str]]:
@@ -9318,33 +9337,6 @@ def _ota_pages() -> list[tuple[str, str, str]]:
     return [(directory_url, HTML, directory), (section_url, HTML, section)]
 
 
-def _palmetto_pages() -> list[tuple[str, str, str]]:
-    sitemap_url = "https://www.palmettotrail.org/sitemap.xml"
-    passage_url = "https://www.palmettotrail.org/trails/trail/fixture-passage"
-    grid = "".join(
-        f'<div class="Trail-detailGridHeading">{label}</div><div class="Trail-detailGridData">{value}</div>'
-        for label, value in (
-            ("Activities", '<div class="Trail-activityIcons"><span class="inline-flex" data-tip-below-center="Hiking">'
-                           "<svg><title>Hiking</title></svg></span></div>"),
-            ("Camping Allowed", "Depends<br>Fixture explanation."),
-            ("Fees", "No"),
-            ("Pets", "Yes"),
-            ("Region", "Upstate Region"),
-            ("Surface", "Natural Surface"),
-            ("Trail on Hunting Grounds", "Depends<br>Fixture explanation."),
-        )
-    )  # fmt: skip
-    passage = _k_page(
-        "Fixture Passage",
-        '<div class="Trail-header"><h2 class="Trail-h1">Fixture Passage</h2><div class="Trail-meta">'
-        '<span class="Trail-metaItem Trail-length">4.6 miles</span><span class="Trail-metaItem Trail-difficulty">'
-        f'Moderate</span></div></div><div class="Trail-detailGrid">{grid}</div><h2>Trail Description</h2>'
-        "<p>Fixture paragraph.</p><h3>Trail Head GPS Coordinates</h3><p>Latitude: 34.9</p><p>Longitude: -82.9</p>",
-    )
-    locs = ["https://www.palmettotrail.org/trails", passage_url]
-    return [(sitemap_url, XML, _sitemap(locs)), (passage_url, HTML, passage)]
-
-
 def _wi_dnr_pages() -> list[tuple[str, str, str]]:
     index_url, page_url = "https://dnr.wisconsin.gov/sitemap.xml", "https://dnr.wisconsin.gov/sitemap.xml?page=1"
     hiking_url = "https://dnr.wisconsin.gov/topic/parks/fixturelake/recreation/hiking"
@@ -9359,8 +9351,8 @@ def _wi_dnr_pages() -> list[tuple[str, str, str]]:
     # the index before its ?page=1: requests_mock (the unit tests') answers with the last URL registered that matches,
     # and a URL with no query matches every query; section_k_fixtures() orders them the other way for fixture mode
     return [
-        (index_url, XML, _sitemap([page_url], index=True)),
-        (page_url, XML, _sitemap(locs)),
+        (index_url, XML, _k_sitemap([page_url], index=True)),
+        (page_url, XML, _k_sitemap(locs)),
         (hiking_url, HTML, hiking),
     ]
 
@@ -9535,7 +9527,6 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "mohonk_suggested_hikes": [("https://www.mohonkpreserve.org/visit/activities/suggested-hikes/", HTML, _mohonk_page())],
         "onda_hikes": _onda_pages(),
         "ota_sections": _ota_pages(),
-        "palmetto_passages": _palmetto_pages(),
         "wi_dnr_hiking": _wi_dnr_pages(),
         "mdhta_trails": _mdhta_pages(),
         "blue_hills_hikes": [("https://friendsofthebluehills.org/hiking-near-boston/", HTML, _blue_hills_page())],
@@ -9575,7 +9566,6 @@ K_PAGES_ROWS = {
     "mohonk_suggested_hikes": 2,
     "onda_hikes": 1,
     "ota_sections": 1,
-    "palmetto_passages": 1,
     "wi_dnr_hiking": 2,
     "mdhta_trails": 2,
     "blue_hills_hikes": 2,

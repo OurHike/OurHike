@@ -7,15 +7,31 @@
 -- `properties`, under dlt's names, all but its prose: json_merge_patch
 -- drops each member the patch sets to null, so a body, an episode's notes
 -- or a page's wikitext stops at the base model (decision 55).
+-- `palmetto_trail_passages` is a page's points table this folder's
+-- suggested hikes file SHARES (one read of each page, decision 34): it
+-- gives one row per page, grouped on `source_url` and the fields its row's
+-- `shared_page_rows` names, and only those fields ride in `properties`.
 select
-    'palmetto_passages' as source_key,
+    'palmetto_trail_passages' as source_key,
     'palmetto' as club,
-    hike_key,
-    cast(name as varchar) as name,
-    cast(link as varchar) as link,
-    json_merge_patch(
-        to_json(base_palmetto__palmetto_passages),
-        '{}'
+    {{ dbt_utils.generate_surrogate_key([
+        "'palmetto_trail_passages'",
+        'source_url',
+    ]) }} as hike_key,
+    cast(passage as varchar) as name,
+    cast(source_url as varchar) as link,
+    json_object(
+        'name', passage,
+        'link', source_url,
+        'distance_mi', length_miles,
+        'distance_text', length_text,
+        'place', region
     ) as properties,
-    _loaded_at
-from {{ ref('base_palmetto__palmetto_passages') }}
+    max(_loaded_at) as _loaded_at
+from {{ ref('base_palmetto__palmetto_trail_passages') }}
+group by
+    source_url,
+    passage,
+    length_miles,
+    length_text,
+    region

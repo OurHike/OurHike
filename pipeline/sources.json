@@ -13286,7 +13286,7 @@
       "freshness": {
         "kind": "read_and_hash",
         "url": "https://www.palmettotrail.org/sitemap.xml",
-        "notes": "The sitemap and the 33 passage pages it lists, every monthly run (34 requests, 2 s apart). The pages send `cache-control: no-store` and a Last-Modified that 30 of 33 share (Mon, 13 Jul 2026 18:25:50 GMT, read 2026-10-04), a site's date and not a page's, so only the hash of the parsed markers and lines decides FRESH."
+        "notes": "The sitemap and the 33 passage pages it lists, every monthly run (34 requests, 2 s apart). The pages send `cache-control: no-store` and a Last-Modified that 30 of 33 share (Mon, 13 Jul 2026 18:25:50 GMT, read 2026-10-04), a site's date and not a page's, so only the hash of the parsed markers, lines and page facts decides FRESH."
       },
       "name_field": "name",
       "type_field": "marker_type",
@@ -13295,40 +13295,21 @@
         "geometry"
       ],
       "key_comment": "(`source_url`, the geometry): unique on 396 of 396 (measured 2026-10-04 on the 33 live pages, parsed as extract/_pages_points.py parses them). The geometry alone is 357 of 396, because a marker at a passage's end is on both passages' pages; each page's copy is a row of that page.",
+      "shared_page_rows": {
+        "suggested_hikes": {
+          "name": "passage",
+          "link": "source_url",
+          "distance_mi": "length_miles",
+          "distance_text": "length_text",
+          "place": "region"
+        }
+      },
+      "shared_page_rows_comment": "palmetto/suggested_hikes.py SHARES this table (the lead's ruling of 2026-10-04: one reader of the 33 passage pages). pipeline/make_dbt_staging.py stages it into int_suggested_hikes__club_unioned as one row per page, keyed on (this key, `source_url`): each suggested-hike column is the raw column named here, alike on every row of one page (measured 2026-10-04 on the 33 live pages: 33 pages, 33 names, every page's facts identical across its rows). Name, distance, the link and the place only, never the description (the round brief).",
       "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 4 and 5, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, the host's Crawl-delay or two seconds or more between requests: the site's sitemap and all 33 passage pages it lists, each read whole for its map calls.",
       "discovered_date": "2026-10-04",
-      "notes": "396 rows from 33 passages, read 2026-10-04: 363 markers (`kind` 'marker', Point) typed in `marker_type` as the page types them, Parking 72, Trail Head 52, Information Sign 40, Point of Interest 39, Camping 34, Water Launch 19, Restrooms 16, Scenic Observation 16, Picnic Area 14, 'NULL' 14, Fishing 12, 'High Hills 2018 v2' 11, Waterfall 7, Visitor Center 7 and 7 others; and 33 lines (`kind` 'segment', LineString, 70,104 vertices), one a passage, each under the segment's own name. Bbox lon -83.125 to -79.561, lat 33.030 to 35.215. palmetto/trail_lines.py SHARES this table for its lines. A WATER LAUNCH IS A BOAT LAUNCH, never drinking water; no marker type on any page says water. The pages carry the site's Google Maps API key in their script, which no column loads.",
+      "notes": "396 rows from 33 passages, read 2026-10-04: 363 markers (`kind` 'marker', Point) typed in `marker_type` as the page types them, Parking 72, Trail Head 52, Information Sign 40, Point of Interest 39, Camping 34, Water Launch 19, Restrooms 16, Scenic Observation 16, Picnic Area 14, 'NULL' 14, Fishing 12, 'High Hills 2018 v2' 11, Waterfall 7, Visitor Center 7 and 7 others; and 33 lines (`kind` 'segment', LineString, 70,104 vertices), one a passage, each under the segment's own name. Bbox lon -83.125 to -79.561, lat 33.030 to 35.215. palmetto/trail_lines.py SHARES this table for its lines. A WATER LAUNCH IS A BOAT LAUNCH, never drinking water; no marker type on any page says water. The pages carry the site's Google Maps API key in their script, which no column loads. Every row also carries its page's facts (extract/_pages_points.py's PALMETTO_FACT_COLUMNS), read in the same fetch on the lead's ruling of 2026-10-04 (one reader of the 33 passage pages) for palmetto/suggested_hikes.py: length_text and length_miles (where the text states one figure), difficulty, region, surface, pets, fees, camping and hunting_grounds, the fact grid's first lines only, never the explanation under an answer nor the description. Read live again 2026-10-04T20:42:34Z to 20:44:10Z: 396 rows (363 markers, 33 lines, one a page), the key unique on 396 of 396; one passage, henry-trail, plots no marker and keeps its facts on its line's row; all 33 pages state one length in miles, a difficulty (Easy 15, Moderate 13, Moderate to Strenuous 4, Strenuous 1), a region, pets, fees, camping and hunting grounds, and 31 a surface. 'Trail on Hunting Grounds' is Yes on 18, No on 13 and Depends on 2; which seasons and whose land are the explanation, not read, and decision 53's palmetto_hunting_season row is the hunting notice.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "False on 2026-10-04: extracted by extract/_pages_points.py and staged by pipeline/make_dbt_staging.py, as points and as trail lines. club_poi_types types six marker types (Parking, Trail Head, Trailhead, Camping, Restrooms, Scenic Observation) and leaves the rest untyped, so they publish nothing, and layer_rules holds its 'Water Launch' boat launches from ever typing as water. Its 33 lines are also held until int_trail_lines__club_lines marks a club line as drawn and never routed (decision 64), which section M of the decision 64 round builds and this branch does not carry. It is held because its basis is `public_gis`, decision 21a's presumption for a GIS layer (rule 3 of ELT.md's 'Who may publish'), which int_sources__publication refuses on a source that is not a GIS endpoint (rule 6), and a club's web page is not one. Decision 63 turns it true once the maintainer has said whether a club's page of points publishes under decision 21a."
-    },
-    {
-      "key": "palmetto_passages",
-      "title": "Palmetto Trail passages (palmettotrail.org/trails/trail/, listed by sitemap.xml)",
-      "provider": "PCF",
-      "kind": "published_hikes",
-      "url": "https://www.palmettotrail.org/sitemap.xml",
-      "steward": "Palmetto Trails (the Palmetto Conservation Foundation)",
-      "attribution": "Palmetto Trails (the Palmetto Conservation Foundation)",
-      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
-      "licence_basis": "unresolved",
-      "terms": "None found: only a privacy policy is linked (decision 53 inventory, batch 3, as palmetto_trail_closures quotes it). The footer reads '© 2026 Palmetto Trails' (read 2026-10-04).",
-      "reader": "ContentPages (extract/_pages_content.py), site parser `palmetto_passages`",
-      "person_fields": [],
-      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
-      "key_fields": [
-        "link"
-      ],
-      "key_comment": "`link`, the passage's own page: unique on all 33 rows read 2026-10-04, as are the names.",
-      "freshness": {
-        "kind": "read_and_hash",
-        "url": "https://www.palmettotrail.org/sitemap.xml",
-        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
-      },
-      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
-      "discovered_date": "2026-10-04",
-      "notes": "Read 2026-10-04T16:47:34Z to 17:02:04Z: sitemap.xml (HTTP 200, 15,203 bytes) lists 72 URLs, 33 of them passages; /trails draws its list in the browser and links none in its HTML. Every passage page states a length (one figure) and a difficulty, and its fact grid's first lines: Region, Pets, Fees, Camping Allowed and Trail on Hunting Grounds on all 33, Surface on 31, Activities on 32. 'Trail on Hunting Grounds' is Yes, No or Depends, the explanation under it (which seasons, which agency's land) being the foundation's prose and not read; decision 53's palmetto_hunting_season row is the hunting notice. Each page also lists its trailheads' coordinates, which are points of interest and not read here. robots.txt is empty.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+      "reaches_hikers_comment": "False on 2026-10-04: extracted by extract/_pages_points.py and staged by pipeline/make_dbt_staging.py, as points and as trail lines. club_poi_types types six marker types (Parking, Trail Head, Trailhead, Camping, Restrooms, Scenic Observation) and leaves the rest untyped, so they publish nothing, and layer_rules holds its 'Water Launch' boat launches from ever typing as water. Its 33 lines are also held until int_trail_lines__club_lines marks a club line as drawn and never routed (decision 64), which section M of the decision 64 round builds and this branch does not carry. It is held because its basis is `public_gis`, decision 21a's presumption for a GIS layer (rule 3 of ELT.md's 'Who may publish'), which int_sources__publication refuses on a source that is not a GIS endpoint (rule 6), and a club's web page is not one. Decision 63 turns it true once the maintainer has said whether a club's page of points publishes under decision 21a. The page facts palmetto/suggested_hikes.py stages from it ride this row's `public_gis` basis, which reads the map's points and lines and says nothing about a club's hike facts, which no decision covers yet (section K's suggested-hike rows are `unresolved` for that reason): whether they publish is the maintainer's to say too."
     },
     {
       "key": "pnta_trail_alerts",

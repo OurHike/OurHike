@@ -19,7 +19,16 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom
     from {{ raw_or_empty(
         source('palmetto', 'raw_palmetto__palmetto_trail_passages'),
-        ['source_url', 'geometry', 'name', 'marker_type']
+        [
+            'source_url',
+            'geometry',
+            'name',
+            'marker_type',
+            'passage',
+            'length_miles',
+            'length_text',
+            'region',
+        ]
     ) }}
 ),
 

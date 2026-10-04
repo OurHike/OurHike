@@ -3,29 +3,6 @@
 version: 2
 
 models:
-  - name: base_palmetto__palmetto_passages
-    data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      # A raw table that never landed passes (tests/generic/).
-      - equal_rowcount_to_raw:
-          arguments:
-            compare_model: source('palmetto', 'raw_palmetto__palmetto_passages')
-          config:
-            severity: warn
-    description: >
-      Palmetto Trail passages (palmettotrail.org/trails/trail/, listed by sitemap.xml), every
-      row, keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
-      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
-      back from every mart. int_suggested_hikes__club_unioned reads it through
-      stg_palmetto__suggested_hikes.
-    columns:
-      - name: hike_key
-        description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
-          palmetto_passages, link, the registry key first and then the fields measured
-          unique for this layer.
-        data_tests: [not_null, unique]
   - name: base_palmetto__palmetto_trail_passages
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

@@ -14,12 +14,15 @@ models:
         data_tests: [not_null, unique]
   - name: stg_palmetto__suggested_hikes
     description: >
-      The palmetto/ folder's suggested hikes layers (`palmetto_passages`), one row per base
-      row, renamed to int_suggested_hikes__club_unioned's columns, with each layer's own
-      columns in `properties`.
+      The palmetto/ folder's suggested hikes layers (`palmetto_trail_passages`), one row per
+      base row (one per page for `palmetto_trail_passages`, whose points it shares), renamed
+      to int_suggested_hikes__club_unioned's columns, with each layer's own columns in
+      `properties`.
     columns:
       - name: hike_key
-        description: The base model's key, carried.
+        description: >-
+          The base model's key, carried; for a shared page's points, the page's: (its key,
+          `source_url`).
         data_tests: [not_null, unique]
   - name: stg_palmetto__trail_lines
     description: >

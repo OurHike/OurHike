@@ -1583,63 +1583,6 @@ def _ota_sections(page: Page, fetch) -> list[dict]:
     return rows
 
 
-_PALMETTO_FACTS = {"Region": "place", "Surface": "surface", "Pets": "pets", "Fees": "fees",
-                   "Camping Allowed": "camping", "Trail on Hunting Grounds": "hunting_grounds"}  # fmt: skip
-
-
-def _palmetto_passages(page: Page, fetch) -> list[dict]:
-    """The Palmetto Trail's passages: palmettotrail.org's sitemap.xml lists 33 /trails/trail/ pages, 2026-10-04.
-
-    The registry row's URL is the sitemap: the /trails index draws its list in the browser and its HTML links no
-    passage. A passage's page names it in h2.Trail-h1 and states its length (span.Trail-length, '4.6 miles') and
-    difficulty (span.Trail-difficulty, 'Moderate'), then a grid of facts, each a div.Trail-detailGridHeading and the
-    div.Trail-detailGridData after it, whose first line is the answer ('Depends', 'Yes') and whose rest is the
-    conservation foundation's explanation. The answers to Region, Surface, Pets, Fees, Camping Allowed and Trail on
-    Hunting Grounds are read, first lines only, and the Activities icons' names ('Hiking', 'Biking'); the
-    explanations, the description and the directions are not. The trailheads' coordinates the page lists are
-    trailheads, a point of interest's, not a hike's, and are not read here. A passage page with no Trail-h1 raises.
-    """
-    passages = [loc for loc in sitemap_locations(page) if re.fullmatch(r"/trails/trail/[a-z0-9-]+/?", urlparse(loc).path)]
-    if not passages:
-        raise LayoutChanged("palmetto: sitemap.xml lists no /trails/trail/ page")
-    rows = []
-    for href in passages:
-        passage = fetch(href)
-        heading = passage.root.find("h2", cls="Trail-h1")
-        if heading is None:
-            raise LayoutChanged(f"palmetto: {href} has no h2.Trail-h1")
-        length = passage.root.find("span", cls="Trail-length")
-        difficulty = passage.root.find("span", cls="Trail-difficulty")
-        row = {name: None for name in _PALMETTO_FACTS.values()}
-        activities = None
-        for label in passage.root.find_all("div", cls="Trail-detailGridHeading"):
-            data = next((node for node in label.following() if "Trail-detailGridData" in node.classes), None)
-            if data is None:
-                continue
-            name = fact(label.text())
-            if name in _PALMETTO_FACTS:
-                lines = data.lines()
-                row[_PALMETTO_FACTS[name]] = fact(lines[0]) if lines else None
-            elif name == "Activities":
-                activities = fact(
-                    ", ".join(n.get("data-tip-below-center") for n in data.find_all("span") if n.get("data-tip-below-center"))
-                )
-        distance, distance_text = single_miles(length.text() if length is not None else None)
-        row.update(
-            {
-                "name": fact(heading.text()),
-                "distance_mi": distance,
-                "distance_text": distance_text,
-                "difficulty": fact(difficulty.text()) if difficulty is not None else None,
-                "activities": activities,
-                "link": passage.url,
-                "source_url": passage.url,
-            }
-        )
-        rows.append(row)
-    return rows
-
-
 _WI_TRAIL = re.compile(
     r"(?P<name>[^()]+?)\s*(?:\((?P<paren>[^()]*?\d[^()]*?)\)|[—–]\s*(?P<dash>\d[^()]*?))"
     r"(?:\s*[-–—]\s*(?P<difficulty>[A-Za-z][A-Za-z ]*))?"
@@ -2077,17 +2020,6 @@ SITE_PARSERS: dict[str, SiteParser] = {
         _ota_sections,
         columns={"ascent_north_to_south_ft": "double", "ascent_south_to_north_ft": "double", "ascent_text": "text"},
         queries=True,
-    ),
-    "palmetto_passages": SiteParser(
-        _palmetto_passages,
-        columns={
-            "surface": "text",
-            "pets": "text",
-            "fees": "text",
-            "camping": "text",
-            "hunting_grounds": "text",
-            "activities": "text",
-        },
     ),
     "wi_dnr_hiking": SiteParser(_wi_dnr_hiking, queries=True),
     "mdhta_trails": SiteParser(_mdhta_trails),

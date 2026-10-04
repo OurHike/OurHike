@@ -567,7 +567,7 @@ def content_pages(key: str, *, site: str | None = None, crawl_delay: float = 0.0
 
 
 def _mazamas_hikelist(page: Page, fetch) -> list[dict]:
-    """The Mazamas' Hike List View (mazamas.org/hikelist/): 153 hikes in four regions, read 2026-10-04.
+    """The Mazamas' Hike List View (mazamas.org/hikelist/): 162 hikes in four regions, read 2026-10-04.
 
     Each region is a rich-text block (`article.block-richtextblock`) titled by an h3 (`h3.block--title`: 'Columbia
     River Gorge Hikes', 'Mt. Hood', 'Clackamas River', 'Oregon Coast'), whose first line says what each item holds,

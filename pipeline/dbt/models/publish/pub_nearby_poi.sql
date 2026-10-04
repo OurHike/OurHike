@@ -10,7 +10,10 @@
 -- its layers and rows. NYNJTC's Long Path guide's waypoints come last, as
 -- guide_records() appends them, with the guide's own fields: lp_section,
 -- section_mile, placement, source_url, and position_error_m,
--- off_trail_miles and water_reliability where the record has them.
+-- off_trail_miles and water_reliability where the record has them. A
+-- plumbed tap or fountain whose layer records no shutoff season carries
+-- `water_caution` 'no_shutoff_season' (decision 65), which the waypoint card
+-- reads; no other POI carries the member at all.
 with pois as (
     select * from {{ ref('points_of_interest', v=1) }}
     where phone_files = 'nearby_poi'
@@ -44,6 +47,7 @@ select
                         'position_error_m', position_error_m,
                         'off_trail_miles', off_trail_miles,
                         'water_reliability', water_reliability,
+                        'water_caution', water_caution,
                         'site_id', site_id,
                         'site_role', site_role,
                         'site_name', site_name,

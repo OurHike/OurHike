@@ -75,6 +75,7 @@ describe('tapping a line', () => {
       closureReason: null,
       closureSource: null,
       sharedWith: null,
+      lineKind: null,
       badge: false,
       // No geometry on this fixture, so there is nothing to snap to and the
       // touch itself is the honest answer - the mock projects identically.
@@ -112,6 +113,34 @@ describe('tapping a line', () => {
         lengthMiles: 24,
         park: 'Harriman State Park',
         trailStatus: 'Closed',
+      }),
+    )
+  })
+
+  it('carries a club line’s mark to the sheet, so it can say the line is not routed (decision 64)', () => {
+    const map = buildMap()
+    const onSelect = vi.fn()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: {
+          id: 'fltc_flt_main:0f3a',
+          source: 'fltc_flt_main',
+          name: 'M17 Chestnut Lean-to',
+          blaze_color: 'Unknown',
+          length_miles: 2.4,
+          line_kind: 'club',
+        },
+        geometry: { type: 'LineString', coordinates: [] },
+      },
+    ])
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(10, 10))
+
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'fltc_flt_main',
+        lineKind: 'club',
+        trailStatus: null,
       }),
     )
   })
@@ -316,6 +345,7 @@ describe('tapping a line', () => {
       closureReason: null,
       closureSource: null,
       sharedWith: null,
+      lineKind: null,
       badge: false,
       at: [10, 10],
     })

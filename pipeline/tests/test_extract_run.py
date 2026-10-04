@@ -1093,7 +1093,10 @@ def test_the_org_row_carries_the_licence_of_every_key_the_club_claims():
     assert claims["dec_does_what_podcast"]["type"] == "podcasts"
     assert claims["dec_does_what_podcast"]["reaches_hikers"] is False
     assert claims["dec_lands"]["type"] == "places"
-    assert claims["dec_lands"]["reaches_hikers"] is False
+    # Flipped 2026-10-04 under decision 63, once int_places__club_units read the places union; DEC's
+    # conservation easements stay held (no place_kind filter is built for them).
+    assert claims["dec_lands"]["reaches_hikers"] is True
+    assert claims["dec_conservation_easements"]["reaches_hikers"] is False
     assert claims["nysdec_hab_reports"]["type"] == "warnings"
     assert claims["nysdec_hab_reports"]["reaches_hikers"] is True
     assert claims["nysdec_big_game_seasons"]["reaches_hikers"] is False

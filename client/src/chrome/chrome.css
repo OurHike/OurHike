@@ -186,6 +186,22 @@
   margin-right: 6px;
 }
 
+/* A club's own line (decision 64): the tag the card the maintainer chose
+   from drew beside the trail's name, small capitals on the sunken panel, so
+   a hiker comparing two sheets can tell a club line from the network's at a
+   glance; the sentence after it says what the tag means. */
+.line-sheet__tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-radius: 4px;
+}
+
 .map-plate__position {
   margin: 2px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -3929,6 +3945,21 @@ a.poi-card__credit::after {
   font-size: 12px;
   color: var(--fg-2);
   background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+/* Decision 65's season caution on a plumbed tap: the unverified line's
+   panel, with a left rule in the warning ink, so it reads as a second and
+   different claim beside "nobody has confirmed this one" rather than as more
+   of the same sentence. Not the trails-closed line's full weight: the tap may
+   well be on, and the caution is to carry enough, not to stay away. */
+.poi-card__season-caution {
+  margin: var(--space-1, 4px) 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-left: 3px solid var(--warning, #b26a00);
   border-radius: 10px;
 }
 

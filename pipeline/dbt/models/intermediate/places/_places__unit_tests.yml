@@ -490,6 +490,9 @@ unit_tests:
         rows:
           - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Pine Trail", "trail_name": "Pine Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9904, 41.02894], [-73.9328, 41.02894]]}"}
           - {"trail_line_id": "oprhp_trails:2", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Far Trail", "trail_name": "Far Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.808, 41.0], [-73.76960000000001, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Pine State Park", "poi_id": null, "category": "State Park", "state": "NY", "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": "[-74.0,41.0,-73.9232,41.05788]", "trail_miles": "3.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
@@ -507,6 +510,9 @@ unit_tests:
       - input: ref('int_places__lines')
         rows:
           - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9808, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Square Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.9808", "lat": "41.01447", "bbox": "[-74.0,41.0,-73.9616,41.02894]", "trail_miles": "0.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
@@ -524,6 +530,9 @@ unit_tests:
       - input: ref('int_places__lines')
         rows:
           - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.616, 41.0], [-73.5968, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Golf Course", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.9808", "lat": "41.01447", "bbox": "[-74.0,41.0,-73.9616,41.02894]", "trail_miles": "0.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
@@ -542,6 +551,9 @@ unit_tests:
       - input: ref('int_places__lines')
         rows:
           - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Pine Trail", "trail_name": "Pine Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.02894], [-73.9424, 41.02894]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Pine State Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": "[-74.0,41.0,-73.9232,41.05788]", "trail_miles": "3.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
@@ -560,6 +572,9 @@ unit_tests:
       - input: ref('int_places__lines')
         rows:
           - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9808, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows: []
   - name: places_a_trailhead_with_a_short_line_near_it_is_kept_though_it_prints_zero
@@ -576,6 +591,9 @@ unit_tests:
       - input: ref('int_places__lines')
         rows:
           - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.99904, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "oprhp_facilities:7", "place_order": 1, "kind": "trailhead", "name": "Stub", "poi_id": "oprhp_facilities:7", "category": null, "state": "NY", "within_park": null, "lon": "-74.0", "lat": "41.0", "bbox": null, "trail_miles": "0.0", "trail_miles_measured": true, "source": "oprhp_facilities"}
@@ -593,6 +611,9 @@ unit_tests:
       - input: ref('int_places__lines')
         rows:
           - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9808, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "atc_communities:c1", "place_order": 1, "kind": "town", "name": "Harriman", "poi_id": "atc_communities:c1", "category": null, "state": null, "within_park": null, "lon": "-73.232", "lat": "41.0", "bbox": null, "trail_miles": "0.0", "trail_miles_measured": true, "source": "atc_communities"}
@@ -610,6 +631,9 @@ unit_tests:
       - input: ref('int_places__lines')
         rows:
           - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.424, 41.0], [-73.40480000000001, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows: []
   - name: places_a_named_trail_over_the_threshold_ships_with_its_length_and_bbox
@@ -626,6 +650,9 @@ unit_tests:
         rows:
           - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Long Path", "trail_name": "Long Path", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-72.848, 41.0]]}"}
           - {"trail_line_id": "oprhp_trails:2", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Short Spur", "trail_name": "Short Spur", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.01447], [-73.9424, 41.01447]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "trail:oprhp_trails:Long Path", "place_order": 1, "kind": "trail", "name": "Long Path", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-73.424", "lat": "41.0", "bbox": "[-74.0,41.0,-72.848,41.0]", "trail_miles": "59.7", "trail_miles_measured": true, "source": "oprhp_trails"}
@@ -643,6 +670,9 @@ unit_tests:
         rows:
           - {"trail_line_id": "centerline:chain:0", "club": "atc", "source_key": "centerline", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "centerline", "name": "Georgia section", "trail_name": "Appalachian Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.424, 41.0]]}"}
           - {"trail_line_id": "centerline:chain:1", "club": "atc", "source_key": "centerline", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "centerline", "name": "Carolina section", "trail_name": "Appalachian Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.01447], [-73.424, 41.01447]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "trail:centerline:Appalachian Trail", "place_order": 1, "kind": "trail", "name": "Appalachian Trail", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-73.712", "lat": "41.00724", "bbox": "[-74.0,41.0,-73.424,41.01447]", "trail_miles": "59.7", "trail_miles_measured": true, "source": "centerline"}
@@ -659,6 +689,9 @@ unit_tests:
         rows:
           - {"place_id": "oprhp_facilities:7", "poi_id": "oprhp_facilities:7", "name": "Reeves Meadow", "kind": "trailhead", "state": "NY", "source": "oprhp_facilities", "lon": -73.9808, "lat": 41.01447, "waypoint_order": 0, "club": "nysparks", "source_key": "oprhp_facilities", "_loaded_at": "2026-10-02 00:00:00+00"}
       - input: ref('int_places__lines')
+        rows: []
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
         rows: []
     expect:
       rows:
@@ -680,6 +713,9 @@ unit_tests:
       - input: ref('int_places__lines')
         rows:
           - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9808, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "oprhp_park_polygons:g2", "place_order": 1, "kind": "park", "name": "Apple Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-73.8848", "lat": "41.01447", "bbox": "[-73.904,41.0,-73.8656,41.02894]", "trail_miles": "0.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
@@ -706,6 +742,9 @@ unit_tests:
       - input: ref('int_places__lines')
         rows:
           - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9232, 41.0], [-73.904, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
     expect:
       rows:
         - {"place_id": "atc_communities:c1", "place_order": 1, "kind": "town", "name": "Two Miles Off", "poi_id": "atc_communities:c1", "category": null, "state": null, "within_park": null, "lon": "-73.8848", "lat": "41.0", "bbox": null, "trail_miles": "1.0", "trail_miles_measured": true, "source": "atc_communities"}

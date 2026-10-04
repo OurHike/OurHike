@@ -799,6 +799,38 @@ describe('trail data', () => {
     }
   })
 
+  // Decision 65: pipeline/dbt's water_caution, on a plumbed tap whose
+  // publisher records no shutoff season. Only the one value, only on water:
+  // the card words that value and nothing else, and a caution read off a
+  // shelter would be a display outrunning its source.
+  it('reads the season caution on a plumbed tap, and on nothing that is not water', async () => {
+    const at = (id: string, poi_type: string, water_caution: unknown) => ({
+      id,
+      poi_type,
+      name: id,
+      lat: 41.4,
+      lon: -73.9,
+      confidence: 'low',
+      water_caution,
+    })
+    serve(
+      poiCollection([
+        at('tap', 'water', 'no_shutoff_season'),
+        at('spring', 'water', undefined),
+        at('later word', 'water', 'shut_for_repairs'),
+        at('shelter', 'shelter', 'no_shutoff_season'),
+      ]),
+    )
+    await downloadTrailData()
+
+    const byId = new Map((store.get(POIS_KEY) as StoredPoi[]).map((poi) => [poi.id, poi]))
+    expect(byId.get('tap')?.waterCaution).toBe('no_shutoff_season')
+    for (const id of ['spring', 'later word', 'shelter']) {
+      expect(byId.get(id)).toBeDefined()
+      expect(byId.get(id)?.waterCaution).toBeUndefined()
+    }
+  })
+
   // The anchor's nearby parts (#614, #625). Published as JSON rather than as
   // the finished sentence it used to be, which is the whole of the fix: prose
   // composed in the pipeline cannot be in the units a hiker picks afterwards.

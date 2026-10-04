@@ -20,7 +20,13 @@ seeds:
       `matches`, a status written into a name), `keep_only_where` (left out unless the field equals
       one of the layer's rows' `matches` for that field, such as USFWS's Public_Use), `drop_layer`
       (every row left out: a planning layer) and `not_water` (never typed water, on every row with
-      no field, or where the field equals `matches`). `evidence` says what the rule rests on,
+      no field, or where the field equals `matches`). For points of interest of any organization
+      (int_points_of_interest__classified, decision 65): `plumbed_water` (a water row where the
+      field equals `matches` is a tap or fountain whose shutoff season the layer does not record: it
+      ships at low confidence with the season caution `water_caution` 'no_shutoff_season', and a
+      layer typed per row by the poi_value_types seed, NY Parks', is typed water by it) and
+      `open_in_winter` (where the field equals `matches`, the layer's own winter status says the tap
+      is open in winter, so it carries no season caution). `evidence` says what the rule rests on,
       mostly the layer's own sources.json notes.
     config:
       column_types:
@@ -36,7 +42,7 @@ seeds:
           arguments:
             expression: >-
               case
-                  when rule in ('drop_where', 'drop_where_contains', 'keep_only_where')
+                  when rule in ('drop_where', 'drop_where_contains', 'keep_only_where', 'plumbed_water', 'open_in_winter')
                       then field is not null and matches is not null
                   when rule = 'not_water' then (field is null) = (matches is null)
                   else field is null and matches is null
@@ -51,7 +57,7 @@ seeds:
                 to: ref('stg_registry__sources')
                 field: source_key
       - name: rule
-        description: historic_alignment, winter_trail, drop_where, drop_where_contains, keep_only_where, drop_layer or not_water.
+        description: historic_alignment, winter_trail, drop_where, drop_where_contains, keep_only_where, drop_layer, not_water, plumbed_water or open_in_winter.
         data_tests:
           - not_null
           - accepted_values:
@@ -64,6 +70,8 @@ seeds:
                   - keep_only_where
                   - drop_layer
                   - not_water
+                  - plumbed_water
+                  - open_in_winter
       - name: field
         description: For a row-level rule, the row field it reads, by dlt's name; null for a layer-wide rule.
       - name: matches

@@ -25,11 +25,14 @@
 --   'Potable Water' buildings are plumbing, BLM's water-based sites hold
 --   its firefighting 'Staging Area', and IATA's water is water only where
 --   its Potability code says so (1 Potable, 2 Treatment required; never 0
---   No water, 5 Undrinkable or 9 Unknown). Plumbed water whose seasonal
---   shutoff no layer records (fountains, pumps, BLM's, NPS's and CPW's
---   potable-water types) is held the same way, on sources.json's
---   oprhp_water_holdback reasoning. Every water row that does map is low
---   confidence: no wave 1 layer reports flow.
+--   No water, 5 Undrinkable or 9 Unknown). Plumbed water whose shutoff
+--   season no layer records (fountains, pumps, BLM's, NPS's and CPW's
+--   potable-water types) was held the same way until decision 65
+--   (2026-10-04): club_poi_types now types it water, and its layer_rules
+--   `plumbed_water` row gives it a season caution downstream
+--   (int_points_of_interest__cautioned), which this model does not
+--   read. A tap CPW marks closed in winter is still not_water. Every water
+--   row that does map is low confidence: no wave 1 layer reports flow.
 -- - PLANNED AND PROPOSED POINTS ARE NOT BUILT: `drop_where` on NPS's
 --   POISTATUS 'Planned', Alaska Trails' Status 'Proposed', the Cumberland
 --   Trail's 'Trailhead Proposed' and CFPA's future campsites, and

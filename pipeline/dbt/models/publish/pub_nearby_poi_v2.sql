@@ -49,6 +49,7 @@ select
                         'position_error_m', position_error_m,
                         'off_trail_miles', off_trail_miles,
                         'water_reliability', water_reliability,
+                        'water_caution', water_caution,
                         'site_id', site_id,
                         'site_role', site_role,
                         'site_name', site_name,

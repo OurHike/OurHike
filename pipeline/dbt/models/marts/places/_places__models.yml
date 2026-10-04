@@ -49,11 +49,17 @@ models:
             severity: error
       # The published waypoint id rides on the waypoint kinds only (PL05),
       # the park a point sits in on a point only (PL09), and the publisher's
-      # category on a park only.
+      # category on a park only. A trailhead and a parking area always carry
+      # one, because they come from the published waypoints; a town carries
+      # one where it is a waypoint, and none where it is a club places
+      # layer's town (int_places__club_units), which is a place a hiker
+      # names and not a waypoint the app opens.
       - dbt_utils.expression_is_true:
           name: places_a_waypoint_id_is_on_a_waypoint
           arguments:
-            expression: "(poi_id is not null) = (kind in ('trailhead', 'parking', 'town'))"
+            expression: >-
+              (poi_id is null or kind in ('trailhead', 'parking', 'town'))
+              and (poi_id is not null or kind not in ('trailhead', 'parking'))
           config:
             severity: error
       - dbt_utils.expression_is_true:
@@ -74,9 +80,11 @@ models:
           The id places.json publishes: `oprhp_park_polygons:<unit>` for a
           park, or `oprhp_park_polygons:<GlobalID>` for one whose polygons
           carry no unit; the waypoint's own published id for a trailhead,
-          parking area or town; `trail:<source>:<name>` for a long trail. A
-          hiker keeps a place as their home, so none is ever generated from a
-          row's position.
+          parking area or town; `trail:<source>:<name>` for a long trail;
+          `<source key>:<place key>` for a club places layer's park or town
+          (int_places__club_units), its base model's key. A hiker keeps a
+          place as their home, so none is ever generated from a row's
+          position.
         data_type: varchar
         constraints:
           - type: not_null

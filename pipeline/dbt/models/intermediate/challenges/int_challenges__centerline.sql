@@ -2,7 +2,7 @@
 -- CH13), as export_challenges.load_centerline() reads it: the features of
 -- trails.geojson whose `source` is `centerline`, LineString or
 -- MultiLineString. trails.geojson is the trail_lines mart's rows that are
--- not `network` (pub_trails_geojson), and it publishes source_key as
+-- not `network` or `club` (pub_trails_geojson), and it publishes source_key as
 -- `source`, so this is those rows with source_key `centerline`: the A.T.'s
 -- own chains. Not a side trail: a place beside a side trail is not a place
 -- on the A.T.
@@ -16,7 +16,7 @@
 -- challenges_distance_check_has_a_centerline_to_measure_against warns.
 with lines as (
     select * from {{ ref('trail_lines') }}
-    where line_kind != 'network'
+    where line_kind not in ('network', 'club')
 )
 
 select

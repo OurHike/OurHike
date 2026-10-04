@@ -13,7 +13,8 @@ Python's answer:
 - the seeds and vars the rules read are the Python's constants;
 - every expected row is what the Python function the unit test is named after
   answers on the same rows, except where DELIBERATE says the SQL differs on
-  purpose and why;
+  purpose and why, and except decision 65's typed taps (DECISION_65_VALUE_TYPES),
+  which the Python is given before it answers;
 - the one kind of difference parity.py explains on the fixtures (an exact copy
   that staging removes) is named in DELIBERATE, so emptying it turns this red.
 
@@ -88,6 +89,32 @@ DELIBERATE = {
     # distance 0.
     "miles": {"atc_shelters:m-04-on-the-junction": "junction_tie"},
 }
+
+
+def _decision_65_value_types() -> dict[tuple[str, str], str]:
+    """The value-map rows the dbt path adds to export_nearby_poi.py's, read from layer_rules' plumbed_water rows.
+
+    Decision 65 (2026-10-04) ships a plumbed tap whose layer records no shutoff season as unconfirmed water with a
+    season caution. For a layer typed per row by TYPED_LAYERS (NY Parks'), that means the poi_value_types seed types
+    the tap water, where today's exporter names it a water holdback. Read from the one home of the decision's rows, so
+    the seed and the caution cannot name different taps.
+    """
+    with (DBT / "seeds" / "layer_rules.csv").open(newline="") as handle:
+        rules = [row for row in csv.DictReader(handle) if row["rule"] == "plumbed_water"]
+    return {(row["source_key"], row["matches"]): "water" for row in rules if row["source_key"] in export_nearby_poi.TYPED_LAYERS}
+
+
+DECISION_65_VALUE_TYPES = _decision_65_value_types()
+
+
+def _with_decision_65(key: str):
+    """export_nearby_poi.py's folded value maps with decision 65's rows for `key` added, for one build_records()."""
+    field, folded = export_nearby_poi.TYPED_LAYERS_FOLDED.get(key, (None, None))
+    if folded is None:
+        return mock.patch.dict(export_nearby_poi.TYPED_LAYERS_FOLDED, {})
+    added = {value.casefold(): poi_type for (source_key, value), poi_type in DECISION_65_VALUE_TYPES.items() if source_key == key}
+    return mock.patch.dict(export_nearby_poi.TYPED_LAYERS_FOLDED, {key: (field, {**folded, **added})})
+
 
 #: Why each deliberate difference is one.
 WHY = {
@@ -338,7 +365,8 @@ def classified_answers(test: dict, workdir: Path) -> dict[str, dict]:
             continue
         entry = registry[row["source_key"]]
         feature = _feature(row, _nearby_spellings(entry))
-        records, stats = export_nearby_poi.build_records(entry, [feature])
+        with _with_decision_65(row["source_key"]):
+            records, stats = export_nearby_poi.build_records(entry, [feature])
         if records:
             (record,) = records
             answers[row["poi_key"]] = {
@@ -880,13 +908,25 @@ def test_the_poi_sources_seed_is_the_exporters_layer_list(tmp_path):
 
 
 def test_the_value_types_seed_is_the_three_type_maps():
+    """The three maps, plus decision 65's typed taps and nothing else."""
     rows = {(r["source_key"], r["value"]): r["poi_type"] for r in _seed_file("poi_value_types")}
     expected = {
         (key, value): poi_type
         for key, (_, mapping) in export_nearby_poi.TYPED_LAYERS.items()
         for value, poi_type in mapping.items()
     }
-    assert rows == expected
+    assert rows == {**expected, **DECISION_65_VALUE_TYPES}
+
+
+def test_decision_65_types_only_taps_todays_exporter_holds_back_by_name():
+    """Each tap decision 65 types is a value today's exporter names as a water holdback, never one it publishes."""
+    assert DECISION_65_VALUE_TYPES == {
+        ("oprhp_facilities", "Water Spigot"): "water",
+        ("oprhp_facilities", "Drinking Fountain"): "water",
+    }
+    for key, value in DECISION_65_VALUE_TYPES:
+        assert value not in export_nearby_poi.TYPED_LAYERS[key][1], (key, value)
+        assert "oprhp_water_holdback" in export_nearby_poi.NAMED_EXCLUSIONS[value], (key, value)
 
 
 def test_the_named_exclusions_seed_is_named_exclusions():
@@ -1275,6 +1315,29 @@ def test_a_poi_from_a_layer_no_exporter_reads_is_explained_as_decision_31s_new_d
     assert reasons == {"properties.id ncta_points:{NC-1}": parity.POI_REASONS["new_source"]}
     assert reasons["properties.id ncta_points:{NC-1}"].startswith(parity.NEW_DATA_REASON)
     assert parity.FAMILIES["nearby_poi"].explained is parity._nearby_poi_reasons
+
+
+def test_a_seasonal_tap_of_a_layer_todays_exporter_reads_is_explained_by_decision_65():
+    """nearby_poi's parity explains a NY Parks tap decision 65 ships, and only as decision 65 ships it: water, low
+    confidence, the season caution. The same layer's tap without the caution, or rated high, is still a difference."""
+    shared = _poi_feature("dec_lean_tos:1", "dec_lean_tos")
+
+    def tap(poi_id: str, **properties) -> dict:
+        feature = _poi_feature(poi_id, "oprhp_facilities")
+        feature["properties"].update(poi_type="water", **properties)
+        return feature
+
+    new = {
+        "features": [
+            shared,
+            tap("oprhp_facilities:18", confidence="low", water_caution="no_shutoff_season"),
+            tap("oprhp_facilities:19", confidence="low"),
+            tap("oprhp_facilities:20", confidence="high", water_caution="no_shutoff_season"),
+        ]
+    }
+    reasons = parity._nearby_poi_reasons({"features": [shared]}, new)
+    assert reasons == {"properties.id oprhp_facilities:18": parity.POI_REASONS["seasonal_tap"]}
+    assert "oprhp_facilities" in parity._plumbed_water_sources()
 
 
 def test_no_wave_1_point_layer_is_one_export_nearby_poi_reads():

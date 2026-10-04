@@ -6696,7 +6696,9 @@ CLUB_POINT_FIXTURES = {
             "OBJECTID": (1, 2),
             "GEOMETRYID": ("fixture-nps_points_of_interest-0", "fixture-nps_points_of_interest-1"),
             "POINAME": ("Fixture nps points of interest 0", "Fixture nps points of interest 1"),
-            "POITYPE": ("Parking Lot", "Campsite"),
+            # The second row is a tap decision 65 ships unconfirmed with a season
+            # caution, so the fixture build carries one end to end.
+            "POITYPE": ("Parking Lot", "Potable Water"),
         },
     ),
     "external/nj_open_space_points_of_interest.geojson": (

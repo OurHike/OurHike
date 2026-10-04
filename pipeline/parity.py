@@ -69,6 +69,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
 import functools
 import hashlib
 import json
@@ -489,6 +490,37 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     return reasons
 
 
+def _club_line_reasons(old: dict, new: dict, family_key: str, key_of: Callable[[dict], str]) -> dict[str, str]:
+    """The records the dbt writer adds that are club lines, and the order once they are left out.
+
+    Only a record the new file holds and the old one lacks, marked `line_kind` 'club': a network line either side
+    adds or drops is still a difference. The order is explained only when the new file is the old file's records in
+    their order with the club lines after them, as the writers put club lines after every network line.
+    """
+    old_keys = [key_of(feature) for feature in old.get("features") or []]
+    new_keys = [key_of(feature) for feature in new.get("features") or []]
+    club = {
+        key_of(feature)
+        for feature in new.get("features") or []
+        if (feature.get("properties") or {}).get("line_kind") == "club" and key_of(feature) not in set(old_keys)
+    }
+    reasons = {f"{family_key} {key}": CLUB_LINE_REASON for key in club}
+    if club and new_keys[: len(old_keys)] == old_keys and set(new_keys[len(old_keys) :]) <= club:
+        reasons["order"] = CLUB_LINE_REASON
+    return reasons
+
+
+def _nearby_trails_reasons(old: dict, new: dict) -> dict[str, str]:
+    """nearby_trails' two explained kinds: a line whose id alone differs, and decision 64's club lines."""
+    club = _club_line_reasons(old, new, "properties.id", lambda feature: str(feature["properties"]["id"]))
+    return {**_network_id_reasons(old, new), **club}
+
+
+def _network_overview_reasons(old: dict, new: dict) -> dict[str, str]:
+    """network_overview's one explained kind: decision 64's club groups, after every network group."""
+    return _club_line_reasons(old, new, "properties (source, name, blaze_color, trail_status)", _overview_key)
+
+
 #: Why a place can be in the dbt writer's places.json and not in today's. tests/test_dbt_places_parity.py holds it to
 #: the case where the two writers answer that way.
 PLACES_REASONS = {
@@ -497,7 +529,22 @@ PLACES_REASONS = {
         "no exporter reads, one of decision 54's wave 1 point layers (int_points_of_interest__club_points), so there "
         "is no old record to compare it with; new_data_report.py counts its layer under nearby_poi"
     ),
+    "club_places": (
+        "expected by decision 31 ('Publish new data in this PR'): a park or town from one of decision 54's wave 1 "
+        "places layers (int_places__club_units), which no exporter reads, so there is no old record to compare it "
+        "with; new_data_report.py counts its layer under places"
+    ),
 }
+
+
+def _club_places_sources() -> frozenset[str]:
+    """The registry's club places layers: a club or external ArcGIS row whose `place_kind` is a park or a town."""
+    registry = json.loads((Path(__file__).resolve().parent / "sources.json").read_text(encoding="utf-8"))
+    return frozenset(
+        source["key"]
+        for source in registry["sources"]
+        if source.get("kind") in ("club_arcgis_layer", "external_arcgis_layer") and source.get("place_kind") in ("park", "town")
+    )
 
 
 def _places_reasons(old: dict, new: dict) -> dict[str, str]:
@@ -510,8 +557,9 @@ def _places_reasons(old: dict, new: dict) -> dict[str, str]:
     old_records = old.get("places") or []
     old_ids = [record["id"] for record in old_records]
     known = _today_poi_sources() | {record.get("source") for record in old_records}
+    club_places = _club_places_sources()
     reasons = {
-        f"id {record['id']}": PLACES_REASONS["new_source"]
+        f"id {record['id']}": PLACES_REASONS["club_places" if record["source"] in club_places else "new_source"]
         for record in new.get("places") or []
         if record["id"] not in set(old_ids) and record.get("source") and record["source"] not in known
     }
@@ -925,7 +973,7 @@ FAMILIES: dict[str, Family] = {
         records="features",
         key="properties.id",
         key_of=lambda feature: str(feature["properties"]["id"]),
-        explained=_network_id_reasons,
+        explained=_nearby_trails_reasons,
     ),
     "network_overview": Family(
         old=lambda: _network_old("network_overview.geojson"),
@@ -934,6 +982,7 @@ FAMILIES: dict[str, Family] = {
         ordered=True,
         key_of=_overview_key,
         normalize=_overview_parts_as_a_set,
+        explained=_network_overview_reasons,
     ),
     "trails": Family(old=_trails_old, records="features", key="id", ordered=True, new_shape=_trails_records),
     "trail_miles": Family(old=_trail_miles_old, records="miles", key="id", ordered=True, new_shape=_trail_miles_records),
@@ -989,6 +1038,15 @@ def _poi_id(feature: dict) -> str:
 #: difference so explained once, as new data, and never as a safety field changed.
 NEW_DATA_REASON = "expected by decision 31 ('Publish new data in this PR')"
 
+#: Why a club's own line is in the dbt writers' nearby_trails.geojson and network_overview.geojson and in neither of
+#: today's (decision 64, the maintainer's poll of 2026-10-04: "draw now, route later"). Starts with NEW_DATA_REASON:
+#: no exporter reads a club's trail-line layer, so there is no old record to compare it with.
+CLUB_LINE_REASON = (
+    f"{NEW_DATA_REASON}, and drawn by decision 64: a line from one of decision 54's wave 1 trail-line layers "
+    "(int_trail_lines__club_published), carrying `line_kind` 'club', which no junction graph routes on "
+    "(build_trail_graph.py refuses it, and int_trail_network__routable reads only the network's rows)"
+)
+
 #: Why a POI can be in today's file and not in the dbt writer's, by case.
 #: tests/test_dbt_points_of_interest_parity.py holds each to the fixture row
 #: where the two writers answer that way, so none outlives its reason.
@@ -1011,6 +1069,13 @@ POI_REASONS = {
         "publishes one (reconcile_poi_identity.py holds that key until a person writes a `same` override). The "
         "shelter or campsite it would have joined keeps CSI's distance and source on its card, and one in no other "
         "site stays in none, so its site_id, site_role and site_name are null"
+    ),
+    "seasonal_tap": (
+        "expected by decision 65 (the maintainer's poll of 2026-10-04): a plumbed tap or fountain whose layer records "
+        "no shutoff season, which export_nearby_poi.py holds back as a water holdback (sources.json's "
+        "oprhp_water_holdback), ships as unconfirmed water carrying water_caution 'no_shutoff_season' "
+        "(int_points_of_interest__cautioned); only a record today's file lacks, of a layer whose taps "
+        "layer_rules names plumbed_water, at low confidence with that caution"
     ),
 }
 
@@ -1076,9 +1141,35 @@ def _new_source_reasons(old: dict, new: dict) -> dict[str, str]:
     }
 
 
+@functools.cache
+def _plumbed_water_sources() -> frozenset[str]:
+    """The layers a layer_rules `plumbed_water` row names: decision 65's one home for which taps carry a caution."""
+    with (Path(__file__).resolve().parent / "dbt" / "seeds" / "layer_rules.csv").open(newline="") as handle:
+        return frozenset(row["source_key"] for row in csv.DictReader(handle) if row["rule"] == "plumbed_water")
+
+
+def _seasonal_tap_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The taps decision 65 ships from a layer today's exporter reads and holds them back from.
+
+    Only a record the new file holds and the old one lacks, of a layer a plumbed_water rule names, that is water at
+    low confidence carrying the season caution: anything else a layer of today's adds is still a difference.
+    """
+    old_ids = {_poi_id(feature) for feature in old.get("features") or []}
+    return {
+        f"properties.id {_poi_id(feature)}": POI_REASONS["seasonal_tap"]
+        for feature in new.get("features") or []
+        if _poi_id(feature) not in old_ids
+        and feature["properties"].get("source") in _plumbed_water_sources()
+        and feature["properties"].get("poi_type") == "water"
+        and feature["properties"].get("confidence") == "low"
+        and feature["properties"].get("water_caution") == "no_shutoff_season"
+    }
+
+
 def _nearby_poi_reasons(old: dict, new: dict) -> dict[str, str]:
-    """nearby_poi's two explained kinds: an exact copy staging removed, and decision 31's new data."""
-    return {**_exact_copy_reasons(old, new), **_new_source_reasons(old, new)}
+    """nearby_poi's three explained kinds: an exact copy staging removed, decision 31's new data, and decision 65's
+    seasonal taps from a layer today's exporter reads."""
+    return {**_exact_copy_reasons(old, new), **_seasonal_tap_reasons(old, new), **_new_source_reasons(old, new)}
 
 
 #: export_poi.py's CSI_WATER_SOURCE: the source a synthesized water point publishes under.

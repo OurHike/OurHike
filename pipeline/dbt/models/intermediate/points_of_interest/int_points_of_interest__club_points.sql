@@ -148,7 +148,7 @@ repeats as (
     -- name and point are the same are one pin; the first by poi_key that no
     -- rule holds back is kept, so a held listing never hides its twin. A
     -- point with no name is never folded: nothing says two are the same.
-    select poi_key
+    select listings.poi_key
     from (
         select
             unioned.poi_key,
@@ -164,8 +164,8 @@ repeats as (
         where
             unioned.geom is not null
             and nullif(trim(unioned.name), '') is not null
-    )
-    where listing > 1
+    ) as listings
+    where listings.listing > 1
 ),
 
 never_water as (

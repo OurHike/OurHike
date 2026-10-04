@@ -9409,6 +9409,107 @@ def _trustees_page() -> str:
     )
 
 
+def _gatc_peaks_page() -> str:
+    peaks = "".join(
+        f"<h5>Fixture Bald {n} - 4,{n}84 ft.</h5><p>Land Area: Fixture Wilderness</p><p>Trail(s): Fixture Trail (FS{n})</p>"
+        "<p>Notes: Fixture note on the summit.</p>"
+        for n in (1, 2)
+    )
+    return _k_page("4000 Foot Peaks", f"<h1>4000 Foot Peaks</h1><h2>Peak Selection Criteria</h2><p>Fixture prose.</p>{peaks}")
+
+
+def _amc4000_pages() -> list[tuple[str, str, str]]:
+    base = "https://www.amc4000footer.org"
+    index = _k_page(
+        "The Lists We Recognize",
+        '<h2>The Lists We Recognize</h2><a href="whitemountainfourk.html">The White Mountain Four Thousand Footers</a>'
+        '<a href="newenglandfourk.html">The New England Four Thousand Footers</a>'
+        '<a href="newenglandhundredhighest.html">The New England Hundred Highest*</a>'
+        '<a href="newenglandhundredhighest.html">**Click here for information on the NE100</a>',
+    )
+    white = _k_page(
+        "White Mountain",
+        "<p>Fixture prose.</p><table><tr><td>Rank</td><td>Name</td><td>Elev</td></tr>"
+        "<tr><td>1</td><td>Fixture Peak</td><td>6288</td></tr></table>",
+    )
+    england = _k_page(
+        "New England",
+        "<table><tr><td>Rank</td><td>Name</td><td>State/Rank</td><td>Elevation</td></tr>"
+        "<tr><td>1</td><td>Fixture Peak</td><td>NH 1</td><td>6288</td></tr>"
+        "<tr><td>2</td><td>Fixture Knob</td><td>ME 1</td><td>4050*</td></tr></table>",
+    )
+    hundred = _k_page(
+        "Hundred Highest",
+        "<table><tr><td>Rank</td><td>Name</td><td>State/Rank</td><td>Elevation</td><td>Trail</td></tr>"
+        "<tr><td>68</td><td>Fixture Spur</td><td>VT 9</td><td>3980*</td><td>herd path</td></tr></table>",
+    )
+    return [
+        (f"{base}/the-lists-we-recognize.html", HTML, index),
+        (f"{base}/whitemountainfourk.html", HTML, white),
+        (f"{base}/newenglandfourk.html", HTML, england),
+        (f"{base}/newenglandhundredhighest.html", HTML, hundred),
+    ]
+
+
+def _sstc_sweet_16_page() -> str:
+    return _k_page(
+        "Sweet 16",
+        "<h5>CHALLENGE GOAL</h5><p>Fixture prose.</p><h5>POINTS OF INTEREST</h5><h2>Fixture Gap</h2><p>State Park Overlook</p>"
+        "<h2>Fixture Vista</h2><p>© 2022 by Fixture. Created with Wix.com</p>",
+    )
+
+
+def _ttc_scavenger_page() -> str:
+    base = "https://thetrailconservancy.org/wp-content/uploads/2023/09"
+    buttons = "".join(
+        f'<a class="elementor-button elementor-button-link" href="{base}/Fixture-Hunt-{n}.pdf">'
+        f'<span class="elementor-button-text">Fixture Clue Point {n}</span></a>'
+        for n in (1, 2)
+    )
+    return _k_page(
+        "Educational Scavenger Hunt",
+        f'<h1>Educational Scavenger Hunt</h1><a class="elementor-button" href="{base}/Fixture-Map.pdf">Printable Map</a>'
+        f"<h2>Scavenger Hunt Clues</h2>{buttons}<h2>Fixture Footer</h2>",
+    )
+
+
+def _dcnr_geotrail_page() -> str:
+    def item(place: str, theme: str, code: str) -> str:
+        return (
+            '<div class="cmp-accordion__item"><h3 class="cmp-accordion__header"><button class="cmp-accordion__button">'
+            f'<span class="cmp-accordion__title">{place}</span></button></h3><div class="cmp-accordion__panel">'
+            f"<p><b>{theme}Geocache Theme: </b>Fixture Theme</p><p>Fixture prose, less than 0.5 miles.</p>"
+            f'<p><a href="https://www.geocaching.com/geocache/{code}">Learn more about the Fixture Geocache.</a></p></div></div>'
+        )
+
+    return _k_page(
+        "DCNR GeoTrail",
+        "<h1>DCNR GeoTrail</h1><h2>America250PA GeoTrail Locations and Descriptions</h2>"
+        + item("Fixture State Park", "", "GCFIX01")
+        + item("Fixture Environmental Education Center", "♿", "GCFIX02"),
+    )
+
+
+def _cmc_towers_page() -> str:
+    def forest(title: str, towers: list[str]) -> str:
+        return (
+            '<div class="accordion-item-container"><button class="title-container accordion-toggle">'
+            f'<p class="subheading h3 title">{title}</p></button><div class="content wp-content">'
+            f"<p><strong>{title}</strong></p><p>Fixture prose on mileages.</p><p><strong>LOOKOUT TOWERS:</strong></p>"
+            f"<p>{'<br />'.join(towers)}</p><hr /><p><strong>{towers[0]}</strong></p><p>Fixture paragraph.</p>"
+            "<p>Fixture Trail from Fixture Gap (1.5)</p></div></div>"
+        )
+
+    faq = (
+        '<div class="accordion-item-container"><p class="title">Why lookout towers?</p>'
+        '<div class="content"><p>Fixture prose.</p></div></div>'
+    )
+    return _k_page(
+        "Lookout Tower Challenge",
+        "<h2>Fixture Lookout Towers</h2>" + forest("Fixture National Forest", ["Fixture Bald", "Fixture Top"]) + faq,
+    )
+
+
 def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
     """Each ContentPages key's answers, as (url, content type, body)."""
     return {
@@ -9439,6 +9540,18 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "mdhta_trails": _mdhta_pages(),
         "blue_hills_hikes": [("https://friendsofthebluehills.org/hiking-near-boston/", HTML, _blue_hills_page())],
         "trustees_hikers_top_ten": [("https://thetrustees.org/program/the-trustee-hikers-top-ten/", HTML, _trustees_page())],
+        "gatc_georgia_4000": [
+            ("https://georgia-atclub.org/for-hikers/georgia-4000/georgia-4000-foot-peaks/", HTML, _gatc_peaks_page())
+        ],
+        "amc_four_thousand_footer_lists": _amc4000_pages(),
+        "sstc_sweet_16": [("https://www.standingstonetrail.org/sweet-16-trail-challenge", HTML, _sstc_sweet_16_page())],
+        "ttc_scavenger_hunt": [("https://thetrailconservancy.org/programs/scavenger-hunt/", HTML, _ttc_scavenger_page())],
+        "dcnr_geotrail": [
+            ("https://www.pa.gov/agencies/dcnr/recreation/what-to-do/geocaching/dcnr-geo-trail", HTML, _dcnr_geotrail_page())
+        ],
+        "cmc_lookout_towers": [
+            ("https://carolinamountainclub.org/hiking/hiking-challenges/lookout-tower-challenge-ltc/", HTML, _cmc_towers_page())
+        ],
     }
 
 
@@ -9467,6 +9580,12 @@ K_PAGES_ROWS = {
     "mdhta_trails": 2,
     "blue_hills_hikes": 2,
     "trustees_hikers_top_ten": 10,
+    "gatc_georgia_4000": 2,
+    "amc_four_thousand_footer_lists": 4,
+    "sstc_sweet_16": 2,
+    "ttc_scavenger_hunt": 2,
+    "dcnr_geotrail": 2,
+    "cmc_lookout_towers": 2,
 }
 
 

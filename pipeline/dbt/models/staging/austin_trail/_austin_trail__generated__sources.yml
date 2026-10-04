@@ -48,3 +48,14 @@ sources:
         description: >
           TTC Management Areas (Lady Bird Lake) (sources.json `ttc_management_areas`).
           Key: `ASSET_MGMT_ID` is unique and non-null on all 269 rows read 2026-10-03.
+      - name: raw_austin_trail__ttc_scavenger_hunt
+        data_tests:
+          # Rows sharing base_austin_trail__ttc_scavenger_hunt's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ttc_scavenger_hunt'", "name"]
+        description: >
+          The Trail Conservancy History of the Trail Scavenger Hunt
+          (thetrailconservancy.org/programs/scavenger-hunt/) (sources.json
+          `ttc_scavenger_hunt`). Key: `name`, the clue location: unique on all 15 rows
+          read 2026-10-04, as are their clue sheets' links.

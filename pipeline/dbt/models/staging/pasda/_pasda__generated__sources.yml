@@ -19,6 +19,17 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_pasda__dcnr_geotrail
+        data_tests:
+          # Rows sharing base_pasda__dcnr_geotrail's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dcnr_geotrail'", "name"]
+        description: >
+          PA DCNR GeoTrail: Celebrating America's 250th (pa.gov/agencies/dcnr/.../dcnr-
+          geo-trail) (sources.json `dcnr_geotrail`). Key: `name`, the park or
+          environmental education center: unique on all 25 rows read 2026-10-04, as are
+          the geocaching.com links.
       - name: raw_pasda__dcnr_state_forest_boundaries
         data_tests:
           # Rows sharing base_pasda__dcnr_state_forest_boundaries's key must be exact copies (decision 40).

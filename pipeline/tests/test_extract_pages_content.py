@@ -514,6 +514,53 @@ def test_a_buckeye_section_reads_its_miles_and_counties_and_never_its_supervisor
     assert "Fixture Supervisor" not in json.dumps(row)
 
 
+def test_an_estimated_four_thousand_footer_keeps_its_asterisk_beside_its_number():
+    index = Page(
+        "https://www.amc4000footer.org/the-lists-we-recognize.html",
+        parse_html(
+            '<a href="whitemountainfourk.html">The White Mountain Four Thousand Footers</a>'
+            '<a href="newenglandfourk.html">The New England Four Thousand Footers</a>'
+            '<a href="newenglandhundredhighest.html">The New England Hundred Highest*</a>'
+        ),
+    )
+    table = "<table><tr><td>Rank</td><td>Name</td><td>Elev</td></tr><tr><td>4</td><td>Fixture</td><td>5384*</td></tr></table>"
+    pages = {f"https://www.amc4000footer.org/{tail}": Page(f"https://www.amc4000footer.org/{tail}", parse_html(table))
+             for tail in _pages_content._AMC_LISTS}  # fmt: skip
+
+    rows = SITE_PARSERS["amc_four_thousand_footer_lists"].read(index, pages.get)
+
+    assert {(r["challenge"], r["elevation_ft"], r["elevation_text"], r["elevation_estimated"]) for r in rows} == {
+        ("The White Mountain Four Thousand Footers", 5384.0, "5384*", True),
+        ("The New England Four Thousand Footers", 5384.0, "5384*", True),
+        ("The New England Hundred Highest", 5384.0, "5384*", True),
+    }
+
+
+def test_a_four_thousand_footer_index_missing_a_list_refuses():
+    index = Page("https://www.amc4000footer.org/x.html", parse_html('<a href="whitemountainfourk.html">The White</a>'))
+    with pytest.raises(LayoutChanged, match="not the three list pages"):
+        SITE_PARSERS["amc_four_thousand_footer_lists"].read(index, None)
+
+
+def test_a_georgia_peak_lands_its_land_area_and_trails_and_never_its_notes():
+    page = Page(
+        "https://georgia-atclub.org/x/",
+        parse_html(
+            "<h5>Fixture Knob - 4,643 ft.</h5><p>Land Area: Fixture Wilderness</p><p>Trail (s): Bushwhack</p>"
+            "<p>Notes: Fixture note, elev may be overstated</p><h5>Fixture Bald - 4,458 ft.</h5><p>Trail(s): AT</p>"
+        ),
+    )
+    first, second = SITE_PARSERS["gatc_georgia_4000"].read(page, None)
+    assert (first["name"], first["elevation_ft"], first["place"], first["trails"]) == (
+        "Fixture Knob",
+        4643.0,
+        "Fixture Wilderness",
+        "Bushwhack",
+    )
+    assert (second["place"], second["trails"]) == (None, "AT")
+    assert "overstated" not in json.dumps([first, second])
+
+
 def test_every_content_page_resource_rides_its_types_monthly_lane_with_a_parser_for_its_type():
     pages = [r for r in all_resources(discover()) if isinstance(r, ContentPages)]
     assert pages, "the club folders declare no content page reader, so this checked nothing"

@@ -1809,6 +1809,234 @@ def _trustees_hikers_top_ten(page: Page, fetch) -> list[dict]:
     return rows
 
 
+# --- Challenges: a challenge's own list of places, one row a place (decision 3: "a club's list of places") ------
+
+
+_GATC_PEAK = re.compile(r"(?P<name>.+) - (?P<feet>[\d,]+) ft\.?")
+
+
+def _gatc_georgia_4000(page: Page, fetch) -> list[dict]:
+    """The Georgia Appalachian Trail Club's Georgia 4000 peaks (georgia-atclub.org/for-hikers/georgia-4000/...).
+
+    The challenge's own page (/for-hikers/georgia-4000/) names it: climb all 32 North Georgia peaks of 4,000 feet or
+    more and 'sport our patch'. Its peaks page, read 2026-10-04, gives each peak an h5, 'Brasstown Bald - 4,784 ft.',
+    and labelled lines under it: 'Land Area: Brasstown Wilderness', 'Trail(s): Paved walking trail from parking lot.'
+    ('Trail (s):' on one), then 'Notes:', the club's prose, not read. The name, the elevation as the page states it,
+    the land area and the trails are read; 'Bushwhack' as a peak's trails is the page's word that no trail reaches it.
+    """
+    rows = []
+    for heading in page.root.find_all("h5"):
+        peak = _GATC_PEAK.fullmatch(fact(heading.text()) or "")
+        if peak is None:
+            continue
+        facts: dict[str, str] = {}
+        for node in heading.following():
+            if node.tag == "h5":
+                break
+            if node.tag == "p" or node.tag == "li":
+                label = LABEL.fullmatch(fact(node.text()) or "")
+                if label:
+                    facts.setdefault(re.sub(r"\s+", "", label["label"]).lower(), fact(label["value"]))
+        elevation, elevation_text = feet(f"{peak['feet']} ft")
+        rows.append(
+            {
+                "challenge": "Georgia 4000",
+                "name": fact(peak["name"]),
+                "item_type": "peak",
+                "elevation_ft": elevation,
+                "elevation_text": fact(f"{peak['feet']} ft."),
+                "place": facts.get("landarea"),
+                "trails": facts.get("trail(s)"),
+                "link": page.url,
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
+_AMC_LISTS = ("whitemountainfourk.html", "newenglandfourk.html", "newenglandhundredhighest.html")
+
+
+def _amc_four_thousand_footer_lists(page: Page, fetch) -> list[dict]:
+    """The AMC Four Thousand Footer Club's lists (amc4000footer.org/the-lists-we-recognize.html), as tables.
+
+    The index names the lists the club recognizes and links three as pages (_AMC_LISTS), each one table: the White
+    Mountain Four Thousand Footers (Rank, Name, Elev: 48 on 2026-10-04), the New England Four Thousand Footers (Rank,
+    Name, State/Rank, Elevation: 67) and the New England Hundred Highest's peaks below 4,000 feet (the same and Trail:
+    33, which with the 67 make the hundred). The fourth, the Northeast 111, is a PDF and is not read. Each row is a
+    peak: its rank, name, state, elevation as written, and on the Hundred Highest whether a trail reaches it ('yes',
+    'no', 'herd path'). An elevation marked '*' is, in the pages' words, 'estimated by adding half of the contour
+    interval to the highest contour line', which `elevation_estimated` carries beside the number. The list's name is
+    the index's link text. A list page whose table has no Name or no elevation column raises.
+    """
+    names: dict[str, str] = {}
+    for anchor in page.root.find_all("a"):
+        href = page.link(anchor.get("href"))
+        text = fact(anchor.text()) or ""
+        tail = urlparse(href or "").path.rsplit("/", 1)[-1]
+        if tail in _AMC_LISTS and text.startswith("The "):
+            names.setdefault(tail, (href, text.rstrip("*").strip()))
+    if set(names) != set(_AMC_LISTS):
+        raise LayoutChanged(f"amc4000: the index links {sorted(names)}, not the three list pages")
+    rows = []
+    for tail in _AMC_LISTS:
+        href, challenge = names[tail]
+        listing = fetch(href)
+        table = listing.root.find("table")
+        header, body = table_rows(table) if table is not None else ([], [])
+        columns = {name.lower(): i for i, name in enumerate(header)}
+        elevation_at = columns.get("elevation", columns.get("elev"))
+        if "name" not in columns or elevation_at is None:
+            raise LayoutChanged(f"amc4000: {href}'s table reads {header}, with no Name or elevation")
+        for cells in body:
+            text = cells[elevation_at]
+            state = cells[columns["state/rank"]].split()[0] if "state/rank" in columns else None
+            rows.append(
+                {
+                    "challenge": challenge,
+                    "name": fact(cells[columns["name"]]),
+                    "item_type": "peak",
+                    "rank": int(cells[columns["rank"]]) if cells[columns["rank"]].isdigit() else None,
+                    "elevation_ft": number(text.rstrip("*")),
+                    "elevation_text": fact(text),
+                    "elevation_estimated": text.endswith("*"),
+                    "place": state,
+                    "trail": fact(cells[columns["trail"]]) if "trail" in columns else None,
+                    "link": listing.url,
+                    "source_url": listing.url,
+                }
+            )
+    return rows
+
+
+def _sstc_sweet_16(page: Page, fetch) -> list[dict]:
+    """The Standing Stone Trail Club's Sweet Sixteen Trail Challenge (standingstonetrail.org/sweet-16-trail-challenge).
+
+    A Wix page: 'Visit each of the Standing Stone Trail's "Sweet Sixteen Trail Challenge" locations & answer a
+    question about each point of interest.' After the h5 'POINTS OF INTEREST', each point is an h2 ('Cowans Gap')
+    and, for most, a line continuing its name ('State Park Overlook'), which Wix sets as a paragraph of its own: 16 on
+    2026-10-04. The name, joined, is read. The page's question for each point is in the printable form, not read.
+    """
+    found = blocks(page.root)
+    start = next((i for i, block in enumerate(found) if block.text == "POINTS OF INTEREST"), None)
+    if start is None:
+        raise LayoutChanged("sstc: the page has no 'POINTS OF INTEREST' heading")
+    rows = []
+    current = None
+    for block in found[start + 1 :]:
+        if block.text.startswith("©"):
+            break
+        if block.level == 2:
+            current = {"challenge": "Sweet Sixteen Trail Challenge", "name": block.text, "item_type": "point of interest",
+                       "link": page.url, "source_url": page.url}  # fmt: skip
+            rows.append(current)
+        elif block.level is None and current is not None and len(block.text) <= 60:
+            current["name"] = f"{current['name']} {block.text}"
+    for row in rows:
+        row["name"] = fact(row["name"])
+    return rows
+
+
+def _ttc_scavenger_hunt(page: Page, fetch) -> list[dict]:
+    """The Trail Conservancy's History of the Trail Scavenger Hunt (thetrailconservancy.org/programs/scavenger-hunt/).
+
+    Under the h2 'Scavenger Hunt Clues' each clue location is a button linking its clue sheet, a PDF under
+    /wp-content/uploads/ ('Johnson Creek Trailhead'): 15 on the Ann and Roy Butler Hike-and-Bike Trail, 2026-10-04.
+    The location's name and its clue sheet's link are read; the sheets (a clue and a QR code each) are not.
+    """
+    rows = []
+    inside = False
+    for node in page.root.iter():
+        if node.tag in HEADINGS:
+            inside = fact(node.text()) == "Scavenger Hunt Clues" or (inside and node.tag not in ("h1", "h2"))
+            continue
+        if not inside or node.tag != "a" or "elementor-button" not in node.classes:
+            continue
+        href = page.link(node.get("href"))
+        if href and href.lower().endswith(".pdf"):
+            rows.append(
+                {
+                    "challenge": "History of the Trail Scavenger Hunt",
+                    "name": fact(node.text()),
+                    "item_type": "clue location",
+                    "link": href,
+                    "source_url": page.url,
+                }
+            )
+    return rows
+
+
+def _dcnr_geotrail(page: Page, fetch) -> list[dict]:
+    """PA DCNR's GeoTrail for America's 250th (pa.gov/agencies/dcnr/recreation/what-to-do/geocaching/dcnr-geo-trail).
+
+    One geocache a state park or environmental education center: each is an accordion item, its title the place
+    ('Beltzville State Park') and its panel a 'Geocache Theme:' line, a paragraph of the department's prose and a
+    link to the cache's page on geocaching.com ('https://www.geocaching.com/geocache/GCBJH8G'): 25 on 2026-10-04,
+    two of them (Benjamin Rush and Ohiopyle) marking the theme line '♿', which lands as `accessible`. The place, the
+    theme and the cache's link are read; the cache's coordinates are on geocaching.com, under its terms,
+    and are not read, and the hike's length is inside the prose ('less than 0.5 miles') and is not either.
+    """
+    rows = []
+    for item in page.root.find_all("div", cls="cmp-accordion__item"):
+        title = item.find("span", cls="cmp-accordion__title")
+        theme_line = next(
+            (fact(p.text()) for p in item.find_all("p") if re.match(r"♿?\s*Geocache Theme:", fact(p.text()) or "")), None
+        )
+        theme = fact(theme_line.split(":", 1)[1]) if theme_line else None
+        cache = next(
+            (a.get("href") for a in item.find_all("a") if re.search(r"geocaching\.com/geocache/GC\w+", a.get("href") or "")),
+            None,
+        )
+        if title is None or theme is None:
+            continue
+        rows.append(
+            {
+                "challenge": "DCNR GeoTrail: Celebrating America's 250th",
+                "name": fact(title.text()),
+                "item_type": "geocache",
+                "theme": theme,
+                "accessible": theme_line.startswith("♿") if theme_line else None,
+                "link": cache or page.url,
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
+def _cmc_lookout_towers(page: Page, fetch) -> list[dict]:
+    """The Carolina Mountain Club's Lookout Tower Challenge (LTC): 23 fire lookout towers in western North Carolina.
+
+    The challenge's page (carolinamountainclub.org/hiking/hiking-challenges/lookout-tower-challenge-ltc/) holds one
+    accordion item a national forest or region, its title a p.title ('Nantahala National Forest'), and in it a
+    'LOOKOUT TOWERS:' paragraph ('Lookout Towers' in the Smokies' item) followed by one paragraph of the towers'
+    names, one a line: 23 in five items on 2026-10-04, the FAQ's items holding none. Each tower's own block
+    after that is the club's prose and its routes with one-way miles ('Appalachian Trail from Wilson Lick Ranger
+    Station (3.2)'), which are not read. The tower's name and its forest are read. The page names the challenge's
+    coordinator and the towers' photographers, people, and neither is read.
+    """
+    rows = []
+    for item in page.root.find_all("div", cls="accordion-item-container"):
+        title = item.find("p", cls="title")
+        paragraphs = item.find_all("p")
+        marker = next(
+            (i for i, p in enumerate(paragraphs) if re.fullmatch(r"lookout towers:?", fact(p.text()) or "", re.I)), None
+        )
+        if title is None or marker is None or marker + 1 >= len(paragraphs):
+            continue
+        for name in paragraphs[marker + 1].lines():
+            rows.append(
+                {
+                    "challenge": "Lookout Tower Challenge",
+                    "name": fact(name),
+                    "item_type": "fire lookout tower",
+                    "section": fact(title.text()),
+                    "link": page.url,
+                    "source_url": page.url,
+                }
+            )
+    return rows
+
+
 #: Every site's parser, by the registry key (or the `site`) its resource names.
 SITE_PARSERS: dict[str, SiteParser] = {
     "mazamas_hike_list": SiteParser(
@@ -1865,4 +2093,12 @@ SITE_PARSERS: dict[str, SiteParser] = {
     "mdhta_trails": SiteParser(_mdhta_trails),
     "blue_hills_hikes": SiteParser(_blue_hills_hikes),
     "trustees_hikers_top_ten": SiteParser(_trustees_hikers_top_ten, columns={"rank": "bigint"}),
+    "gatc_georgia_4000": SiteParser(_gatc_georgia_4000, columns={"trails": "text"}),
+    "amc_four_thousand_footer_lists": SiteParser(
+        _amc_four_thousand_footer_lists, columns={"rank": "bigint", "elevation_estimated": "bool", "trail": "text"}
+    ),
+    "sstc_sweet_16": SiteParser(_sstc_sweet_16),
+    "ttc_scavenger_hunt": SiteParser(_ttc_scavenger_hunt),
+    "dcnr_geotrail": SiteParser(_dcnr_geotrail, columns={"theme": "text", "accessible": "bool"}),
+    "cmc_lookout_towers": SiteParser(_cmc_lookout_towers),
 }

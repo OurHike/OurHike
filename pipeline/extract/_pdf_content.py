@@ -47,7 +47,16 @@ from urllib.parse import urlparse
 import requests
 
 from extract._notices import NoticeUnreadable, PdfFacts, _canonical, _forget, _NoticeSource, _recall, _remember, read_pdf
-from extract._pages_content import TYPE_COLUMNS, LayoutChanged, Page, checked_row, fact, guarded_get, parse_html
+from extract._pages_content import (
+    TYPE_COLUMNS,
+    LayoutChanged,
+    Page,
+    checked_row,
+    fact,
+    guarded_get,
+    parse_html,
+    single_miles,
+)
 from lib.freshness_state import Freshness, compare_marker
 
 
@@ -381,6 +390,159 @@ def _wmc_hike_ratings(facts: PdfFacts, url: str) -> list[dict]:
     return rows
 
 
+#: A map panel's title in GMC's tracker ('Big Rock to Styles Peak'), which names a stretch of the Long Trail, not a side
+#: trail: two places joined by 'to', and no trail word.
+_GMC_PANEL = re.compile(r"[A-Z][\w’'. -]+ to [A-Z][\w’'. -]+")
+_GMC_TRAIL_WORD = re.compile(r"\b(Trail|Spur|Loop|Cutoff|Link|Connector|Bypass|Extension)\b")
+_GMC_STATED = re.compile(r"hiking all (\d+) designated Long Trail side trails")
+
+
+def _gmc_side_to_side(facts: PdfFacts, url: str) -> list[dict]:
+    """The Green Mountain Club's Long Trail Side-to-Side Tracker (Long-Trail-Side-to-Side-Tracker.pdf), a Canva form.
+
+    Read 2026-10-04: 4 pages, Last-Modified 2026-08-12, an ETag. The Side-to-Side Challenge is 'hiking all 88
+    designated Long Trail side trails (166 miles)'; the tracker lists them in tables headed 'Trail Date(s) Comments',
+    one name a line, divided by the Long Trail Map's 8 panels. The text layer sets some panels' titles ('Big Rock to
+    Styles Peak') before their trails and some after, so a trail's panel cannot be read reliably and is not; a
+    title is told from a trail by _GMC_PANEL. Two placeholder lines ('*Stratton Ski Area trails') are left out. The
+    names are read and held to the count the document states, so a redrawn tracker that loses or gains a line
+    refuses rather than lands the wrong list. The form's fields (name, date) are a hiker's and are never read; the
+    PDF's /Author names a person and no metadata field lands but the dates.
+    """
+    found = lines(facts)
+    stated = next((int(m.group(1)) for line in found if (m := _GMC_STATED.search(line))), None)
+    names, inside = [], False
+    for line in found:
+        if line == "Trail Date(s) Comments":
+            inside = True
+            continue
+        if line.startswith(("Total mileage", "Hiker Information")):
+            break
+        if not inside or line.startswith("*"):
+            continue
+        if _GMC_PANEL.fullmatch(line) and not _GMC_TRAIL_WORD.search(line):
+            continue
+        if line.startswith(("Long Trail Side-to-Side Tracker", "The Green Mountain Club recognizes")):
+            inside = False
+            continue
+        names.append(line)
+    if stated is None or len(names) != stated:
+        raise PdfLayoutChanged(f"gmc: the tracker lists {len(names)} side trails and states {stated}")
+    return [
+        {
+            "challenge": "Long Trail Side-to-Side Challenge",
+            "name": fact(name),
+            "item_type": "side trail",
+            "link": url,
+            "source_url": url,
+        }
+        for name in names
+    ]
+
+
+_NBATC_ENTRY = re.compile(r"(?P<number>\d{1,2}) (?P<rest>.+)")
+_NBATC_MILE = re.compile(r"\(@ ?(?P<text>[^)]+)\)")
+#: Where an entry's description starts, when the text layer runs it onto the name's line ('Matts Creek Connects AT
+#: with US 501 ...').
+_NBATC_DESCRIPTION = re.compile(r" (Connects|Loop Trail with) ")
+
+
+def _nbatc_blue_blazer(facts: PdfFacts, url: str) -> list[dict]:
+    """The Natural Bridge A.T. Club's Blue Blazer Program form (home.nbatc.org/pdfs/BlueBlazeTrailHike.pdf).
+
+    Read 2026-10-04: 3 pages, Last-Modified 2026-07-09, no ETag, 79,282 bytes. Page 1 is the program's rules and a
+    hiker's form (name, signature, e-mail, telephone, address), whose fields are never read, beside a club officer's
+    e-mail address, which is not either. Pages 2 and 3 are the table: each blue-blazed trail numbered, its name, the
+    A.T. mile north of Black Horse Gap where it joins ('(@ 1.8 mi.)'; two on some), a description, and its '88
+    Milers #'. The number, the name (a name the text layer wraps onto a second line is joined) and the mile are
+    read; the description is the club's prose. The entries must run 1, 2, 3 ... without a gap, or the family
+    refuses. A note under the table records why a trail was taken off the list ('The Little Rocky Row Trail hike ...
+    later deleted because the NBATC believed hiking this trail, puts hikers at risk ...'); it is the club's prose
+    and is not read here.
+    """
+    found = lines(facts)
+    try:
+        start = next(i for i, line in enumerate(found) if line.startswith("No. Name"))
+    except StopIteration:
+        raise PdfLayoutChanged("nbatc: the PDF has no 'No. Name' table header") from None
+    rows: list[dict] = []
+    current = None
+    for line in found[start + 1 :]:
+        if line.startswith(("Total Miles", "*Do not duplicate")):
+            break
+        entry = _NBATC_ENTRY.fullmatch(line)
+        if entry and int(entry["number"]) == len(rows) + 1:
+            name = _NBATC_DESCRIPTION.split(entry["rest"], maxsplit=1)[0]
+            current = {"number": int(entry["number"]), "name": name, "mile": None, "complete": name != entry["rest"]}
+            rows.append(current)
+            continue
+        if current is None:
+            continue
+        mile = _NBATC_MILE.fullmatch(line)
+        if mile and current["mile"] is None:
+            current["mile"], current["complete"] = mile["text"], True
+        elif not current["complete"] and not line.startswith(("Connects", "Loop Trail")):
+            current["name"] = f"{current['name']} {line}"
+        else:
+            current["complete"] = True
+    if not rows:
+        raise PdfLayoutChanged("nbatc: the table holds no numbered trail")
+    out = []
+    for row in rows:
+        at_mile, at_mile_text = single_miles(row["mile"]) if row["mile"] else (None, None)
+        out.append(
+            {
+                "challenge": "Blue Blazer Program",
+                "name": fact(row["name"]),
+                "item_type": "blue-blazed trail",
+                "number": row["number"],
+                "at_mile": at_mile,
+                "at_mile_text": at_mile_text,
+                "link": url,
+                "source_url": url,
+            }
+        )
+    return out
+
+
+_TTA_TITLE = re.compile(r".*'s (?P<count>\d+) Great Hikes")
+_TTA_LIST_START = "I attest to having hiked all the trails listed above:"
+
+
+def _tta_great_hikes(facts: PdfFacts, url: str) -> list[dict]:
+    """The Tennessee Trails Association's 36 Great Hikes qualification form ('I hiked 'em all'), one page.
+
+    Read 2026-10-04: Last-Modified 2020-12-21, an ETag, 95,680 bytes; tennesseetrails.org's robots.txt asks
+    `Crawl-delay: 60`. The form is titled for the person the hikes are named after ("<name>'s 36 Great Hikes"), which
+    no row carries; its fields (a hiker's name, address, e-mail and telephone) are blank and never read. The text
+    layer sets the hikes after the attestation line, one a line, most a park and a trail joined by a dash ('Fall
+    Creek Falls – Cable Trail'). Each name is read as written; a name the form marks '*' lands with
+    `cave_entry_forbidden`, the form's footnote reading "Until the ban is lifted, entry to state owned caves is
+    forbidden due to the presence of white nose syndrome in the resident bat population." The hikes are held to the
+    count in the title, so a redrawn form refuses rather than lands a different list.
+    """
+    found = lines(facts)
+    title = next((m for line in found if (m := _TTA_TITLE.fullmatch(line))), None)
+    try:
+        start = found.index(_TTA_LIST_START)
+    except ValueError:
+        raise PdfLayoutChanged("tta: the form has no attestation line before its list") from None
+    names = found[start + 1 :]
+    if title is None or len(names) != int(title["count"]):
+        raise PdfLayoutChanged(f"tta: the form lists {len(names)} hikes and its title states {title and title['count']}")
+    return [
+        {
+            "challenge": "36 Great Hikes",
+            "name": fact(name.rstrip("*")),
+            "item_type": "hike",
+            "cave_entry_forbidden": name.endswith("*"),
+            "link": url,
+            "source_url": url,
+        }
+        for name in names
+    ]
+
+
 #: Every document family's parser, by the registry key (or the `family`) its resource names.
 PDF_FAMILIES: dict[str, PdfFamily] = {
     "rmc_recommended_hikes": PdfFamily(_rmc_recommended_hikes, columns={"time_text": "text"}),
@@ -394,4 +556,7 @@ PDF_FAMILIES: dict[str, PdfFamily] = {
             "gain_per_mile_ft": "double",
         },
     ),
+    "gmc_side_to_side": PdfFamily(_gmc_side_to_side),
+    "nbatc_blue_blazer": PdfFamily(_nbatc_blue_blazer, columns={"number": "bigint", "at_mile": "double", "at_mile_text": "text"}),
+    "tta_great_hikes": PdfFamily(_tta_great_hikes, columns={"cave_entry_forbidden": "bool"}),
 }

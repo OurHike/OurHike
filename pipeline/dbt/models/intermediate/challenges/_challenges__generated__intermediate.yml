@@ -5,13 +5,14 @@ version: 2
 models:
   - name: int_challenges__club_unioned
     description: >
-      Every challenges row of the 2 registered sources pipeline/make_dbt_staging.py stages for
-      this type (decision 54 wave 3), unioned by name: one item of a challenge list a club or
-      NPS publishes: an NPS passport stamp location, or a club wiki's challenge page. Each row
-      carries its source's registry key, the club folder that extracted it, the base model's
-      key, the conformed columns below and its source's own columns, prose left out, as
-      `properties`. No geometry: a row is placed, where it is placed at all, by its own fields
-      in `properties`. Unfiltered: whatever reads it keeps int_sources__publication's verdict.
+      Every challenges row of the 11 registered sources pipeline/make_dbt_staging.py stages
+      for this type (decision 54 wave 3), unioned by name: one item of a challenge list a club
+      or NPS publishes: an NPS passport stamp location, or a club wiki's challenge page. Each
+      row carries its source's registry key, the club folder that extracted it, the base
+      model's key, the conformed columns below and its source's own columns, prose left out,
+      as `properties`. No geometry: a row is placed, where it is placed at all, by its own
+      fields in `properties`. Unfiltered: whatever reads it keeps int_sources__publication's
+      verdict.
     columns:
       - name: challenge_item_key
         description: The base model's key, carried; unique across the union because the registry key is its first input.

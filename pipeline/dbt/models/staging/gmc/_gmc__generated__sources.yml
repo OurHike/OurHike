@@ -81,6 +81,20 @@ sources:
           Long Trail privies (GMC's own PRIVIES_MASTER layer) (sources.json
           `gmc_privies`). Key: the registry's `id_field`; its row records no measurement
           of it.
+      - name: raw_gmc__gmc_side_to_side
+        config:
+          # Read off a PDF, which the fixture warehouse never holds (Table.read_from_pdf):
+          # its fct_sources_without_freshness row in dbt_project_evaluator_exceptions.csv says why.
+          freshness: null
+        data_tests:
+          # Rows sharing base_gmc__gmc_side_to_side's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'gmc_side_to_side'", "name"]
+        description: >
+          GMC Long Trail Side-to-Side Tracker (Long-Trail-Side-to-Side-Tracker.pdf)
+          (sources.json `gmc_side_to_side`). Key: `name`, the side trail: unique on all 88
+          rows read 2026-10-04.
       - name: raw_gmc__gmc_trail_master
         data_tests:
           # Rows sharing base_gmc__gmc_trail_master's key must be exact copies (decision 40).

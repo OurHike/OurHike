@@ -309,13 +309,18 @@ ISOLATING_LANES = frozenset({"monthly"})
 #: timing, and any rate-limit waits lib/arcgis.py logs, would settle it.
 MONTHLY_READERS = 4
 
-#: dlt's normalize processes, by lane. Run 13's normalize was about 103 of its
+#: dlt's normalize processes for refresh-reference.yml's monthly run, which
+#: passes it as --normalize-workers. Run 13's normalize was about 103 of its
 #: extract step's 161 minutes (Reasoned from its log: its last layer was read
 #: at 07:16:26Z and normalize's schema warnings closed at 08:59:37Z), in one
 #: process on a 4-vCPU runner. dlt gives each worker whole tables (its
 #: group_worker_files()), so USFS's 1,072,508,650 bytes of trails stay one
-#: worker's. A leg normalizes in seconds and keeps one process.
-NORMALIZE_WORKERS = {"monthly": 4}
+#: worker's. Everything else normalizes in one process, the default: fixture
+#: mode under pipeline-tests.yml's pytest job, on Python 3.14, lost a worker
+#: of a 4-process pool (BrokenProcessPool, "terminated abruptly", run
+#: 37214263752 on 3a408a41), which the same build on 3.13 here did not.
+#: Why is unmeasured; a leg normalizes in seconds and gains nothing from it.
+MONTHLY_NORMALIZE_WORKERS = 4
 
 
 def isolates(lane: str) -> bool:
@@ -1444,6 +1449,7 @@ def run_pipeline(
     read_seconds: float | None = None,
     as_landed: bool = False,
     cross_lane: bool = False,
+    normalize_workers: int = 1,
 ) -> RunReport:
     """One lane, or one leg, end to end. Raises ExtractRefused, after logging, when either check fails.
 
@@ -1462,7 +1468,7 @@ def run_pipeline(
     checked_at = utc_now_naive()
     report = RunReport(run_id=checked_at.strftime("%Y%m%dT%H%M%S.%fZ"), lane=lane, outcome="loaded")
     try:
-        _run(report, lane, bucket_url, plan_resources, pipelines_dir, checked_at, read_seconds, as_landed)
+        _run(report, lane, bucket_url, plan_resources, pipelines_dir, checked_at, read_seconds, as_landed, normalize_workers)
     except Exception as failure:
         if getattr(failure, "report", None) is None:
             try:
@@ -1482,6 +1488,7 @@ def _run(
     checked_at: datetime,
     read_seconds: float | None = None,
     as_landed: bool = False,
+    normalize_workers: int = 1,
 ) -> None:
     pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
     # Drop a package a dead run left pending, then sync, so the committed
@@ -1588,7 +1595,19 @@ def _run(
     spool = Path(tempfile.mkdtemp(prefix="read_")) if lane in ISOLATING_LANES and to_run else None
     try:
         _extract_and_load(
-            pipeline, report, lane, planned, to_run, unavailable, checked_at, read_seconds, copy, progress, log, spool
+            pipeline,
+            report,
+            lane,
+            planned,
+            to_run,
+            unavailable,
+            checked_at,
+            read_seconds,
+            copy,
+            progress,
+            log,
+            spool,
+            normalize_workers,
         )
         # After the run log, so a failed upload leaves a committed, logged load
         # and a red job, and the next --as-landed run reads the layer again
@@ -1615,12 +1634,14 @@ def _extract_and_load(
     progress: Callable[..., dict[str, list[dict]] | None] = lambda loaded=frozenset(): None,
     log: list[dict] | None = None,
     spool: Path | None = None,
+    normalize_workers: int = 1,
 ) -> None:
     """run_pipeline's extract, checks, load and run log; ExtractRefused, after logging, when either check fails.
 
     `progress` is _run()'s: what PROGRESS_TABLE holds after this run, given
     the resources that loaded, which every run log written here carries.
-    `spool` is where an isolating lane's rows wait (Spool)."""
+    `spool` is where an isolating lane's rows wait (Spool), and
+    `normalize_workers` dlt's normalize processes (MONTHLY_NORMALIZE_WORKERS)."""
     # A LEG, AND THE MONTHLY LANE, ISOLATE EACH UPSTREAM (isolates()), so one
     # club's failure does not hold back another club's closures, or its month.
     # Every resource is read first (read_each), and one whose read fails, runs
@@ -1664,7 +1685,7 @@ def _extract_and_load(
                 # What ran: a lane's every non-FRESH resource, a leg's less those read_each() left out.
                 as_landed.close(to_run)
             with timed(report, "normalize"):
-                pipeline.normalize(workers=NORMALIZE_WORKERS.get(lane, 1))
+                pipeline.normalize(workers=normalize_workers)
         except PipelineStepFailed as failure:
             # On a leg, a table dlt's schema contract refuses is left out like one the run check refuses.
             breach = contract_breach(failure) if read is not None else None
@@ -1860,6 +1881,12 @@ def main(argv: list[str] | None = None) -> RunReport:
         help="also read the other lanes' resources this lane's dbt nodes read (ALSO_READS); never in fixture mode",
     )
     parser.add_argument(
+        "--normalize-workers",
+        type=int,
+        default=1,
+        help=f"dlt's normalize processes (refresh-reference.yml passes {MONTHLY_NORMALIZE_WORKERS}, MONTHLY_NORMALIZE_WORKERS)",
+    )
+    parser.add_argument(
         "--report-json", type=Path, help="write the run's id, outcome and counts here, refused or not (refresh-reference.yml)"
     )
     args = parser.parse_args(argv)
@@ -1883,6 +1910,7 @@ def main(argv: list[str] | None = None) -> RunReport:
                 read_seconds=args.read_seconds,
                 as_landed=args.as_landed,
                 cross_lane=args.cross_lane_inputs,
+                normalize_workers=args.normalize_workers,
             )
         except ExtractRefused as refused:
             if args.report_json:

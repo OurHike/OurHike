@@ -81,7 +81,7 @@ jobs:
     # around"). 120 left 12 minutes, so the limit was 180. Decision 54's
     # layers took run 37182708502's extract step (run 13) to 161.5 min, about
     # 50 of it reading one layer at a time and about 103 normalizing in one
-    # process (extract/_run.py's NORMALIZE_WORKERS). The reads now run four
+    # process (extract/_run.py's MONTHLY_NORMALIZE_WORKERS). The reads now run four
     # folders at a time and normalize on four processes, which is unmeasured,
     # and each request ArcGIS Online throttles may wait 450 s (lib/arcgis.py's
     # THROTTLE_WAITS_SECONDS). 240 keeps run 13's figure with 78 minutes to
@@ -165,7 +165,7 @@ jobs:
           set +e
           "$RUNNER_TEMP/extract/bin/python" -m extract._run --lane monthly \
             --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" \
-            --as-landed --cross-lane-inputs \
+            --as-landed --cross-lane-inputs --normalize-workers 4 \
             --report-json "$RUNNER_TEMP/extract_run.json" --summary "$GITHUB_STEP_SUMMARY"
           status=$?
           set -e

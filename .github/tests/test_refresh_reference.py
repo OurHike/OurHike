@@ -137,6 +137,8 @@ def test_the_extract_runs_the_monthly_lane_with_its_as_landed_copy_and_cross_lan
 
     assert "-m extract._run --lane monthly" in runs
     assert "--as-landed" in runs and "--cross-lane-inputs" in runs and "--report-json" in runs
+    # Only this run normalizes on several processes; fixture mode and the tests keep one (_run.py says why).
+    assert "--normalize-workers 4" in runs
 
 
 def test_a_layer_refused_on_its_own_lets_the_build_run_and_the_last_job_go_red(workflow):

@@ -133,7 +133,8 @@ export async function fetchPublished<T>(
     | 'work_projects'
     | 'disputes'
     | 'nynjtc_alerts'
-    | 'notices',
+    | 'notices'
+    | 'states',
   signal?: AbortSignal,
   options: PublishedReadOptions = {},
 ): Promise<PublishedConditions<T> | null> {
@@ -180,7 +181,8 @@ async function recalled<T>(
     | 'work_projects'
     | 'disputes'
     | 'nynjtc_alerts'
-    | 'notices',
+    | 'notices'
+    | 'states',
 ): Promise<PublishedConditions<T> | null> {
   const cached = await recallPublished(key)
   if (cached === null) return null
@@ -204,7 +206,8 @@ function parsePublished<T>(
     | 'work_projects'
     | 'disputes'
     | 'nynjtc_alerts'
-    | 'notices',
+    | 'notices'
+    | 'states',
 ): PublishedConditions<T> | null {
   if (typeof document?.generated_at !== 'string') return null
   const items = document[field]
@@ -364,6 +367,21 @@ export type NoticePlace =
  *  downloaded trail crosses it, and never a closure. */
 export type NoticeHazard = 'hunting' | 'shooting' | 'burned_area'
 
+/** One state of conditions/notice_states.json (decision 76), as
+ *  pipeline/dbt's pub_conditions_notice_states writes it: the shape of a
+ *  state a state-wide notice names, simplified for a phone, and how far
+ *  inside it a route has to be before it counts as in the state. Never
+ *  drawn. */
+export interface NoticeStateArea {
+  /** The two-letter USPS code a notice's `states` names it by. */
+  state: string
+  /** The state's name, as the Census Bureau spells it ("Utah"). */
+  name: string
+  /** A route vertex nearer the shape's edge than this counts for no state. */
+  edge_margin_m: number
+  geometry: NoticeGeometryValue
+}
+
 /**
  * One notice from an organization that is not the ATC, exactly as
  * `pipeline/export_nynjtc_alerts.py` writes it.
@@ -411,6 +429,15 @@ export interface OrgNotice {
    *  notice to a planned hike only where it is placed; null or absent keeps
    *  the older rule, which matches it by provider. */
   steward_kind?: 'club' | 'agency' | null
+  /** Decision 76: the two-letter codes of the states an agency's state-wide
+   *  notice speaks for (pipeline/dbt/seeds/notice_states.csv), absent on
+   *  every other row. */
+  states?: string[]
+  /** Those states' shapes, attached on the phone by lib/publishedNotices.ts
+   *  from conditions/notice_states.json - never a field of notices.json. A
+   *  state with no shape this phone holds is left out, so its notice shows
+   *  to no hike there (lib/plannedNotices.ts). */
+  state_areas?: NoticeStateArea[]
   /** Decision 67's kind of area, or null for an ordinary notice. */
   hazard?: NoticeHazard | null
   /** The notice's own start and end days, ISO, where the club states them. */

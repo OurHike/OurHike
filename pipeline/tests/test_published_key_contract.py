@@ -60,6 +60,9 @@ from lib.r2_keys import validate_key
 CLIENT_SRC = Path(__file__).resolve().parents[2] / "client" / "src"
 CONFIG = CLIENT_SRC / "lib" / "config.ts"
 PUBLISHED_CONDITIONS = CLIENT_SRC / "lib" / "publishedConditions.ts"
+#: The conditions/notices.json reader, behind import() for the launch budget, which declares the key of the file it
+#: reads beside that one: conditions/notice_states.json (decision 76).
+PUBLISHED_NOTICES = CLIENT_SRC / "lib" / "publishedNotices.ts"
 HIKING_DETAIL = CLIENT_SRC / "lib" / "hikingDetail.ts"
 PACKAGES = CLIENT_SRC / "lib" / "packages.ts"
 MAP_SHEETS = CLIENT_SRC / "lib" / "mapSheets.ts"
@@ -72,7 +75,7 @@ DBT_PUBLISH = Path(__file__).resolve().parents[1] / "dbt" / "models" / "publish"
 # suite, and a narrow list is only honest while it is complete. Add a client
 # file to this module and it belongs here in the same edit - the scope test is
 # what makes forgetting a failure rather than a silent hole.
-CLIENT_FILES_READ = (CONFIG, PUBLISHED_CONDITIONS, HIKING_DETAIL, PACKAGES, MAP_SHEETS, PODCASTS)
+CLIENT_FILES_READ = (CONFIG, PUBLISHED_CONDITIONS, PUBLISHED_NOTICES, HIKING_DETAIL, PACKAGES, MAP_SHEETS, PODCASTS)
 
 
 def _read(path: Path) -> str:
@@ -158,7 +161,13 @@ def client_conditions_keys() -> dict[str, str]:
         "pattern here rather than leaving this matching nothing - an empty census "
         "passes silently, which is the failure this file exists to prevent."
     )
-    return {key: f"publishedConditions.ts {name}" for name, key in found}
+    keys = {key: f"publishedConditions.ts {name}" for name, key in found}
+    # publishedNotices.ts, which the conditions hook loads behind import(), declares the one key it reads beside
+    # conditions/notices.json there rather than here, so that it adds no launch byte (decision 76).
+    lazy = re.findall(r"export const (PUBLISHED_\w+_KEY) = '(conditions/[^']+)'", _read(PUBLISHED_NOTICES))
+    assert lazy, "publishedNotices.ts declares no `PUBLISHED_..._KEY = 'conditions/...'`; fix the pattern here"
+    keys.update({key: f"publishedNotices.ts {name}" for name, key in lazy})
+    return keys
 
 
 def client_background_archives() -> dict[str, str]:
@@ -514,7 +523,9 @@ def dbt_exposure_keys() -> set[str]:
 #: (#1805, decision 53 phase D) is: lib/useConditions.ts keeps the panel on
 #: atc_updates.json and nynjtc_alerts.json while it is absent. Named rather
 #: than derived, so a second dbt-only key is a decision somebody writes here.
-DBT_ONLY_CLIENT_KEYS = {"conditions/notices.json"}
+#: conditions/notice_states.json (decision 76) is too: lib/publishedNotices.ts reads a 404 as no states' shapes, and
+#: the planned-hike panel then shows no state-wide notice, as decision 68 left them.
+DBT_ONLY_CLIENT_KEYS = {"conditions/notices.json", "conditions/notice_states.json"}
 
 
 def test_every_key_the_app_fetches_is_a_key_the_pipeline_publishes(published):

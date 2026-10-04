@@ -5,8 +5,10 @@
 // club conditions/notices.json carries - and with 129 clubs a list of
 // everything is the feed features/ORG_NOTICES.md §9 warns about. So the list
 // is the maintainer's rule, lib/plannedNotices.ts's: per planned hike, the
-// placed notices that meet its route, then the unplaced ones from the clubs
-// that maintain its trails. Nothing else.
+// placed notices that meet its route, then an agency's state-wide ones for a
+// state the route is in on that agency's trails (decision 76, each saying
+// "All of Utah"), then the unplaced ones from the clubs that maintain its
+// trails. Nothing else.
 //
 // THE EMPTY STATE SAYS WHY, and offers nothing in its place. With no hike
 // planned in the window there is no route to touch, and the honest answer is
@@ -57,6 +59,15 @@ function tag(notice: TrailNotice): { text: string; warn: boolean } {
   return { text: 'Notice', warn: false }
 }
 
+/** "All of Utah", "All of Oregon and Washington": where a state-wide notice
+ *  applies (decision 76), from the shapes the phone matched it by, or ''. */
+function allOf(notice: TrailNotice): string {
+  const names = (notice.state_areas ?? []).map((area) => area.name)
+  if (names.length === 0) return ''
+  const last = names[names.length - 1]
+  return `All of ${names.length === 1 ? last : `${names.slice(0, -1).join(', ')} and ${last}`}`
+}
+
 function Row({ notice, org }: { notice: TrailNotice; org: string }) {
   const { text, warn } = tag(notice)
   const updatedAt = noticeUpdatedAt(notice)
@@ -70,7 +81,9 @@ function Row({ notice, org }: { notice: TrailNotice; org: string }) {
   ]
     .filter(Boolean)
     .join(' ')
-  const where = [notice.locality, own].filter((part) => part !== '' && part !== null)
+  const where = [allOf(notice), notice.locality, own].filter(
+    (part) => part !== '' && part !== null,
+  )
 
   return (
     <li className="atc-notices__item">
@@ -118,8 +131,8 @@ function Hike({
   hike: PlannedHikeNotices
   orgOf: (notice: TrailNotice) => string
 }) {
-  const { stretch, onRoute, fromClubs } = hike
-  const count = onRoute.length + fromClubs.length
+  const { stretch, onRoute, fromClubs, stateWide } = hike
+  const count = onRoute.length + stateWide.length + fromClubs.length
   return (
     <section className="planned-notices__hike" aria-label={stretch.label}>
       <h3 className="planned-notices__hike-title">
@@ -148,6 +161,13 @@ function Hike({
           {onRoute.length > 0 && (
             <ul className="atc-notices__list" aria-label="On your route">
               {onRoute.map((notice) => (
+                <Row key={notice.notice_id} notice={notice} org={orgOf(notice)} />
+              ))}
+            </ul>
+          )}
+          {stateWide.length > 0 && (
+            <ul className="atc-notices__list" aria-label="For the whole state">
+              {stateWide.map((notice) => (
                 <Row key={notice.notice_id} notice={notice} org={orgOf(notice)} />
               ))}
             </ul>

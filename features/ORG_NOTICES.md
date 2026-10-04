@@ -69,6 +69,7 @@ location into one place:
 | `source_url` | link back to the org's page | unchanged |
 | `review_state` | `reviewed` \| `unreviewed` | unchanged |
 | `steward_kind` | `club` \| `agency`, from `trail_orgs.json`'s `type` (`pipeline/generate_notice_models.py`'s `CLUB_TYPES`); the planned-hike panel shows an agency's notice only where it is placed on or near the route (decision 66, "clubs only", 2026-10-04) | new |
+| `states` | on a state-wide agency notice's rows only (`pipeline/dbt/seeds/notice_states.csv`: BLM's 12 state fire-restriction pages and CT DEEP's parks emergency message on 2026-10-04), the two-letter codes of the states it speaks for; the panel shows it to a hike planned inside one of them, more than the shape's margin from its edge, that walks that agency's trails, reading the shapes from `conditions/notice_states.json`, which is never drawn (decision 76, 2026-10-04) | new |
 
 **`notice_id` is namespaced by the source key rather than by a short org name**, because
 the registry key is the thing that already exists, is unique, and is what

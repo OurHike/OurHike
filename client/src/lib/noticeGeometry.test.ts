@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   geometryParts,
   inPolygon,
+  insideByMoreThan,
   linesMeetGeometry,
   positionMeetsParts,
   type Position,
@@ -150,5 +151,43 @@ describe('inPolygon', () => {
     const polygon = geometryParts(SQUARE).polygons[0]
     expect(inPolygon([-74.005, 41.005], polygon)).toBe(true)
     expect(inPolygon([-74.02, 41.005], polygon)).toBe(false)
+  })
+})
+
+describe('insideByMoreThan', () => {
+  // SQUARE is 0.01 degrees a side: about 840 m east to west and 1,105 m north
+  // to south at 41 N, so its middle is about 420 m from its nearest edge.
+  const parts = geometryParts(SQUARE)
+
+  it('holds a place deep inside, and not one within the margin of an edge', () => {
+    expect(insideByMoreThan([-74.005, 41.005], parts, 300)).toBe(true)
+    expect(insideByMoreThan([-74.005, 41.005], parts, 500)).toBe(false)
+    // 0.001 degrees inside the east edge: about 84 m.
+    expect(insideByMoreThan([-74.001, 41.005], parts, 50)).toBe(true)
+    expect(insideByMoreThan([-74.001, 41.005], parts, 100)).toBe(false)
+  })
+
+  it('never holds a place outside the shape, however far from its edge', () => {
+    expect(insideByMoreThan([-74.5, 41.005], parts, 0)).toBe(false)
+  })
+
+  it('measures a hole’s edge too, and holds nothing inside the hole', () => {
+    const holed = geometryParts({
+      type: 'Polygon',
+      coordinates: [
+        SQUARE.coordinates[0],
+        [
+          [-74.006, 41.004],
+          [-74.004, 41.004],
+          [-74.004, 41.006],
+          [-74.006, 41.006],
+          [-74.006, 41.004],
+        ],
+      ],
+    })
+    expect(insideByMoreThan([-74.005, 41.005], holed, 0)).toBe(false)
+    // Between the hole and the west edge: about 252 m from the shell, 84 m from the hole.
+    expect(insideByMoreThan([-74.007, 41.005], holed, 50)).toBe(true)
+    expect(insideByMoreThan([-74.007, 41.005], holed, 100)).toBe(false)
   })
 })

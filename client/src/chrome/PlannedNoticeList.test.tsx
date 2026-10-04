@@ -76,6 +76,7 @@ describe('PlannedNoticeList', () => {
         {
           stretch: STRETCH,
           onRoute: [notice({ notice_id: 'gmc:closure', obstructs_trail: true })],
+          stateWide: [],
           fromClubs: [
             notice({
               notice_id: 'gmc:spring',
@@ -132,6 +133,7 @@ describe('PlannedNoticeList', () => {
           onRoute: [
             notice({ notice_id: 'iata:1', hazard: 'hunting', title: 'Fixture parcel' }),
           ],
+          stateWide: [],
           fromClubs: [],
         },
       ],
@@ -149,6 +151,7 @@ describe('PlannedNoticeList', () => {
         {
           stretch: STRETCH,
           onRoute: [],
+          stateWide: [],
           fromClubs: [
             notice({ notice_id: 'gmc:held', carried_since: '2026-10-03T08:00:00Z' }),
           ],
@@ -162,6 +165,40 @@ describe('PlannedNoticeList', () => {
     ).toBeTruthy()
   })
 
+  it('names a state-wide notice’s states as “All of”, tagged Notice and never Advisory (decision 76)', () => {
+    const area = (state: string, name: string) => ({
+      state,
+      name,
+      edge_margin_m: 500,
+      geometry: { type: 'Polygon', coordinates: [] },
+    })
+    renderList({
+      empty: null,
+      undated: 0,
+      hikes: [
+        {
+          stretch: { ...STRETCH, kind: 'day_hike', label: 'Fixture canyon loop' },
+          onRoute: [],
+          stateWide: [
+            notice({
+              notice_id: 'agency:fire',
+              title: 'Fixture fire restrictions',
+              steward_kind: 'agency',
+              states: ['OR', 'WA'],
+              state_areas: [area('OR', 'Oregon'), area('WA', 'Washington')],
+            }),
+          ],
+          fromClubs: [],
+        },
+      ],
+    })
+    const list = screen.getByRole('list', { name: 'For the whole state' })
+    expect(within(list).getByText('Fixture fire restrictions')).toBeTruthy()
+    expect(within(list).getByText('All of Oregon and Washington')).toBeTruthy()
+    expect(within(list).getByText('Notice')).toBeTruthy()
+    expect(within(list).queryByText('Advisory')).toBeNull()
+  })
+
   it('says a day hike was matched to its taps when the network is not on the phone', () => {
     renderList({
       empty: null,
@@ -170,6 +207,7 @@ describe('PlannedNoticeList', () => {
         {
           stretch: { ...STRETCH, kind: 'day_hike', routeResolved: false, label: 'Loop' },
           onRoute: [],
+          stateWide: [],
           fromClubs: [],
         },
       ],

@@ -1,7 +1,8 @@
-// Fixtures for planned-hike-notices.mjs (#1805, decision 66 and 67): a long
-// hike and a day hike planned in the next 7 days, a conditions/notices.json
-// holding notices that touch them and notices that do not, and the steward
-// list that names each organization.
+// Fixtures for planned-hike-notices.mjs (#1805, decisions 66, 67 and 76): a
+// long hike and two day hikes planned in the next 7 days, a
+// conditions/notices.json holding notices that touch them and notices that do
+// not, the conditions/notice_states.json a state-wide notice is placed by, and
+// the steward list that names each organization.
 //
 // NOBODY'S DATA, AND NO ORGANIZATION'S REAL NOTICE. Every notice here is
 // invented and its title says "(example)": a shot on every future pull
@@ -19,8 +20,16 @@
 //  - the day hike (Pine Meadow loop, in two days) with the hunting area its
 //    route crosses, as an Advisory, and NYNJTC's unplaced notice, because the
 //    loop walks the Long Path NYNJTC maintains;
+//  - an invented day hike on BLM's trails in Utah (Canyon rim loop, today)
+//    with BLM's invented state-wide Utah notice, its where line reading "All
+//    of Utah" (decision 76): an agency's unplaced notice placed by its state;
 //  - and NOT the far club's notice or the shooting site 2 degrees away: a
 //    notice that touches no planned hike is not in the panel.
+//
+// THE STATE'S SHAPE IS A BOX, not Utah's: the panel never draws it, and a
+// fixture holds no upstream's data (CONTRIBUTING.md, "Data does not go in
+// commits"). Its edge is a degree and more from the invented hike, well past
+// the 500 m margin the rule holds a route to.
 //
 // Not a recipe: shared fixtures live one directory down, where the runner's
 // recipe glob does not reach (fixtures/suggestedHikes.mjs explains).
@@ -50,6 +59,20 @@ export function plannedNoticeStewards() {
     return steward
   })
   stewards.push({
+    provider: 'BLM',
+    name: 'Bureau of Land Management',
+    trust: 'authoritative',
+    licence: null,
+    attribution: null,
+    terms: null,
+    terms_source: null,
+    layers: ['BLM trails', 'BLM Utah fire restrictions'],
+    keys: ['blm_trails', 'blm_fire_restrictions_utah', 'blm_shooting_points'],
+    support: null,
+    store: null,
+    steward_id: 'org:blm',
+  })
+  stewards.push({
     provider: 'NYS OPRHP',
     name: 'New York State Office of Parks, Recreation and Historic Preservation',
     trust: 'authoritative',
@@ -66,11 +89,41 @@ export function plannedNoticeStewards() {
   return { stewards }
 }
 
-/** The Pine Meadow loop, planned two days from today. */
+/** An invented day hike on BLM's trails in Utah, planned for today: two
+ *  taps a few miles apart, nobody's route and nobody's location fix. */
+const CANYON_RIM_LOOP = {
+  id: 'preview-fixture-blm',
+  name: 'Canyon rim loop (example)',
+  segments: [
+    [
+      { coord: [-109.4, 38.7], poiId: null },
+      { coord: [-109.36, 38.72], poiId: null },
+    ],
+  ],
+  figures: {
+    miles: 5.2,
+    legs: [
+      {
+        name: 'Canyon Rim Trail (example)',
+        source: 'blm_trails',
+        blaze_color: null,
+        miles: 5.2,
+      },
+    ],
+  },
+  looped: true,
+  recorded: 'planned',
+}
+
+/** The Pine Meadow loop, planned two days from today, and the Canyon rim
+ *  loop, today. */
 export function plannedDayHikes() {
   return {
     ...DAY_HIKES,
-    hikes: DAY_HIKES.hikes.map((hike) => ({ ...hike, date: localDay(2) })),
+    hikes: [
+      ...DAY_HIKES.hikes.map((hike) => ({ ...hike, date: localDay(2) })),
+      { ...CANYON_RIM_LOOP, date: localDay(0) },
+    ],
   }
 }
 
@@ -149,6 +202,18 @@ export function noticesDocument() {
         source_url: 'https://www.nynjtc.org/trail-alerts/',
       }),
       row({
+        notice_id: 'blm_fire_restrictions_utah:example',
+        source_key: 'blm_fire_restrictions_utah',
+        club: 'blm',
+        provider: 'BLM',
+        steward_kind: 'agency',
+        title: 'Stage 1 fire restrictions on BLM land in Utah (example)',
+        place: { kind: 'unplaced' },
+        states: ['UT'],
+        source_url:
+          'https://www.blm.gov/programs/fire/regional-info/utah/fire-restrictions',
+      }),
+      row({
         notice_id: 'faraway_trail_club:example',
         source_key: 'faraway_trail_club',
         club: 'faraway',
@@ -172,9 +237,36 @@ export function noticesDocument() {
   }
 }
 
+/** conditions/notice_states.json, in the shape pub_conditions_notice_states
+ *  writes: one invented box standing in for Utah (the header says why). */
+export function noticeStatesDocument() {
+  return {
+    generated_at: '2026-10-01T06:00:00Z',
+    states: [
+      {
+        state: 'UT',
+        name: 'Utah',
+        edge_margin_m: 500,
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [-114, 37],
+              [-109, 37],
+              [-109, 42],
+              [-114, 42],
+              [-114, 37],
+            ],
+          ],
+        },
+      },
+    ],
+  }
+}
+
 /**
- * Answer conditions/notices.json and stewards.json on the wire, before the
- * app loads. A pattern on the key and not the whole URL, because the bucket
+ * Answer conditions/notices.json and conditions/notice_states.json on the
+ * wire, before the app loads. A pattern on the key and not the whole URL, because the bucket
  * and the environment folder in front of it are the build's business.
  *
  * @param {import('@playwright/test').Page} page
@@ -185,6 +277,13 @@ export async function routePlannedNotices(page) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify(noticesDocument()),
+    }),
+  )
+  await page.route(/\/conditions\/notice_states\.json(\?|$)/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(noticeStatesDocument()),
     }),
   )
 }

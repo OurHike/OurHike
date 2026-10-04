@@ -122,7 +122,12 @@ def test_no_pub_writer_reads_a_club_notice_model_except_through_the_marts():
     """int_warnings__wording_leaks reads the finals, so a writer that read a club notice model directly would go unchecked."""
     generated = {source.stg_model for source in generator.notice_sources() if not source.hand_staged}
     generated |= {source.base_model for source in generator.notice_sources() if not source.hand_staged}
-    generated |= {"int_closures__club_notices", "int_closures__club_notices_unioned", "int_closures__window_carried"}
+    generated |= {
+        "int_closures__club_notices",
+        "int_closures__club_notices_unioned",
+        "int_closures__window_carried",
+        "int_closures__held_carried",
+    }
     for path in (DBT / "models" / "publish").glob("pub_*.sql"):
         refs = set(re.findall(r"ref\('([a-z0-9_]+)'", path.read_text()))
         assert not refs & generated, f"{path.name} reads {sorted(refs & generated)}"

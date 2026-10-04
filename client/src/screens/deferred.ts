@@ -288,6 +288,32 @@ export const LineSheet = screen(
   () => import('../chrome/LineSheet').then((m) => m.LineSheet),
   'LineSheet',
 )
+// Decision 66's planned-hike panel and decision 67's area card (#1805), each
+// opened by a tap and rendered by chrome/noticesPanel.tsx only then - so the
+// first frame parses neither, for the reason the list above them is here.
+// The A.T. band's sheet and the workday pin's joined them in the same
+// change, to pay for them: the two panels' hook grew the closure to 245,851
+// bytes against the 245,760-byte line, measured 2026-10-04 by
+// check-build-output.mjs, and OrgNoticeSheet (1,364 raw bytes) and
+// WorkdaySheet (1,248) are two sheets only a tap on a map mark opens. The
+// band's alone left 187 bytes of room locally, under the ~400 a CI build
+// runs larger (the report window's note above).
+export const PlannedNoticeList = screen(
+  () => import('../chrome/PlannedNoticeList').then((m) => m.PlannedNoticeList),
+  'PlannedNoticeList',
+)
+export const HazardAreaSheet = screen(
+  () => import('../chrome/HazardAreaSheet').then((m) => m.HazardAreaSheet),
+  'HazardAreaSheet',
+)
+export const OrgNoticeSheet = screen(
+  () => import('../chrome/OrgNoticeSheet').then((m) => m.OrgNoticeSheet),
+  'OrgNoticeSheet',
+)
+export const WorkdaySheet = screen(
+  () => import('../chrome/WorkdaySheet').then((m) => m.WorkdaySheet),
+  'WorkdaySheet',
+)
 
 /**
  * Every deferred screen's module, ahead of any tap.

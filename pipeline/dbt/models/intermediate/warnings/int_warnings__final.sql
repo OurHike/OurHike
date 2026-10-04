@@ -25,6 +25,11 @@
 --
 -- REBUILT WHOLE EACH RUN, as int_closures__final is, so a lifted notice
 -- leaves both, and both marts, in the same run.
+--
+-- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS, as
+-- int_closures__final says (int_closures__held_carried, decision 53's phase
+-- D). A closures-type club notice that does not close the trail lands here
+-- with its own geometry, as a warnings-type one does, so a phone can place it.
 with notices as (
     select * from {{ ref('int_closures__unioned') }}
 ),
@@ -62,9 +67,12 @@ org_notices as (
         notices.trail_id,
         notices.mile_start,
         notices.mile_end,
+        notices.starts_on,
+        notices.ends_on,
         notices.source_edited_at,
         notices.updated_at,
         notices.source_url,
+        notices.geom_geojson,
         notices.list_position,
         notices.closure_uuid,
         notices.reported_at,
@@ -80,7 +88,8 @@ org_notices as (
         notices.start_lon,
         notices.end_lat,
         notices.end_lon,
-        notices.source_row_key
+        notices.source_row_key,
+        cast(null as timestamptz) as carried_since
     from notices
     inner join gate on notices.source_key = gate.source_key
     inner join publication on notices.source_key = publication.source_key
@@ -116,6 +125,39 @@ carried as (
     where carried.mart = 'warnings' and publication.may_publish
 ),
 
+-- A notice source the gate holds keeps its last good rows
+-- (int_closures__held_carried says which, and from when).
+held_carried as (
+    select
+        held_carried.notice_id as warning_id,
+        'org_notice' as warning_kind,
+        held_carried.club,
+        held_carried.source_key,
+        held_carried._loaded_at,
+        held_carried.notice_kind,
+        held_carried.obstructs_trail,
+        held_carried.review_state,
+        held_carried.atc_id,
+        held_carried.title,
+        held_carried.category,
+        held_carried.states,
+        held_carried.locality,
+        held_carried.trail_id,
+        held_carried.mile_start,
+        held_carried.mile_end,
+        held_carried.starts_on,
+        held_carried.ends_on,
+        held_carried.source_edited_at,
+        held_carried.updated_at,
+        held_carried.source_url,
+        held_carried.list_position,
+        held_carried.geom_geojson,
+        held_carried.source_row_key,
+        held_carried.carried_since
+    from {{ ref('int_closures__held_carried') }} as held_carried
+    where held_carried.mart = 'warnings'
+),
+
 club_warnings as (
     select
         others.notice_id as warning_id,
@@ -132,6 +174,8 @@ club_warnings as (
         others.title,
         others.category,
         others.locality,
+        others.starts_on,
+        others.ends_on,
         others.source_edited_at,
         others.updated_at,
         others.source_url,
@@ -220,3 +264,7 @@ select * from club_warnings
 union all by name
 
 select * from carried
+
+union all by name
+
+select * from held_carried

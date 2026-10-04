@@ -90,8 +90,16 @@ This is the design's one genuinely new idea, and the arm that matters most is th
 ```
 { "kind": "at_miles",  "start": 476.6, "end": 485.8 }              ATC — ships today
 { "kind": "org_terms", "terms": ["trail:brook-trail", …] }         NYNJTC — §4
+{ "kind": "geometry", "geometry": { "type": "Polygon", … } }        the source's own shape
 { "kind": "unplaced" }                                             honest, and common
 ```
+
+**The `geometry` arm** arrived with `conditions/notices.json` (**#1805 — dlt → dbt
+re-platform as one go/no-go change**, decision 53 phase D): a notice whose source
+publishes its own polygon, line or point carries it, simplified for a phone at 10 m
+(`pipeline/dbt/models/publish/pub_conditions_notices.sql` says why that tolerance). It
+is the source's shape and nothing derived from it, so it keeps the rule below. The two
+older files never carry it.
 
 **ATC's rows become `at_miles` and nothing about their behaviour changes.** That arm is
 the existing mechanism, named. The migration is mechanical and the client's mile
@@ -278,3 +286,13 @@ header line. A second org could reach a hiker through those alone, in the honest
   becomes a feed. Two lanes is today's design; the survey found four orgs that publish.
 - **Whether `unplaced` notices need a locality filter** so a hiker in Georgia is not shown
   a Catskills advisory. The `locality` field exists for this and nothing reads it yet.
+  **Answered by decision 66** (the maintainer, by poll, 2026-10-04: *"Every notice that
+  touches a planned hike in the next 7 days. for a long hike get everything along the
+  planned hike in the next 7"*), and not with `locality`: once `conditions/notices.json`
+  is on the phone the panel shows only the notices that touch a hike planned in the next
+  seven days, and an unplaced notice touches a hike when the club that posted it
+  maintains a trail the route uses (`client/src/lib/plannedNotices.ts` says how that is
+  read from stewards.json and the A.T.'s club sections). With no hike planned in the
+  window the panel says so and shows nothing — never every club. **One weakness this
+  leaves**: an agency is one provider, so a route on a USFS trail is shown every unplaced
+  USFS notice, wherever it is. `locality` would narrow that and still is not read.

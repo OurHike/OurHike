@@ -30,6 +30,7 @@ import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend } from './Legend'
+import type { HazardArea } from '../lib/hazardAreas'
 import { InViewSheet } from './InViewSheet'
 import { useDesktop } from '../lib/useDesktop'
 import type { HikerMode } from '../lib/hikerMode'
@@ -267,6 +268,16 @@ export interface MapScreenProps {
    *  reason `selectedPoi` is: the map draws bands, and the app is what knows
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
+  /**
+   * Decision 67's hunting areas, shooting sites and burned areas a trail on
+   * this phone runs through (#1805, lib/hazardAreas.ts). Drawn under the
+   * trail and never as a closure.
+   */
+  hazardAreas?: readonly HazardArea[]
+  /** A hazard area was tapped, and nothing drawn over it, by notice id. */
+  onSelectHazardArea?: (noticeId: string) => void
+  /** The tapped area's card, or null - the atcUpdateSheet pattern. */
+  hazardAreaSheet?: ReactNode
   /** The closure tape was tapped, by closure id (#1373, F12), and the sheet
    *  the shell renders for it - the atcUpdateSheet pattern, on the mark
    *  #245 drew and left for a tap. */
@@ -400,6 +411,15 @@ export interface MapScreenProps {
   onOpenNotices?: () => void
   /** The full list of notices, or null when it is closed. */
   noticeList?: ReactNode
+  /**
+   * The Legend row's words when the list is the planned-hike panel (#1805,
+   * decision 66), or undefined for today's "Read all N trail notices".
+   *
+   * Set, the row shows whatever `noticeCount` says - zero included - because
+   * the panel's honest empty state ("no hike planned in the next 7 days") is
+   * something a hiker has to be able to open and read.
+   */
+  noticeRowLabel?: string
   /**
    * How many notices this screen is holding that their publisher touched in
    * the last 72 hours and the hiker has not already silenced (lib/notices.ts,
@@ -918,6 +938,9 @@ export function MapScreen({
   onChangeWorkdayWindow,
   disputes,
   atcUpdateSheet,
+  hazardAreas,
+  onSelectHazardArea,
+  hazardAreaSheet,
   onSelectClosure,
   closureSheet,
   onSelectWarning,
@@ -944,6 +967,7 @@ export function MapScreen({
   noticeCount = 0,
   onOpenNotices,
   noticeList,
+  noticeRowLabel,
   newNoticeCount = 0,
   newNoticeLabel,
   trailDataUpdate,
@@ -1670,6 +1694,8 @@ export function MapScreen({
               atcUpdates={atcUpdates}
               atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
+              hazardAreas={hazardAreas}
+              onSelectHazardArea={onSelectHazardArea}
               onSelectClosure={onSelectClosure}
               onSelectWarning={onSelectWarning}
               workdays={workdays}
@@ -1795,6 +1821,9 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
+            {/* Decision 67's area card (#1805), in the same slot: an area
+                anchors to no single point on the canvas either. */}
+            {hazardAreaSheet}
             {/* The two safety sheets (#1373, F12), in the same slot family:
                 a stretch of tape and a pin, neither anchored to a card. */}
             {closureSheet}
@@ -1949,6 +1978,7 @@ export function MapScreen({
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}
             noticeCount={noticeCount}
+            noticeRowLabel={noticeRowLabel}
             newNoticeCount={newNoticeCount}
             onOpenNotices={onOpenNotices}
           />

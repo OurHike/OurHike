@@ -31,7 +31,9 @@ with closures_history as (
     select
         'closures' as mart,
         closure_id as notice_id,
-        * exclude (closure_id, history_row_key, dbt_scd_id, dbt_valid_to)
+        * exclude (
+            closure_id, history_row_key, dbt_scd_id, dbt_valid_to, row_json
+        )
     from {{ ref('stg_row_history__closures') }}
     where dbt_valid_to is null
 ),
@@ -41,7 +43,12 @@ warnings_history as (
         'warnings' as mart,
         warning_id as notice_id,
         * exclude (
-            warning_id, warning_kind, history_row_key, dbt_scd_id, dbt_valid_to
+            warning_id,
+            warning_kind,
+            history_row_key,
+            dbt_scd_id,
+            dbt_valid_to,
+            row_json
         )
     from {{ ref('stg_row_history__warnings') }}
     where dbt_valid_to is null and warning_kind = 'org_notice'

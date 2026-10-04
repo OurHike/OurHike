@@ -3471,11 +3471,73 @@ holds keeps its last good rows, with their own `checked_at`, and the rest publis
 `conditions/atc_updates.json` and `conditions/nynjtc_alerts.json` stay as they are,
 for parity and for phones already installed.
 
+**As built** (2026-10-04). `pub_conditions_notices` writes it, its header the rules
+in full: one `OrgNotice` per club notice in the `closures` and `warnings` marts (v1;
+a club notice is a row of a source `notice_readers` names), sorted by source and id.
+`place` is `at_miles` for ATC, `org_terms` for NYNJTC (its `trail:` and `park:` slugs,
+now kept by `int_closures__nynjtc_checked`), `geometry` where the source has its own
+(Douglas-Peucker at 10 m in EPSG:5070, 6 decimals, rings wound for RFC 7946), else
+`unplaced`. Each row carries `club`, `provider` (the registry's, what stewards.json
+groups by), `hazard`, the club's `starts_on` and `ends_on`, the club's `updated_at`
+(null where it gives none), `checked_at` (the run log's latest `loaded` or `skipped`
+read, the oldest across a source's tables), `first_seen_at` and `changed_at`, and
+`carried_since`. No body, ever (decision 55).
+
+A held club keeps its last good rows **in the marts**, not only in the file:
+`int_closures__held_carried` reads them back from the saved row history (decision 57)
+while `int_closures__gate` holds a source that may publish, stamped `carried_since`,
+and `checked_at` on them is the last confirmation before carrying began. A build
+without the row history has nothing to carry from, so while any such source is held
+the writer selects nothing and `meta.when_empty: keep_last_file` keeps the bucket's
+last file whole; `test_dbt_notice_tables_absent_builds.py` holds that it writes no
+file then. The exporters' path has no writer for this key, so it is published only by
+`publish.py` with `OURHIKE_PHONE_FILES=dbt` and is a 404 on production until the
+cutover; `test_published_key_contract.py` lists it as the one client key only dbt
+writes, and the client reads the two older files while it is absent.
+
+On the fixtures (invented rows, `make_dbt_fixtures.py`, measured 2026-10-04): 206 notices from 157 sources
+and 63 clubs, 125,886 bytes; 120 unplaced, 46 geometry, 38 at_miles, 2 org_terms; one
+shooting site and one burned area, and no hunting area, because every fixture hunting
+row carries a category the seed does not read as one.
+**`@unvalidated` live**: how big the file is on real data, and above all what the BAER
+and hunting polygons come to at 10 m; the first UA build's file says.
+
 ### Phase E: the phone
 
 The notices panel reads `notices.json`. With 129 clubs, which notices a hiker sees
 is a design decision (`ORG_NOTICES.md` §9's locality question), and it goes to the
 maintainer with a drawing before any code.
+
+**As built** (2026-10-04), to decisions 66 and 67 and the drawing chosen from
+(`decisions-64-67-mock.html` §3 and §4). `client/src/lib/useConditions.ts` fetches
+`conditions/notices.json` after the first frame; absent, the panel is exactly today's.
+Present, `lib/plannedNotices.ts` is the panel: each hike planned in the next seven
+days (a day hike dated in the window; the dated, unwalked days of a long hike that
+fall in it), and the notices that touch it. A placed notice touches a route within
+`NOTICE_REACH_FEET` (300 ft, `@unvalidated`, its comment says what would settle it);
+an unplaced one, or NYNJTC's `org_terms`, touches it when its club maintains a trail
+the route uses, read from the day hike's legs through stewards.json and, for a long
+hike, from ATC's club sections. No hike in the window shows an empty state that says
+why and how to change it, never every club's notices
+(`chrome/PlannedNoticeList.tsx`). Decision 67's areas draw under the trail
+(`map/hazardAreaLayers.ts`) only where a trail this phone holds crosses one, the tapped
+line's card carries the advisory for the stretch inside one, a tap on the area alone
+opens its own card (`chrome/HazardAreaSheet.tsx`), and none of them closes the trail.
+The rule and the geometry load behind `import()` when the file lands
+(`lib/noticeSelection.ts`), because the launch budget had 884 bytes of room.
+
+**Known weakness**: an agency is one provider, so a route on one USFS trail is shown
+every unplaced USFS notice; `locality` would narrow it and nothing reads it yet.
+
+**Decision 67's sources**: `oprhp_hunting_areas`, `iata_lands_hunting_regs`,
+`usace_garrison_hunting_restrictions`, `blm_shooting_points` and
+`usfs_baer_assessments` reach hikers (`sources.json`), each as a warning with a
+`hazard` from `seeds/notice_hazard_areas.csv`. A hunting layer's row is an area only
+when its own category is one that seed lists as allowing hunting (so IATA's "No
+hunting" is never drawn as a hunting area); a row with another category is held with
+that reason. `assert_a_hazard_area_never_closes_a_trail` holds that none is ever an
+obstruction. None of the four hunting layers carries season dates, so none is shown;
+the card says so rather than supplying one.
 
 ### Phase F: the hourly lane's budget
 

@@ -34,6 +34,7 @@ import type { NoteSummary } from './fieldNotes'
 import type { WorkProjectSummary } from './workProjects'
 import { DATA_CONFIGURED, dataUrl } from './config'
 import { recallPublished, rememberPublished } from './conditionsCache'
+import type { NoticeGeometryValue } from './noticeGeometry'
 
 /** The keys `pipeline/publish.py` uploads them under. Must match exactly: a
  *  key in that bucket is a URL deployed clients already request, and cannot be
@@ -46,6 +47,12 @@ export const PUBLISHED_NOTES_KEY = 'conditions/notes.json'
 export const PUBLISHED_DISPUTES_KEY = 'conditions/disputes.json'
 export const PUBLISHED_WORK_PROJECTS_KEY = 'conditions/work_projects.json'
 export const PUBLISHED_NYNJTC_ALERTS_KEY = 'conditions/nynjtc_alerts.json'
+/** Every club's notices in one file (#1805, decision 53 phase D): written by
+ *  pipeline/dbt's pub_conditions_notices on the dbt path only, so a bucket
+ *  the exporters still publish serves a 404 here and the app reads the two
+ *  files above instead (lib/useConditions.ts). Read by lib/publishedNotices.ts,
+ *  which the conditions hook imports only when it asks. */
+export const PUBLISHED_NOTICES_KEY = 'conditions/notices.json'
 
 export interface PublishedConditions<T> {
   /** When the bake ran. Rendered to the hiker; see lib/conditionState.ts. */
@@ -115,7 +122,7 @@ export interface PublishedReadOptions {
  * validating it by name means a reports document served where closures were
  * expected reads as "no usable baseline" rather than as an empty trail.
  */
-async function fetchPublished<T>(
+export async function fetchPublished<T>(
   key: string,
   field:
     | 'closures'
@@ -125,7 +132,8 @@ async function fetchPublished<T>(
     | 'notes'
     | 'work_projects'
     | 'disputes'
-    | 'nynjtc_alerts',
+    | 'nynjtc_alerts'
+    | 'notices',
   signal?: AbortSignal,
   options: PublishedReadOptions = {},
 ): Promise<PublishedConditions<T> | null> {
@@ -171,7 +179,8 @@ async function recalled<T>(
     | 'notes'
     | 'work_projects'
     | 'disputes'
-    | 'nynjtc_alerts',
+    | 'nynjtc_alerts'
+    | 'notices',
 ): Promise<PublishedConditions<T> | null> {
   const cached = await recallPublished(key)
   if (cached === null) return null
@@ -194,7 +203,8 @@ function parsePublished<T>(
     | 'notes'
     | 'work_projects'
     | 'disputes'
-    | 'nynjtc_alerts',
+    | 'nynjtc_alerts'
+    | 'notices',
 ): PublishedConditions<T> | null {
   if (typeof document?.generated_at !== 'string') return null
   const items = document[field]
@@ -344,7 +354,15 @@ export async function fetchPublishedAtcUpdates(
 export type NoticePlace =
   | { kind: 'at_miles'; start: number; end: number }
   | { kind: 'org_terms'; terms: string[] }
+  /** The source's own geometry, GeoJSON in lon/lat, simplified at 10 m for
+   *  a phone by pub_conditions_notices (#1805). Only conditions/notices.json
+   *  carries it. */
+  | { kind: 'geometry'; geometry: NoticeGeometryValue }
   | { kind: 'unplaced' }
+
+/** Decision 67's hazard areas: an area a hiker walks into, drawn where a
+ *  downloaded trail crosses it, and never a closure. */
+export type NoticeHazard = 'hunting' | 'shooting' | 'burned_area'
 
 /**
  * One notice from an organization that is not the ATC, exactly as
@@ -373,10 +391,36 @@ export interface OrgNotice {
   locality: string
   place: NoticePlace
   obstructs_trail: boolean
-  /** The ORG's own last-updated stamp, and the age a hiker cares about. */
-  updated_at: string
-  source_url: string
+  /** The ORG's own last-updated stamp, and the age a hiker cares about.
+   *  Null in conditions/notices.json where the club gives none, which
+   *  renders as no date - never as the day OurHike read it. */
+  updated_at: string | null
+  source_url: string | null
   review_state: 'reviewed' | 'unreviewed'
+
+  // ---- conditions/notices.json only (#1805, decision 53 phase D). Absent on
+  // the two older files' rows, and every reader treats absent as unknown.
+
+  /** The extract folder that landed it, `trail_orgs.json`'s slug. */
+  club?: string
+  /** The registry's provider for its source, the key stewards.json groups
+   *  by - how lib/plannedNotices.ts finds the club that posted it. */
+  provider?: string | null
+  /** Decision 67's kind of area, or null for an ordinary notice. */
+  hazard?: NoticeHazard | null
+  /** The notice's own start and end days, ISO, where the club states them. */
+  starts_on?: string | null
+  ends_on?: string | null
+  /** When OurHike last read the source and found this, ISO UTC: the run
+   *  log's latest read that loaded it or found it unchanged. */
+  checked_at?: string | null
+  /** When OurHike first saw the row, and when it last changed (decisions 52
+   *  and 57); null in a build without its row history. */
+  first_seen_at?: string | null
+  changed_at?: string | null
+  /** Set when OurHike could not use the source's latest read and kept its
+   *  last good rows instead: when that began. */
+  carried_since?: string | null
 }
 
 /**

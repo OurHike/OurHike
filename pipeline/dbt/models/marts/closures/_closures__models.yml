@@ -6,8 +6,10 @@ models:
       What blocks the trail, from every source that says so (decision 6):
       one row per organization notice, closed area or OurHike closure whose
       `obstructs_trail` is true (decision 7), from a source that passed
-      int_closures__gate and may publish. Rebuilt whole each run, so a lifted
-      closure leaves it, and the warnings mart, in the same run.
+      int_closures__gate and may publish, and the last good rows of a notice
+      source the gate holds this build, marked with `carried_since` (decision
+      53, phase D). Rebuilt whole each run, so a lifted closure leaves it,
+      and the warnings mart, in the same run.
       conditions/atc_updates.json, conditions/nynjtc_alerts.json and
       conditions/closures.json are written from it with the warnings mart.
     config:
@@ -174,6 +176,19 @@ models:
           The mile it ends at, never before mile_start for ATC's rows: a
           reversed range is refused, not swapped.
         data_type: double
+      - name: starts_on
+        description: >
+          The day a club notice says it starts, as the source states it, in
+          UTC; null where the source states none (decision 53's phase C reads
+          it before publishing). A hunting area's season where its layer gives
+          one, and never a season OurHike supplied (decision 67).
+        data_type: date
+      - name: ends_on
+        description: >
+          The day a club notice says it ends, as the source states it, in UTC;
+          null where the source states none. A notice past it is held back,
+          never published.
+        data_type: date
       - name: source_edited_at
         description: >
           The row's own edit date from its source (ATC's `updated_at`), null
@@ -251,6 +266,14 @@ models:
       - name: source_row_key
         description: The row's key in its staging model, for lineage.
         data_type: varchar
+      - name: carried_since
+        description: >
+          Null on a row this build read from its source. Set on a row of a
+          notice source int_closures__gate holds back this build: the last
+          good row the previous build's history held, kept rather than
+          dropped (decision 53, phase D; int_closures__held_carried), and
+          this is when carrying it began. It stays put while the hold lasts.
+        data_type: timestamptz
       - name: _first_seen_at
         description: "{{ doc('row_first_seen_at') }}"
         data_type: timestamptz
@@ -276,7 +299,8 @@ unit_tests:
       int_sources__publication lets publish. A false and a null go to the
       warnings mart (warnings_takes_every_notice_that_does_not_block_and_reads_a_null_as_not_reviewed),
       a closure from a held-back source goes nowhere, and so does one from a
-      source that may not publish.
+      source that may not publish; a held source's last good closures row
+      (int_closures__held_carried) lands.
     model: int_closures__final
     given:
       - input: ref('int_closures__unioned')
@@ -308,7 +332,15 @@ unit_tests:
           - {mart: closures, notice_id: 'feed_a:item-1', source_key: feed_a, obstructs_trail: true, review_state: org_published}
           - {mart: closures, notice_id: 'feed_b:item-2', source_key: feed_b, obstructs_trail: true, review_state: org_published}
           - {mart: warnings, notice_id: 'feed_a:item-3', source_key: feed_a, obstructs_trail: null, review_state: not_reviewed}
+      # A notice source the gate holds keeps its last good rows (decision 53's
+      # phase D), each in the mart it was in: int_closures__held_carried has
+      # already read the gate, so every closures row it hands over lands.
+      - input: ref('int_closures__held_carried')
+        rows:
+          - {mart: closures, notice_id: 'held_c:1', source_key: held_c, obstructs_trail: true, review_state: org_published, carried_since: '2026-10-04 10:00:00+00'}
+          - {mart: warnings, notice_id: 'held_c:2', source_key: held_c, obstructs_trail: null, review_state: not_reviewed, carried_since: '2026-10-04 10:00:00+00'}
     expect:
       rows:
         - {closure_id: 'atc_trail_updates:a1', obstructs_trail: true, review_state: reviewed}
         - {closure_id: 'feed_a:item-1', obstructs_trail: true, review_state: org_published}
+        - {closure_id: 'held_c:1', obstructs_trail: true, review_state: org_published}

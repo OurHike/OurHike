@@ -21,6 +21,11 @@
 -- answer, so it leaves this model and int_warnings__final in the same run;
 -- the snapshot then closes its version, and it leaves both marts.
 --
+-- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS (decision 53,
+-- phase D): the rows the previous build's history held as current, with
+-- `carried_since`, from int_closures__held_carried, until a build passes the
+-- source again. Every other row's `carried_since` is null.
+--
 -- The phone files read it with the warnings mart, because each of today's
 -- files holds both halves of one source (pub_conditions_atc_updates,
 -- pub_conditions_nynjtc_alerts, pub_conditions_closures).
@@ -41,6 +46,11 @@ publication as (
 -- publication check as every row.
 carried as (
     select * from {{ ref('int_closures__window_carried') }}
+    where mart = 'closures'
+),
+
+held_carried as (
+    select * from {{ ref('int_closures__held_carried') }}
     where mart = 'closures'
 )
 
@@ -63,6 +73,8 @@ select  -- noqa: AM07
     notices.trail_id,
     notices.mile_start,
     notices.mile_end,
+    notices.starts_on,
+    notices.ends_on,
     notices.source_edited_at,
     notices.updated_at,
     notices.source_url,
@@ -85,7 +97,8 @@ select  -- noqa: AM07
     notices.start_lon,
     notices.end_lat,
     notices.end_lon,
-    notices.source_row_key
+    notices.source_row_key,
+    cast(null as timestamptz) as carried_since
 from notices
 inner join gate on notices.source_key = gate.source_key
 inner join publication on notices.source_key = publication.source_key
@@ -116,3 +129,37 @@ select
 from carried
 inner join publication on carried.source_key = publication.source_key
 where publication.may_publish
+
+union all by name
+
+-- A notice source the gate holds keeps its last good rows
+-- (int_closures__held_carried says which, and from when).
+select
+    held_carried.notice_id as closure_id,
+    held_carried.club,
+    held_carried.source_key,
+    held_carried._loaded_at,
+    held_carried.notice_kind,
+    held_carried.obstructs_trail,
+    held_carried.review_state,
+    held_carried.atc_id,
+    held_carried.title,
+    held_carried.category,
+    held_carried.states,
+    held_carried.locality,
+    held_carried.trail_id,
+    held_carried.mile_start,
+    held_carried.mile_end,
+    held_carried.starts_on,
+    held_carried.ends_on,
+    held_carried.source_edited_at,
+    held_carried.updated_at,
+    held_carried.source_url,
+    held_carried.list_position,
+    held_carried.closure_kind,
+    held_carried.closure_reason,
+    held_carried.closure_place,
+    held_carried.geom_geojson,
+    held_carried.source_row_key,
+    held_carried.carried_since
+from held_carried

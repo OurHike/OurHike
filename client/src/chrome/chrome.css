@@ -2740,6 +2740,71 @@
   color: var(--fg-2);
 }
 
+/* ---------- Notices for your planned hikes (#1805, decision 66) ---------- */
+
+/* One section per hike planned in the next 7 days, its name and days as the
+   heading the rows sit under - the mock's "Notices for your maps" card,
+   carried to the rule the maintainer chose. */
+.planned-notices__hike {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
+}
+
+.planned-notices__hike-title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.planned-notices__dates {
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-weight: 400;
+  color: var(--fg-2);
+}
+
+.planned-notices__tagline {
+  margin: 0;
+}
+
+/* The mock's `.tag`: a small mono label ahead of the title. Two registers and
+   no more - the sunken sage one for a notice, and the caution tint for a
+   closure or an area advisory (decision 67's "Advisory"). Semantic tokens,
+   so both flip with the theme and the text keeps `--fg-1`'s contrast on
+   them; never the closure band's red, because an advisory is not a closure. */
+.planned-notices__tag {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: 1px;
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+}
+
+.planned-notices__tag--warn {
+  background: var(--surface-warning);
+}
+
+.planned-notices__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+/* Decision 67's line on a tapped stretch's card: the advice first, in the
+   card's own body size, with the warm tag ahead of it. */
+.line-sheet__advisory {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-1);
+}
+
 /* ---------- Waypoint card (tapped pin) ---------- */
 
 /* Floats beside the pin it describes rather than docking at the bottom edge -

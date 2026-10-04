@@ -297,13 +297,21 @@ def test_every_key_the_app_fetches_is_one_today_keys_lists(today):
 
     A key a phone asks for that today_keys() left out would be a key the gate
     report never answers for, which is the one way this report could pass a
-    key by not looking at it."""
+    key by not looking at it. Apart from the keys only a dbt writer publishes
+    (test_published_key_contract.DBT_ONLY_CLIENT_KEYS, the one list of them):
+    today's pipeline has no file of theirs to compare, so they are not gate
+    items, and the report lists them under the keys a dbt exposure names that
+    today's pipeline does not publish."""
     import re
 
-    from test_published_key_contract import client_keys
+    from test_published_key_contract import DBT_ONLY_CLIENT_KEYS, client_keys
 
     patterns = [re.compile(re.escape(gate_report.key_pattern(entry.key)).replace(r"\{\}", "[^/]+")) for entry in today]
-    missing = {key: asked_by for key, asked_by in client_keys().items() if not any(p.fullmatch(key) for p in patterns)}
+    missing = {
+        key: asked_by
+        for key, asked_by in client_keys().items()
+        if key not in DBT_ONLY_CLIENT_KEYS and not any(p.fullmatch(key) for p in patterns)
+    }
     assert not missing
 
 

@@ -110,6 +110,56 @@ named_tags as (
 
 -- locality_of(): a taxonomy's names that are not blank, each once, in the
 -- order the post first names them.
+-- features/ORG_NOTICES.md section 4's left-hand side, for
+-- conditions/notices.json's `org_terms` place (decision 53, phase D): each
+-- post's trail and park tags as `taxonomy:slug`, keyed on the taxonomy and
+-- the slug and never the term id or the bare slug (section 4's three
+-- properties), trail tags first and each in the post's own order. No term is
+-- mapped to a feature here: no reviewed table exists, so an `org_terms` place
+-- places nothing yet, and a phone reads it as unplaced (section 4: "An
+-- unmapped term places nothing").
+place_slugs as (
+    select
+        taxonomy,
+        term_id,
+        {{ python_strip('slug') }} as slug
+    from terms
+    where
+        taxonomy in ('trail', 'park')
+        and term_id is not null
+        and coalesce({{ python_strip('slug') }}, '') != ''
+),
+
+place_tags as (
+    select
+        tags.trail_alert_key,
+        tags.taxonomy,
+        place_slugs.slug,
+        min(tags.tag_position) as first_position
+    from tags
+    inner join place_slugs
+        on
+            tags.taxonomy = place_slugs.taxonomy
+            and json_type(tags.term_id_json) in ('UBIGINT', 'BIGINT')
+            and cast(json_extract_string(tags.term_id_json, '$') as bigint)
+            = place_slugs.term_id
+    group by tags.trail_alert_key, tags.taxonomy, place_slugs.slug
+),
+
+place_terms as (
+    select
+        trail_alert_key,
+        cast(to_json(list(
+            taxonomy || ':' || slug
+            order by
+                case taxonomy when 'trail' then 0 else 1 end,
+                first_position,
+                slug
+        )) as varchar) as place_terms
+    from place_tags
+    group by trail_alert_key
+),
+
 locality_names as (
     select
         trail_alert_key,
@@ -231,23 +281,25 @@ checked as (
 )
 
 select
-    trail_alert_key,
-    post_id,
-    slug,
+    checked.trail_alert_key,
+    checked.post_id,
+    checked.slug,
     -- features/ORG_NOTICES.md's `<source key>:<the org's own slug>`. A post
     -- that cannot be read, or shares its slug, is named by its WordPress id
     -- instead, so the id is unique in the union whatever the source sent.
     case
-        when coalesce(slug, '') != '' and posts_with_slug = 1
-            then 'nynjtc_trail_alerts:' || slug
-        else 'nynjtc_trail_alerts:post-' || post_id
+        when coalesce(checked.slug, '') != '' and checked.posts_with_slug = 1
+            then 'nynjtc_trail_alerts:' || checked.slug
+        else 'nynjtc_trail_alerts:post-' || checked.post_id
     end as notice_id,
-    title,
-    locality,
-    link as source_url,
-    modified_at,
-    {{ python_utc_seconds('modified_at') }} as updated_at,
-    problems,
-    nullif(array_to_string(problems, ' | '), '') as problem,
-    _loaded_at
+    checked.title,
+    checked.locality,
+    checked.link as source_url,
+    checked.modified_at,
+    {{ python_utc_seconds('checked.modified_at') }} as updated_at,
+    checked.problems,
+    nullif(array_to_string(checked.problems, ' | '), '') as problem,
+    place_terms.place_terms,
+    checked._loaded_at
 from checked
+left join place_terms on checked.trail_alert_key = place_terms.trail_alert_key

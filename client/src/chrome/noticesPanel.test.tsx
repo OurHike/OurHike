@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { useNoticesPanel } from './noticesPanel'
 import { ATC_SOURCE_KEY, noticeSilenceKey, type TrailNotice } from '../lib/notices'
 import type { AtcUpdate } from '../lib/atcUpdates'
 import type { Stewards } from '../lib/stewards'
+import type { DayHike } from '../lib/dayHikes'
 
 // #327 moved this feature out of App.tsx whole. These tests are about the
 // seams the move created - what the hook hands back, and what it still has to
@@ -253,5 +254,107 @@ describe('a second publisher, through the same hook', () => {
     expect(result.current.mapScreen.newNoticeLabel).toBe(
       'New York-New Jersey Trail Conference · New notice issued',
     )
+  })
+})
+
+describe('with conditions/notices.json (#1805, decision 66)', () => {
+  // NOW is noon UTC on 2026-08-13, which is that same calendar day in every
+  // zone from UTC-11 to UTC+11, so a day hike dated that day is in the window.
+  const TODAY = '2026-08-13'
+
+  function dayHike(date: string | null): DayHike {
+    return {
+      id: 'hike-1',
+      name: 'Harriman loop',
+      date,
+      segments: [
+        [
+          { coord: [-74.1, 41.25], poiId: null },
+          { coord: [-74.09, 41.25], poiId: null },
+        ],
+      ],
+      figures: {
+        miles: 5,
+        legs: [
+          {
+            name: 'Fixture Trail',
+            source: 'nynjtc_trail_alerts',
+            blaze_color: null,
+            miles: 5,
+          },
+        ],
+      },
+      looped: false,
+      recorded: 'planned',
+      note: '',
+    }
+  }
+
+  function clubPanel(
+    clubNotices: readonly TrailNotice[] | null,
+    dayHikes: readonly DayHike[],
+  ) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [update()],
+        orgNotices: [orgNotice()],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: NOW,
+        clubNotices,
+        clubNoticesGeneratedAt: NOW,
+        dayHikes,
+      }),
+    )
+  }
+
+  it('keeps today’s list, row and count while the file has not reached this phone', () => {
+    const { result } = clubPanel(null, [dayHike(TODAY)])
+    expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
+    expect(result.current.mapScreen.noticeCount).toBe(2)
+    expect(result.current.hazardAreas).toEqual([])
+  })
+
+  // The rule loads behind import() once the file is here (the hook's
+  // comment says why), so each test below waits on the count or the list
+  // the loaded rule produces, never on a timer.
+  it('counts only what touches a planned hike, and offers the row with nothing to count', async () => {
+    const touching = orgNotice({
+      notice_id: 'nynjtc_trail_alerts:near',
+      updated_at: hoursBefore(3),
+    })
+    const elsewhere = orgNotice({
+      notice_id: 'faraway_club:1',
+      source_key: 'faraway_club',
+      provider: 'Faraway Club',
+    })
+
+    const planned = clubPanel([touching, elsewhere], [dayHike(TODAY)])
+    await waitFor(() => expect(planned.result.current.mapScreen.noticeCount).toBe(1))
+    expect(planned.result.current.mapScreen.noticeRowLabel).toBe(
+      'Notices for your planned hikes (1)',
+    )
+    // The dot counts what the panel shows, so opening it silences only that.
+    expect(planned.result.current.mapScreen.newNoticeCount).toBe(1)
+    cleanup()
+
+    const none = clubPanel([touching, elsewhere], [dayHike(null)])
+    expect(none.result.current.mapScreen.noticeCount).toBe(0)
+    expect(none.result.current.mapScreen.noticeRowLabel).toBe(
+      'Notices for your planned hikes',
+    )
+    expect(none.result.current.mapScreen.newNoticeCount).toBe(0)
+  })
+
+  it('opens the planned-hike panel rather than the list of everything', async () => {
+    const { result } = clubPanel([orgNotice()], [dayHike(TODAY)])
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    await waitFor(() => expect(result.current.mapScreen.noticeList).not.toBeNull())
+    const list = result.current.mapScreen.noticeList as {
+      type: { displayName?: string }
+    }
+    expect(list.type.displayName).toBe('Deferred(PlannedNoticeList)')
   })
 })

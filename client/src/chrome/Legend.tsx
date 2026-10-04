@@ -419,6 +419,9 @@ export interface LegendProps {
   /** Opens the full list (chrome/NoticeList.tsx), rendered by the shell
    *  the same way `onOpenDownloads` is. */
   onOpenNotices?: () => void
+  /** The row's words when the list is the planned-hike panel (#1805), which
+   *  shows the row whatever `noticeCount` is - see MapScreen's own prop. */
+  noticeRowLabel?: string
 }
 
 /**
@@ -478,6 +481,7 @@ export function Legend({
   noticeCount = 0,
   newNoticeCount = 0,
   onOpenNotices,
+  noticeRowLabel,
 }: LegendProps) {
   // Red light draws every line one red-amber before the blaze switch is
   // consulted (map/style.ts's blazeLineColor), so the Blaze colors switch
@@ -914,14 +918,16 @@ export function Legend({
           and above the downloaded-map block, which answers a different
           question (#687 is explicit that conflating the two is what this
           replaced). */}
-      {noticeCount > 0 && onOpenNotices !== undefined && (
-        <button type="button" className="legend__atc-link" onClick={onOpenNotices}>
-          {noticeCount === 1
-            ? 'Read the 1 trail notice'
-            : `Read all ${noticeCount} trail notices`}
-          {newNoticeCount > 0 && ` · ${newNoticeCount} new`}
-        </button>
-      )}
+      {(noticeCount > 0 || noticeRowLabel !== undefined) &&
+        onOpenNotices !== undefined && (
+          <button type="button" className="legend__atc-link" onClick={onOpenNotices}>
+            {noticeRowLabel ??
+              (noticeCount === 1
+                ? 'Read the 1 trail notice'
+                : `Read all ${noticeCount} trail notices`)}
+            {newNoticeCount > 0 && ` · ${newNoticeCount} new`}
+          </button>
+        )}
 
       {/* Which categories are drawn. Under the grid rather than in it, because it
           is not a category: it cuts across every row at once. NOT gated on there

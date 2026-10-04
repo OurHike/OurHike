@@ -153,6 +153,13 @@ models:
         description: Why the post cannot be read, each prefixed by its slug or id.
       - name: problem
         description: The same joined by " | ", or null where the post reads.
+      - name: place_terms
+        description: >
+          The post's trail and park tags as a JSON list of `taxonomy:slug`
+          (features/ORG_NOTICES.md section 4), trail tags first, each in the
+          post's own order; null where it carries neither. Read by
+          pub_conditions_notices for the `org_terms` place, which places
+          nothing until a reviewed table maps a term to a feature.
 
   - name: int_closures__oprhp_areas
     description: >
@@ -308,6 +315,33 @@ models:
           - accepted_values:
               arguments:
                 values: [closures, warnings]
+
+  - name: int_closures__held_carried
+    description: >
+      A notice source int_closures__gate holds back keeps its last good rows
+      (decision 53, phase D): every row of such a source that the previous
+      build's closures or warnings history held as current, with every
+      column the mart had, and `carried_since`, the start of the first build
+      that carried it. Only a source the extract declares a notice resource
+      for, and only where int_sources__publication lets it publish: a
+      publication hold is a decision, never a failed read. A notice
+      int_closures__window_carried carries is left to it.
+      int_closures__final and int_warnings__final add these rows back.
+    columns:
+      - name: notice_id
+        description: The notice, as the closures or warnings mart keys it.
+        data_tests: [not_null, unique]
+      - name: mart
+        description: closures or warnings, the mart that held it.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [closures, warnings]
+      - name: carried_since
+        description: >
+          When carrying began: the history's own value for a row carried
+          before, otherwise this build's start.
+        data_tests: [not_null]
 
   - name: int_closures__notice_tables
     description: >
@@ -1671,8 +1705,12 @@ unit_tests:
       warnings never closes a trail; place is the source's own geometry or
       nothing, its locality its own words; the title's entities are read
       as Python's html.unescape reads them; the edit stamp is printed in
-      UTC; a row with no id of its own is named by its key. The status
-      seed is mocked as the seed file is
+      UTC; a row with no id of its own is named by its key. A hazard area
+      whose own category says the hazard is not there (IATA's 'No hunting')
+      is held with its category in the reason, one whose category is listed
+      (compared without case or surrounding space) is not, and a hazard
+      source listed for every row (BAER) keeps every row (decision 67). The
+      status and hazard seeds are mocked as the seed files are
       (tests/test_dbt_closures_club_notices.py).
     model: int_closures__club_notices
     given:
@@ -1691,6 +1729,20 @@ unit_tests:
           - {notice_key: 'k11', source_key: 'ncta_trail_alerts', club: 'ncta', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: null, title: 'Trail Alert: no id', status: null}
           - {notice_key: 'k12', source_key: 'nps_yell_bear_management_areas', club: 'nps', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2999-03-10 07:00:00+00', ends_at: '2999-07-15 07:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'y12', title: 'Fixture Bear Management Area', status: 'Closed'}
           - {notice_key: 'k13', source_key: 'nps_yell_bear_management_areas', club: 'nps', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2001-03-10 07:00:00+00', ends_at: '2999-07-15 07:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'y13', title: 'Fixture Bear Management Area', status: 'Closed'}
+          - {notice_key: 'k14', source_key: 'iata_lands_hunting_regs', club: 'iata', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'No hunting', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'h14', title: 'Fixture Preserve', status: null}
+          - {notice_key: 'k15', source_key: 'iata_lands_hunting_regs', club: 'iata', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: ' open for public hunting ', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'h15', title: 'Fixture Hunting Parcel', status: null}
+          - {notice_key: 'k16', source_key: 'usfs_baer_assessments', club: 'usfs', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2026-08-26 00:00:00+00', ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture National Forest', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'b16', title: 'FIXTURE FIRE', status: null}
+      - input: ref('notice_hazard_areas')
+        rows:
+          - {source_key: 'oprhp_hunting_areas', hazard: 'hunting', category_value: 'Hunting area', why: 'Hunting 1 ''Hunting area'' 135 of 224 (the row''s notes). Hunting 2 ''Restricted Area/Safety Zone'' 89 is where hunting is restricted, so it is not listed and its rows are held back. @unvalidated that Description carries ''Hunting area'' word for word: read from the notes and the fixture''s ''Restricted Area/Safety Zone'', not from a live value; a different spelling holds every NY Parks area back, a miss rather than a safety zone drawn as hunting'}
+          - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Open for public hunting', why: 'One of Hunting_Reg''s four values (the row''s notes: No hunting | Open for public hunting | Open for deer hunting by permit only | Private hunting by agreement)'}
+          - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Open for deer hunting by permit only', why: 'As Open for public hunting: hunters may be on the parcel'}
+          - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Private hunting by agreement', why: 'As Open for public hunting: hunters may be on the parcel'}
+          - {source_key: 'usace_garrison_hunting_restrictions', hazard: 'hunting', category_value: 'Open to Hunting / Trapping by Special Permit Only', why: 'Restriction''s own value, read in the decision 53 inventory''s saved distinct values (2026-10-03, five of five)'}
+          - {source_key: 'usace_garrison_hunting_restrictions', hazard: 'hunting', category_value: 'Open to Bow Hunting Only / Trapping by Special Permit Only', why: 'As Open to Hunting: bow hunters may be on the area'}
+          - {source_key: 'usace_garrison_hunting_restrictions', hazard: 'hunting', category_value: 'Closed to Center-fire Rifles Only / Trapping by Special Permit Only', why: 'As Open to Hunting: only centre-fire rifles are barred'}
+          - {source_key: 'blm_shooting_points', hazard: 'shooting', category_value: '', why: 'Every row: the layer is BLM''s qualified recreational shooting sites (93 points on 2026-10-03, the row''s notes)'}
+          - {source_key: 'usfs_baer_assessments', hazard: 'burned_area', category_value: '', why: 'Every row: each polygon is a burned area under Burned Area Emergency Response assessment (the row''s notes: ignitions 2024-03-22 to 2026-08-26)'}
       - input: ref('notice_status_values')
         rows:
           - {source_key: 'usfs_r06_fire_closure_points', status_value: 'Active', reads_as: 'closes_trail', why: 'An active fire closure order: the area, line or point is closed (the extraction keeps only ClosureStatus ''Active'')'}
@@ -1747,6 +1799,9 @@ unit_tests:
         - {notice_id: 'ncta_trail_alerts:key-k11', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Trail Alert: no id', locality: null, geom_geojson: null, updated_at: null}
         - {notice_id: 'nps_yell_bear_management_areas:y12', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own start date, 2999-03-10, has not come', title: 'Fixture Bear Management Area', locality: null, geom_geojson: null, updated_at: null}
         - {notice_id: 'nps_yell_bear_management_areas:y13', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Bear Management Area', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'iata_lands_hunting_regs:h14', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own category, No hunting, is not one notice_hazard_areas reads as hunting', title: 'Fixture Preserve', locality: 'Fixture', geom_geojson: null, updated_at: null}
+        - {notice_id: 'iata_lands_hunting_regs:h15', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Hunting Parcel', locality: 'Fixture', geom_geojson: null, updated_at: null}
+        - {notice_id: 'usfs_baer_assessments:b16', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'FIXTURE FIRE', locality: 'Fixture National Forest', geom_geojson: null, updated_at: null}
 
   - name: int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log
     description: >
@@ -1948,3 +2003,84 @@ unit_tests:
       rows:
         - {mart: closures, notice_id: 'feed_a:item-1', title: 'Fixture Trail closed', obstructs_trail: true}
         - {mart: warnings, notice_id: 'feed_a:item-6', title: 'Fixture water carry', obstructs_trail: null}
+
+  - name: int_closures__held_carried_keeps_the_last_good_rows_of_a_source_the_gate_holds
+    description: >
+      Decision 53's phase D: a source the gate holds this build keeps the
+      rows the previous build's history held as current, every column read
+      back out of the saved row, from either mart: ATC's with its A.T. miles,
+      NYNJTC's from the warnings history. Nothing is carried for a source the
+      gate passed (its fresh rows stand), for a version the history already
+      closed (it was lifted before the hold), for a source the registry
+      holds back (a decision, not a failed read), for OurHike's own closures
+      (not a notice source), for a feed's notice the window carries already,
+      or out of warnings for anything but an organization notice. Miles are
+      compared as text, because a 2.0.6 unit test rounds a double to one
+      decimal place (the dbt skill's contract traps).
+    model: int_closures__held_carried
+    given:
+      - input: ref('stg_row_history__closures')
+        rows:
+          - {history_row_key: h1, dbt_scd_id: s1, closure_id: 'atc_trail_updates:bridge', source_key: atc_trail_updates, dbt_valid_to: null, row_json: '{"closure_id": "atc_trail_updates:bridge", "club": "atc", "source_key": "atc_trail_updates", "notice_kind": "atc_trail_update", "obstructs_trail": true, "review_state": "reviewed", "atc_id": "bridge", "title": "Fixture footbridge out", "category": "Closure", "states": ["VT"], "trail_id": "AT", "mile_start": 1650.45, "mile_end": 1651.0, "updated_at": "2026-09-30", "source_url": "https://appalachiantrail.org/fixture", "list_position": 3, "_loaded_at": "2026-10-03 00:00:00+00"}'}
+          - {history_row_key: h2, dbt_scd_id: s2, closure_id: 'atc_trail_updates:lifted', source_key: atc_trail_updates, dbt_valid_to: '2026-10-01 00:00:00', row_json: '{"title": "Fixture lifted before the hold"}'}
+          - {history_row_key: h3, dbt_scd_id: s3, closure_id: 'club_passing:1', source_key: club_passing, dbt_valid_to: null, row_json: '{"title": "Fixture read afresh"}'}
+          - {history_row_key: h4, dbt_scd_id: s4, closure_id: 'club_withdrawn:1', source_key: club_withdrawn, dbt_valid_to: null, row_json: '{"title": "Fixture the registry holds back"}'}
+          - {history_row_key: h5, dbt_scd_id: s5, closure_id: 'ourhike_closures:c1', source_key: ourhike_closures, dbt_valid_to: null, row_json: '{"title": null}'}
+          - {history_row_key: h6, dbt_scd_id: s6, closure_id: 'feed_held:item-1', source_key: feed_held, dbt_valid_to: null, row_json: '{"title": "Fixture the window carries"}'}
+      - input: ref('stg_row_history__warnings')
+        rows:
+          - {history_row_key: h7, dbt_scd_id: s7, warning_id: 'nynjtc_trail_alerts:fixture-detour', warning_kind: org_notice, source_key: nynjtc_trail_alerts, dbt_valid_to: null, row_json: '{"club": "nynjtc", "notice_kind": "nynjtc_trail_alert", "obstructs_trail": null, "review_state": "not_reviewed", "title": "Fixture detour", "locality": "Harriman State Park", "updated_at": "2026-09-29T12:00:00Z"}'}
+          - {history_row_key: h8, dbt_scd_id: s8, warning_id: 'nws_alerts:x', warning_kind: nws_alert, source_key: nynjtc_trail_alerts, dbt_valid_to: null, row_json: '{"title": null}'}
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: atc_trail_updates, passed: false, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, passed: false, may_publish: true}
+          - {source_key: club_passing, passed: true, may_publish: true}
+          - {source_key: club_withdrawn, passed: false, may_publish: false}
+          - {source_key: ourhike_closures, passed: false, may_publish: true}
+          - {source_key: feed_held, passed: false, may_publish: true}
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: club_passing, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_passing, staged_by: stg_a__club_passing}
+          - {source_key: club_withdrawn, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_withdrawn, staged_by: stg_a__club_withdrawn}
+          - {source_key: feed_held, club: a, notice_type: closures, reader: feed_notices, listing: window, raw_table: raw_a__feed_held, staged_by: stg_a__feed_held}
+      - input: ref('int_closures__window_carried')
+        rows:
+          - {mart: closures, notice_id: 'feed_held:item-1', source_key: feed_held}
+    expect:
+      rows:
+        - {mart: closures, notice_id: 'atc_trail_updates:bridge', club: atc, notice_kind: atc_trail_update, obstructs_trail: true, review_state: reviewed, atc_id: bridge, title: 'Fixture footbridge out', category: Closure, trail_id: AT, mile_start_text: '1650.45', mile_end_text: '1651.0', updated_at: '2026-09-30', list_position: 3, locality: null}
+        - {mart: warnings, notice_id: 'nynjtc_trail_alerts:fixture-detour', club: nynjtc, notice_kind: nynjtc_trail_alert, obstructs_trail: null, review_state: not_reviewed, atc_id: null, title: 'Fixture detour', category: null, trail_id: null, mile_start_text: null, mile_end_text: null, updated_at: '2026-09-29T12:00:00Z', list_position: null, locality: 'Harriman State Park'}
+
+  - name: int_closures__held_carried_keeps_when_carrying_began
+    description: >
+      A row the history saved while it was already carried keeps that
+      `carried_since`, so the date says when OurHike stopped confirming the
+      source, not when this build ran.
+    model: int_closures__held_carried
+    given:
+      - input: ref('stg_row_history__closures')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as closure_id,
+              cast(null as varchar) as source_key,
+              cast(null as timestamp) as dbt_valid_to,
+              cast(null as json) as row_json
+          where false
+      - input: ref('stg_row_history__warnings')
+        rows:
+          - {history_row_key: h1, dbt_scd_id: s1, warning_id: 'club_held:1', warning_kind: org_notice, source_key: club_held, dbt_valid_to: null, row_json: '{"title": "Fixture carried two builds ago", "carried_since": "2026-10-04 08:00:00+00"}'}
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: club_held, passed: false, may_publish: true}
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: club_held, club: a, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_a__club_held, staged_by: stg_a__club_held}
+      - input: ref('int_closures__window_carried')
+        rows: []
+    expect:
+      rows:
+        - {notice_id: 'club_held:1', title: 'Fixture carried two builds ago', carried_since: '2026-10-04 08:00:00+00'}

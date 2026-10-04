@@ -136,6 +136,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -572,6 +573,61 @@ def _is_writer(node: str) -> bool:
     return len(parts) >= 3 and parts[0] == "model" and parts[2].startswith("pub_")
 
 
+#: How much of a failed test's answer the log shows: rows, and characters a value. Enough to name the source and the
+#: row; little enough that a wording test's failure does not copy a club's paragraph into a public log.
+FAILED_ROWS_SHOWN = 10
+FAILED_VALUE_WIDTH = 120
+
+
+def failed_test_rows(warehouse: Path, since: float, results_path: Path | None = None) -> list[str]:
+    """What each test that failed or errored in the dbt run that just ended returned, as log lines.
+
+    dbt 2.0.6 prints a failed test's name and row count and nothing of the rows, and no artifact keeps the
+    warehouse, so a failure on data only a live run holds (soak run 525, publish-conditions.yml 37216623795: three
+    tests on the first real club notices) could not be read. Each failed test's compiled SQL is asked again, read-only,
+    for FAILED_ROWS_SHOWN rows, every value cut at FAILED_VALUE_WIDTH characters. `since` is when the run started:
+    run_results.json older than that is an earlier stage's, and says nothing about this failure."""
+    path = results_path or DBT_DIR / "target" / "run_results.json"
+    try:
+        if path.stat().st_mtime < since:
+            return []
+        results = json.loads(path.read_text(encoding="utf-8"))["results"]
+    except (OSError, ValueError, KeyError):
+        return []
+    failed = [
+        result
+        for result in results
+        if result.get("unique_id", "").startswith("test.") and result.get("status") in ("fail", "error")
+    ]
+    if not failed:
+        return []
+    import duckdb
+
+    lines = []
+    with duckdb.connect() as con:
+        try:
+            con.execute("load spatial")
+        except duckdb.Error:
+            pass  # a test that needs it says so below
+        con.execute(f"attach '{warehouse}' as warehouse (read_only)")
+        con.execute("use warehouse")
+        for result in failed:
+            lines.append(f"::group::{result['unique_id']}: {result.get('failures')} row(s), {result.get('status')}")
+            code = (result.get("compiled_code") or "").strip().rstrip(";")
+            try:
+                if not code:
+                    raise ValueError("run_results.json holds no compiled SQL for it")
+                cursor = con.execute(f"select * from ({code}) limit {FAILED_ROWS_SHOWN}")
+                names = [column[0] for column in cursor.description]
+                for row in cursor.fetchall():
+                    shown = {name: None if value is None else str(value)[:FAILED_VALUE_WIDTH] for name, value in zip(names, row)}
+                    lines.append(json.dumps(shown, ensure_ascii=False))
+            except (duckdb.Error, ValueError) as failure:
+                lines.append(f"(not asked again: {failure})")
+            lines.append("::endgroup::")
+    return lines
+
+
 def derived_source_problems(manifest: dict, steps: list[Step]) -> list[str]:
     """What stops the build: a derived table no step writes, or a step writing a table no source declares."""
     declared = {
@@ -708,6 +764,7 @@ def main(argv: list[str] | None = None) -> int:
         run = runs[position]
         position += 1
         print(f"-- build_marts {position}/{len(runs)}: {run.label}", flush=True)
+        started = time.time()
         completed = subprocess.run(run.argv, cwd=run.cwd, env=env, check=False)
         if completed.returncode != 0 and run.label == RESTORE_LABEL and args.history_on_failure == "degrade":
             # The module docstring, "--history-on-failure degrade": build and publish with null dates, save nothing.
@@ -723,6 +780,8 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if completed.returncode != 0:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
+            for line in failed_test_rows(paths.warehouse, started):
+                print(line, flush=True)
             # DEGRADED_EXIT means built-and-publishable to publish-conditions.yml, so a command's own 4 is a 1.
             return 1 if completed.returncode == DEGRADED_EXIT else completed.returncode
         if run.label == SEED:

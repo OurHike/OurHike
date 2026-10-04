@@ -11,7 +11,9 @@
     `geometry` is a SQL expression for the row's GEOMETRY. Its bounding box
     must sit inside the box `regions` gives its `source_key_column`, or else
     the box macros/generated_regions.sql gives it (every source
-    pipeline/make_dbt_staging.py stages, decision 54), and a key neither
+    pipeline/make_dbt_staging.py stages, decision 54), or else the one
+    macros/generated_notice_regions.sql gives it (every club notice source
+    pipeline/generate_notice_models.py stages, decision 53), and a key none
     lists gets `eastern`.
 
     THE BOXES, and what each rests on (extents measured 2026-10-03 from each
@@ -244,6 +246,7 @@ boxed as (
             when source_key = '{{ key }}' then '{{ region }}'
             {% endfor -%}
             {{ generated_region_cases('source_key') }}
+            {{ generated_notice_region_cases('source_key') }}
             else 'eastern'
         end as region
     from placed

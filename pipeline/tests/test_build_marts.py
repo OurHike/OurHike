@@ -14,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import duckdb
 import pytest
 import yaml
 
@@ -823,3 +824,48 @@ def test_built_by_names_the_commit_and_the_workflow_run_in_characters_a_sql_lite
 
     assert build_marts.built_by(environ) == "0123456789ab run 37109384156.2"
     assert build_marts.built_by({"OURHIKE_BUILT_BY": "x'; drop table t; --"}) == "x drop table t --"
+
+
+def _results(path, *results):
+    path.write_text(json.dumps({"results": list(results)}), encoding="utf-8")
+    return path
+
+
+def test_a_failed_tests_rows_are_asked_again_cut_short_and_printed_in_a_group(tmp_path):
+    """Soak run 525 (publish-conditions.yml 37216623795) failed three tests on live club notices and printed no row."""
+    warehouse = tmp_path / "warehouse.duckdb"
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema intermediate")
+        con.execute("create table intermediate.leaks as select range as n, repeat('x', 500) as words from range(25)")
+    sql = 'select * from "warehouse"."intermediate"."leaks" where n >= 0;'
+    results = _results(
+        tmp_path / "run_results.json",
+        {"unique_id": "test.ourhike.a_leak", "status": "fail", "failures": 25, "compiled_code": sql},
+        {"unique_id": "test.ourhike.fine", "status": "pass", "failures": 0, "compiled_code": sql},
+        {"unique_id": "model.ourhike.m", "status": "error", "compiled_code": sql},
+    )
+
+    lines = build_marts.failed_test_rows(warehouse, since=0.0, results_path=results)
+
+    assert lines[0] == "::group::test.ourhike.a_leak: 25 row(s), fail" and lines[-1] == "::endgroup::"
+    rows = [json.loads(line) for line in lines[1:-1]]
+    assert len(rows) == build_marts.FAILED_ROWS_SHOWN
+    assert {len(row["words"]) for row in rows} == {build_marts.FAILED_VALUE_WIDTH}
+
+
+def test_an_earlier_stages_run_results_say_nothing_about_this_failure(tmp_path):
+    results = _results(
+        tmp_path / "run_results.json", {"unique_id": "test.ourhike.a", "status": "fail", "compiled_code": "select 1"}
+    )
+    assert build_marts.failed_test_rows(tmp_path / "w.duckdb", since=results.stat().st_mtime + 60, results_path=results) == []
+
+
+def test_a_test_whose_sql_cannot_be_asked_again_says_why(tmp_path):
+    warehouse = tmp_path / "warehouse.duckdb"
+    duckdb.connect(str(warehouse)).close()
+    results = _results(
+        tmp_path / "run_results.json",
+        {"unique_id": "test.ourhike.gone", "status": "error", "failures": None, "compiled_code": "select * from nowhere"},
+    )
+    lines = build_marts.failed_test_rows(warehouse, since=0.0, results_path=results)
+    assert lines[0].startswith("::group::test.ourhike.gone") and lines[1].startswith("(not asked again: ")

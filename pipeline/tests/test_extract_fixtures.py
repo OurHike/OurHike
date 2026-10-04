@@ -276,7 +276,8 @@ def test_section_cs_content_lands_no_author_or_guest_and_none_of_the_prose_a_row
 # Decision 54's waves 2 and 3 (section G, 2026-10-04): each GIS file and geographic API, the rows its fixture answers
 # hold (make_dbt_fixtures.py's _gis_file_documents() and _geo_api_documents()). Catamount's main trail lands 3 rows
 # with 2 exact copies among them, a KMZ and a zipped GPX arrive whole as ASCII-only zips, and a location with no
-# coordinate lands with no geometry rather than being dropped.
+# coordinate lands with no geometry rather than being dropped. FMST's sheet opens with a title line
+# above its header and a row of empty cells between sections, so it lands 2 rows from 3 lines of data.
 GIS_AND_GEO_API_ROWS = {
     "raw_nez_perce__usfs_nez_perce_nht_my_map": 4,
     "raw_rmfi__rmfi_project_map": 2,
@@ -298,6 +299,7 @@ GIS_AND_GEO_API_ROWS = {
     "raw_catamount__catamount_access_points": 2,
     "raw_catamount__catamount_businesses": 1,
     "raw_catamount__catamount_backcountry_zones": 1,
+    "raw_fmst__fmst_primary_trailheads": 2,
     "raw_hoosier__hhc_tecumseh_waypoints": 2,
     "raw_hoosier__hhc_tecumseh_track": 1,
     "raw_condor__condor_trail_2020": 4,

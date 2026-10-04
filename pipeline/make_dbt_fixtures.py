@@ -8511,6 +8511,21 @@ def _gis_file_documents() -> dict[str, dict]:
                 "text/csv",
             )
         ),
+        "fmst_primary_trailheads": {
+            "answers": [
+                _answer(
+                    "https://docs.google.com/spreadsheets/d/1RQYQ9d0uYc4tiw3kDoANY7ZgQuXDSuj4AyW44Kv7-xQ/export",
+                    '"Fixture sheet: use it as you like.",,,,,,Current as of:,1/1/2026,,,,,\n'
+                    "Eastbound Segment,EB Mile,Westbound Segment,WB Mile,Trailhead 1,Latitude,Longitude,"
+                    "Trailhead 1 Notes,,Trailhead 2,Latitude,Longitude,Length\n"
+                    "1,0.0,1,2.0,Fixture Gap Trailhead,35.8,-80.0,,,Fixture Knob Overlook,35.81,-79.9,2.0\n"
+                    ",,,,,,,,,,,,\n"
+                    "1,2.0,1,0.0,Fixture Knob Overlook,35.81,-79.9,Transit only; no trail parking,,,,,\n",
+                    {"format": "csv"},
+                    "text/csv",
+                )
+            ]
+        },
         "hhc_tecumseh_waypoints": _files(
             (
                 "https://hoosierhikerscouncil.org/assets/Tecumseh_Trail_POI_Waypts.gpx",

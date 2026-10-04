@@ -37,6 +37,7 @@ GEOJSON_A = "https://club.example.org/data/a.geojson"
 GEOJSON_B = "https://club.example.org/data/b.geojson"
 SHP_URL = "https://club.example.org/data/points.zip"
 CSV_URL = "https://club.example.org/data/access.csv"
+SHEET_URL = "https://docs.example.org/spreadsheets/d/fixture/export?format=csv"
 OGC_URL = "https://ogc.example.org/collections/trails/items"
 WP_URL = "https://club.example.org/wp-json/wp/v2/cm-map-location"
 NPS_URL = "https://nps.example.gov/api/v1/places"
@@ -69,6 +70,14 @@ def registry(tmp_path, monkeypatch):
         {"key": "waypoints", "url": GPX_URL, "file_format": "gpx"},
         {"key": "two_files", "url": "https://club.example.org/data/", "files": [GEOJSON_A, GEOJSON_B], "file_format": "geojson"},
         {"key": "access_csv", "url": CSV_URL, "file_format": "csv_points", "lat_field": "LATITUDE", "lon_field": "LONGITUDE"},
+        {
+            "key": "trailhead_sheet",
+            "url": SHEET_URL,
+            "file_format": "csv_points",
+            "header_row": 2,
+            "lat_field": "Latitude",
+            "lon_field": "Longitude",
+        },
         {"key": "staffed_map", "url": KML_URL, "file_format": "kml", "person_fields": ["Leader"]},
         {"key": "ogc_trails", "url": OGC_URL},
         {
@@ -376,6 +385,42 @@ def test_a_head_the_host_refuses_is_unknown_and_the_file_is_read(registry, reque
     requests_mock.head(GPX_URL, status_code=405)
 
     assert gis("waypoints").change_check(None) == (Freshness.UNKNOWN, None)
+
+
+def test_a_sheet_whose_header_sits_under_a_title_line_keeps_both_ends_of_a_segment_and_skips_its_spacing(registry, requests_mock):
+    # Shaped like FMST's "Primary Trailheads" export (2026-10-04): a title line, then a header that names
+    # Latitude and Longitude twice, once per end of a segment, and rows of empty cells between sections.
+    requests_mock.get(
+        SHEET_URL,
+        text=(
+            '"Fixture sheet, use as you like",,,Current as of:,1/1/2026,,,\n'
+            "Segment,Trailhead 1,Latitude,Longitude,,Trailhead 2,Latitude,Longitude\n"
+            "1,Fixture Gap Trailhead,35.5,-83.5,,Fixture Knob Overlook,35.6,-83.4\n"
+            ",,,,,,,\n"
+            "2,Fixture Knob Overlook,35.6,-83.4,,,,\n"
+        ),
+    )
+
+    gap, knob = gis("trailhead_sheet").rows({})
+
+    assert gap["Trailhead 1"] == "Fixture Gap Trailhead"
+    assert gap["geometry"] == {"type": "Point", "coordinates": [-83.5, 35.5]}
+    assert (gap["property_Latitude"], gap["property_Longitude"]) == ("35.6", "-83.4")
+    assert knob["feature_index"] == 2
+    assert knob["geometry"] == {"type": "Point", "coordinates": [-83.4, 35.6]}
+    assert knob["property_Latitude"] is None
+
+
+def test_a_csv_row_whose_header_row_is_not_a_line_number_is_refused_at_import(tmp_path, monkeypatch):
+    path = tmp_path / "bad.json"
+    entry = {"key": "bad", "url": CSV_URL, "file_format": "csv_points", "lat_field": "LATITUDE", "lon_field": "LONGITUDE"}
+    path.write_text(json.dumps({"sources": [{**entry, "header_row": 0}]}))
+    monkeypatch.setattr(_kinds, "REGISTRY_PATH", path)
+    _kinds._registry.cache_clear()
+
+    with pytest.raises(KeyError, match="header_row"):
+        gis_file("bad")
+    _kinds._registry.cache_clear()
 
 
 def test_a_gis_file_row_without_a_known_format_is_refused_at_import(registry, tmp_path, monkeypatch):

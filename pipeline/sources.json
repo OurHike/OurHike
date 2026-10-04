@@ -8185,6 +8185,40 @@
       "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): each segment's Trail Status lives in its placemark's description table, which no rule reads, so its 9 open segments would publish as warnings beside the closed one. Settled by reading 'CLOSED*' out of that table, as its notes ask."
     },
     {
+      "key": "fmst_primary_trailheads",
+      "title": "Primary Trailheads (FMST's Google Sheet, as its CSV export)",
+      "provider": "FMST",
+      "kind": "gis_file",
+      "url": "https://docs.google.com/spreadsheets/d/1RQYQ9d0uYc4tiw3kDoANY7ZgQuXDSuj4AyW44Kv7-xQ/export?format=csv",
+      "file_format": "csv_points",
+      "header_row": 2,
+      "lat_field": "Latitude",
+      "lon_field": "Longitude",
+      "trust": "authoritative",
+      "steward": "Friends of the Mountains-to-Sea Trail",
+      "steward_contact": "https://mountainstoseatrail.org/",
+      "licence": "STATED BY THE ORGANIZATION in the sheet's own first line (read 2026-10-04, quoted whole in `terms`): it \"can be used or adapted as you like\". That is FMST's permission for this sheet; it names no licence. No other FMST terms were read: mountainstoseatrail.org sits behind a SiteGround captcha that answers even its robots.txt (fmst_helene_status' row), recorded and not worked round. The sheet is Google-hosted. docs.google.com's robots.txt, read 2026-10-04T11:45:54Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /` and the longer `Allow: /spreadsheet`, which wins for /spreadsheets/d/.../export (RFC 9309's longest match), and `Crawl-delay: 1`. The export answers with one redirect to doc-0o-20-sheets.googleusercontent.com, whose robots.txt answered 404 (no rules), read 2026-10-04T11:46:36Z. Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row), forbid automated access only against such machine-readable instructions.",
+      "licence_basis": "stated_by_org",
+      "attribution": "Friends of the Mountains-to-Sea Trail",
+      "terms": "This sheet compiles the primary trailheads listed in our guides and interactive map and can be used or adapted as you like to help track your progress on the trail. It is provided for your convenience and will be updated only when we update the interactive map. Mileages and descriptions may be out of date, so use the spreadsheet at your own risk.",
+      "terms_source": "The sheet's first line, cell A1, read 2026-10-04 in the CSV export.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://docs.google.com/spreadsheets/d/1RQYQ9d0uYc4tiw3kDoANY7ZgQuXDSuj4AyW44Kv7-xQ/export?format=csv",
+        "notes": "37,173 bytes, 200 text/csv; charset=utf-8 after one redirect, with no ETag, no Last-Modified and no Content-Length, `cache-control: no-cache, no-store, max-age=0, must-revalidate` (read 2026-10-04), so extract/_gis_files.py's per-file change check answers UNKNOWN and every monthly run reads the whole sheet. Its own 'Current as of:' cell read 8/12/2026."
+      },
+      "name_field": "Trailhead 1",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 264 of 264 (measured 2026-10-04 on the live export, every row parsed as extract/_gis_files.py parses it). `Trailhead 1` is also unique; (`Eastbound Segment`, `EB Mile`) is 262 of 264.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), which decision 54's starting list filed as a web page; re-read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first on both hosts, for the count, the columns and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "264 trailheads, one per row, read 2026-10-04 (bbox lon -83.49 to -75.46, lat 34.41 to 36.43). Line 1 is the sheet's own note and its 'Current as of:' date, line 2 the header (`header_row`). Each row is a stretch of the MST from `Trailhead 1`, whose `Latitude` and `Longitude` make the row's Point, to `Trailhead 2`, which is always another row's Trailhead 1 and lands as `property_Latitude` and `property_Longitude`, with `Eastbound Segment`, `EB Mile`, `Westbound Segment`, `WB Mile`, `Length` and `Trailhead 1 Notes` (76 filled: parking, gates, hours, addresses; prose that stops at the base model). 20 segments: 1 to 18, '11A-16A' and '09 Alternate'. Three rows of empty cells separate sections and are not features. A hiker's safety: 'Transit only; no trail parking' on US 70 and Guess Rd. and 'Transit only; no public parking' on Wake Tech, 'Seasonally gated' on FS 106, and Table Rock Parking Lot's 'Due to damage from Hurricane Helene, the road to the parking lot, FS 99, is currently closed to vehicles and gated ... about 1.4 miles below': a trailhead here is a way onto the trail, never a promise of a car park.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py and typed (club_poi_types, trailhead, every row), and held, because its terms sentence carries words no decision names: 'use the spreadsheet at your own risk' (no licence_restriction_phrases row reads it as a liability line), 'Mileages and descriptions may be out of date', and 'will be updated only when we update the interactive map', whose 'only' int_sources__publication's rule 5 backstop reads as `unclassified`. Decision 63 turns it true once the maintainer rules on that wording, as for OTA's, BMECC's and OHTA's."
+    },
+    {
       "key": "wi_dnr_park_closures",
       "title": "Wisconsin DNR property closures and notices",
       "provider": "Wisconsin DNR",
@@ -19670,8 +19704,13 @@
             "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
           },
           "trailhead": {
-            "status": "unprobed",
-            "note": "Registered for its closures and warnings under ELT.md's decision 53 (phase B, 2026-10-03). Nobody asked about its point data, so `unprobed` is the literal state - not a finding that it publishes none."
+            "status": "available",
+            "source_key": "fmst_primary_trailheads",
+            "measured": {
+              "features": 264,
+              "date": "2026-10-04"
+            },
+            "note": "FMST's 'Primary Trailheads' Google Sheet, 264 rows with coordinates, read as its CSV export by decision 54's wave 2 and held at reaches_hikers false on its own terms sentence (the row's reaches_hikers_comment). 3 are 'Transit only', a way onto the trail and not a car park."
           }
         }
       },
@@ -20878,8 +20917,13 @@
             "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
           },
           "trailhead": {
-            "status": "unprobed",
-            "note": "Decision 54's places read opened this organization's place layers (boundaries, towns, areas) and asked nothing about point data, so `unprobed` is the literal state - not a finding that they publish none."
+            "status": "available",
+            "source_key": "fpc_forest_park_trailheads",
+            "measured": {
+              "features": 19,
+              "date": "2026-10-04"
+            },
+            "note": "The conservancy's 'Forest Park Trailheads' Google My Map, 19 points in its one folder 'Trail Heads' (the row's notes), read as its KML export by decision 54's wave 2; it reaches hikers from 2026-10-04 (the row's reaches_hikers_comment)."
           }
         }
       },

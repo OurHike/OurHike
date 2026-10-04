@@ -37,7 +37,9 @@ What each format's own columns are:
   GPX names (`name`, `desc`, `cmt`, `sym`, `type`, `src`, `ele`, `time`,
   `number`), a `link`'s href as `link`. Each vertex's `<ele>` is its Z.
 - GeoJSON: `feature_id` (the feature's own `id`), then its properties.
-- Shapefile: its .dbf columns. CSV: its columns.
+- Shapefile: its .dbf columns. CSV: its columns, named by the row's
+  `header_row` (the line they are on, 1 unless a title line sits above them),
+  a repeated name landing as `property_<name>`.
 
 PERSON FIELDS never load (ELT.md, "Who may publish", rule 8): a property whose
 name is in extract/_kinds.py's PERSON_FIELDS or the row's `person_fields`, or
@@ -573,23 +575,37 @@ def parse_shapefile_zip(body: bytes, source: str, member: str | None = None) -> 
 # --- CSV of points ----------------------------------------------------------------
 
 
-def parse_csv_points(body: bytes, source: str, lat_field: str, lon_field: str) -> list[dict]:
-    """A CSV's rows, every column as text, and a Point from the two columns the row names; no Point where either is not a number."""
+def parse_csv_points(body: bytes, source: str, lat_field: str, lon_field: str, header_row: int = 1) -> list[dict]:
+    """A CSV's rows, every column as text, and a Point from the two columns the row names; no Point where either is not a number.
+
+    `header_row` is the line the column names are on, counted from 1: a
+    spreadsheet's export can open with a title line above them, as FMST's
+    trailheads sheet does. A name the header repeats lands as
+    `property_<name>` from its second use on, and the Point is read from the
+    first column of each name, so a sheet listing a segment's two ends keeps
+    both (FMST's `Latitude` twice). A row whose every cell is blank is a
+    spreadsheet's spacing, not a feature, and is skipped; `feature_index`
+    stays the row's position after the header.
+    """
     text = body.decode("utf-8-sig")
     if text.lstrip()[:1] == "<":
         raise GisFileUnreadable(f"{source}: answered markup, not CSV")
-    reader = csv.DictReader(io.StringIO(text))
-    if lat_field not in (reader.fieldnames or []) or lon_field not in (reader.fieldnames or []):
-        raise GisFileUnreadable(f"{source}: the CSV's header has no {lat_field!r} and {lon_field!r} columns")
+    lines = list(csv.reader(io.StringIO(text)))
+    header = lines[header_row - 1] if 0 < header_row <= len(lines) else []
+    if lat_field not in header or lon_field not in header:
+        raise GisFileUnreadable(f"{source}: the CSV's header (line {header_row}) has no {lat_field!r} and {lon_field!r} columns")
+    lat_at, lon_at = header.index(lat_field), header.index(lon_field)
     rows = []
-    for index, record in enumerate(reader):
+    for index, record in enumerate(lines[header_row:]):
+        if not any(cell.strip() for cell in record):
+            continue
+        cells = [record[at].strip() if at < len(record) and record[at].strip() else None for at in range(len(header))]
         row: dict = {"source_file": source, "feature_index": index}
         reserved = {_normal(name) for name in BASE_COLUMNS}
-        for name, value in record.items():
-            if name is not None:
-                _put(row, name, value.strip() if isinstance(value, str) and value.strip() else None, reserved)
+        for name, value in zip(header, cells, strict=True):
+            _put(row, name, value, reserved)
         try:
-            row["geometry"] = {"type": "Point", "coordinates": [float(record[lon_field]), float(record[lat_field])]}
+            row["geometry"] = {"type": "Point", "coordinates": [float(cells[lon_at]), float(cells[lat_at])]}
         except (TypeError, ValueError):
             row["geometry"] = None
         _check_lonlat(row["geometry"], source)
@@ -734,7 +750,7 @@ class GisFile(Resource):
             members = entry.get("zip_members") or [None]
             return [row for member in members for row in parse_shapefile_zip(body, url, member)]
         if fmt == "csv_points":
-            return parse_csv_points(body, url, entry["lat_field"], entry["lon_field"])
+            return parse_csv_points(body, url, entry["lat_field"], entry["lon_field"], entry.get("header_row") or 1)
         if fmt == "zip":
             archive = _zip(body, url)
             wanted = tuple(suffix.lower() for suffix in entry.get("zip_members") or ZIP_MEMBER_FORMATS)
@@ -784,4 +800,7 @@ def gis_file(key: str, **overrides) -> GisFile:
             raise KeyError(f"{key}: {url} is not an http(s) URL")
     if entry["file_format"] == "csv_points" and not (entry.get("lat_field") and entry.get("lon_field")):
         raise KeyError(f"{key}: a csv_points row names its lat_field and lon_field")
+    header_row = entry.get("header_row", 1)
+    if not isinstance(header_row, int) or isinstance(header_row, bool) or header_row < 1:
+        raise KeyError(f"{key}: header_row is the header's line number, counted from 1")
     return GisFile(key=key, **overrides)

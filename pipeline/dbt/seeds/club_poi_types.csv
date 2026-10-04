@@ -165,3 +165,4 @@ bmecc_trail_section_map,folder,Vistas,viewpoint,high,"Folder 'Vistas', 34 of 111
 nbatc_shelters,,,shelter,low,"every point: 12 of 12 named '... Shelter' in NBATC_Shelters_000.kml (notes); low, last modified 2013-02-17"
 mtsg_map_locations,icon,campgrounds,campsite,low,"icon 'campgrounds', 28 of 185 (notes), typed campsite as wave 1 types a campground; low, the trust's map categories overlap"
 nps_api_campgrounds,,,campsite,high,"every item: the NPS Data API's /campgrounds, the Park Service's own list of its campgrounds, 665 nationally (notes)"
+fmst_primary_trailheads,,,trailhead,high,"every row: FMST's 'Primary Trailheads' sheet, which 'compiles the primary trailheads listed in our guides and interactive map', 264 rows (notes); 3 are 'Transit only', a way onto the trail and not a car park"

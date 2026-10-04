@@ -189,8 +189,16 @@ def download_with_retry(
     chunk_bytes: int = 1 << 20,
     label: str | None = None,
     sleep=None,
+    response_headers: dict | None = None,
 ) -> Path:
     """Stream a large file to `dest`, retrying the WHOLE transfer.
+
+    `response_headers`, when given, is filled with the headers of the one
+    response whose body became `dest`, for the third caller (#1652):
+    extract/_geofabrik.py records each extract's Last-Modified and ETag in
+    its manifest and holds the file's size to that response's
+    Content-Length, which a second HEAD could not promise to describe the
+    same bytes.
 
     `headers` rides every attempt unchanged. It exists for the second caller
     (#1066): fetch_trail_water.py's NHD downloads identify themselves with a
@@ -264,6 +272,9 @@ def download_with_retry(
                 continue
 
             part.replace(dest)
+            if response_headers is not None:
+                response_headers.clear()
+                response_headers.update(response.headers)
             return dest
     finally:
         part.unlink(missing_ok=True)

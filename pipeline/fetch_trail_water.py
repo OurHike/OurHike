@@ -117,7 +117,19 @@ it came from, and a merged one names both, so the attribution travels with
 the record rather than sitting in a registry line somebody has to find.
 
 Usage:
-    python fetch_trail_water.py
+    python fetch_trail_water.py            # ATC's two layers and the extracts fetched as needed
+    python fetch_trail_water.py --derive   # from files on disk alone (refresh-reference.yml's build)
+
+`--derive` is the monthly build's form (#1652 — Download OSM's Geofabrik
+extracts at most once a month, into a private raw bucket that outlives the
+7-day Actions cache): the shelters and campsites are the ATC layers as the
+monthly extract landed them, its as-landed copy at data/raw/shelters.geojson
+and data/raw/campsites.geojson (extract/_run.py's as_landed_path()), read
+in fetch_atc_features' shape and order; the fourteen state extracts are the
+ones the build pulled from the raw store into OSM_RAW_DIR, and a missing one
+refuses the derivation rather than being fetched (from_disk_sites() and
+missing_extracts()). The NHD subregions and EPQS are read as always. The
+rule, the guards and the file written are the same either way.
 
 A derivation this expensive must not be able to quietly replace good output
 with less of it, so the write is guarded: a hydrography read that returned no
@@ -519,7 +531,7 @@ def ensure_state_extracts() -> None:
         fetch_states(missing, OSM_RAW_DIR)
 
 
-def collect_streams(sites: list[dict]) -> dict[str, list[dict]]:
+def collect_streams(sites: list[dict], fetch_extracts: bool = True) -> dict[str, list[dict]]:
     """Walk both hydrographies once, collecting every site's candidate streams.
 
     One dataset at a time, each dropped before the next is read: fourteen
@@ -530,8 +542,11 @@ def collect_streams(sites: list[dict]) -> dict[str, list[dict]]:
 
     Raises on a dataset that loads no stream reaches (EMPTY_READ): see
     MAX_SITE_WATER_DROP_RATIO for why that is half of this file's guard.
+    With `fetch_extracts` false (--derive) a missing extract is never
+    fetched: the loop below raises FileNotFoundError on it instead.
     """
-    ensure_state_extracts()
+    if fetch_extracts:
+        ensure_state_extracts()
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     con.execute("CREATE OR REPLACE TABLE sites (global_id VARCHAR, geom GEOMETRY)")
@@ -995,20 +1010,70 @@ def main(argv: list[str] | None = None) -> int:
         flush_elevation_cache()  # also on a refusal or a crash, so answered lookups are kept
 
 
+#: The two ATC layers this derives site water for, in the order the file lists them.
+SITE_LAYERS = ("shelters", "campsites")
+
+
+def from_disk_sites(raw_dir: Path | None = None) -> dict[str, list[dict]]:
+    """Each ATC layer from its as-landed GeoJSON under `raw_dir`, as fetch_atc_features returns it: {global_id, name, lat,
+    lon} for every feature with a point, by name then id. Raises FileNotFoundError for a layer with no file, and
+    ValueError for one with no point, as fetch_atc_features refuses an empty layer. `raw_dir` is RAW_DIR unless named,
+    read when called, so a test redirecting RAW_DIR redirects this."""
+    raw_dir = RAW_DIR if raw_dir is None else raw_dir
+    by_layer = {}
+    for layer in SITE_LAYERS:
+        features = json.loads((raw_dir / f"{layer}.geojson").read_text(encoding="utf-8")).get("features") or []
+        rows = [
+            {
+                "global_id": feature["properties"]["GlobalID"],
+                "name": feature["properties"].get("Name"),
+                "lat": feature["geometry"]["coordinates"][1],
+                "lon": feature["geometry"]["coordinates"][0],
+            }
+            for feature in features
+            if (feature.get("geometry") or {}).get("coordinates")
+        ]
+        if not rows:
+            raise ValueError(f"The as-landed ATC {layer} layer holds no feature with a point")
+        by_layer[layer] = sorted(rows, key=lambda row: (row["name"] or "", row["global_id"]))
+    return by_layer
+
+
+def missing_extracts() -> list[str]:
+    """The AT_STATES whose extract is not under OSM_RAW_DIR."""
+    return [state for state in AT_STATES if not (OSM_RAW_DIR / f"{state}-latest.osm.pbf").exists()]
+
+
 def _run(argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--derive",
+        action="store_true",
+        help="from files on disk alone: the as-landed ATC layers and the extracts already in data/raw/osm/, never fetched",
+    )
+    args = parser.parse_args(argv)
 
-    features_by_layer = {}
-    for layer in ("shelters", "campsites"):
-        print(f"Fetching the ATC {layer} layer ...")
-        features_by_layer[layer] = fetch_atc_features(layer)
+    if args.derive:
+        if missing := missing_extracts():
+            print(f"Refusing to derive: no extract on disk for {', '.join(missing)}, and --derive fetches none.")
+            return 1
+        print(f"Reading the as-landed ATC layers under {RAW_DIR} ...")
+        try:
+            features_by_layer = from_disk_sites()
+        except (OSError, ValueError, KeyError) as refusal:
+            print(f"Refusing to derive: {refusal}.")
+            return 1
+    else:
+        features_by_layer = {}
+        for layer in SITE_LAYERS:
+            print(f"Fetching the ATC {layer} layer ...")
+            features_by_layer[layer] = fetch_atc_features(layer)
     sites = [feature for features in features_by_layer.values() for feature in features]
     print(f"  {len(sites)} shelters and campsites.")
 
     print(f"Reading streams: {len(AT_STATES)} OSM state extracts, then {len(NHD_HU4S)} USGS subregions ...")
     try:
-        candidates = collect_streams(sites)
+        candidates = collect_streams(sites, fetch_extracts=False) if args.derive else collect_streams(sites)
     except ValueError as refusal:
         print(f"Refusing to write: {refusal}.")
         return 1

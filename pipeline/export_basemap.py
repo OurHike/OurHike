@@ -45,6 +45,7 @@ from shapely.geometry import shape
 
 from lib.build_regions import NYC_SOURCE_KEYS, combined, region_from_layers
 from lib.corridor import build_corridor
+from lib.geofabrik import AT_STATES, GEOFABRIK_BASE, state_urls  # noqa: F401 - re-exported for its callers
 from lib.http_retry import download_with_retry
 from lib.poly import clip_shape, to_poly
 
@@ -73,37 +74,14 @@ COVERAGE_REGION_PATH = OUT_DIR / "basemap_region_coverage.geojson"
 DEFAULT_REGIONS = ("at",)
 KNOWN_REGIONS = ("at", "nyc")
 
-GEOFABRIK_BASE = "https://download.geofabrik.de/north-america/us"
-
-# The fourteen states the AT corridor crosses - the default for --states, not
-# a limit. Individual state extracts rather than us-northeast + us-south
-# because the two region files together carry ~5.5 GB where these total
-# ~3-4 GB, and every byte fetched here is also temp-disk the runner must hold.
-AT_STATES = [
-    "georgia",
-    "north-carolina",
-    "tennessee",
-    "virginia",
-    "west-virginia",
-    "maryland",
-    "pennsylvania",
-    "new-jersey",
-    "new-york",
-    "connecticut",
-    "massachusetts",
-    "vermont",
-    "new-hampshire",
-    "maine",
-]
+# GEOFABRIK_BASE and AT_STATES, the fourteen states the AT corridor crosses
+# (the default for --states, not a limit), live in lib/geofabrik.py since
+# #1652, because the extract lands the same files and cannot import this
+# module's dependencies. Imported above, so every caller's name still works.
 
 # z14 is the OpenMapTiles convention and what OpenFreeMap serves; MapLibre
 # overzooms it for deeper views, exactly as the live sheet does today.
 BASEMAP_MAX_ZOOM = 14
-
-
-def state_urls(states: list[str]) -> list[tuple[str, str]]:
-    """(state, download URL) for each Geofabrik state extract."""
-    return [(state, f"{GEOFABRIK_BASE}/{state}-latest.osm.pbf") for state in states]
 
 
 def fetch_states(states: list[str], dest_dir: Path, refetch: bool = False) -> list[Path]:

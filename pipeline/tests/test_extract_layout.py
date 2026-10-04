@@ -53,10 +53,6 @@ TRAIL_ORGS_PATH = PIPELINE_DIR / "reference" / "trail_orgs.json"
 # new registry row must be claimed or listed.
 NOT_YET_EXTRACTED = frozenset(
     {
-        # Its state extracts are gigabytes that belong in the private raw bucket, which
-        # is the maintainer's to create: #1652 — Download OSM's Geofabrik extracts at
-        # most once a month, into a private raw bucket that outlives the 7-day Actions cache.
-        "osm_water",
         # Waiting on #1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a
         # path the Drought Monitor's robots.txt disallows for every user agent. The
         # extract does not rebuild a fetch robots.txt refuses.
@@ -458,13 +454,17 @@ def test_every_umbrella_and_route_only_row_has_exactly_one_not_clubs_line():
         assert line.why.strip() and line.confirmed <= TODAY
 
 
-def test_every_aggregator_has_a_shared_folder_or_waits_on_a_listed_key():
-    """osm, outerspatial and avenza live in _shared/; osm's folder comes with osm_water, which is still listed."""
+def test_every_aggregator_has_a_shared_folder_that_extracts_or_quotes_the_terms_that_refuse_it():
+    """osm, outerspatial and avenza live in _shared/. osm's folder extracts its Geofabrik copies (#1652 — Download OSM's
+    Geofabrik extracts at most once a month, into a private raw bucket that outlives the 7-day Actions cache); the other
+    two are notes quoting the terms that refuse them."""
     orgs = _trail_orgs(TRAIL_ORGS_PATH)
     for slug in sorted(slug for slug, row in orgs.items() if row.get("type") == "aggregator"):
         folder = EXTRACT_DIR / "_shared" / folder_for_slug(slug)
-        if not folder.is_dir():
-            assert slug == "osm" and "osm_water" in NOT_YET_EXTRACTED, f"{slug} has no _shared/ folder"
+        assert folder.is_dir(), f"{slug} has no _shared/ folder"
+        claiming = [shared for shared in SHARED_FILES if shared.club == folder.name and shared.resources]
+        if claiming:
+            assert {key for shared in claiming for key in shared.claims} == {"osm_water"}, slug
             continue
         note = _shared_module(f"{folder_for_slug(slug)}/notes.py").NOT_AVAILABLE
         assert note.problems(TODAY) == [] and note.terms, f"{slug}'s note quotes the terms that refuse it"

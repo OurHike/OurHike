@@ -173,6 +173,62 @@ def test_the_build_builds_from_the_pin_and_writes_only_under_steps(workflow):
         assert f"extract._warehouse {command}" in runs
 
 
+def _first_step(steps: list[dict], text: str) -> int:
+    found = [index for index, step in enumerate(steps) if text in (step.get("run") or "")]
+    assert found, f"no build step runs {text!r}"
+    return found[0]
+
+
+def test_the_build_scans_osm_water_from_the_raw_stores_extracts_before_the_pin_that_build_marts_reads(workflow):
+    """#1652 - Download OSM's Geofabrik extracts at most once a month, into a private raw bucket that outlives the
+    7-day Actions cache. The copies come down after today's fetchers' files (fetch_trail_water.py --derive reads ATC's
+    sites from the as-landed copy), both scans run over them before the pin, the pin carries the scans, and
+    build_marts.py lands them from the pin through the warehouse step's materialised files."""
+    steps = workflow["jobs"]["build"]["steps"]
+    as_landed = _first_step(steps, "extract._warehouse as-landed")
+    pull = _first_step(steps, "-m extract._geofabrik pull")
+    osm = _first_step(steps, "fetch_osm_water.py")
+    site = _first_step(steps, "fetch_trail_water.py --derive")
+    landed = _first_step(steps, "-m extract._geofabrik landed")
+    pin = _first_step(steps, "extract._warehouse pin ")
+    load = _first_step(steps, "extract._warehouse load")
+    marts = _first_step(steps, "build_marts.py --lane monthly")
+
+    assert as_landed < pull < osm == site < landed < pin < load < marts
+    # extract/_geofabrik.py's SCANS: each scan pinned under derived/, never at its scanner's own path.
+    for pinned, local in {
+        "derived/osm_water.geojson": "osm_water.geojson",
+        "derived/trail_water.json": "trail_water.json",
+    }.items():
+        assert f"--extra {pinned}=data/raw/{local}" in steps[pin]["run"], pinned
+
+
+def test_the_water_scans_run_only_on_a_complete_set_never_fail_the_build_and_free_the_disk(workflow):
+    """A missing or unreadable copy lands the last landed scans rather than a scan of part of the corridor, and a scan
+    that refuses or crashes leaves them standing: neither may stop the rest of the monthly build."""
+    steps = workflow["jobs"]["build"]["steps"]
+    pull = steps[_first_step(steps, "-m extract._geofabrik pull")]
+    scan = steps[_first_step(steps, "fetch_osm_water.py")]
+    landed = steps[_first_step(steps, "-m extract._geofabrik landed")]
+
+    assert pull["id"] == "osm" and '--github-output "$GITHUB_OUTPUT"' in pull["run"] and "$GITHUB_STEP_SUMMARY" in pull["run"]
+    assert "steps.osm.outputs.extracts == 'complete'" in scan["if"]
+    assert scan["continue-on-error"] is True and isinstance(scan.get("timeout-minutes"), int)
+    assert "rm -f data/raw/osm/*-latest.osm.pbf" in scan["run"] and "rm -f data/raw/osm/*-latest.osm.pbf" in landed["run"]
+    assert "always()" in landed["if"] and "$GITHUB_STEP_SUMMARY" in landed["run"]
+    assert not _secrets(scan) and not _secrets(landed), "the scans read files on disk and public hosts, no store"
+
+
+def test_every_step_down_to_the_pin_is_skipped_on_a_rerun_that_already_has_one(workflow):
+    steps = workflow["jobs"]["build"]["steps"]
+    check = next(index for index, step in enumerate(steps) if step.get("id") == "pinned")
+    pin = _first_step(steps, "extract._warehouse pin ")
+
+    assert "extract._warehouse has-pin" in steps[check]["run"]
+    for step in steps[check + 1 : pin + 1]:
+        assert "steps.pinned.outputs.pinned" in step.get("if", ""), step.get("name")
+
+
 def test_the_build_keeps_the_row_history_at_history_monthly_through_the_extracts_venv(workflow):
     """pipeline/row_history.py: the snapshots go in the raw store's bucket under this lane's own prefix, and the
     restore and save need s3fs, which only the extract's venv carries."""

@@ -127,6 +127,34 @@ def test_a_shared_folders_file_of_an_hourly_type_stales_the_extract_path_and_a_m
     assert "fresh  extract-notices.yml" in _verdict(["pipeline/extract/_shared/ourhike/highlights.py"])
 
 
+def test_a_monthly_types_extract_file_stales_the_publishing_path_that_runs_the_monthly_lane():
+    """refresh-reference.yml runs `-m extract._run --lane monthly` and publishes what dbt builds from it, so the files
+    of the types that lane carries are its scope, OSM's Geofabrik extracts (#1652) among them, while an hourly type's
+    file stays outside it."""
+    for changed in (
+        "pipeline/extract/_shared/osm/geofabrik.py",
+        "pipeline/extract/_geofabrik.py",
+        "pipeline/extract/usfs/trail_lines.py",
+        "pipeline/extract/_shared/ourhike/highlights.py",
+    ):
+        verdict = _verdict([changed])
+        assert "STALE  refresh-reference.yml" in verdict, changed
+        assert f"unclaimed  {changed}" not in verdict, changed
+    assert "fresh  refresh-reference.yml" in _verdict(["pipeline/extract/usfs/closures.py"])
+    assert "fresh  refresh-reference.yml" in _verdict(["pipeline/extract/_shared/nifc/perimeters.py"])
+    # publish-conditions.yml's monthly-lane run reads the registry alone (`--only`), which is not the lane.
+    assert "fresh  publish-conditions.yml" in _verdict(["pipeline/extract/_shared/osm/geofabrik.py"])
+
+
+def test_a_step_build_marts_runs_stales_every_path_that_runs_build_marts():
+    """build_marts.py starts each step as a subprocess by its STEPS entry's script name, which no import reaches, so
+    step_osm_water.py was unclaimed though the monthly build lands OSM water through it (#1652)."""
+    verdict = _verdict(["pipeline/step_osm_water.py"])
+    assert "STALE  refresh-reference.yml" in verdict and "STALE  publish-conditions.yml" in verdict
+    assert "unclaimed  pipeline/step_osm_water.py" not in verdict
+    assert "fresh  build-dem.yml" in verdict
+
+
 def test_workflows_that_only_mention_the_publisher_are_not_publishing_paths():
     """#1552. Both of these explain in a comment why they do not publish, and
     matching the whole file's text counted that explanation as a publish -

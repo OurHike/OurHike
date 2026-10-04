@@ -41,7 +41,12 @@ THREE WAYS TO RUN, one rule:
   somebody ticks publish-vector-data.yml's include_trail_water (default
   false; "~5.7 GB of USGS subregions / ~30 min"), and the file rides
   FETCH_OUTPUTS from the run that last derived it. No file is no site water,
-  as it is for load_trail_water();
+  as it is for load_trail_water(). The monthly lane names the file
+  refresh-reference.yml's build job derived with fetch_trail_water.py
+  --derive over the Geofabrik extracts the raw store keeps, pinned as
+  data/raw/derived/trail_water.json, or the last landed one (#1652 —
+  Download OSM's Geofabrik extracts at most once a month, into a private raw
+  bucket that outlives the 7-day Actions cache; build_marts.py's lane_args);
 - `--derive`: the hydrography and EPQS as fetch_trail_water.py reads them,
   with its two refusals: a dataset that loads no stream (EMPTY_READ) and a
   derivation that lost more than MAX_SITE_WATER_DROP_RATIO of the site water

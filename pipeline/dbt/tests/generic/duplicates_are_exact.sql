@@ -31,6 +31,21 @@
 -#}
 {% test duplicates_are_exact(model, key_columns, row_id_columns=none) %}
 
+{#- A raw table that does not exist in this warehouse has no rows to
+    compare, and passes: a conditions leg withdraws an unreadable table and
+    takes on ten new ones a run (macros/notices.sql's notice_raw_table says
+    which), and a test that errored on the missing table would skip every
+    model downstream of it, every club's closures among them. Its model reads
+    the missing table as empty, and the gate holds that source back. -#}
+{%- set can_look = execute is defined and execute -%}
+{%- set can_look = can_look and load_relation is defined -%}
+{%- if can_look and load_relation(model) is none %}
+select
+    cast(null as varchar) as key_value,
+    0 as rows_on_key,
+    0 as distinct_rows
+where false
+{%- else %}
 with keyed as (
     select
         {{ dbt_utils.generate_surrogate_key(key_columns) }} as key_value,
@@ -46,5 +61,6 @@ select
 from keyed
 group by key_value
 having count(distinct row_hash) > 1
+{%- endif %}
 
 {% endtest %}

@@ -30,8 +30,9 @@ DEDUPE = re.compile(
     r"\{\{\s*dbt_utils\.deduplicate\(\s*relation='renamed',\s*partition_by='(\w+)',\s*order_by='(\w+)'\s*\)\s*\}\}\s*$"
 )
 # Digits too: a raw table's key may hold one (raw_shta__shta_line_2025), and a model whose source() this
-# pattern missed would leave every check below silently.
-SOURCE = re.compile(r"source\('([a-z0-9_]+)',\s*'([a-z0-9_]+)'\)")
+# pattern missed would leave every check below silently. Whitespace too, for a call split across lines to
+# keep within SQLFluff's line length (pipeline/generate_notice_models.py's).
+SOURCE = re.compile(r"source\(\s*'([a-z0-9_]+)',\s*'([a-z0-9_]+)'\s*\)")
 # Every model that keys and dedupes a raw table, which is every staging model that reads a
 # source() (decision 40): the stg_ models of the first 28, and the base_ models stage 3 adds
 # for the rest (ELT.md, "The dbt project"). A stg_ model that reads a base model, as the
@@ -56,7 +57,8 @@ def model_key(path: Path) -> tuple[str, list[str]]:
     return match.group(2), ast.literal_eval(items)
 
 
-# Read once: every parametrized case below asks, and there are hundreds (decision 54's generated models).
+# Read once: every parametrized case below asks, and there are hundreds (decisions 53's and 54's generated
+# models).
 @cache
 def models_yaml() -> dict:
     found = {}
@@ -80,6 +82,7 @@ def test_there_are_staging_models_to_check():
     assert len(MODELS) >= 27 + 28
 
 
+@cache
 def _reviewed_tables() -> set[str]:
     """The raw tables the extract loads from reviewed files in git, which carry no geometry."""
     from extract._contract import all_resources, discover, discover_shared
@@ -89,6 +92,7 @@ def _reviewed_tables() -> set[str]:
     return {resource.table for resource in resources if isinstance(resource, ReviewedFile | ReviewedDir)}
 
 
+@cache
 def _row_tables() -> set[str]:
     """The raw tables of the kinds whose rows have no geometry column: WordPress posts and their place
     terms, OurHike's own conditions queries, whose closures, reports and notes give a place as lat/lon, the
@@ -96,10 +100,19 @@ def _row_tables() -> set[str]:
     which give one as an A.T. mile, and a guide's section pages (the guide_pages kind), whose entries carry
     NYNJTC's own coordinates and miles inside their JSON."""
     from extract._contract import all_resources, discover, discover_shared
+    from extract._json_apis import (
+        DcnrParkAdvisories,
+        MediawikiAnnouncements,
+        NpsAlerts,
+        SheetCsvSegments,
+        UsgsElevatedVolcanoes,
+    )
     from extract._kinds import (
         AtcTrailUpdatePages,
         ConditionsQuery,
+        FeedNotices,
         GuidePages,
+        PageNotice,
         PublishedHikes,
         WordpressPosts,
         WordpressTerms,
@@ -107,6 +120,9 @@ def _row_tables() -> set[str]:
 
     resources = all_resources(discover() + discover_shared())
     kinds = WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes | AtcTrailUpdatePages | GuidePages
+    # Decision 53's notice readers whose rows carry no geometry (pipeline/generate_notice_models.py's READERS).
+    kinds |= FeedNotices | PageNotice | NpsAlerts | DcnrParkAdvisories | UsgsElevatedVolcanoes | MediawikiAnnouncements
+    kinds |= SheetCsvSegments
     return {resource.table for resource in resources if isinstance(resource, kinds)}
 
 
@@ -155,8 +171,22 @@ SPATIAL_MODELS = [
 ]
 
 
+@cache
+def _generated_row_models() -> set[str]:
+    """The base models pipeline/generate_notice_models.py writes for a notice reader that lands no geometry."""
+    import generate_notice_models
+
+    return {
+        source.base_model
+        for source in generate_notice_models.notice_sources()
+        if not source.hand_staged and not source.reader.spatial
+    }
+
+
 def test_the_row_kinds_models_read_no_geometry():
-    assert {path.stem for path in MODELS if SOURCE.search(path.read_text()).group(2) in _row_tables()} == {
+    assert {
+        path.stem for path in MODELS if SOURCE.search(path.read_text()).group(2) in _row_tables()
+    } == _generated_row_models() | {
         "base_nynjtc__nynjtc_trail_alerts",
         "base_nynjtc__nynjtc_trail_alerts_terms",
         "base_ourhike__closures",
@@ -231,6 +261,7 @@ def test_the_raw_tables_exactness_test_checks_the_key_the_model_builds(path):
     )
 
 
+@cache
 def _socrata_tables() -> set[str]:
     """The raw tables extract/_kinds.py's SocrataDataset lands, each row carrying Socrata's `:id` as `_socrata_id`."""
     from extract._contract import all_resources, discover, discover_shared

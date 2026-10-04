@@ -2,8 +2,9 @@
 -- seed's (today's exporters' own layers, held to the Python by
 -- tests/test_dbt_points_of_interest_parity.py), then each of decision 54's
 -- wave 1 point layers int_points_of_interest__club_points carries, which no
--- exporter reads and so no seed transcribes. int_points_of_interest__classified
--- reads its layer facts from here.
+-- exporter reads and so no seed transcribes, and GATC's water list
+-- (int_points_of_interest__gatc_water, decision 75), which is shaped as one.
+-- int_points_of_interest__classified reads its layer facts from here.
 --
 -- A WAVE 1 LAYER is a `nearby_poi` layer, the file other organizations'
 -- POIs ship in, whose rows arrive as records already typed (`unified`, as
@@ -23,6 +24,13 @@ club_layers as (
         source_key,
         club
     from {{ ref('int_points_of_interest__club_points') }}
+    union distinct
+    -- GATC's water list (decision 75), a layer of records already typed in
+    -- int_points_of_interest__gatc_water, read as a wave 1 layer is.
+    select distinct
+        source_key,
+        club
+    from {{ ref('int_points_of_interest__gatc_water') }}
 ),
 
 last_order as (

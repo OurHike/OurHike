@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: stg_gatc__water_sources
+    description: >
+      GATC's water list (sources.json `gatc_water_sources`), one row per source the PDF prints:
+      its list (`approach` or `at`), GATC's mile, the entry as printed, the id it publishes
+      under, and the document's URL and dates. No coordinates: the PDF states none, and
+      int_points_of_interest__gatc_water places each A.T. source from its mile.
+    columns:
+      - name: water_source_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: "`gatc_water_sources`, the registry key."
+        data_tests: [not_null]
+      - name: club
+        description: "`gatc`, the extract folder that lands the table."
+        data_tests: [not_null]
+      - name: trail
+        description: >
+          Which of the document's two lists the row is in, as lib/club_pdfs.py reads the mile
+          sequence's one restart: `approach` (miles from Amicalola Falls along the Approach
+          Trail) or `at` (miles along the A.T. from Springer Mountain).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [approach, at]
+      - name: mile
+        description: GATC's mile point, as a double.
+        data_tests: [not_null]
+      - name: mile_text
+        description: GATC's mile point as text, the figure a card prints.
+        data_tests: [not_null]
+      - name: entry
+        description: GATC's source name and directions off the trail, fused as the PDF's text layer holds them.
+        data_tests: [not_null]
+      - name: source_id
+        description: "`<trail>-<mile>`: the id the source publishes under, after `gatc_water_sources:`."
+        data_tests: [not_null, unique]
+      - name: document_url
+        description: The PDF's URL, the link a card gives.
+      - name: document_last_modified
+        description: The PDF's HTTP Last-Modified, as the server sent it; null where it sent none.
+      - name: document_title
+        description: >
+          The PDF's own embedded title (GATC's read 2026-10-04: "GATC Water Update July 2020.xlsx"),
+          the best evidence of how old the list is; null where the file states none.
+      - name: document_created
+        description: The PDF's own creation date, ISO 8601; null where the file states none.
+      - name: _loaded_at
+        description: When the extract landed the row.

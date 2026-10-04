@@ -171,6 +171,8 @@ unit_tests:
           - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
       - input: ref('stg_derived__long_path_guide')
         rows: []
+      - input: ref('int_points_of_interest__gatc_water')
+        rows: []
     expect:
       rows:
         - {poi_id: 'atc:the_sentence_reads_as_a_sentence', description: 'Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.'}
@@ -344,6 +346,8 @@ unit_tests:
         rows:
           - {id: 'nynjtc_long_path_guide:s1-description-0.10-water-0', description: 'Water source at mile 0.10 of Long Path section 1; position estimated from the guide''s mile marker, not surveyed. The guide calls it reliable.'}
           - {id: 'nynjtc_long_path_guide:s3-camping-5.13-shelter-0', description: 'Shelter at mile 5.13 of Long Path section 3; position estimated from the guide''s mile marker, not surveyed.'}
+      - input: ref('int_points_of_interest__gatc_water')
+        rows: []
     expect:
       rows:
         - {poi_id: 'nearby:lean_to_in_capitals', description: 'Lean-To in Fixture Wild Forest.'}
@@ -436,6 +440,8 @@ unit_tests:
           - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
           - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
       - input: ref('stg_derived__long_path_guide')
+        rows: []
+      - input: ref('int_points_of_interest__gatc_water')
         rows: []
     expect:
       rows:
@@ -541,6 +547,8 @@ unit_tests:
           - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
           - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
       - input: ref('stg_derived__long_path_guide')
+        rows: []
+      - input: ref('int_points_of_interest__gatc_water')
         rows: []
     expect:
       rows:

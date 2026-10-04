@@ -20,7 +20,9 @@ seeds:
       `matches`, a status written into a name), `keep_only_where` (left out unless the field equals
       one of the layer's rows' `matches` for that field, such as USFWS's Public_Use), `drop_layer`
       (every row left out: a planning layer) and `not_water` (never typed water, on every row with
-      no field, or where the field equals `matches`). For points of interest of any organization
+      no field, or where the field equals `matches`); GATC's water list's `drop_where_contains`
+      row is read the same way by int_points_of_interest__gatc_water, which its records come
+      through instead. For points of interest of any organization
       (int_points_of_interest__classified, decision 65): `plumbed_water` (a water row where the
       field equals `matches` is a tap or fountain whose shutoff season the layer does not record: it
       ships at low confidence with the season caution `water_caution` 'no_shutoff_season', and a

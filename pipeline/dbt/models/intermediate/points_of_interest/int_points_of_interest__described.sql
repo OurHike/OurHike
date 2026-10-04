@@ -585,16 +585,33 @@ guide as (
     from {{ ref('stg_derived__long_path_guide') }}
 ),
 
+gatc as (
+    -- GATC's water list (decision 75): the sentence
+    -- int_points_of_interest__gatc_water writes, which says the point is
+    -- placed from GATC's mile and not surveyed, how far off it can be, and
+    -- the document's own date and title; and the fields that say how it was
+    -- placed, in the guide's columns.
+    select
+        derived_id as id,
+        description,
+        placement,
+        source_url,
+        position_error_m
+    from {{ ref('int_points_of_interest__gatc_water') }}
+),
+
 with_streams as (
     select
         sentences.*,
         stream_sentences.stream_sentence,
         osm_sentences.osm_sentence,
-        guide.description as guide_sentence
+        guide.description as guide_sentence,
+        gatc.description as gatc_sentence
     from sentences
     left join stream_sentences on sentences.poi_id = stream_sentences.poi_id
     left join osm_sentences on sentences.poi_id = osm_sentences.poi_id
     left join guide on sentences.poi_id = guide.id
+    left join gatc on sentences.poi_id = gatc.id
 ),
 
 described as (
@@ -605,6 +622,7 @@ described as (
                 then
                     case
                         when guide_sentence is not null then guide_sentence
+                        when gatc_sentence is not null then gatc_sentence
                         when asset is not null
                             then
                                 case
@@ -638,14 +656,16 @@ select
     enriched.*,
     described.description,
     -- The guide's own fields, which nearby_poi.geojson carries on its
-    -- waypoints and on nothing else.
+    -- waypoints, and the three of them GATC's placed water carries too.
     guide.lp_section,
     guide.section_mile,
-    guide.placement,
-    guide.source_url,
-    guide.position_error_m,
+    coalesce(guide.placement, gatc.placement) as placement,
+    coalesce(guide.source_url, gatc.source_url) as source_url,
+    coalesce(guide.position_error_m, gatc.position_error_m)
+        as position_error_m,
     guide.off_trail_miles,
     guide.water_reliability
 from enriched
 inner join described on enriched.poi_id = described.poi_id
 left join guide on enriched.poi_id = guide.id
+left join gatc on enriched.poi_id = gatc.id

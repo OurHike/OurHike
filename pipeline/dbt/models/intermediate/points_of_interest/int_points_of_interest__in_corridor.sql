@@ -24,6 +24,10 @@
 -- OR, a point inside a park boundary its layer names in sources.json's
 -- `boundary_source` (ST_Covers, so a point on the boundary line is inside).
 --
+-- ONE OF THEIRS IS ON THE A.T.: GATC's water list, placed on ATC's
+-- centerline from GATC's miles (decision 75), whose records say so
+-- (`on_at_axis`), is kept as the A.T. family is, by the corridor.
+--
 -- THE RING IS lib/corridor.py's near_network_sql(): the point buffered by
 -- the ring in EPSG:5070 metres and every line the disc intersects, so the
 -- question is asked the way the Python asks it. The lines are the published
@@ -218,6 +222,21 @@ where
     case
         when judged.phone_files = 'poi_by_type'
             then judged.in_at_corridor or judged.near_network
+        -- A point placed ON the A.T.'s centerline from a mile (GATC's water
+        -- list, int_points_of_interest__gatc_water's `on_at_axis`) is judged
+        -- as the A.T. family is: it lies on a published line by
+        -- construction, the A.T. in trails.geojson, which the ring cannot see
+        -- because the network leaves the A.T. out (export_nearby_trails.py's
+        -- owns_route_names). Asked of the ring, a source between two gaps
+        -- with no other trail near would be dropped for being on the trail.
+        when
+            coalesce(
+                try_cast(
+                    json_extract(judged.properties, '$.on_at_axis') as boolean
+                ),
+                false
+            )
+            then judged.in_at_corridor
         else
             list_contains(
                 {{ var('poi_network_ring_exempt_types') }}, judged.poi_type

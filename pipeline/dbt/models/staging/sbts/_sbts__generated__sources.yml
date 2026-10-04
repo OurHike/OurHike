@@ -19,6 +19,16 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_sbts__sbts_maintained
+        data_tests:
+          # Rows sharing base_sbts__sbts_maintained's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'sbts_maintained'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))", "forest"]
+        description: >
+          SBTS Maintained trails (Sierra Buttes Trail Stewardship) (sources.json
+          `sbts_maintained`). Key: geometry with Forest: 565 of 565 (measured 2026-10-03).
+          Geometry alone is 564; Forest is null on 6.
       - name: raw_sbts__sbts_trail_town_amenities
         data_tests:
           # Rows sharing base_sbts__sbts_trail_town_amenities's key must be exact copies (decision 40).

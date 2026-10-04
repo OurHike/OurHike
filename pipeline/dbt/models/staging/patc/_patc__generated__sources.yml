@@ -33,3 +33,13 @@ sources:
           (f=geojson, outSR 4326), under lib/user_agent.py's USER_AGENT, robots.txt
           first). The geometry stands alone because it is the smallest key: phase C's base
           model keys and dedupes on it.
+      - name: raw_patc__patc_trails_master
+        data_tests:
+          # Rows sharing base_patc__patc_trails_master's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'patc_trails_master'", "globalid"]
+        description: >
+          PATC Trails Master, view (PATC) (sources.json `patc_trails_master`). Key:
+          GlobalID: unique and non-null on all 2,101 rows (measured 2026-10-03 over every
+          row's attributes).

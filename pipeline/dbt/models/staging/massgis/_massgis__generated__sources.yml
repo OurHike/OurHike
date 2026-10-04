@@ -19,6 +19,16 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_massgis__dcr_roads_and_trails
+        data_tests:
+          # Rows sharing base_massgis__dcr_roads_and_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'dcr_roads_and_trails'", "globalid"]
+        description: >
+          DCR Roads and Trails, statewide (MA DCR) (sources.json `dcr_roads_and_trails`).
+          Key: GlobalID: unique and non-null on all 36,859 rows (measured 2026-10-03 over
+          every row's attributes).
       - name: raw_massgis__massgis_openspace
         data_tests:
           # Rows sharing base_massgis__massgis_openspace's key must be exact copies (decision 40).

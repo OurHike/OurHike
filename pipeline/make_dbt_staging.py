@@ -24,7 +24,9 @@ WHAT EACH sources.json ROW GIVES IT:
   ESRI_TYPES, "the base model converts them") and are cast to timestamptz here, in UTC as ArcGIS stores them.
   A row without it has its dates, if it has any, left as the integers dlt landed.
 - per type, the fields a staging model renames to the union's columns (SHAPES): `name_field` or
-  `name_constant` and `category_field` for places, `elevation_source` for elevation.
+  `name_constant` and `category_field` for places, `elevation_source` for elevation, `name_field` or
+  `name_constant` for trail lines. A rule a layer needs beyond these (a historic alignment, a road a trail layer
+  carries) is a row of the dbt/seeds/layer_rules.csv seed, which the type's intermediate reads.
 
 Column names are the registry's field names as dlt names them on landing (the `sql_ci_v1` convention
 .dlt/config.toml sets, path by path), quoted where DuckDB reserves the word, so `DESC_` is `"desc"`.
@@ -77,6 +79,13 @@ ROW_IDS = frozenset({"objectid", "objectid_1", "objectid_12", "fid", "oid", "esr
 #: int_<type>__source_extents on a live build, which names the narrowest box its vertices fit.
 DEFAULT_REGION = "us_and_territories"
 
+#: Types whose every layer already has its box decided in macros/lands_outside_its_region.sql, so the generator
+#: gives them none. The trail-line rows (2026-10-03, cdaba599): that macro's map lists each one outside the eastern
+#: box and its header says a row it leaves out sits inside it, so leaving one out is a decision, eastern, which a
+#: generated box would widen. Those boxes were read off each layer's returnExtentOnly but one (usfws_trail_segments,
+#: from its vertices), so int_trail_lines__source_extents is what checks them on a live build.
+REGIONS_DECIDED_BY_HAND = frozenset({"trail_lines"})
+
 LINE = 76  # SQL comment width: SQLFluff's LT05 holds every line to 80
 
 
@@ -111,6 +120,17 @@ SHAPES = {
             (
                 "published_elevation",
                 "The elevation field the registry's `elevation_source` names (`field <name>`), as text, exactly as the layer publishes it; null for a layer whose elevation is its geometry's Z. Its unit is the registry's `elevation_unit`, which int_elevation__club_samples reads row by row.",
+            ),
+        ),
+    ),
+    "trail_lines": Shape(
+        key_column="trail_segment_key",
+        row="one line of a trail-line layer: a trail, a section, a route or an alignment, as the layer draws it",
+        union="int_trail_lines__unioned",
+        columns=(
+            (
+                "name",
+                "The layer's own name for the line, from the registry's `name_field`, or its `name_constant` for a layer that names its lines only in the registry; null where it has neither.",
             ),
         ),
     ),
@@ -424,19 +444,38 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
 # --- staging models -------------------------------------------------------------------------------------------
 
 
+def _name(entry: dict) -> str:
+    """The `name` column: the registry's `name_field`, else its `name_constant`, else null."""
+    if entry.get("name_field"):
+        return f"cast({column(entry['name_field'])} as varchar) as name"
+    if entry.get("name_constant"):
+        line = f"cast({_sql_text(entry['name_constant'])} as varchar) as name"
+        if len(line) + 5 <= 80:  # indent, and the comma after it
+            return line
+        # LT05: a long constant is cut at spaces into pieces joined with ||, each piece keeping its space.
+        pieces, piece = [], ""
+        for word in entry["name_constant"].split(" "):
+            candidate = f"{piece} {word}" if piece else word
+            if piece and len(_sql_text(candidate + " ")) > 60:
+                pieces.append(piece + " ")
+                piece = word
+            else:
+                piece = candidate
+        pieces.append(piece)
+        joined = "\n        || ".join(_sql_text(text) for text in pieces)
+        return f"cast(\n        {joined} as varchar\n    ) as name"
+    return "cast(null as varchar) as name"
+
+
 def _conformed(table: Table) -> list[str]:
     entry = table.entry
+    if table.type == "trail_lines":
+        return [_name(entry)]
     if table.type == "places":
-        if entry.get("name_field"):
-            name = f"cast({column(entry['name_field'])} as varchar)"
-        elif entry.get("name_constant"):
-            name = f"cast({_sql_text(entry['name_constant'])} as varchar)"
-        else:
-            name = "cast(null as varchar)"
         category = (
             f"cast({column(entry['category_field'])} as varchar)" if entry.get("category_field") else "cast(null as varchar)"
         )
-        return [f"{name} as name", f"{category} as category"]
+        return [_name(entry), f"{category} as category"]
     if table.type == "elevation":
         source = entry.get("elevation_source") or ""
         if source.startswith("field "):
@@ -577,7 +616,7 @@ def hand_set_regions() -> set[str]:
 
 def regions_macro(all_tables: list[Table]) -> str:
     by_hand = hand_set_regions()
-    keys = sorted(table.key for table in all_tables if table.key not in by_hand)
+    keys = sorted(table.key for table in all_tables if table.key not in by_hand and table.type not in REGIONS_DECIDED_BY_HAND)
     cases = "\n".join(f"    when {{{{ column }}}} = '{key}' then '{DEFAULT_REGION}'" for key in keys)
     return (
         JINJA_MARK
@@ -631,6 +670,16 @@ def render() -> dict[Path, str]:
         files[INTERMEDIATE / type_ / f"{shape.union}.sql"] = union_sql(type_, staging_models)
         files[INTERMEDIATE / type_ / f"_{type_}__generated__intermediate.yml"] = union_yaml(type_, tables_by_type[type_])
     files[REGIONS_MACRO] = regions_macro(all_tables)
+    # SQLFluff's LT05 holds a model's every line to 80 and runs ten minutes into the dbt job: fail here instead.
+    long = [
+        f"{path.relative_to(PIPELINE)}:{number}"
+        for path, text in files.items()
+        if path.suffix == ".sql" and path.parent.name != "macros"
+        for number, line in enumerate(text.split("\n"), 1)
+        if len(line) > 80
+    ]
+    if long:
+        raise ValueError("generated lines over SQLFluff's 80 columns: " + ", ".join(long))
     return files
 
 

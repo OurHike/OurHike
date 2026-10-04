@@ -19,6 +19,16 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_blm__blm_iditarod_nht
+        data_tests:
+          # Rows sharing base_blm__blm_iditarod_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'blm_iditarod_nht'", "trailname"]
+        description: >
+          Iditarod National Historic Trail historic route centerline (BLM, hosted by NPS)
+          (sources.json `blm_iditarod_nht`). Key: TrailName: unique and non-null on all 26
+          rows (measured 2026-10-03 over every row's attributes).
       - name: raw_blm__blm_national_monuments_ncas
         data_tests:
           # Rows sharing base_blm__blm_national_monuments_ncas's key must be exact copies (decision 40).
@@ -29,6 +39,26 @@ sources:
           BLM NLCS National Monuments, National Conservation Areas and Similar
           Designations (sources.json `blm_national_monuments_ncas`). Key: `NCA_NAME` is
           unique and non-null on all 57 rows read 2026-10-03.
+      - name: raw_blm__blm_old_spanish_nht_alignment
+        data_tests:
+          # Rows sharing base_blm__blm_old_spanish_nht_alignment's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'blm_old_spanish_nht_alignment'", "globalid"]
+        description: >
+          Old Spanish NHT alignment (BLM) (sources.json `blm_old_spanish_nht_alignment`).
+          Key: GlobalID: unique and non-null on all 7 rows (measured 2026-10-03 over every
+          row's attributes).
+      - name: raw_blm__blm_old_spanish_nht_trails
+        data_tests:
+          # Rows sharing base_blm__blm_old_spanish_nht_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'blm_old_spanish_nht_trails'", "globalid"]
+        description: >
+          Old Spanish NHT trails (BLM) (sources.json `blm_old_spanish_nht_trails`). Key:
+          GlobalID: unique and non-null on all 101 rows (measured 2026-10-03 over every
+          row's attributes).
       - name: raw_blm__blm_public_lands_access_lines
         data_tests:
           # Rows sharing base_blm__blm_public_lands_access_lines's key must be exact copies (decision 40).

@@ -39,6 +39,132 @@ sources:
           Great Smoky Mountains park boundary lines (GRSM) (sources.json
           `grsm_park_boundary_lines`). Key: `GlobalID` is unique and non-null on all 19
           rows read 2026-10-03.
+      - name: raw_nps__nps_ala_kahakai_alanui_aupuni
+        data_tests:
+          # Rows sharing base_nps__nps_ala_kahakai_alanui_aupuni's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_ala_kahakai_alanui_aupuni'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Ala Kahakai NHT: Alanui Aupuni trail (NPS story-map layer) (sources.json
+          `nps_ala_kahakai_alanui_aupuni`). Key: One row, so the registry key alone is the
+          key, as for pcta_centerline (measured 2026-10-03: returnCountOnly 1).
+      - name: raw_nps__nps_ala_kahakai_kaawaloa
+        data_tests:
+          # Rows sharing base_nps__nps_ala_kahakai_kaawaloa's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_ala_kahakai_kaawaloa'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Ala Kahakai NHT: Ka'awaloa Trail (NPS story-map layer) (sources.json
+          `nps_ala_kahakai_kaawaloa`). Key: One row, so the registry key alone is the key,
+          as for pcta_centerline (measured 2026-10-03: returnCountOnly 1).
+      - name: raw_nps__nps_ala_kahakai_kiholo_puako
+        data_tests:
+          # Rows sharing base_nps__nps_ala_kahakai_kiholo_puako's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_ala_kahakai_kiholo_puako'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Ala Kahakai NHT: Kiholo-Puako Trail (NPS story-map layer) (sources.json
+          `nps_ala_kahakai_kiholo_puako`). Key: the geometry (every vertex at 6 decimal
+          places): 2 of 2, and no attribute column is unique (measured 2026-10-03 over
+          every row).
+      - name: raw_nps__nps_ala_kahakai_kohala_hema
+        data_tests:
+          # Rows sharing base_nps__nps_ala_kahakai_kohala_hema's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_ala_kahakai_kohala_hema'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Ala Kahakai NHT: Kohala Hema trail (NPS story-map layer) (sources.json
+          `nps_ala_kahakai_kohala_hema`). Key: the geometry (every vertex at 6 decimal
+          places): 14 of 14, and no attribute column is unique (measured 2026-10-03 over
+          every row).
+      - name: raw_nps__nps_anza_nht
+        data_tests:
+          # Rows sharing base_nps__nps_anza_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_anza_nht'", "state"]
+        description: >
+          Juan Bautista de Anza NHT historic corridor centerline (NPS) (sources.json
+          `nps_anza_nht`). Key: STATE: unique and non-null on all 3 rows (measured
+          2026-10-03 over every row's attributes).
+      - name: raw_nps__nps_anza_recreation_trails
+        data_tests:
+          # Rows sharing base_nps__nps_anza_recreation_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_anza_recreation_trails'", "globalid"]
+        description: >
+          Juan Bautista de Anza NHT recreation trails (NPS-hosted) (sources.json
+          `nps_anza_recreation_trails`). Key: GlobalID: unique and non-null on all 578
+          rows (measured 2026-10-03 over every row's attributes).
+      - name: raw_nps__nps_butterfield_overland_nht
+        data_tests:
+          # Rows sharing base_nps__nps_butterfield_overland_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_butterfield_overland_nht'", "globalid"]
+        description: >
+          Butterfield Overland National Historic Trail, congressionally designated
+          alignment (NPS) (sources.json `nps_butterfield_overland_nht`). Key: GlobalID:
+          unique and non-null on all 1,748 rows (measured 2026-10-03 over every row's
+          attributes).
+      - name: raw_nps__nps_butterfield_srs_route
+        data_tests:
+          # Rows sharing base_nps__nps_butterfield_srs_route's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_butterfield_srs_route'", "globalid"]
+        description: >
+          Butterfield Overland Trail Special Resource Study route (NPS) (sources.json
+          `nps_butterfield_srs_route`). Key: GlobalID: unique and non-null on all 2 rows
+          (measured 2026-10-03 over every row's attributes).
+      - name: raw_nps__nps_california_nht
+        data_tests:
+          # Rows sharing base_nps__nps_california_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_california_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          California National Historic Trail, congressionally designated alignment (NPS)
+          (sources.json `nps_california_nht`). Key: One row, so the registry key alone is
+          the key, as for pcta_centerline (measured 2026-10-03: returnCountOnly 1).
+      - name: raw_nps__nps_captain_john_smith_nht
+        data_tests:
+          # Rows sharing base_nps__nps_captain_john_smith_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_captain_john_smith_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Captain John Smith Chesapeake National Historic Trail centerline (NPS)
+          (sources.json `nps_captain_john_smith_nht`). Key: the geometry (every vertex at
+          6 decimal places): 832 of 832, and no attribute column is unique (measured
+          2026-10-03 over every row).
+      - name: raw_nps__nps_el_camino_tejas_nht
+        data_tests:
+          # Rows sharing base_nps__nps_el_camino_tejas_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_el_camino_tejas_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          El Camino Real de los Tejas National Historic Trail, congressionally designated
+          alignment (NPS) (sources.json `nps_el_camino_tejas_nht`). Key: One row, so the
+          registry key alone is the key, as for pcta_centerline (measured 2026-10-03:
+          returnCountOnly 1).
+      - name: raw_nps__nps_el_camino_tierra_adentro_nht
+        data_tests:
+          # Rows sharing base_nps__nps_el_camino_tierra_adentro_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_el_camino_tierra_adentro_nht'", "globalid"]
+        description: >
+          El Camino Real de Tierra Adentro National Historic Trail, congressionally
+          designated alignment (NPS and BLM) (sources.json
+          `nps_el_camino_tierra_adentro_nht`). Key: GlobalID: unique and non-null on all 5
+          rows (measured 2026-10-03 over every row's attributes).
       - name: raw_nps__nps_legislated_wilderness
         data_tests:
           # Rows sharing base_nps__nps_legislated_wilderness's key must be exact copies (decision 40).
@@ -48,6 +174,69 @@ sources:
         description: >
           NPS Legislated Wilderness (sources.json `nps_legislated_wilderness`). Key:
           `GlobalID` is unique and non-null on all 61 rows read 2026-10-03.
+      - name: raw_nps__nps_lewis_clark_nht
+        data_tests:
+          # Rows sharing base_nps__nps_lewis_clark_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_lewis_clark_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Lewis and Clark National Historic Trail, congressionally designated route (NPS)
+          (sources.json `nps_lewis_clark_nht`). Key: the geometry (every vertex at 6
+          decimal places): 62 of 62, and no attribute column is unique (measured
+          2026-10-03 over every row).
+      - name: raw_nps__nps_lewis_clark_water_trails
+        data_tests:
+          # Rows sharing base_nps__nps_lewis_clark_water_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_lewis_clark_water_trails'", "trail_name"]
+        description: >
+          Lewis and Clark NHT water trails (NPS) (sources.json
+          `nps_lewis_clark_water_trails`). Key: Trail_Name: unique and non-null on all 18
+          rows (measured 2026-10-03 over every row's attributes).
+      - name: raw_nps__nps_mormon_pioneer_nht
+        data_tests:
+          # Rows sharing base_nps__nps_mormon_pioneer_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_mormon_pioneer_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Mormon Pioneer National Historic Trail, congressionally designated alignment
+          (NPS) (sources.json `nps_mormon_pioneer_nht`). Key: One row, so the registry key
+          alone is the key, as for pcta_centerline (measured 2026-10-03: returnCountOnly
+          1).
+      - name: raw_nps__nps_old_spanish_nht
+        data_tests:
+          # Rows sharing base_nps__nps_old_spanish_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_old_spanish_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Old Spanish National Historic Trail, feasibility study alignment (NPS)
+          (sources.json `nps_old_spanish_nht`). Key: One row, so the registry key alone is
+          the key, as for pcta_centerline (measured 2026-10-03: returnCountOnly 1).
+      - name: raw_nps__nps_oregon_nht
+        data_tests:
+          # Rows sharing base_nps__nps_oregon_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_oregon_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Oregon National Historic Trail, congressionally designated alignment (NPS)
+          (sources.json `nps_oregon_nht`). Key: One row, so the registry key alone is the
+          key, as for pcta_centerline (measured 2026-10-03: returnCountOnly 1).
+      - name: raw_nps__nps_overmountain_victory_nht
+        data_tests:
+          # Rows sharing base_nps__nps_overmountain_victory_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_overmountain_victory_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Overmountain Victory National Historic Trail historic route (NPS) (sources.json
+          `nps_overmountain_victory_nht`). Key: the geometry (every vertex at 6 decimal
+          places): 43 of 43, and no attribute column is unique (measured 2026-10-03 over
+          every row).
       - name: raw_nps__nps_park_boundaries
         data_tests:
           # Rows sharing base_nps__nps_park_boundaries's key must be exact copies (decision 40).
@@ -57,6 +246,57 @@ sources:
         description: >
           NPS Boundary (Land Resources Division) (sources.json `nps_park_boundaries`).
           Key: `GlobalID` is unique and non-null on all 442 rows read 2026-10-03.
+      - name: raw_nps__nps_pony_express_nht
+        data_tests:
+          # Rows sharing base_nps__nps_pony_express_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_pony_express_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Pony Express National Historic Trail, congressionally designated alignment (NPS)
+          (sources.json `nps_pony_express_nht`). Key: One row, so the registry key alone
+          is the key, as for pcta_centerline (measured 2026-10-03: returnCountOnly 1).
+      - name: raw_nps__nps_santa_fe_nht
+        data_tests:
+          # Rows sharing base_nps__nps_santa_fe_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_santa_fe_nht'", "globalid"]
+        description: >
+          Santa Fe National Historic Trail, congressionally designated alignment (NPS)
+          (sources.json `nps_santa_fe_nht`). Key: GlobalID: unique and non-null on all 96
+          rows (measured 2026-10-03 over every row's attributes).
+      - name: raw_nps__nps_star_spangled_banner_nht
+        data_tests:
+          # Rows sharing base_nps__nps_star_spangled_banner_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_star_spangled_banner_nht'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Star-Spangled Banner National Historic Trail, official driving and water route
+          (NPS) (sources.json `nps_star_spangled_banner_nht`). Key: One row, so the
+          registry key alone is the key, as for pcta_centerline (measured 2026-10-03:
+          returnCountOnly 1).
+      - name: raw_nps__nps_trail_of_tears_nht
+        data_tests:
+          # Rows sharing base_nps__nps_trail_of_tears_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_trail_of_tears_nht'", "globalid"]
+        description: >
+          Trail of Tears National Historic Trail, congressionally designated alignment
+          (NPS) (sources.json `nps_trail_of_tears_nht`). Key: GlobalID: unique and non-
+          null on all 2,006 rows (measured 2026-10-03 over every row's attributes).
+      - name: raw_nps__nps_washington_rochambeau_nht
+        data_tests:
+          # Rows sharing base_nps__nps_washington_rochambeau_nht's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_washington_rochambeau_nht'", "name"]
+        description: >
+          Washington-Rochambeau Revolutionary Route NHT driving route centerline (NPS)
+          (sources.json `nps_washington_rochambeau_nht`). Key: Name: unique and non-null
+          on all 11 rows (measured 2026-10-03 over every row's attributes).
       - name: raw_nps__pohe_trail_regions
         data_tests:
           # Rows sharing base_nps__pohe_trail_regions's key must be exact copies (decision 40).

@@ -24,3 +24,24 @@ models:
           usfws_refuge_boundaries, globalid, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_usfws__usfws_trail_segments
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usfws', 'raw_usfws__usfws_trail_segments')
+          config:
+            severity: warn
+    description: >
+      FWS HQ trail segments, National Wildlife Refuges (USFWS), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_usfws__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usfws_trail_segments, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]

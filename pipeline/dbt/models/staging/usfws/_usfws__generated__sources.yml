@@ -29,3 +29,13 @@ sources:
           FWS National Realty Boundaries (National Wildlife Refuge System) (sources.json
           `usfws_refuge_boundaries`). Key: `GlobalID` is unique and non-null on all 1,085
           rows read 2026-10-03.
+      - name: raw_usfws__usfws_trail_segments
+        data_tests:
+          # Rows sharing base_usfws__usfws_trail_segments's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usfws_trail_segments'", "globalid"]
+        description: >
+          FWS HQ trail segments, National Wildlife Refuges (USFWS) (sources.json
+          `usfws_trail_segments`). Key: GlobalID: unique and non-null on all 6,420 rows
+          (measured 2026-10-03 over every row's attributes).

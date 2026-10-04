@@ -3,6 +3,27 @@
 version: 2
 
 models:
+  - name: base_fltc__fltc_flt_main
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('fltc', 'raw_fltc__fltc_flt_main')
+          config:
+            severity: warn
+    description: >
+      Finger Lakes Trail: thru trails, loops and spurs (FLTC), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_fltc__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          fltc_flt_main, geometry_key('geom'), the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_fltc__fltc_map_sheet_index
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -23,4 +44,25 @@ models:
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
           fltc_map_sheet_index, mapname, the registry key first and then the fields
           measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_fltc__fltc_non_flt_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('fltc', 'raw_fltc__fltc_non_flt_trails')
+          config:
+            severity: warn
+    description: >
+      Non-FLT trails near the Finger Lakes Trail (FLTC), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_fltc__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          fltc_non_flt_trails, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
         data_tests: [not_null, unique]

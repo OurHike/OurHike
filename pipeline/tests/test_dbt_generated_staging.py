@@ -45,12 +45,13 @@ def test_every_staged_types_arcgis_layer_has_a_model_reading_its_raw_table():
 
 
 def test_there_are_layers_to_stage():
-    """Decision 54's wave 1 on this branch: 83 places layers and 6 elevation layers at least."""
+    """Decision 54's wave 1 on this branch: 83 places layers, 6 elevation layers and 98 trail-line layers at least."""
     by_type = {}
     for table in make_dbt_staging.tables():
         by_type[table.type] = by_type.get(table.type, 0) + 1
     assert by_type.get("places", 0) >= 83
     assert by_type.get("elevation", 0) >= 6
+    assert by_type.get("trail_lines", 0) >= 98
 
 
 def _table(entry: dict, type_: str = "places") -> Table:
@@ -103,6 +104,23 @@ def test_a_layer_with_no_name_field_takes_its_registry_name_constant():
     assert conformed[0] == "cast('Catskill Park' as varchar) as name"
 
 
+def test_a_long_name_constant_is_cut_for_the_line_limit_and_joins_back_to_itself():
+    """SQLFluff's LT05 holds a line to 80, so a long constant is pieces joined with ||, which DuckDB reads as the whole."""
+    import duckdb
+
+    constant = "Ala Kahakai National Historic Trail - Ka'awaloa Trail (SIHP 14176)"
+    sql = make_dbt_staging._name({"name_constant": constant})
+    assert all(len(line) + 4 <= 80 for line in sql.split("\n"))
+    assert duckdb.sql(f"select {sql}").fetchone()[0] == constant
+
+
+def test_a_trail_line_layer_is_staged_with_its_name():
+    conformed = make_dbt_staging._conformed(
+        _table({"key": "a", "key_fields": ["geometry"], "name_field": "TRAILNAME"}, "trail_lines")
+    )
+    assert conformed == ["cast(trailname as varchar) as name"]
+
+
 def test_an_elevation_layer_names_its_field_or_its_geometry_z():
     field = make_dbt_staging._conformed(
         _table({"key": "a", "id_field": "GlobalID", "elevation_source": "field Max_Elevat"}, "elevation")
@@ -129,4 +147,8 @@ def test_a_region_set_by_hand_in_the_macro_is_not_generated_again():
     files = make_dbt_staging.render()
     generated = set(re.findall(r"= '([a-z0-9_]+)' then", files[make_dbt_staging.REGIONS_MACRO]))
     assert not generated & make_dbt_staging.hand_set_regions()
-    assert generated | make_dbt_staging.hand_set_regions() >= {table.key for table in make_dbt_staging.tables()}
+    undecided = {table.key for table in make_dbt_staging.tables() if table.type not in make_dbt_staging.REGIONS_DECIDED_BY_HAND}
+    assert generated | make_dbt_staging.hand_set_regions() >= undecided
+    # A type whose boxes the macro decides gets none generated, so a row it leaves out stays eastern.
+    decided = {table.key for table in make_dbt_staging.tables() if table.type in make_dbt_staging.REGIONS_DECIDED_BY_HAND}
+    assert not generated & decided

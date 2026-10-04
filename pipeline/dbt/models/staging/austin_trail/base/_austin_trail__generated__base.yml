@@ -3,6 +3,48 @@
 version: 2
 
 models:
+  - name: base_austin_trail__austin_pard_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('austin_trail', 'raw_austin_trail__austin_pard_trails')
+          config:
+            severity: warn
+    description: >
+      Austin Parks and Recreation trails on parkland (City of Austin PARD), every row, keyed
+      and deduped (decision 40), the layer's own columns under dlt's names. Its sources.json
+      row reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_trail_lines__unioned reads it through stg_austin_trail__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          austin_pard_trails, asset_mgmt_id, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_austin_trail__ttc_butler_trail
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('austin_trail', 'raw_austin_trail__ttc_butler_trail')
+          config:
+            severity: warn
+    description: >
+      Ann and Roy Butler Hike and Bike Trail (The Trail Conservancy), every row, keyed and
+      deduped (decision 40), the layer's own columns under dlt's names. Its sources.json row
+      reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_trail_lines__unioned reads it through stg_austin_trail__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ttc_butler_trail, globalid_2, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_austin_trail__ttc_management_areas
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

@@ -13,3 +13,20 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_nps__trail_lines
+    description: >
+      The nps/ folder's trail lines layers (`nps_ala_kahakai_alanui_aupuni`,
+      `nps_ala_kahakai_kaawaloa`, `nps_ala_kahakai_kiholo_puako`,
+      `nps_ala_kahakai_kohala_hema`, `nps_anza_nht`, `nps_anza_recreation_trails`,
+      `nps_butterfield_overland_nht`, `nps_butterfield_srs_route`, `nps_california_nht`,
+      `nps_captain_john_smith_nht`, `nps_el_camino_tejas_nht`,
+      `nps_el_camino_tierra_adentro_nht`, `nps_lewis_clark_nht`,
+      `nps_lewis_clark_water_trails`, `nps_mormon_pioneer_nht`, `nps_old_spanish_nht`,
+      `nps_oregon_nht`, `nps_overmountain_victory_nht`, `nps_pony_express_nht`,
+      `nps_santa_fe_nht`, `nps_star_spangled_banner_nht`, `nps_trail_of_tears_nht`,
+      `nps_washington_rochambeau_nht`), one row per base row, renamed to
+      int_trail_lines__unioned's columns, with each layer's own columns in `properties`.
+    columns:
+      - name: trail_segment_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

@@ -45,6 +45,261 @@ models:
           grsm_park_boundary_lines, globalid, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_nps__nps_ala_kahakai_alanui_aupuni
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_ala_kahakai_alanui_aupuni')
+          config:
+            severity: warn
+    description: >
+      Ala Kahakai NHT: Alanui Aupuni trail (NPS story-map layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_ala_kahakai_alanui_aupuni, geometry_key('geom'), the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_ala_kahakai_kaawaloa
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_ala_kahakai_kaawaloa')
+          config:
+            severity: warn
+    description: >
+      Ala Kahakai NHT: Ka'awaloa Trail (NPS story-map layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_ala_kahakai_kaawaloa, geometry_key('geom'), the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_ala_kahakai_kiholo_puako
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_ala_kahakai_kiholo_puako')
+          config:
+            severity: warn
+    description: >
+      Ala Kahakai NHT: Kiholo-Puako Trail (NPS story-map layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_ala_kahakai_kiholo_puako, geometry_key('geom'), the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_ala_kahakai_kohala_hema
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_ala_kahakai_kohala_hema')
+          config:
+            severity: warn
+    description: >
+      Ala Kahakai NHT: Kohala Hema trail (NPS story-map layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_ala_kahakai_kohala_hema, geometry_key('geom'), the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_anza_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_anza_nht')
+          config:
+            severity: warn
+    description: >
+      Juan Bautista de Anza NHT historic corridor centerline (NPS), every row, keyed and
+      deduped (decision 40), the layer's own columns under dlt's names. Its sources.json row
+      reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over nps_anza_nht,
+          state, the registry key first and then the fields measured unique for this
+          layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_anza_recreation_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_anza_recreation_trails')
+          config:
+            severity: warn
+    description: >
+      Juan Bautista de Anza NHT recreation trails (NPS-hosted), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_anza_recreation_trails, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_butterfield_overland_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_butterfield_overland_nht')
+          config:
+            severity: warn
+    description: >
+      Butterfield Overland National Historic Trail, congressionally designated alignment
+      (NPS), every row, keyed and deduped (decision 40), the layer's own columns under dlt's
+      names. Its sources.json row reads `reaches_hikers: false`, so int_sources__publication
+      holds it back from every mart. int_trail_lines__unioned reads it through
+      stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_butterfield_overland_nht, globalid, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_butterfield_srs_route
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_butterfield_srs_route')
+          config:
+            severity: warn
+    description: >
+      Butterfield Overland Trail Special Resource Study route (NPS), every row, keyed and
+      deduped (decision 40), the layer's own columns under dlt's names. Its sources.json row
+      reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_butterfield_srs_route, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_california_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_california_nht')
+          config:
+            severity: warn
+    description: >
+      California National Historic Trail, congressionally designated alignment (NPS), every
+      row, keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_california_nht, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_captain_john_smith_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_captain_john_smith_nht')
+          config:
+            severity: warn
+    description: >
+      Captain John Smith Chesapeake National Historic Trail centerline (NPS), every row, keyed
+      and deduped (decision 40), the layer's own columns under dlt's names. Its sources.json
+      row reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_captain_john_smith_nht, geometry_key('geom'), the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_el_camino_tejas_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_el_camino_tejas_nht')
+          config:
+            severity: warn
+    description: >
+      El Camino Real de los Tejas National Historic Trail, congressionally designated
+      alignment (NPS), every row, keyed and deduped (decision 40), the layer's own columns
+      under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
+      int_sources__publication holds it back from every mart. int_trail_lines__unioned reads
+      it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_el_camino_tejas_nht, geometry_key('geom'), the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_el_camino_tierra_adentro_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_el_camino_tierra_adentro_nht')
+          config:
+            severity: warn
+    description: >
+      El Camino Real de Tierra Adentro National Historic Trail, congressionally designated
+      alignment (NPS and BLM), every row, keyed and deduped (decision 40), the layer's own
+      columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
+      int_sources__publication holds it back from every mart. int_trail_lines__unioned reads
+      it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_el_camino_tierra_adentro_nht, globalid, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_nps__nps_legislated_wilderness
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -66,6 +321,132 @@ models:
           nps_legislated_wilderness, globalid, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_nps__nps_lewis_clark_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_lewis_clark_nht')
+          config:
+            severity: warn
+    description: >
+      Lewis and Clark National Historic Trail, congressionally designated route (NPS), every
+      row, keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_lewis_clark_nht, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_lewis_clark_water_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_lewis_clark_water_trails')
+          config:
+            severity: warn
+    description: >
+      Lewis and Clark NHT water trails (NPS), every row, keyed and deduped (decision 40), the
+      layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_lewis_clark_water_trails, trail_name, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_mormon_pioneer_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_mormon_pioneer_nht')
+          config:
+            severity: warn
+    description: >
+      Mormon Pioneer National Historic Trail, congressionally designated alignment (NPS),
+      every row, keyed and deduped (decision 40), the layer's own columns under dlt's names.
+      Its sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_mormon_pioneer_nht, geometry_key('geom'), the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_old_spanish_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_old_spanish_nht')
+          config:
+            severity: warn
+    description: >
+      Old Spanish National Historic Trail, feasibility study alignment (NPS), every row, keyed
+      and deduped (decision 40), the layer's own columns under dlt's names. Its sources.json
+      row reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_old_spanish_nht, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_oregon_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_oregon_nht')
+          config:
+            severity: warn
+    description: >
+      Oregon National Historic Trail, congressionally designated alignment (NPS), every row,
+      keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_oregon_nht, geometry_key('geom'), the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_overmountain_victory_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_overmountain_victory_nht')
+          config:
+            severity: warn
+    description: >
+      Overmountain Victory National Historic Trail historic route (NPS), every row, keyed and
+      deduped (decision 40), the layer's own columns under dlt's names. Its sources.json row
+      reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_overmountain_victory_nht, geometry_key('geom'), the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_nps__nps_park_boundaries
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -85,6 +466,111 @@ models:
         description: >
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
           nps_park_boundaries, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_pony_express_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_pony_express_nht')
+          config:
+            severity: warn
+    description: >
+      Pony Express National Historic Trail, congressionally designated alignment (NPS), every
+      row, keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_pony_express_nht, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_santa_fe_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_santa_fe_nht')
+          config:
+            severity: warn
+    description: >
+      Santa Fe National Historic Trail, congressionally designated alignment (NPS), every row,
+      keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_santa_fe_nht, globalid, the registry key first and then the fields measured
+          unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_star_spangled_banner_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_star_spangled_banner_nht')
+          config:
+            severity: warn
+    description: >
+      Star-Spangled Banner National Historic Trail, official driving and water route (NPS),
+      every row, keyed and deduped (decision 40), the layer's own columns under dlt's names.
+      Its sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_star_spangled_banner_nht, geometry_key('geom'), the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_trail_of_tears_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_trail_of_tears_nht')
+          config:
+            severity: warn
+    description: >
+      Trail of Tears National Historic Trail, congressionally designated alignment (NPS),
+      every row, keyed and deduped (decision 40), the layer's own columns under dlt's names.
+      Its sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_trail_of_tears_nht, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nps__nps_washington_rochambeau_nht
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nps', 'raw_nps__nps_washington_rochambeau_nht')
+          config:
+            severity: warn
+    description: >
+      Washington-Rochambeau Revolutionary Route NHT driving route centerline (NPS), every row,
+      keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_trail_lines__unioned reads it through stg_nps__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nps_washington_rochambeau_nht, name, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
   - name: base_nps__pohe_trail_regions

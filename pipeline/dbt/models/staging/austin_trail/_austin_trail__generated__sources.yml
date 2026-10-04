@@ -19,6 +19,26 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_austin_trail__austin_pard_trails
+        data_tests:
+          # Rows sharing base_austin_trail__austin_pard_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'austin_pard_trails'", "asset_mgmt_id"]
+        description: >
+          Austin Parks and Recreation trails on parkland (City of Austin PARD)
+          (sources.json `austin_pard_trails`). Key: ASSET_MGMT_ID: unique and non-null on
+          all 4,096 rows (measured 2026-10-03 over every row's attributes).
+      - name: raw_austin_trail__ttc_butler_trail
+        data_tests:
+          # Rows sharing base_austin_trail__ttc_butler_trail's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ttc_butler_trail'", "globalid_2"]
+        description: >
+          Ann and Roy Butler Hike and Bike Trail (The Trail Conservancy) (sources.json
+          `ttc_butler_trail`). Key: GlobalID_2: unique and non-null on all 237 rows
+          (measured 2026-10-03 over every row's attributes).
       - name: raw_austin_trail__ttc_management_areas
         data_tests:
           # Rows sharing base_austin_trail__ttc_management_areas's key must be exact copies (decision 40).

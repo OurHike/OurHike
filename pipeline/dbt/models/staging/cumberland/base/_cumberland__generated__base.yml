@@ -3,6 +3,216 @@
 version: 2
 
 models:
+  - name: base_cumberland__ctsst_comp_trails_2020
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__ctsst_comp_trails_2020')
+          config:
+            severity: warn
+    description: >
+      Cumberland Trail complementary trails (CTSST), every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ctsst_comp_trails_2020, geometry_key('geom'), the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cumberland__ctsst_duskin_piney_trail
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__ctsst_duskin_piney_trail')
+          config:
+            severity: warn
+    description: >
+      Duskin-Piney Trail (CTSST), every row, keyed and deduped (decision 40), the layer's own
+      columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
+      int_sources__publication holds it back from every mart. int_trail_lines__unioned reads
+      it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ctsst_duskin_piney_trail, geometry_key('geom'), the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cumberland__ctsst_glyph_parkway
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__ctsst_glyph_parkway')
+          config:
+            severity: warn
+    description: >
+      Glyph Parkway (CTSST), every row, keyed and deduped (decision 40), the layer's own
+      columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
+      int_sources__publication holds it back from every mart. int_trail_lines__unioned reads
+      it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ctsst_glyph_parkway, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cumberland__ctsst_newby_piney_trail
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__ctsst_newby_piney_trail')
+          config:
+            severity: warn
+    description: >
+      Newby-Piney Trail (CTSST), every row, keyed and deduped (decision 40), the layer's own
+      columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
+      int_sources__publication holds it back from every mart. int_trail_lines__unioned reads
+      it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ctsst_newby_piney_trail, geometry_key('geom'), the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cumberland__ctsst_open_ct_trail_2020
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__ctsst_open_ct_trail_2020')
+          config:
+            severity: warn
+    description: >
+      Cumberland Trail open sections (CTSST), every row, keyed and deduped (decision 40), the
+      layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ctsst_open_ct_trail_2020, geometry_key('geom'), the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cumberland__ctsst_overall_route_2023
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__ctsst_overall_route_2023')
+          config:
+            severity: warn
+    description: >
+      Cumberland Trail overall route, 2023 (CTSST), every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ctsst_overall_route_2023, "order", the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cumberland__ctsst_road_walks_2020
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__ctsst_road_walks_2020')
+          config:
+            severity: warn
+    description: >
+      Cumberland Trail road walks (CTSST), every row, keyed and deduped (decision 40), the
+      layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ctsst_road_walks_2020, name, the registry key first and then the fields measured
+          unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cumberland__tdec_public_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__tdec_public_trails')
+          config:
+            severity: warn
+    description: >
+      TDEC Public Trails, 2025 hosted layer (TDEC), every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          tdec_public_trails, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cumberland__tdec_public_trails_view
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__tdec_public_trails_view')
+          config:
+            severity: warn
+    description: >
+      TDEC Public Trails, view (TDEC Bureau of Conservation), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          tdec_public_trails_view, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cumberland__tdec_state_park_trails_2024
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cumberland', 'raw_cumberland__tdec_state_park_trails_2024')
+          config:
+            severity: warn
+    description: >
+      Tennessee State Park Trails 2024, view only (TDEC), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_trail_lines__unioned reads it through stg_cumberland__trail_lines.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          tdec_state_park_trails_2024, globalid, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_cumberland__tn_state_park_boundaries
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

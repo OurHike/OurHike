@@ -46,12 +46,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import tempfile
 import time
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
+from resource import RUSAGE_SELF, getrusage
 from urllib.parse import urljoin, urlparse
 
 import psycopg
@@ -511,7 +513,13 @@ class ArcgisLayer(Resource):
 
         The whole layer is read before the first row is yielded, so a short
         read raises before dlt has anything to normalize, and a failed page
-        leaves nothing half-written.
+        leaves nothing half-written. The pages are spooled to a temporary file
+        on disk, one feature a line, rather than held in memory: monthly run 12
+        (refresh-reference.yml 37180229539) lost its runner 43 minutes into the
+        extract, after 15 silent minutes, with decision 54's largest layers to
+        read (USGS's 176,566 populated places, Washington's 32,563 public-land
+        polygons). That memory was the cause is Reasoned, not measured; the
+        line each monthly layer now prints with its peak RSS settles it.
         """
         named = session()
         metadata = self.metadata(self.read_backoff)
@@ -539,20 +547,31 @@ class ArcgisLayer(Resource):
             paginate=paginate,
             page_size=None if paginate else min(ARCGIS_PAGE_SIZE, metadata.get("maxRecordCount") or ARCGIS_PAGE_SIZE),
         )
-        features = [feature for page in pages for feature in page]
-        count = layer_count(self.url + "/query", where=self.where, session=named, backoff=self.read_backoff)
-        if count is not None:
-            if len(features) < count:
-                raise RuntimeError(f"{self.key}: the server counts {count} features and {len(features)} were read")
-            proofs[self.table] = count
-        for feature in features:
-            row = {
-                name: value
-                for name, value in (feature.get("properties") or {}).items()
-                if name.lower() not in dropped and name.lower() not in PERSON_FIELDS
-            }
-            row["geometry"] = feature.get("geometry")
-            yield row
+        with tempfile.TemporaryFile("w+", encoding="utf-8") as spool:
+            read = 0
+            for page in pages:
+                for feature in page:
+                    spool.write(json.dumps(feature, separators=(",", ":")))
+                    spool.write("\n")
+                    read += 1
+            count = layer_count(self.url + "/query", where=self.where, session=named, backoff=self.read_backoff)
+            if count is not None:
+                if read < count:
+                    raise RuntimeError(f"{self.key}: the server counts {count} features and {read} were read")
+                proofs[self.table] = count
+            if self.cadence == "monthly":
+                peak = getrusage(RUSAGE_SELF).ru_maxrss // 1024  # KiB on Linux
+                print(f"  {self.key}: {read} features, {spool.tell():,} bytes spooled, peak RSS {peak:,} MB")
+            spool.seek(0)
+            for line in spool:
+                feature = json.loads(line)
+                row = {
+                    name: value
+                    for name, value in (feature.get("properties") or {}).items()
+                    if name.lower() not in dropped and name.lower() not in PERSON_FIELDS
+                }
+                row["geometry"] = feature.get("geometry")
+                yield row
 
 
 def arcgis_layer(key: str, **overrides) -> ArcgisLayer:

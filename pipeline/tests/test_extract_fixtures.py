@@ -205,6 +205,35 @@ JSON_API_ROWS = {
     "raw_tehcc__tehcc_wiki_announcements": 2,
     "raw_ouachita__foot_trail_condition_report": 3,
     "raw_fmst__fmst_helene_status": 3,
+    # Section C's content feeds and APIs (decision 54 wave 3, 2026-10-04): each podcast feed's two fixture
+    # episodes (make_dbt_fixtures.py's _podcast_feed), TEHCC's template pages and NPS's five lists, two rows each.
+    "raw_nysdec__dec_does_what_podcast": 2,
+    "raw_mohonk__mohonk_walk_back_in_time_podcast": 2,
+    "raw_nycparks__nycparks_covid_oral_history_podcast": 2,
+    "raw_njgin__njdep_discover_dep_podcast": 2,
+    "raw_usfs__usfs_forest_focus_podcast": 2,
+    "raw_usfs__usfs_forestcast_podcast": 2,
+    "raw_blm__blm_on_the_ground_podcast": 2,
+    "raw_cotrex__cpw_colorado_outdoors_podcast": 2,
+    "raw_wi_dnr__wdnr_wild_wisconsin_podcast": 2,
+    "raw_wi_dnr__silvicast_podcast": 2,
+    "raw_amc__amc_unlikely_stories_podcast": 2,
+    "raw_spnhf__something_wild_podcast": 2,
+    "raw_trustees__trustees_on_the_coast_podcast": 2,
+    "raw_sbts__sbts_dirt_magic_podcast": 2,
+    "raw_smd__audible_mount_diablo_podcast": 2,
+    "raw_shta__shta_blazing_trail_podcast": 2,
+    "raw_usgs_tnm__usgs_outstanding_in_the_field_podcast": 2,
+    "raw_nps__nps_park_postcards_goga_podcast": 2,
+    "raw_usfws__usfws_future_of_conservation_podcast": 2,
+    "raw_tehcc__tehcc_wiki_trails": 2,
+    "raw_tehcc__tehcc_wiki_hikes": 2,
+    "raw_tehcc__tehcc_wiki_challenge_items": 1,
+    "raw_nps__nps_multimedia_audio": 2,
+    "raw_nps__nps_gallery_assets": 2,
+    "raw_nps__nps_passport_stamp_locations": 2,
+    "raw_nps__nps_things_to_do": 2,
+    "raw_nps__nps_tours": 2,
 }
 
 
@@ -216,6 +245,32 @@ def test_the_json_api_notice_sources_land_from_their_answers_with_no_nps_key_in_
     assert landed == set(JSON_API_ROWS)
     assert all((root / "raw" / "conditions" / JSON_API_DIR / f"{r.key}.json").exists() for r in resources if r.table in landed)
     assert {table: counts[table] for table in JSON_API_ROWS} == JSON_API_ROWS
+
+
+def test_section_cs_content_lands_no_author_or_guest_and_none_of_the_prose_a_row_names_as_personal(fixtures):
+    """Decision 59 at the warehouse, for decision 54 wave 3's content: no episode's author, creator or guest tag lands
+    on any feed; the fixture number in an episode's notes and a hike page's body (555-0100) lands only where the row's
+    `person_fields` do not name that prose; NPS's audio transcripts land nowhere."""
+    root, _ = fixtures
+    feeds = [table for table in JSON_API_ROWS if table.endswith("_podcast")]
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+
+        def columns(table: str) -> set[str]:
+            return {row[0] for row in con.execute(f"describe raw.{table}").fetchall()}
+
+        def values(table: str) -> str:
+            return json.dumps(con.execute(f"select * from raw.{table}").fetchall(), default=str)
+
+        for table in feeds:
+            assert not [c for c in columns(table) if "author" in c or "creator" in c or "person" in c], table
+            landed = values(table)
+            assert not [name for name in ("Fixture Person", "Fixture Guest", "fixture.person@") if name in landed], table
+        assert "555-0100" not in values("raw_njgin__njdep_discover_dep_podcast"), "NJDEP's notes name its staff"
+        assert "555-0100" in values("raw_nysdec__dec_does_what_podcast"), "a row naming no prose keeps its notes in raw"
+        assert not {"content", "excerpt"} & columns("raw_nmvfo__nmvfo_hike_new_mexico")
+        assert "555-0100" not in values("raw_nmvfo__nmvfo_hike_new_mexico"), "NMVFO's pages carry volunteers' numbers"
+        assert "Fixture Person" not in values("raw_gmc__gmc_hikes"), "Spectra's and Yoast's author blocks never load"
+        assert "transcript" not in columns("raw_nps__nps_multimedia_audio")
 
 
 def test_a_notice_feed_lands_no_creator_and_no_prose_and_a_page_lands_its_own_title_and_date(fixtures):

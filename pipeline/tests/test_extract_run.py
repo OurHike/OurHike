@@ -948,7 +948,11 @@ def test_the_org_row_carries_the_licence_of_every_key_the_club_claims():
         "dec_wildlife_management_areas",
         "dec_adirondack_park_boundary",
         "dec_catskill_park_boundary",
+        # nysdec/podcasts.py's feed, decision 54 wave 3, section C (registered 2026-10-04, not shipped).
+        "dec_does_what_podcast",
     }
+    assert claims["dec_does_what_podcast"]["type"] == "podcasts"
+    assert claims["dec_does_what_podcast"]["reaches_hikers"] is False
     assert claims["dec_lands"]["type"] == "places"
     assert claims["dec_lands"]["reaches_hikers"] is False
     assert claims["nysdec_hab_reports"]["type"] == "warnings"

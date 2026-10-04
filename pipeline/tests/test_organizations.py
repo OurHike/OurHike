@@ -374,6 +374,14 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     where the terms restrict copying and not reading, decision 55 (ATA, Buckeye, the City of Duluth,
     the Mid State Trail, the New England Trail's footer); BLM's 26 `stated_by_org`, federal works on
     17 U.S.C. 105.
+
+    DECISION 54'S WAVE 3, CONTENT FEEDS AND APIS (section C, 2026-10-04): 34 rows, all
+    `reaches_hikers: false`. 11 `stated_by_org`, federal works on 17 U.S.C. 105: six podcast feeds
+    (USFS's two, BLM's, USGS's, USFWS's and NPS's Park Postcards) and NPS's five content lists. 23
+    `unresolved`: thirteen podcast feeds whose <copyright> reserves rights or states nothing that
+    reaches this use, and ten club hike, itinerary and wiki lists, whose terms nobody has read as
+    reaching a published list. Each quotes what it found on its row; publication is the maintainer's
+    call, in dbt, once a mart reads them.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
@@ -382,4 +390,5 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
     # Decision 53's page and post notices, folders n to z and _shared/ (2026-10-03), add 68: 51, 16 and 1 (above).
     # Its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03) add 113: 87 and 26 (above).
-    assert counts == {"maintainer_authorisation": 186, "public_gis": 217, "stated_by_org": 177, "unresolved": 4}
+    # Decision 54's wave 3 content feeds and APIs (section C, 2026-10-04) add 34: 11 and 23 (above).
+    assert counts == {"maintainer_authorisation": 186, "public_gis": 217, "stated_by_org": 188, "unresolved": 27}

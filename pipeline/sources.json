@@ -585,6 +585,35 @@
       }
     },
     {
+      "key": "usgs_outstanding_in_the_field_podcast",
+      "title": "Outstanding in the Field (podcast feed, USGS)",
+      "provider": "USGS",
+      "kind": "podcast_feed",
+      "url": "https://www.usgs.gov/podcasts/audio/141799/feed.xml",
+      "steward": "U.S. Geological Survey",
+      "attribution": "U.S. Geological Survey",
+      "licence": "A work of the U.S. Government, PUBLIC DOMAIN on 17 U.S.C. 105, as the USGS rows read USGS's own data. The feed's <copyright> reads 'U.S. Geological Survey (USGS)' (read 2026-10-04). The coverage audit's skeptic found the feed answering a browser's user agent and refusing another; on 2026-10-04 it answered lib/user_agent.py's own agent 200, so nothing here imitates a browser (decision 39). Episodes are only ever linked.",
+      "licence_basis": "stated_by_org",
+      "terms": "U.S. Geological Survey (USGS)",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with a staff e-mail address on 11 of 11, and podcast:person names each guest, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 11 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://www.usgs.gov/podcasts/audio/141799/feed.xml",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag \"1791098925-gzip\" and Last-Modified Sun, 04 Oct 2026 07:28:45 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "11 episodes, published 2018-12-10 to 2022-03-14, read 2026-10-04T07:28:42+00:00 (26,973 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
       "key": "usdm_drought",
       "title": "U.S. Drought Monitor weekly class polygons",
       "provider": "National Drought Mitigation Center (UNL), USDA, NOAA, NASA",
@@ -935,6 +964,35 @@
       "notes": "Seasonal cliff closures for nesting peregrines, read through WordPress page 1502 (lifted for 2026 on May 13). Read live at 2026-10-03T22:00:36Z under lib/user_agent.py's agent, robots.txt allows the path for our agent, Crawl-delay 10: HTTP 200, 24,841 bytes, no ETag or Last-Modified. Through PageNotice that answer lands one row: title 'Peregrine Watch Updates', its date 2026-05-12 (wp_modified, stated as '2026-05-12T20:58:05'), region `wp:content` of 9,514 characters. The key is `url`: one row a page, 1 distinct of 1.",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_mohonk__mohonk_peregrine_updates reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
+      "key": "mohonk_walk_back_in_time_podcast",
+      "title": "Walk Back in Time: the Trapps Mountain Hamlet Path audio tour (podcast feed)",
+      "provider": "Mohonk Preserve",
+      "kind": "podcast_feed",
+      "url": "https://www.spreaker.com/show/2957199/episodes/feed",
+      "steward": "Mohonk Preserve",
+      "attribution": "Walk Back in Time, the Trapps Mountain Hamlet Path audio tour linked from Mohonk Preserve",
+      "licence": "The feed's <copyright> names one individual as the holder (read 2026-10-04); the name is a person field and is not copied here, as the coverage audit did not copy it. Mohonk Preserve links the show from https://www.mohonkpreserve.org/visit/the-trapps-mountain-hamlet-path-audio-tour/ as its audio tour, one episode per stop. Nothing grants reuse; episodes are only ever linked (#1683 — Offer podcast episodes picked for the hike, with a one-tap Spotify save and an in-app player). The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "The <copyright> element reads 'Copyright' followed by one individual's name (read 2026-10-04); the name is left out of this repository as a person's name.",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with the producer's own name on 12 of 12, with Google Play's author repeating it, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 12 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://www.spreaker.com/show/2957199/episodes/feed",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"99cff22f4f7f0aa9c53324f98cfbd785\" and Last-Modified Wed, 05 Jan 2022 17:39:08 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "12 episodes, published all 2018-05-20, read 2026-10-04T07:27:59+00:00 (46,429 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
       "key": "dec_hiking_trails",
@@ -1363,6 +1421,35 @@
       "notes": "One row: the page's notice (extract/_notices.py's PageNotice), keyed by `url`. Read 2026-10-03: title 'Backcountry Information For The Adirondack Park', date 2026-10-01 from the page's own weekly header 'New this week (10/1/2026)' (the resource's date_pattern), region <main> of 49,851 characters: 10 regional sections of undated prose items. Its Last-Modified (2026-10-03 20:40:14 GMT on a 22:09 read) is older than the request, so possibly the page's own, but not trusted (@unvalidated).",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nysdec__nysdec_adk_backcountry reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
+      "key": "dec_does_what_podcast",
+      "title": "DEC Does What?! (podcast feed, NYS DEC)",
+      "provider": "NYS DEC",
+      "kind": "podcast_feed",
+      "url": "https://feed.podbean.com/Multimedia3/feed.xml",
+      "steward": "New York State Department of Environmental Conservation",
+      "attribution": "New York State Department of Environmental Conservation",
+      "licence": "The feed's own <copyright> reads 'Copyright 2025 All rights reserved.' (read 2026-10-04), quoted in `terms`. Nothing in the feed grants reuse, and decision 21(a)'s GIS presumption does not reach audio. Episodes are only ever linked, never re-hosted (#1683 — Offer podcast episodes picked for the hike, with a one-tap Spotify save and an in-app player). Whether an episode's title and link may show beside a hike is the maintainer's call; until then this row ships nothing.",
+      "licence_basis": "unresolved",
+      "terms": "Copyright 2025 All rights reserved.",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "The episode notes carry DEC's own contact@ and isinfo@ addresses on 23 of 39 items and DEC Dispatch's number on 1, an agency's and no person's (2026-10-04), so decision 59 does not reach them: the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with 'NYS Environmental Conservation', 'NYS DEC' or the podbean account name, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 39 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://feed.podbean.com/Multimedia3/feed.xml",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"aeda100a460e8780a7eb3eced6b984ec\". Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "39 episodes, published 2024-04-03 to 2026-08-05, read 2026-10-04T07:27:56+00:00 (463,915 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
       "key": "usfs_trails",
@@ -2218,6 +2305,67 @@
       "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C). Phase C flips it when a mart reads the table, the same rule for every wave-1 row."
     },
     {
+      "key": "usfs_forest_focus_podcast",
+      "title": "Forest Focus (podcast feed, USDA Forest Service Pacific Southwest Region)",
+      "provider": "USFS",
+      "kind": "podcast_feed",
+      "url": "https://rss.libsyn.com/shows/433686/destinations/3617892.xml",
+      "steward": "USDA Forest Service",
+      "attribution": "USDA Forest Service, Pacific Southwest Region",
+      "licence": "A work of the U.S. Government, and so PUBLIC DOMAIN on 17 U.S.C. 105, the reading usfs_licence records and the reason this is `stated_by_org` (licence_basis_comment's 'a federal public-domain work'). The feed's <copyright> reads only '2022' (read 2026-10-04). Episodes are only ever linked, never re-hosted (#1683 — Offer podcast episodes picked for the hike, with a one-tap Spotify save and an in-app player).",
+      "licence_basis": "stated_by_org",
+      "terms": "2022",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with 'USDA Forest Service, Pacific Southwest Region' on 37 of 38, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 38 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://rss.libsyn.com/shows/433686/destinations/3617892.xml",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"d04ed640d940e34052ed820ca5e84448\" and Last-Modified Thu, 11 Dec 2025 02:11:52 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "38 episodes, published 2022-09-06 to 2024-12-21, read 2026-10-04T07:28:07+00:00 (96,346 bytes, HTTP 200). The host's robots.txt answered HTTP 403, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
+      "key": "usfs_forestcast_podcast",
+      "title": "Forestcast (podcast feed, USDA Forest Service research)",
+      "provider": "USFS",
+      "kind": "podcast_feed",
+      "url": "https://rss.libsyn.com/shows/184682/destinations/1267985.xml",
+      "steward": "USDA Forest Service",
+      "attribution": "USDA Forest Service",
+      "licence": "The feed's own <copyright> reads 'Public Domain' (read 2026-10-04), and it is a work of the U.S. Government (17 U.S.C. 105, as usfs_licence records). Episodes are only ever linked, never re-hosted (#1683 — Offer podcast episodes picked for the hike, with a one-tap Spotify save and an in-app player).",
+      "licence_basis": "stated_by_org",
+      "terms": "Public Domain",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [
+        "description",
+        "content_encoded"
+      ],
+      "person_fields_comment": "Decision 59 leaves a free-text column that carries personal data out whole: on 2026-10-04 the episode notes carried one named staff member's e-mail address on 36 of 36 items, so every column that repeats them is left out before dlt sees the row (extract/_content.py's PodcastEpisodes). The title, date, guid, link, enclosure and duration are what an episode is identified and linked by; prose never publishes anyway (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with 'USDA Forest Service' on 35 of 36, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 36 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://rss.libsyn.com/shows/184682/destinations/1267985.xml",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"b55e3fe38cf06a73b2ef85e5b699990b\" and Last-Modified Fri, 06 Feb 2026 17:20:15 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "36 episodes, published 2020-02-24 to 2024-12-18, read 2026-10-04T07:28:09+00:00 (314,467 bytes, HTTP 200). The host's robots.txt answered HTTP 403, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
       "key": "njdep_park_trails",
       "title": "NJ State Park Service Trails (NJDEP Bureau of GIS, Features/Land layer 63)",
       "provider": "NJDEP",
@@ -2534,6 +2682,39 @@
       }
     },
     {
+      "key": "njdep_discover_dep_podcast",
+      "title": "Discover DEP: the Official Podcast of the NJ Department of Environmental Protection (podcast feed)",
+      "provider": "NJDEP",
+      "kind": "podcast_feed",
+      "url": "https://feed.podbean.com/njdep/feed.xml",
+      "steward": "New Jersey Department of Environmental Protection",
+      "attribution": "New Jersey Department of Environmental Protection",
+      "licence": "The feed's <copyright> reads 'Copyright 2016  . All rights reserved.' (read 2026-10-04), quoted in `terms`. The NJDEP Data Distribution Agreement that njdep_licence quotes is for NJDEP's GIS data, and nothing says it reaches this feed (Reasoned), so it is not this row's basis. Episodes are only ever linked. The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "Copyright 2016  . All rights reserved.",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [
+        "description",
+        "content_encoded",
+        "itunes_summary"
+      ],
+      "person_fields_comment": "Decision 59 leaves a free-text column that carries personal data out whole: on 2026-10-04 the episode notes carried a named staff member's e-mail address on 1 of 95 items, and telephone numbers on 8, two of them named staff members' own, so every column that repeats them is left out before dlt sees the row (extract/_content.py's PodcastEpisodes). The title, date, guid, link, enclosure and duration are what an episode is identified and linked by; prose never publishes anyway (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with 'NJDEP' on 95 of 95, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 95 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://feed.podbean.com/njdep/feed.xml",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"c6d8f16768d47ddfe5fd5d3321363d13\". Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "95 episodes, published 2016-04-21 to 2018-05-01, read 2026-10-04T07:28:02+00:00 (392,517 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
       "key": "nyc_parks_trails",
       "title": "NYC Parks Trails (five boroughs)",
       "provider": "NYC Parks",
@@ -2645,6 +2826,35 @@
       "reaches_hikers": true,
       "reaches_hikers_comment": "TRUE, THOUGH NO POLYGON IS PUBLISHED, on exactly oprhp_park_polygons' precedent: this layer decides which waypoints a hiker is shown, so it reaches them through the POIs it admits even though the boundaries themselves never leave the pipeline.",
       "licence_basis": "stated_by_org"
+    },
+    {
+      "key": "nycparks_covid_oral_history_podcast",
+      "title": "NYC Parks Covid Oral History (podcast feed)",
+      "provider": "NYC Parks",
+      "kind": "podcast_feed",
+      "url": "https://nycparksoralhistory.blubrry.net/feed/podcast/",
+      "steward": "NYC Department of Parks & Recreation",
+      "attribution": "NYC Department of Parks & Recreation",
+      "licence": "The feed's <copyright> reads 'Copyright The City of New York' (read 2026-10-04). It is served from blubrry.net, not nycgovparks.org, whose robots.txt `Disallow: /*json` is a refusal for that host's JSON only (decision 53's inventory). Nothing grants reuse; episodes are only ever linked. The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "Copyright The City of New York",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with nothing (the tag is absent on 10 of 10); episode titles can name a speaker ('NYC Parks Today with Commissioner …'), RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 10 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://nycparksoralhistory.blubrry.net/feed/podcast/",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"c4f04ec0b8b013233100b939a6b0c55d\" and Last-Modified Tue, 08 Aug 2023 14:41:52 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "10 episodes, published 2023-05-16 to 2023-08-08, read 2026-10-04T07:28:02+00:00 (37,288 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
       "key": "nyc_dot_greenways",
@@ -3752,6 +3962,194 @@
       }
     },
     {
+      "key": "nps_park_postcards_goga_podcast",
+      "title": "Park Postcards Podcast, Golden Gate National Recreation Area (podcast feed, NPS)",
+      "provider": "NPS",
+      "kind": "podcast_feed",
+      "url": "https://www.nps.gov/rss/podcasts/podcast_xml.cfm?id=6686775",
+      "steward": "National Park Service",
+      "attribution": "National Park Service, Golden Gate National Recreation Area",
+      "licence": "A work of the U.S. Government, PUBLIC DOMAIN on 17 U.S.C. 105, the reading nps_trails ships on. The feed's <copyright> reads 'Copyright 2026 NPS - For Personal Use Only' (read 2026-10-04), quoted in `terms`: words that restrict use and refuse no reading, which no decision answers for audio, so this row is held (`reaches_hikers: false`) whatever its basis. Episodes are only ever linked. NPS publishes many show feeds under nps.gov/podcasts/; this is the one the coverage audit read, and the others are not enumerated (their listing pages were found by search).",
+      "licence_basis": "stated_by_org",
+      "terms": "Copyright 2026 NPS - For Personal Use Only",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with 'National Park Service' on 9 of 9, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 9 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "none",
+        "url": "https://www.nps.gov/rss/podcasts/podcast_xml.cfm?id=6686775",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served neither ETag nor Last-Modified, so every run reads it. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "9 episodes, published 2020-07-20 to 2021-09-22, read 2026-10-04T07:28:04+00:00 (104,517 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks a Crawl-delay of 5 s. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
+      "key": "nps_multimedia_audio",
+      "title": "NPS audio (the API's /multimedia/audio, national)",
+      "provider": "NPS",
+      "kind": "published_notices",
+      "url": "https://developer.nps.gov/api/v1/multimedia/audio",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/aboutus/contactus.htm",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105, the reading nps_trails and nps_alerts ship on: NPS's website disclaimer, as decision 53's inventory quoted it (batch 5, 2026-10-03) from https://www.nps.gov/aboutus/disclaimer.htm, \"material created by the National Park Service and presented on this website, unless otherwise indicated, is generally considered in the public domain.\" NPS's developer terms were not read (https://www.nps.gov/subjects/developer/terms-of-service.htm answered 404 to that inventory), so whether they say anything about a scheduled reader is @unvalidated.",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "api_key_comment": "developer.nps.gov is api.data.gov's gateway, which refuses a request with no key. The extract reads the key from NPS_API_KEY (extract/_json_apis.py's NPS_API_KEY_ENV), the secret nps_alerts already uses, and sends it as the `X-Api-Key` header, never in a URL; unset, the resource is `unavailable` and its table withdrawn, never read as an empty list. Section C measured these lists with api.data.gov's public DEMO_KEY (10 requests an hour, `x-ratelimit-limit: 10`), by hand, once; no job uses it.",
+      "reader": "NpsContent (extract/_content.py)",
+      "person_fields": [
+        "transcript"
+      ],
+      "person_fields_comment": "Decision 59, Reasoned: an oral history's `transcript` is a named private individual's own account of their life (the first item read on 2026-10-04 was one), so the column never loads for any item; the title and description say what a clip is. `credit` (a collection's or a narrator's line) lands as NPS states it.",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, NPS's own GUID for each item: present and unique on the 2 rows of a sample read on 2026-10-04; the full read was refused by the public DEMO_KEY's shared hourly limit (HTTP 429 OVER_RATE_LIMIT, 08:42 UTC). The reader itself raises on a missing or repeated id within a read (extract/_content.py's NpsContent), so a landed table is unique on it by construction; that the whole list is, and that the id is stable from one read to the next, is @unvalidated until the first monthly run under NPS_API_KEY reads every row and re-measures it.",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://developer.nps.gov/api/v1/multimedia/audio",
+        "notes": "No ETag and no Last-Modified on the API's answers (decision 53's inventory, every batch, and section C's reads of 2026-10-04), so nothing can say FRESH: every monthly run reads the list, 500 a page, and the answer's own `total` is the count that proves a zero."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED rows for nps/ and the NPS-administered trails' folders (coverage audit 2026-10-01), re-read on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT with the public DEMO_KEY; developer.nps.gov's robots.txt answered 403 (API_KEY_MISSING), which RFC 9309 reads as no restriction.",
+      "discovered_date": "2026-10-04",
+      "notes": "`total` 5173 on 2026-10-04. Each item: its parks (`relatedParks`), duration, coordinates where it has them, `geometryPoiId`, and `versions`, the audio file's URL, never fetched. Oral-history clips, wayside audio descriptions and tour stops (the coverage audit's sample: Ellis Island's oral histories). National: about 11 pages a month under the key.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model into int_podcasts__club_unioned, and read by no mart yet: the podcasts mart is reference/podcast_episodes.json's editorial picks. Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "nps_gallery_assets",
+      "title": "NPS gallery assets, one per photo (the API's /multimedia/galleries/assets, for the clubs' park codes)",
+      "provider": "NPS",
+      "kind": "published_notices",
+      "url": "https://developer.nps.gov/api/v1/multimedia/galleries/assets",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/aboutus/contactus.htm",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105, the reading nps_trails and nps_alerts ship on: NPS's website disclaimer, as decision 53's inventory quoted it (batch 5, 2026-10-03) from https://www.nps.gov/aboutus/disclaimer.htm, \"material created by the National Park Service and presented on this website, unless otherwise indicated, is generally considered in the public domain.\" NPS's developer terms were not read (https://www.nps.gov/subjects/developer/terms-of-service.htm answered 404 to that inventory), so whether they say anything about a scheduled reader is @unvalidated.",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "api_key_comment": "developer.nps.gov is api.data.gov's gateway, which refuses a request with no key. The extract reads the key from NPS_API_KEY (extract/_json_apis.py's NPS_API_KEY_ENV), the secret nps_alerts already uses, and sends it as the `X-Api-Key` header, never in a URL; unset, the resource is `unavailable` and its table withdrawn, never read as an empty list. Section C measured these lists with api.data.gov's public DEMO_KEY (10 requests an hour, `x-ratelimit-limit: 10`), by hand, once; no job uses it.",
+      "reader": "NpsContent (extract/_content.py)",
+      "park_codes_from": "nps_alerts",
+      "park_codes_comment": "The park codes come from nps_alerts' `park_codes`, read when the resource runs (extract/_content.py's NpsContent), so the map has one home.",
+      "person_fields": [],
+      "person_fields_comment": "A photo's `credit` is its own credit line and lands as NPS states it (the lead's ruling, 2026-10-04: land a gallery asset's own per-photo credit and licence fields). It can name a photographer ('NPS / <name>' on things-to-do images read the same day), which is an attribution the licence may require, not an uploader account.",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, NPS's own GUID for each item: present and unique on the 2 rows of a sample read on 2026-10-04; the full read was refused by the public DEMO_KEY's shared hourly limit (HTTP 429 OVER_RATE_LIMIT, 08:42 UTC). The reader itself raises on a missing or repeated id within a read (extract/_content.py's NpsContent), so a landed table is unique on it by construction; that the whole list is, and that the id is stable from one read to the next, is @unvalidated until the first monthly run under NPS_API_KEY reads every row and re-measures it.",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://developer.nps.gov/api/v1/multimedia/galleries/assets",
+        "notes": "No ETag and no Last-Modified on the API's answers (decision 53's inventory, every batch, and section C's reads of 2026-10-04), so nothing can say FRESH: every monthly run reads the list, 500 a page, and the answer's own `total` is the count that proves a zero."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED rows for nps/ and the NPS-administered trails' folders (coverage audit 2026-10-01), re-read on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT with the public DEMO_KEY; developer.nps.gov's robots.txt answered 403 (API_KEY_MISSING), which RFC 9309 reads as no restriction.",
+      "discovered_date": "2026-10-04",
+      "notes": "`total` 206685 on 2026-10-04. That total is NPS's whole list (the sample read, national): the read for the 27 park codes was refused by the rate limit, so how many photos those parks hold, and whether this endpoint honours `parkCode`, are @unvalidated. A list that ignored it would page past NPS_CONTENT_MAX_PAGES and raise, never land a national list by accident. One manifest row per photo, never its pixels: `fileInfo` (the image URL, type and size), `credit`, and `constraintsInfo` ({constraint, grantingRights}), the photo's own licence, which is what a photo publishes on, never a park's or a gallery's ('Public domain' with grantingRights 'Full' on both sample rows). Read for the park codes nps_alerts' `park_codes` map lists (`park_codes_from`), the one home for which folder draws on which park: NPS's whole list held 206,685 assets on 2026-10-04, about 414 pages a month, a national read that is the maintainer's decision, as nps_alerts' is. `waro` (w3r/) is not in that map, so w3r/'s photos are not read until it is added. The galleries list itself (/multimedia/galleries, 10,508 on 2026-10-04) carries one licence per gallery and a one-image preview, so it is not the photo manifest.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model into int_photos__club_unioned, and read by no mart yet: no mart takes photos yet, and each photo publishes on its own constraintsInfo once one does. Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "nps_passport_stamp_locations",
+      "title": "NPS passport stamp locations (the API's /passportstamplocations, national)",
+      "provider": "NPS",
+      "kind": "published_notices",
+      "url": "https://developer.nps.gov/api/v1/passportstamplocations",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/aboutus/contactus.htm",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105, the reading nps_trails and nps_alerts ship on: NPS's website disclaimer, as decision 53's inventory quoted it (batch 5, 2026-10-03) from https://www.nps.gov/aboutus/disclaimer.htm, \"material created by the National Park Service and presented on this website, unless otherwise indicated, is generally considered in the public domain.\" NPS's developer terms were not read (https://www.nps.gov/subjects/developer/terms-of-service.htm answered 404 to that inventory), so whether they say anything about a scheduled reader is @unvalidated.",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "api_key_comment": "developer.nps.gov is api.data.gov's gateway, which refuses a request with no key. The extract reads the key from NPS_API_KEY (extract/_json_apis.py's NPS_API_KEY_ENV), the secret nps_alerts already uses, and sends it as the `X-Api-Key` header, never in a URL; unset, the resource is `unavailable` and its table withdrawn, never read as an empty list. Section C measured these lists with api.data.gov's public DEMO_KEY (10 requests an hour, `x-ratelimit-limit: 10`), by hand, once; no job uses it.",
+      "reader": "NpsContent (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No field names or reaches a person beyond a credit line, which lands as NPS states it (a photo's or a clip's own credit).",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, NPS's own GUID for each item: present and unique on the 2 rows of a sample read on 2026-10-04; the full read was refused by the public DEMO_KEY's shared hourly limit (HTTP 429 OVER_RATE_LIMIT, 08:42 UTC). The reader itself raises on a missing or repeated id within a read (extract/_content.py's NpsContent), so a landed table is unique on it by construction; that the whole list is, and that the id is stable from one read to the next, is @unvalidated until the first monthly run under NPS_API_KEY reads every row and re-measures it.",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://developer.nps.gov/api/v1/passportstamplocations",
+        "notes": "No ETag and no Last-Modified on the API's answers (decision 53's inventory, every batch, and section C's reads of 2026-10-04), so nothing can say FRESH: every monthly run reads the list, 500 a page, and the answer's own `total` is the count that proves a zero."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED rows for nps/ and the NPS-administered trails' folders (coverage audit 2026-10-01), re-read on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT with the public DEMO_KEY; developer.nps.gov's robots.txt answered 403 (API_KEY_MISSING), which RFC 9309 reads as no restriction.",
+      "discovered_date": "2026-10-04",
+      "notes": "`total` 1093 on 2026-10-04. Each a label, a type (visitorcenters and the like) and the parks it sits in, with no coordinates: a stamp location is placed by its park until a step joins it to a POI. The Passport booklet is America's National Parks' (a partner); the list is NPS's.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model into int_challenges__club_unioned, and read by no mart yet: the challenges mart takes reviewed challenge files, and a stamp location has no coordinates. Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "nps_things_to_do",
+      "title": "NPS things to do (the API's /thingstodo, national)",
+      "provider": "NPS",
+      "kind": "published_notices",
+      "url": "https://developer.nps.gov/api/v1/thingstodo",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/aboutus/contactus.htm",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105, the reading nps_trails and nps_alerts ship on: NPS's website disclaimer, as decision 53's inventory quoted it (batch 5, 2026-10-03) from https://www.nps.gov/aboutus/disclaimer.htm, \"material created by the National Park Service and presented on this website, unless otherwise indicated, is generally considered in the public domain.\" NPS's developer terms were not read (https://www.nps.gov/subjects/developer/terms-of-service.htm answered 404 to that inventory), so whether they say anything about a scheduled reader is @unvalidated.",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "api_key_comment": "developer.nps.gov is api.data.gov's gateway, which refuses a request with no key. The extract reads the key from NPS_API_KEY (extract/_json_apis.py's NPS_API_KEY_ENV), the secret nps_alerts already uses, and sends it as the `X-Api-Key` header, never in a URL; unset, the resource is `unavailable` and its table withdrawn, never read as an empty list. Section C measured these lists with api.data.gov's public DEMO_KEY (10 requests an hour, `x-ratelimit-limit: 10`), by hand, once; no job uses it.",
+      "reader": "NpsContent (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No field names or reaches a person beyond a credit line, which lands as NPS states it (a photo's or a clip's own credit).",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, NPS's own GUID for each item: present and unique on the 1 rows of a sample read on 2026-10-04; the full read was refused by the public DEMO_KEY's shared hourly limit (HTTP 429 OVER_RATE_LIMIT, 08:42 UTC). The reader itself raises on a missing or repeated id within a read (extract/_content.py's NpsContent), so a landed table is unique on it by construction; that the whole list is, and that the id is stable from one read to the next, is @unvalidated until the first monthly run under NPS_API_KEY reads every row and re-measures it.",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://developer.nps.gov/api/v1/thingstodo",
+        "notes": "No ETag and no Last-Modified on the API's answers (decision 53's inventory, every batch, and section C's reads of 2026-10-04), so nothing can say FRESH: every monthly run reads the list, 500 a page, and the answer's own `total` is the count that proves a zero."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED rows for nps/ and the NPS-administered trails' folders (coverage audit 2026-10-01), re-read on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT with the public DEMO_KEY; developer.nps.gov's robots.txt answered 403 (API_KEY_MISSING), which RFC 9309 reads as no restriction.",
+      "discovered_date": "2026-10-04",
+      "notes": "`total` 3572 on 2026-10-04. Each with its activities, duration, season, coordinates (as text) where it has them, `geometryPoiId`, images with their own credit lines, and prose descriptions that stop at base_. Not every thing to do is a hike: each row's own `activities` say which, and dbt keeps an auto tour or a museum visit from becoming a suggested hike. National: about 8 pages a month under the key.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model into int_suggested_hikes__club_unioned, and read by no mart yet: a thing to do is a point, not a route a hiker can follow, until a step forms one. Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "nps_tours",
+      "title": "NPS tours (the API's /tours, national)",
+      "provider": "NPS",
+      "kind": "published_notices",
+      "url": "https://developer.nps.gov/api/v1/tours",
+      "trust": "authoritative",
+      "steward": "National Park Service",
+      "steward_contact": "https://www.nps.gov/aboutus/contactus.htm",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105, the reading nps_trails and nps_alerts ship on: NPS's website disclaimer, as decision 53's inventory quoted it (batch 5, 2026-10-03) from https://www.nps.gov/aboutus/disclaimer.htm, \"material created by the National Park Service and presented on this website, unless otherwise indicated, is generally considered in the public domain.\" NPS's developer terms were not read (https://www.nps.gov/subjects/developer/terms-of-service.htm answered 404 to that inventory), so whether they say anything about a scheduled reader is @unvalidated.",
+      "licence_basis": "stated_by_org",
+      "attribution": "National Park Service",
+      "api_key_comment": "developer.nps.gov is api.data.gov's gateway, which refuses a request with no key. The extract reads the key from NPS_API_KEY (extract/_json_apis.py's NPS_API_KEY_ENV), the secret nps_alerts already uses, and sends it as the `X-Api-Key` header, never in a URL; unset, the resource is `unavailable` and its table withdrawn, never read as an empty list. Section C measured these lists with api.data.gov's public DEMO_KEY (10 requests an hour, `x-ratelimit-limit: 10`), by hand, once; no job uses it.",
+      "reader": "NpsContent (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No field names or reaches a person beyond a credit line, which lands as NPS states it (a photo's or a clip's own credit).",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, NPS's own GUID for each item: present and unique on all 717 rows read 2026-10-04 (every page, two of 500), and the reader itself raises on a missing or repeated id within a read (extract/_content.py's NpsContent), so a landed table is unique on it by construction. The read was the public DEMO_KEY's, which allows 10 requests an hour, so every row was read; the first monthly run under NPS_API_KEY reads every row and re-measures it.",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://developer.nps.gov/api/v1/tours",
+        "notes": "No ETag and no Last-Modified on the API's answers (decision 53's inventory, every batch, and section C's reads of 2026-10-04), so nothing can say FRESH: every monthly run reads the list, 500 a page, and the answer's own `total` is the count that proves a zero."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED rows for nps/ and the NPS-administered trails' folders (coverage audit 2026-10-01), re-read on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT with the public DEMO_KEY; developer.nps.gov's robots.txt answered 403 (API_KEY_MISSING), which RFC 9309 reads as no restriction.",
+      "discovered_date": "2026-10-04",
+      "notes": "`total` 717 on 2026-10-04. Each tour's `type`: 650 'Standard', 52 'Driving', 13 'Non-Geo-Located', 2 'Test', so test tours are in NPS's live list and dbt must leave them out. Each with its duration range (`durationUnit` m, h or d), activities and topics, its park, and its ordered `stops` (6,782 in all), whose directions, significance and audio transcripts are prose that stops at base_. No tour carries a URL of its own. Museum walks and drives are tours too: 'Guided Tours' and 'Self-Guided Tours - Walking' are the commonest activities and 'Hiking' is on 220 of 717, so each tour's own activities say which is a hike.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model into int_suggested_hikes__club_unioned, and read by no mart yet: a tour is a list of stops, not a route, until a step forms one. Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
       "key": "blm_trails",
       "title": "BLM trails and routes (Natl GTLF public display)",
       "provider": "BLM",
@@ -4746,6 +5144,35 @@
       }
     },
     {
+      "key": "blm_on_the_ground_podcast",
+      "title": "On the Ground (podcast feed, Bureau of Land Management)",
+      "provider": "BLM",
+      "kind": "podcast_feed",
+      "url": "https://www.blm.gov/media/podcasts/otg.rss",
+      "steward": "Bureau of Land Management",
+      "attribution": "Bureau of Land Management",
+      "licence": "A work of the U.S. Government, PUBLIC DOMAIN on 17 U.S.C. 105, as blm_trails' row reads BLM's own layers. The feed carries no <copyright> (read 2026-10-04). Episodes are only ever linked.",
+      "licence_basis": "stated_by_org",
+      "terms": "None in the feed: no <copyright> element (read 2026-10-04).",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with 'Bureau of Land Management' on 5 of 26 and nothing on 21; dc:creator names a person, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 26 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://www.blm.gov/media/podcasts/otg.rss",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag \"1791072647\" and Last-Modified Sun, 04 Oct 2026 00:10:47 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "26 episodes, published 2024-05-16 to 2025-09-24, read 2026-10-04T07:28:12+00:00 (68,610 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
       "key": "cotrex_trails",
       "title": "Colorado trails statewide (COTREX)",
       "provider": "Colorado Parks & Wildlife",
@@ -4928,6 +5355,35 @@
       "meta": {
         "cadence": "monthly"
       }
+    },
+    {
+      "key": "cpw_colorado_outdoors_podcast",
+      "title": "Colorado Outdoors, the Podcast for Colorado Parks and Wildlife (podcast feed)",
+      "provider": "Colorado Parks & Wildlife",
+      "kind": "podcast_feed",
+      "url": "https://rss.art19.com/colorado-outdoors",
+      "steward": "Colorado Parks and Wildlife",
+      "attribution": "Colorado Parks and Wildlife",
+      "licence": "The feed's <copyright> reads '© Colorado Parks and Wildlife, 2023' (read 2026-10-04). Nothing grants reuse, and decision 21(a) does not reach audio. Episodes are only ever linked. The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "© Colorado Parks and Wildlife, 2023",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with nothing (absent on 54 of 54), RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 54 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://rss.art19.com/colorado-outdoors",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served Last-Modified Thu, 01 Oct 2026 02:00:00 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "54 episodes, published 2020-10-22 to 2026-10-01, read 2026-10-04T07:28:15+00:00 (221,109 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
       "key": "wa_rco_trails",
@@ -7442,6 +7898,96 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_tehcc__tehcc_recent_maintenance reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "tehcc_wiki_trails",
+      "title": "TEHCC club wiki: trail pages (Template:Trail)",
+      "provider": "TEHCC",
+      "kind": "published_hikes",
+      "url": "https://tehcc.org/clubwiki/api.php",
+      "template": "Template:Trail",
+      "steward": "Tennessee Eastman Hiking & Canoeing Club",
+      "attribution": "Tennessee Eastman Hiking & Canoeing Club",
+      "licence": "The wiki's rightsinfo is empty (the coverage audit, 2026-10-01) and no terms were found; tehcc_wiki_announcements, the same wiki's notices, publish on decision 53's facts and a link, which does not reach a club's trail pages. No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the wiki's rightsinfo is empty (coverage audit, 2026-10-01).",
+      "reader": "MediawikiTemplatePages (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "The editor's name is never asked for: the reader's `rvprop` names ids, timestamp and content only (extract/_json_apis.py's MediawikiAnnouncements). The wikitext lands whole in the private raw store and stops at `base_` (decision 55). 6 of the 148 pages carry a telephone number, and every one is an office's: Clinch Ranger District's, the Cherokee National Forest district office's, a park's main office, Virginia's Department of Forestry's and a camp ministry's (read 2026-10-04), no person's, so decision 59 does not reach the column. No page carries an e-mail address.",
+      "key_fields": [
+        "pageid"
+      ],
+      "key_comment": "`pageid`: unique on all 148 pages read 2026-10-04 (titles unique too), the wiki's own page id, which a page keeps through edits and renames.",
+      "freshness": {
+        "kind": "mediawiki_listing",
+        "url": "https://tehcc.org/clubwiki/api.php",
+        "notes": "MediawikiAnnouncements' check: one listing request with prop=info, hashed over each page's (pageid, lastrevid, touched) plus the count; `touched` moves when a template the page carries is edited."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for TEHCC (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT; tehcc.org's robots.txt (read 2026-10-04) disallows only /wp-admin/.",
+      "discovered_date": "2026-10-04",
+      "notes": "148 pages transclude `Template:Trail` (embeddedin, one batch, batchcomplete), every one with content, read 2026-10-04 through the generator the reader uses, 50 pages a request.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "tehcc_wiki_hikes",
+      "title": "TEHCC club wiki: hike pages (Template:Hike)",
+      "provider": "TEHCC",
+      "kind": "published_hikes",
+      "url": "https://tehcc.org/clubwiki/api.php",
+      "template": "Template:Hike",
+      "steward": "Tennessee Eastman Hiking & Canoeing Club",
+      "attribution": "Tennessee Eastman Hiking & Canoeing Club",
+      "licence": "The wiki's rightsinfo is empty (the coverage audit, 2026-10-01) and no terms were found; tehcc_wiki_announcements, the same wiki's notices, publish on decision 53's facts and a link, which does not reach a club's hike pages. No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the wiki's rightsinfo is empty (coverage audit, 2026-10-01).",
+      "reader": "MediawikiTemplatePages (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "The editor's name is never asked for: the reader's `rvprop` names ids, timestamp and content only (extract/_json_apis.py's MediawikiAnnouncements). The wikitext lands whole in the private raw store and stops at `base_` (decision 55). 7 of the 52 pages carry a telephone number, and every one is an office's: Clinch Ranger District's, the Cherokee National Forest district office's, a park's main office, Virginia's Department of Forestry's and a camp ministry's (read 2026-10-04), no person's, so decision 59 does not reach the column. No page carries an e-mail address.",
+      "key_fields": [
+        "pageid"
+      ],
+      "key_comment": "`pageid`: unique on all 52 pages read 2026-10-04 (titles unique too), the wiki's own page id, which a page keeps through edits and renames.",
+      "freshness": {
+        "kind": "mediawiki_listing",
+        "url": "https://tehcc.org/clubwiki/api.php",
+        "notes": "MediawikiAnnouncements' check: one listing request with prop=info, hashed over each page's (pageid, lastrevid, touched) plus the count; `touched` moves when a template the page carries is edited."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for TEHCC (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT; tehcc.org's robots.txt (read 2026-10-04) disallows only /wp-admin/.",
+      "discovered_date": "2026-10-04",
+      "notes": "52 pages transclude `Template:Hike` (embeddedin, one batch, batchcomplete), every one with content, read 2026-10-04 through the generator the reader uses, 50 pages a request.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "tehcc_wiki_challenge_items",
+      "title": "TEHCC club wiki: challenge pages (Template:Challenge Item)",
+      "provider": "TEHCC",
+      "kind": "published_notices",
+      "url": "https://tehcc.org/clubwiki/api.php",
+      "template": "Template:Challenge Item",
+      "steward": "Tennessee Eastman Hiking & Canoeing Club",
+      "attribution": "Tennessee Eastman Hiking & Canoeing Club",
+      "licence": "The wiki's rightsinfo is empty (the coverage audit, 2026-10-01) and no terms were found; tehcc_wiki_announcements, the same wiki's notices, publish on decision 53's facts and a link, which does not reach a club's challenge pages. Whether a club's challenge list publishes is the maintainer's call (PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List asked for written permission first).",
+      "licence_basis": "unresolved",
+      "terms": "None found: the wiki's rightsinfo is empty (coverage audit, 2026-10-01).",
+      "reader": "MediawikiTemplatePages (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "The editor's name is never asked for: the reader's `rvprop` names ids, timestamp and content only (extract/_json_apis.py's MediawikiAnnouncements). The wikitext lands whole in the private raw store and stops at `base_` (decision 55). Its one page, South Beyond 6000, carries no telephone number and no e-mail address (read 2026-10-04).",
+      "key_fields": [
+        "pageid"
+      ],
+      "key_comment": "`pageid`: unique on all 1 pages read 2026-10-04 (titles unique too), the wiki's own page id, which a page keeps through edits and renames.",
+      "freshness": {
+        "kind": "mediawiki_listing",
+        "url": "https://tehcc.org/clubwiki/api.php",
+        "notes": "MediawikiAnnouncements' check: one listing request with prop=info, hashed over each page's (pageid, lastrevid, touched) plus the count; `touched` moves when a template the page carries is edited."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED challenges row for TEHCC (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT; tehcc.org's robots.txt (read 2026-10-04) disallows only /wp-admin/.",
+      "discovered_date": "2026-10-04",
+      "notes": "1 pages transclude `Template:Challenge Item` (embeddedin, one batch, batchcomplete), every one with content, read 2026-10-04 through the generator the reader uses, 50 pages a request.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), and this page is a wiki map of the South Beyond 6000 peaks, of which it stores 1 (Roan High Bluff, its longitude missing its minus sign, the coverage audit). It stays false until a person reviews it into a challenge file or the maintainer decides otherwise."
+    },
+    {
       "key": "foot_trail_condition_report",
       "title": "Friends of the Ouachita Trail: Trail Condition Report",
       "provider": "FoOT",
@@ -7591,6 +8137,64 @@
       "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
     },
     {
+      "key": "wdnr_wild_wisconsin_podcast",
+      "title": "Wild Wisconsin, Off the Record (podcast feed, Wisconsin DNR)",
+      "provider": "Wisconsin DNR",
+      "kind": "podcast_feed",
+      "url": "https://feeds.transistor.fm/wild-wisconsin-off-the-record",
+      "steward": "Wisconsin Department of Natural Resources",
+      "attribution": "Wisconsin Department of Natural Resources",
+      "licence": "The feed's <copyright> reads '© 2019 Wisconsin Department of Natural Resources' (read 2026-10-04). Nothing grants reuse; episodes are only ever linked. The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "© 2019 Wisconsin Department of Natural Resources",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "The episode notes carry the show's own dnrpodcast@ address on 3 of 59 items, an agency's and no person's (2026-10-04), so decision 59 does not reach them: the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with 'Wisconsin Department of Natural Resources' on 59 of 59, and RSS <author> on every item, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 59 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://feeds.transistor.fm/wild-wisconsin-off-the-record",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"77ff2c968f47e55a4bd4ba8f534c4f5f\" and Last-Modified Tue, 02 Dec 2025 20:19:43 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "59 episodes, published 2017-09-01 to 2021-06-16, read 2026-10-04T07:28:17+00:00 (543,209 bytes, HTTP 200). The host's robots.txt answered HTTP 400, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
+      "key": "silvicast_podcast",
+      "title": "SilviCast (podcast feed, Wisconsin Forestry Center and Wisconsin DNR)",
+      "provider": "Wisconsin DNR",
+      "kind": "podcast_feed",
+      "url": "https://rss.buzzsprout.com/1135730.rss",
+      "steward": "Wisconsin Department of Natural Resources",
+      "attribution": "SilviCast, the Wisconsin Forestry Center and the Wisconsin Department of Natural Resources",
+      "licence": "The feed's <copyright> reads '© 2026 SilviCast' (read 2026-10-04), and its channel author is 'Wisconsin Forestry Center and Wisconsin Department of Natural Resources', so WDNR co-produces it and does not hold it alone. Nothing grants reuse; episodes are only ever linked. The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "© 2026 SilviCast",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with the two producing bodies on 68 of 71, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 71 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://rss.buzzsprout.com/1135730.rss",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"f80adb02a78b5e53082439011c034f13\" and Last-Modified Thu, 01 Oct 2026 15:46:54 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "71 episodes, published 2020-06-12 to 2026-10-01, read 2026-10-04T07:28:20+00:00 (264,768 bytes, HTTP 200). The host's robots.txt answered HTTP 404, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
       "key": "fws_hunt_units",
       "title": "FWS National Wildlife Refuge public hunt units",
       "provider": "USFWS",
@@ -7715,6 +8319,35 @@
       "meta": {
         "cadence": "monthly"
       }
+    },
+    {
+      "key": "usfws_future_of_conservation_podcast",
+      "title": "Future of Conservation (podcast feed, USFWS National Conservation Training Center)",
+      "provider": "USFWS",
+      "kind": "podcast_feed",
+      "url": "https://trainingcenter.fws.gov/rss/FOC-podcast-series.xml",
+      "steward": "U.S. Fish and Wildlife Service",
+      "attribution": "U.S. Fish and Wildlife Service, National Conservation Training Center",
+      "licence": "A work of the U.S. Government, PUBLIC DOMAIN on 17 U.S.C. 105, as USFWS's other rows read. The feed carries no <copyright> (read 2026-10-04). Its URL is Apple's lookup answer for show id1789144144, which https://www.fws.gov/page/future-conservation-podcast-series links. Episodes are only ever linked.",
+      "licence_basis": "stated_by_org",
+      "terms": "None in the feed: no <copyright> element (read 2026-10-04).",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with nothing, with RSS <author> and itunes:owner on every item, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 13 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://trainingcenter.fws.gov/rss/FOC-podcast-series.xml",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"5969f221c26dd1:0\" and Last-Modified Fri, 07 Aug 2026 03:22:44 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "13 episodes, published 2025-01-06 to 2026-08-06, read 2026-10-04T07:41:17+00:00 (36,488 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
       "key": "usace_garrison_hunting_restrictions",
@@ -9805,6 +10438,35 @@
       }
     },
     {
+      "key": "amc_unlikely_stories_podcast",
+      "title": "Unlikely Stories Podcast (podcast feed, Appalachian Mountain Club)",
+      "provider": "AMC",
+      "kind": "podcast_feed",
+      "url": "https://feeds.simplecast.com/UC2QUufg",
+      "steward": "Appalachian Mountain Club",
+      "attribution": "Appalachian Mountain Club",
+      "licence": "The feed's <copyright> reads 'Appalachian Mountain Club' (read 2026-10-04). Nothing grants reuse; episodes are only ever linked. The maintainer's call. amc_at/podcasts.py draws this show from here (decision 34).",
+      "licence_basis": "unresolved",
+      "terms": "Appalachian Mountain Club",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with each episode's guests' names on 11 of 11, and RSS <author> an e-mail address on 11 of 11; titles name the guest too ('Superhuman Hiker | …'), RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 11 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://feeds.simplecast.com/UC2QUufg",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"c7337373b1169548948fdf4ecd03d3f4\" and Last-Modified Wed, 27 Oct 2021 04:00:14 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "11 episodes, published 2021-08-24 to 2021-10-27, read 2026-10-04T07:28:22+00:00 (64,057 bytes, HTTP 200). The host's robots.txt answered HTTP 404, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
       "key": "spnhf_public_access_properties",
       "title": "Forest Society public access properties",
       "provider": "SPNHF",
@@ -9827,6 +10489,35 @@
       "notes": "173 polygon features (returnCountOnly), 10 fields, maxRecordCount 2,000, served in EPSG:102100, layer lastEditDate 2020-05-28, all read 2026-10-03. KEY: `LOCATEName` is unique and non-null on all 173 rows read 2026-10-03. MART: kind `park`: 173 properties open to the public, with a link each. Layer 5 of the Public access map 05282020_WFL1 service: the whole set, of which four web-map copies hold selections of 31 to 34 (SAME_AS notes in spnhf/places.py). Last edited 2020-05-28. The reservations and easements layers of the 'Forest Society Conserved Lands Map' web map have no public URL (coverage audit). CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 28 May 2020 16:31:51 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "something_wild_podcast",
+      "title": "Something Wild (podcast feed, NHPR with NH Audubon and the Forest Society)",
+      "provider": "SPNHF",
+      "kind": "podcast_feed",
+      "url": "https://nhpr-rss.streamguys1.com/something_wild/something-wild-apple-podcasts.xml",
+      "steward": "New Hampshire Public Radio",
+      "attribution": "Something Wild, New Hampshire Public Radio with NH Audubon and the Society for the Protection of New Hampshire Forests",
+      "licence": "The feed's <copyright> reads '2023 New Hampshire Public Radio' (read 2026-10-04). NHPR introduces the show as 'a joint production of NH Audubon, The Society for the Protection of New Hampshire Forests & NHPR' (the coverage audit, 2026-10-01), so the Forest Society co-produces it and does not hold it. Nothing grants reuse; episodes are only ever linked. The maintainer's call. This is the feed Apple's directory gives for the show (lookup id972135351, which NHPR's show page links, read 2026-10-04: 117 episodes, newest 2026-10-02); the rss.xml NHPR's page also links holds 20, the newest 2023-03-24, and is a stale copy noted in spnhf/podcasts.py.",
+      "licence_basis": "unresolved",
+      "terms": "2023 New Hampshire Public Radio",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with the hosts' names on every item, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 116 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://nhpr-rss.streamguys1.com/something_wild/something-wild-apple-podcasts.xml",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"6abf9835-1a61c\" and Last-Modified Fri, 02 Oct 2026 11:40:37 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "116 episodes, published 2022-06-17 to 2026-10-02, read 2026-10-04T07:58:52+00:00 (108,060 bytes, HTTP 200). The host's robots.txt answered HTTP 404, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
       "key": "trustees_properties",
@@ -9903,6 +10594,35 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_trustees__trustees_hunting_designations reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "trustees_on_the_coast_podcast",
+      "title": "Trustees On The Coast (podcast feed)",
+      "provider": "The Trustees",
+      "kind": "podcast_feed",
+      "url": "https://anchor.fm/s/102fa3a7c/podcast/rss",
+      "steward": "The Trustees of Reservations",
+      "attribution": "The Trustees of Reservations",
+      "licence": "The feed's <copyright> reads 'The Trustees' (read 2026-10-04). Nothing grants reuse; episodes are only ever linked. The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "The Trustees",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with nothing (absent on 2 of 2); dc:creator names the account, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 2 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://anchor.fm/s/102fa3a7c/podcast/rss",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"190e-FaxwB2wR8U7d3Zg1MYbO8pDsVWU\". Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "2 episodes, published all 2025-03-27, read 2026-10-04T07:28:35+00:00 (6,414 bytes, HTTP 200). The host's robots.txt answered 200 and disallows nothing this URL reaches, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
       "key": "mtsg_heritage_area_boundary",
       "title": "Mountains to Sound Greenway National Heritage Area boundary",
       "provider": "MTSG",
@@ -9925,6 +10645,35 @@
       "notes": "1 polygon feature (returnCountOnly), 6 fields, maxRecordCount 1,000, served in EPSG:102100, layer lastEditDate 2017-09-07, all read 2026-10-03. KEY: `Zone` is unique and non-null on all 1 rows read 2026-10-03. MART: kind `park`, one row: the heritage area as a place a hiker names. One polygon, last edited 2017-09-07. The same service's other layers (parks and open spaces 57, heritage sites 41, museums 31, visitor centres 6, per the coverage audit) are point layers for points_of_interest, not registered here. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 07 Sep 2017 17:06:36 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered for decision 54 (load every dataset the clubs publish), not shipped: no staging model reads this table yet (decision 52's base models are phase C), so false until phase C flips it when a mart reads the table. Publication is then decided in int_sources__publication by this row's `reaches_hikers` and `licence_basis`."
+    },
+    {
+      "key": "mtsg_itineraries",
+      "title": "Mountains to Sound Greenway itineraries (the `itinerary` post type)",
+      "provider": "MTSG",
+      "kind": "published_hikes",
+      "url": "https://mtsgreenway.org/wp-json/wp/v2/itinerary",
+      "steward": "Mountains to Sound Greenway Trust",
+      "attribution": "Mountains to Sound Greenway Trust",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: a WordPress page search for 'terms' on the site returned only unrelated pages (2026-10-04).",
+      "reader": "WordpressPosts (extract/_kinds.py)",
+      "person_fields": [],
+      "person_fields_comment": "Nothing beyond what the reader always leaves out (extract/_kinds.py's WP_DROPPED: `author`, Yoast's blocks that spell the author's name out, Spectra's author info, `meta`). A scan of every row's content for e-mail addresses and telephone numbers on 2026-10-04 found none, so the body lands in the private raw store and stops at `base_` (decision 55).",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the WordPress post id: unique on all 28 rows read 2026-10-04, with X-WP-Total 28 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
+      "freshness": {
+        "kind": "wp_id_modified_set",
+        "url": "https://mtsgreenway.org/wp-json/wp/v2/itinerary",
+        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "The `itinerary` custom post type, read whole: X-WP-Total 28, 28 rows in one page of 100, modified 2022-05-13 to 2026-05-28, read 2026-10-04T07:42:05+00:00. Not every itinerary is a hike: the `itinerary_type` taxonomy (5 terms: Culture and History; Nature, Plants, and Wildlife; Scenic Drives; Trails, Parks, and Recreation; Walking Tours) says which, resolved against `mtsg_itineraries`' terms table, and a scenic drive never becomes a suggested hike. The robots.txt asks no Crawl-delay.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
     },
     {
       "key": "sbts_trail_town_amenities",
@@ -10026,6 +10775,35 @@
       "meta": {
         "cadence": "monthly"
       }
+    },
+    {
+      "key": "sbts_dirt_magic_podcast",
+      "title": "Dirt Magic (podcast feed, Sierra Buttes Trail Stewardship)",
+      "provider": "SBTS",
+      "kind": "podcast_feed",
+      "url": "https://rss.buzzsprout.com/1119050.rss",
+      "steward": "Sierra Buttes Trail Stewardship",
+      "attribution": "Sierra Buttes Trail Stewardship",
+      "licence": "The feed's <copyright> reads '© 2026 Dirt Magic' (read 2026-10-04). Nothing grants reuse; episodes are only ever linked. 16 of the 40 are short 'Dirt Magic Trails Report' bulletins (the coverage audit, 2026-10-01): a trail report is a condition, and none of it reaches a closure or warning from this row. The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "© 2026 Dirt Magic",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with 'Sierra Buttes Trail Stewardship' on 32 of 40 and a guest's name after it on 2, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 40 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://rss.buzzsprout.com/1119050.rss",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"eb41019d708e9001340554a3793ad569\" and Last-Modified Fri, 04 Sep 2026 18:00:21 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "40 episodes, published 2023-03-02 to 2026-09-04, read 2026-10-04T07:28:36+00:00 (117,746 bytes, HTTP 200). The host's robots.txt answered HTTP 404, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
       "key": "fpc_ancient_forest_preserve",
@@ -11220,6 +11998,67 @@
       }
     },
     {
+      "key": "ridgetrail_trail_sections",
+      "title": "Bay Area Ridge Trail sections (the `trail-section` post type)",
+      "provider": "Bay Area Ridge Trail Council",
+      "kind": "published_hikes",
+      "url": "https://ridgetrail.org/wp-json/wp/v2/trail-section",
+      "steward": "Bay Area Ridge Trail Council",
+      "attribution": "Bay Area Ridge Trail Council",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: a WordPress page search for 'terms' on the site returned only unrelated pages (2026-10-04).",
+      "reader": "WordpressPosts (extract/_kinds.py)",
+      "person_fields": [],
+      "person_fields_comment": "Nothing beyond what the reader always leaves out (extract/_kinds.py's WP_DROPPED: `author`, Yoast's blocks that spell the author's name out, Spectra's author info, `meta`). A scan of every row's content for e-mail addresses and telephone numbers on 2026-10-04 found none, so the body lands in the private raw store and stops at `base_` (decision 55).",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the WordPress post id: unique on all 86 rows read 2026-10-04, with X-WP-Total 86 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
+      "freshness": {
+        "kind": "wp_id_modified_set",
+        "url": "https://ridgetrail.org/wp-json/wp/v2/trail-section",
+        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "The `trail-section` custom post type, read whole: X-WP-Total 86, 86 rows in one page of 100, modified 2025-02-11 to 2026-09-02, read 2026-10-04T07:42:07+00:00. Each section's distance, ends and land manager are in its body, not in fields (`acf` is empty on every row). The robots.txt disallows only its calendar views and asks no Crawl-delay.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "ridgetrail_curated_adventures",
+      "title": "Bay Area Ridge Trail Curated Adventures (category)",
+      "provider": "Bay Area Ridge Trail Council",
+      "kind": "published_hikes",
+      "url": "https://ridgetrail.org/category/curated-adventures/",
+      "steward": "Bay Area Ridge Trail Council",
+      "attribution": "Bay Area Ridge Trail Council",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: a WordPress page search for 'terms' on the site returned only unrelated pages (2026-10-04).",
+      "reader": "WordpressPosts (extract/_kinds.py)",
+      "person_fields": [
+        "author_info",
+        "jetpack_publicize_connections"
+      ],
+      "person_fields_comment": "`author_info` holds the post author's display name and author page, a staff member's; `jetpack_publicize_connections` the accounts a post was shared to. Neither loads, beside what the reader always leaves out (WP_DROPPED). The body's contacts, read 2026-10-04, are the Council's own info@ address on 3 posts and one park's answering machine on 1, an organisation's and no person's, so the body lands in the private raw store and stops at `base_` (decision 55).",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the WordPress post id: unique on all 33 rows read 2026-10-04, with X-WP-Total 33 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
+      "freshness": {
+        "kind": "wp_id_modified_set",
+        "url": "https://ridgetrail.org/wp-json/wp/v2/posts?categories=21",
+        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Category 21, `curated-adventures`: X-WP-Total 33, 33 rows in one page of 100, modified 2017-10-03 to 2026-09-30, read 2026-10-04T07:43:26+00:00. Multi-day treks, day-hike sets and bikepacking routes; a bikepacking post is not a hike, which the post's own title and tags say and dbt decides.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
       "key": "shta_line_2025",
       "title": "Superior Hiking Trail main line, 2025 (SHTA)",
       "provider": "SHTA",
@@ -11638,6 +12477,35 @@
       "person_fields_comment": "Decision 59 leaves a free-text field that carries personal data out whole: these 4 posts' bodies carried no e-mail address or telephone number on 2026-10-03, but they are the same free text that, on three other clubs' WordPress sites read the same day, did. WordpressPosts drops the row's person_fields before dlt sees the post, so the body never reaches the raw store; the title, dates, categories and link are what a notice publishes anyway (decision 55)."
     },
     {
+      "key": "pnta_day_hikes_posts",
+      "title": "Pacific Northwest Trail Association: Day Hikes posts (category)",
+      "provider": "PNTA",
+      "kind": "published_hikes",
+      "url": "https://www.pnt.org/category/trail-topics/day-hikes/",
+      "steward": "Pacific Northwest Trail Association",
+      "attribution": "Pacific Northwest Trail Association",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: no terms page is linked (decision 53's inventory, batch 4, as pnta_trail_alerts records).",
+      "reader": "WordpressChildPages (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "Nothing beyond what the reader always leaves out (extract/_kinds.py's WP_DROPPED: `author`, Yoast's blocks that spell the author's name out, Spectra's author info, `meta`). A scan of every row's content for e-mail addresses and telephone numbers on 2026-10-04 found none, so the body lands in the private raw store and stops at `base_` (decision 55).",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the WordPress post id: unique on all 1 rows read 2026-10-04, with X-WP-Total 1 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
+      "freshness": {
+        "kind": "wp_id_modified_set",
+        "url": "https://www.pnt.org/wp-json/wp/v2/posts?categories=117",
+        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Category 117, `day-hikes`, a child of `trail-topics`: X-WP-Total 1, 1 rows in one page of 100, modified 2024-09-16 to 2024-09-16, read 2026-10-04T07:56:02+00:00. One post today, 'Winter Trips on the Pacific Northwest Trail' (2024-09-16). The category's archive sits under /category/trail-topics/, so the resource names its slug (`category_slugs`) rather than reading it off the url.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
       "key": "ebrpd_alerts_closures",
       "title": "East Bay Regional Park District alerts and closures",
       "provider": "EBRPD",
@@ -11708,6 +12576,35 @@
       "notes": "One row: the WordPress page's notice, read through its REST route (extract/_notices.py's PageNotice, `wp_page`), keyed by `url`. Read 2026-10-03: page 73, title 'Trail Conditions', date 2026-10-01 from the page's own 'Updated October 1, 2026', rendered content of 17,577 characters: six map-series sections (A to F) and general corridor information, about 50 conditions (the I-35 pedestrian bridge closed until October, the Lakewalk closed through November 2026, McCarthy Creek bridge out). Crossing hazards and closures share one list, so decision 7's split is a reviewer's.",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_shta__shta_trail_conditions reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
+      "key": "shta_blazing_trail_podcast",
+      "title": "Blazing Trail: 40 Years on the Superior Hiking Trail (podcast feed, SHTA with WTIP)",
+      "provider": "SHTA",
+      "kind": "podcast_feed",
+      "url": "https://feeds.transistor.fm/blazing-trails",
+      "steward": "Superior Hiking Trail Association",
+      "attribution": "Superior Hiking Trail Association and WTIP North Shore Community Radio",
+      "licence": "The feed's <copyright> reads 'WTIP, 2026' (read 2026-10-04); its channel author is 'Superior Hiking Trail Association, WTIP', a co-production. Nothing grants reuse; episodes are only ever linked. The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "WTIP, 2026",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with the two producers on 12 of 12, and RSS <author> on every item, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 12 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://feeds.transistor.fm/blazing-trails",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"71fced8aefe657ab94627f207f8ab752\" and Last-Modified Fri, 14 Aug 2026 15:44:15 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "12 episodes, published 2025-12-22 to 2026-08-14, read 2026-10-04T07:28:36+00:00 (44,547 bytes, HTTP 200). The host's robots.txt answered HTTP 400, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
       "key": "sstc_trail_alerts",
@@ -11833,6 +12730,38 @@
         "excerpt"
       ],
       "person_fields_comment": "Decision 59 leaves a free-text field that carries personal data out whole: on 2026-10-03 these posts' bodies carried 3 telephone numbers. WordpressPosts drops the row's person_fields before dlt sees the post, so the body never reaches the raw store; the title, dates, categories and link are what a notice publishes anyway (decision 55)."
+    },
+    {
+      "key": "tko_spring_fundraiser_hike_posts",
+      "title": "Trailkeepers of Oregon: Oregon Hikers Spring Fundraiser posts (category)",
+      "provider": "TKO",
+      "kind": "published_hikes",
+      "url": "https://trailkeepersoforegon.org/category/oregon-hikers-spring-fundraiser/",
+      "steward": "Trailkeepers of Oregon",
+      "attribution": "Trailkeepers of Oregon",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: no terms page is linked (decision 53's inventory, batch 4, as tko_oct_trail_conditions records).",
+      "reader": "WordpressPosts (extract/_kinds.py)",
+      "person_fields": [
+        "content",
+        "excerpt"
+      ],
+      "person_fields_comment": "Decision 59, Reasoned: half the category's posts are profiles of named volunteers ('Trailkeeper Spotlight: <first name>'), whose bodies are personal data, so `content` and `excerpt` never load for any post. What lands is each post's title, link, dates and taxonomy ids, which is what a suggested hike publishes anyway, beside what the reader always leaves out (WP_DROPPED). No body carried an e-mail address or a telephone number on 2026-10-04.",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the WordPress post id: unique on all 12 rows read 2026-10-04, with X-WP-Total 12 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
+      "freshness": {
+        "kind": "wp_id_modified_set",
+        "url": "https://trailkeepersoforegon.org/wp-json/wp/v2/posts?categories=40",
+        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Category 40, `oregon-hikers-spring-fundraiser`: X-WP-Total 12, 12 rows in one page of 100, modified 2026-05-18 to 2026-07-07, read 2026-10-04T07:43:28+00:00. 6 of the 12 are hike-description posts ('Four Hikes in the Columbia Gorge' and the like); the rest are 'Trailkeeper Spotlight' profiles of named volunteers. This is TKO's own blog, not the Oregon Hikers Field Guide, whose terms tko/suggested_hikes.py quotes.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
     },
     {
       "key": "tpwd_davis_mountains_alerts",
@@ -13301,6 +14230,35 @@
       "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): 'Now Open:' titles are reopenings and must not render as closures, as its notes say, and no rule reads a title for one. Settled by a reviewed reading of GMC's alert-category or its 'Now Open:' prefix."
     },
     {
+      "key": "gmc_hikes",
+      "title": "GMC Hikes (the `hikes` post type, greenmountainclub.org)",
+      "provider": "GMC",
+      "kind": "published_hikes",
+      "url": "https://greenmountainclub.org/wp-json/wp/v2/hikes",
+      "steward": "Green Mountain Club",
+      "attribution": "Green Mountain Club",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: a WordPress page search for 'terms' on the site returned only unrelated pages (2026-10-04).",
+      "reader": "WordpressPosts (extract/_kinds.py)",
+      "person_fields": [],
+      "person_fields_comment": "Nothing beyond what the reader always leaves out (extract/_kinds.py's WP_DROPPED: `author`, Yoast's blocks that spell the author's name out, Spectra's author info, `meta`). A scan of every row's content for e-mail addresses and telephone numbers on 2026-10-04 found none, so the body lands in the private raw store and stops at `base_` (decision 55).",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the WordPress post id: unique on all 57 rows read 2026-10-04, with X-WP-Total 57 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
+      "freshness": {
+        "kind": "wp_id_modified_set",
+        "url": "https://greenmountainclub.org/wp-json/wp/v2/hikes",
+        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "The `hikes` custom post type, read whole: X-WP-Total 57, 57 rows in one page of 100, modified 2026-06-10 to 2026-09-30, read 2026-10-04T07:42:04+00:00. Facts are taxonomy ids (difficulty 3 terms, distance 5, hike-feature 11, hike-status 1, hike-type 4, region 8, read 2026-10-04), resolved against `gmc_hikes`' terms table (raw_gmc__gmc_hikes_terms, read monthly beside the posts). `acf` is empty on every row. greenmountainclub.org's robots.txt opens with `Crawl-delay: 10` before any User-agent line; it is honoured as if it applied to every agent.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
       "key": "lsht_thru_hike_notes",
       "title": "LSHT Thru Hike page notices",
       "provider": "LSHTC",
@@ -14064,6 +15022,67 @@
       "notes": "One of the 23 section articles https://hike-mst.org/index.php/the-trail/section-updates lists, each with its own 'Last Updated on' date and an 'Alerts:' list. The Joomla RSS and Atom feeds carry each article's 2012 creation date and the request time, so they cannot see an edit and are not read. Read live at 2026-10-03T22:06:42Z under lib/user_agent.py's agent, robots.txt allows the path for our agent, no Crawl-delay: HTTP 200, 32,789 bytes, Last-Modified Sat, 03 Oct 2026 22:06:43 GMT. Through PageNotice that answer lands one row: title 'Section C - Reeds Gap Spur and White Mountain Trails', its date 2022-03-06 (page_text, stated as 'March 06, 2022'), region `body` of 1,245 characters. The key is `url`: one row a page, 1 distinct of 1.",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_mst_pa__msta_section_c reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
+      "key": "audible_mount_diablo_podcast",
+      "title": "Audible Mount Diablo (podcast feed)",
+      "provider": "Save Mount Diablo",
+      "kind": "podcast_feed",
+      "url": "https://rss.libsyn.com/shows/136346/destinations/844139.xml",
+      "steward": "Save Mount Diablo",
+      "attribution": "Audible Mount Diablo, sponsored by the Mount Diablo Interpretive Association with Save Mount Diablo",
+      "licence": "The feed's <copyright> reads 'Copyright 2019, Audible Mount Diablo - All Rights Reserved.' (read 2026-10-04), quoted in `terms`; its channel author is one named individual, the show's writer and producer, not copied here. 156 of its 209 episode descriptions credit Save Mount Diablo, usually 'Sponsored by Mount Diablo Interpretive Association in partnership with Save Mount Diablo' (the coverage audit, 2026-10-01), so the club sponsors the show and does not hold it. Episodes are only ever linked. The maintainer's call.",
+      "licence_basis": "unresolved",
+      "terms": "Copyright 2019, Audible Mount Diablo - All Rights Reserved.",
+      "reader": "PodcastEpisodes (extract/_content.py)",
+      "person_fields": [],
+      "person_fields_comment": "No episode note carried an e-mail address or a telephone number on 2026-10-04, so the prose lands in the private raw store and stops at `base_` (decision 55). Never read, whatever this row lists: extract/_content.py's PERSON_TAGS (an item's itunes:author, which this feed fills with 'Audible Mount Diablo' on 190 of 209 and a person's name on 4, RSS <author>, dc:creator, podcast:person, itunes:owner and Google Play's author), so the guest list and the hosts' names and addresses never reach the raw store (decision 59; the round brief's 'an episode's guest list ... are person fields').",
+      "key_fields": [
+        "guid"
+      ],
+      "key_comment": "`guid`: present and unique on all 209 items read 2026-10-04, the feed's own id for an episode, which a podcast app keys on too.",
+      "freshness": {
+        "kind": "http_validators",
+        "url": "https://rss.libsyn.com/shows/136346/destinations/844139.xml",
+        "notes": "PodcastEpisodes' check is PodcastFeed's: a conditional GET with the feed's own validators, a 304 FRESH, neither validator UNKNOWN. On 2026-10-04 the feed served ETag W/\"d25f01d6cbf5cdac3aab6857f4a39cbb\" and Last-Modified Thu, 27 Aug 2026 23:50:10 GMT. Podcasts are not a safety path, so a validator that moves with every request costs one read and nothing else."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED podcasts row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "209 episodes, published 2019-02-01 to 2026-08-27, read 2026-10-04T07:28:36+00:00 (489,976 bytes, HTTP 200). The host's robots.txt answered HTTP 403, which RFC 9309 reads as no restriction, and asks no Crawl-delay. THE FEED IS WHAT ITS HOST SERVES, which may be a window of the show: an episode's absence is never its removal. The audio is never fetched: an <enclosure> lands as its URL, length and type.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
+    },
+    {
+      "key": "nmvfo_hike_new_mexico",
+      "title": "Hike New Mexico trail guide (child pages of nmvfo.org/trails/)",
+      "provider": "NMVFO",
+      "kind": "published_hikes",
+      "url": "https://nmvfo.org/trails/",
+      "steward": "New Mexico Volunteers for the Outdoors",
+      "attribution": "New Mexico Volunteers for the Outdoors",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach prose. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: a WordPress page search for 'terms' returned only the club's bylaws (2026-10-04).",
+      "reader": "WordpressChildPages (extract/_content.py)",
+      "person_fields": [
+        "content",
+        "excerpt"
+      ],
+      "person_fields_comment": "Decision 59 leaves a free-text column that carries personal data out whole: on 2026-10-04 the body of 18 of the 38 pages embedded named volunteers' own telephone numbers and e-mail addresses, as a contact block inside the page, so `content` and `excerpt` never load. What lands is each page's title, link and dates, which is what a suggested hike publishes anyway (its facts and the link), beside what the reader always leaves out (WP_DROPPED). A trail's distance, which only the body states, is lost with it: a gap, never a guess.",
+      "key_fields": [
+        "id"
+      ],
+      "key_comment": "`id`, the WordPress post id: unique on all 38 rows read 2026-10-04, with X-WP-Total 38 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
+      "freshness": {
+        "kind": "wp_id_modified_set",
+        "url": "https://nmvfo.org/wp-json/wp/v2/pages?parent=2040",
+        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "The child pages of page 2040, `/trails/` (the child pages route, `parent=2040`): X-WP-Total 38, 38 rows in one page of 100, modified 2023-01-31 to 2023-02-05, read 2026-10-04T07:42:14+00:00. 35 of the 38 carry the same four sections, SUMMARY, DESCRIPTION, GETTING THERE and CONDITIONS (the coverage audit); the CONDITIONS are 2020 to 2023 snapshots and must never feed a closure or a warning. The robots.txt is Yoast's `User-agent: * / Disallow:` and asks no Crawl-delay.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's write-up has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
     }
   ],
   "usdm_licence": {
@@ -14654,6 +15673,14 @@
       "Mid State Trail Association": {
         "state": "not_asked",
         "note": "Not asked. Registered for its notices under decision 53, phase B, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Save Mount Diablo": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its podcast feed under decision 54's wave 3 (section C, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "NMVFO": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -15565,6 +16592,16 @@
         "provider": "Mid State Trail Association",
         "name": "Mid State Trail Association",
         "note": "Maintains Pennsylvania's 327-mile Mid State Trail; registered for its 23 section-update articles."
+      },
+      "org:smd": {
+        "provider": "Save Mount Diablo",
+        "name": "Save Mount Diablo",
+        "note": "A land trust on and around Mount Diablo, California. Registered for Audible Mount Diablo, the podcast it sponsors with the Mount Diablo Interpretive Association (decision 54, wave 3, 2026-10-04), at reaches_hikers: false."
+      },
+      "org:nmvfo": {
+        "provider": "NMVFO",
+        "name": "New Mexico Volunteers for the Outdoors",
+        "note": "A volunteer trail crew organisation in New Mexico. Registered for its Hike New Mexico trail guide pages (decision 54, wave 3, 2026-10-04), at reaches_hikers: false; its CalTopo scouting map stays refused by caltopo.com's robots.txt."
       }
     }
   },
@@ -20560,6 +21597,80 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its notice pages and feeds under decision 53's phase B (2026-10-03). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's waves, which read every club's points of interest, are what would settle it."
+          }
+        }
+      },
+      "Save Mount Diablo": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its podcast feed (Audible Mount Diablo) under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its podcast feed (Audible Mount Diablo) under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its podcast feed (Audible Mount Diablo) under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its podcast feed (Audible Mount Diablo) under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its podcast feed (Audible Mount Diablo) under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its podcast feed (Audible Mount Diablo) under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its podcast feed (Audible Mount Diablo) under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its podcast feed (Audible Mount Diablo) under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "NMVFO": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its Hike New Mexico pages under decision 54's wave 3 (section C, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
           }
         }
       }

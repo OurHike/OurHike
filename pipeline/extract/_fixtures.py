@@ -97,7 +97,7 @@ import requests
 from requests.structures import CaseInsensitiveDict
 
 import export_conditions
-from extract import _json_apis, _kinds, _notices
+from extract import _content, _json_apis, _kinds, _notices
 from extract._contract import all_resources, discover, discover_shared
 from extract._kinds import (
     CONDITIONS_QUERIES,
@@ -153,6 +153,7 @@ JSON_API_KINDS = (
     _json_apis.MediawikiAnnouncements,
     _json_apis.SheetCsvSegments,
     _json_apis.MyMapsPlacemarks,
+    _content.PodcastEpisodes,
 )
 # What NPS_API_KEY holds while fixture mode runs, when the environment has none.
 FIXTURE_NPS_KEY = "fixture-mode-key"

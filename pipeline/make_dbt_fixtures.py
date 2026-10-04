@@ -43,6 +43,7 @@ this exists to fill an empty CI workspace, not to overwrite a real fetch.
 """
 
 import argparse
+import functools
 import json
 import math
 import struct
@@ -7704,6 +7705,403 @@ CLUB_POINT_FIXTURES = {
 }
 
 
+# --- decision 54 wave 3, section C: the clubs' content feeds and APIs (2026-10-04) --------------------
+#
+# Podcast feeds (extract/_content.py's PodcastEpisodes), NPS's content lists (NpsContent) and the TEHCC wiki's
+# hike and challenge templates (MediawikiTemplatePages) are answered from conditions/json_apis/<key>.json, as
+# the JSON API notice sources are; the WordPress hike sources from conditions/<key>.json, as the clubs'
+# WordPress notices are. THE NAMES ARE MEASURED: every tag, field and route is one the live source served to
+# section C's reads of 2026-10-04 (each row's sources.json `notes`). EVERY VALUE IS INVENTED and starts with
+# 'Fixture'. Each feed item carries the person tags PodcastEpisodes leaves out (itunes:author, RSS <author>,
+# dc:creator, podcast:person), and a row whose sources.json `person_fields` lists prose carries a fixture
+# number in it, so the tests can see neither land.
+
+SOURCES_PATH = Path(__file__).parent / "sources.json"
+RSS = "application/rss+xml; charset=utf-8"
+
+
+@functools.cache
+def _registry_entries() -> dict[str, dict]:
+    return {entry["key"]: entry for entry in json.loads(SOURCES_PATH.read_text())["sources"]}
+
+
+def _registry_entry(key: str) -> dict:
+    """A sources.json row by key; StopIteration for a key the registry does not hold, as next() would raise."""
+    if key not in _registry_entries():
+        raise StopIteration(key)
+    return _registry_entries()[key]
+
+
+def _split(url: str) -> tuple[str, dict]:
+    """A URL as fixture mode's router matches it: the address without its query, and the query's parameters."""
+    base, _, query = url.partition("?")
+    return base, dict(part.split("=", 1) for part in query.split("&") if part)
+
+
+#: The podcast_feed rows PodcastEpisodes reads (extract/_content.py), each answered with CONTENT_FEED_ITEMS items.
+CONTENT_FEED_KEYS = (
+    "dec_does_what_podcast",
+    "mohonk_walk_back_in_time_podcast",
+    "nycparks_covid_oral_history_podcast",
+    "njdep_discover_dep_podcast",
+    "usfs_forest_focus_podcast",
+    "usfs_forestcast_podcast",
+    "blm_on_the_ground_podcast",
+    "cpw_colorado_outdoors_podcast",
+    "wdnr_wild_wisconsin_podcast",
+    "silvicast_podcast",
+    "amc_unlikely_stories_podcast",
+    "something_wild_podcast",
+    "trustees_on_the_coast_podcast",
+    "sbts_dirt_magic_podcast",
+    "audible_mount_diablo_podcast",
+    "shta_blazing_trail_podcast",
+    "usgs_outstanding_in_the_field_podcast",
+    "nps_park_postcards_goga_podcast",
+    "usfws_future_of_conservation_podcast",
+)
+CONTENT_FEED_ITEMS = 2
+
+
+def _podcast_feed(key: str) -> str:
+    """RSS 2.0 as the podcast hosts served it on 2026-10-04: iTunes, content, Dublin Core and Podcasting 2.0 tags."""
+    items = "".join(
+        f"<item><title>Fixture Episode {i}</title><itunes:title>Fixture Episode {i}</itunes:title>"
+        f'<guid isPermaLink="false">fixture-{key}-{i}</guid><link>https://fixture.example.org/{key}/{i}/</link>'
+        f"<pubDate>Mon, 2{i} Sep 2026 14:00:00 +0000</pubDate>"
+        f"<description><![CDATA[<p>Fixture notes {i}, with a fixture number that never loads where the row's "
+        f"person_fields list the prose: 555-0100.</p>]]></description>"
+        f"<content:encoded><![CDATA[<p>Fixture notes {i}.</p>]]></content:encoded>"
+        f"<itunes:summary>Fixture notes {i}.</itunes:summary>"
+        f'<enclosure url="https://fixture.example.org/{key}/{i}.mp3" length="{1000 + i}" type="audio/mpeg"/>'
+        f"<itunes:duration>00:3{i}:00</itunes:duration><itunes:episode>{i}</itunes:episode>"
+        f'<itunes:explicit>false</itunes:explicit><itunes:image href="https://fixture.example.org/{key}/{i}.jpg"/>'
+        f"<itunes:author>Fixture Person, Fixture Guest</itunes:author><author>fixture.person@example.org</author>"
+        f'<dc:creator>Fixture Person</dc:creator><podcast:person role="guest">Fixture Guest</podcast:person></item>'
+        for i in range(1, CONTENT_FEED_ITEMS + 1)
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" '
+        'xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/" '
+        'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:podcast="https://podcastindex.org/namespace/1.0">'
+        f"<channel><title>Fixture Show {key}</title><link>https://fixture.example.org/{key}/</link>"
+        f"<copyright>Fixture copyright</copyright>{items}</channel></rss>"
+    )
+
+
+def _content_feed_fixtures() -> dict[str, str]:
+    files = {}
+    for key in CONTENT_FEED_KEYS:
+        base, query = _split(_registry_entry(key)["url"])
+        files[f"conditions/json_apis/{key}.json"] = json.dumps({"answers": [_answer(base, _podcast_feed(key), query, RSS)]})
+    return files
+
+
+#: The TEHCC wiki templates MediawikiTemplatePages reads, and how many pages each fixture lists.
+CONTENT_WIKI_TEMPLATES = {"tehcc_wiki_trails": 2, "tehcc_wiki_hikes": 2, "tehcc_wiki_challenge_items": 1}
+
+
+def _wiki_template_answers(key: str, pages: int) -> dict:
+    """The template's own page and the embeddedin listing, with and without revisions, each asked by its template."""
+    template = _registry_entry(key)["template"]
+    listed = [
+        {
+            "pageid": 9300 + 10 * len(key) + n,
+            "ns": 0,
+            "title": f"Fixture {template.split(':')[1]} Page {n}",
+            "touched": "2026-09-22T01:06:28Z",
+            "lastrevid": 300 + n,
+            "length": 120,
+            "fullurl": f"https://tehcc.org/clubwiki/index.php?title=Fixture_Page_{n}",
+        }
+        for n in range(1, pages + 1)
+    ]
+    text = {
+        "Template:Trail": "{{Trail\n|Park=Fixture Park\n|Trail Distance=2.3 mi\n|Difficulty Rating=Medium\n}}\nFixture route.",
+        "Template:Hike": "{{Infobox Trail\n| City = Fixture City\n| Distance = 3\n}}\nFixture hike.",
+        "Template:Challenge Item": "Fixture challenge.\n{{#display_map: 35.76, -82.26~Fixture Summit}}",
+    }[template]
+    with_revisions = [
+        {
+            **page,
+            "revisions": [
+                {
+                    "revid": page["lastrevid"],
+                    "parentid": page["lastrevid"] - 1,
+                    "timestamp": page["touched"],
+                    "slots": {"main": {"contentmodel": "wikitext", "contentformat": "text/x-wiki", "content": text}},
+                }
+            ],
+        }
+        for page in listed
+    ]
+    found = {"batchcomplete": True, "query": {"pages": [{"pageid": 9299, "ns": 10, "title": template}]}}
+    return {
+        "answers": [
+            _answer(TEHCC_WIKI_API, found, {"titles": template}),
+            _answer(
+                TEHCC_WIKI_API,
+                {"batchcomplete": True, "query": {"pages": with_revisions}},
+                {"prop": "info|revisions", "geititle": template},
+            ),
+            _answer(TEHCC_WIKI_API, {"batchcomplete": True, "query": {"pages": listed}}, {"prop": "info", "geititle": template}),
+        ]
+    }
+
+
+def _content_wiki_fixtures() -> dict[str, str]:
+    return {
+        f"conditions/json_apis/{key}.json": json.dumps(_wiki_template_answers(key, pages))
+        for key, pages in CONTENT_WIKI_TEMPLATES.items()
+    }
+
+
+def _content_wp_post(site: str, post_id: int, *, post_type: str = "post", categories=(), **extra) -> dict:
+    """A post, page or custom post type entry as the clubs' WordPress REST routes served them on 2026-10-04."""
+    return {
+        "id": post_id,
+        "date": "2026-03-01T09:00:00",
+        "date_gmt": "2026-03-01T14:00:00",
+        "guid": {"rendered": f"https://{site}/?p={post_id}"},
+        "modified": "2026-09-21T10:13:20",
+        "modified_gmt": "2026-09-21T14:13:20",
+        "slug": f"fixture-hike-{post_id}",
+        "status": "publish",
+        "type": post_type,
+        "link": f"https://{site}/fixture-hike-{post_id}/",
+        "title": {"rendered": f"Fixture Hike {post_id}"},
+        "content": {"rendered": "<p>Fixture route, 4.2 miles, with a fixture number: 555-0100.</p>", "protected": False},
+        "excerpt": {"rendered": "<p>Fixture excerpt.</p>", "protected": False},
+        "author": 7,
+        "featured_media": 0,
+        "template": "",
+        "meta": {"_acf_changed": False},
+        "categories": list(categories),
+        "class_list": [f"post-{post_id}"],
+        "acf": [],
+        "yoast_head": "<meta name='author' content='Fixture Person'>",
+        "yoast_head_json": {"author": "Fixture Person"},
+        "_links": {"self": [{"href": f"https://{site}/wp-json/wp/v2/posts/{post_id}"}]},
+        **extra,
+    }
+
+
+def _wp_terms(*names: str) -> list[dict]:
+    return [{"id": 700 + n, "name": f"Fixture {name}", "slug": f"fixture-{name}", "count": 1} for n, name in enumerate(names)]
+
+
+def _content_wordpress_documents() -> dict[str, dict]:
+    """One WordPress document per registry key, each route its reader asks: a custom post type under `types`, child
+    pages under `types['pages']`, a category's lookup and posts, and the hike types' taxonomies under `terms`."""
+    gmc, mtsg, ridge, nmvfo, tko, pnt = (
+        "greenmountainclub.org",
+        "mtsgreenway.org",
+        "ridgetrail.org",
+        "nmvfo.org",
+        "trailkeepersoforegon.org",
+        "www.pnt.org",
+    )
+    gmc_taxonomies = ("difficulty", "distance", "hike-feature", "hike-status", "hike-type", "region")
+    hikes = [
+        _content_wp_post(
+            gmc,
+            9201 + n,
+            post_type="hikes",
+            **{taxonomy: [700] for taxonomy in gmc_taxonomies},
+            uagb_author_info={"display_name": "Fixture Person"},
+            uagb_excerpt="Fixture excerpt.",
+        )
+        for n in range(2)
+    ]
+    return {
+        "gmc_hikes": {
+            "categories": [],
+            "posts": [],
+            "types": {"hikes": hikes},
+            "terms": {taxonomy: _wp_terms(taxonomy) for taxonomy in gmc_taxonomies},
+        },
+        "mtsg_itineraries": {
+            "categories": [],
+            "posts": [],
+            "types": {
+                "itinerary": [
+                    _content_wp_post(
+                        mtsg, 9211 + n, post_type="itinerary", itinerary_tag=[], itinerary_type=[700], cm_priority_areas=[700]
+                    )
+                    for n in range(2)
+                ]
+            },
+            "terms": {taxonomy: _wp_terms(taxonomy) for taxonomy in ("itinerary_tag", "itinerary_type", "cm_priority_areas")},
+        },
+        "ridgetrail_trail_sections": {
+            "categories": [],
+            "posts": [],
+            "types": {"trail-section": [_content_wp_post(ridge, 9221 + n, post_type="trail-section") for n in range(2)]},
+            "terms": {},
+        },
+        "ridgetrail_curated_adventures": {
+            "categories": [{"id": 21, "slug": "curated-adventures"}],
+            "posts": [
+                _content_wp_post(
+                    ridge,
+                    9231 + n,
+                    categories=[21],
+                    author_info={"display_name": "Fixture Person", "author_link": "https://ridgetrail.org/author/fixture/"},
+                    jetpack_publicize_connections=[],
+                )
+                for n in range(2)
+            ],
+            "terms": {},
+        },
+        "nmvfo_hike_new_mexico": {
+            "categories": [],
+            "posts": [],
+            "types": {"pages": [_content_wp_post(nmvfo, 9241 + n, post_type="page", parent=2040) for n in range(2)]},
+            "terms": {},
+        },
+        "tko_spring_fundraiser_hike_posts": {
+            "categories": [{"id": 40, "slug": "oregon-hikers-spring-fundraiser"}],
+            "posts": [_content_wp_post(tko, 9251 + n, categories=[40]) for n in range(2)],
+            "terms": {},
+        },
+        "pnta_day_hikes_posts": {
+            "categories": [{"id": 117, "slug": "day-hikes"}],
+            "posts": [_content_wp_post(pnt, 9261 + n, categories=[117]) for n in range(2)],
+            "terms": {},
+        },
+    }
+
+
+def _wp_site(key: str) -> str:
+    """The REST root a WordPress row's reader asks, as extract/_kinds.py's _wp_api() makes it: the url's origin."""
+    url = _registry_entry(key)["url"]
+    return "/".join(url.split("/")[:3])
+
+
+def _content_wordpress_fixtures(files: dict) -> dict:
+    """Section C's WordPress documents, merged with any other key's document for the same site.
+
+    Fixture mode serves one document per REST root (extract/_fixtures.py keeps the last resource's), and three of
+    these sites already have a notice document: GMC's `alert` type, TKO's and PNTA's condition categories. So each
+    document for a site holds every route any key on that site asks, merged: the categories and posts listed once
+    by id, the terms and the types by route. Each reader still reads only its own route, category or type.
+    """
+    files = dict(files)
+    mine = _content_wordpress_documents()
+    by_site: dict[str, list[str]] = {}
+    for key in mine:
+        by_site.setdefault(_wp_site(key), []).append(key)
+    for name, content in files.items():
+        if name.startswith("conditions/") and name.count("/") == 1 and name.endswith(".json"):
+            key = name[len("conditions/") : -len(".json")]
+            try:
+                entry = _registry_entry(key)
+            except StopIteration:
+                continue
+            site = "/".join(entry.get("url", "").split("/")[:3])
+            if site in by_site and key not in mine:
+                document = json.loads(content)
+                if isinstance(document, dict) and "posts" in document and "categories" in document:
+                    mine[key] = document
+                    by_site[site].append(key)
+    for keys in by_site.values():
+        merged = {"categories": [], "posts": [], "terms": {}, "types": {}}
+        for key in keys:
+            document = mine[key]
+            for field in ("categories", "posts"):
+                seen = {item["id"] for item in merged[field]}
+                merged[field] += [item for item in document.get(field, []) if item["id"] not in seen]
+            for field in ("terms", "types"):
+                merged[field].update(document.get(field) or {})
+        for key in keys:
+            files[f"conditions/{key}.json"] = json.dumps(merged)
+    return files
+
+
+def _nps_park(code: str) -> dict:
+    return {"states": "XX", "parkCode": code, "designation": "Fixture Designation", "fullName": f"Fixture Park {code}",
+            "url": f"https://www.nps.gov/{code}/index.htm", "name": f"Fixture {code}"}  # fmt: skip
+
+
+def _nps_content_rows(key: str) -> list[dict]:
+    """Two rows of one NPS list, each field one its endpoint served on 2026-10-04, every value invented."""
+    ids = [f"00000000-0000-4000-a000-{1000 * len(key) + n:012d}" for n in (1, 2)]
+    if key == "nps_multimedia_audio":
+        return [
+            {"id": i, "permalinkUrl": f"https://www.nps.gov/media/video/view.htm?id={i}", "title": f"Fixture Audio {n}",
+             "description": f"Fixture audio description {n}.", "splashImage": {"url": ""}, "relatedParks": [_nps_park("semo")],
+             "tags": ["fixture"], "latitude": None, "longitude": None, "geometryPoiId": "", "durationMs": 60000 * n,
+             "credit": "Fixture Collection", "transcript": f"Fixture transcript {n}, a person's own words, which never load.",
+             "callToAction": "", "callToActionUrl": "",
+             "versions": [{"fileSize": 1000.0, "fileType": "audio/mp3", "url": f"https://www.nps.gov/fixture/{n}.mp3"}]}
+            for n, i in enumerate(ids, 1)
+        ]  # fmt: skip
+    if key == "nps_gallery_assets":
+        return [
+            {"id": i, "permalinkUrl": f"https://www.nps.gov/media/photo/gallery-item.htm?id={i}", "title": f"Fixture Photo {n}",
+             "description": f"Fixture photo description {n}.", "altText": f"Fixture alt text {n}",
+             "fileInfo": {"url": f"https://www.nps.gov/npgallery/GetAsset/{i}", "fileType": "image/jpeg", "widthPixels": 100,
+                          "heightPixels": 80, "fileSizeKb": 12},
+             "relatedParks": [_nps_park("lecl")], "tags": [], "credit": "NPS photo",
+             "constraintsInfo": {"constraint": "Public domain", "grantingRights": "Full"},
+             "copyright": "Fixture copyright line.", "ordinal": n}
+            for n, i in enumerate(ids, 1)
+        ]  # fmt: skip
+    if key == "nps_passport_stamp_locations":
+        return [{"id": i, "label": f"Fixture Visitor Center {n}", "parks": [_nps_park("semo")], "type": "visitorcenters"}
+                for n, i in enumerate(ids, 1)]  # fmt: skip
+    if key == "nps_things_to_do":
+        return [
+            {"id": i, "url": f"https://www.nps.gov/thingstodo/fixture-{n}.htm", "title": f"Fixture Hike {n}",
+             "shortDescription": f"Fixture short description {n}.", "images": [{"url": "https://www.nps.gov/fixture.jpg",
+             "credit": "NPS / Fixture Photographer", "altText": "", "title": "", "description": "", "caption": "", "crops": []}],
+             "relatedParks": [_nps_park("natr")], "relatedOrganizations": [], "tags": ["hiking"], "latitude": "35.5",
+             "longitude": "-82.5", "geometryPoiId": "", "amenities": [], "location": "", "seasonDescription": "",
+             "accessibilityInformation": "", "isReservationRequired": "false", "ageDescription": "", "petsDescription": "",
+             "timeOfDayDescription": "", "feeDescription": "", "age": "", "arePetsPermittedWithRestrictions": "false",
+             "activities": [{"id": "BFF8C027-7C8F-480B-A5F8-CD8CE490BFBA", "name": "Hiking"}], "activityDescription": "",
+             "locationDescription": "", "doFeesApply": "false", "longDescription": f"<p>Fixture long description {n}.</p>",
+             "reservationDescription": "", "season": [], "topics": [], "durationDescription": "", "arePetsPermitted": "false",
+             "timeOfDay": [], "duration": "1-2 Hours", "credit": "", "relevanceScore": 1.0}
+            for n, i in enumerate(ids, 1)
+        ]  # fmt: skip
+    if key == "nps_tours":
+        return [
+            {"id": i, "title": f"Fixture Tour {n}", "description": f"Fixture tour description {n}.",
+             "park": _nps_park("trte"), "images": [], "durationMin": "1", "durationMax": "2", "durationUnit": "h",
+             "type": "Standard", "relevanceScore": 1.0,
+             "activities": [{"id": "fixture", "name": "Hiking"}], "topics": [{"id": "fixture", "name": "Fixture"}], "tags": [],
+             "stops": [{"id": "s1", "ordinal": "1", "directionsToNextStop": "Fixture directions.", "assetId": "a1",
+                        "assetName": "Fixture Stop", "assetType": "Places", "audioFileUrl": "", "audioTranscript": "",
+                        "significance": "Fixture significance."}]}
+            for n, i in enumerate(ids, 1)
+        ]  # fmt: skip
+    raise KeyError(key)
+
+
+#: The NPS content rows NpsContent reads (extract/_content.py), each answered with two rows in one page.
+CONTENT_NPS_KEYS = ("nps_multimedia_audio", "nps_gallery_assets", "nps_passport_stamp_locations", "nps_things_to_do", "nps_tours")
+
+
+def _content_nps_fixtures() -> dict[str, str]:
+    files = {}
+    for key in CONTENT_NPS_KEYS:
+        entry = _registry_entry(key)
+        query = {"limit": "500", "start": "0"}
+        if entry.get("park_codes_from"):
+            query["parkCode"] = ",".join(sorted(_registry_entry(entry["park_codes_from"])["park_codes"]))
+        rows = _nps_content_rows(key)
+        body = {"total": str(len(rows)), "limit": "500", "start": "0", "data": rows}
+        files[f"conditions/json_apis/{key}.json"] = json.dumps({"answers": [_answer(entry["url"], body, query)]})
+    return files
+
+
+def content_fixtures(files: dict) -> dict:
+    """Section C's fixture files, added to `files`, the WordPress documents merged per site with what is there."""
+    files = {**files, **_content_feed_fixtures(), **_content_wiki_fixtures(), **_content_nps_fixtures()}
+    return _content_wordpress_fixtures(files)
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -7852,6 +8250,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
     files = _trail_lines_at_fixtures(files)
     files = _points_of_interest_fixtures(files)
     files = _places_fixtures(files)
+    files = content_fixtures(files)
     existing = [name for name in files if (raw_dir / name).exists()]
     if existing:
         raise SystemExit(

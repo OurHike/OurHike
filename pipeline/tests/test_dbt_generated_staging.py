@@ -44,6 +44,33 @@ def test_every_staged_types_arcgis_layer_has_a_model_reading_its_raw_table():
     assert unstaged == []
 
 
+def test_a_table_read_off_a_pdf_has_no_freshness_and_its_evaluator_exception_and_every_other_keeps_its_sources():
+    """CI's `dbt source freshness` failed on the PDF tables the fixture warehouse never holds (run 37218932289,
+    2026-10-04: ata_water_cache_boxes, bmta_access_points, rmc_recommended_hikes), since fixture mode lands no PDF.
+
+    So exactly the generated tables read off a PDF carry `freshness: null`, and each has its
+    fct_sources_without_freshness row in seeds/dbt_project_evaluator_exceptions.csv, so the evaluator's rule
+    still holds for every other table. generate_notice_models.py's PDF notices are held the same way.
+    """
+    import csv
+
+    import yaml
+
+    without = set()
+    for path in MODELS.glob("staging/*/_*__generated__sources.yml"):
+        for source in yaml.safe_load(path.read_text())["sources"]:
+            for table in source["tables"]:
+                if "freshness" in (table.get("config") or {}):
+                    assert table["config"]["freshness"] is None, table["name"]
+                    without.add(f"{source['name']}.{table['name']}")
+    pdfs = {f"{table.folder}.{table.table}" for table in make_dbt_staging.tables() if table.read_from_pdf}
+    assert pdfs >= {"ata.raw_ata__ata_water_cache_boxes", "bmta.raw_bmta__bmta_access_points"}
+    assert without == pdfs
+    with (MODELS.parent / "seeds" / "dbt_project_evaluator_exceptions.csv").open(newline="") as handle:
+        excepted = {row["id_to_exclude"] for row in csv.DictReader(handle) if row["fct_name"] == "fct_sources_without_freshness"}
+    assert pdfs <= excepted, sorted(pdfs - excepted)
+
+
 def test_there_are_layers_to_stage():
     """Decision 54's wave 1 on this branch: 83 places, 6 elevation, 98 trail-line and 69 point layers at least."""
     by_type = {}

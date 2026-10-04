@@ -50,6 +50,10 @@ sources:
           `ata_passages`). Key: `link`, the passage's own page: unique on all 44 rows read
           2026-10-04, as are the names ('Passage 1: Huachuca Mountains').
       - name: raw_ata__ata_water_cache_boxes
+        config:
+          # Read off a PDF, which the fixture warehouse never holds (Table.read_from_pdf):
+          # its fct_sources_without_freshness row in dbt_project_evaluator_exceptions.csv says why.
+          freshness: null
         data_tests:
           # Rows sharing base_ata__ata_water_cache_boxes's key must be exact copies (decision 40).
           - duplicates_are_exact:

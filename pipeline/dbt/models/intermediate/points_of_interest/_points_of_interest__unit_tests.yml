@@ -356,6 +356,33 @@ unit_tests:
         - {poi_id: 'nynjtc_long_path_guide:s1-description-0.10-water-0', description: 'Water source at mile 0.10 of Long Path section 1; position estimated from the guide''s mile marker, not surveyed. The guide calls it reliable.'}
         - {poi_id: 'nynjtc_long_path_guide:s3-camping-5.13-shelter-0', description: 'Shelter at mile 5.13 of Long Path section 3; position estimated from the guide''s mile marker, not surveyed.'}
 
+  - name: int_points_of_interest__described_dates_a_club_sheet_by_its_own_cell
+    description: >
+      Decision 72: FMST's trailheads publish with the sheet's own "Current as
+      of:" date, which extract/_gis_files.py lands as `source_as_of`. A club
+      point whose row carries one says so, quoting the date as the sheet
+      writes it and calling it the sheet's claim; a blank cell and a row
+      without one say nothing; and an asset sentence still comes first.
+      No exporter composes these rows, so no parity test reads this one.
+    model: int_points_of_interest__described
+    given:
+      - input: ref('int_points_of_interest__enriched')
+        rows:
+          - {poi_id: 'fmst_primary_trailheads:dated', poi_type: 'trailhead', phone_files: 'nearby_poi', asset: null, facility: null, properties: '{"source_as_of": " 8/12/2026 "}'}
+          - {poi_id: 'fmst_primary_trailheads:blank', poi_type: 'trailhead', phone_files: 'nearby_poi', asset: null, facility: null, properties: '{"source_as_of": " "}'}
+          - {poi_id: 'other_club:undated', poi_type: 'trailhead', phone_files: 'nearby_poi', asset: null, facility: null, properties: '{"name": "Fixture Gap"}'}
+          - {poi_id: 'other_club:asset_first', poi_type: 'shelter', phone_files: 'nearby_poi', asset: 'LEAN-TO', facility: null, properties: '{"source_as_of": "1/1/2026"}'}
+      - input: ref('poi_description_terms')
+        rows: []
+      - input: ref('stg_derived__long_path_guide')
+        rows: []
+    expect:
+      rows:
+        - {poi_id: 'fmst_primary_trailheads:dated', description: 'From the club''s sheet, which says it is current as of 8/12/2026.'}
+        - {poi_id: 'fmst_primary_trailheads:blank', description: null}
+        - {poi_id: 'other_club:undated', description: null}
+        - {poi_id: 'other_club:asset_first', description: 'Lean-To.'}
+
   - name: int_points_of_interest__described_says_what_describe_stream_point_says
     description: >
       PO07 and PO17's sentence: describe_stream_point(), which describe_water()

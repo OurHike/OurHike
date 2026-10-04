@@ -43,6 +43,18 @@ sources:
           PATC Trails Master, view (PATC) (sources.json `patc_trails_master`). Key:
           GlobalID: unique and non-null on all 2,101 rows (measured 2026-10-03 over every
           row's attributes).
+      - name: raw_patc__patc_tuscarora_points
+        data_tests:
+          # Rows sharing base_patc__patc_tuscarora_points's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'patc_tuscarora_points'", "section", "name"]
+        description: >
+          PATC Tuscarora Trail access points and camping (hikethetuscarora.org's section
+          pages) (sources.json `patc_tuscarora_points`). Key: `section` and `name`: unique
+          on 80 of 80 (measured 2026-10-04 on the live pages, parsed as
+          extract/_pages_points.py parses them). `name` alone repeats, and so does the
+          fix, where a section's end is listed under both sections it joins (20 fixes).
       - name: raw_patc__patc_tuscarora_sections
         data_tests:
           # Rows sharing base_patc__patc_tuscarora_sections's key must be exact copies (decision 40).

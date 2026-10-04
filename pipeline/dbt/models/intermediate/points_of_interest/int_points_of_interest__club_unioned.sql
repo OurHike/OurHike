@@ -475,6 +475,18 @@ select
     geom,
     properties,
     _loaded_at
+from {{ ref('stg_patc__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
 from {{ ref('stg_pcta__points_of_interest') }}
 union all by name
 select

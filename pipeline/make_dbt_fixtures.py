@@ -8940,14 +8940,51 @@ def _ohta_trail_rest() -> str:
     )
 
 
+TUSCARORA_PAGES = tuple(
+    f"https://www.hikethetuscarora.org/{page}"
+    for page in ("section-1-3", "section-4-6", "section-7-10", "section-11-13", "section-14-16", "section-17-19", "section-20-22")
+)
+
+
+def _tuscarora_section_page(n: int) -> str:
+    """A Wix section page as hikethetuscarora.org's are: the menu, then a <p> of spans per paragraph, one section
+    a page here: an Access fix with a parking lead, and a Camping list of a shelter, a name with no fix, and on the
+    first page a campground; the advisory and the footer are prose that lands nowhere."""
+    x, y = _point(30 + 2 * n)["coordinates"]
+    sx, sy = _point(31 + 2 * n)["coordinates"]
+    camping = f"Fixture Ridge Shelter {n} ({sy:.3f},{sx:.3f}), Fixture State Park."
+    if n == 1:
+        camping = f"Fixture Creek Campground ({sy + 0.002:.3f}, {sx:.3f}), " + camping
+    # The last section's access sits off the trail, as the live Skyline Drive one does: its distance lands.
+    approach = ", 0.4 mi SB on Fixture Trail to the junction." if n == 7 else "."
+    paragraphs = (
+        f"Section {n}: Fixture Gap {n}",
+        f"Fixture Gap {n} to Fixture Road {n}, 9.{n} miles.",
+        "Max Elevation: 1999 ft. Min Elevation: 999 ft.",
+        "<span>Access:</span> The trail can be accessed by road from both termini of this section:",
+        f"Fixture Gap {n}: Parking at Fixture Lot ({y:.3f}, {x:.3f}){approach}",
+        "<span>Advisory:</span> Fixture prose about the road shoulder.",
+        f"<span>Camping:&#160;</span> {camping}",
+    )
+    body = "".join(f'<p class="font_7"><span class="wixui-rich-text__text">{text}</span></p>' for text in paragraphs)
+    return (
+        "<html><body><nav><p>Section 1-3</p><p>Section 4-6</p></nav>"
+        f"{body}<p>Fixture disclaimer.</p><p>&#169; 2017 by Fixture Club.</p></body></html>"
+    )
+
+
 #: Registry key -> (its answers, {url: (content type, body)}, and the rows its parser lands), for the sources a
-#: sitemap lists pages for.
+#: sitemap lists pages for, or a row's `pages` list.
 PAGE_POINTS_SITE_FIXTURES = {
     "brbtc_section_trailheads": (_brbtc_answers, 2),
     "palmetto_trail_passages": (_palmetto_answers, 10),
     "ohta_major_trailheads": (
         lambda: {"https://ozarkhighlandstrail.com/wp-json/wp/v2/pages/15": (PAGE_REST, _ohta_trail_rest())},
         4,
+    ),
+    "patc_tuscarora_points": (
+        lambda: {url: (PAGE_HTML, _tuscarora_section_page(n)) for n, url in enumerate(TUSCARORA_PAGES, 1)},
+        15,
     ),
 }
 

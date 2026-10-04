@@ -561,6 +561,113 @@ def parse_ohta_major_trailheads(page: str, url: str) -> list[dict]:
     return rows
 
 
+#: hikethetuscarora.org's section pages (PATC's Tuscarora Trail site on Wix, seven pages of 22 sections, read
+#: 2026-10-04): each section opens with a "Section N: Name" paragraph (section 8's has no colon), and its
+#: "Access:" and "Camping:" paragraphs give points as "<label> (lat, lon)", three or four decimals. The labels are
+#: the club's own and take several shapes, each measured: "Waggoners Gap: Parking at Audubon Hawk Watch", "Limited
+#: parking at Cowpens Road", "US Route 50, limited shoulder parking", "No direct access to southern terminus, but
+#: can be accessed from the Lucas Woods side trail with road access at WV 23/2". A Camping paragraph lists several,
+#: a comma apart, with names that have no fix among them ("Col. Denning State Park"), and once a group ("Sleepy
+#: Creek WMA campgrounds; Lower (...), Middle (...), Upper (...)"). Two fixes are written oddly and read as the
+#: numbers they state: "Wagon Wheel Shelter,(40.267,-77.414)" and "(39.633), -78.109)".
+TUSCARORA_SECTION = re.compile(r"^Section\s+(?P<section>\d+)(?!\s*-\s*\d)\s*:?\s*(?P<name>[A-Z].*)$")
+TUSCARORA_BLOCK = re.compile(r"^(?P<block>Access|Advisory|Camping|Highlights|Links)\s*:?", re.IGNORECASE)
+#: A paragraph's own heading before its first item ("Camping: Charlie Irvin Shelter (...)"), cut from that label.
+TUSCARORA_LEAD = re.compile(r"^(?:Access|Camping)\s*:\s*", re.IGNORECASE)
+TUSCARORA_FIX = re.compile(r"\(\s*(?:(?P<lead>[^()@]*)@\s*)?(?P<lat>\d{2}\.\d+)\s*\)?\s*,\s*(?P<lon>-\d{2,3}\.\d+)\s*\)")
+TUSCARORA_NO_DIRECT = re.compile(
+    r"^No direct access to (?:the )?(?:northern|southern) terminus, but can be accessed from the "
+    r"(?P<via>.+?) with road access at (?P<road>.+)$"
+)
+TUSCARORA_PARKING_LEAD = re.compile(r"^(?:very\s+)?(?:limited\s+)?(?:shoulder\s+)?parking\s+(?:at|on)\s+", re.IGNORECASE)
+TUSCARORA_PARKING_TAIL = re.compile(r",\s*(?:very\s+)?limited\s+shoulder\s+parking$", re.IGNORECASE)
+#: A distance the page gives beside a fix: "(0.2 mi NB on AT @ ...)" before it, ", 0.3 mi SB on Cedar Creek Trail
+#: ..." after it. Only the number is kept: how far the point sits from the Tuscarora itself.
+TUSCARORA_MILES = re.compile(r"^\s*,?\s*(?P<mi>\d+(?:\.\d+)?)\s*mi\b")
+
+
+def _tuscarora_access(label: str) -> tuple[str, str | None]:
+    """An Access label's name and what it says of parking ("limited", "stated", or None for nothing said)."""
+    parking = "limited" if re.search(r"\blimited\b", label, re.IGNORECASE) else None
+    parking = parking or ("stated" if re.search(r"\bparking\b", label, re.IGNORECASE) else None)
+    if found := TUSCARORA_NO_DIRECT.match(label):
+        return found["road"].strip(" .,"), parking
+    if ":" in label:
+        return label.split(":", 1)[0].strip(" .,"), parking
+    name = TUSCARORA_PARKING_TAIL.sub("", TUSCARORA_PARKING_LEAD.sub("", label)).strip(" .,")
+    return name, parking
+
+
+@_parser("patc_tuscarora_points")
+def parse_patc_tuscarora_points(page: str, url: str) -> list[dict]:
+    """The Tuscarora Trail's access points and camping, section by section, each with its fix.
+
+    `kind` is the paragraph a point is listed in: "access" under Access, and under Camping "shelter" where the
+    page's own name for it carries the word Shelter, else "camping" (a campground, a campsite, a hiker camp).
+    `name` is the label before the fix: an Access label's place before its colon, or the road it names with a
+    parking lead cut off; a Camping item's name as listed, with a group's heading before the item that opens the
+    group and each one-word item after it ("Sleepy Creek WMA campgrounds; Lower", then "...; Middle"), never
+    before a name of its own (a shelter listed after the group stays itself). `parking` says what an Access label says of parking, and `approach_mi` the distance
+    the page gives beside a fix. A point listed under two sections lands once a section, as the page lists it.
+    An item with no fix is not landed (a name only, which the module docstring never geocodes), and so is
+    every sentence around the fixes. A fix outside Access and Camping, or two on one Access line, refuses.
+    """
+    rows, section, section_name, block = [], None, None, None
+    for line in html_lines(page):
+        line = " ".join(line.replace("\u200b", " ").split())
+        if not line:
+            continue
+        if heading := TUSCARORA_SECTION.match(line):
+            section, section_name, block = int(heading["section"]), heading["name"].strip(), None
+            continue
+        if opened := TUSCARORA_BLOCK.match(line):
+            block = opened["block"].title()
+        fixes = list(TUSCARORA_FIX.finditer(line))
+        if not fixes:
+            continue
+        if section is None or block not in ("Access", "Camping"):
+            raise PageLayoutChanged(f"{url}: a fix outside a section's Access or Camping paragraph: {line!r}")
+        if block == "Access" and len(fixes) > 1:
+            raise PageLayoutChanged(f"{url}: section {section}: an Access line with {len(fixes)} fixes: {line!r}")
+        start, group = 0, None
+        for fix in fixes:
+            label = line[start : fix.start()]
+            start = fix.end()
+            label = TUSCARORA_LEAD.sub("", label.strip(" ,.;"), count=1).strip(" ,.;")
+            if block == "Camping":
+                label = label.rsplit(",", 1)[-1].strip()
+                if ";" in label:
+                    group, label = (part.strip() for part in label.split(";", 1))
+                    name = f"{group}; {label}"
+                elif group and " " not in label:
+                    name = f"{group}; {label}"
+                else:
+                    group, name = None, label
+                kind = "shelter" if re.search(r"\bShelter\b", label) else "camping"
+                parking = None
+            else:
+                name, parking = _tuscarora_access(label)
+                kind = "access"
+            if not name:
+                raise PageLayoutChanged(f"{url}: section {section}: a fix with no label: {line!r}")
+            near = TUSCARORA_MILES.match(fix["lead"] or "") or TUSCARORA_MILES.match(line[fix.end() :])
+            where = f"{url} section {section} {name}"
+            rows.append(
+                {
+                    "section": section,
+                    "section_name": section_name,
+                    "kind": kind,
+                    "name": name,
+                    "parking": parking,
+                    "approach_mi": float(near["mi"]) if near else None,
+                    "geometry": north_america(float(fix["lat"]), float(fix["lon"]), where),
+                }
+            )
+    if not rows:
+        raise PageLayoutChanged(f"{url}: no section with an Access or Camping fix")
+    return rows
+
+
 # --- The resource -------------------------------------------------------------------------------------------------
 
 WP_ROUTE = "/wp-json/wp/v2/"

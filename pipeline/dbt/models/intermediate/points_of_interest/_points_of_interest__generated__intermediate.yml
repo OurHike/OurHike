@@ -5,7 +5,7 @@ version: 2
 models:
   - name: int_points_of_interest__club_unioned
     description: >
-      Every points of interest row of the 90 registered layers pipeline/make_dbt_staging.py
+      Every points of interest row of the 91 registered layers pipeline/make_dbt_staging.py
       stages, unioned by name: one point of a points-of-interest layer: a shelter, a campsite,
       a water source, a trailhead, a parking area. Each row carries its layer's registry key,
       the club folder that extracted it, the base model's key, the conformed columns below,

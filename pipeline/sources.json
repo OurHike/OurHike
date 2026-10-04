@@ -11453,6 +11453,48 @@
       "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
     },
     {
+      "key": "patc_tuscarora_points",
+      "title": "PATC Tuscarora Trail access points and camping (hikethetuscarora.org's section pages)",
+      "provider": "PATC",
+      "kind": "page_points",
+      "url": "https://www.hikethetuscarora.org/",
+      "pages": [
+        "https://www.hikethetuscarora.org/section-1-3",
+        "https://www.hikethetuscarora.org/section-4-6",
+        "https://www.hikethetuscarora.org/section-7-10",
+        "https://www.hikethetuscarora.org/section-11-13",
+        "https://www.hikethetuscarora.org/section-14-16",
+        "https://www.hikethetuscarora.org/section-17-19",
+        "https://www.hikethetuscarora.org/section-20-22"
+      ],
+      "trust": "authoritative",
+      "steward": "Potomac Appalachian Trail Club",
+      "steward_contact": "https://www.patc.net/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a), read as mtsg_map_locations' row reads it: the club's own Tuscarora Trail section guide, each section's road access and camping with a fix, on a public page its website serves anonymously, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION. int_sources__publication's rule 3 admits `public_gis` only for a GIS endpoint, and a web page's points (`page_points`) is not one, so this row is held there whatever its `reaches_hikers` says: whether the points a club prints on its own page publish under decision 21a is the maintainer's to say. hikethetuscarora.org's robots.txt, read 2026-10-04T17:49:43Z under lib/user_agent.py's USER_AGENT: Wix's `User-agent: *` with `Allow: /` and `Disallow: *?lightbox=`, and a `Crawl-delay: 10` for dotbot and AhrefsBot alone, so none applies to our agent and two seconds or more are kept between requests. The same seven pages are read by patc_tuscarora_sections (section K, suggested hikes) for each section's span, map and elevations; this row reads only their points, a second dataset of one upstream (extract/_pages_points.py's `part`, 'points').",
+      "licence_basis": "public_gis",
+      "attribution": "Potomac Appalachian Trail Club",
+      "terms": "hikethetuscarora.org's footer on every section page, read 2026-10-04: '© 2017 by PATC. Proudly created with Wix.com', below a disclaimer that the information 'is provided “as is” and we accept no responsibility for any loss, injury or inconvenience sustained by anyone resulting from this information'; no terms page is linked.",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser lands only the columns extract/_pages_points.py's parse_patc_tuscarora_points names (section, section_name, kind, name, parking, approach_mi, geometry), so no person's name, e-mail address or telephone number can land; the pages read 2026-10-04 name none beside a point.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.hikethetuscarora.org/section-1-3",
+        "notes": "No validator trusted: each section page sends a Wix weak ETag and no Last-Modified (read 2026-10-04), which decision 53's inventory measured as render-time. The reader asks all seven pages each monthly run and is FRESH only when the points it parses hash as the last committed load did (extract/_pages_points.py's change check)."
+      },
+      "name_field": "name",
+      "type_field": "kind",
+      "key_fields": [
+        "section",
+        "name"
+      ],
+      "key_comment": "`section` and `name`: unique on 80 of 80 (measured 2026-10-04 on the live pages, parsed as extract/_pages_points.py parses them). `name` alone repeats, and so does the fix, where a section's end is listed under both sections it joins (20 fixes).",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 4 and 5, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, the host's Crawl-delay or two seconds or more between requests: the seven section pages patc_tuscarora_sections (section K) reads, whose Access and Camping paragraphs give a fix for each road access and shelter (the audit's 'access coordinates, camping'), and patc.net/shelters, PATC's own list of its 14 Tuscarora shelters, which gives mileage between shelters and no fix.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T17:49:56Z to 17:50:45Z: the seven section pages, 415,342 to 430,961 bytes each, 22 sections. 80 points land: 55 access (20 fixes listed under two sections, once a section), 15 shelters (the 14 patc.net/shelters lists on the Tuscarora, matched by name by eye, and the A.T.'s Darlington Shelter, 0.2 mi north on the A.T. from the northern terminus) and 10 camping (campgrounds, a campsite, two camps). The fixes are WGS-84 (each page's footer: 'All GPS coordinates given on this site use the WGS-84 datum'), written to three decimals on 75 rows and four on 5: three decimals round by up to 0.0005 degrees, about 55 m of latitude and 43 m of longitude here, so a fix places a car park or a shelter to within about 70 m (Reasoned from the rounding, not measured on the ground). bbox lon -78.605 to -77.087, lat 38.761 to 40.302. Not landed, having no fix: 'Parking at PA-641 (by permission only)' (sections 5 and 6), the state parks the Camping paragraphs name (Col. Denning, Fowlers Hollow, Cowans Gap), 'PATC Silberman Trail Center (by reservation only)', 'PATC Little Cove Cabin (by reservation only)' and 'Elizabeth Furnace Campground'. Two fixes are written oddly and land as the numbers they state: 'Wagon Wheel Shelter,(40.267,-77.414)' and 'Spruce Pine Hollow Shelter/Campground (39.633), -78.109)'. A HIKER'S SAFETY, in prose that lands nowhere: patc.net/shelters (read 2026-10-04) lists 'Charlie Irvin Shelter (no water)', which this row's shelter does not carry (no club_poi_types row types a shelter as water); patc_tuscarora_sections' notes quote the home page, 'The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission', which decision 53's patc_tuscarora_updates registers, and the access points either side of it still land here; section 1's advisory warns of the 'Narrow shoulder along PA-34 in Sterretts Gap (speed limit 45 MPH)'.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04: extracted by extract/_pages_points.py and staged by pipeline/make_dbt_staging.py. club_poi_types types its three kinds: access as trailhead at low confidence (a road access: 10 of the 55 say their parking is limited, two sit 0.3 and 0.4 mi off the Tuscarora, and WV 23/2 is reached by the Lucas Woods side trail), shelter as shelter and camping as campsite. A point listed under two sections lands once a section, so a dedupe within the source must run before these reach a phone. It is held because its basis is `public_gis`, decision 21a's presumption for a GIS layer (rule 3 of ELT.md's 'Who may publish'), which int_sources__publication refuses on a source that is not a GIS endpoint (rule 6), and a club's web page is not one. Decision 63 turns it true once the maintainer has said whether a club's page of points publishes under decision 21a."
+    },
+    {
       "key": "buckeye_retail_map_outlines",
       "title": "Buckeye Trail retail map outlines",
       "provider": "Buckeye Trail Association",

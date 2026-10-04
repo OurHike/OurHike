@@ -180,3 +180,6 @@ palmetto_trail_passages,marker_type,Restrooms,privy,high,"marker_type 'Restrooms
 palmetto_trail_passages,marker_type,Scenic Observation,viewpoint,high,"marker_type 'Scenic Observation', 16 of 363 markers (notes)"
 ohta_major_trailheads,,,trailhead,high,"every row: OHTA's 'Major trail heads' lists, 41 rows in four segments (notes); 2 fixes the page calls 'approximately' (fix_note)"
 bmta_access_points,,,trailhead,low,"every row: BMTA's 'Access Points / Trailheads' table, 49 rows, 47 with a fix (notes); low, the table is dated 5/24/2020 and an access point is a way onto the trail, not a promise of parking"
+patc_tuscarora_points,kind,access,trailhead,low,"kind 'access', 55 of 80 (notes): each section's road access with a fix; low, 10 say their parking is limited, two sit 0.3 and 0.4 mi off the Tuscarora (approach_mi), and WV 23/2 is reached by a side trail"
+patc_tuscarora_points,kind,shelter,shelter,high,"kind 'shelter', 15 of 80 (notes): a Camping item whose own name carries the word Shelter, PATC's 14 on the Tuscarora and the A.T.'s Darlington Shelter"
+patc_tuscarora_points,kind,camping,campsite,high,"kind 'camping', 10 of 80 (notes): campgrounds, a campsite and two camps, typed campsite as wave 1 types a campground"

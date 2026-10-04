@@ -31,6 +31,7 @@ from extract._pages_points import (
     parse_mdhta_trail_guide,
     parse_ohta_major_trailheads,
     parse_palmetto_passage,
+    parse_patc_tuscarora_points,
 )
 from lib import http_retry
 from lib.freshness_state import Freshness
@@ -43,6 +44,7 @@ PARKING_URL = "https://chapter.example.org/documents-more.cgi?id=112"
 COORDINATES_REST = "https://conservancy.example.org/wp-json/wp/v2/pages/603"
 SECTIONS_SITEMAP = "https://conservancy.example.org/crb_trail-sitemap.xml"
 SECTION_PREFIX = "https://conservancy.example.org/trail/"
+TUSCARORA_PAGES = ["https://trail.example.org/section-1-2", "https://trail.example.org/section-3-4"]
 
 
 @pytest.fixture
@@ -55,6 +57,7 @@ def registry(tmp_path, monkeypatch):
         {"key": "amc_wma_at_parking_points", "url": PARKING_URL},
         {"key": "foothills_gps_coordinates", "url": "https://conservancy.example.org/maps/", "read_url": COORDINATES_REST},
         {"key": "brbtc_section_trailheads", "url": SECTIONS_SITEMAP, "sitemap": SECTIONS_SITEMAP, "page_prefix": SECTION_PREFIX},
+        {"key": "patc_tuscarora_points", "url": "https://trail.example.org/", "pages": TUSCARORA_PAGES},
     ]
     path.write_text(json.dumps({"sources": sources}))
     monkeypatch.setattr(_kinds, "REGISTRY_PATH", path)
@@ -317,6 +320,85 @@ def test_a_trailhead_at_a_segments_end_lands_under_both_segments_with_what_its_l
 def test_a_trailhead_entry_with_no_fix_refuses_the_list():
     with pytest.raises(PageLayoutChanged, match="no measured shape"):
         parse_ohta_major_trailheads(OHTA_PAGE.replace("35.694624, -94.11849", "see map"), "https://club.example.org/trail/")
+
+
+def wix(*paragraphs: str) -> str:
+    """A Wix page shaped like hikethetuscarora.org's: the menu, then a `<p>` of spans per paragraph."""
+    menu = "<nav><p>Section 1-2</p><p>Section 3-4</p></nav>"
+    body = "".join(f'<p class="font_7"><span class="wixui-rich-text__text">{text}</span></p>' for text in paragraphs)
+    return f"<html><body>{menu}{body}<p>&#169; 2017 by Fixture Club.</p></body></html>"
+
+
+TUSCARORA_PAGE = wix(
+    "Section 1: Fixture Gap",
+    "Fixture Gap to Fixture Road, 9.9 miles.",
+    "Max Elevation: 1999 ft. Min Elevation: 999 ft.",
+    "<span>Access:</span> The trail can be accessed by road from both termini of section 1:",
+    "Fixture Gap: Parking at Fixture Hawk Watch (40.111, -77.222).",
+    "Limited Parking at Fixture Hollow Road (40.123, -77.234)",
+    "Parking at Fixture Pike (by permission only)",
+    "Fixture Road (40.2, -77.3), 0.3 mi SB on Fixture Side Trail to the junction.",
+    "<span>Advisory:</span> Fixture caution in hunting season.",
+    "<span>Camping:&#160;</span> Fixture Ridge Shelter (40.131,-77.241), Fixture Knob Shelter,(40.141,-77.251),"
+    "&#160;Fixture State Park.",
+    "Section 2 Fixture Knob",
+    "<span>Access:</span>",
+    "No direct access to southern terminus, but can be accessed from the Fixture side trail with road access at "
+    "WV 9/9 (39.183,-78.432)",
+    "US Route 99, limited shoulder parking (39.268, -78.314).",
+    "<span>Camping:</span> Fixture Spring Shelter/Campground (39.633), -78.109), Fixture WMA campgrounds; Lower "
+    "(39.531, -78.145), Upper (39.507, -78.157), Fixture AT Shelter (0.2 mi NB on AT @ 39.302, -78.087)",
+)
+
+
+def test_a_tuscarora_section_lands_its_access_and_camping_fixes_by_the_pages_own_labels_and_nothing_else():
+    rows = parse_patc_tuscarora_points(TUSCARORA_PAGE, TUSCARORA_PAGES[0])
+
+    assert [(row["section"], row["kind"], row["name"], row["parking"], row["approach_mi"]) for row in rows] == [
+        (1, "access", "Fixture Gap", "stated", None),
+        (1, "access", "Fixture Hollow Road", "limited", None),
+        (1, "access", "Fixture Road", None, 0.3),
+        (1, "shelter", "Fixture Ridge Shelter", None, None),
+        (1, "shelter", "Fixture Knob Shelter", None, None),
+        (2, "access", "WV 9/9", None, None),
+        (2, "access", "US Route 99", "limited", None),
+        (2, "shelter", "Fixture Spring Shelter/Campground", None, None),
+        (2, "camping", "Fixture WMA campgrounds; Lower", None, None),
+        (2, "camping", "Fixture WMA campgrounds; Upper", None, None),
+        (2, "shelter", "Fixture AT Shelter", None, 0.2),
+    ]
+    assert rows[0]["section_name"] == "Fixture Gap" and rows[5]["section_name"] == "Fixture Knob"
+    # The fix written "(39.633), -78.109)" is the two numbers it states, and the parking with no fix lands nowhere.
+    assert rows[7]["geometry"] == {"type": "Point", "coordinates": [-78.109, 39.633]}
+    assert all("Fixture Pike" not in row["name"] and "State Park" not in row["name"] for row in rows)
+    assert all("hunting" not in str(value) and "junction" not in str(value) for row in rows for value in row.values())
+
+
+@pytest.mark.parametrize(
+    "paragraphs, refusal",
+    [
+        (("<span>Highlights:</span> Fixture overlook (40.5, -77.5).",), "outside a section's Access or Camping"),
+        (("<span>Access:</span>", "Fixture Road (40.5, -77.5) or Fixture Lane (40.6, -77.6)"), "an Access line with 2 fixes"),
+        (("<span>Access:</span>", "Fixture Road (40.5, -17.5)"), "not a United States trail's point"),
+    ],
+)
+def test_a_tuscarora_fix_out_of_place_two_on_one_access_line_or_off_the_continent_refuses_the_page(paragraphs, refusal):
+    with pytest.raises(PageLayoutChanged, match=refusal):
+        parse_patc_tuscarora_points(wix("Section 1: Fixture Gap", *paragraphs), TUSCARORA_PAGES[0])
+
+
+def test_a_row_that_lists_its_pages_reads_each_in_order_and_a_page_that_is_gone_fails_the_read(registry, requests_mock):
+    second = wix("Section 3: Fixture Summit", "<span>Access:</span>", "Fixture Summit Road (39.916, -77.9565)")
+    requests_mock.get(TUSCARORA_PAGES[0], text=TUSCARORA_PAGE, headers={"Content-Type": "text/html; charset=UTF-8"})
+    requests_mock.get(TUSCARORA_PAGES[1], text=second, headers={"Content-Type": "text/html; charset=UTF-8"})
+
+    rows = list(resource("patc_tuscarora_points").rows({}))
+
+    assert [row["source_url"] for row in rows] == [TUSCARORA_PAGES[0]] * 11 + [TUSCARORA_PAGES[1]]
+    assert rows[-1]["geometry"] == {"type": "Point", "coordinates": [-77.9565, 39.916]}
+    requests_mock.get(TUSCARORA_PAGES[1], status_code=404)
+    with pytest.raises(_notices.NoticeUnreadable, match="404"):
+        list(resource("patc_tuscarora_points").rows({}))
 
 
 def test_a_sitemaps_pages_under_the_prefix_are_read_and_a_sitemap_listing_none_there_refuses(registry, requests_mock):

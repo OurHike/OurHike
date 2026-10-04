@@ -11,6 +11,15 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_patc__points_of_interest
+    description: >
+      The patc/ folder's points of interest layers (`patc_tuscarora_points`), one row per base
+      row, renamed to int_points_of_interest__club_unioned's columns, with each layer's own
+      columns in `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_patc__suggested_hikes
     description: >
       The patc/ folder's suggested hikes layers (`patc_tuscarora_sections`), one row per base

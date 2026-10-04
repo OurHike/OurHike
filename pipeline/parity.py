@@ -944,6 +944,11 @@ def _poi_id(feature: dict) -> str:
     return str(feature["properties"]["id"])
 
 
+#: The opening every decision-31 reason carries: a record from a source today's exporters never read, which parity
+#: cannot check (pipeline/ELT.md, "The go/no-go gate") and new_data_report.py counts. gate_report.py lists every
+#: difference so explained once, as new data, and never as a safety field changed.
+NEW_DATA_REASON = "expected by decision 31 ('Publish new data in this PR')"
+
 #: Why a POI can be in today's file and not in the dbt writer's, by case.
 #: tests/test_dbt_points_of_interest_parity.py holds each to the fixture row
 #: where the two writers answer that way, so none outlives its reason.
@@ -953,6 +958,11 @@ POI_REASONS = {
         "exact copy of another in every column but the server's own row id (ELT.md, 'A dedupe may only remove "
         "exact copies, and the build proves it'), keeping the lowest OBJECTID, where export_nearby_poi.py "
         "publishes every copy as a pin of its own at the same spot"
+    ),
+    "new_source": (
+        f"{NEW_DATA_REASON}: a POI from a layer no exporter reads, one of decision 54's wave 1 point layers "
+        "(int_points_of_interest__club_points), so there is no old record to compare it with; new_data_report.py "
+        "counts it by source and type, and lists every water and shelter source line by line"
     ),
 }
 
@@ -990,6 +1000,37 @@ def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
             if _poi_id(feature) not in new_ids:
                 reasons[f"properties.id {_poi_id(feature)}"] = POI_REASONS["exact_copy"]
     return reasons
+
+
+def _today_poi_sources() -> set[str]:
+    """Every `source` a nearby_poi record from today's exporter can carry: export_nearby_poi.poi_sources()'s layers
+    (a record's `source` is its layer's key) and the Long Path guide's records."""
+    import export_nearby_poi
+
+    registry = export_nearby_poi.load_registry(export_nearby_poi.ROOT / "sources.json")
+    return {source["key"] for source in export_nearby_poi.poi_sources(registry)} | {export_nearby_poi.GUIDE_KEY}
+
+
+def _new_source_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The POIs the dbt writer publishes from a source today's file never carries and today's exporter never reads.
+
+    Only a record the new file holds and the old one lacks, whose `source` is neither a layer
+    export_nearby_poi.poi_sources() reads nor any source a record of today's file names: decision 31's new data.
+    A record of a layer today's exporter reads that the new file adds is still a difference.
+    """
+    old_features = old.get("features") or []
+    old_ids = {_poi_id(feature) for feature in old_features}
+    known = _today_poi_sources() | {feature["properties"].get("source") for feature in old_features}
+    return {
+        f"properties.id {_poi_id(feature)}": POI_REASONS["new_source"]
+        for feature in new.get("features") or []
+        if _poi_id(feature) not in old_ids and feature["properties"].get("source") not in known
+    }
+
+
+def _nearby_poi_reasons(old: dict, new: dict) -> dict[str, str]:
+    """nearby_poi's two explained kinds: an exact copy staging removed, and decision 31's new data."""
+    return {**_exact_copy_reasons(old, new), **_new_source_reasons(old, new)}
 
 
 @functools.cache
@@ -1228,7 +1269,7 @@ FAMILIES.update(
         # Unordered: the layers' rows are read in file order, and three of the
         # layers come from base models that keep no row number.
         "nearby_poi": Family(
-            old=_nearby_poi_old, records="features", key="properties.id", key_of=_poi_id, explained=_exact_copy_reasons
+            old=_nearby_poi_old, records="features", key="properties.id", key_of=_poi_id, explained=_nearby_poi_reasons
         ),
         "retired_poi": Family(old=_retired_poi_old, records="features", key="properties.id", ordered=True, key_of=_poi_id),
     }

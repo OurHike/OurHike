@@ -346,3 +346,28 @@ def test_main_writes_both_files_and_exits_2_without_results(tmp_path, capsys):
     )
     assert gate_report.main([*arguments, "--strict"]) == 1
     assert gate_report.main(arguments) == 0, "without --strict a written report exits 0 whatever it says"
+
+
+def test_a_record_from_a_source_todays_exporters_never_read_is_listed_once_as_new_data():
+    """Decision 31's new data: parity explains it, and the report lists it by reason, with no field called changed and
+    no safety flag, because there is no old record to approve it against; new_data_report.py reviews it."""
+    new_data = [
+        {
+            "what": f"properties.id ncta_points:{{NC-{index}}}",
+            "old": None,
+            "new": "{}",
+            "fields": ["properties.poi_type", "properties.confidence", "geometry.coordinates[]"],
+            "reason": parity.POI_REASONS["new_source"],
+        }
+        for index in range(3)
+    ]
+    results = {"poi_water": _result("poi_water", "poi_water.geojson", explained=new_data)}
+    rows, unmatched, new_keys = key_rows(TODAY, DBT, results)
+    water = next(row for row in rows if row.key == "poi_water.geojson")
+    assert (water.verdict, water.safety) == ("equal_apart_from_listed", [])
+    markdown = gate_report.render_markdown(rows, unmatched, new_keys, {"parity_dir": "d", "dbt_manifest": "m", "results": 1})
+    lines = [line for line in markdown.split("\n") if parity.NEW_DATA_REASON in line]
+    assert len(lines) == 1
+    assert lines[0].startswith("- listed, 3:")
+    assert "Changed:" not in lines[0]
+    assert "**0 key(s) differ on a safety field**, and 0 more" in markdown

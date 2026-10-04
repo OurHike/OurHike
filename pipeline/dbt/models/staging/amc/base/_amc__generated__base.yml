@@ -35,8 +35,8 @@ models:
             severity: warn
     description: >
       AMC destinations (AMC's own layer), every row, keyed and deduped (decision 40), the
-      layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
-      false`, so int_sources__publication holds it back from every mart.
+      layer's own columns under dlt's names. Whether it may publish is
+      int_sources__publication's to decide, from its sources.json row.
       int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
     columns:
       - name: poi_key
@@ -56,8 +56,8 @@ models:
             severity: warn
     description: >
       AMC lodging in the White Mountains (AMC's own layer), every row, keyed and deduped
-      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
-      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      (decision 40), the layer's own columns under dlt's names. Whether it may publish is
+      int_sources__publication's to decide, from its sources.json row.
       int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
     columns:
       - name: poi_key
@@ -76,8 +76,8 @@ models:
             severity: warn
     description: >
       New England Trail parking in Connecticut (AMC's own layer), every row, keyed and deduped
-      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
-      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      (decision 40), the layer's own columns under dlt's names. Whether it may publish is
+      int_sources__publication's to decide, from its sources.json row.
       int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
     columns:
       - name: poi_key
@@ -97,9 +97,9 @@ models:
             severity: warn
     description: >
       New England Trail points of interest in Connecticut (AMC's own layer), every row, keyed
-      and deduped (decision 40), the layer's own columns under dlt's names. Its sources.json
-      row reads `reaches_hikers: false`, so int_sources__publication holds it back from every
-      mart. int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
+      and deduped (decision 40), the layer's own columns under dlt's names. Whether it may
+      publish is int_sources__publication's to decide, from its sources.json row.
+      int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
     columns:
       - name: poi_key
         description: >
@@ -139,8 +139,8 @@ models:
             severity: warn
     description: >
       AMC trailheads and parking lots (AMC's own layer), every row, keyed and deduped
-      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
-      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      (decision 40), the layer's own columns under dlt's names. Whether it may publish is
+      int_sources__publication's to decide, from its sources.json row.
       int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
     columns:
       - name: poi_key

@@ -48,7 +48,10 @@ THE ANSWERS, worst first:
 - `equal_apart_from_listed`: no unexplained difference, and everything not
   held equal is listed with its reason: a difference the family's `explained`
   names, a field held to its form only (`stamps`), record order for an
-  unordered family.
+  unordered family. A record parity.py explains as decision 31's new data (a
+  source today's exporters never read, parity.NEW_DATA_REASON) is listed
+  once, by reason, with no field called changed and no safety flag: there is
+  no old record, and new_data_report.py is where it is reviewed.
 - `equal`: every record and top-level field equal, in order where order is
   published.
 
@@ -76,6 +79,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
+from parity import NEW_DATA_REASON as PARITY_NEW_DATA_REASON
 from parity import RESULT_FORMAT as PARITY_RESULT_FORMAT
 
 PIPELINE_DIR = Path(__file__).resolve().parent
@@ -538,8 +542,18 @@ class KeyRow:
         )
 
 
+def is_new_data(reason: str) -> bool:
+    """A difference parity.py explains as decision 31's new data: a record from a source today's exporters never
+    read, which no old record can be compared with, so no field of it "changed"."""
+    return reason.startswith(PARITY_NEW_DATA_REASON)
+
+
 def _difference(item: dict, reason: str | None = None) -> Listed:
     fields = list(item.get("fields") or [])
+    if is_new_data(reason or item.get("reason") or ""):
+        # Listed once per reason, as new data: new_data_report.py reviews these records, source by source, and the
+        # safety fields they carry are new rather than changed, so they are not offered for approval here row by row.
+        return Listed(what=item["what"], reason=item.get("reason") or reason or "", held_by=item.get("held_by"))
     return Listed(
         what=item["what"],
         reason=reason or item.get("reason") or "",

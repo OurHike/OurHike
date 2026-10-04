@@ -35,8 +35,8 @@ models:
             severity: warn
     description: >
       Long Trail overnight sites (GMC's own OS_MASTER layer), every row, keyed and deduped
-      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
-      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      (decision 40), the layer's own columns under dlt's names. Whether it may publish is
+      int_sources__publication's to decide, from its sources.json row.
       int_points_of_interest__club_unioned reads it through stg_gmc__points_of_interest.
     columns:
       - name: poi_key
@@ -56,8 +56,8 @@ models:
             severity: warn
     description: >
       Long Trail parking (GMC's own PARKING_MASTER layer), every row, keyed and deduped
-      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
-      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      (decision 40), the layer's own columns under dlt's names. Whether it may publish is
+      int_sources__publication's to decide, from its sources.json row.
       int_points_of_interest__club_unioned reads it through stg_gmc__points_of_interest.
     columns:
       - name: poi_key
@@ -77,8 +77,8 @@ models:
             severity: warn
     description: >
       Long Trail privies (GMC's own PRIVIES_MASTER layer), every row, keyed and deduped
-      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
-      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      (decision 40), the layer's own columns under dlt's names. Whether it may publish is
+      int_sources__publication's to decide, from its sources.json row.
       int_points_of_interest__club_unioned reads it through stg_gmc__points_of_interest.
     columns:
       - name: poi_key
@@ -119,10 +119,9 @@ models:
             severity: warn
     description: >
       Long Trail vistas and summits (GMC's own VIEWPOINTS_SUMMITS_MASTER layer), every row,
-      keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
-      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
-      back from every mart. int_points_of_interest__club_unioned reads it through
-      stg_gmc__points_of_interest.
+      keyed and deduped (decision 40), the layer's own columns under dlt's names. Whether it
+      may publish is int_sources__publication's to decide, from its sources.json row.
+      int_points_of_interest__club_unioned reads it through stg_gmc__points_of_interest.
     columns:
       - name: poi_key
         description: >

@@ -1180,3 +1180,40 @@ def test_every_deliberate_case_has_a_reason():
     for differences in DELIBERATE.values():
         for case in differences.values():
             assert WHY[case].startswith("expected by "), case
+
+
+def _poi_feature(poi_id: str, source: str) -> dict:
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [-74.0, 41.0]},
+        "properties": {"id": poi_id, "source": source, "source_feature_id": poi_id.split(":", 1)[1]},
+    }
+
+
+def test_a_poi_from_a_layer_no_exporter_reads_is_explained_as_decision_31s_new_data():
+    """nearby_poi's parity explains a record from one of decision 54's wave 1 point layers as new data, never a record
+    of a layer export_nearby_poi.py reads, and never a record today's file already holds."""
+    shared = _poi_feature("dec_lean_tos:1", "dec_lean_tos")
+    old = {"features": [shared]}
+    new = {
+        "features": [
+            shared,
+            _poi_feature("ncta_points:{NC-1}", "ncta_points"),
+            # A layer today's exporter reads, adding a record: still a difference.
+            _poi_feature("dec_lean_tos:2", "dec_lean_tos"),
+        ]
+    }
+    reasons = parity._nearby_poi_reasons(old, new)
+    assert reasons == {"properties.id ncta_points:{NC-1}": parity.POI_REASONS["new_source"]}
+    assert reasons["properties.id ncta_points:{NC-1}"].startswith(parity.NEW_DATA_REASON)
+    assert parity.FAMILIES["nearby_poi"].explained is parity._nearby_poi_reasons
+
+
+def test_no_wave_1_point_layer_is_one_export_nearby_poi_reads():
+    """The new-data reason reaches only layers today's exporter never reads: no wave 1 row carries `poi_type` or sits
+    in TYPED_LAYERS, which is what would put it in export_nearby_poi.py's export."""
+    import make_dbt_staging
+
+    wave_1 = {table.key for table in make_dbt_staging.tables() if table.type == "points_of_interest"}
+    assert wave_1, "no wave 1 point layer is staged"
+    assert not wave_1 & parity._today_poi_sources()

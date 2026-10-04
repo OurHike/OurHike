@@ -161,6 +161,23 @@ def test_licence_basis_and_may_publish_come_from_int_sources__publication(wareho
     assert layers["shelters"]["rows_by_mart"] == {"points_of_interest": 1}
 
 
+def test_a_v2_familys_old_side_is_the_new_path_and_never_counts_as_today(warehouse, parity_dir):
+    """nearby_poi_v2's old side is the v1 file the same dbt build wrote, so a source only it names is not published
+    today: a wave 1 layer's first records read as new, not as today's (decision 31)."""
+    v2 = {
+        "format": parity.RESULT_FORMAT,
+        "family": "nearby_poi_v2",
+        "new_file_name": "nearby_poi_v2.geojson",
+        "old_sources": {"nyc_drinking_fountains": 1},
+        "old_records_naming_no_source": 0,
+    }
+    (parity_dir / "nearby_poi_v2.json").write_text(json.dumps(v2))
+    assert parity.FAMILIES["nearby_poi_v2"].v1_beside == "nearby_poi.geojson"
+    lines = {row["source_named_as"]: row["today"] for row in new_data_report.build_report(warehouse, parity_dir)["new_sources"]}
+    assert lines["nyc_drinking_fountains"] == "not_in_todays_compared_files"
+    assert lines["atc_shelters"] == "published_today"
+
+
 def test_without_parity_results_today_is_not_measured_rather_than_new(warehouse):
     report = new_data_report.build_report(warehouse, None)
     assert {row["today"] for row in report["new_sources"]} == {"not_measured"}

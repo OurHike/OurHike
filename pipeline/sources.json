@@ -436,7 +436,7 @@
       },
       "notes": "7,748 points, 20 fields, layer 25 of the National Map's structures MapServer (read 2026-10-03). KEY: PERMANENT_IDENTIFIER, 7,748 distinct of 7,748; GLOBALID is unique too. A compilation: SOURCE_ORIGINATOR names the agency each point came from. Of them 4,618 from the Forest Service and 870 from BLM, so they overlap usfs_rec_sites and blm_recreation_sites as compiled copies of the same ground, deduplicated in dbt.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_usgs_tnm__usgs_structures_campgrounds yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: a compilation of other agencies' points (4,618 of 7,748 from the Forest Service, 870 from BLM), overlapping usfs_rec_sites and blm_recreation_sites with no dedupe in dbt yet (decision 34), and nothing on the row says whether the Forest Service's dispersed CAMPING AREA sites, which usfs_dispersed_camping_holdback holds back, are among them. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -465,7 +465,7 @@
       },
       "notes": "13,389 points, 20 fields, layer 26 of the National Map's structures MapServer (read 2026-10-03). KEY: PERMANENT_IDENTIFIER, 13,389 distinct of 13,389; GLOBALID is unique too. A compilation: SOURCE_ORIGINATOR names the agency each point came from.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_usgs_tnm__usgs_structures_trailheads yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: a compilation of other agencies' points (SOURCE_ORIGINATOR names each), overlapping the trailhead layers already loaded with no dedupe in dbt yet (decision 34), so it would draw a second pin at trailheads other rows already publish. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -494,7 +494,7 @@
       },
       "notes": "589 points, 20 fields, layer 27 of the National Map's structures MapServer (read 2026-10-03). KEY: PERMANENT_IDENTIFIER, 589 distinct of 589; GLOBALID is unique too. A compilation: SOURCE_ORIGINATOR names the agency each point came from.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_usgs_tnm__usgs_structures_cabins yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: no club_poi_types row maps any of its values to a POI type, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -523,7 +523,7 @@
       },
       "notes": "30 points, 20 fields, layer 28 of the National Map's structures MapServer (read 2026-10-03). KEY: PERMANENT_IDENTIFIER, 30 distinct of 30; GLOBALID is unique too. A compilation: SOURCE_ORIGINATOR names the agency each point came from. 28 of the 30 come from NPS's Alaska Regional Office.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_usgs_tnm__usgs_structures_shelters yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: a compilation (28 of its 30 from NPS's Alaska Regional Office), overlapping nps_points_of_interest's shelters with no dedupe in dbt yet (decision 34). False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -552,7 +552,7 @@
       },
       "notes": "891 points, 20 fields, layer 32 of the National Map's structures MapServer (read 2026-10-03). KEY: PERMANENT_IDENTIFIER, 891 distinct of 891; GLOBALID is unique too. A compilation: SOURCE_ORIGINATOR names the agency each point came from.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_usgs_tnm__usgs_structures_ranger_stations yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: no club_poi_types row maps any of its values to a POI type, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -579,7 +579,7 @@
       "name_field": "gaz_name",
       "notes": "34,885 springs: GNIS's 'Other Hydrographic Features' layer read under `where` gaz_featureclass='Spring', the one server-side filter this row carries (returnCountOnly, 2026-10-03; the layer holds 200,713 features across its feature classes). A GNIS SPRING IS A NAME ON A MAP, NOT A REPORT OF WATER: if it ever reaches a water card it renders as a named spring with flow unknown and never as a confirmed source (CLAUDE.md, 'Never let a display outrun its source'). KEY: OBJECTID, 34,885 distinct; gaz_id is not (34,856).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_usgs_tnm__usgs_gnis_springs yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: 'A GNIS SPRING IS A NAME ON A MAP, NOT A REPORT OF WATER' (notes): layer_rules' not_water keeps it off water and no other POI type fits, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -2527,8 +2527,8 @@
       "name_field": "FEATURE_NAME",
       "type_field": "FEATURE_TYPE",
       "notes": "3,260 points, 24 fields with SHAPE (read 2026-10-03); an on-prem MapServer with no editingInfo and no maintained date, so its change check answers UNKNOWN and it is read whole every run. FEATURE_TYPE, 84 values: Parking 463, Unpaved Parking 373, Pulloff Parking 202, Scenic View 163, Restroom 142, Trailhead 138, Bridge 132, Campground 47, Cabins 30, Group Campground 25, Shelter 17, Water 17, Lean To 14, First Aid 6, Fire Tower 4 and 69 more. WATER IS THE SAFETY TRAP: the coverage audit found 4 of the 17 named 'Potable Water NOTE NonFunctional', so the status lives in the name, and a mapping must read the name before it maps a single one to water. OPNS_STAT carries seasons. KEY: GLOBALID, 3,260 distinct of 3,260. The hosted twin is a SAME_AS note in njgin/points_of_interest.py.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_njgin__nj_open_space_points_of_interest yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, parking, privy, shelter, trailhead, viewpoint), an allowlist by the code the layer lands; the layer_rules seed holds back the rows whose text its drop_where_contains rows name and the water types its not_water rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -3715,8 +3715,8 @@
       "name_field": "LOC_NAME",
       "type_field": "TYPE",
       "notes": "15 points, 32 fields, last edited 2026-08-17 (editingInfo, read 2026-10-03), TYPE 'Trail Shelter' on all 15. CAPACITY per shelter, the park's own figure, with RESERV, BEARCABLES, PULLEYPERSYSTEM and SHELTER_RESTRICTION: a steward-stated capacity for the Smokies' shelters, A.T. ones among them, beside reference/shelter_capacity.json's reviewed figures. accessInformation names the park's Facilities Management Division, Visitor Use Management, not a person. KEY: GlobalID, 15 distinct of 15.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_nps__nps_grsm_backcountry_shelters yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (shelter), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -3745,8 +3745,8 @@
         "notes": "An on-prem service with no editingInfo, so the statistics fingerprint is count, max(OBJECTID) and max(EDITDATE): 35,639, 37,535 and 1789603382000 (2026-09-16 UTC), read 2026-10-03. CREATEDATE carries the sentinel 9999-09-09 and is never the marker."
       },
       "notes": "35,639 points, 37 fields, 382 POITYPE values (read 2026-10-03); maxRecordCount 2,000, so 18 pages. The hiker-relevant types and their spellings: Campsite 3,859, Restroom 2,631, Trailhead 2,211, Campground 863, Overlook 611, Viewpoint 563, Potable Water 214, Backcountry Campsite 203, Primitive Camping 200, Drinking Water 136, Shelter 117, Cabin 80, Water 43, Water - Drinking/Potable 34, Primitive Campsite 34. WATER IS SPELLED AT LEAST FOUR WAYS, and 'Water Access' (95) is a boat launch. POISTATUS is null on 30,306, Existing 5,205, Planned 87, Temporarily Closed 4: a Planned point must never render as built. OPENTOPUBLIC: Unknown 33,263, Yes 2,309, No 63. PUBLICDISPLAY reads 'Public Map Display' on all 35,639. ORIGINATOR and MAINTAINER name bodies, not people. KEY: GEOMETRYID, 35,639 distinct of 35,639; FEATUREID is not (7,778, 26,840 null). Held on scope by trail_orgs.json's nps-poi row (a corridor clip and a POITYPE allowlist a person reads), which is publication's question, not extraction's.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_nps_poi__nps_points_of_interest yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, parking, privy, shelter, trailhead, viewpoint), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name and the water types its not_water rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -4739,8 +4739,8 @@
       "name_field": "FET_NAME",
       "type_field": "FET_TYPE",
       "notes": "10,241 points, 18 fields (read 2026-10-03); an on-prem MapServer with no editingInfo and no maintained date, so its change check answers UNKNOWN and it is read whole every run. FET_TYPE, by the layer's own subtype names: OVERNIGHT SITE 2,984, DAY USE SITE 1,727, TOILET 1,411, TRAIL HEAD 1,256, WATER BASED SITE 1,114, PARKING AREA 794, CAMPGROUND 561, INFORMATION CENTER SITE 117, OHV DESIGNATED AREA 68, NATURAL AREA/ENDANGERED AREA 63, POTABLE WATER 60, RECREATION MANAGEMENT AREA 37, UNKNOWN 26, AIRPLANE LANDING STRIP 23; FET_SUBTYPE splits them finer. SOURCE is a numeric id where present (93 rows), not a person. KEY: GlobalID, 10,241 distinct of 10,241. 'Campsite - Primitive' (1,386 in BLM_Natl_Recs_pts) may be dispersed camping and needs the review usfs_dispersed_camping_holdback records before any of it ships; 'Water Staging Area' is water for firefighting and must never map to water.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_blm__blm_recreation_sites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, parking, privy, trailhead, viewpoint), an allowlist by the code the layer lands; the layer_rules seed holds back the rows whose text its drop_where_contains rows name and the water types its not_water rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -4895,7 +4895,7 @@
       "type_field": "type",
       "notes": "2,585 points, 14 fields, last edited 2026-08-27 (editingInfo, read 2026-10-03), layer 14 of CPWAdminData; the service's other layers were not read. type: Trailhead 2,481, Interpretive Trailhead 104. water: no 2,050, yes 200, seasonally 38, conditional 2, blank 295. manager names 223 agencies and ranger districts. KEY: feature_id, 2,585 distinct of 2,585; GlobalID is unique too. rmfi/points_of_interest.py draws from here.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cotrex__cotrex_trailheads yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'no_reuse' on the fixture warehouse (2026-10-04), from 'This map is a product and property of the Colorado Parks and Wildlife', a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -4924,7 +4924,7 @@
       "person_fields_comment": "COMMENTS, 722 distinct values, names the CPW staff behind points ('per …', 'via … kmz', 'Imported from … from …'; grouped 2026-10-03), so it is never asked for.",
       "notes": "5,520 points, 39 fields, last edited 2026-08-27 (editingInfo, read 2026-10-03), layer 0 of CPWAdminData. d_FAC_TYPE, the decoded type: Parking 1,831, Info Source 739, Restroom 643, Picnic Area 283, Campground 262, Gate 191, Boat Ramp 171, Campsite 146, Other 114, Fishing 93, RV Campground 77, Wildlife Watching Area 72, Hunting Blind 70, Scenic Overlook 51, Drinking Water 45, Cabin 35, Yurt 21, Group Campground 15 and 39 more. Each coded column has a decoded d_ twin. KEY: GlobalID_2, 5,520 distinct of 5,520; FAC_ID is not (1,449).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cotrex__cpw_facilities yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'no_reuse' on the fixture warehouse (2026-10-04), from 'This map is a product and property of the Colorado Parks and Wildlife', a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5212,7 +5212,7 @@
       "name_field": "PrimaryName",
       "notes": "568 points, 10 fields, last edited 2026-03-07 (editingInfo, read 2026-10-03). Features names what is there; PrimaryMaintenance is null on the coverage audit's 102 in the Wasatch box; DataSource OrbitalView 559, null 9. KEY: OBJECTID, unique by construction; TrailheadID is not (559 distinct, 9 null). wmc/points_of_interest.py draws from here.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_utah_sgid__utah_trailheads yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: its own licence note sends the user's agreement to 'hold the State of Utah harmless' to the maintainer and says may_publish stays false until the maintainer answers (pipeline/ELT.md lists UGRC's indemnity terms among wave 1's holds), while int_sources__publication's rule 5 reads a hold-harmless line as no restriction: the maintainer's answer settles which. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5235,7 +5235,7 @@
       "name_field": "Site_Name",
       "notes": "3,663 points, 10 fields, last edited 2026-07-29 (editingInfo, read 2026-10-03): one point per reservable site in 64 state parks (Jordanelle 599, Sand Hollow 388, Yuba Lake 243 and on), from Aspira, the parks' reservation vendor. No type column: a site's kind is in its Site_Name or not at all. KEY: Site_ID, 3,663 distinct of 3,663; Site_Code is not (3,263). 1,194 OF THE 3,663 CARRY NO GEOMETRY (every point read 2026-10-03, outSR 4326), so at most 2,469 can be drawn.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_utah_sgid__utah_state_park_campsites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: no club_poi_types row maps any of its values to a POI type, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5261,7 +5261,7 @@
       "name_field": "NAME",
       "notes": "113 summits, 8 fields, last edited 2026-03-06 (editingInfo, read 2026-10-03), with ELEVATION, RANK and the quad each sits on; TYPE 'summit' on all 113. KEY: OBJECTID, unique by construction; NAME is not (109).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_utah_sgid__utah_highest_peaks yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: no club_poi_types row maps any of its values to a POI type, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5496,8 +5496,8 @@
       ],
       "not_person_fields_comment": "`owner` is the land's ownership class, not a person: Federal 363, State 262, Local 45, Private 38, County 21, Unknown 1, blank or null 1,819 (grouped 2026-10-03). extract/_kinds.py's person-shaped backstop would read the name as a person's.",
       "notes": "2,549 points, 31 fields, last edited 2026-04-24 (editingInfo, read 2026-10-03). The layer one number below the registered line, ncta_trail (nct_public/FeatureServer/2). wptType: POI 730, Parking 695, Water 547, Camping 504, Shelter 53, Ford 18, Developed Water Source 2; iconSet splits them finer (water 543, water_half 12, tenting 312, campground 179, shelter 51, ford 14 and 30 more). KEY: GlobalID, 2,549 distinct of 2,549, none null; waypointID is not one (2,528 distinct, 21 null). public_map reads Yes on all 2,549, and farout_app No on 123, which nobody has read the meaning of. A FORD IS A HAZARD, not an amenity (poi_named_exclusions' FORD row): its 18 must never map to a crossing or a water source. Water here is a mapped point, not a report of flow.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_ncta__ncta_points yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, parking, shelter, water), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name and the water types its not_water rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. Its water ships at low confidence, as every wave 1 water row does: none reports flow. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5634,8 +5634,8 @@
       "name_field": "Name",
       "type_field": "Type",
       "notes": "108 points, 9 fields, last edited 2026-04-05 (editingInfo, read 2026-10-03). Type: Campground 53, Cabin/Hut/Yurt 29, Campsites 18, Campsite 8. Carto_Show reads 'Hide' on 8, the publisher's own withhold, which a mart has to honour. Labelled a draft layer by the coverage audit. KEY: no GlobalID; OBJECTID is unique by construction, Name is not (61 distinct, 35 null). Five regional views are filtered slices of it, SAME_AS notes in alaska_trails/points_of_interest.py.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_alaska_trails__alaska_trails_cabins_and_campsites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5660,8 +5660,8 @@
       "name_field": "Name",
       "type_field": "AccessType",
       "notes": "183 points, 22 fields, last edited 2026-05-08 (editingInfo, read 2026-10-03). AccessType: Trailhead 122, Parking Lot 40, Trail Access 3, null 18. STATUS IS Exists 157, Proposed 26: A PROPOSED ACCESS POINT MUST NEVER RENDER AS ONE A HIKER CAN USE. Camping, ParkingLot, Toilet, Fee and OvernightParking per point; Source1Name and Source2Name name documents (ASP Trail Guide 27, Anchorage Trails Map 26), not people. KEY: no GlobalID; OBJECTID is unique by construction, Name is not (171 distinct, 5 null).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_alaska_trails__alaska_trails_access_points yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (parking, trailhead), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5799,8 +5799,8 @@
         "notes": "An on-prem MapServer with no editingInfo; LastEditedDate is the layer's own edit date (esriFieldTypeDate), read 2026-10-03."
       },
       "notes": "4,359 points, 120 or more fields (read 2026-10-03), maxRecordCount 10,000. An INSURANCE INVENTORY: construction, contents and replacement values, roofs, heating and wiring per building, so a mart takes name, use and position only. USE1: Cabin – Rustic 503, Restroom 500, Maintenance 366, Pavilion 354, Bath/Shower/Wash House 213, Residence 213, Cabin – Modern 158, Potable Water 114, Shed 109, Camping Cottage 74, Park Office 68, Trail Shelter 55 and more, null 592. The 55 Trail Shelters include the Laurel Highlands Hiking Trail's (the coverage audit matched 40 to DCNR's own description), which laurel/points_of_interest.py draws from here. 'Residence' marks staff housing, which no mart should draw. KEY: GlobalID, 4,359 distinct of 4,359.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_pasda__pasda_state_park_buildings yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (privy, shelter), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name and the water types its not_water rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5828,8 +5828,8 @@
       ],
       "not_person_fields_comment": "LastEditedDate is the edit date stored as text, which the person-shaped backstop would read as an editor's name. CreatedBy and LastEditedBy beside it are dropped.",
       "notes": "801 points, 30 fields (read 2026-10-03); an on-prem MapServer with no editingInfo and no maintained date, so its change check answers UNKNOWN and it is read whole every run. Type: Motorized 726, Primitive 36, Primitive (Water Trail) 35, Primitive (Trail Shelter) 3, Camping Area 1. Water: Non-Potable 142, Potable 8, the rest blank: an attribute of the site, not a water report. ShowOnPublicMap reads Yes on all 801, the publisher's own flag. Permit, Latrines and FireRing per site. KEY: GlobalID, 801 distinct of 801; Name is not (776).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_pasda__pasda_state_forest_campsites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, shelter), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5859,7 +5859,7 @@
       "person_fields_comment": "COMMENTS names a county contact by name on at least one of its 16 values ('Other Contact: …, Union County'; grouped 2026-10-03), so it is never asked for.",
       "notes": "3,030 points, 15 fields (read 2026-10-03), layer name 'Explore PA trails - WP 201703'; an on-prem MapServer with no editingInfo and no maintained date, so its change check answers UNKNOWN and it is read whole every run. SUBTYPE_CO is a code with no labels on the layer: 1 on 1,707, 9 on 307, 4 on 295, 2 on 266 and eight more. ADA_ACCESS codes 2, 1 and 0. UPDATE_ is a date (the coverage audit read 2009 on the LHHT's six). KEY: OBJECTID_1, the object id field, unique by construction; OBJECTID is also 3,030 distinct of 3,030, and ACCT_ID is not (524).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_pasda__pasda_explore_pa_trail_access yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: PA DCNR's Explore PA Trails terms ('intended for demonstration, education, planning, and monitoring purposes only … save the Commonwealth harmless', pipeline/ELT.md's 'Who may publish' rule 5) were not re-read for this row, which its own licence note says leaves may_publish false: no terms are quoted for rule 5 to read, so the flag is the only hold. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5882,7 +5882,7 @@
       "name_field": "PARK_NAME",
       "notes": "125 points, one per park, with yes/no amenity columns (CAMPING, CABINS, YURTS, SCENIC_VIE and more) and park links (read 2026-10-03); an on-prem MapServer with no editingInfo and no maintained date, so its change check answers UNKNOWN and it is read whole every run. PHONE and EMAIL, the parks' office contacts, are left out: EMAIL by PERSON_FIELDS, PHONE by the person-shaped backstop. KEY: ICSORG, 125 distinct of 125.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_pasda__pasda_state_park_amenities yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: no club_poi_types row maps any of its values to a POI type, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -5907,7 +5907,7 @@
       "name_field": "SiteName",
       "notes": "220 points, 17 fields (read 2026-10-03); an on-prem MapServer with no editingInfo and no maintained date, so its change check answers UNKNOWN and it is read whole every run. Named geologic features with descriptions and significance, and PublicLand naming the land they sit on (null on 108). KEY: OBJECTID, unique by construction; SiteName is not (213).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_pasda__pasda_geoheritage_features yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: no club_poi_types row maps any of its values to a POI type, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6046,8 +6046,8 @@
       "name_field": "SITENAME",
       "type_field": "PARKING",
       "notes": "209 points, 12 fields, last edited 2026-09-17 (editingInfo, read 2026-10-03). PARKING: Non Parking 97, Parking Lot 79, Roadside Parking 23, No Parking 1, null 9. WATER False 194, Unknown 13, True 2: 'False' is useful negative information, no water at this trailhead. RESTROOM False 193, Unknown 13, True 3. OPENWHEN per site. KEY: OBJECTID, unique by construction; SITENAME is not (176 distinct, 8 null).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_ct_deep__ct_deep_trail_access yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (trailhead), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6073,8 +6073,8 @@
       "name_field": "MAPLABEL",
       "type_field": "INTEREST",
       "notes": "296 points, 4 fields, last edited 2026-09-17 (editingInfo, read 2026-10-03). INTEREST: Point of Interest 156, Scenic View 65, Bridge 53, Other 12, Stream Crossing 7, cultural feature 3. KEY: OBJECTID, unique by construction; MAPLABEL is not (152). 2 of the 296 carry no geometry (every point read 2026-10-03).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_ct_deep__ct_deep_trail_interest yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (viewpoint), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6176,7 +6176,7 @@
       "person_fields_comment": "ophone is each park office's phone number. It is left out with `email` beside it, which PERSON_FIELDS drops: an office line is not a person's, but nothing on the layer says whom a number reaches, and a phone column is the shape pipeline/ELT.md's rule 8 examples take (PHONE_CELL, PHONE_ALT).",
       "notes": "48 points, 13 fields, last edited 2026-09-02 (editingInfo, read 2026-10-03): one point per park office, with its address. PK_TYPE: SPA 34, SNA 7, SRA 4, and three strays. KEY: FID, unique by construction; NAME is too (48). The coverage audit found no campsite, shelter or water layer in DPR's org; this is all of its point data.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_nc_dpr__nc_state_parks_points yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: no club_poi_types row maps any of its values to a POI type, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6418,7 +6418,7 @@
       "type_field": "RELIABILITY",
       "notes": "126 points, 3 fields, last edited 2023-04-05 (editingInfo, read 2026-10-03). RELIABILITY: Reliable 69, Seasonal 57. THE LAYER IS 3.5 YEARS OLD and RELIABILITY is a planning label, never a report of flow: it must not render as current. KEY: no GlobalID; OBJECTID is unique by construction, NAME is not (118 distinct).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_tahoe_rim__tahoe_rim_water_sources yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: last edited 2023-04-05 and 'RELIABILITY is a planning label, never a report of flow: it must not render as current' (notes); nothing carries the layer's age or its Reliable/Seasonal label to a card yet. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6441,8 +6441,8 @@
       "name_field": "Name",
       "type_field": "Campground_Type",
       "notes": "6 points, 5 fields, last edited 2022-05-19 (editingInfo, read 2026-10-03). Campground_Type: No Fee LTNSP Campground 3, Fee USFS Campground 2, No Fee, Dispersed USFS Campground 1. KEY: GlobalID, 6 distinct of 6.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_tahoe_rim__tahoe_rim_campgrounds yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6467,8 +6467,8 @@
       "name_field": "Name",
       "type_field": "Type",
       "notes": "228 points, 5 fields, last edited 2020-12-13 (editingInfo, read 2026-10-03). Type: Vista 149, Lake 23, Peak 21, Meadow 9, Rock 9, Cultural 8, Waterfall 5, Tree 4. KEY: no GlobalID; OBJECTID is unique by construction, Name is not (227).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_tahoe_rim__tahoe_rim_points_of_interest yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (viewpoint), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6492,8 +6492,8 @@
       "key_comment": "`Name`: 22 distinct of 22, the measurement the row's own notes record from decision 54's wave 1 POI read (returnCountOnly and per-value counts, 2026-10-03, under lib/user_agent.py's USER_AGENT, robots.txt first). `id_field` names the object id (`ObjectId`, which dlt lands as objectid), which a reload mints again (decision 40).",
       "name_field": "Name",
       "notes": "22 points, 9 fields, last edited 2024-10-21 (editingInfo, read 2026-10-03), with Toilet, Water, Number_of_Parking_Stalls, Biking_Allowed and Picnic_Tables per trailhead. KEY: no GlobalID; ObjectId is unique by construction, and Name is too (22 distinct of 22). The newest of TRTA's three trailhead layers, each 22 points; the two older ones are SAME_AS notes in tahoe_rim/points_of_interest.py.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_tahoe_rim__tahoe_rim_trailheads yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (trailhead), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6905,7 +6905,7 @@
       "type_field": "SymbolID",
       "notes": "1,159 points, 4 fields, last edited 2021-02-24 (editingInfo, read 2026-10-03). SymbolID 7 on 1,102 and 3 on 57, codes the layer does not label. KEY: Name, 1,159 distinct of 1,159 (Halfmile's waypoint codes). A 2018 SURVEY, STALE BY DESIGN AS WATER: a point here is where water was found once, never a report of flow, and a card must say how old it is. Whether PCTA's CC BY 4.0 (pcta_centerline) reaches Halfmile's layers is @unvalidated: PCTA or Halfmile saying so would settle it.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_pcta__pcta_halfmile_water_sources yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: a 2018 survey, 'STALE BY DESIGN AS WATER' (notes), on a trail whose water is reported week by week: the notes say a card must say how old it is, and nothing carries the survey's date to a card yet, so a point would render like any other unverified water. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6928,8 +6928,8 @@
       "name_field": "Name",
       "type_field": "SymbolID",
       "notes": "442 points, 6 fields, last edited 2021-02-24 (editingInfo, read 2026-10-03). SymbolID 8 on 441 and 3 on 1. KEY: Name, 442 distinct of 442. A 2018 survey, like pcta_halfmile_water_sources, and the same open question about Halfmile's licence.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_pcta__pcta_halfmile_campsites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -6952,8 +6952,8 @@
       "name_field": "title",
       "type_field": "external_trailheadOrAccessPoint",
       "notes": "487 points, 35 fields, last edited 2026-10-01 (editingInfo, read 2026-10-03). external_trailheadOrAccessPoint: Trailhead 325, Access Point 147, null 15. external_trailheadManager names agencies (USFS 358, NPS 24, BLM 19, STATE 17, Other 11, null 58). Parking and amenity flags per row (parking_exists, parking_overnight, amenities_bathroom and others). KEY: id, 487 distinct of 487; slug is not (486).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_pcta__pcta_trailheads yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (trailhead), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -7147,7 +7147,7 @@
       "name_field": "Name",
       "notes": "7 points, 6 fields, last edited 2026-08-24 (editingInfo, read 2026-10-03): New Mexico 5, Wyoming 2, each with a Website. KEY: no GlobalID; OBJECTID is unique by construction, and Name is too (7 of 7). A CACHE IS STOCKED BY PEOPLE AND CAN BE EMPTY: a point here says where a cache is kept, never that it holds water today. Published as a view; the hosted layer behind it is not public.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cdtc__cdtc_water_caches yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: 'A CACHE IS STOCKED BY PEOPLE AND CAN BE EMPTY' (notes): layer_rules' not_water keeps it off water and no other POI type fits, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -7172,7 +7172,7 @@
       "name_field": "Name",
       "notes": "5 points, 5 fields, last edited 2025-07-23 (editingInfo, read 2026-10-03): the caches on the Bootheel, New Mexico's southernmost stretch, where they are the difference between a dry 20 miles and not. KEY: no GlobalID; OBJECTID is unique by construction, and Name is too (5 of 5). Not the same points as cdtc_water_caches (7 points, other names). A CACHE CAN BE EMPTY: see cdtc_water_caches.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cdtc__cdtc_bootheel_water_caches yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: 'A CACHE CAN BE EMPTY' (notes): layer_rules' not_water keeps it off water and no other POI type fits, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -7197,8 +7197,8 @@
       "name_field": "NAME",
       "type_field": "PRKTYPE",
       "notes": "81 points, 9 fields, last edited 2026-03-03 (editingInfo, read 2026-10-03). PRKTYPE: Engineered parking area 54, Roadside parking area 10, the string '<Null>' 17. KEY: no GlobalID; OBJECTID is unique by construction, NAME is not (33).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cdtc__cdtc_parking yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (parking), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -7223,8 +7223,8 @@
       "name_field": "NAME",
       "type_field": "WP_Type",
       "notes": "292 points, 19 fields, last edited 2026-03-03 (editingInfo, read 2026-10-03). WP_Type: TH 104, AP 81, MD 23, M 2, RP 1, null 81. MAIL_L1 to MAIL_L4 are resupply mailing lines, a post office or a store on every row grouped ('C/O General Delivery' 19, 'US Post Office' 19, a general store and two street addresses of businesses), never a person's. KEY: no GlobalID; OBJECTID is unique by construction, NAME is not (143 distinct, 89 null).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cdtc__cdtc_trailheads_and_mail yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (trailhead), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -7681,8 +7681,8 @@
       ],
       "not_person_fields_comment": "Owner is the land's owning body: Fish and Wildlife Service 13,881, Unknown 393, State 185, City 65, Army Corps of Engineers 62 and 13 more classes and agencies (grouped 2026-10-03), never a person.",
       "notes": "14,864 points, 33 fields, last edited 2026-10-03 (editingInfo, read that day; the coverage audit read 14,921). Prop_Type, by its domain's labels: Parking Lot 7,895, Kiosks 1,447, Boat Launch 1,030, Observation Deck / Platform 696, Other 594, Road Bridge 386, Trail Bridge 312, Docks-Stationary 297, Point of Interest 291, Campsite 209, Bench 172, Overlook 165, Picnic Area 148, Hand Launch/Small Boat Launch 142, Campground 136 and 40 more, sewage plants and fuel tanks among them. Public_Use: Public Use 12,347, Non-public Use 1,716, Public Use Limited 516, null 285, which a mart has to filter on; Public_View Yes and Status Valid on all. Comments were sampled (25 of 1,999 distinct values, no person among them), not read whole. KEY: GlobalID, 14,864 distinct of 14,864. Creator and Editor are left out.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_usfws__usfws_refuge_property_points yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, parking, viewpoint), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name and the rows outside its keep_only_where values, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -7710,8 +7710,8 @@
       ],
       "not_person_fields_comment": "Owner is the land's owning body: Fish and Wildlife Service 1,247, State 7, County 3, City 2, Private 2 and others, null 481 (grouped 2026-10-03), never a person.",
       "notes": "1,756 points, 32 fields, last edited 2026-10-03 (editingInfo, read that day). Acc_Type: Trailhead 832, Field Approach 426, Foot Traffic 346, Walk Through 71, Public-Fishing 21, Boat 18, Water Trailhead 16, Motorized Vehicle 7, Public-Limited 4, FWS Staff Only 2, Horse 1, Water Crossing 1, null 11. Public_Use: Public Use 1,597, Public Use Limited 26, Non-public Use 17, null 116. KEY: GlobalID, 1,756 distinct of 1,756.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_usfws__usfws_refuge_access_points yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (trailhead), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name and the rows outside its keep_only_where values, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8147,7 +8147,7 @@
       "type_field": "TYPE",
       "notes": "33 points, 37 fields, last edited 2026-08-14 (editingInfo, read 2026-10-03), with capacity, surface and condition per lot (PRKNGCAPAC, PRKNGSURF, PRKNGCOND). TYPE: Parking Area 21, Road Turn Out 3, blank 9. KEY: GlobalID, 33 distinct of 33. DCR's own org, not MassGIS's server: blue_hills/ draws from here, and massgis/ is the folder Massachusetts' state layers sit in.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_massgis__ma_dcr_blue_hills_parking yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'unclassified' on the fixture warehouse (2026-10-04), from EEA's and DCR's terms ('These data were created for planning purposes'), which no phrase explains, a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8172,7 +8172,7 @@
       "type_field": "TYPE",
       "notes": "262 points, 36 fields, last edited 2024-09-27 (editingInfo, read 2026-10-03): the numbered markers hikers navigate the Blue Hills by (the coverage audit found Friends of the Blue Hills' hikes citing 'marker 4234'), with each number on the 1984, 2016, 2018, 2019 and 2020 maps. TYPE: Intersection 248, Trailhead 4, blank 10. KEY: GlobalID, 262 distinct of 262.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_massgis__ma_dcr_blue_hills_intersections yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'unclassified' on the fixture warehouse (2026-10-04), from EEA's and DCR's terms ('These data were created for planning purposes'), which no phrase explains, a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8409,8 +8409,8 @@
       "name_field": "Name",
       "type_field": "Asset_Type",
       "notes": "1,369 points, 5 fields, last edited 2026-10-03 (editingInfo, read that day). Asset_Type: Parking 415, Trailhead 349, Trail Bridge 183, Campsite-Backcountry 156, Campsite-Walk-In 56, Scenic Viewpoint/Overlook 53, Bridge 47, Trailhead Information 34, Trail Boardwalk 22, Staircase 20, Campsite-Backcountry Shelter 10, Campsite-Backcountry Group Camp 8, Suspension/Swinging Bridge 5, Lookout Tower 5, Trail Steps 3, Ladder 3. Its editFieldsInfo names Creator_3 and Editor_3, which this public view does not expose; were they exposed, the extract would leave them out. KEY: GlobalID, 1,369 distinct of 1,369. It is on TDEC's ArcGIS Online account, the one tdec_trail_closures and tdec_state_park_trails_2024 are read from; tnstateparks.com, which the coverage audit found behind a user-agent filter, was not fetched.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cumberland__tn_state_parks_hiking_assets yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, parking, shelter, trailhead, viewpoint), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name and the water types its not_water rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8433,8 +8433,8 @@
       "name_field": "CAMPGRND_NAME",
       "type_field": "CAMPGRND_TYPE",
       "notes": "203 points, 11 fields, last edited 2026-07-27 (editingInfo, read 2026-10-03). CAMPGRND_TYPE: Backcountry Camping 58, Mixed RV Tent 54, Group Camp 27, Backcountry Shelter 16, Primitive 15, Paddle 10, Walk-In 6, Tent Only 5, Hammock 3, Camping Cabins 2, Wrangler 2, null 5. Status Open 201, Closed 1, null 1; Website_Show No on 10, the publisher's own hide. KEY: GlobalID, 203 distinct of 203; CAMPGROUND_UID is not (201).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cumberland__tn_state_parks_campgrounds yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, shelter), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8458,8 +8458,8 @@
       "name_field": "SITE_NAME",
       "type_field": "CAMPGRND_TYPE",
       "notes": "3,242 points, 10 fields, last edited 2026-01-31 (editingInfo, read 2026-10-03): one point per reservable site, campground sites mostly; CAMPGRND_TYPE is null on 3,236, Backcountry Campsite 5, Primitive 1. KEY: GlobalID, 3,242 distinct of 3,242; TSP_CMPSTE_UID is not (3,196, 22 null).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cumberland__tn_state_parks_campsites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8727,8 +8727,8 @@
       ],
       "person_fields_comment": "Ownership names the landholder, an agency on most rows and a private individual on one (grouped 2026-10-03), so it is never asked for.",
       "notes": "46 points, 13 fields, last edited 2026-08-25 (editingInfo, read 2026-10-03). Status: Trailhead Open 37, Non CT Trailhead 8, Trailhead Proposed 1: A PROPOSED TRAILHEAD MUST NEVER RENDER AS ONE. Capacity, Surface and Information per trailhead. KEY: OBJECTID, unique by construction; Name is unique too (46). The same service carries Trail_Closures, Closures and Public_Hazards_Closures layers, which are notices (decision 53; layer 15 is ctsst_public_hazards_closures) and not this row's. Which organization owns the service is not stated on it; the provider is CTC, the Cumberland Trail Conference, as the ctsst_* rows on the same account read it.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cumberland__cumberland_trail_trailheads yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (trailhead), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8752,8 +8752,8 @@
       "key_comment": "the geometry: 17 of 17 (measured 2026-10-04 by reading every row and every vertex as the extract reads the layer (f=geojson, outSR 4326), under lib/user_agent.py's USER_AGENT, robots.txt first). `id_field` names the object id, which a reload mints again (decision 40).",
       "name_field": "Name",
       "notes": "17 points, 8 fields, last edited 2025-05-28 (editingInfo, read 2026-10-03). Comments give the distance to the nearest trailheads each way, and one says 'the shelter no longer exists at this site'; SignUp links the reservation page (Friends of the Cumberland Trail 14, tnstateparks.com 2). KEY: OBJECTID_1, unique by construction; Name is unique too (17).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cumberland__cumberland_trail_campsites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8778,7 +8778,7 @@
       "name_field": "Name",
       "notes": "92 points, 6 fields, last edited 2025-05-28 (editingInfo, read 2026-10-03): named rocks, overlooks and caves. Comments carry 'Cave closed to the public-temporarly' and 'Cave closed to the public-permently', closures in a POI's own words that a mart must read before it draws the cave. KEY: OBJECTID, unique by construction; Name is unique too (92).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cumberland__cumberland_trail_natural_features yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: no club_poi_types row maps any of its values to a POI type, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8936,7 +8936,7 @@
       "type_field": "Feature_Type",
       "notes": "423 points, 6 fields, last edited 2026-03-31 (editingInfo, read 2026-10-03). Three coded fields, each with its domain's labels: Feature_Type river/stream 207, drinking fountain 103, water pump 97, lake 7, spring 3, artesian well 3, other 3; Potability Treatment required 217, Potable 198, No water 7, Unknown 1; Reliability unknown 274, intermittent/seasonal 86, permanent 62, and one row coded 0, which the domain does not define. KEY: no GlobalID; OBJECTID is unique by construction and nothing else is (Description 253 distinct with 119 null). The layer says itself that it 'is not comprehensive', which a card has to carry. THE VIEW CALLED 'Potable Water' IS NOT POTABLE WATER: IAT_Potable_Water/FeatureServer/0 answered all 423 rows, Treatment required ones included (returnCountOnly, 2026-10-03), so nothing may read potability from which service a point came through; Potability is the only answer.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_iata__iata_water yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: the layer's own description says 'some points should not be shared publicly (see attribute field definitions)', and no field this pipeline loads says which, so no rule can keep those points off a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8966,8 +8966,8 @@
       ],
       "person_fields_comment": "Comment, 74 distinct values, is reservation and permit notes with phone numbers, and on one row a first name beside a private phone number (grouped and scanned 2026-10-03), so it is never asked for. The reservation notes go with it.",
       "notes": "247 points, 9 fields, last edited 2026-08-11 (editingInfo, read 2026-10-03). Camp_Type, by its domain's labels: Private Campground 77, Public Campground 66, Dispersed Camping Area 39, Primitive Campsite 33, Public Group Campground 18, Shelter/Hut 12, Cabin 2. Water, coded as on iata_water: Potable 128, No water 89, Unknown 21, Treatment required 7, null 2. KEY: no GlobalID; OBJECTID is unique by construction. Four public views are filtered slices of this layer, noted as SAME_AS in iata/points_of_interest.py: 14 + 33 + 161 + 39 = 247. 'Dispersed Camping Area' is dispersed camping, which usfs_dispersed_camping_holdback holds back for the Forest Service's own: whether IATA's 39 ship is the same question.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_iata__iata_camping yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, shelter), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -8997,8 +8997,8 @@
       ],
       "person_fields_comment": "Parking_Notes, 66 distinct values, says whom to tell before parking overnight, and on four rows that is a named state employee's e-mail address (grouped and scanned 2026-10-03; the addresses are not copied here), so it is never asked for. Overnight_Park, which loads, still answers Yes, No or With permission.",
       "notes": "443 points, 10 fields, last edited 2026-07-13 (editingInfo, read 2026-10-03). Parking_Type: Other public parking area 323, Public IAT parking area 117, IAT roadside parking 3. Overnight_Park: Unknown 166, No 141, Yes 114, With permission 21, null 1. KEY: no GlobalID; OBJECTID is unique by construction.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_iata__iata_parking yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (parking), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -9156,8 +9156,8 @@
       ],
       "person_fields_comment": "Description, 1,039 distinct values, is mostly parking, water and lean-to notes, but it also names private people: a cabin's contact with a personal e-mail address, and the builders and memorials of benches, a fireplace and a lean-to (grouped and scanned 2026-10-03; the names are not copied here). The column is never asked for, and `notes` says what that costs.",
       "notes": "1,789 points, 11 fields, last edited 2026-06-14 (editingInfo, read 2026-10-03). Category, with Symbol_Name inside it: Parking/Access 865 (Parking Area 608, Parking Advisory 138, No Parking 60, Gate 42, Information 16, Crossing 1), PointsOfInterest 354 (Register 154, Scenic Area 130, Point of Interest 50, Summit 10, Cemetery 6, Fire Tower 4), Camping 164 (Lean-to 63, Bivouac 58, Campground 36, Forest 5, Shelter 2), WaterAndRestrooms 122 (Water Source 95, Drinking Water 12, Picnic Area 9, Restroom 6), TrailJunctions 90, HuntingClosures 76 (Hunting Closure), Map Info 63, PostOffices 27, PassportHikes 21, Advisory 7 (High Water Hazard). KEY: no GlobalID. OBJECTID is unique by construction; the natural key is (Name, MapName), 1,789 distinct of 1,789, while Name alone is 1,486. THE 76 HUNTING CLOSURES AND 7 HIGH WATER HAZARDS ARE NOTICES, not places to go: they belong to the closures and warnings marts (decision 53), and a POI mapping must leave them out. Revision_Date is text, latest 2025-02-19 on the rows grouped. DESCRIPTION DOES NOT LOAD (person_fields), and with it go the per-point notes a hiker would use: water ('Seasonal potable water', 'Piped spring', 'Reliable stream'), privies and permits. Symbol_Name still says which points are water. Only a row-level redaction would keep them, and this pipeline has none: pipeline/ELT.md's rule 8 excludes a person field inside the dlt resource, never in dbt.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_fltc__fltc_waypoints yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, parking, privy, shelter, viewpoint, water), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name and the water types its not_water rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. Its water ships at low confidence, as every wave 1 water row does: none reports flow. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -9422,7 +9422,7 @@
       "type_field": "Campsite_Type",
       "notes": "177 points, 21 fields, last edited 2026-09-22 (editingInfo, read 2026-10-03). Campsite_Type: Campsite 80, Designated Campsite 65, Campground 26, Shelter 6. Trail_Type: On Trail 130, On Spur Trail 39, Off Trail 6, and two strays. Dist2Water_ft and Dist2Trail_ft per site: FTA publishes no water layer, and this is the nearest thing to one, a distance and never a source. Source is a method or a body (FTA GPS 111, USFS Digitized 53), not a person. KEY: GlobalID, 177 distinct of 177; Campsite_ID is not (174, 3 null). Created_User and Last_Edited_User are editor tracking, which PERSON_FIELDS drops.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_fta__fta_campsites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'unclassified' on the fixture warehouse (2026-10-04), from the Florida Trail Association's disclaimer, which no phrase of licence_restriction_phrases explains, a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -9445,8 +9445,8 @@
       "name_field": "Trailhead_Name",
       "type_field": "Connection_Type",
       "notes": "166 points, 10 fields, last edited 2026-09-22 (editingInfo, read 2026-10-03). Trailhead_Status Open on all 166; Connection_Type On Trail 123, On Spur Trail 37, Off Trail 5, On Side Trail 1; Capacity and Fee per trailhead. KEY: GlobalID, 166 distinct of 166; Trailhead_Name is not (164).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_fta__fta_trailheads yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (trailhead), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -9686,8 +9686,8 @@
       "name_field": "Name",
       "type_field": "Lodging_Type",
       "notes": "35 points, 17 fields, last edited 2026-05-26 (editingInfo, read 2026-10-03). Lodging_Type: Campsite 20, Hut 8, Lodge 3, Cabin 2, Seasonal Lodge & Cabins 2; Region White Mountains 31, Lakes Region 4. How_to_Access and booking links per site. KEY: Name, 35 distinct of 35; FID is the object id. The 8 huts are also ATC shelters where the A.T. passes: independent datasets, deduplicated in dbt.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_amc__amc_lodging yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, shelter), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -9716,8 +9716,8 @@
       ],
       "person_fields_comment": "NOTES holds three distinct values, two of them strings of initials and the third 'Berkshire Chapter' (grouped 2026-10-03; the initials are not copied here). Read as people's initials, as amc_trailheads_and_parking's Staff is, so it is never asked for.",
       "notes": "61 points, 12 fields, last edited 2025-01-21 (editingInfo, read 2026-10-03). TYPE: Tentsite - Primitive Camp 14, Shelter 12, Cabin Self Service 8, White Mountain Hut 8, Campsite 7, Lodge 7, Full Service Camp 4, Headquarters 1. It includes off-A.T. sites such as the Maine Woods lodges. KEY: no GlobalID; FID is unique by construction, NAME is not (60) and FEATUREID is not (28). amc_at/points_of_interest.py draws from this resource rather than extracting it twice.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_amc__amc_destinations yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, shelter), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -9746,8 +9746,8 @@
       ],
       "person_fields_comment": "`Staff` holds initials on every row, four values (one pair on 85, a combined pair on 10, two others on 8 and 3; grouped 2026-10-03, the initials not copied here), which name the AMC staff who surveyed each point, so it is never asked for.",
       "notes": "106 points, 18 fields, last edited 2022-11-14 (editingInfo, read 2026-10-03), in eastern Pennsylvania's trail network (Tr_Manager: Montgomery County 34, Schuylkill River Greenway 23, Delaware & Lehigh National Heritage Corridor 21 and others). Category: Parking Lot 56, Trailhead 43, Access Point 7. KEY: no GlobalID; FID is unique by construction, Name is not (100).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_amc__amc_trailheads_and_parking yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (parking, trailhead), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -9772,8 +9772,8 @@
       "name_field": "Descriptio",
       "type_field": "Type",
       "notes": "205 points, 8 fields, last edited 2022-11-26 (editingInfo, read 2026-10-03). Type: View 156, Point of Interest 39, Shelter 7, Campsite (Approved) 3. KEY: no GlobalID; OBJECTID_1 is unique by construction, ID is not (171).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_amc__amc_net_points_of_interest yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, shelter, viewpoint), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -9798,8 +9798,8 @@
       "name_field": "Location",
       "type_field": "Type",
       "notes": "64 points, 10 fields, last edited 2022-11-26 (editingInfo, read 2026-10-03). Type: Road Shoulder 37, Parking Lot 27; Spaces and Directions per point. KEY: no GlobalID; OBJECTID is unique by construction.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_amc__amc_net_parking yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (parking), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -10022,7 +10022,7 @@
       "person_fields_comment": "Comments are planning notes, and one names a person who approves designs (grouped 2026-10-03), so the column is never asked for.",
       "notes": "26 points, 16 fields, last edited 2025-06-25 (editingInfo, read 2026-10-03). A PLANNING INVENTORY: TH_Category mixes existing and proposed (backcountry TH, motorized 7, Downtown TH, non motorized 7, existing 3 and seven more), and Additional_Suggested_Amenities, Site_Visit_Conducted and Design_Mockup are plans, not facts on the ground. Land_Ownership names agencies (PNF 6, TNF 4, Plumas County 3 and others). KEY: OBJECTID_1, unique by construction; TH_Name is not (25 distinct, 1 null).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_sbts__sbts_connected_community_trailheads yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: 'A PLANNING INVENTORY' mixing existing and proposed trailheads (notes): layer_rules' drop_layer holds every point of it. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -10489,8 +10489,8 @@
       ],
       "person_fields_comment": "`SOURCE` names who collected each point on GMC's layers: on OS_MASTER a GPS collector's name on 29 rows (two staff members, each by first initial and surname) beside 'ATC Asset Inventory 2019*' 29, and on PARKING_MASTER a staff member's name on 1 (grouped 2026-10-03; the names are not copied here). `LastEdBy` is the last editor's account. NOTES, 5 distinct values, is how each point was placed ('gps', 'manual placement') and, on two, an editor's name with 'updated' (grouped 2026-10-03). All three are listed here so they are never asked for; the layer's other columns load.",
       "notes": "72 points, 46 fields, item modified 2025-10-09 (read 2026-10-03). OSType: SH 47, LO 9, CA 8, TS 8, which OSType_Lng spells Shelter, Lodge, Camp and Tent Site (one LO row reads Shelter; grouped 2026-10-03). Water per site: Water_Srce Brook 33, Spring 19, Unreliable spring 7, Unreliable brook 6, Pump 2, Carry 1, Rain barrel 1, Small outflow 1, blank 2, with free-text Water and Water_Note beside it. Also SH_cap and Tent_cap (GMC's own capacities), Privy_Type, Fee, Caretaker (No 50, Yes 14, Ridge Runner 8). KEY: GlobalID, 72 distinct of 72; Name is also unique (72), FeatureID is not (71). PublicMap reads 'N' on 1 row, GMC's own withhold, which a mart has to honour. Landowner is a class (US Dept. of Agriculture 37, VT ANR 22, Private 4 and others), not a person. ATC's shelters layer holds 27 of these as code-4 sites: an independent dataset of the same ground, deduplicated in dbt (decision 34).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_gmc__gmc_overnight_sites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite, shelter), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -10518,8 +10518,8 @@
       ],
       "person_fields_comment": "`SOURCE` names who collected each point on GMC's layers: on OS_MASTER a GPS collector's name on 29 rows (two staff members, each by first initial and surname) beside 'ATC Asset Inventory 2019*' 29, and on PARKING_MASTER a staff member's name on 1 (grouped 2026-10-03; the names are not copied here). `LastEdBy` is the last editor's account. Both are listed here so they are never asked for; the layer's other columns load.",
       "notes": "96 points, 29 fields, last edited 2024-12-16 (editingInfo, read 2026-10-03). ParkinType: ML 45, EL 22, RS 19, AL 1, blank 9 (codes GMC does not spell out on the layer). Capacity and Plowed per lot. KEY: GlobalID, 96 distinct of 96; Name is also unique (96). PublicMap reads 'N' on 7, GMC's own withhold. Owner is blank on all 96, and the person-shaped backstop leaves it out.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_gmc__gmc_parking yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (parking), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -10547,8 +10547,8 @@
       ],
       "person_fields_comment": "`SOURCE` names who collected each point on GMC's layers: on OS_MASTER a GPS collector's name on 29 rows (two staff members, each by first initial and surname) beside 'ATC Asset Inventory 2019*' 29, and on PARKING_MASTER a staff member's name on 1 (grouped 2026-10-03; the names are not copied here). `LastEdBy` is the last editor's account. Both are listed here so they are never asked for; the layer's other columns load.",
       "notes": "73 points, 26 fields, last edited 2022-12-13 (editingInfo, read 2026-10-03). PrivyType: MO 46, BB 19, PT 6, blank 2. KEY: GlobalID, 73 distinct of 73; Name 72 and FeatureID 72 are not.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_gmc__gmc_privies yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (privy), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -10575,8 +10575,8 @@
       ],
       "person_fields_comment": "`SOURCE` names who collected each point on GMC's layers: on OS_MASTER a GPS collector's name on 29 rows (two staff members, each by first initial and surname) beside 'ATC Asset Inventory 2019*' 29, and on PARKING_MASTER a staff member's name on 1 (grouped 2026-10-03; the names are not copied here). It is listed here so it is never asked for; the layer's other columns load. On this layer Source is blank on all 164.",
       "notes": "164 points, 20 fields, last edited 2026-08-31 (editingInfo, read 2026-10-03). Three 0/1 flags rather than one type: VISTA 108, SUMMIT 75, TOWER 3; VSTYPE is blank on all 164. KEY: GlobalID, 164 distinct of 164; Name is not (134).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_gmc__gmc_viewpoints yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (viewpoint), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -10603,7 +10603,7 @@
       "person_fields_comment": "`LastEdBy` is the last editor's account, so it is never asked for.",
       "notes": "70 named points, 7 fields, last edited 2022-12-13 (editingInfo, read 2026-10-03): gaps, notches, springs, visitor centers and ski areas by name (Appalachian Gap, Bear Wallow Spring, Barnes Camp Visitor Center), with no type column. KEY: GlobalID, 70 distinct of 70; POINAME is not (69).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_gmc__gmc_map_features yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: no club_poi_types row maps any of its values to a POI type, so nothing of it can reach a phone. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -11213,8 +11213,8 @@
       "name_field": "CAMP",
       "type_field": "TYPE",
       "notes": "192 points, 13 fields, last edited 2024-02-13 (editingInfo, read 2026-10-03); the item says the data was 'current as of 06/2023' (coverage audit). TYPE: Group 43, Campground 31, RV 31, Trail Camp 21, Hostel 13, Cabin 10, Equestrian 10, Youth 10, Scout Camp 9 and six more. STATUS: OPEN 160, RESTRICTED 16, OPEN WITH RESTRICTIONS 8, CLOSED 6: TWENTY MONTHS OLD, AND NEVER TO BE READ AS LIVE. MANAGER names agencies and operators (California State Parks 30, East Bay Regional Park District 29 and 60 more). NOTES carries closure and reservation facts, one with a business's reservation number. KEY: GlobalID, 192 distinct of 192; CAMP is not (177).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_ridgetrail__ridgetrail_campsites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (campsite), an allowlist by the code the layer lands; the layer_rules seed holds back the rows its drop_where rows name, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -11355,7 +11355,7 @@
       "type_field": "TYPE",
       "notes": "32 points, 14 fields, last edited 2026-09-11 (editingInfo, read 2026-10-03). TYPE: campsite 16, shelter 16. STATUS open 31, null 1; SHOW_PUBLIC yes on all 32; AT and NET flag the sites on the A.T. and the New England Trail; MAINT_ORG names bodies (AMC 17, CT DEEP 11 under three spellings, CFPA 2 and two others), not people. KEY: GlobalID, 32 distinct of 32. The A.T. sites are also in ATC's shelters and campsites: independent datasets of the same ground, deduplicated in dbt. The licence text says 'not intended to be use for navigation', which a disclaimer of fitness rather than a refusal.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cfpa__cfpa_overnight_sites yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'purpose_limited, unclassified' on the fixture warehouse (2026-10-04), from 'for informational and planning purposes only. This map is not intended to be use for navigation', a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -11380,7 +11380,7 @@
       "type_field": "TYPE",
       "notes": "365 points, 11 fields, last edited 2026-09-25 (editingInfo, read 2026-10-03). TYPE: shoulder 199, lot 166; STATUS open and SHOW_PUBLIC yes on all 365; SPACES per point. KEY: GlobalID, 365 distinct of 365.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_cfpa__cfpa_parking yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'purpose_limited, unclassified' on the fixture warehouse (2026-10-04), from 'for informational and planning purposes only. This map is not intended to be use for navigation', a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -11404,8 +11404,8 @@
       "key_comment": "the geometry: 6 of 6 (measured 2026-10-04 by reading every row and every vertex as the extract reads the layer (f=geojson, outSR 4326), under lib/user_agent.py's USER_AGENT, robots.txt first). `id_field` names the object id, which a reload mints again (decision 40).",
       "name_field": "NAME",
       "notes": "6 points, 2 fields, last edited 2020-12-23 (editingInfo, read 2026-10-03): Fort Meade, Alkali Creek, Deadman, Lions Club Park, Tile Plant, Old Stone. KEY: OBJECTID, unique by construction; NAME is unique too (6).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_black_hills__black_hills_trailheads yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (trailhead), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }
@@ -11429,8 +11429,8 @@
       "key_comment": "the geometry: 3 of 3 (measured 2026-10-04 by reading every row and every vertex as the extract reads the layer (f=geojson, outSR 4326), under lib/user_agent.py's USER_AGENT, robots.txt first). `id_field` names the object id, which a reload mints again (decision 40).",
       "name_field": "LOCATION",
       "notes": "3 points, 2 fields, last edited 2020-12-23 (editingInfo, read 2026-10-03). KEY: OBJECTID, unique by construction; LOCATION is unique too (3).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered for the extract, not shipped: no staging model reads raw_black_hills__black_hills_parking yet, so by its own definition nothing of it reaches a release. Phase C of decision 54 (pipeline/ELT.md, 'Loading everything the clubs publish') sets this true when a mart reads the table, with the new-data review report decision 31 asks for. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (parking), an allowlist by the code the layer lands, each rule a unit test in _points_of_interest__club_points.yml; the classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
       "meta": {
         "cadence": "monthly"
       }

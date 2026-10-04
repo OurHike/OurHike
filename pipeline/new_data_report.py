@@ -16,8 +16,10 @@ maintainer reading a pull request, and `new_data_report.json`, with:
 3. every closure, warning, water and shelter source the marts carry, one line
    each, and whether today's files carry rows from it, read from parity.py's
    `--json-dir` results (`--parity-dir`), whose `old_sources` count today's
-   exporter's records on the same input by the source each names. Without
-   `--parity-dir` the answer is "not measured".
+   exporter's records on the same input by the source each names. A v2
+   family's result is left out, because its old side is the v1 file the same
+   dbt build wrote (todays_exporter_compared()). Without `--parity-dir` the
+   answer is "not measured".
 
 WHAT IT NEVER HOLDS, enforced rather than hoped for:
 - no person field. Every query names its columns (never `select *`), none of
@@ -257,13 +259,27 @@ def layers(con, tables: dict) -> list[dict]:
     return found
 
 
+def todays_exporter_compared(family: str) -> bool:
+    """Whether a parity family's old side is today's exporter. A v2 family's (decision 44) is the v1 file the same dbt
+    build wrote beside it (parity.Family.v1_beside), so a source it names is the new path's, not today's: counting it
+    would read a wave 1 layer's first records as published today."""
+    from parity import FAMILIES
+
+    known = FAMILIES.get(family)
+    return known is None or known.v1_beside is None
+
+
 def load_parity(parity_dir: Path | None) -> dict[str, dict]:
     if parity_dir is None:
         return {}
     results = {}
     for path in sorted(parity_dir.glob("*.json")):
         document = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(document, dict) and document.get("format") == PARITY_RESULT_FORMAT:
+        if (
+            isinstance(document, dict)
+            and document.get("format") == PARITY_RESULT_FORMAT
+            and todays_exporter_compared(document["family"])
+        ):
             results[document["family"]] = document
     return results
 

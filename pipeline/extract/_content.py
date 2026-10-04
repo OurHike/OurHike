@@ -51,29 +51,13 @@ from lib.http_retry import request_with_retry
 
 # --- Podcasts -----------------------------------------------------------------------------------------------------
 
-ITUNES = "{http://www.itunes.com/dtds/podcast-1.0.dtd}"
-PODCAST_INDEX = "{https://podcastindex.org/namespace/1.0}"
-DUBLIN_CORE = "{http://purl.org/dc/elements/1.1/}"
-GOOGLE_PLAY = "{http://www.google.com/schemas/play-podcasts/1.0}"
-
-# An item's tags that name or reach a person, by their namespaced name, each seen on a live feed on 2026-10-04
-# (the module docstring): never read, so no column for them exists. RSS 2.0 defines <author> as "Email address
-# of the author of the item"; `itunes:owner` carries an owner's name and e-mail address (USFWS's Future of
-# Conservation puts it on every item); Google Play's `author` repeats iTunes' (Mohonk's Walk Back in Time, a
-# named individual on 12 of 12). A person under a tag nobody has named loads until it is added here, which is
-# why each new feed's tags are read before its row is registered.
-PERSON_TAGS = frozenset(
-    {
-        "author",
-        f"{ITUNES}author",
-        f"{ITUNES}owner",
-        f"{DUBLIN_CORE}creator",
-        f"{PODCAST_INDEX}person",
-        f"{GOOGLE_PLAY}author",
-        f"{GOOGLE_PLAY}owner",
-        f"{GOOGLE_PLAY}email",
-    }
-)
+# The feed namespaces and the tags that name a person live beside PodcastFeed in extract/_kinds.py, which
+# drops them too; they are imported here under the names this module has always used.
+ITUNES = _kinds.ITUNES
+PODCAST_INDEX = _kinds.PODCAST_INDEX
+DUBLIN_CORE = _kinds.DUBLIN_CORE
+GOOGLE_PLAY = _kinds.GOOGLE_PLAY
+PERSON_TAGS = _kinds.PERSON_TAGS
 
 
 @dataclass(frozen=True)

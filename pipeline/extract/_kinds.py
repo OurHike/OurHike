@@ -1779,6 +1779,32 @@ def catalogue_row() -> CatalogueRow:
 # RSS and the namespaces a podcast feed's items use. Each child of an <item>
 # becomes a column named by its tag, the namespace written as a short prefix
 # (itunes_duration), so nothing a feed carries is dropped before dbt sees it.
+ITUNES = "{http://www.itunes.com/dtds/podcast-1.0.dtd}"
+PODCAST_INDEX = "{https://podcastindex.org/namespace/1.0}"
+DUBLIN_CORE = "{http://purl.org/dc/elements/1.1/}"
+GOOGLE_PLAY = "{http://www.google.com/schemas/play-podcasts/1.0}"
+
+# An item's tags that name or reach a person, by their namespaced name, each seen on a live feed on 2026-10-04
+# (extract/_content.py's module docstring): never read, so no column for them exists, by PodcastFeed or its
+# subclass PodcastEpisodes. RSS 2.0 defines <author> as "Email address
+# of the author of the item"; `itunes:owner` carries an owner's name and e-mail address (USFWS's Future of
+# Conservation puts it on every item); Google Play's `author` repeats iTunes' (Mohonk's Walk Back in Time, a
+# named individual on 12 of 12). A person under a tag nobody has named loads until it is added here, which is
+# why each new feed's tags are read before its row is registered.
+PERSON_TAGS = frozenset(
+    {
+        "author",
+        f"{ITUNES}author",
+        f"{ITUNES}owner",
+        f"{DUBLIN_CORE}creator",
+        f"{PODCAST_INDEX}person",
+        f"{GOOGLE_PLAY}author",
+        f"{GOOGLE_PLAY}owner",
+        f"{GOOGLE_PLAY}email",
+    }
+)
+
+
 FEED_NAMESPACES = {
     "http://www.itunes.com/dtds/podcast-1.0.dtd": "itunes",
     "http://purl.org/rss/1.0/modules/content/": "content",
@@ -1844,6 +1870,8 @@ class PodcastFeed(Resource):
         for item in items:
             row = dict(show)
             for child in item:
+                if child.tag in PERSON_TAGS:
+                    continue
                 column = _feed_column(child.tag)
                 if column == "enclosure":
                     row["enclosure_url"] = child.get("url")

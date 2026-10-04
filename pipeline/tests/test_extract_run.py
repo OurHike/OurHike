@@ -981,6 +981,25 @@ def test_a_podcast_feed_lands_one_row_per_episode_and_never_the_audio(registry, 
     assert not any(r.url.endswith(".mp3") for r in requests_mock.request_history), "audio is linked, never fetched"
 
 
+def test_a_podcast_feed_never_lands_a_tag_that_names_a_person(registry, requests_mock):
+    """PodcastFeed, which atc/podcasts.py reads The Green Tunnel with, leaves out every tag in PERSON_TAGS, as its
+    subclass PodcastEpisodes does: RSS's <author> is an e-mail address, and itunes:owner carries one."""
+    item = (
+        "<item><guid>g-1</guid><title>One</title><author>someone@example.org (Some One)</author>"
+        "<itunes:author>Some One</itunes:author><itunes:owner><itunes:email>owner@example.org</itunes:email>"
+        "</itunes:owner><dc:creator>Some One</dc:creator><itunes:duration>12:00</itunes:duration></item>"
+    )
+    feed_xml = (
+        '<rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        f"<channel><title>A Trail Show</title><link>https://example.org</link>{item}</channel></rss>"
+    ).encode()
+    requests_mock.get(FEED_URL, content=feed_xml, headers={"ETag": 'W/"v1"'})
+    [row] = list(PodcastFeed(key="a_podcast", club="testclub", type="podcasts").rows({}))
+    assert row["itunes_duration"] == "12:00"
+    assert not {"author", "itunes_author", "itunes_owner", "ns_creator"} & set(row), row
+    assert "example.org" not in "".join(str(value) for value in row.values() if value != "https://example.org")
+
+
 def test_an_unchanged_podcast_feed_answers_304_and_is_fresh(registry, requests_mock):
     def answer(request, context):
         if request.headers.get("If-None-Match") == 'W/"v1"':

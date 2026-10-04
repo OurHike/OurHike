@@ -365,7 +365,7 @@
       "discovered_date": "2026-10-03",
       "notes": "5 volcanoes on 2026-10-03: Gareloi, Shishaldin and Ahyi Seamount YELLOW/ADVISORY, Great Sitkin and Kilauea ORANGE/WATCH. Fields: obs_fullname, obs_abbr, volcano_name, vnum, notice_type_cd, notice_identifier, sent_utc, sent_unixtime, color_code, alert_level, notice_url, notice_data. The key is vnum (unique on 5 of 5): three AVO volcanoes shared one notice_identifier that day, so the notice cannot key the table. No coordinates; vnum is the Smithsonian volcano number. It reaches a hiker only where a drawn trail is near a volcano (the Cascades, Hawaii, Alaska), which is dbt's join to make.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link. Which trails it concerns is that mart's join to make."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): no geometry, and its own notes say it reaches a hiker only where a drawn trail is near the volcano, a join no model makes; unplaced, a row would reach every hiker or none. Settled by that join."
     },
     {
       "key": "usgs_pwfdf_assessments",
@@ -383,8 +383,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "749 assessed fires on 2026-10-03 (returnCountOnly); copyrightText 'USGS'. Fire_ID, fire, location, size, status, start_date, assessment_date, download_url, ScienceBaseURL. `status` is USGS's own field, its vocabulary unread (@unvalidated), so it is not a filter. On-prem: the service and layer ETags are one body hash (\"d5659482\"), never a marker. Segment and basin hazard layers 1-12 sit beside it, not wired. Read by this step at 2026-10-03T16:08:45Z: returnCountOnly under the row's `where` answered 749, and `OBJECTID` is distinct on 749 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usgs_tnm__usgs_pwfdf_assessments reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; a row whose start_date has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usgs_gnis_populated_places",
@@ -715,7 +715,7 @@
       "discovered_date": "2026-10-03",
       "notes": "224 polygons on 2026-10-03 (audit 223): Hunting 1 'Hunting area' 135, Hunting 2 'Restricted Area/Safety Zone' 89; lastEditDate 2026-10-02 14:57 UTC. PERSON FIELDS LEFT OUT: created_user and last_edited_user hold staff e-mail addresses. Read by this step at 2026-10-03T16:11:47Z: returnCountOnly under the row's `where` answered 224, and `GlobalID` is distinct on 224 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: the layer carries no season dates, so it says 'hunting happens here' and not 'this week'; joining DEC's season calendar is the next step, and whether hunting areas are warnings is the maintainer's open question (nysparks/warnings.py)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): the layer says 'hunting happens here' and not 'this week' (no season dates), and whether a hunting area is a warning at all is the maintainer's open question (nysparks/warnings.py), which decision 63 did not answer. Settled by the maintainer, then DEC's season calendar."
     },
     {
       "key": "nynjtc_long_path",
@@ -852,7 +852,7 @@
       "discovered_date": "2026-10-03",
       "notes": "16 zones on 2026-10-03; edited 2026-08-18. Zone_Number, Zone_Name, Area_Acres, Perimeter_MIles, GlobalID. Read by this step at 2026-10-03T16:11:33Z: returnCountOnly under the row's `where` answered 16, and `GlobalID` is distinct on 16 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: zones with no restriction or date field; a warning only once the Preserve's hunting regulations' dates are attached (@unvalidated whether they are machine-readable)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): zones with no restriction or date field, a warning only once the Preserve's hunting dates are attached (@unvalidated whether they are machine-readable), so every zone would read as a warning all year. Settled by those dates."
     },
     {
       "key": "mohonk_preserve_boundary",
@@ -1186,8 +1186,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "127 reports on 2026-10-03; edited 2026-10-02 20:05. water_name, HAB_STATUS (e.g. Confirmed), STATUS_DATE, date_time, extent_bloom, county, data_provider (including 'Public', which names no one). A water hazard: one of CLAUDE.md's four ways to be hurt is running out of water, and a bloom makes a source unusable. Not in the NYS GIS Clearinghouse (ELT.md, 'Who may publish', rule 4), so dec_licence's authorisation and decision 55 are its basis. Read by this step at 2026-10-03T16:11:37Z: returnCountOnly under the row's `where` answered 130, and `globalid` is distinct on 130 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nysdec__nysdec_hab_reports reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; a row whose date_time has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "nysdec_big_game_seasons",
@@ -1206,7 +1206,7 @@
       "discovered_date": "2026-10-03",
       "notes": "92 WMU polygons on 2026-10-03; edited 2026-09-11. UNIT and season fields as text per unit (earlybowdeer 'Oct. 1 - Nov. 20', regseasondeer 'Nov. 21 - Dec. 13', bear seasons), so a warning window is a parse in dbt. Not in the NYS GIS Clearinghouse, so dec_licence's authorisation and decision 55 are its basis. Read by this step at 2026-10-03T16:11:42Z: returnCountOnly under the row's `where` answered 92, and `OBJECTID_1` is distinct on 92 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: whether hunting seasons are warnings at all is the maintainer's open question (nysdec/warnings.py)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): the seasons are text per unit ('Oct. 1 - Nov. 20'), not parsed, so all 92 units would read as warnings all year. Settled by the season parse its notes ask of dbt."
     },
     {
       "key": "dec_lands",
@@ -1448,8 +1448,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "14,211 recreation opportunities nationwide, measured 2026-10-03: open 5,939, none 5,149, closed 2,694, temporarily closed 305. National Forests in North Carolina (0811): open 112, closed 16, temporarily closed 12, none 17. Chattahoochee-Oconee (0803): open 63, closed 2, temporarily closed 9. NO DATE FIELD: a 'closed' row's age is unknown. On-prem: the service ETag (\"39c92e60\") hashes the metadata document and never moves with the rows, so it is never the marker; no `freshness.field`, so the change check answers UNKNOWN and the layer is read whole each check. Read by this step at 2026-10-03T16:06:17Z: returnCountOnly under the row's `where` answered 3123, and `objectid` is distinct on 3123 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_rec_opportunities_status reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose openstatus reads 'open' or 'none' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_r03_fire_restrictions",
@@ -1467,8 +1467,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "1 polygon on 2026-10-03: a Stage 1 order on the Cibola NF and Kiowa/Rita Blanca NG, 2026-08-31 to 2026-12-31, ordernum 03-03-07-26-17. ForestOrder schema: ordernum, ordertype, startdate, enddate, rescinddate, hyperlink. Not filtered: rescinddate is a date, and expiry is a dbt rule. On-prem with no maintained date, so each hourly check is a full read, of one row. Read by this step at 2026-10-03T16:06:35Z: returnCountOnly under the row's `where` answered 1, and `objectid` is distinct on 1 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_r03_fire_restrictions reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; a row whose own enddate has passed, whose startdate has not come or whose rescinddate is reached is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_r03_forest_orders",
@@ -1486,8 +1486,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "63 points at the coverage audit (2026-10-01), not recounted. The R04 schema: ordernum, ordertype, startdate, enddate, rescinddate, hyperlink. Not filtered (no status field; rescinddate and enddate are dates, a dbt rule). On-prem with no maintained date: each hourly check is a full read of 63 points. Read by this step at 2026-10-03T16:06:46Z: returnCountOnly under the row's `where` answered 59, and `objectid` is distinct on 59 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_r03_forest_orders reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose own enddate has passed, whose startdate has not come or whose rescinddate is reached is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_r04_forest_orders",
@@ -1505,8 +1505,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "233 order polygons on 2026-10-03; lastEditDate 2026-10-03 06:21 UTC. Uinta-Wasatch-Cache alone holds 100 (Safety Closure 54, Resource Protection 30, Recreation Restriction 9), 95 of them in force by their dates, including the 'Big Cottonwood Trail Closures' order 04-19-26-744 (2026-08-20 to 2026-11-30). Standing orders run to 2099-12-31, so recency is dbt's. Not filtered: the layer has no status field, and rescinddate is a date. Read by this step at 2026-10-03T16:06:53Z: returnCountOnly under the row's `where` answered 233, and `objectid` is distinct on 233 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_r04_forest_orders reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose own enddate has passed, whose startdate has not come or whose rescinddate is reached is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_r06_fire_closure_points",
@@ -1526,8 +1526,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "2,071 points in all, 177 with ClosureStatus 'Active', 2026-10-03; layers 0, 1 and 2 of one service, edited 2026-10-02. SAFETY, measured on the lines layer the same day: of the 938 Active lines, 112 carry a ClosureEndDate before 2026-10-03 and 50 carry none (Mt. Hood's 'Eagle Creek Area and Trail Closure', order 06-22-01-25-02, route TANNER BUTTE, Active with an end of 2026-07-07). Neither the status nor the dates can be trusted alone. Read by this step at 2026-10-03T16:06:57Z: returnCountOnly under the row's `where` answered 177, and `GlobalID` is distinct on 177 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_r06_fire_closure_points reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own ClosureStatus reads 'Active' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose own ClosureEndDate has passed or whose ClosureStartDate has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_r06_fire_closure_lines",
@@ -1547,8 +1547,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "10,516 lines in all, 938 with ClosureStatus 'Active', 2026-10-03; layers 0, 1 and 2 of one service, edited 2026-10-02. SAFETY, measured on the lines layer the same day: of the 938 Active lines, 112 carry a ClosureEndDate before 2026-10-03 and 50 carry none (Mt. Hood's 'Eagle Creek Area and Trail Closure', order 06-22-01-25-02, route TANNER BUTTE, Active with an end of 2026-07-07). Neither the status nor the dates can be trusted alone. Read by this step at 2026-10-03T16:07:02Z: returnCountOnly under the row's `where` answered 938, and `GlobalID` is distinct on 938 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_r06_fire_closure_lines reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own ClosureStatus reads 'Active' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose own ClosureEndDate has passed or whose ClosureStartDate has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_r06_fire_closure_areas",
@@ -1568,8 +1568,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "548 areas in all, 14 with ClosureStatus 'Active', 2026-10-03; layers 0, 1 and 2 of one service, edited 2026-10-02. SAFETY, measured on the lines layer the same day: of the 938 Active lines, 112 carry a ClosureEndDate before 2026-10-03 and 50 carry none (Mt. Hood's 'Eagle Creek Area and Trail Closure', order 06-22-01-25-02, route TANNER BUTTE, Active with an end of 2026-07-07). Neither the status nor the dates can be trusted alone. Read by this step at 2026-10-03T16:07:06Z: returnCountOnly under the row's `where` answered 14, and `GlobalID` is distinct on 14 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_r06_fire_closure_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own ClosureStatus reads 'Active' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose own ClosureEndDate has passed or whose ClosureStartDate has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_r09_superior_closures",
@@ -1587,8 +1587,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "210 points at the coverage audit (2026-10-01), not recounted; lastEditDate 2026-10-01 16:47 UTC. Closure_Type, ExpireDate, Posted_Date, ClosureOrderNumber, SITE_NAME. Not filtered: Closure_Type is a category, not a status, and ExpireDate is a date (a dbt rule). Read by this step at 2026-10-03T16:07:12Z: returnCountOnly under the row's `where` answered 210, and `GlobalID` is distinct on 210 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_r09_superior_closures reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose own ExpireDate has passed or whose Posted_Date has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_r01_bmwc_trail_closures",
@@ -1607,7 +1607,7 @@
       "discovered_date": "2026-10-03",
       "notes": "6 trail lines at the coverage audit (2026-10-01); layer 'R01BMWC_TrailCondition', lastEditDate 2026-10-02. Trail_Status, Field_Season, Comments, NAME, GIS_MILES. Trail_Status's values were not read, so the layer is not filtered: an unmeasured value in a filter would empty the table and prove the zero. Read by this step at 2026-10-03T16:07:17Z: returnCountOnly under the row's `where` answered 6, and `OBJECTID` is distinct on 6 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): Trail_Status's values were never read, so open trails would publish as warnings beside closed ones. Settled by reading them into seeds/notice_status_values.csv."
     },
     {
       "key": "usfs_r01_kootenai_inaccessible",
@@ -1625,8 +1625,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "389 lines at the coverage audit (2026-10-01); 'KNF Road and Trail Status Lines', lastEditDate 2026-10-02. Status ('Inaccessible'), ID, Comments, PlannedWorkDate, Miles. Not filtered: Status's other values were not read. Read by this step at 2026-10-03T16:07:23Z: returnCountOnly under the row's `where` answered 393, and `GlobalID` is distinct on 393 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_r01_kootenai_inaccessible reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own Status reads 'Inaccessible' and nothing holds the row, and is otherwise a warning nobody reviewed; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_forest_closure_area",
@@ -1645,7 +1645,7 @@
       "discovered_date": "2026-10-03",
       "notes": "1 polygon at the coverage audit (2026-10-01); lastEditDate 2025-09-16. Fields Name, Acres. Read by this step at 2026-10-03T16:07:28Z: returnCountOnly under the row's `where` answered 1, and `OBJECTID` is distinct on 1 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: the layer carries Name and Acres only, with no order, no dates and no forest named, so nothing in it says whether the closure is in force (inventory, 2026-10-03). Omit rather than guess."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): Name and Acres are its only fields, with no order, no dates and no forest named, so nothing in it says whether the closure is in force (inventory, 2026-10-03). Settled by the order it belongs to."
     },
     {
       "key": "usfs_baer_assessments",
@@ -1670,7 +1670,7 @@
       "discovered_date": "2026-10-03",
       "notes": "246 assessment polygons at the coverage audit (2026-10-01), ignitions 2024-03-22 to 2026-08-26, max(etl_modified_date) 2026-09-30. PERSON FIELDS LEFT OUT at extraction: baer_teamleader, baer_sbs_soilscientist and baer_gis_analyst name the assessment team. etl_modified_date is a load stamp, not proven to move on every edit, so it is not the marker. Read by this step at 2026-10-03T16:07:39Z: returnCountOnly under the row's `where` answered 235, and `objectid` is distinct on 235 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: a BAER polygon marks a recent burn (hazard trees, debris flow), a hazard area the Forest Service does not publish as a notice (usfs/warnings.py's note, coverage audit 2026-10-01). Whether a hiker sees it, and how, is a design question for phase E."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): a BAER polygon marks a recent burn (hazard trees, debris flow), a hazard area the Forest Service does not publish as a notice (usfs/warnings.py), and whether and how a hiker sees one is phase E's design question. Settled by that design."
     },
     {
       "key": "usfs_r08_prescribed_burns",
@@ -1690,8 +1690,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "Forests 03, 10 and 11 hold 218, 213 and 427 burn blocks; 0 match the filter on 2026-10-03. Item licenseInfo is a no-warranty disclaimer (item 1c7b2e5131bc46469d3272cdc428c82a, read 2026-10-03). Read by this step at 2026-10-03T16:07:43Z: returnCountOnly under the row's `where` answered 0, and `GlobalID` is distinct on 0 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_r08_prescribed_burns reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; a row whose own DATE_COMPLETED has passed is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_forest_boundaries",
@@ -2336,8 +2336,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "53 parks on 2026-10-03: Status Open 51, Closed 2 (Indian King Tavern, Walt Whitman House); lastEditDate 2026-10-03 12:11 UTC. Park-level, never trail-level: Wharton Open (EditDate 2026-04-08), Brendan T. Byrne Open (2026-07-10), Bass River Open (2026-10-03). Not filtered (53 rows). Telephone, a park office number, is left out with the person fields. Read by this step at 2026-10-03T16:11:52Z: returnCountOnly under the row's `where` answered 53, and `GlobalID` is distinct on 53 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_njgin__njdep_park_status reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose Status reads 'Open' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "njdep_wma_restrictions",
@@ -2357,8 +2357,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "206 polygons on 2026-10-03: TYPE Closed 20 (12 current by EDATE), Restricted Use 186; lastEditDate 2026-09-29. WMA, TYPE, CATEGORY (Law Enforcement, No Access and others), DESCRIPT, SDATE, EDATE. Not filtered: TYPE is kept for dbt, and the inventory's 'EDATE >= today' is a date filter. Read by this step at 2026-10-03T16:11:56Z: returnCountOnly under the row's `where` answered 206, and `GLOBALID` is distinct on 206 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_njgin__njdep_wma_restrictions reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own TYPE reads 'Closed' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose own EDATE has passed or whose SDATE has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "njdep_fire_danger",
@@ -2378,8 +2378,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "3 division polygons on 2026-10-03, all FIRE_DANGER Low and RECFIRE_RESTRICTION 'N'; per-division EditDate Northern 2026-09-11, Central and Southern 2026-10-02, so each row's own EditDate travels with it. Always 3 rows; a warning only when a restriction is set, which is dbt's. Read by this step at 2026-10-03T16:12:01Z: returnCountOnly under the row's `where` answered 3, and `GLOBALID` is distinct on 3 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_njgin__njdep_fire_danger reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; a row whose RECFIRE_RESTRICTION reads 'N' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "njdep_rx_burn_notifications",
@@ -2400,7 +2400,7 @@
       "discovered_date": "2026-10-03",
       "notes": "0 rows on 2026-10-03 (returnCountOnly answered {\"count\":0}); edited 2026-09-17. An allowed zero, proven by the server's own count in the same run. GIS_PARCEL, MGMT_AGENCY, FFS_DIVISION, COUNTY, MUN, NOTIFY_STATUS, BURN_DATE. Read by this step at 2026-10-03T16:12:05Z: returnCountOnly under the row's `where` answered 0, and `GLOBALID` is distinct on 0 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): BURN_DATE is not staged as the burn's day and NOTIFY_STATUS's values are recorded nowhere, so a past burn would read as current. Settled by both (0 rows on 2026-10-03, so nothing waits on it today)."
     },
     {
       "key": "nj_state_open_space",
@@ -2868,7 +2868,7 @@
       "discovered_date": "2026-10-03",
       "notes": "Fields per alert (measured on the national list's first 50, 2026-10-03): id (a GUID, unique on 50 of 50), url (empty on 31 of 50), title, parkCode, description, category (Park Closure 25, Caution 11, Information 8, Danger 6), relatedRoadEvents (a list of {title, id, type, url}), lastIndexedDate ('2026-10-02 00:00:00.0', an index date, not a start or an end). No geometry: a park code is the place, so `place` stays unplaced unless a reviewed term says otherwise. Category alone does not decide obstructs_trail: a Park Closure most often closes a facility or a road, not a trail (semo's two, 2026-10-03, close visitor centres). One resource, in nps/warnings.py; the closures staging model reads it too, since nps/closures.py now claims the park closure layers (decision 53 phase B) and a file takes one form.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): no geometry, and its parkcode is joined to no reviewed place table, so an alert for one park would be unplaced and reach every hiker or none. Settled by a reviewed parkcode-to-park join."
     },
     {
       "key": "nps_road_events",
@@ -2891,8 +2891,8 @@
       "discovered_via": "pipeline/ELT.md decision 53's phase A inventory, batch 4, reading the endpoint the coverage audit's skeptic named in nps_poi/closures.py.",
       "discovered_date": "2026-10-03",
       "notes": "86 events on 2026-10-03 (incident 55, work-zone 31), WZDx 4.1, national, no park filter. Each feature: LineString (78) or MultiLineString (8), properties core_details {name, data_source_id, event_type, road_names, direction, description}, start_date, end_date (on 72), vehicle_impact, types_of_incident or types_of_work, four is_*_verified flags, accuracies, `Id` (a GUID, unique on 86 of 86 in that one read; stable across reads is @unvalidated) and `_id` (0 to 85, the position in the answer, so never a key). The header's road_event_feed_info names each data source's park (`organization_name`), which the row carries as data_source_organization; its contact_name and contact_email fields are never copied. These are road events: a closed road to a trailhead is the 'unable to get off the trail quickly' case, and whether one feeds closures or warnings is dbt's (one resource, in nps/warnings.py, which the closures staging model reads too).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nps__nps_road_events reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; a row whose own end_date has passed or whose start_date has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "nps_grca_closures",
@@ -2916,8 +2916,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "41 polygons on 2026-10-03; lastEditDate 2026-09-30 18:44 UTC; sample 'River Trail', status Closed, 'Closed until further notice due to August 29 flash flood'. Not filtered (41 rows; `status` is kept for dbt). PERSON FIELDS LEFT OUT: created_us and last_edite, a shapefile's truncated editor-tracking names. Read by this step at 2026-10-03T16:07:48Z: returnCountOnly under the row's `where` answered 41, and `FID` is distinct on 41 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nps__nps_grca_closures reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own status reads 'Closed' and nothing holds the row, and is otherwise a warning nobody reviewed; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "nps_seki_closures",
@@ -2940,7 +2940,7 @@
       "discovered_date": "2026-10-03",
       "notes": "140 lines; lastEditDate 2026-07-13. Closure_Type, Closure_Desc, IsPublic, IsVisible, GDB_From_Date, GDB_To_Date. Not filtered: IsPublic and IsVisible look like the park's own publication flags, but their values were not read, and a filter on an unmeasured value can empty the table. PERSON FIELD LEFT OUT: CreatedBy. Read by this step at 2026-10-03T16:07:53Z: returnCountOnly under the row's `where` answered 140, and `GlobalID` is distinct on 140 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): IsPublic and IsVisible look like the park's own publication flags and their values were never read, so a closure the park keeps private could publish. Settled by reading both into seeds/notice_status_values.csv."
     },
     {
       "key": "nps_yose_trail_closures",
@@ -2958,8 +2958,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "31 trail-closure lines on 2026-10-03 (audit 29); lastEditDate 2026-10-02 18:41 UTC; sample 'Mist Trail' 2026-07-27 to 2026-10-31. The layer document sent no ETag and no Last-Modified, so the change check answers UNKNOWN and the 31 rows are read each hour. endtime is a date: expiry is dbt's. Read by this step at 2026-10-03T16:07:57Z: returnCountOnly under the row's `where` answered 31, and `GlobalID` is distinct on 31 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nps__nps_yose_trail_closures reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose own endtime has passed or whose starttime has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "nps_yose_fire_restrictions",
@@ -2978,7 +2978,7 @@
       "discovered_date": "2026-10-03",
       "notes": "147 polygons at the coverage audit; lastEditDate 2026-08-27. RESTRICTSTAGE, RESTRICTDESC, PUBLICDISPLAY, EDITDATE. Not filtered: PUBLICDISPLAY's values were not read. Read by this step at 2026-10-03T16:08:02Z: returnCountOnly under the row's `where` answered 147, and `GlobalID` is distinct on 147 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): PUBLICDISPLAY's values were never read, so a restriction the park does not display could publish. Settled by reading them into seeds/notice_status_values.csv."
     },
     {
       "key": "nps_yell_bear_management_areas",
@@ -2996,8 +2996,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "17 polygons at the coverage audit; lastEditDate 2026-09-15. Seasonal closures by date: NAME, Status, CLOSED, ClosureDate_Begin, ClosureDate_End, Expected_OpenDate. Not filtered; the dates are dbt's. Read by this step at 2026-10-03T16:08:06Z: returnCountOnly under the row's `where` answered 17, and `GlobalID` is distinct on 17 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nps__nps_yell_bear_management_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own Status reads 'Closed' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose own ClosureDate_End has passed or whose ClosureDate_Begin has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "nps_appa_helene_status",
@@ -3016,7 +3016,7 @@
       "discovered_date": "2026-10-03",
       "notes": "64 A.T. lines at the coverage audit; lastEditDate 2026-07-31. HeleneStatus, AssessmentComplete. It describes the same ground atc_trail_updates does, so dbt checks one against the other before a hiker sees both. Read by this step at 2026-10-03T16:08:11Z: returnCountOnly under the row's `where` answered 64, and `OBJECTID` is distinct on 64 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): the layer has no name field, HeleneStatus's values were never read, and its own notes ask that dbt check it against atc_trail_updates before a hiker sees both, which no model does yet. Settled by reading HeleneStatus into seeds/notice_status_values.csv and that cross-check."
     },
     {
       "key": "grsm_trails_access",
@@ -3041,8 +3041,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "549 trails on 2026-10-03: ACCESS Open 523, Closed 12, Caution 10, Warning (Bears) 3, null 1; lastEditDate 2026-08-25. NOTES carry the park's own wording (Big Creek 'closed beyond the first two miles at Mouse Creek Falls'). Closed rows are closures; Caution and Warning (Bears) are warnings, split in dbt. PERSON FIELDS LEFT OUT: Creator, Editor. Read by this step at 2026-10-03T16:08:15Z: returnCountOnly under the row's `where` answered 26, and `GlobalID` is distinct on 26 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nps__grsm_trails_access reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own ACCESS reads 'Closed' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose ACCESS reads 'Open' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "nps_park_boundaries",
@@ -3793,7 +3793,7 @@
       "discovered_date": "2026-10-03",
       "notes": "93 points on 2026-10-03, layer 'Sheet1'; dataLastEditDate 2026-05-06. NAME, STATE, DISTRICT, FIELD_OFFICE, COUNTY, CURRENT_STATUS, TYPE_OF_RANGE_. PERSON FIELD LEFT OUT: CUSTOMER, a land-use case holder, who may be a person. Read by this step at 2026-10-03T16:08:20Z: returnCountOnly under the row's `where` answered 93, and `FID` is distinct on 93 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: whether a recreational shooting site is a hiker warning is the maintainer's call (coverage audit 2026-10-01, repeated by the inventory)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): whether a recreational shooting site is a hiker warning is the maintainer's open question (coverage audit 2026-10-01, repeated by the inventory); no rule answers it. Settled by the maintainer."
     },
     {
       "key": "blm_or_rec_site_status",
@@ -3812,7 +3812,7 @@
       "discovered_date": "2026-10-03",
       "notes": "349 sites on 2026-10-03; edited 2024-09-23. Status__CurrentRecSiteStatus, Status__CurrentStatusNotes, Status__WebLink. Read by this step at 2026-10-03T16:08:24Z: returnCountOnly under the row's `where` answered 349, and `OregonRecreationSitesStatus_GLO` is distinct on 349 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: the layer was last edited 2024-09-23 and marks Jackman Park and Fish Lake campgrounds Closed while their own notes read 'Open mid-June through October' (ELT.md, 'Status layers are often stale'). A 'Closed' here may long since be lifted."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): Status__CurrentRecSiteStatus's values are recorded nowhere (not in its notes, not in seeds/notice_status_values.csv), so all 349 sites, open ones included, would publish as warnings. Settled by reading them into that seed."
     },
     {
       "key": "blm_national_monuments_ncas",
@@ -4783,8 +4783,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "128 seasonal closure polygons statewide on 2026-10-03 (max OBJECTID_1 128), max End_Date 2027-01-01; dataLastEditDate 2025-10-09, built for the 2025-26 season. SC_ID, Agency, Designation, Name, Type, Closure_Period, Start_Date and End_Date (DateOnly), Restricted_Use_Types, URL, Active_Until. A closure only inside its Start_Date to End_Date, which is dbt's; never filtered on the dates. The service name is season-stamped, so next season may arrive at a new URL: recheck each autumn (Reasoned). Read by this step at 2026-10-03T16:12:28Z: returnCountOnly under the row's `where` answered 128, and `OBJECTID_1` is distinct on 128 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cotrex__cotrex_seasonal_closures reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose own End_Date has passed or whose Start_Date has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cpw_bear_conflict_areas",
@@ -4804,8 +4804,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "613 polygons at the coverage audit (2026-10-01), not recounted; lastEditDate 2026-05-07. ACTIVITYCO, INPUT_DATE, EDIT_DATE. Worded downstream as 'an area CPW maps as a conflict area', never 'activity reported' (coverage audit). Read by this step at 2026-10-03T16:12:32Z: returnCountOnly under the row's `where` answered 613, and `GlobalID` is distinct on 613 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cotrex__cpw_bear_conflict_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cpw_lion_conflict_areas",
@@ -4825,8 +4825,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "266 polygons at the coverage audit (2026-10-01), not recounted; lastEditDate 2026-05-07. ACTIVITYCO, INPUT_DATE, EDIT_DATE. Worded downstream as 'an area CPW maps as a conflict area', never 'activity reported' (coverage audit). Read by this step at 2026-10-03T16:12:37Z: returnCountOnly under the row's `where` answered 266, and `GlobalID` is distinct on 266 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cotrex__cpw_lion_conflict_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cpw_managed_properties",
@@ -4972,7 +4972,7 @@
       "discovered_date": "2026-10-03",
       "notes": "202 trailheads on 2026-10-03: trailhead_status open 89, construction 6, seasonal 6, closed 1, null 99, '' 1; service Last-Modified 2026-04-22. An attribute, not a feed, with no dates. Not filtered. campground_mgr, which may name a person, is left out with the person fields; the editor-tracking fields the layer declares are not in its public field list. Read by this step at 2026-10-03T16:12:23Z: returnCountOnly under the row's `where` answered 202, and `GlobalID` is distinct on 202 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): 99 of its 202 trailheads carry no status (2026-10-03), and a row with none would publish as a warning that says nothing. Settled by a rule that leaves a status-less trailhead out."
     },
     {
       "key": "wa_public_lands_inventory",
@@ -5329,7 +5329,7 @@
       "discovered_date": "2026-10-03",
       "notes": "67 points on 2026-10-03, 27 dated 2026 or later; lastEditDate 2026-09-11 19:04 UTC, the day the club's alerts page was last modified. FID, Id, Date, Location ('CR-17 to Tioga Beach'), desc_, label ('Trail Alert: CR-17 to Tioga Beach'). No status or expiry field: rows from 2021 are still in the layer, and expiry by Date is @unvalidated. Read by this step at 2026-10-03T16:11:14Z: returnCountOnly under the row's `where` answered 67, and `FID` is distinct on 67 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): no status or expiry field, and rows from 2021 are still in the layer, so a lifted alert would read as current. Settled by an expiry rule its own Date can carry (@unvalidated, as its notes say)."
     },
     {
       "key": "ncta_ice_storm_impacts",
@@ -5348,7 +5348,7 @@
       "discovered_date": "2026-10-03",
       "notes": "1 polygon at the coverage audit; lastEditDate 2025-08-08. Fields name, alert. Read by this step at 2026-10-03T16:11:19Z: returnCountOnly under the row's `where` answered 1, and `OBJECTID` is distinct on 1 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: one polygon last edited 2025-08-08, 14 months before this read, with no dates of its own."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): one polygon last edited 2025-08-08 with no dates of its own, so nothing says the ice-storm impact is still in force. Settled by NCTA saying whether it is."
     },
     {
       "key": "ncta_trail_alerts_page",
@@ -5542,8 +5542,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "13 points on 2026-10-03: BridgeNeeded(Impassable) 4, BridgeNeeded(Passable) 7, RiverFord 2; dataLastEditDate 2026-03-05. Planning records rather than dated notices: an impassable crossing is a standing hazard. Name, Type, Cost (planning, dbt drops it). Read by this step at 2026-10-03T16:10:08Z: returnCountOnly under the row's `where` answered 13, and `OBJECTID` is distinct on 13 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_alaska_trails__alaska_trails_obstacles reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "alaska_trails_seward_obstacles",
@@ -5562,7 +5562,7 @@
       "discovered_date": "2026-10-03",
       "notes": "7 points on 2026-10-03; dataLastEditDate 2023-05-17. Its Glacier Creek point has the same coordinates as one in AKLT_Trail_Obstacles, which supersedes it (inventory). Read by this step at 2026-10-03T16:10:12Z: returnCountOnly under the row's `where` answered 7, and `OBJECTID` is distinct on 7 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: superseded by alaska_trails_obstacles and unedited since 2023-05-17."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): superseded by alaska_trails_obstacles and unedited since 2023-05-17, as its registration said, so its points would repeat the live layer's or contradict it. Settled by dropping it, or by Alaska Trails saying it is still kept."
     },
     {
       "key": "aklt_communities",
@@ -5949,8 +5949,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "385 access points on 2026-10-03: STATUS Open 384, Closed 1 (Kettletown, whose park page says more); edited 2026-04-21. A static flag rather than a notice feed. Not filtered. Read by this step at 2026-10-03T16:12:19Z: returnCountOnly under the row's `where` answered 385, and `OBJECTID` is distinct on 385 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_ct_deep__ct_deep_property_access_status reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose STATUS reads 'Open' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "ct_deep_property",
@@ -6719,7 +6719,7 @@
       "discovered_date": "2026-10-03",
       "notes": "On 2026-10-03: Year 2026 Wildfire 13, Other Closure 10; 2025 Wildfire 28, Other Closure 1; edited 2026-09-28 21:08. Year, Closure_Name, PCTA_Region, Type, Agency_Unit, Miles_of_PCT_in_Closure_Area. No active flag and no dates: the inventory's 'Year = current year' is a date filter, so the layer is read whole and current-ness is dbt's (@unvalidated: settled by asking PCTA which layer closures.pcta.org renders). Item licenseInfo empty (item 42f10dfc0aec45b49f842b3b14fc208c, read 2026-10-03). Read by this step at 2026-10-03T16:11:23Z: returnCountOnly under the row's `where` answered 144, and `GlobalID` is distinct on 144 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): no active flag and no dates, and the layer holds past years' closures, so a lifted fire closure would read as current. Settled by asking PCTA which layer is current, as its notes say."
     },
     {
       "key": "pcta_closure_lines",
@@ -6738,7 +6738,7 @@
       "discovered_date": "2026-10-03",
       "notes": "138 lines on 2026-10-03; edited 2026-09-24 23:16. Type (a symbol name), CMS_ID (closures.pcta.org's id), Notes, Label_Text 'PCT CLOSED'. No active flag or dates; layers 0 (points) and 2 (polygons) are its siblings, not wired. Item licenseInfo empty (item 22eb8c933eae4599baeb9698e0285204). Read by this step at 2026-10-03T16:11:28Z: returnCountOnly under the row's `where` answered 138, and `OBJECTID` is distinct on 138 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): no active flag and no dates beside pcta_fires_and_closures, whose notes leave which PCTA layer is current unanswered, so a lifted closure could read as current. Settled by the same answer from PCTA."
     },
     {
       "key": "pcta_trail_towns",
@@ -6996,8 +6996,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "149 points on 2026-10-03: Active Yes 27 (Closure 12, Alert 15); edited 2026-09-24 18:44. Name, Type (Alert|Closure), Active (Yes|No), Milepost, Website2, Comments2 (prose, not published). Not filtered: Active is the club's own flag, kept for dbt, and 149 rows need no filter. Read by this step at 2026-10-03T16:10:51Z: returnCountOnly under the row's `where` answered 149, and `GlobalID` is distinct on 149 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cdtc__cdtc_alert_points reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose Active reads 'No' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cdtc_alert_lines",
@@ -7015,8 +7015,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "76 lines on 2026-10-03: Active Yes 12 (Closure 6, Alert 6); 1 row with null Type and Active. Read by this step at 2026-10-03T16:10:56Z: returnCountOnly under the row's `where` answered 76, and `GlobalID` is distinct on 76 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cdtc__cdtc_alert_lines reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose Active reads 'No' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cdtc_area_closures",
@@ -7034,8 +7034,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "4 polygons on 2026-10-03: Active Yes 1; edited 2026-08-20. Name, Date (null on the sample), Active, Comments. Read by this step at 2026-10-03T16:11:00Z: returnCountOnly under the row's `where` answered 4, and `OBJECTID` is distinct on 4 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cdtc__cdtc_area_closures reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose Active reads 'No' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cdtc_reroutes",
@@ -7058,8 +7058,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "30 lines on 2026-10-03: Active Yes 7, No 22, null 1; edited 2026-09-24 18:40. A reroute is a warning with a line, not a closure (decision 7). PERSON FIELDS LEFT OUT: created_user, last_edited_user. Read by this step at 2026-10-03T16:11:05Z: returnCountOnly under the row's `where` answered 30, and `GlobalID` is distinct on 30 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cdtc__cdtc_reroutes reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; a row whose Active reads 'No' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cdtc_national_defense_area",
@@ -7077,8 +7077,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "1 polygon on 2026-10-03, 'National Defense Area', edited 2026-03-24. A standing hazard; whether it touches the CDT or the Crazy Cook approach is unmeasured, and that intersect decides warning or closure. Read by this step at 2026-10-03T16:11:09Z: returnCountOnly under the row's `where` answered 1, and `OBJECTID` is distinct on 1 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cdtc__cdtc_national_defense_area reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cdtc_gateway_communities",
@@ -7281,7 +7281,7 @@
       "discovered_date": "2026-10-03",
       "notes": "An item is {IsAlert: bool, Message: HTML} and nothing else: no title, no date, no id (measured 2026-10-03). The extract keys each by a sha256 of its park id and text (advisory_key in extract/_json_apis.py), so an edited advisory is a new row, and decision 52's _first_seen_at is the only date it will have. LIVE SAFETY ITEM, 2026-10-03: Laurel Ridge's answer carries IsAlert true, \"The unnamed tributary between mile-marker 24 and 25 has been contaminated by lead and other heavy metals. Please do not use this as a drinking water source.\" That is a water fact at an LHHT mile, and belongs on the water path as well as in warnings. The other three Laurel Ridge items are statewide (drones, spotted lanternfly, firewood).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link. The lead-contamination advisory at LHHT miles 24-25 should not wait for the notices mart: it is the first item for the water path, which nothing reads from this table yet."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): an advisory is only {IsAlert, Message}, and the Message is DCNR's own wording, which decision 55 keeps out of every mart, so a published row would be a notice with no title, no link and no place but a park id. Laurel Ridge's lead-contaminated tributary (miles 24 to 25) is a water fact for a reviewed water note, not this. Settled by a title and a place the advisory's own fields can give."
     },
     {
       "key": "dcnr_state_park_boundaries",
@@ -7386,7 +7386,7 @@
       "discovered_date": "2026-10-03",
       "notes": "9 pages on 2026-10-03: Brumley Mountain Trail, Chimney Top, Dennis Cove Rd to Wilbur Dam Rd, Shelter:Overmountain, Shelter:Iron Mountain, Shelter:Watauga Lake, Catawba Falls Trail, Template:Watauga Area Bear Closure and The Channels Natural Area Preserve; each 4 to 10 KB of wikitext. The key is pageid. An announcement carries no expiry (the 2023 Watauga bear closure looks lapsed, audit), so these land as warnings with their revision date, never as closures. The editor's user name and the edit summary are never asked for.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): an announcement has no expiry, and the 2023 Watauga bear closure still in it looks lapsed, so it would read as a current warning. Settled by an expiry rule for its revisions (@unvalidated)."
     },
     {
       "key": "tehcc_at_posts",
@@ -7462,7 +7462,7 @@
       "discovered_date": "2026-10-03",
       "notes": "Read 2026-10-03 as CSV: 184 segment rows in four tables (the Ouachita Trail, Black Fork Wilderness, Eagle Rock Loop and the Womble Trail), each under its own title row and `Sect` header, then a colour legend and a disclaimer. Key: (table_title, sect, begin_mile, end_mile), unique on 184 of 184. Eleven columns; two of them, 'Adopted by' and 'Source of Last Condition Report', name people and never load: the extract keeps an allow list of the other nine (extract/_json_apis.py's SHEET_COLUMNS). WHAT THE CSV LOSES, and the coverage audit said so first ('read the xlsx, not the CSV, or the one field that says \"treacherous\" is lost'): each segment's condition is its cells' fill colour, by the sheet's own legend green clear, yellow some impediment, red difficult to follow, gray no current report, plus blue and orange; a CSV holds values only. The xlsx export keeps the fills and needs a spreadsheet reader (openpyxl) the extract job does not install, which is the maintainer's call. Until then the condition a hiker most needs from this sheet does not land.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link. Arguably not before the sheet's colour status lands (see notes)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): each segment's condition is its cells' fill colour, which the CSV does not carry, so all 184 segments, clear ones included, would publish as warnings, none with a geometry. Settled by the xlsx export its notes name (a spreadsheet reader, the maintainer's call) and a reviewed placing of its miles."
     },
     {
       "key": "foot_hiker_alert_mm195",
@@ -7509,7 +7509,7 @@
       "discovered_date": "2026-10-03",
       "notes": "12 LineStrings in one folder, 'MST Route', on 2026-10-03 (Segments 1 to 5). Each placemark's description is a label-value table (Segment, Name, EB Segment Mileage, WB Segment Mileage, Length, Land Manager, Trail Status); there is no ExtendedData and no placemark id. Trail Status: Open 9, CLOSED 1 ('West of N Fork Catawba crossing to east of N Fork Catawba crossing'), 'CLOSED with a detour' 1 ('Blue Ridge Parkway Boundary to NC 80'), 'Temporary detour' 1 ('South Toe River Detour'). The style's colour says the same by the document's own legend: line-FF0000 red closed, FFA500 orange detour, 38A800 green open. Key: (folder, name), unique on 12 of 12. obstructs_trail should come only from 'CLOSED*' in the steward's own status (decision 53, 'Omit rather than guess'), which is dbt's to read. One resource, in fmst/closures.py; fmst/warnings.py SHARES it for the detours and the not-assessed (yellow) lines.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered and extracted; nothing reads it into a mart yet, so it ships nowhere. Phase C flips this to true when a mart reads the table; decision 53 publishes it then, as facts and a link. Its two CLOSED segments on the MST are live closures with the steward's own geometry."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): each segment's Trail Status lives in its placemark's description table, which no rule reads, so its 9 open segments would publish as warnings beside the closed one. Settled by reading 'CLOSED*' out of that table, as its notes ask."
     },
     {
       "key": "wi_dnr_park_closures",
@@ -7535,8 +7535,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "75 rows on 2026-10-03, all Active_Flag Yes (Impact High 27, Moderate 18, Low 30; the audit read 69 on 2026-10-01). Closure_Name ('Governor Knowles SF Cedar Hiking Trail Section From Mile 25 to 26 Closed'), Reason, Impact, Active_Flag, Exp_End_Date, End_Date_Indefinite_Flag, PDF_URL. Not filtered (75 rows; Active_Flag kept for dbt). PERSON FIELDS LEFT OUT: Reporter_email and Internal_Contact hold staff addresses, and Public_Contact a contact. Decision 37 also names this view among the 'not for reuse' layers it publishes against their own words. Read by this step at 2026-10-03T16:12:10Z: returnCountOnly under the row's `where` answered 75, and `GlobalID` is distinct on 75 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_wi_dnr__wi_dnr_park_closures reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose own Exp_End_Date has passed or whose Active_Flag reads 'No' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "wi_dnr_fire_danger",
@@ -7562,7 +7562,7 @@
       "discovered_date": "2026-10-03",
       "notes": "72 counties on 2026-10-03, all LOW; max LAST_CHANGED_DATE 2026-09-30 06:53 UTC. COUNTY_NAME, DANGER_RATING_NAME, NO_BURN_FLAG, PERMIT_RESTRICTIONS, ADD_COMMENT. /0 Wildfires (Today) was not re-read and is not wired. Read by this step at 2026-10-03T16:12:14Z: returnCountOnly under the row's `where` answered 72, and `OBJECTID` is distinct on 72 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): every county publishes whatever its rating, and all 72 read LOW on 2026-10-03, so LOW would read as a warning. Settled by a rating threshold in seeds/notice_status_values.csv."
     },
     {
       "key": "wdnr_managed_properties",
@@ -7607,7 +7607,7 @@
       "discovered_date": "2026-10-03",
       "notes": "2,215 polygons on 2026-10-03; dataLastEditDate 2026-09-11. Hunt_Unit_Name, Huntable, Permit_Required, Hunting_Website, Organization_Name, State. Read by this step at 2026-10-03T16:08:29Z: returnCountOnly under the row's `where` answered 2215, and `GlobalID` is distinct on 2215 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: standing hunt-unit geography with no season dates, which says where hunting happens and not when. Whether hunting areas are a warning is the maintainer's open question (nysdec/ and nysparks/ warnings notes)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): Huntable's values are recorded nowhere (not in its notes, not in seeds/notice_status_values.csv), so a unit closed to hunting would publish as a hunting warning, and whether a hunting area is a warning at all is the maintainer's open question. Settled by the maintainer, then those values."
     },
     {
       "key": "usfws_refuge_boundaries",
@@ -7738,7 +7738,7 @@
       "discovered_date": "2026-10-03",
       "notes": "24 polygons on 2026-10-03 (No Hunting or Trapping 8, by Special Permit 6, Closed to Center-fire Rifles 5, Open by Permit 4, Bow Only 1); edited 2026-05-29. The year lives in the service name, so next season's is a new URL to recheck. ContactInfo, an office phone number, is left out with the person fields. Read by this step at 2026-10-03T16:08:34Z: returnCountOnly under the row's `where` answered 24, and `GlobalID` is distinct on 24 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: standing hunting restrictions for the 2026 season with no dates of their own; whether hunting areas are a warning is the maintainer's open question."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): standing hunting restrictions for the 2026 season with no dates of their own, and whether a hunting area is a warning at all is the maintainer's open question, which decision 63 did not answer. Settled by the maintainer."
     },
     {
       "key": "usace_sam_closed_rec_areas",
@@ -7762,7 +7762,7 @@
       "discovered_date": "2026-10-03",
       "notes": "2 polygons on 2026-10-03 (e.g. 'TRAIL SECTION CLOSED', Laurel Ridge Trail, Lake Sidney Lanier). projectAreaStatus (Closed|Open|Partially Closed|Temporary Closure). PERSON FIELDS LEFT OUT: created_user and last_edited_user, individual accounts. Read by this step at 2026-10-03T16:08:39Z: returnCountOnly under the row's `where` answered 2, and `GlobalID` is distinct on 2 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: the rows were last edited 2020-05-06 and the layer 2023-03-18, so a 2020 closure would read as live. Omit rather than guess."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): the rows were last edited 2020-05-06 and the layer 2023-03-18, and they carry no dates of their own, so a 2020 closure would read as live. Settled by the Corps confirming the layer is kept."
     },
     {
       "key": "usace_mobile_trails",
@@ -7836,8 +7836,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "112 current perimeters nationwide on 2026-10-03 (returnCountOnly); lastEditDate 2026-10-03 14:32 UTC. Current by construction, so not filtered. Three intersect ONDA's Oregon Desert Trail box (Second Flat 2026-ORBUD-002693, 105,854 ac; Jackass Butte 2026-ORBUD-002694, 24,723 ac; Stubble 2026-ORMAR-002683, 15,673 ac). The layer is edited most hours, so most hourly checks are full reads of large polygons: the first lane cost phase F measures (@unvalidated). No person field among its 150: the attr_FFReportApprovedBy* fields hold a title and a unit, not a name. Read by this step at 2026-10-03T16:08:50Z: returnCountOnly under the row's `where` answered 112, and `GlobalID` is distinct on 112 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_nifc__nifc_wfigs_current_perimeters reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "odfw_orham_alert_areas",
@@ -7867,7 +7867,7 @@
       "discovered_date": "2026-10-03",
       "notes": "289 alert areas across layers 6, 7, 9, 10 and 11 on 2026-10-03; this is layer 6. PERSON FIELDS LEFT OUT: contact, created_user, last_edited_user. Tables 8 (ORHAM_Contacts, people) and 13 are never read. Read by this step at 2026-10-03T16:08:55Z: returnCountOnly under the row's `where` answered 289, and `GlobalID` is distinct on 289 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: hunting-access geography whose alert fields (alert_enabled, alert_title, alert_start, alert_end) were not read for their values, on ONDA's ground; the inventory proposed nothing until a season window is known."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): alert_enabled's values are recorded nowhere (not in its notes, not in seeds/notice_status_values.csv), so a disabled alert would publish as current. Settled by reading them into that seed."
     },
     {
       "key": "cdpr_park_unit_status",
@@ -7893,7 +7893,7 @@
       "discovered_date": "2026-10-03",
       "notes": "281 units on 2026-10-03: OPEN 246, Partial Closure 24, Full Closure 10, Potential Closure 1; dataLastEditDate 2024-07-10. Not filtered, so Mount Diablo's OPEN row with every trail mile closed stays visible to dbt's tests. PERSON FIELDS LEFT OUT: Creator, Editor, Creator_1721162575294, Editor_1721162575294. Kept but internal by their names, for dbt to drop: status_notes (beside status_notes_pub), requests_answer, Requests, pressure_answer, CountyPressure; decision 36's 'admin-code fields, which CSP limits to interagency use' are not named field by field anywhere, so none is dropped here. Read by this step at 2026-10-03T16:09:00Z: returnCountOnly under the row's `where` answered 281, and `globalid` is distinct on 281 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: the layer contradicts itself. Six non-OPEN units carry a StatusReopenDate already past (Woodson Bridge SRA 2026-04-01, Salt Point SP 2026-08-07, Hungry Valley SVRA 2026-08-10, Angel Island SP 2026-08-15, Humboldt Lagoons SP 2026-09-26, Anza-Borrego Desert SP 2026-10-01); every non-OPEN row was last edited 2025-01-23; Mount Diablo SP reads OPEN with 200 of 200 trail miles closed (inventory, 2026-10-03). Until CDPR confirms the layer is maintained, its rows are not shown as live closures."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): the end-date rule now holds the six non-OPEN units whose StatusReopenDate has passed, but every non-OPEN row was last edited 2025-01-23, a 'Full Closure' with no reopen date would still read as a live closure, and Mount Diablo SP reads OPEN with 200 of 200 trail miles closed (inventory, 2026-10-03). Settled by CDPR confirming the layer is kept, as its registration asked."
     },
     {
       "key": "king_county_parks_alerts_points",
@@ -7919,8 +7919,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "234 points on 2026-10-03, 14 current by their dates (Full Closure 8, Construction 3, Closure with Detour 1, Maintenance 1, Other 1); edited 2026-09-24. AlertType (Full Closure|Closure with Detour|Intermittent Closure|Construction|Hazard|Maintenance|Other), StartDate, EndDate, Title, URL. Not filtered: the inventory's 'EndDate IS NULL OR EndDate >= CURRENT_TIMESTAMP' is a date filter, and expiry is dbt's. PERSON FIELDS LEFT OUT: DataEntryPerson, Creator, Editor. Countywide; the Greenway's portion is a dbt clip. Whether OurHike's paid tiers are 'sale' is the maintainer's call. Read by this step at 2026-10-03T16:09:04Z: returnCountOnly under the row's `where` answered 234, and `GlobalID` is distinct on 234 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_king_county_parks__king_county_parks_alerts_points reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own AlertType reads 'Full Closure' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose own EndDate has passed or whose StartDate has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "king_county_parks_alerts_lines",
@@ -7946,8 +7946,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "8 current lines by their dates on 2026-10-03 (Hazard 4, Full Closure 2, Closure with Detour 1, Construction 1); edited 2026-09-24. AlertType (Full Closure|Closure with Detour|Intermittent Closure|Construction|Hazard|Maintenance|Other), StartDate, EndDate, Title, URL. Not filtered: the inventory's 'EndDate IS NULL OR EndDate >= CURRENT_TIMESTAMP' is a date filter, and expiry is dbt's. PERSON FIELDS LEFT OUT: DataEntryPerson, Creator, Editor. Countywide; the Greenway's portion is a dbt clip. Whether OurHike's paid tiers are 'sale' is the maintainer's call. Read by this step at 2026-10-03T16:09:09Z: returnCountOnly under the row's `where` answered 88, and `GlobalID` is distinct on 88 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_king_county_parks__king_county_parks_alerts_lines reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own AlertType reads 'Full Closure' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose own EndDate has passed or whose StartDate has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "king_county_parks_alerts_areas",
@@ -7973,8 +7973,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "3 current areas by their dates on 2026-10-03 (Full Closure 2, Hazard 1); edited 2026-09-24. AlertType (Full Closure|Closure with Detour|Intermittent Closure|Construction|Hazard|Maintenance|Other), StartDate, EndDate, Title, URL. Not filtered: the inventory's 'EndDate IS NULL OR EndDate >= CURRENT_TIMESTAMP' is a date filter, and expiry is dbt's. PERSON FIELDS LEFT OUT: DataEntryPerson, Creator, Editor. Countywide; the Greenway's portion is a dbt clip. Whether OurHike's paid tiers are 'sale' is the maintainer's call. Read by this step at 2026-10-03T16:09:13Z: returnCountOnly under the row's `where` answered 37, and `GlobalID` is distinct on 37 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_king_county_parks__king_county_parks_alerts_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own AlertType reads 'Full Closure' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose own EndDate has passed or whose StartDate has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "midpen_preserve_access",
@@ -7997,8 +7997,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "195 polygons on 2026-10-03: ACCESS Closed 133, Open 60, Permit Only 2; edited 2026-07-21. CLOSETYPE (Regular, Conservation Managment Unit, Hazardous, Sensitive, Temporary): most Closed rows are standing closed areas, and only Hazardous and Temporary are notice-like; that split is dbt's, since CLOSETYPE is a type and not a status. Not filtered. PERSON FIELDS LEFT OUT: created_user, last_edited_user. Read by this step at 2026-10-03T16:09:18Z: returnCountOnly under the row's `where` answered 195, and `GlobalID` is distinct on 195 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_midpen__midpen_preserve_access reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own ACCESS reads 'Closed' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose ACCESS reads 'Open' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "scc_parks_closed_areas",
@@ -8016,8 +8016,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "65 polygons on 2026-10-03: closure_type long-term 42, facility 3, na 4, null 16; edited 2026-07-01. Standing closures (unopened and undeveloped land), not dated notices. Read by this step at 2026-10-03T16:09:22Z: returnCountOnly under the row's `where` answered 65, and `GlobalID` is distinct on 65 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_scc_parks__scc_parks_closed_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "ma_dcr_park_alerts",
@@ -8035,8 +8035,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "4 rows on 2026-10-03 against the audit's 2 on 2026-10-01, one a trail closure (Purgatory Chasm State Park, 'Chasm Loop Trail'). ParkAlertType (Closure|Advisory), PAdv_StartDT and PAdv_EndDT as ISO strings, FACILITY_APPROVAL_STATUS 'Published' on all 4. The point geometry came back absent; the place is in FACILITY_LAT/FACILITY_LONG. lastEditDate equals the minute of the request: the layer is rebuilt on a schedule, so its check reads STALE most hours, the safe direction, at one 12 KB read. Not filtered on FACILITY_APPROVAL_STATUS: 4 rows buy nothing from a filter and risk an empty table if DCR renames the value. Which PARK_SITE values are on the Massachusetts A.T. is unchecked. Read by this step at 2026-10-03T16:09:27Z: returnCountOnly under the row's `where` answered 3, and `OBJECTID` is distinct on 3 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_ma_dcr__ma_dcr_park_alerts reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose own PAdv_EndDT has passed or whose PAdv_StartDT has not come is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "ma_dcr_blue_hills_hunt_areas",
@@ -8055,7 +8055,7 @@
       "discovered_date": "2026-10-03",
       "notes": "13 polygons on 2026-10-03 (YrHuntArea 2026 on 12, 2025 on 'Ponkapoag'); lastEditDate 2026-07-28. No status field. Read by this step at 2026-10-03T16:09:31Z: returnCountOnly under the row's `where` answered 13, and `GlobalID` is distinct on 13 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: hunt-area polygons with no season dates (those are DCR's annual hunt notice); a warning only during DCR's controlled hunt, and whether hunting areas are warnings is the maintainer's open question."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): hunt-area polygons with no season dates, a warning only during DCR's controlled hunt (its annual hunt notice holds the dates), so every area would read as a warning all year. Settled by those dates."
     },
     {
       "key": "ma_dcr_blue_hills_alerts",
@@ -8205,7 +8205,7 @@
       "discovered_date": "2026-10-03",
       "notes": "23 fire-danger-rating areas on 2026-10-03: Moderate 18, Low 5 (20 and 3 on 2026-10-01: it moves). FIRE_DANGER_LEVEL_NM, BURN_BAN_LEVEL_NM, NOTES_TXT. On-prem ArcGIS Server 11.5 with no date field: the change check answers UNKNOWN and the 23 polygons are read each hour. Contact fields REGION_PHONE_NO and REGION_EMAIL_ADDR and the region office's six address fields are left out with the person fields. Layer /1 (Burn Bans) was not re-read and is not wired. Read by this step at 2026-10-03T16:09:36Z: returnCountOnly under the row's `where` answered 23, and `OBJECTID` is distinct on 23 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): every area publishes whatever its rating (Low 5, Moderate 18 on 2026-10-03), so Low would read as a warning. Settled by a rating threshold in seeds/notice_status_values.csv."
     },
     {
       "key": "wa_dnr_ifpl",
@@ -8237,7 +8237,7 @@
       "discovered_date": "2026-10-03",
       "notes": "37 zones on 2026-10-03, all level 1; max FIRE_PRECAUTION_EFFECTIVE_DT 2026-10-03. Contact fields RGN_PHONE and RGN_EMAIL and the region office's three address fields are left out with the person fields. Read by this step at 2026-10-03T16:09:41Z: returnCountOnly under the row's `where` answered 37, and `OBJECTID` is distinct on 37 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): every zone publishes whatever its precaution level (all 37 at level 1 on 2026-10-03, a rule for industrial operators), so a level that binds no hiker would read as a warning. Settled by a level threshold in seeds/notice_status_values.csv."
     },
     {
       "key": "wsprc_winter_rec_closures",
@@ -8258,7 +8258,7 @@
       "discovered_date": "2026-10-03",
       "notes": "47 polylines on 2026-10-03, 'TemporaryClosure'; dataLastEditDate 2025-12-03; item 675652dc7a364c4686032d8d0a599c61, snippet 'updates in real time'. Fields Name and GlobalID only. Read by this step at 2026-10-03T16:09:45Z: returnCountOnly under the row's `where` answered 47, and `GlobalID` is distinct on 47 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: 47 closure lines from a winter layer last edited 2025-12-03 were still present in October 2026, with no dates and no status, so a row's presence does not say it is in force (inventory, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): Name and GlobalID are its only fields and it was last edited 2025-12-03, so a winter closure would read as current in summer. Settled by when its closures bind, from the park service."
     },
     {
       "key": "utah_ffsl_fire_restrictions",
@@ -8278,8 +8278,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "176 orders across FFSL, USFS, BLM, NPS and tribal agencies; lastEditDate 2026-10-01 21:10 UTC. OrderNum, Agency, EffectiveDate, RescindedDate, OnDate (DateOnly), RestrictionType, Status, Short_AreaDescription, Link. Read by this step at 2026-10-03T16:09:50Z: returnCountOnly under the row's `where` answered 25, and `OBJECTID` is distinct on 25 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_utah_ffsl__utah_ffsl_fire_restrictions reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; a row whose EffectiveDate has not come, whose RescindedDate is reached or whose Status reads 'Rescinded' or 'Superseded' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "tdec_trail_closures",
@@ -8302,8 +8302,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "22 closed segments statewide on 2026-10-03 (TRSTAT 'Temporarily Closed' 21, 'Closed Repairs' 1): the public view holds only closed segments, so it is not filtered. 1 is on the Cumberland Trail now (TSP-0077, 'Cumberland Mountain Section', 3.89 mi, Temporarily Closed, edited 2026-05-06); North Chickamauga, which the audit counted, is no longer in the layer. lastEditDate 2026-10-03 02:27 UTC. PERSON FIELDS LEFT OUT: Creator and Editor hold staff account names (e.g. 'Firstname.Lastname_TSP'). Read by this step at 2026-10-03T16:09:54Z: returnCountOnly under the row's `where` answered 22, and `GlobalID` is distinct on 22 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_tdec__tdec_trail_closures reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own TRSTAT reads 'Temporarily Closed' or 'Closed Repairs' and nothing holds the row, and is otherwise a warning nobody reviewed; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "tn_state_park_boundaries",
@@ -8481,7 +8481,7 @@
       "discovered_date": "2026-10-03",
       "notes": "40 points on 2026-10-03, 'Closed Assets'; no editingInfo and no edit-date field. Name, Short_Desc, Desc1-5, Website, Hours, PropertyID. Read by this step at 2026-10-03T16:09:59Z: returnCountOnly under the row's `where` answered 40, and `OBJECTID` is distinct on 40 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: facility closures (the Alberta Park wading pool, closed since a 2009 state rule), not trail notices (inventory, 2026-10-03). Forest Park's trail closures are on portland.gov's page, which the Forest Park Conservancy's folder lists to wire."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): facility closures (the Alberta Park wading pool, closed since a 2009 state rule), not trail notices (inventory, 2026-10-03), so a row would warn a hiker about a pool. Settled by a rule that keeps only trail assets, or by wiring Forest Park's trail closures instead."
     },
     {
       "key": "portland_parks_trail_closures",
@@ -8568,7 +8568,7 @@
       "discovered_date": "2026-10-03",
       "notes": "4 points on 2026-10-03: H_C 'C' (closure) 2, 'H' (hazard) 2; lastEditDate 2025-05-28. Location, Hazard, Info, Lat, Long, H_C; OBJECTID only, no stable id. Read by this step at 2026-10-03T16:10:03Z: returnCountOnly under the row's `where` answered 4, and `OBJECTID` is distinct on 4 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: last edited 2025-05-28, 16 months before this read, and the rows carry no date of their own, so nothing says a 2025 closure is still in force. TDEC's statewide layer (_shared/tdec/) is the live channel for the same trail."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): last edited 2025-05-28 and its rows carry no date of their own, so nothing says a 2025 closure is still in force; TDEC's statewide layer is the live channel for the same trail. Settled by the steward dating its rows, or by dropping it for TDEC's."
     },
     {
       "key": "ctsst_open_ct_trail_2020",
@@ -8799,8 +8799,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "80 rows on 2026-10-03: posted yes 21, no 57, pending 2; edited 2026-09-30 14:03. heading, segment_name, posted, date_posted, date_updated, hyperlink, globalid. Not filtered: `posted` is the club's own flag and dbt keeps the yes rows. 'Stewart Tunnel closed' (posted 2019-09-11, updated 2020-09-08) is posted 'yes', an indefinite closure still live, so age alone must never expire a row. Read by this step at 2026-10-03T16:10:17Z: returnCountOnly under the row's `where` answered 80, and `globalid` is distinct on 80 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_iata__iata_trail_conditions reads it into int_closures__club_notices, whose phase C rules are unit-tested; nothing in it closes a trail by itself, so every row is a warning nobody reviewed (decision 7); a row whose date_posted has not come or whose posted reads 'no' or 'pending' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "iata_hunting_closures",
@@ -8819,7 +8819,7 @@
       "discovered_date": "2026-10-03",
       "notes": "52 lines on 2026-10-03; edited 2026-09-21. Segment, GunDeer (Closed|null), OtherSeason, OtherDesc, Comments. A line closes its segment only in its season, and the layer carries no season dates: dbt must not show a row as a current closure without the season window (@unvalidated where it comes from). Read by this step at 2026-10-03T16:10:21Z: returnCountOnly under the row's `where` answered 52, and `GlobalID` is distinct on 52 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): a line closes its segment only in its gun-deer season and the layer carries no season dates, so every row would read as a standing warning all year. Settled by the season window, from wherever IATA states it (@unvalidated)."
     },
     {
       "key": "iata_lands_hunting_regs",
@@ -8838,7 +8838,7 @@
       "discovered_date": "2026-10-03",
       "notes": "65 polygons on 2026-10-03; edited 2026-07-13; copyrightText 'Ice Age Trail Alliance'. Hunting_Reg (No hunting | Open for public hunting | Open for deer hunting by permit only | Private hunting by agreement), Display_Name, County, Public_Access. Standing rules with no season dates. Read by this step at 2026-10-03T16:10:26Z: returnCountOnly under the row's `where` answered 65, and `OBJECTID` is distinct on 65 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03). Phase C should not flip it on that alone: standing hunting rules by parcel with no season dates; whether hunting areas are a warning is the maintainer's open question."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): standing hunting rules by parcel with no season dates, and whether a hunting area is a warning at all is the maintainer's open question, which decision 63 did not answer. Settled by the maintainer."
     },
     {
       "key": "iat_trail_communities",
@@ -9027,7 +9027,7 @@
       "discovered_date": "2026-10-03",
       "notes": "28 points on 2026-10-03; lastEditDate 2026-09-26 13:15 UTC. tn_id (the same id the club's notices JSON uses, e.g. 2735), Map, Notice ('Trail Closed: Bridge Repair When: Until further notice'), Link (https://fltmap.cc/alerts/3), Status. Status's values were not read, so the layer is not filtered. PERSON FIELDS LEFT OUT: Creator, Editor, Creator_1, Editor_1 (a service account, 'mappingservice_FLTC', left out all the same). Read by this step at 2026-10-03T16:10:31Z: returnCountOnly under the row's `where` answered 28, and `GlobalID` is distinct on 28 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): Status's values were never read, so a notice FLTC has closed out would publish as current. Settled by reading them into seeds/notice_status_values.csv."
     },
     {
       "key": "fltc_seasonal_closures",
@@ -9046,7 +9046,7 @@
       "discovered_date": "2026-10-03",
       "notes": "82 lines on 2026-10-03 ('Hunting and high water closures'); lastEditDate 2026-06-14. Id, Descrip, Miles, Date_Modif, Notes, Map, ViewLink. No active flag and no season dates in the layer: which rows bind today is @unvalidated (the hunting dates live on fingerlakestrail.org's /hunting-season-schedules/). Read by this step at 2026-10-03T16:10:36Z: returnCountOnly under the row's `where` answered 82, and `FID` is distinct on 82 of them (returnDistinctValues), the key phase C builds on.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): no active flag and no season dates, so which rows bind today is unknown and every row would read as current all year. Settled by FLTC's hunting dates as reviewed terms (@unvalidated where they live)."
     },
     {
       "key": "fltc_hunting_bypasses",
@@ -9064,8 +9064,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "69 lines at the coverage audit (2026-10-01), not recounted; lastEditDate 2026-07-19. Id, Descrip, Miles, Date_Modif. Read by this step at 2026-10-03T16:10:40Z: returnCountOnly under the row's `where` answered 69, and `FID` is distinct on 69 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_fltc__fltc_hunting_bypasses reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "fltc_map_sheet_index",
@@ -9185,8 +9185,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 3, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "745 segments, 3 closed, on 2026-10-03; edited 2026-07-31. Trail_Name, Manager_Na, Open_Statu, Comments, Last_Edi_1 (a row date), GlobalID. PERSON FIELDS LEFT OUT: Created_Us and Last_Edite, a shapefile's truncated editor names. Read by this step at 2026-10-03T16:10:45Z: returnCountOnly under the row's `where` answered 3, and `GlobalID` is distinct on 3 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Registered, not shipped: no dbt model reads this table yet, and decision 53's phase C sets reaches_hikers true when a mart does (the consistency rule for every worker's new rows, 2026-10-03)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_fta__fta_fnst_closed_segments reads it into int_closures__club_notices, whose phase C rules are unit-tested; it closes a trail only where its own Open_Statu reads 'Closed' and nothing holds the row, and is otherwise a warning nobody reviewed; a row whose Open_Statu reads 'Open' is held back; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "fta_gateway_communities",

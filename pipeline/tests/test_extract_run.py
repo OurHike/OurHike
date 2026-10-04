@@ -936,7 +936,8 @@ def test_the_org_row_carries_the_licence_of_every_key_the_club_claims():
         "dec_viewing_areas",
         "dec_parking_areas",
         "dec_backcountry_features",
-        # nysdec/warnings.py's two, decision 53 phase B (2026-10-03): registered, not shipped yet.
+        # nysdec/warnings.py's two, decision 53 phase B (2026-10-03); decision 63 (2026-10-04) ships the HAB
+        # reports and holds the big-game seasons until their season text is parsed.
         "nysdec_hab_reports",
         "nysdec_big_game_seasons",
         # nysdec/closures.py's backcountry page, decision 53 phase B and decision 55 (2026-10-03): registered, not shipped.
@@ -951,7 +952,8 @@ def test_the_org_row_carries_the_licence_of_every_key_the_club_claims():
     assert claims["dec_lands"]["type"] == "places"
     assert claims["dec_lands"]["reaches_hikers"] is False
     assert claims["nysdec_hab_reports"]["type"] == "warnings"
-    assert claims["nysdec_hab_reports"]["reaches_hikers"] is False
+    assert claims["nysdec_hab_reports"]["reaches_hikers"] is True
+    assert claims["nysdec_big_game_seasons"]["reaches_hikers"] is False
 
 
 def test_a_note_past_its_recheck_date_is_overdue():

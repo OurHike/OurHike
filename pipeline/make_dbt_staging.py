@@ -61,11 +61,11 @@ its row's measured `key_fields`; a hike type's taxonomy terms (SiteTerms) are a 
 on (taxonomy, id). Each type's union is `int_<type>__club_unioned`, beside the path its mart reads today, and each
 staging model leaves the source's prose (CONTENT_PROSE) out of `properties`, so a body stops at the base model.
 
-SECTION K'S PAGES (decision 54 waves 4 and 5, 2026-10-04): the content types a club publishes as web pages, read by
-extract/_pages_content.py's ContentPages, are staged the same way, keyed on each row's measured `key_fields`; their
-rows are facts by construction, so nothing is set aside as prose. Its PDFs (extract/_pdf_content.py's ContentPdf)
-are extracted and not staged: their reader needs pypdf, which fixture mode's Python does not install, so no fixture
-warehouse holds their tables, and a base model over an absent table would stop the build.
+SECTION K'S PAGES AND PDFS (decision 54 waves 4 and 5, 2026-10-04): the content types a club publishes as web
+pages (extract/_pages_content.py's ContentPages) and as PDFs (extract/_pdf_content.py's ContentPdf) are staged the
+same way, keyed on each row's measured `key_fields`; their rows are facts by construction, so nothing is set aside
+as prose. A PDF's table lands only where pypdf is installed, which is the extract job's venv and not fixture mode's
+Python, so in the fixture build its base model reads no rows through raw_or_empty().
 """
 
 from __future__ import annotations
@@ -276,6 +276,9 @@ CONTENT_COLUMNS = {
         "licence": "licence",
         "link": "link",
     },
+    # Section K's PDF reader (decision 54 wave 4, extract/_pdf_content.py): the same type columns as its page reader.
+    ("suggested_hikes", "ContentPdf"): {"name": "name", "link": "link"},
+    ("challenges", "ContentPdf"): {"name": "name", "link": "link"},
 }
 #: NPS's lists, one reader for five endpoints, conformed by (type, the endpoint's path under /api/v1/), each field
 #: one extract/_content.py's NPS_CONTENT_COLUMNS hints so the column exists on every run.
@@ -330,6 +333,7 @@ CONTENT_PROSE = {
     # A content page's rows are facts by construction (extract/_pages_content.py's TYPE_COLUMNS allowlist): no prose
     # lands in the raw store, so none needs stopping here.
     "ContentPages": (),
+    "ContentPdf": (),
 }
 #: The readers whose tables are lookups beside a type's rows, staged in base only: a hike type's taxonomy terms.
 CONTENT_LOOKUPS = ("SiteTerms",)

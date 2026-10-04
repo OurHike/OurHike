@@ -40,6 +40,16 @@ sources:
           the extract reads the layer (f=geojson, outSR 4326), under lib/user_agent.py's
           USER_AGENT, robots.txt first). `id_field` names the object id, which a reload
           mints again (decision 40).
+      - name: raw_amc__amc_itineraries
+        data_tests:
+          # Rows sharing base_amc__amc_itineraries's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'amc_itineraries'", "link"]
+        description: >
+          AMC Outdoor Itineraries & Trip Ideas (outdoors.org/resources/itineraries/)
+          (sources.json `amc_itineraries`). Key: `link`, the trip's own itinerary page:
+          unique on all 10 rows read 2026-10-04, as are the names.
       - name: raw_amc__amc_lodging
         data_tests:
           # Rows sharing base_amc__amc_lodging's key must be exact copies (decision 40).

@@ -30,9 +30,10 @@ ONE READ A RUN AND POLITE, as extract/_notices.py's sources are: the check's ans
 request passes polite() at the host's Crawl-delay or DEFAULT_HOST_GAP_SECONDS, and a wall, a challenge or a redirect
 to another host raises. The text comes from extract/_notices.py's read_pdf, which needs pypdf: requirements-extract.in
 pins it, and the pipeline suite and scripts/test.sh's fixture build do not, so these resources have no fixture-mode
-fixture (as the notice PDFs have none, tests/test_extract_fixtures.py's NOTICE_PDFS) and are not staged by
-make_dbt_staging.py; tests/test_extract_pdf_content.py runs their parsers where pypdf is installed and skips them
-where it is not. The lane is the type's, monthly.
+fixture (as the notice PDFs have none, tests/test_extract_fixtures.py's NOTICE_PDFS): their tables land only where
+pypdf is installed, the monthly extract job's venv. make_dbt_staging.py stages them all the same, and their base
+models read no rows in the fixture build (dbt/macros/raw_or_empty.sql); tests/test_extract_pdf_content.py runs
+each family over an invented text layer, which needs no pypdf. The lane is the type's, monthly.
 """
 
 from __future__ import annotations

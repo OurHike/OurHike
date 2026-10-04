@@ -39,3 +39,13 @@ sources:
           Arizona Trail passages for mountain bikes (ATA) (sources.json
           `ata_mountain_bike_passages`). Key: GlobalID: unique and non-null on all 50 rows
           (measured 2026-10-03 over every row's attributes).
+      - name: raw_ata__ata_passages
+        data_tests:
+          # Rows sharing base_ata__ata_passages's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ata_passages'", "link"]
+        description: >
+          Arizona Trail passages (aztrail.org/explore/passages/) (sources.json
+          `ata_passages`). Key: `link`, the passage's own page: unique on all 44 rows read
+          2026-10-04, as are the names ('Passage 1: Huachuca Mountains').

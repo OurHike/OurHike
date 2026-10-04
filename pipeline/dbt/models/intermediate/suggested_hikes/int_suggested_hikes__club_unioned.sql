@@ -17,6 +17,26 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_amc__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_ata__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_cdtc__suggested_hikes') }}
 union all by name
 select
@@ -27,7 +47,47 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_cohos__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_cvatc__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_foothills__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_gmc__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_kta__suggested_hikes') }}
 union all by name
 select
     source_key,
@@ -57,6 +117,16 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_nc_dpr__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_nmvfo__suggested_hikes') }}
 union all by name
 select
@@ -77,6 +147,16 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_patc__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_pnta__suggested_hikes') }}
 union all by name
 select
@@ -88,6 +168,16 @@ select
     properties,
     _loaded_at
 from {{ ref('stg_ridgetrail__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_rmc__suggested_hikes') }}
 union all by name
 select
     source_key,

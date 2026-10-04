@@ -31,3 +31,12 @@ models:
       - name: poi_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_amc__suggested_hikes
+    description: >
+      The amc/ folder's suggested hikes layers (`amc_itineraries`), one row per base row,
+      renamed to int_suggested_hikes__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: hike_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

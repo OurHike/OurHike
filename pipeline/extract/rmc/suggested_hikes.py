@@ -11,7 +11,8 @@ The reader is extract/_pdf_content.py's ContentPdf with the `rmc_recommended_hik
 than relabels a changed layout; facts and the link only, never RMC's descriptions, and no PDF metadata but its
 dates (its /Author names a person). Its row in sources.json holds the terms as found, the live read and the
 measured key, the walk's group and its name. It needs pypdf, which the extract job installs and fixture mode's
-Python does not, so the table is extracted and not staged (extract/_pdf_content.py's docstring).
+Python does not, so the table lands only from the monthly job, and its base model reads no rows in the fixture
+build (extract/_pdf_content.py's docstring).
 
 The note this replaces read, whole:
 

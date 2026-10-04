@@ -140,7 +140,7 @@ class Node:
         """The element's visible text, whitespace folded, a block boundary read as a space."""
         parts: list[str] = []
         self._text(parts)
-        return " ".join("".join(parts).split())
+        return " ".join("".join(parts).replace("\u200b", "").replace("\ufeff", "").split())
 
     def _text(self, parts: list[str]) -> None:
         for child in self.children:
@@ -152,6 +152,25 @@ class Node:
                 child._text(parts)
                 if child.tag not in INLINE_ELEMENTS:
                     parts.append(" ")
+
+    def lines(self) -> list[str]:
+        """The element's visible text as lines: a <br> and a block boundary each end one, whitespace folded in each."""
+        parts: list[str] = []
+        self._lines(parts)
+        joined = "".join(parts).replace("\u200b", "").replace("\ufeff", "")
+        return [line for line in (" ".join(chunk.split()) for chunk in joined.split("\n")) if line]
+
+    def _lines(self, parts: list[str]) -> None:
+        for child in self.children:
+            if isinstance(child, str):
+                parts.append(child.replace("\n", " "))
+            elif child.tag == "br":
+                parts.append("\n")
+            elif child.tag not in HIDDEN_ELEMENTS:
+                boundary = "" if child.tag in INLINE_ELEMENTS else "\n"
+                parts.append(boundary)
+                child._lines(parts)
+                parts.append(boundary)
 
     def raw(self) -> str:
         """The text of a script or style element, as written."""
@@ -275,6 +294,17 @@ def sections(found: list[Block], level: int) -> list[tuple[Block, list[Block]]]:
         if current is not None:
             current[1].append(block)
     return out
+
+
+def table_rows(table: Node) -> tuple[list[str], list[list[str]]]:
+    """A table's header cells and its body rows' cells, as text: the first row whose cells are th, or the first row."""
+    rows = [
+        [cell.text().replace("\ufeff", "") for cell in tr.find_all() if cell.tag in ("td", "th")] for tr in table.find_all("tr")
+    ]
+    rows = [row for row in rows if any(row)]
+    if not rows:
+        return [], []
+    return rows[0], rows[1:]
 
 
 LABEL = re.compile(r"(?P<label>[A-Z][\w &/()'’.-]{0,40}?)\s*[:–—]\s*(?P<value>.+)", re.DOTALL)
@@ -408,8 +438,10 @@ class SiteParser:
     """How one site's pages are read: the function, the columns it adds to its type's, and what it may follow.
 
     `read(page, fetch)` returns the rows; `fetch(url)` reads another page on the same host through the reader's
-    gate and returns it as a Page. `queries` is True only where the host's robots.txt, read at registration,
-    allows a URL with a query string, which no parser asks for otherwise.
+    gate and returns it as a Page, and `fetch(url, missing_ok=True)` returns None for a 404 or 410, for a page the
+    parser builds from a pattern rather than follows from a link (a park with no trails page). `queries` is True only
+    where the host's robots.txt, read at registration, allows a URL with a query string, which no parser asks for
+    otherwise.
     """
 
     read: Callable[[Page, Callable[[str], Page]], list[dict]]
@@ -444,13 +476,22 @@ class ContentPages(_NoticeSource):
     def column_hints(self) -> dict:
         return {name: {"data_type": kind} for name, kind in self.columns.items()}
 
-    def _fetch(self, url: str) -> Page:
-        """Another page of the same site, through the same gate and the same refusals as the first."""
+    def _fetch(self, url: str, missing_ok: bool = False) -> Page | None:
+        """Another page of the same site, through the same gate and the same refusals as the first.
+
+        With `missing_ok`, a 404 or 410 is None rather than a raise: only for a URL the parser built from a pattern,
+        never one the site linked, where a missing page is a moved page and the run must say so.
+        """
         if not same_site(self.url, url):
             raise LayoutChanged(f"{self.key}: the page links {url}, off {urlparse(self.url).hostname}, which is not read")
         if urlparse(url).query and not self.parser.queries:
             raise LayoutChanged(f"{self.key}: {url} carries a query string, which this site's parser does not ask")
-        return self._page(url, guarded_get(self, url))
+        try:
+            return self._page(url, guarded_get(self, url))
+        except NoticeUnreadable as error:
+            if missing_ok and re.search(r"answered HTTP (404|410)\b", str(error)):
+                return None
+            raise
 
     def _page(self, url: str, response: requests.Response) -> Page:
         text = _decoded(response)
@@ -658,10 +699,502 @@ def _tahoe_rim_day_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+#: NC State Parks' trail-table headers, lower-cased, as the 42 parks' tables spelled them (2026-10-04, nine header
+#: sets), and the column each lands in. A 'Description', 'Descriptions' or 'Additional Information' column is the
+#: park's prose and lands nowhere; a header this does not name raises.
+NC_PARKS_COLUMNS = {
+    "trail name": "name",
+    "trail": "name",
+    "blaze": "blaze",
+    "length": "distance_text",
+    "difficulty": "difficulty",
+    "trail use": "trail_use",
+    "accessible": "accessible",
+    "ada accessible": "accessible",
+    "access": "access",
+    "access location": "access",
+    "description": None,
+    "descriptions": None,
+    "additional information": None,
+}
+
+
+def _nc_parks_trails(page: Page, fetch) -> list[dict]:
+    """NC State Parks' trail tables: ncparks.gov/state-parks lists each park, and each park's /trails page a table.
+
+    The index links 46 parks (`/state-parks/<park>`, 2026-10-04); the trails page is that URL plus `/trails`, built
+    from the pattern rather than linked, so a park with none (Bob's Creek State Natural Area answers 404) has no row
+    and no refusal. A table's header row names its columns, which vary by park ('Trail Name | Blaze | Length |
+    Difficulty | Trail Use | Accessible' at Crowders Mountain; 'ADA Accessible' and a 'Description' column at
+    Carolina Beach), and each body row is one trail ('Backside Trail | orange | 0.8-mile | Strenuous | Hiking only |
+    No'). Columns are read by their header through NC_PARKS_COLUMNS; a header it does not name, a table with no
+    trail name or length, an index that links no park and a read where no park has a table each raise. The park is
+    named from the page's <title>, because 35 of the 42 pages' h1 is 'Trails' alone.
+    """
+    parks = sorted(
+        {
+            page.link(anchor.get("href"))
+            for anchor in page.root.find_all("a")
+            if re.fullmatch(r"/state-parks/[a-z0-9-]+/?", urlparse(page.link(anchor.get("href")) or "").path or "")
+        }
+        - {None}
+    )
+    if not parks:
+        raise LayoutChanged("nc_parks: the index links no /state-parks/<park> page")
+    rows = []
+    for park in parks:
+        trails = fetch(park.rstrip("/") + "/trails", missing_ok=True)
+        if trails is None:
+            continue
+        # The park's name is its <title>'s ('Crowders Mountain: Trails | NC State Parks'): the h1 is 'Trails' on most.
+        title = trails.root.find("title")
+        name = re.sub(r": Trails \| NC State Parks$", "", fact(title.text()) or "") if title is not None else ""
+        if not name or "|" in name:
+            raise LayoutChanged(f"nc_parks: {trails.url}'s <title> is not '<park>: Trails | NC State Parks'")
+        for table in trails.root.find_all("table"):
+            head, body = table_rows(table)
+            names = [cell.strip().lower() for cell in head]
+            unknown = [cell for cell in names if cell not in NC_PARKS_COLUMNS]
+            if unknown or "name" not in [NC_PARKS_COLUMNS[cell] for cell in names] or "length" not in names:
+                raise LayoutChanged(f"nc_parks: {trails.url}'s table heads {head}, which NC_PARKS_COLUMNS does not read")
+            for cells in body:
+                if len(cells) != len(head):
+                    raise LayoutChanged(f"nc_parks: {trails.url} has a row of {len(cells)} cells under {len(head)}: {cells}")
+                row = {
+                    NC_PARKS_COLUMNS[cell]: fact(value)
+                    for cell, value in zip(names, cells, strict=True)
+                    if NC_PARKS_COLUMNS[cell]
+                }
+                if not row.get("name"):
+                    continue
+                distance, _ = miles(row.get("distance_text"))
+                rows.append(
+                    {
+                        **row,
+                        "place": name,
+                        "section": name,
+                        "distance_mi": distance,
+                        "route_type": route_type(row.get("distance_text")),
+                        "link": trails.url,
+                        "source_url": trails.url,
+                    }
+                )
+    if not rows:
+        raise LayoutChanged("nc_parks: no park's trails page held a trail table")
+    return rows
+
+
+_CVATC_LEAD = re.compile(r"(?P<name>Hike [Tt]o .+?) - (?P<facts>\d[^.]*?)\.\s")
+
+
+def _cvatc_foliage_hikes(page: Page, fetch) -> list[dict]:
+    """The Cumberland Valley A.T. Club's 'Great Fall Foliage Hikes In South Central PA', four hikes, read 2026-10-04.
+
+    Each hike is one paragraph that opens with its facts in one clause before the first full stop: 'Hike to Pole
+    Steeple - 6 miles, moderate.', 'Hike To Flat Rock - 5 miles, out and back, strenuous in places.' The name and
+    that clause are read; the rest of the paragraph is the club's directions and lands nowhere. A page with no such
+    paragraph raises.
+    """
+    rows = []
+    for line in page.root.lines():
+        match = _CVATC_LEAD.match(line + " ")
+        if not match:
+            continue
+        clauses = [fact(part) for part in match["facts"].split(",")]
+        distance, distance_text = miles(clauses[0])
+        shape = next((route_type(clause) for clause in clauses[1:] if route_type(clause)), None)
+        difficulty = next((clause for clause in clauses[1:] if clause and not route_type(clause)), None)
+        rows.append(
+            {
+                "name": fact(match["name"]),
+                "distance_mi": distance,
+                "distance_text": distance_text,
+                "route_type": shape,
+                "difficulty": difficulty,
+                "link": page.url,
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
+#: A Foothills section page's labels, and the shape a following paragraph has when it continues that label rather than
+#: being the conservancy's own note: the other direction's difficulty ('A2 to A1 – moderate to strenuous', 'A11 to A10
+#: easy to moderate', 'Foothills Trail to Frozen Creek – strenuous') or the other end's trailhead ('A2 Sassafras
+#: Mountain, SC Hwy 178, ...').
+FOOTHILLS_CONTINUES = {
+    "distance": None,
+    "difficulty": re.compile(r"[AS] ?\d+ to [AS] ?\d+\b.*|.+ to .+ [–-] .+"),
+    "blazes": None,
+    "trail head": re.compile(r"[AS] ?\d+\b.*"),
+}
+
+
+def _foothills_facts(found: list[Block]) -> dict[str, list[str]]:
+    """A section page's labelled paragraphs, each with the paragraphs that continue it (FOOTHILLS_CONTINUES)."""
+    facts: dict[str, list[str]] = {}
+    current = None
+    for block in found:
+        match = re.fullmatch(r"(?P<label>[A-Z][A-Za-z ]{1,20}):\s*(?P<value>.*)", block.text)
+        if match:
+            label = match["label"].strip().lower()
+            current = label if label in FOOTHILLS_CONTINUES else None
+            if current is not None and match["value"]:
+                facts.setdefault(current, []).append(match["value"].strip())
+            continue
+        continues = FOOTHILLS_CONTINUES.get(current) if current else None
+        if continues is not None and continues.fullmatch(block.text):
+            facts[current].append(block.text)
+        else:
+            current = None
+    return facts
+
+
+def _foothills_sections(page: Page, fetch) -> list[dict]:
+    """The Foothills Trail Conservancy's 'Section By Section': the index's 19 /portfolio/ pages, each one section.
+
+    The index (foothillstrail.org/section-by-section-2/) links each section's page from a gallery card above an h2
+    with its name: 13 sections A1 to A14 and 6 spurs, 2026-10-04. A section's page states its name in its h1, then
+    one paragraph a fact, the label first: 'Distance: 9.7 miles', 'Difficulty: A1 to A2 – strenuous (ascends 2,000
+    feet in three miles)' with the other direction on the next paragraph, 'Blazes: Yellow', 'Trail Head:' with each
+    end on a paragraph of its own, then 'Features:' as a list. Distance, difficulty (both directions, joined by
+    '; '), blazes and trailheads (both ends) are read, a paragraph continuing a label only where it has that label's
+    shape (FOOTHILLS_CONTINUES); the page's notes ('*At Frozen Creek Access, campers are asked to ...') and the
+    features list are not. A section page with no
+    Distance raises. foothillstrail.org's robots.txt disallows every URL with a query string (`Disallow: /*?`) and
+    asks `Crawl-delay: 10`, so the WordPress REST list, which pages by query string, is not asked.
+    """
+    sections_found = []
+    for anchor in page.root.find_all("a"):
+        href = page.link(anchor.get("href"))
+        if href and "/portfolio/" in urlparse(href).path and href not in sections_found:
+            sections_found.append(href)
+    if not sections_found:
+        raise LayoutChanged("foothills: the section-by-section page links no /portfolio/ page")
+    rows = []
+    for href in sections_found:
+        section = fetch(href)
+        heading = section.root.find("h1")
+        found = blocks(section.root)
+        start = next((i for i, block in enumerate(found) if block.node is heading), None)
+        if heading is None or start is None:
+            raise LayoutChanged(f"foothills: {href} has no h1")
+        body = []
+        for block in found[start + 1 :]:
+            if block.level is not None:
+                break
+            body.append(block)
+        facts = _foothills_facts(body)
+        if "distance" not in facts:
+            raise LayoutChanged(f"foothills: {href} states no Distance")
+        distance, distance_text = miles(facts["distance"][0])
+        rows.append(
+            {
+                "name": fact(heading.text()),
+                "distance_mi": distance,
+                "distance_text": distance_text,
+                "difficulty": fact("; ".join(facts.get("difficulty", []))),
+                "blazes": fact("; ".join(facts.get("blazes", []))),
+                "place": fact("; ".join(facts.get("trail head", []))),
+                "link": section.url,
+                "source_url": section.url,
+            }
+        )
+    return rows
+
+
+def _cohos_day_hikes(page: Page, fetch) -> list[dict]:
+    """The Cohos Trail Association's day hikes (cohostrail.org/day-hike/): the table of more suggestions, 22 rows.
+
+    The page lists twelve favourites as paragraphs of the association's prose, then 'Looking for even more day hikes
+    on the Cohos Trail? Check out these suggestions:' and a table headed 'Trail or Destination | Where | Rank |
+    Feature' ('Davis Path, Mt. Crawford | Notchland | Tough | Mt. Views'). The table is read, one row a hike; the
+    favourites' prose is not. A table whose header differs raises.
+    """
+    header = ["Trail or Destination", "Where", "Rank", "Feature"]
+    rows = []
+    for table in page.root.find_all("table"):
+        head, body = table_rows(table)
+        if head != header:
+            raise LayoutChanged(f"cohos: the day-hike table heads {head}, not {header}")
+        for cells in body:
+            if len(cells) != len(header):
+                raise LayoutChanged(f"cohos: a day-hike row has {len(cells)} cells: {cells}")
+            rows.append(
+                {
+                    "name": fact(cells[0]),
+                    "place": fact(cells[1]),
+                    "difficulty": fact(cells[2]),
+                    "feature": fact(cells[3]),
+                    "link": page.url,
+                    "source_url": page.url,
+                }
+            )
+    return rows
+
+
+_TUSCARORA_SECTION = re.compile(r"Section (?P<number>\d+):? (?P<name>.+)")
+_TUSCARORA_SPAN = re.compile(r"(?P<span>.+?), (?P<miles>\d+(?:\.\d+)?) miles\.?")
+_TUSCARORA_ELEVATION = re.compile(r"Max Elevation: (?P<max>[\d,]+) ft\.? Min Elevation: (?P<min>[\d,]+) ft\.?")
+
+
+def _tuscarora_sections(page: Page, fetch) -> list[dict]:
+    """PATC's Tuscarora Trail section guides (hikethetuscarora.org): seven pages, 22 sections, read 2026-10-04.
+
+    The home page's menu links each page of sections ('Section 1-3' to 'Section 20-22'). On a page each section is
+    a run of lines: 'Section 1: Sterretts Gap' (section 8's has no colon, 'Section 8 The Lockings', and lands as
+    'Section 8: The Lockings'), then 'Appalachian Trail to Waggoners Gap, 12 miles.', the PATC map
+    that covers it ('PATC Map J, Guide to the North Half of the Tuscarora Trail'), 'Max Elevation: 1620 ft. Min
+    Elevation: 930 ft.', and labelled Highlights, Access, Advisory, Camping and Links. The name, the span, the
+    miles, the map and the two elevations are read. The Access, Camping and Advisory lines are PATC's own words and
+    land nowhere here, though they carry parking and shelter coordinates (a points-of-interest reader's, not a
+    suggested hike's). The elevations land as the page states them: section 10's maximum, 395 ft, is below its
+    minimum, 415 ft, on 2026-10-04. A section whose span line or elevation line is not that shape raises.
+    """
+    pages = []
+    for anchor in page.root.find_all("a"):
+        href = page.link(anchor.get("href"))
+        if href and re.fullmatch(r"/section-\d+-\d+/?", urlparse(href).path) and href not in pages:
+            pages.append(href)
+    if not pages:
+        raise LayoutChanged("tuscarora: the home page links no /section-N-M page")
+    rows = []
+    for href in pages:
+        lines = fetch(href).root.lines()
+        for index, line in enumerate(lines):
+            section = _TUSCARORA_SECTION.fullmatch(line)
+            if not section:
+                continue
+            span = _TUSCARORA_SPAN.fullmatch(lines[index + 1] if index + 1 < len(lines) else "")
+            if not span:
+                raise LayoutChanged(f"tuscarora: section {section['number']}'s span line is not 'A to B, N miles'")
+            after = lines[index + 2 : index + 8]
+            elevation = next((m for m in (_TUSCARORA_ELEVATION.fullmatch(text) for text in after) if m), None)
+            if elevation is None:
+                raise LayoutChanged(f"tuscarora: section {section['number']} states no 'Max Elevation ... Min Elevation'")
+            rows.append(
+                {
+                    "name": f"Section {section['number']}: {fact(section['name'])}",
+                    "section": f"Section {section['number']}",
+                    "place": fact(span["span"]),
+                    "distance_mi": float(span["miles"]),
+                    "distance_text": f"{span['miles']} miles",
+                    "route_type": "one way",
+                    "map": next((fact(text) for text in after if text.startswith("PATC Map")), None),
+                    "max_elevation_ft": number(elevation["max"]),
+                    "min_elevation_ft": number(elevation["min"]),
+                    "link": href,
+                    "source_url": href,
+                }
+            )
+    return rows
+
+
+def _kta_favorite_hikes(page: Page, fetch) -> list[dict]:
+    """The Keystone Trails Association's 'Favorite Hikes in Pennsylvania' (kta-hike.org), read 2026-10-04.
+
+    Seven h2 groups (beginner's, backpacking, universally accessible, trail running, dog friendly, streamside and
+    children's hikes, each titled in English and Spanish), and in each the hikes as runs of lines in a Weebly
+    paragraph: the hike's name in bold, then its county ('Monroe County', 'Cameron, Clearfield, Elk Counties'),
+    for some a town and a forest, the URL of the page that describes it (another organisation's, linked and never
+    fetched), and a description in English and Spanish, which lands nowhere. A bold line is a hike only where a
+    county line follows it; the first URL after it is its link. A group with no hike, or a page with no group,
+    raises.
+    """
+    rows = []
+    section = None
+    for node in page.root.iter():
+        if node.tag == "h2":
+            text = fact(node.text()) or ""
+            section = text.split(" - ")[0].strip() if text.startswith("Favorite ") else None
+            continue
+        if section is None or node.tag != "div" or "paragraph" not in node.classes:
+            continue
+        bold = {
+            fact(span.text())
+            for span in node.iter()
+            if span.tag in ("strong", "b") or "font-weight:700" in (span.get("style") or "").replace(" ", "")
+        }
+        lines = node.lines()
+        starts = [i for i, line in enumerate(lines) if line in bold]
+        for position, start in enumerate(starts):
+            end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+            item = lines[start + 1 : end]
+            county = next((line for line in item[:4] if re.search(r"\bCount(?:y|ies)\b", line, re.IGNORECASE)), None)
+            if county is None:
+                continue
+            link = next((line for line in item if line.startswith(("http://", "https://"))), None)
+            rows.append(
+                {
+                    "name": lines[start],
+                    "section": section,
+                    "place": fact(county),
+                    "link": link or page.url,
+                    "source_url": page.url,
+                }
+            )
+    if not rows:
+        raise LayoutChanged("kta: no 'Favorite ...' group holds a bold hike with its county")
+    return rows
+
+
+def _amc_itineraries(page: Page, fetch) -> list[dict]:
+    """The Appalachian Mountain Club's 'Outdoor Itineraries & Trip Ideas' (outdoors.org/resources/itineraries/).
+
+    Three h2 regions (the White Mountains, the North Maine Woods, the Northeast and Mid-Atlantic) and in each an h5 a
+    trip, then for most a 'Difficulty | Duration' line ('Strenuous | 3-4 Days') and a link to the trip's own page under
+    /resources/itineraries/. Eleven trips on 2026-10-04, ski, gravel-bike and paddling trips among them as the page
+    lists them. A trip is read where its first link after the h5 is an itinerary page, its name, difficulty,
+    duration and link; the paragraph about it is AMC's and lands nowhere.
+    """
+    rows = []
+    section = None
+    for node in page.root.iter():
+        if node.tag == "h2":
+            section = fact(node.text())
+            continue
+        if node.tag != "h5" or section is None:
+            continue
+        name = fact(" ".join(node.lines()))
+        difficulty = duration = link = None
+        for after in node.following():
+            if after.tag in ("h2", "h5"):
+                break
+            if after.tag == "p" and difficulty is None:
+                match = re.fullmatch(r"(?P<difficulty>[^|]+?)\s*\|\s*(?P<duration>.+)", after.text())
+                if match:
+                    difficulty, duration = fact(match["difficulty"]), fact(match["duration"])
+            if after.tag == "a" and link is None:
+                href = page.link(after.get("href"))
+                if href:
+                    link = href
+        if link and "/resources/itineraries/" in urlparse(link).path:
+            rows.append(
+                {
+                    "name": name,
+                    "section": section,
+                    "difficulty": difficulty,
+                    "duration": duration,
+                    "link": link,
+                    "source_url": page.url,
+                }
+            )
+    return rows
+
+
+_ATA_COORDINATES = re.compile(
+    r"GPS Coordinates:\s*(?P<lat>\d+(?:\.\d+)?)°?\s*(?P<ns>[NS]),\s*(?P<lon>\d+(?:\.\d+)?)°?\s*(?P<ew>[EW])"
+)
+
+
+def _coordinates(text: str | None) -> tuple[float | None, float | None]:
+    """'GPS Coordinates: 31.33367° N, 110.28276° W' as (31.33367, -110.28276), or (None, None)."""
+    found = _ATA_COORDINATES.search(text or "")
+    if not found:
+        return None, None
+    lat, lon = float(found["lat"]), float(found["lon"])
+    return (-lat if found["ns"] == "S" else lat), (-lon if found["ew"] == "W" else lon)
+
+
+def _ata_passages(page: Page, fetch) -> list[dict]:
+    """The Arizona Trail Association's passages: aztrail.org/explore/passages/ links one page a passage, 44 on 2026-10-04.
+
+    A passage's page names it in its h1 ('Passage 1: Huachuca Mountains') and states its facts under h3 headings:
+    Location ('Mexico Border to Parker Canyon Lake Trailhead'), Length ('20.3 miles'), Difficulty ('Moderate to
+    Difficult.'; 'Distance' on some), Season(s), and one h3 for each end, 'Southern Trailhead: <name>' (22 pages),
+    'Southern Access Point: <name>' (21) or 'Southern Terminus: <name>' (1), and the same three for the north, each
+    followed by 'GPS Coordinates: 31.33367° N, 110.28276° W'. Those are read,
+    the ends' coordinates as the page states them; the Access, Trail Route Description, Water and Notes/Warnings
+    sections are the association's prose and land nowhere here. A passage page with no Length raises. aztrail.org's
+    robots.txt asks `Crawl-delay: 10`, so the 45 requests take about eight minutes.
+    """
+    passages = []
+    for anchor in page.root.find_all("a"):
+        href = page.link(anchor.get("href"))
+        if href and re.search(r"/explore/passages/passage-[^/]+/?$", urlparse(href).path) and href not in passages:
+            passages.append(href)
+    if not passages:
+        raise LayoutChanged("ata: the passages page links no /explore/passages/passage-... page")
+    rows = []
+    for href in passages:
+        passage = fetch(href)
+        heading = passage.root.find("h1")
+        facts: dict[str, list[str]] = {}
+        current = None
+        for block in blocks(passage.root):
+            if block.level == 3:
+                current = block.text
+                facts[current] = []
+            elif block.level is not None:
+                current = None
+            elif current is not None:
+                facts[current].append(block.text)
+
+        def first(label: str) -> str | None:
+            return next((fact(" ".join(facts[name][:1])) for name in facts if name.lower() == label), None)
+
+        def end(prefixes: tuple[str, ...]) -> tuple[str | None, float | None, float | None]:
+            for name, lines in facts.items():
+                if name.startswith(prefixes) and ":" in name:
+                    lat, lon = _coordinates(" ".join(lines))
+                    return fact(name.split(":", 1)[1]), lat, lon
+            return None, None, None
+
+        length = first("length") or first("distance")
+        if heading is None or length is None:
+            raise LayoutChanged(f"ata: {href} has no h1 or no Length")
+        distance, distance_text = miles(length)
+        south, south_lat, south_lon = end(("Southern Terminus", "Southern Trailhead", "Southern Access Point"))
+        north, north_lat, north_lon = end(("Northern Terminus", "Northern Trailhead", "Northern Access Point"))
+        rows.append(
+            {
+                "name": fact(heading.text()),
+                "place": first("location"),
+                "distance_mi": distance,
+                "distance_text": distance_text,
+                "route_type": "one way",
+                "difficulty": (first("difficulty") or "").rstrip(".") or None,
+                "seasons": first("season(s)"),
+                "south_end": south,
+                "south_latitude": south_lat,
+                "south_longitude": south_lon,
+                "north_end": north,
+                "north_latitude": north_lat,
+                "north_longitude": north_lon,
+                "link": passage.url,
+                "source_url": passage.url,
+            }
+        )
+    return rows
+
+
 #: Every site's parser, by the registry key (or the `site`) its resource names.
 SITE_PARSERS: dict[str, SiteParser] = {
     "mazamas_hike_list": SiteParser(
         _mazamas_hikelist, columns={"driving_mi": "double", "driving_from": "text", "trailhead_fee": "bool"}
     ),
     "tahoe_rim_day_hikes": SiteParser(_tahoe_rim_day_hikes, columns={"bikes_allowed": "text", "access_from": "text"}),
+    "nc_parks_trails": SiteParser(
+        _nc_parks_trails, columns={"blaze": "text", "trail_use": "text", "accessible": "text", "access": "text"}
+    ),
+    "cvatc_foliage_hikes": SiteParser(_cvatc_foliage_hikes),
+    "foothills_sections": SiteParser(_foothills_sections, columns={"blazes": "text"}),
+    "cohos_day_hikes": SiteParser(_cohos_day_hikes, columns={"feature": "text"}),
+    "patc_tuscarora_sections": SiteParser(
+        _tuscarora_sections, columns={"map": "text", "max_elevation_ft": "double", "min_elevation_ft": "double"}
+    ),
+    "kta_favorite_hikes": SiteParser(_kta_favorite_hikes),
+    "amc_itineraries": SiteParser(_amc_itineraries, columns={"duration": "text"}),
+    "ata_passages": SiteParser(
+        _ata_passages,
+        columns={
+            "seasons": "text",
+            "south_end": "text",
+            "south_latitude": "double",
+            "south_longitude": "double",
+            "north_end": "text",
+            "north_latitude": "double",
+            "north_longitude": "double",
+        },
+    ),
 }

@@ -322,6 +322,121 @@ def test_a_site_with_no_parser_is_refused_at_import(registry):
         content_pages("club_hikes")
 
 
+# --- Every registered site, over its fixture's markup ---------------------------------------------------------------
+
+
+def registered_pages() -> list[ContentPages]:
+    return [r for r in all_resources(discover()) if isinstance(r, ContentPages)]
+
+
+@pytest.mark.parametrize("resource", registered_pages(), ids=lambda r: r.key)
+def test_every_site_parser_reads_its_fixture_markup_into_the_rows_fixture_mode_lands(resource, requests_mock):
+    """The real registry row and its parser over make_dbt_fixtures.py's invented pages (the markup measured live), so
+    a parser and its fixture cannot drift apart without this saying which. No prose word of a fixture lands."""
+    import make_dbt_fixtures
+
+    for url, content_type, body in make_dbt_fixtures._k_pages_documents()[resource.key]:
+        requests_mock.get(url, text=body, headers={"Content-Type": content_type})
+
+    rows = list(resource.rows({}))
+
+    assert len(rows) == make_dbt_fixtures.K_PAGES_ROWS[resource.key]
+    landed = json.dumps(rows, ensure_ascii=False).lower()
+    assert not [word for word in ("fixture prose", "fixture description", "fixture directions", "fixture paragraph",
+                                  "fixture highlights", "fixture note", "fixture water prose", "descripción")
+                if word in landed], resource.key  # fmt: skip
+
+
+# --- The sites' own refusals ----------------------------------------------------------------------------------------
+
+
+def nc_parks(registry_path, monkeypatch):
+    """nc_parks_trails over a registry holding only it."""
+    registry_path.write_text(json.dumps({"sources": [{"key": "nc_parks_trails", "url": NC_INDEX}]}))
+    _kinds._registry.cache_clear()
+    return content_pages("nc_parks_trails", club="nc_dpr", type="suggested_hikes")
+
+
+NC_INDEX = "https://www.ncparks.gov/state-parks"
+NC_TABLE = (
+    "<table><tr><th>Trail Name</th><th>Blaze</th><th>Length</th><th>Difficulty</th><th>Trail Use</th><th>Accessible</th>"
+    "</tr><tr><td>Fixture Trail</td><td>red</td><td>0.8-mile one way</td><td>Strenuous</td><td>Hiking only</td>"
+    "<td>No</td></tr></table>"
+)
+
+
+def test_a_park_with_no_trails_page_has_no_row_and_stops_nothing(registry, requests_mock, monkeypatch):
+    requests_mock.get(NC_INDEX, text='<a href="/state-parks/fixture-park">x</a><a href="/state-parks/fixture-area">y</a>')
+    requests_mock.get(f"{NC_INDEX}/fixture-park/trails", text=f"<title>Fixture: Trails | NC State Parks</title>{NC_TABLE}")
+    requests_mock.get(f"{NC_INDEX}/fixture-area/trails", status_code=404)
+
+    (row,) = list(nc_parks(registry, monkeypatch).rows({}))
+
+    assert (row["name"], row["place"], row["distance_mi"], row["route_type"]) == ("Fixture Trail", "Fixture", 0.8, "one way")
+
+
+def test_a_park_table_with_a_column_nobody_has_read_refuses(registry, requests_mock, monkeypatch):
+    requests_mock.get(NC_INDEX, text='<a href="/state-parks/fixture-park">x</a>')
+    changed = NC_TABLE.replace("<th>Accessible</th>", "<th>Fixture Column</th>")
+    requests_mock.get(f"{NC_INDEX}/fixture-park/trails", text=f"<title>Fixture: Trails | NC State Parks</title>{changed}")
+
+    with pytest.raises(LayoutChanged, match="NC_PARKS_COLUMNS does not read"):
+        list(nc_parks(registry, monkeypatch).rows({}))
+
+
+def test_a_foothills_paragraph_continues_a_label_only_in_that_labels_shape():
+    found = blocks(
+        parse_html(
+            "<p>Difficulty: A1 to A2 – strenuous</p><p>A11 to A10 easy to moderate</p><p>Trail Head: A1 Fixture Park</p>"
+            "<p>A2 Fixture Mountain</p><p>*Campers are asked to fill out a registration envelope.</p><p>Features:</p>"
+        )
+    )
+    facts = _pages_content._foothills_facts(found)
+    assert facts == {
+        "difficulty": ["A1 to A2 – strenuous", "A11 to A10 easy to moderate"],
+        "trail head": ["A1 Fixture Park", "A2 Fixture Mountain"],
+    }, "a note for campers is the conservancy's prose, not a trailhead"
+
+
+def test_a_tuscarora_section_with_no_elevation_line_refuses():
+    lines = "<p>Section 1: Fixture Gap</p><p>Fixture Road to Fixture Gap, 12 miles.</p><p>Highlights: x</p>"
+    pages = {"https://www.hikethetuscarora.org/section-1-3": Page("x", parse_html(lines))}
+    home = Page("https://www.hikethetuscarora.org/", parse_html('<a href="/section-1-3">Section 1-3</a>'))
+    with pytest.raises(LayoutChanged, match="states no 'Max Elevation"):
+        SITE_PARSERS["patc_tuscarora_sections"].read(home, pages.get)
+
+
+def test_a_bold_line_with_no_county_after_it_is_not_a_kta_hike():
+    page = Page(
+        "https://www.kta-hike.org/favorite-hikes-in-pennsylvania.html",
+        parse_html(
+            "<h2>Favorite Fixture Hikes - Fixture</h2><div class='paragraph'><strong>In order of beginner to most "
+            "strenuous</strong><br/><strong>Fixture Trail</strong><br/>Fixture County<br/>https://fixture.example.org/"
+            "</div>"
+        ),
+    )
+    (row,) = SITE_PARSERS["kta_favorite_hikes"].read(page, None)
+    assert (row["name"], row["place"], row["section"]) == ("Fixture Trail", "Fixture County", "Favorite Fixture Hikes")
+
+
+def test_a_passage_end_lands_the_coordinates_the_page_states_signed_by_hemisphere():
+    assert _pages_content._coordinates("GPS Coordinates: 31.33367° N, 110.28276° W") == (31.33367, -110.28276)
+    assert _pages_content._coordinates("no coordinates") == (None, None)
+
+
+def test_an_amc_card_that_links_off_the_itineraries_is_not_a_trip():
+    page = Page(
+        "https://www.outdoors.org/resources/itineraries/",
+        parse_html(
+            "<h2>Region</h2><h5>Fixture Trip</h5><p>Easy | 1 Day</p>"
+            '<a href="https://www.outdoors.org/resources/itineraries/fixture/">x</a>'
+            '<h5>Shop Fixture Maps</h5><a href="https://amcstore.outdoors.org/collections/books-maps">y</a>'
+        ),
+    )
+    (row,) = SITE_PARSERS["amc_itineraries"].read(page, None)
+    assert (row["name"], row["difficulty"], row["duration"]) == ("Fixture Trip", "Easy", "1 Day")
+
+
 def test_every_content_page_resource_rides_its_types_monthly_lane_with_a_parser_for_its_type():
     pages = [r for r in all_resources(discover()) if isinstance(r, ContentPages)]
     assert pages, "the club folders declare no content page reader, so this checked nothing"

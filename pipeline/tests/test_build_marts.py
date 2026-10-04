@@ -869,3 +869,34 @@ def test_a_test_whose_sql_cannot_be_asked_again_says_why(tmp_path):
     )
     lines = build_marts.failed_test_rows(warehouse, since=0.0, results_path=results)
     assert lines[0].startswith("::group::test.ourhike.gone") and lines[1].startswith("(not asked again: ")
+
+
+def test_an_expression_tests_failure_shows_the_models_own_failing_rows_not_its_constant(tmp_path):
+    """Soak run 526 (publish-conditions.yml 37217363236) printed {"1": "1"} for int_warnings__wording_leaks' test."""
+    warehouse = tmp_path / "warehouse.duckdb"
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema intermediate")
+        con.execute("create table intermediate.leaks as select 'club_x' as source_key, 'title' as column_name")
+    uid = "test.ourhike.dbt_utils_expression_is_true_leaks_false.1"
+    results = _results(
+        tmp_path / "run_results.json", {"unique_id": uid, "status": "fail", "failures": 1, "compiled_code": "select 1"}
+    )
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "nodes": {
+                    uid: {
+                        "attached_node": "model.ourhike.leaks",
+                        "test_metadata": {"name": "expression_is_true", "kwargs": {"expression": "false"}},
+                        "config": {"where": None},
+                    },
+                    "model.ourhike.leaks": {"relation_name": '"warehouse"."intermediate"."leaks"'},
+                }
+            }
+        )
+    )
+
+    lines = build_marts.failed_test_rows(warehouse, since=0.0, results_path=results, manifest_path=manifest)
+
+    assert json.loads(lines[1]) == {"source_key": "club_x", "column_name": "title"}

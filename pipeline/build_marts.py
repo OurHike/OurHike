@@ -579,13 +579,30 @@ FAILED_ROWS_SHOWN = 10
 FAILED_VALUE_WIDTH = 120
 
 
-def failed_test_rows(warehouse: Path, since: float, results_path: Path | None = None) -> list[str]:
+def _rows_query(result: dict, manifest: dict) -> str:
+    """The SQL whose rows show why `result`'s test failed: its compiled SQL, or for dbt_utils' expression_is_true,
+    which selects a constant, the rows of the model the test is attached to where the expression does not hold."""
+    node = manifest.get("nodes", {}).get(result["unique_id"], {})
+    meta = node.get("test_metadata") or {}
+    attached = manifest.get("nodes", {}).get(node.get("attached_node") or "", {})
+    if meta.get("name") == "expression_is_true" and attached.get("relation_name"):
+        where = (node.get("config") or {}).get("where")
+        condition = f"not ({meta['kwargs']['expression']})" + (f" and ({where})" if where else "")
+        return f"select * from {attached['relation_name']} where {condition}"
+    return (result.get("compiled_code") or "").strip().rstrip(";")
+
+
+def failed_test_rows(
+    warehouse: Path, since: float, results_path: Path | None = None, manifest_path: Path | None = None
+) -> list[str]:
     """What each test that failed or errored in the dbt run that just ended returned, as log lines.
 
     dbt 2.0.6 prints a failed test's name and row count and nothing of the rows, and no artifact keeps the
     warehouse, so a failure on data only a live run holds (soak run 525, publish-conditions.yml 37216623795: three
     tests on the first real club notices) could not be read. Each failed test's compiled SQL is asked again, read-only,
-    for FAILED_ROWS_SHOWN rows, every value cut at FAILED_VALUE_WIDTH characters. `since` is when the run started:
+    for FAILED_ROWS_SHOWN rows, every value cut at FAILED_VALUE_WIDTH characters (_rows_query(): for
+    expression_is_true, the attached model's own failing rows, since soak run 526 printed its constant). `since` is when
+    the run started:
     run_results.json older than that is an earlier stage's, and says nothing about this failure."""
     path = results_path or DBT_DIR / "target" / "run_results.json"
     try:
@@ -603,6 +620,10 @@ def failed_test_rows(warehouse: Path, since: float, results_path: Path | None = 
         return []
     import duckdb
 
+    try:
+        manifest = json.loads((manifest_path or MANIFEST_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        manifest = {}
     lines = []
     with duckdb.connect() as con:
         try:
@@ -613,7 +634,7 @@ def failed_test_rows(warehouse: Path, since: float, results_path: Path | None = 
         con.execute("use warehouse")
         for result in failed:
             lines.append(f"::group::{result['unique_id']}: {result.get('failures')} row(s), {result.get('status')}")
-            code = (result.get("compiled_code") or "").strip().rstrip(";")
+            code = _rows_query(result, manifest)
             try:
                 if not code:
                     raise ValueError("run_results.json holds no compiled SQL for it")

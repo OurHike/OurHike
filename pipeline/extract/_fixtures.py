@@ -141,8 +141,9 @@ TEXT_FIXTURES = {"atc_trail_updates": "atc_trail_updates.json"}
 # The JSON API notice sources' answers (make_dbt_fixtures.py's _json_api_fixtures()),
 # one file per registry key: `{"answers": [{"url", "query", "content_type", "body"}]}`.
 JSON_API_DIR = "json_apis"
-# The page and feed notices' answers (make_dbt_fixtures.py's _notice_fixtures()), one file per registry key, the
-# TEXT_FIXTURES shape plus the rows its reader must land: `{"answers": {url: {"content_type", "body"}}, "rows": n}`.
+# The page and feed notices' answers (make_dbt_fixtures.py's _notice_fixtures() for folders a to m and
+# _notice_fixtures_n_to_z() for the rest), one file per registry key, the TEXT_FIXTURES shape plus the rows its
+# reader must land: `{"answers": {url: {"content_type", "body"}}, "rows": n}`.
 NOTICES_DIR = "notices"
 JSON_API_KINDS = (
     _json_apis.NpsAlerts,

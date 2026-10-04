@@ -187,3 +187,73 @@ def test_a_wall_in_front_of_the_file_is_unknown(registry, requests_mock):
 def test_a_family_that_is_not_registered_is_refused_at_import(registry):
     with pytest.raises(KeyError, match="no family"):
         content_pdf("rmc_recommended_hikes", family="no_such_family")
+
+
+# --- The Wasatch Mountain Club's hike ratings table -----------------------------------------------------------------
+
+WMC = "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf"
+WMC_HEADER_TEXT = (
+    "Name\nNew \nRating\nRT \nMiles\nEst \nHrs\nHiking \nTime\nTotal \nAscent\nTH \nElev\nMax \nElev\nOther \n"
+    "Factors\nWilderness \nGroup Size \nLimit\nAvg Gain \nPer Mile Location\n1 =   Oneway   \n2 = Roundtrip\n"
+)
+#: An invented layer laid out as WMCHikesCopyToWeb.pdf is: a key page naming its compilers, then the table, its header
+#: repeated on each page, one hike a line; one row with a cell empty, and two rows sharing a name.
+WMC_TEXT = (
+    "Trail Ratings\nNTD   =   0.1 ‐ 4.0  Not to Difficult\nInformation compiled by Fixture Compiler\n",
+    WMC_HEADER_TEXT + "FIXTURE LAKE FROM FIXTURE TH 4.5 4.4 1.9 2.4 1,660 7536 8,976 None Yes 755 UTAH  COUNTY 2\n"
+    "FIXTURE RIDGE (FIXTURE TO FIXTURE PASS) FROM FIXTURE 7.5 7.5 6.1 5.7 3,378 8765 10,795 BRS No 450 BIG  "
+    "COTTONWOOD CANYON  1\n",
+    WMC_HEADER_TEXT + "FIXTURE PEAK FROM FIXTURE MOUNTAIN. 6.6 8.3 5.0 2,774 6162 7,491 None No 668 FIXTURE CANYON 2\n"
+    "FIXTURE PASS FROM FIXTURE LAKES TH. 3.9 4.6 2.0 2.3 1,344 8765 10,048 None No 292 BIG COTTONWOOD CANYON 2\n"
+    "FIXTURE PASS FROM FIXTURE LAKES TH. 3.8 4.6 2.0 2.3 1,312 8765 10,040 None No 285 BIG COTTONWOOD CANYON 2\n",
+)
+
+
+def wmc_rows(texts=WMC_TEXT) -> list[dict]:
+    return PDF_FAMILIES["wmc_hike_ratings"].read(PdfFacts(texts=texts), WMC)
+
+
+def test_a_wasatch_row_lands_its_figures_and_its_way_and_never_its_pace_or_its_compilers():
+    rows = wmc_rows()
+
+    assert len(rows) == 5
+    first, ridge = rows[0], rows[1]
+    assert (first["name"], first["place"], first["distance_mi"], first["elevation_gain_ft"]) == (
+        "FIXTURE LAKE FROM FIXTURE TH",
+        "UTAH COUNTY",
+        4.4,
+        1660.0,
+    )
+    assert (first["difficulty"], first["route_type"], first["trailhead_elevation_ft"], first["max_elevation_ft"]) == (
+        "4.5",
+        "round trip",
+        7536.0,
+        8976.0,
+    )
+    assert (first["other_factors"], first["wilderness_group_limit"], first["gain_per_mile_ft"]) == (None, "Yes", 755.0)
+    assert (ridge["route_type"], ridge["other_factors"]) == ("one way", "BRS")
+    landed = json.dumps(rows)
+    assert "Fixture Compiler" not in landed
+    assert not {"1.9", "2.4"} & {str(value) for row in rows for value in row.values()}, "the hour estimates land nowhere"
+
+
+def test_a_wasatch_row_with_a_cell_empty_lands_its_rating_and_miles_as_unknown():
+    peak = next(row for row in wmc_rows() if row["name"].startswith("FIXTURE PEAK"))
+    assert (peak["difficulty"], peak["distance_mi"], peak["distance_text"]) == (None, None, None)
+    assert (peak["elevation_gain_ft"], peak["max_elevation_ft"]) == (2774.0, 7491.0), "the cells after are unambiguous"
+
+
+def test_two_wasatch_rows_that_share_a_name_are_kept_apart_by_their_ascent():
+    passes = [(row["name"], row["elevation_gain_text"]) for row in wmc_rows() if row["name"].startswith("FIXTURE PASS")]
+    assert passes == [
+        ("FIXTURE PASS FROM FIXTURE LAKES TH.", "1,344 Total Ascent"),
+        ("FIXTURE PASS FROM FIXTURE LAKES TH.", "1,312 Total Ascent"),
+    ]
+
+
+def test_a_wasatch_line_that_is_neither_header_nor_row_refuses():
+    broken = (WMC_TEXT[0], WMC_HEADER_TEXT + "FIXTURE LAKE FROM FIXTURE TH 4.5 4.4 1,660 7536 None Yes\n")
+    with pytest.raises(PdfLayoutChanged, match="neither the table's header nor one of its rows"):
+        wmc_rows(broken)
+    with pytest.raises(PdfLayoutChanged, match="no 'Name' header"):
+        wmc_rows(("Fixture page with no table\n",))

@@ -327,4 +327,24 @@ select
     link,
     properties,
     _loaded_at
+from {{ ref('stg_trustees__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
 from {{ ref('stg_wi_dnr__suggested_hikes') }}
+union all by name
+select
+    source_key,
+    club,
+    hike_key,
+    name,
+    link,
+    properties,
+    _loaded_at
+from {{ ref('stg_wmc__suggested_hikes') }}

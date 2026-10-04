@@ -9397,6 +9397,18 @@ def _blue_hills_page() -> str:
     )
 
 
+def _trustees_page() -> str:
+    places = "".join(
+        f'<h5>{rank}. <a href="https://thetrustees.org/place/fixture-{rank}/">Fixture Reservation {rank}, Fixture Town</a>'
+        f"</h5><p>Trustee Hiker Fixture said: Fixture prose.</p><p>Fixture paragraph.</p>"
+        for rank in range(10, 0, -1)
+    )
+    return _k_page(
+        "The Trustees Hikers Top Ten",
+        f"<h2>The Trustees Hikers Top Ten</h2><h5>Share this program</h5><p>Fixture prose.</p>{places}<h5>Fixture Reservation</h5>",
+    )
+
+
 def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
     """Each ContentPages key's answers, as (url, content type, body)."""
     return {
@@ -9426,6 +9438,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "wi_dnr_hiking": _wi_dnr_pages(),
         "mdhta_trails": _mdhta_pages(),
         "blue_hills_hikes": [("https://friendsofthebluehills.org/hiking-near-boston/", HTML, _blue_hills_page())],
+        "trustees_hikers_top_ten": [("https://thetrustees.org/program/the-trustee-hikers-top-ten/", HTML, _trustees_page())],
     }
 
 
@@ -9453,6 +9466,7 @@ K_PAGES_ROWS = {
     "wi_dnr_hiking": 2,
     "mdhta_trails": 2,
     "blue_hills_hikes": 2,
+    "trustees_hikers_top_ten": 10,
 }
 
 

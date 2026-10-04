@@ -1778,6 +1778,37 @@ def _blue_hills_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+_TRUSTEES_PLACE = re.compile(r"(?P<rank>\d+)\.\s*(?P<name>.+), (?P<town>[^,]+)")
+
+
+def _trustees_hikers_top_ten(page: Page, fetch) -> list[dict]:
+    """The Trustees' 'Hikers Top Ten' (thetrustees.org/program/the-trustee-hikers-top-ten/): ten properties.
+
+    The Hike Trustees group's vote, read 2026-10-04: one h5 a property, numbered from 10 to 1 and linked to the
+    property's page ('10. Monument Mountain, Great Barrington'). The rank, the property, its town and the link are
+    read; the members' quotes under each are people's words, attributed by first name ('Trustee Hiker Simone said'),
+    and the property's description is The Trustees', and neither is read. A list that is not ten raises.
+    """
+    rows = []
+    for heading in page.root.find_all("h5"):
+        match = _TRUSTEES_PLACE.fullmatch(fact(heading.text()) or "")
+        anchor = heading.find("a")
+        if match is None or anchor is None:
+            continue
+        rows.append(
+            {
+                "name": fact(match["name"]),
+                "place": fact(match["town"]),
+                "rank": int(match["rank"]),
+                "link": page.link(anchor.get("href")),
+                "source_url": page.url,
+            }
+        )
+    if rows and sorted(row["rank"] for row in rows) != list(range(1, 11)):
+        raise LayoutChanged(f"trustees: the top ten ranks {sorted(row['rank'] for row in rows)}, not 1 to 10")
+    return rows
+
+
 #: Every site's parser, by the registry key (or the `site`) its resource names.
 SITE_PARSERS: dict[str, SiteParser] = {
     "mazamas_hike_list": SiteParser(
@@ -1833,4 +1864,5 @@ SITE_PARSERS: dict[str, SiteParser] = {
     "wi_dnr_hiking": SiteParser(_wi_dnr_hiking, queries=True),
     "mdhta_trails": SiteParser(_mdhta_trails),
     "blue_hills_hikes": SiteParser(_blue_hills_hikes),
+    "trustees_hikers_top_ten": SiteParser(_trustees_hikers_top_ten, columns={"rank": "bigint"}),
 }

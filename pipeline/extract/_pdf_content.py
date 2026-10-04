@@ -309,7 +309,89 @@ def _rmc_recommended_hikes(facts: PdfFacts, url: str) -> list[dict]:
     return rows
 
 
+#: One hike's row of the Wasatch Mountain Club's table: its name in capitals, eleven figures and codes, its
+#: location in capitals and its way (1 one way, 2 round trip), as the 2012 text layer reads, e.g. 'AMERICAN FORK
+#: SILVER LAKE FROM SILVER FLAT TH 4.5 4.4 1.9 2.4 1,660 7536 8,976 None Yes 755 UTAH COUNTY 2'.
+_WMC_ROW = re.compile(
+    r"(?P<name>[A-Z0-9][A-Z0-9 .,'()&/‐-]*?) (?P<lead>(?:\d+(?:\.\d+)? ){3,4})(?P<ascent>[\d,]+) (?P<trailhead>[\d,]+) "
+    r"(?P<max>[\d,]+) (?P<factors>None|[BEMRSX]+) (?P<wilderness>Yes|No) (?P<gain_per_mile>[\d,]+) "
+    r"(?P<location>[A-Z][A-Z ]*?) (?P<way>[12])"
+)
+#: The table's header, which every page of it repeats, and the words the document's first page opens with.
+WMC_HEADER = ("Name", "New", "Rating", "RT", "Miles", "Est", "Hrs", "Hiking", "Time", "Total", "Ascent", "TH", "Elev",
+              "Max", "Other", "Factors", "Wilderness", "Group Size", "Limit", "Avg Gain", "Per Mile Location",
+              "1 = Oneway", "2 = Roundtrip")  # fmt: skip
+
+
+def _wmc_hike_ratings(facts: PdfFacts, url: str) -> list[dict]:
+    """The Wasatch Mountain Club's 'Hiking Trail Database' (WMCHikesCopyToWeb.pdf), its hike ratings table.
+
+    Read 2026-10-04: 5 pages, Last-Modified 2012-09-17, 252,399 bytes, no ETag; the first page is the rating's key
+    and its compilers' names, which are people's and not read, and pages 2 to 5 the table, its header repeated on
+    each, one hike a line (_WMC_ROW): name, the club's rating, round-trip miles, two hour estimates, total ascent,
+    trailhead and highest elevations, the other-factor codes (B boulders or bushwhacking, E over 5,000 ft of change,
+    M over 15 miles, R ridgeline or route finding, S scrambling, X exposure), whether a wilderness group-size limit
+    applies, average gain a mile, the location and 1 (one way) or 2 (round trip). All but the two hour estimates are
+    read: those are the document's pace model ('Hiking at an average pace of 2.0 miles per hour', 'Estimated
+    Only!'), and a pace a hiker plans a day by is a figure this pipeline leaves to a source that stands behind it.
+    The rating's class (NTD, MOD, MSD, EXT) is a range of the rating the first page states, and the number is what
+    lands. The table's 'RT Miles' on a one-way hike (way 1) is that hike's one-way miles as the club measured it,
+    landed as stated with its way beside it. Two rows (Perkins Peak from Little Mountain, Twin Lakes from Brighton
+    Lakes TH) state three of the four leading figures, and which cell is empty the text does not say, so their rating
+    and miles land as unknown; 155 rows state all four. A line after the header that is not a row, or no row at all,
+    raises.
+    """
+    found = lines(facts)
+    try:
+        start = found.index("Name")
+    except ValueError:
+        raise PdfLayoutChanged("wmc: the PDF has no 'Name' header") from None
+    rows = []
+    for line in found[start:]:
+        if line in WMC_HEADER or line.startswith("=== "):
+            continue
+        row = _WMC_ROW.fullmatch(line)
+        if row is None:
+            raise PdfLayoutChanged(f"wmc: {line[:80]!r} is neither the table's header nor one of its rows")
+        lead = row["lead"].split()
+        # four leading figures are the rating, the miles and the two hour estimates; a row with three has one cell
+        # empty and does not say which, so its rating and miles are unknown rather than guessed
+        rating, miles = (lead[0], lead[1]) if len(lead) == 4 else (None, None)
+        rows.append(
+            {
+                "name": fact(row["name"]),
+                "place": fact(row["location"]),
+                "distance_mi": float(miles) if miles else None,
+                "distance_text": f"{miles} RT Miles" if miles else None,
+                "elevation_gain_ft": float(row["ascent"].replace(",", "")),
+                "elevation_gain_text": f"{row['ascent']} Total Ascent",
+                "route_type": "one way" if row["way"] == "1" else "round trip",
+                "difficulty": rating,
+                "trailhead_elevation_ft": float(row["trailhead"].replace(",", "")),
+                "max_elevation_ft": float(row["max"].replace(",", "")),
+                "other_factors": None if row["factors"] == "None" else row["factors"],
+                "wilderness_group_limit": row["wilderness"],
+                "gain_per_mile_ft": float(row["gain_per_mile"].replace(",", "")),
+                "link": url,
+                "source_url": url,
+            }
+        )
+    if not rows:
+        raise PdfLayoutChanged("wmc: the table holds no row")
+    return rows
+
+
 #: Every document family's parser, by the registry key (or the `family`) its resource names.
 PDF_FAMILIES: dict[str, PdfFamily] = {
     "rmc_recommended_hikes": PdfFamily(_rmc_recommended_hikes, columns={"time_text": "text"}),
+    "wmc_hike_ratings": PdfFamily(
+        _wmc_hike_ratings,
+        columns={
+            "trailhead_elevation_ft": "double",
+            "max_elevation_ft": "double",
+            "other_factors": "text",
+            "wilderness_group_limit": "text",
+            "gain_per_mile_ft": "double",
+        },
+    ),
 }

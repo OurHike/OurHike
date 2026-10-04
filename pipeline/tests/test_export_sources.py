@@ -875,9 +875,10 @@ class TestTheRegistryTheConsoleReads:
         # Hoosier Hikers Council, MDHTA, OCVT, the Potomac Heritage Trail Association and RMFI.
         # 116 since decision 54's waves 4 and 5 content pages and PDFs (section K, 2026-10-04) registered
         # the Mazamas (its Hike List View), the Randolph Mountain Club (its Recommended Hikes PDF) and the
-        # Keystone Trails Association (its Favorite Hikes in Pennsylvania), and 117 since its third batch
-        # registered the Friends of the Blue Hills (its Suggested Hikes page).
-        assert len(orgs) == 117
+        # Keystone Trails Association (its Favorite Hikes in Pennsylvania), 117 since its third batch
+        # registered the Friends of the Blue Hills (its Suggested Hikes page), and 118 since its fourth
+        # registered the Wasatch Mountain Club (its Hiking Trail Database PDF).
+        assert len(orgs) == 118
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -994,6 +995,7 @@ class TestTheRegistryTheConsoleReads:
             "org:waldotrails",
             "org:warco",
             "org:wdnr",
+            "org:wmc",
             "org:wsprc",
             "org:wta",
         }

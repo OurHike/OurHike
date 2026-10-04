@@ -11054,6 +11054,35 @@
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the podcasts mart is reference/podcast_episodes.json's editorial picks (_shared/podcasts/), and which of a feed's episodes a hike offers is a person's choice that file records. So nothing of this row reaches a phone, and it stays false until the maintainer decides whether a club's own show joins that list (decision 63 turns a layer true once its rules are in dbt and tested; a podcast has no such rule yet)."
     },
     {
+      "key": "trustees_hikers_top_ten",
+      "title": "The Trustees Hikers Top Ten (thetrustees.org/program/the-trustee-hikers-top-ten/)",
+      "provider": "The Trustees",
+      "kind": "published_hikes",
+      "url": "https://thetrustees.org/program/the-trustee-hikers-top-ten/",
+      "steward": "The Trustees of Reservations",
+      "attribution": "The Trustees of Reservations",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the page links no terms page (read 2026-10-04); decision 53's inventory read none for thetrustees.org either (trustees_hunting, batch 1).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `trustees_hikers_top_ten`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-04 found none beside an item.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the property: unique on all 10 rows read 2026-10-04, as are the ranks and the links.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://thetrustees.org/program/the-trustee-hikers-top-ten/",
+        "notes": "No validator trusted: every run reads the page (and the pages it links) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T15:38:03Z (HTTP 200, 359,781 bytes, no ETag or Last-Modified): ten h5 properties ranked 10 to 1, each linking its /place/ page. The quotes under them attribute members by first name ('Trustee Hiker Simone said') and are not read. robots.txt (Yoast's) disallows nothing and asks no Crawl-delay.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
       "key": "mtsg_heritage_area_boundary",
       "title": "Mountains to Sound Greenway National Heritage Area boundary",
       "provider": "MTSG",
@@ -17115,6 +17144,36 @@
       "notes": "Read 2026-10-04T14:51:54Z (HTTP 200, 316,638 bytes): 18 h4 hikes under the h2 'Hikes', 17 linking a page under friendsofthebluehills.org (two outside /hiking-near-boston/). The pages (Chickatawbut's read 2026-10-04T16:45:48Z) are a paragraph of the Friends' prose with no stated distance, so none is fetched. The hikes are in the DCR's Blue Hills Reservation, which the page names as a whole and not per hike, so no place lands.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
+    },
+    {
+      "key": "wmc_hike_ratings",
+      "title": "Wasatch Mountain Club Hiking Trail Database (WMCHikesCopyToWeb.pdf)",
+      "provider": "WMC",
+      "kind": "published_hikes",
+      "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf",
+      "steward": "Wasatch Mountain Club",
+      "attribution": "Wasatch Mountain Club",
+      "licence": "No decision covers a club's own hike write-ups: decision 55's facts and a link is for notices, and decision 21(a)'s GIS presumption does not reach a web page or a PDF. So this row is `unresolved` until the maintainer decides whether a suggested hike from a club's website publishes as its facts (name, distance, the link) and never the club's own description, as the round brief proposes.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the hike ratings page (/dan-smiths-hike-ratings-table) and the PDF state no terms or licence (read 2026-10-04); the coverage audit found the club's trip reports 'written by members' with no licence.",
+      "reader": "ContentPdf (extract/_pdf_content.py), family `wmc_hike_ratings`",
+      "person_fields": [],
+      "person_fields_comment": "None: the family reads the table's rows (the columns in extract/_pdf_content.py's TYPE_COLUMNS, its own and DOCUMENT_COLUMNS) and nothing else. The document's first page names the members who compiled the table, and its /Author metadata a member's first name; neither is read, and no metadata field lands but the two dates.",
+      "key_fields": [
+        "name",
+        "elevation_gain_text"
+      ],
+      "key_comment": "The hike's name and its total ascent (`name`, `elevation_gain_text`): unique on all 157 rows read 2026-10-04. The name alone is not: 'SNAKE CREEK PASS FROM BRIGHTON LAKES TH.' is two rows, 1,344 and 1,312 feet of ascent, and the table carries no id.",
+      "freshness": {
+        "kind": "file_validator",
+        "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf",
+        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither."
+      },
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-04",
+      "notes": "Read 2026-10-04T17:34:11Z at the host's `Crawl-delay: 10`: HTTP 200, application/pdf, 252,399 bytes, Last-Modified 2012-09-17, no ETag; 5 pages, the metadata's dates 2012-09-17 and its title 'WMCHikesCopyToWeb.xlsx'. The text layer reads cleanly: 157 rows on pages 2 to 5 under a repeated header, 155 with all four leading figures and 2 (Perkins Peak, Twin Lakes) with three, whose rating and miles land as unknown. 42 rows carry other-factor codes. The table's two hour estimates (the document's pace model, 'Estimated Only!') are not read. The ratings page says the PDF is 'The HIKES tab from the spreadsheet'; the spreadsheet (Last-Modified 2023-06-15, 66,121 bytes) is not read, as the extract venv has no spreadsheet reader, and whether its HIKES tab differs from the 2012 PDF is unchecked.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, and read by no mart yet: the suggested_hikes mart is NYNJTC's Hike Finder and the curated highlights, and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for the Hike Finder. It also waits on its licence (`unresolved`). Decision 63 turns it true once a mart reads it under tested rules."
     }
   ],
   "usdm_licence": {
@@ -17757,6 +17816,10 @@
       "Friends of the Blue Hills": {
         "state": "not_asked",
         "note": "Not asked. Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "WMC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -18733,6 +18796,11 @@
         "provider": "Friends of the Blue Hills",
         "name": "Friends of the Blue Hills",
         "note": "A nonprofit friends group for the DCR's Blue Hills Reservation south of Boston; registered for its Suggested Hikes page (decision 54, wave 5, section K, 2026-10-04), at reaches_hikers: false."
+      },
+      "org:wmc": {
+        "provider": "WMC",
+        "name": "Wasatch Mountain Club",
+        "note": "A Salt Lake City outdoor club; registered for its Hiking Trail Database PDF, the hike ratings table of its spreadsheet (decision 54, wave 4, section K, 2026-10-04), at reaches_hikers: false."
       }
     }
   },
@@ -24241,6 +24309,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "WMC": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
           }
         }
       }

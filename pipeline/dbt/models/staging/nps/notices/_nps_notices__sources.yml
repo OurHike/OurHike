@@ -112,6 +112,21 @@ sources:
           - globalid
         config:
           severity: warn
+  - name: raw_nps__nps_natr_road_site_status
+    description: 'Natchez Trace Parkway road and site status (sources.json `nps_natr_road_site_status`),
+      landed by extract/nps/closures.py''s PageNotice. Key: url. no count is recorded on its sources.json
+      row'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''nps_natr_road_site_status'''
+          - url
+        config:
+          severity: warn
   - name: raw_nps__nps_alerts
     description: 'NPS Alerts, for the park codes the clubs draw on (sources.json `nps_alerts`), landed
       by extract/nps/warnings.py''s NpsAlerts. Key: id. Fields per alert (measured on the national list''s

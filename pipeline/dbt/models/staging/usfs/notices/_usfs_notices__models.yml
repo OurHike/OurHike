@@ -91,6 +91,141 @@ models:
     data_tests:
     - unique
     - not_null
+- name: stg_usfs__usfs_r08_cherokee_alerts
+  description: 'Cherokee National Forest alerts (sources.json `usfs_r08_cherokee_alerts`) in the shared
+    club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r08_gwj_alerts
+  description: 'George Washington and Jefferson National Forests alerts (sources.json `usfs_r08_gwj_alerts`)
+    in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r08_northcarolina_alerts
+  description: 'National Forests in North Carolina alerts (sources.json `usfs_r08_northcarolina_alerts`)
+    in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r08_alabama_alerts
+  description: 'National Forests in Alabama alerts (sources.json `usfs_r08_alabama_alerts`) in the shared
+    club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r08_chattahoochee_oconee_alerts
+  description: 'Chattahoochee-Oconee National Forests alerts (sources.json `usfs_r08_chattahoochee_oconee_alerts`)
+    in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r08_ouachita_alerts
+  description: 'Ouachita National Forest alerts (sources.json `usfs_r08_ouachita_alerts`) in the shared
+    club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r09_whitemountain_alerts
+  description: 'White Mountain National Forest alerts (sources.json `usfs_r09_whitemountain_alerts`) in
+    the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r09_gmfl_alerts
+  description: 'Green Mountain and Finger Lakes National Forests alerts (sources.json `usfs_r09_gmfl_alerts`)
+    in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r02_psicc_alerts
+  description: 'Pike and San Isabel National Forests alerts (sources.json `usfs_r02_psicc_alerts`) in
+    the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r02_blackhills_alerts
+  description: 'Black Hills National Forest alerts (sources.json `usfs_r02_blackhills_alerts`) in the
+    shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r04_uinta_wasatch_cache_alerts
+  description: 'Uinta-Wasatch-Cache National Forest alerts (sources.json `usfs_r04_uinta_wasatch_cache_alerts`)
+    in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r10_chugach_alerts
+  description: 'Chugach National Forest alerts (sources.json `usfs_r10_chugach_alerts`) in the shared
+    club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r01_dpg_alerts
+  description: 'Dakota Prairie Grasslands alerts (sources.json `usfs_r01_dpg_alerts`) in the shared club-notice
+    shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_r05_lospadres_alerts
+  description: 'Los Padres National Forest alerts (sources.json `usfs_r05_lospadres_alerts`) in the shared
+    club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_usfs__usfs_nez_perce_nht_alerts
+  description: 'Nez Perce (Nee-Me-Poo) National Historic Trail alerts (sources.json `usfs_nez_perce_nht_alerts`)
+    in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
 - name: stg_usfs__usfs_r03_fire_restrictions
   description: 'USFS Southwestern Region fire restrictions (sources.json `usfs_r03_fire_restrictions`)
     in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'

@@ -101,6 +101,154 @@ models:
     data_tests:
     - unique
     - not_null
+- name: base_usfs__usfs_r08_cherokee_alerts
+  description: Cherokee National Forest alerts (sources.json `usfs_r08_cherokee_alerts`), every row of
+    raw_usfs__usfs_r08_cherokee_alerts, keyed and deduped (decision 40). The source's own words stay here
+    and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r08_gwj_alerts
+  description: George Washington and Jefferson National Forests alerts (sources.json `usfs_r08_gwj_alerts`),
+    every row of raw_usfs__usfs_r08_gwj_alerts, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r08_northcarolina_alerts
+  description: National Forests in North Carolina alerts (sources.json `usfs_r08_northcarolina_alerts`),
+    every row of raw_usfs__usfs_r08_northcarolina_alerts, keyed and deduped (decision 40). The source's
+    own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r08_alabama_alerts
+  description: National Forests in Alabama alerts (sources.json `usfs_r08_alabama_alerts`), every row
+    of raw_usfs__usfs_r08_alabama_alerts, keyed and deduped (decision 40). The source's own words stay
+    here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r08_chattahoochee_oconee_alerts
+  description: Chattahoochee-Oconee National Forests alerts (sources.json `usfs_r08_chattahoochee_oconee_alerts`),
+    every row of raw_usfs__usfs_r08_chattahoochee_oconee_alerts, keyed and deduped (decision 40). The
+    source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r08_ouachita_alerts
+  description: Ouachita National Forest alerts (sources.json `usfs_r08_ouachita_alerts`), every row of
+    raw_usfs__usfs_r08_ouachita_alerts, keyed and deduped (decision 40). The source's own words stay here
+    and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r09_whitemountain_alerts
+  description: White Mountain National Forest alerts (sources.json `usfs_r09_whitemountain_alerts`), every
+    row of raw_usfs__usfs_r09_whitemountain_alerts, keyed and deduped (decision 40). The source's own
+    words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r09_gmfl_alerts
+  description: Green Mountain and Finger Lakes National Forests alerts (sources.json `usfs_r09_gmfl_alerts`),
+    every row of raw_usfs__usfs_r09_gmfl_alerts, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r02_psicc_alerts
+  description: Pike and San Isabel National Forests alerts (sources.json `usfs_r02_psicc_alerts`), every
+    row of raw_usfs__usfs_r02_psicc_alerts, keyed and deduped (decision 40). The source's own words stay
+    here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r02_blackhills_alerts
+  description: Black Hills National Forest alerts (sources.json `usfs_r02_blackhills_alerts`), every row
+    of raw_usfs__usfs_r02_blackhills_alerts, keyed and deduped (decision 40). The source's own words stay
+    here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r04_uinta_wasatch_cache_alerts
+  description: Uinta-Wasatch-Cache National Forest alerts (sources.json `usfs_r04_uinta_wasatch_cache_alerts`),
+    every row of raw_usfs__usfs_r04_uinta_wasatch_cache_alerts, keyed and deduped (decision 40). The source's
+    own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r10_chugach_alerts
+  description: Chugach National Forest alerts (sources.json `usfs_r10_chugach_alerts`), every row of raw_usfs__usfs_r10_chugach_alerts,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r01_dpg_alerts
+  description: Dakota Prairie Grasslands alerts (sources.json `usfs_r01_dpg_alerts`), every row of raw_usfs__usfs_r01_dpg_alerts,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_r05_lospadres_alerts
+  description: Los Padres National Forest alerts (sources.json `usfs_r05_lospadres_alerts`), every row
+    of raw_usfs__usfs_r05_lospadres_alerts, keyed and deduped (decision 40). The source's own words stay
+    here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_usfs__usfs_nez_perce_nht_alerts
+  description: Nez Perce (Nee-Me-Poo) National Historic Trail alerts (sources.json `usfs_nez_perce_nht_alerts`),
+    every row of raw_usfs__usfs_nez_perce_nht_alerts, keyed and deduped (decision 40). The source's own
+    words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
 - name: base_usfs__usfs_r03_fire_restrictions
   description: USFS Southwestern Region fire restrictions (sources.json `usfs_r03_fire_restrictions`),
     every row of raw_usfs__usfs_r03_fire_restrictions, keyed and deduped (decision 40). The source's own

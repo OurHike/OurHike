@@ -3,9 +3,9 @@ version: 2
 models:
 - name: int_warnings__notice_wording_unioned
   description: 'Every generated club notice source''s own wording (decision 55): each text value of a
-    base model''s columns that its staging model does not carry as a fact, one row each. int_warnings__wording_leaks
-    reads it.'
-  columns:
+    base model''s columns that its staging model does not carry as a fact, one row each, read from its
+    parts. int_warnings__wording_leaks reads it.'
+  columns: &id001
   - name: wording_key
     description: The source, the base row's key and the column.
     data_tests:
@@ -13,110 +13,109 @@ models:
     - not_null
   - name: wording
     description: 'The value as words: tags cut, whitespace folded.'
+- name: int_warnings__notice_wording_part_1_unioned
+  description: 'Part 1 of 5 of int_warnings__notice_wording_unioned: 64 sources'' wording (base_alaska_state_parks__alaska_state_parks_conditions
+    to base_buckeye__bta_section_stockport).'
+  columns: *id001
+- name: int_warnings__notice_wording_part_2_unioned
+  description: 'Part 2 of 5 of int_warnings__notice_wording_unioned: 64 sources'' wording (base_buckeye__bta_section_troy
+    to base_mst_pa__msta_section_12).'
+  columns: *id001
+- name: int_warnings__notice_wording_part_3_unioned
+  description: 'Part 3 of 5 of int_warnings__notice_wording_unioned: 64 sources'' wording (base_mst_pa__msta_section_13
+    to base_palmetto__palmetto_hunting_season).'
+  columns: *id001
+- name: int_warnings__notice_wording_part_4_unioned
+  description: 'Part 4 of 5 of int_warnings__notice_wording_unioned: 64 sources'' wording (base_palmetto__palmetto_trail_closures
+    to base_utah_ffsl__utah_ffsl_fire_restrictions).'
+  columns: *id001
+- name: int_warnings__notice_wording_part_5_unioned
+  description: 'Part 5 of 5 of int_warnings__notice_wording_unioned: 8 sources'' wording (base_wa_dnr__wa_dnr_ifpl
+    to base_wta__wta_signpost).'
+  columns: *id001
 unit_tests:
 - name: int_warnings__notice_wording_unioned_collects_a_sources_paragraph_and_never_its_facts
   description: Generated with the model. A notice's description is its source's wording, read as words;
     its title, id and category are facts and are not; a description that repeats the title is a fact too,
     and one shorter than notice_is_wording()'s threshold is not wording. Every other source's base model
-    is given no rows.
-  model: int_warnings__notice_wording_unioned
+    in the part is given no rows.
+  model: int_warnings__notice_wording_part_3_unioned
   given:
-  - input: ref('base_alaska_trails__alaska_trails_obstacles')
+  - input: ref('base_mst_pa__msta_section_13')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_alaska_trails__alaska_trails_seward_obstacles')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_14')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_blm__blm_or_rec_site_status')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_15')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_blm__blm_shooting_points')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_16')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_ca_state_parks__cdpr_park_unit_status')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_17')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_cdtc__cdtc_alert_lines')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_18')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_cdtc__cdtc_alert_points')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_19')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_cdtc__cdtc_area_closures')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_2')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_cdtc__cdtc_national_defense_area')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_20')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_cdtc__cdtc_reroutes')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_3')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_cotrex__cotrex_seasonal_closures')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_4')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_cotrex__cpw_bear_conflict_areas')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_5')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_cotrex__cpw_lion_conflict_areas')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_6')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_ct_deep__ct_deep_property_access_status')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_7')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_cumberland__ctsst_public_hazards_closures')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_8')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_fltc__fltc_hunting_bypasses')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_9')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_fltc__fltc_seasonal_closures')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_a')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_fltc__fltc_temporary_notices')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_b')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_fmst__fmst_helene_status')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_mst_pa__msta_section_c')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_fta__fta_fnst_closed_segments')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_nbatc__nbatc_announcements')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_iata__iata_hunting_closures')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_nc_dpr__nc_parks_mount_mitchell_alerts')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_iata__iata_lands_hunting_regs')
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_nc_high_peaks__nchpta_open_trails')
     format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_iata__iata_trail_conditions')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_king_county_parks__king_county_parks_alerts_areas')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_king_county_parks__king_county_parks_alerts_lines')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_king_county_parks__king_county_parks_alerts_points')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_ma_dcr__ma_dcr_blue_hills_hunt_areas')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_ma_dcr__ma_dcr_park_alerts')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_midpen__midpen_preserve_access')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_mohonk__mohonk_deer_zones')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
+    rows: select cast(null as varchar) as notice_key where false
   - input: ref('base_ncta__ncta_ice_storm_impacts')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
   - input: ref('base_ncta__ncta_trail_alerts')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
+  - input: ref('base_ncta__ncta_trail_alerts_page')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
   - input: ref('base_nifc__nifc_wfigs_current_perimeters')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
@@ -158,6 +157,9 @@ unit_tests:
   - input: ref('base_nps__nps_grca_closures')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
+  - input: ref('base_nps__nps_natr_road_site_status')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
   - input: ref('base_nps__nps_road_events')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
@@ -173,6 +175,9 @@ unit_tests:
   - input: ref('base_nps__nps_yose_trail_closures')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
+  - input: ref('base_nysdec__nysdec_adk_backcountry')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
   - input: ref('base_nysdec__nysdec_big_game_seasons')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
@@ -185,105 +190,63 @@ unit_tests:
   - input: ref('base_odfw__odfw_orham_alert_areas')
     format: sql
     rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
+  - input: ref('base_ohta__ohta_trail_alerts')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ohta__ohta_trail_alerts_posts')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_between_the_rivers_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_blair_creek_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_courtois_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_current_river_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_eleven_point_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_karkaghne_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_marble_creek_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_middle_fork_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_north_fork_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_taum_sauk_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_trace_creek_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_upper_current_river_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_victory_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ota__ota_wappapello_conditions')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
+  - input: ref('base_ouachita__foot_hiker_alert_mm195')
+    format: sql
+    rows: select cast(null as varchar) as notice_key where false
   - input: ref('base_ouachita__foot_trail_condition_report')
     format: sql
     rows: select cast(null as varchar) as notice_key where false
-  - input: ref('base_pasda__pa_dcnr_park_advisories')
+  - input: ref('base_palmetto__palmetto_hunting_season')
     format: sql
     rows: select cast(null as varchar) as notice_key where false
-  - input: ref('base_pcta__pcta_closure_lines')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_pcta__pcta_fires_and_closures')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_portland_parks__portland_parks_closed_assets')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_scc_parks__scc_parks_closed_areas')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_tdec__tdec_trail_closures')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_tehcc__tehcc_wiki_announcements')
-    format: sql
-    rows: select cast(null as varchar) as notice_key where false
-  - input: ref('base_usace__usace_garrison_hunting_restrictions')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usace__usace_sam_closed_rec_areas')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_baer_assessments')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_forest_closure_area')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r01_bmwc_trail_closures')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r01_kootenai_inaccessible')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r03_fire_restrictions')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r03_forest_orders')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r04_forest_orders')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r06_fire_closure_areas')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r06_fire_closure_lines')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r06_fire_closure_points')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r08_prescribed_burns')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_r09_superior_closures')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfs__usfs_rec_opportunities_status')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usfws__fws_hunt_units')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_usgs__usgs_elevated_volcanoes')
-    format: sql
-    rows: select cast(null as varchar) as notice_key where false
-  - input: ref('base_usgs_tnm__usgs_pwfdf_assessments')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_utah_ffsl__utah_ffsl_fire_restrictions')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_wa_dnr__wa_dnr_ifpl')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_wa_dnr__wa_dnr_wildfire_danger')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_wa_rco__wa_rco_trailhead_status')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_wa_state_parks__wsprc_winter_rec_closures')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_wi_dnr__wi_dnr_fire_danger')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
-  - input: ref('base_wi_dnr__wi_dnr_park_closures')
-    format: sql
-    rows: select cast(null as varchar) as notice_key, cast(null as varchar) as geom where false
   expect:
     rows:
     - source_key: nps_alerts

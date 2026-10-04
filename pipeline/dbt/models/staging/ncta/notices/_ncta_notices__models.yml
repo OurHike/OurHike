@@ -10,6 +10,15 @@ models:
     data_tests:
     - unique
     - not_null
+- name: stg_ncta__ncta_trail_alerts_page
+  description: 'North Country Trail alerts page (sources.json `ncta_trail_alerts_page`) in the shared
+    club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
 - name: stg_ncta__ncta_ice_storm_impacts
   description: 'North Country Trail March 2025 ice storm impacts (sources.json `ncta_ice_storm_impacts`)
     in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'

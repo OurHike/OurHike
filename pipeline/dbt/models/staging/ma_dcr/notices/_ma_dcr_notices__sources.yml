@@ -14,6 +14,21 @@ sources:
         count: 7
         period: day
   tables:
+  - name: raw_ma_dcr__ma_dcr_blue_hills_alerts
+    description: 'Blue Hills Reservation notices and alerts (sources.json `ma_dcr_blue_hills_alerts`),
+      landed by extract/ma_dcr/closures.py''s PageNotice. Key: url. no count is recorded on its sources.json
+      row'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''ma_dcr_blue_hills_alerts'''
+          - url
+        config:
+          severity: warn
   - name: raw_ma_dcr__ma_dcr_blue_hills_hunt_areas
     description: 'DCR Blue Hills hunt areas (sources.json `ma_dcr_blue_hills_hunt_areas`), landed by extract/ma_dcr/warnings.py''s
       ArcgisLayer. Key: globalid. Read by this step at 2026-10-03T16:09:31Z: returnCountOnly under the

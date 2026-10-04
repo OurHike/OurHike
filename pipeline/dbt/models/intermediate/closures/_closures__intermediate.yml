@@ -309,6 +309,22 @@ models:
               arguments:
                 values: [closures, warnings]
 
+  - name: int_closures__notice_tables
+    description: >
+      Whether each club notice source's raw table is in this warehouse
+      (decision 61): the hourly warehouse can lack a notices table, and a
+      generated base model reads an absent one as empty, so
+      int_closures__gate holds such a source with this as its reason rather
+      than passing it as having no notices. Read from DuckDB's own
+      catalogue at build time.
+    columns:
+      - name: raw_table
+        description: The raw table, one row each (seeds/notice_readers.csv).
+        data_tests: [not_null, unique]
+      - name: is_present
+        description: Whether the table is in this warehouse's `raw` schema.
+        data_tests: [not_null]
+
   - name: int_closures__gate
     description: >
       The per-source gate: one row per source a conditions file is written
@@ -334,7 +350,8 @@ models:
         description: >
           The source: one row for every registered notice source
           seeds/notice_readers.csv names (decision 53, phase C), held where
-          the run log never shows its table being read, and one each for
+          its raw table is not in this warehouse or the run log never shows
+          it being read, and one each for
           OurHike's closures and reports, NWS's alerts and
           reference/work_projects.json, which have no sources.json row.
         data_tests: [not_null, unique]
@@ -701,6 +718,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 2, rows_invalid: 1, passed: false, held_because: '1 of 2 rows cannot publish, and a partial set of safety notices is worse than none'}
@@ -772,6 +793,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, reviewed_at: '  ', passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page', awaiting_review: true}
@@ -844,6 +869,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 0, reviewed_at: '2026-08-24', passed: true, held_because: null}
@@ -910,6 +939,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: '`updates` is missing or is not a list'}
@@ -986,6 +1019,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: 'reference/atc_updates.json lists 1 updates and 2 landed as rows, so the two landings are of different files'}
@@ -1053,6 +1090,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, may_publish: true, passed: true, held_because: null}
@@ -1135,6 +1176,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 1, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
@@ -1203,6 +1248,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: true, held_because: null, awaiting_review: false}
@@ -1277,6 +1326,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 0, passed: true, held_because: null}
@@ -1346,6 +1399,10 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: true, held_because: null}
@@ -1704,7 +1761,10 @@ unit_tests:
       empty by notice_raw_table) is held; one with a key two different raw
       rows share is held, so its exactness test can warn without stopping
       every club's build; and one the registry holds back is held by
-      int_sources__publication first. ATC's, NYNJTC's and NYS Parks'
+      int_sources__publication first. A raw table this warehouse does
+      not hold (decision 61's hourly warehouse) holds its source with
+      that reason even where the run log's latest load read a proven
+      zero: absent says nothing, never "no notices". ATC's, NYNJTC's and NYS Parks'
       rows come from the same three inputs.
     model: int_closures__gate
     given:
@@ -1739,6 +1799,7 @@ unit_tests:
           - {source_key: club_unproven_empty, may_publish: true}
           - {source_key: club_never_loaded, may_publish: true}
           - {source_key: club_never_run, may_publish: true}
+          - {source_key: club_table_absent, may_publish: true}
           - {source_key: club_with_conflicts, may_publish: true}
           - {source_key: club_held_by_the_registry, may_publish: false, publication_rule: held_back_by_the_registry}
       - input: ref('base_ourhike__reports')
@@ -1764,6 +1825,8 @@ unit_tests:
           union all
           select '20261003T000000.000000Z', 'raw_a__club_with_conflicts', 'loaded', 3, 3
           union all
+          select '20261003T000000.000000Z', 'raw_a__club_table_absent', 'loaded', 0, 0
+          union all
           select '20261002T000000.000000Z', 'raw_a__club_proven_empty', 'loaded', 3, 3
           union all
           select '20261003T000000.000000Z', 'raw_a__club_proven_empty', 'loaded', 0, 0
@@ -1788,6 +1851,7 @@ unit_tests:
           - {source_key: club_held_by_the_registry, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_held_by_the_registry, staged_by: stg_a__club_held_by_the_registry}
           - {source_key: club_not_registered, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_not_registered, staged_by: stg_a__club_not_registered}
           - {source_key: club_never_run, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_never_run, staged_by: stg_a__club_never_run}
+          - {source_key: club_table_absent, club: a, notice_type: closures, reader: page_notice, listing: full, raw_table: raw_a__club_table_absent, staged_by: stg_a__club_table_absent}
       - input: ref('stg_registry__sources')
         rows:
           - {source_key: atc_trail_updates}
@@ -1800,6 +1864,7 @@ unit_tests:
           - {source_key: club_never_loaded}
           - {source_key: club_held_by_the_registry}
           - {source_key: club_never_run}
+          - {source_key: club_table_absent}
       - input: ref('int_closures__club_notices')
         format: sql
         rows: |
@@ -1810,6 +1875,21 @@ unit_tests:
           select 'club_with_conflicts', 2
           union all
           select 'club_with_conflicts', 1
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select source_key, raw_table, raw_table != 'raw_a__club_table_absent' as is_present
+          from (
+            values
+            ('club_with_rows', 'raw_a__club_with_rows'),
+            ('club_with_conflicts', 'raw_a__club_with_conflicts'),
+            ('club_proven_empty', 'raw_a__club_proven_empty'),
+            ('club_unproven_empty', 'raw_a__club_unproven_empty'),
+            ('club_never_loaded', 'raw_a__club_never_loaded'),
+            ('club_held_by_the_registry', 'raw_a__club_held_by_the_registry'),
+            ('club_never_run', 'raw_a__club_never_run'),
+            ('club_table_absent', 'raw_a__club_table_absent')
+          ) as tables (source_key, raw_table)
     expect:
       rows:
         - {source_key: atc_trail_updates, club: atc, passed: true, held_because: null}
@@ -1826,6 +1906,7 @@ unit_tests:
         - {source_key: club_never_loaded, club: a, rows_total: 0, passed: false, held_because: 'club_never_loaded has no rows, and no count of zero from the source itself backs that, so the read may have broken or not happened yet'}
         - {source_key: club_held_by_the_registry, club: a, passed: false, held_because: 'int_sources__publication holds club_held_by_the_registry back (held_back_by_the_registry)'}
         - {source_key: club_never_run, club: a, rows_total: 0, passed: false, held_because: 'the run log shows no run of raw_a__club_never_run, so nothing says club_never_run was read'}
+        - {source_key: club_table_absent, club: a, rows_total: 0, passed: false, held_because: 'raw_a__club_table_absent is not in this warehouse (a notices table waiting its turn, one the served copy left out, or a build without the notices), so nothing says club_table_absent has no notices'}
 
   - name: int_closures__window_carried_keeps_a_feed_notice_that_left_its_window
     description: >

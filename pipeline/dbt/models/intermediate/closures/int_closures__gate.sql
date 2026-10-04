@@ -33,8 +33,13 @@
 --   reference/work_projects.json
 --                         a file that did not land as one row, a file nobody
 --                         reviewed, then any of file_problems()'s problems
---   every generated club  no rows, unless the run that last loaded its table
---   notice source         read a count of zero from the source itself (the
+--   every generated club  a raw table this warehouse does not hold
+--   notice source         (int_closures__notice_tables: one waiting its turn in
+--                         the 4-hourly notices legs, one the served copy left
+--                         out, or every one in a build without the notices,
+--                         decision 61), whatever the run log says; then no
+--                         rows, unless the run that last loaded its table
+--                         read a count of zero from the source itself (the
 --                         dlt skill's rule 4: an allowed zero needs the
 --                         upstream's own count). A table a leg withdrew or
 --                         has not loaded reads as no rows (macros/notices.sql's
@@ -212,6 +217,15 @@ club_notices as (
     select * from {{ ref('int_closures__club_notices') }}
 ),
 
+-- Whether each source's raw tables are all in this warehouse.
+notice_tables as (
+    select
+        source_key,
+        bool_and(is_present) as is_present
+    from {{ ref('int_closures__notice_tables') }}
+    group by source_key
+),
+
 -- Every registered notice source. `is_generated` marks the ones
 -- generate_notice_models.py stages, which the club-notice checks read;
 -- `ran` whether the run log shows the extract running its table at all.
@@ -369,6 +383,15 @@ judged as (
                     || atc_document.updates_listed || ' updates and '
                     || atc_rows.rows_total || ' landed as rows, so the two '
                     || 'landings are of different files'
+            when
+                gated_sources.is_generated
+                and not coalesce(notice_tables.is_present, false)
+                then
+                    gated_sources.raw_table || ' is not in this warehouse '
+                    || '(a notices table waiting its turn, one the served '
+                    || 'copy left out, or a build without the notices), so '
+                    || 'nothing says ' || gated_sources.source_key
+                    || ' has no notices'
             when not gated_sources.ran
                 then
                     'the run log shows no run of ' || gated_sources.raw_table
@@ -444,6 +467,8 @@ judged as (
     cross join work_projects
     left join counts on gated_sources.source_key = counts.source_key
     left join club_loads on gated_sources.source_key = club_loads.source_key
+    left join notice_tables
+        on gated_sources.source_key = notice_tables.source_key
     left join publication
         on gated_sources.source_key = publication.source_key
 )

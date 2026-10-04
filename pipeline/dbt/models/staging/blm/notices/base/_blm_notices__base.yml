@@ -11,12 +11,261 @@ models:
     data_tests:
     - unique
     - not_null
+- name: base_blm__blm_alerts
+  description: BLM Alerts (sources.json `blm_alerts`), every row of raw_blm__blm_alerts, keyed and deduped
+    (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
 - name: base_blm__blm_shooting_points
   description: BLM recreational shooting points (sources.json `blm_shooting_points`), every row of raw_blm__blm_shooting_points,
     keyed and deduped (decision 40). The source's own words stay here and go no further.
   columns:
   - name: notice_key
     description: 'The key: the registry key, then fid and the geometry.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_national_office
+  description: BLM National Office press releases (sources.json `blm_press_national_office`), every row
+    of raw_blm__blm_press_national_office, keyed and deduped (decision 40). The source's own words stay
+    here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_alaska
+  description: BLM Alaska press releases (sources.json `blm_press_alaska`), every row of raw_blm__blm_press_alaska,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_arizona
+  description: BLM Arizona press releases (sources.json `blm_press_arizona`), every row of raw_blm__blm_press_arizona,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_california
+  description: BLM California press releases (sources.json `blm_press_california`), every row of raw_blm__blm_press_california,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_colorado
+  description: BLM Colorado press releases (sources.json `blm_press_colorado`), every row of raw_blm__blm_press_colorado,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_eastern_states
+  description: BLM Eastern States press releases (sources.json `blm_press_eastern_states`), every row
+    of raw_blm__blm_press_eastern_states, keyed and deduped (decision 40). The source's own words stay
+    here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_idaho
+  description: BLM Idaho press releases (sources.json `blm_press_idaho`), every row of raw_blm__blm_press_idaho,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_montana_dakotas
+  description: BLM Montana-Dakotas press releases (sources.json `blm_press_montana_dakotas`), every row
+    of raw_blm__blm_press_montana_dakotas, keyed and deduped (decision 40). The source's own words stay
+    here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_nevada
+  description: BLM Nevada press releases (sources.json `blm_press_nevada`), every row of raw_blm__blm_press_nevada,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_new_mexico
+  description: BLM New Mexico press releases (sources.json `blm_press_new_mexico`), every row of raw_blm__blm_press_new_mexico,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_oregon_washington
+  description: BLM Oregon-Washington press releases (sources.json `blm_press_oregon_washington`), every
+    row of raw_blm__blm_press_oregon_washington, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_utah
+  description: BLM Utah press releases (sources.json `blm_press_utah`), every row of raw_blm__blm_press_utah,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_press_wyoming
+  description: BLM Wyoming press releases (sources.json `blm_press_wyoming`), every row of raw_blm__blm_press_wyoming,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_alaska_fire_service
+  description: BLM Alaska fire restrictions (sources.json `blm_fire_restrictions_alaska_fire_service`),
+    every row of raw_blm__blm_fire_restrictions_alaska_fire_service, keyed and deduped (decision 40).
+    The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_arizona
+  description: BLM Arizona fire restrictions (sources.json `blm_fire_restrictions_arizona`), every row
+    of raw_blm__blm_fire_restrictions_arizona, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_california
+  description: BLM California fire restrictions (sources.json `blm_fire_restrictions_california`), every
+    row of raw_blm__blm_fire_restrictions_california, keyed and deduped (decision 40). The source's own
+    words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_colorado
+  description: BLM Colorado fire restrictions (sources.json `blm_fire_restrictions_colorado`), every row
+    of raw_blm__blm_fire_restrictions_colorado, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_idaho
+  description: BLM Idaho fire restrictions (sources.json `blm_fire_restrictions_idaho`), every row of
+    raw_blm__blm_fire_restrictions_idaho, keyed and deduped (decision 40). The source's own words stay
+    here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_montana
+  description: BLM Montana fire restrictions (sources.json `blm_fire_restrictions_montana`), every row
+    of raw_blm__blm_fire_restrictions_montana, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_new_mexico
+  description: BLM New Mexico fire restrictions (sources.json `blm_fire_restrictions_new_mexico`), every
+    row of raw_blm__blm_fire_restrictions_new_mexico, keyed and deduped (decision 40). The source's own
+    words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_north_dakota
+  description: BLM North Dakota fire restrictions (sources.json `blm_fire_restrictions_north_dakota`),
+    every row of raw_blm__blm_fire_restrictions_north_dakota, keyed and deduped (decision 40). The source's
+    own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_oregon_washington
+  description: BLM Oregon-Washington fire restrictions (sources.json `blm_fire_restrictions_oregon_washington`),
+    every row of raw_blm__blm_fire_restrictions_oregon_washington, keyed and deduped (decision 40). The
+    source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_south_dakota
+  description: BLM South Dakota fire restrictions (sources.json `blm_fire_restrictions_south_dakota`),
+    every row of raw_blm__blm_fire_restrictions_south_dakota, keyed and deduped (decision 40). The source's
+    own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_utah
+  description: BLM Utah fire restrictions (sources.json `blm_fire_restrictions_utah`), every row of raw_blm__blm_fire_restrictions_utah,
+    keyed and deduped (decision 40). The source's own words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_blm__blm_fire_restrictions_wyoming
+  description: BLM Wyoming fire restrictions (sources.json `blm_fire_restrictions_wyoming`), every row
+    of raw_blm__blm_fire_restrictions_wyoming, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
     data_tests:
     - unique
     - not_null

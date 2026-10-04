@@ -10,3 +10,12 @@ models:
     data_tests:
     - unique
     - not_null
+- name: stg_portland_parks__portland_parks_trail_closures
+  description: 'Portland Parks & Recreation trail closures and delays (sources.json `portland_parks_trail_closures`)
+    in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null

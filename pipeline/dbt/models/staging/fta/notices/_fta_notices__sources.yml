@@ -30,3 +30,78 @@ sources:
           - globalid
         config:
           severity: warn
+  - name: raw_fta__fta_closures_nth_general
+    description: 'Florida Trail Closures and NTH General (sources.json `fta_closures_nth_general`), landed
+      by extract/fta/closures.py''s FeedNotices. Key: item_id. Through FeedNotices that answer lands 2
+      rows, one an item, `item_id` taken from the guid on 2 and distinct on 2 of 2: the key.'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''fta_closures_nth_general'''
+          - item_id
+        config:
+          severity: warn
+  - name: raw_fta__fta_closures_nth_panhandle
+    description: 'Florida Trail Closures and NTH Panhandle (sources.json `fta_closures_nth_panhandle`),
+      landed by extract/fta/closures.py''s FeedNotices. Key: item_id. Through FeedNotices that answer
+      lands 3 rows, one an item, `item_id` taken from the guid on 3 and distinct on 3 of 3: the key.'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''fta_closures_nth_panhandle'''
+          - item_id
+        config:
+          severity: warn
+  - name: raw_fta__fta_closures_nth_north
+    description: 'Florida Trail Closures and NTH North (sources.json `fta_closures_nth_north`), landed
+      by extract/fta/closures.py''s FeedNotices. Key: item_id. Through FeedNotices that answer lands 5
+      rows, one an item, `item_id` taken from the guid on 5 and distinct on 5 of 5: the key.'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''fta_closures_nth_north'''
+          - item_id
+        config:
+          severity: warn
+  - name: raw_fta__fta_closures_nth_central
+    description: 'Florida Trail Closures and NTH Central (sources.json `fta_closures_nth_central`), landed
+      by extract/fta/closures.py''s FeedNotices. Key: item_id. Through FeedNotices that answer lands 1
+      rows, one an item, `item_id` taken from the guid on 1 and distinct on 1 of 1: the key.'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''fta_closures_nth_central'''
+          - item_id
+        config:
+          severity: warn
+  - name: raw_fta__fta_closures_nth_south
+    description: 'Florida Trail Closures and NTH South (sources.json `fta_closures_nth_south`), landed
+      by extract/fta/closures.py''s FeedNotices. Key: item_id. Through FeedNotices that answer lands 4
+      rows, one an item, `item_id` taken from the guid on 4 and distinct on 4 of 4: the key.'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''fta_closures_nth_south'''
+          - item_id
+        config:
+          severity: warn

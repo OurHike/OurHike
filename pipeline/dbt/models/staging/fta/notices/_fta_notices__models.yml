@@ -10,3 +10,48 @@ models:
     data_tests:
     - unique
     - not_null
+- name: stg_fta__fta_closures_nth_general
+  description: 'Florida Trail Closures and NTH General (sources.json `fta_closures_nth_general`) in the
+    shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_fta__fta_closures_nth_panhandle
+  description: 'Florida Trail Closures and NTH Panhandle (sources.json `fta_closures_nth_panhandle`) in
+    the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_fta__fta_closures_nth_north
+  description: 'Florida Trail Closures and NTH North (sources.json `fta_closures_nth_north`) in the shared
+    club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_fta__fta_closures_nth_central
+  description: 'Florida Trail Closures and NTH Central (sources.json `fta_closures_nth_central`) in the
+    shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null
+- name: stg_fta__fta_closures_nth_south
+  description: 'Florida Trail Closures and NTH South (sources.json `fta_closures_nth_south`) in the shared
+    club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null

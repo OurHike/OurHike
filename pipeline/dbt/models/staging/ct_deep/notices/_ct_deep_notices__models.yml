@@ -10,3 +10,12 @@ models:
     data_tests:
     - unique
     - not_null
+- name: stg_ct_deep__ct_deep_parks_emergency_message
+  description: 'CT DEEP State Parks emergency message (sources.json `ct_deep_parks_emergency_message`)
+    in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null

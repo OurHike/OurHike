@@ -10,3 +10,12 @@ models:
     data_tests:
     - unique
     - not_null
+- name: stg_ouachita__foot_hiker_alert_mm195
+  description: 'FoOT Hiker Alert: logging at Ouachita Trail mile 194 to 195 (sources.json `foot_hiker_alert_mm195`)
+    in the shared club-notice shape: facts and a link, never the source''s paragraphs (decision 55).'
+  columns:
+  - name: notice_key
+    description: The base model's key.
+    data_tests:
+    - unique
+    - not_null

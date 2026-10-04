@@ -14,6 +14,35 @@ sources:
         count: 7
         period: day
   tables:
+  - name: raw_mohonk__mohonk_alerts
+    description: 'Mohonk Preserve Alerts (sources.json `mohonk_alerts`), landed by extract/mohonk/closures.py''s
+      PageNotice. Key: url. no count is recorded on its sources.json row'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''mohonk_alerts'''
+          - url
+        config:
+          severity: warn
+  - name: raw_mohonk__mohonk_peregrine_updates
+    description: 'Mohonk Preserve Peregrine Watch updates (sources.json `mohonk_peregrine_updates`), landed
+      by extract/mohonk/closures.py''s PageNotice. Key: url. no count is recorded on its sources.json
+      row'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''mohonk_peregrine_updates'''
+          - url
+        config:
+          severity: warn
   - name: raw_mohonk__mohonk_deer_zones
     description: 'Mohonk Preserve deer management zones (sources.json `mohonk_deer_zones`), landed by
       extract/mohonk/warnings.py''s ArcgisLayer. Key: globalid. Read by this step at 2026-10-03T16:11:33Z:

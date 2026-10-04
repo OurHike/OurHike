@@ -14,6 +14,20 @@ sources:
         count: 7
         period: day
   tables:
+  - name: raw_pasda__pa_dcnr_tioga_advisories
+    description: 'Advisories for Tioga State Forest (sources.json `pa_dcnr_tioga_advisories`), landed
+      by extract/pasda/closures.py''s PageNotice. Key: url. no count is recorded on its sources.json row'
+    config:
+      meta:
+        cadence: hourly
+    data_tests:
+    - duplicates_are_exact:
+        arguments:
+          key_columns:
+          - '''pa_dcnr_tioga_advisories'''
+          - url
+        config:
+          severity: warn
   - name: raw_pasda__pa_dcnr_park_advisories
     description: 'PA DCNR park advisories (ParkAdvisory API) (sources.json `pa_dcnr_park_advisories`),
       landed by extract/pasda/warnings.py''s DcnrParkAdvisories. Key: advisory_key. no count is recorded

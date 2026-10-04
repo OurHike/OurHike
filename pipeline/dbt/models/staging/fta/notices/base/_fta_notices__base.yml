@@ -11,3 +11,53 @@ models:
     data_tests:
     - unique
     - not_null
+- name: base_fta__fta_closures_nth_general
+  description: Florida Trail Closures and NTH General (sources.json `fta_closures_nth_general`), every
+    row of raw_fta__fta_closures_nth_general, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_fta__fta_closures_nth_panhandle
+  description: Florida Trail Closures and NTH Panhandle (sources.json `fta_closures_nth_panhandle`), every
+    row of raw_fta__fta_closures_nth_panhandle, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_fta__fta_closures_nth_north
+  description: Florida Trail Closures and NTH North (sources.json `fta_closures_nth_north`), every row
+    of raw_fta__fta_closures_nth_north, keyed and deduped (decision 40). The source's own words stay here
+    and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_fta__fta_closures_nth_central
+  description: Florida Trail Closures and NTH Central (sources.json `fta_closures_nth_central`), every
+    row of raw_fta__fta_closures_nth_central, keyed and deduped (decision 40). The source's own words
+    stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null
+- name: base_fta__fta_closures_nth_south
+  description: Florida Trail Closures and NTH South (sources.json `fta_closures_nth_south`), every row
+    of raw_fta__fta_closures_nth_south, keyed and deduped (decision 40). The source's own words stay here
+    and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then item_id.'
+    data_tests:
+    - unique
+    - not_null

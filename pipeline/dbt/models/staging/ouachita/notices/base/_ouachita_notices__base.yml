@@ -11,3 +11,13 @@ models:
     data_tests:
     - unique
     - not_null
+- name: base_ouachita__foot_hiker_alert_mm195
+  description: 'FoOT Hiker Alert: logging at Ouachita Trail mile 194 to 195 (sources.json `foot_hiker_alert_mm195`),
+    every row of raw_ouachita__foot_hiker_alert_mm195, keyed and deduped (decision 40). The source''s
+    own words stay here and go no further.'
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null

@@ -59,6 +59,16 @@ models:
     data_tests:
     - unique
     - not_null
+- name: base_nps__nps_natr_road_site_status
+  description: Natchez Trace Parkway road and site status (sources.json `nps_natr_road_site_status`),
+    every row of raw_nps__nps_natr_road_site_status, keyed and deduped (decision 40). The source's own
+    words stay here and go no further.
+  columns:
+  - name: notice_key
+    description: 'The key: the registry key, then url.'
+    data_tests:
+    - unique
+    - not_null
 - name: base_nps__nps_alerts
   description: NPS Alerts, for the park codes the clubs draw on (sources.json `nps_alerts`), every row
     of raw_nps__nps_alerts, keyed and deduped (decision 40). The source's own words stay here and go no

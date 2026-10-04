@@ -8689,6 +8689,180 @@ def gis_file_and_geo_api_fixtures() -> dict[str, str]:
     return {f"conditions/json_apis/{key}.json": json.dumps(document) for key, document in documents.items()}
 
 
+# --- decision 54, waves 4 and 5, section S: the points read off club pages (extract/_pages_points.py) -------------
+#
+# One document per registry key under conditions/page_points/, `{"answers": {url: {"content_type", "body"}},
+# "rows": n}`, served by exact URL (extract/_fixtures.py's PAGE_POINTS_DIR), so each page's own parser reads a
+# page shaped like the live one: MDHTA's trail guide anchors (`data-type`, `data-slug`, `data-title`,
+# `data-lat`, `data-long`, and a trail line's `data-geojson`), FoOT's shelter list through WordPress page 326's
+# REST answer (`modified_gmt`, `content.rendered`, `<li>` entries in both of the page's shapes), AMC Berkshire's
+# `<h3>` parking areas with their `bullets02` lists (the three ways the page writes a coordinate, a nested day-use
+# list, an unclosed `<li>` and a heading with no list), and the Foothills Trail's GPS Coordinates table through
+# page 603's REST answer. THE SHAPES ARE MEASURED (read 2026-10-04, each row's sources.json `notes`); THE VALUES
+# ARE INVENTED, every name starts with 'Fixture', and every point sits on the fixture grid (_point), inside each
+# source's region box. `rows` is what the parser must land.
+#
+# AMC Berkshire's parking page is also the notice amc_wma_at_parking (decision 53), which fixture mode answers by
+# the same URL, so the notices document for that key is written here too, with this body: one page, as the site
+# serves it, for both of its readers. Its <h1> is the page notice's title.
+#
+# Not here: wave 4's PDFs (extract/_pdf_points.py), which need pypdf, and the pipeline and dbt jobs install none
+# (requirements.in's note): fixture mode leaves them out, as it leaves GATC's water PDF and the notice PDFs out.
+
+PAGE_HTML = "text/html; charset=UTF-8"
+PAGE_REST = "application/json; charset=UTF-8"
+
+
+def _ddm(value: float, hemisphere: str = "") -> str:
+    """A fixture coordinate as degrees and decimal minutes, the way FoOT and the Foothills Trail print theirs."""
+    degrees = int(abs(value))
+    return f"{hemisphere}{degrees} {(abs(value) - degrees) * 60:06.3f}"
+
+
+def _mdhta_trail_guide_page() -> str:
+    anchors = [
+        '<a href="https://mdhta.com/trails/fixture-trail/" data-slug="fixture-trail" data-title="Fixture Trail" '
+        'data-type="trails" data-geojson="https://mdhta.com/wp-content/uploads/fixture-trail.geojson"></a>'
+    ]
+    for n, (kind, title) in enumerate(
+        [
+            ("trailheads", "Fixture Trailhead"),
+            ("campgrounds", "Fixture Campground"),
+            ("waterboxes", "Fixture Water Box &#8217;s"),
+            ("river-crossings", "Fixture Crossing"),
+            ("points-of-interest", "Fixture Overlook"),
+        ]
+    ):
+        x, y = _point(n)["coordinates"]
+        slug = f"fixture-{kind}-{n}"
+        anchors.append(
+            f'<a href="https://mdhta.com/{kind}/{slug}/" data-slug="{slug}" data-title="{title}" data-type="{kind}" '
+            f'data-lat="{y}" data-long="{x}"></a>'
+        )
+    return (
+        "<!DOCTYPE html><html><head><title>Fixture Trail Guide</title></head><body><nav>Fixture menu</nav>"
+        f'<div class="map">{"".join(anchors)}</div><footer>Fixture footer</footer></body></html>'
+    )
+
+
+def _foot_shelters_rest() -> str:
+    items = []
+    for n in range(3):
+        x, y = _point(n)["coordinates"]
+        items.append(
+            f"<li><strong><u>FIXTURE SHELTER {n}</u></strong><strong> – MM {10 + n}.4 "
+            f"{_ddm(y, 'N')} / {_ddm(x, 'W')} </strong></li>"
+        )
+    items.append("<li><strong><u>FIXTURE MILE SHELTER at MM 120.5</u></strong></li>")
+    rendered = (
+        '<h2 style="text-align: center;"><strong>Fixture Shelters</strong></h2>'
+        '<h4>To download Shelter Guide click <a href="https://www.friendsoftheouachita.org/fixture.pdf">HERE</a></h4>'
+        f"<ul>{''.join(items)}</ul><p><strong>Fixture thanks.</strong></p>"
+    )
+    return json.dumps(
+        {
+            "id": 326,
+            "modified_gmt": "2026-09-21T14:13:20",
+            "link": "https://www.friendsoftheouachita.org/hiker-info/trail-shelters/",
+            "title": {"rendered": "Trail Shelters"},
+            "content": {"rendered": rendered, "protected": False},
+        }
+    )
+
+
+def _amc_parking_page() -> str:
+    def area(n: int, items: str, label: str = "Lat/Lon") -> str:
+        """One parking area: its <h3>, then its list, the coordinate last. 'Lon/Lat:' still prints the latitude first."""
+        x, y = _point(n)["coordinates"]
+        return (
+            f'<h3 style="margin-top:24px;"><strong>Fixture Rd {n}, Fixture Town:</strong> Fixture access.</h3>'
+            f'<ul class="bullets02">{items}<li>{label}: {y:.5f}, {x:.5f}.</li></ul>'
+        )
+
+    # A nested list of day-use pull-offs inside an area, as Mt Greylock Summit's; its facts are not the area's.
+    nested = (
+        '<li>Other day use parking areas near the A.T.<ul class="bullets02"><li><strong>Fixture Pull-off:</strong> '
+        'Fixture access.<ul class="bullets02"><li>Capacity 4 vehicles.</li></ul></li></ul></li>'
+    )
+    body = "".join(
+        [
+            area(
+                0,
+                "<li>Capacity: 8 vehicles, busy on weekends.</li><li>Plowed in winter.</li>"
+                "<li>Suitable for overnight parking.</li><li>Map kiosk: no.</li>",
+            ),
+            area(
+                1,
+                "<li>Capacity 6 vehicles.</li><li>Short term overnight use.</li><li>Not plowed in winter.</li>"
+                "<li>Map kiosk: yes.</li>",
+                "Lon/Lat",
+            ),
+            area(
+                2,
+                f"<li>Capacity: 50 vehicles.</li><li>Fee required.</li><li>Day use only. NO OVERNIGHT PARKING.</li>{nested}",
+                "Lat.Lon",
+            ),
+            "<h3><strong>Fixture Ave, Fixture Town:</strong> No official parking area.</h3>",
+            # School St's unclosed item: the next <li> ends it.
+            area(
+                3,
+                "<li>Capacity: 20 vehicles (no campers).<li>Not recommended for overnight use.</li>"
+                "<li>Plowed in winter (mostly).</li>",
+            ),
+        ]
+    )
+    return (
+        "<!DOCTYPE html><html><head><title>Fixture Site</title></head><body><div id='wrapper'>"
+        "<h1>Fixture A.T. Parking Areas</h1><div class='subtext-h1'>Fixture Committee<br>11&#8209;Jan&#8209;2025<br></div>"
+        f"<h2>Parking Areas</h2>{body}<h2>Fixture More</h2><p>Fixture text.</p></div></body></html>"
+    )
+
+
+def _foothills_coordinates_rest() -> str:
+    rows = []
+    for n in range(3):
+        x, y = _point(n)["coordinates"]
+        rows.append(
+            f'<tr><td valign="top"><div>Fixture Access {n}</div></td><td valign="top"><div>{_ddm(y)}</div></td>'
+            f'<td valign="top"><div>{_ddm(x)}</div></td></tr>'
+        )
+    rendered = f'<h2>GPS Coordinates</h2><table border="0"><tbody>{"".join(rows)}</tbody></table>'
+    return json.dumps(
+        {
+            "id": 603,
+            "modified_gmt": "2024-01-27T16:07:54",
+            "link": "https://foothillstrail.org/maps-coordinates-2/",
+            "title": {"rendered": "Maps &amp; Coordinates"},
+            "content": {"rendered": rendered, "protected": False},
+        }
+    )
+
+
+#: Registry key -> (the URL its reader asks, content type, body, rows the parser lands).
+PAGE_POINTS_FIXTURES = {
+    "mdhta_trail_guide_points": ("https://mdhta.com/trail-guide/", PAGE_HTML, _mdhta_trail_guide_page, 5),
+    "foot_trail_shelters": ("https://www.friendsoftheouachita.org/wp-json/wp/v2/pages/326", PAGE_REST, _foot_shelters_rest, 4),
+    "amc_wma_at_parking_points": ("https://www.amc-wma.org/documents-more.cgi?id=112", PAGE_HTML, _amc_parking_page, 5),
+    "foothills_gps_coordinates": (
+        "https://foothillstrail.org/wp-json/wp/v2/pages/603",
+        PAGE_REST,
+        _foothills_coordinates_rest,
+        3,
+    ),
+}
+
+
+def page_points_fixtures() -> dict[str, str]:
+    """Decision 54's waves 4 and 5 (section S): one answers document per club page read for its points."""
+    files = {}
+    for key, (url, content_type, body, rows) in PAGE_POINTS_FIXTURES.items():
+        answer = {"content_type": content_type, "body": body()}
+        files[f"conditions/page_points/{key}.json"] = json.dumps({"answers": {url: answer}, "rows": rows})
+        if key == "amc_wma_at_parking_points":
+            files["conditions/notices/amc_wma_at_parking.json"] = json.dumps({"answers": {url: answer}, "rows": 1})
+    return files
+
+
 def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
@@ -8833,6 +9007,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         **_club_trail_lines_fixtures(),
         **{name: _club_point_layer(*spec) for name, spec in CLUB_POINT_FIXTURES.items()},
         **gis_file_and_geo_api_fixtures(),
+        **page_points_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)

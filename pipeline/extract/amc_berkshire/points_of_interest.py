@@ -1,26 +1,23 @@
-"""AMC Berkshire Chapter: points of interest, published, and not landed (coverage audit 2026-10-01,
-batch c1_at_clubs_north).
+"""AMC Berkshire Chapter's A.T. parking areas in Massachusetts, with each area's capacity, overnight grade,
+winter plowing, map kiosk and fee, from its "A.T. Parking Areas and Trailhead" page.
 
-Water source and capacity per site, on the A.T. sites ATC already places. Fires are banned at Upper
-Goose Pond Cabin and Laurel Ridge. Skeptic, 2026-10-01: spot-check passed ("Wilbur Clearing … Small
-shelter (capacity 6) … Water source on blue blaze trail"). The page now says "last updated: …
+Decision 54, wave 5: read live on 2026-10-04 (robots.txt first, lib/user_agent.py's agent) and registered in
+sources.json, where the row carries the count, the measured key and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `amc_wma_at_parking_points`: 28 parking areas, 27 with a coordinate, keyed on the name.
+
+The same page is amc_berkshire/closures.py's notice `amc_wma_at_parking`, one page-notice row; this resource
+reads its parking areas, a second dataset of one page.
+
+NOT LANDED, read 2026-10-01 by the coverage audit and not re-read: "Campsites and Shelters on the
+Massachusetts A.T." (https://www.amc-wma.org/documents-more.cgi?id=13, dated 04-Jan-2025), shelter capacity,
+tent platforms, privy, bear box and water source per site, with no coordinate on any. ATC's layers place the
+same sites (atc, code 5: shelters 11, campsites 19), so the page's facts need a join to those points by name,
+which a person reviews; needs a per-site reader, not built in this pull request. It is a notice too,
+`amc_wma_at_campsites`.
 """
 
-from datetime import date
+from extract._pages_points import page_points
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        '`https://www.amc-wma.org/documents-more.cgi?id=13` "Campsites and Shelters on the Massachusetts A.T." '
-        "(page, dated 04-Jan-2025). It runs north to south with shelter capacity, tent platforms and pads, "
-        'privy, bear box and water source per site (e.g. "Wilbur Clearing … Small shelter (capacity 6) … Water '
-        'source on blue blaze trail"). LOADED via atc (code 5): shelters 11, campsites 19, privies 18, parking '
-        "31, viewpoints 45, bridges 30.",
-    ),
-    where=("https://www.amc-wma.org/documents-more.cgi?id=13",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("amc_wma_at_parking_points",)
+RESOURCES = [page_points(key) for key in CLAIMS]

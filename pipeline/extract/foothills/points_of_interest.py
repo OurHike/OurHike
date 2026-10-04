@@ -1,23 +1,18 @@
-"""Foothills Trail Conservancy: points of interest, published, and not landed (coverage audit
-2026-10-01, batch c5_regional_2).
+"""The Foothills Trail Conservancy's 17 access points, its "GPS Coordinates" table, read through WordPress page
+603's REST route.
 
-The FAQ says campsites, bear cables and water posts (marked by "a wooden post with a blue
-reflector") are listed only in the paid guidebook and FarOut.
+Decision 54, wave 5: read live on 2026-10-04 (robots.txt first, its `Disallow: /*?` and `Crawl-delay: 10`
+both honoured, lib/user_agent.py's agent) and registered in sources.json, where the row carries the count, the
+measured key and what holds it back.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+- `foothills_gps_coordinates`: 17 access points, keyed on the name.
+
+The FAQ says the trail's campsites, bear cables and water posts ("a wooden post with a blue reflector") are
+listed only in the paid guidebook and FarOut, so no campsite or water point is published to load (the
+coverage audit, 2026-10-01).
 """
 
-from datetime import date
+from extract._pages_points import page_points
 
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "`/maps-coordinates-2/`: 17 access points (trailheads, parking, boat access) in "
-        "degrees-decimal-minutes, in an HTML table. (Skeptic spot-check, 2026-10-01: 17 rows again, from "
-        '"Oconee St Park Access 34 51.807 / 83 05.880" to "Caesar\'s Head St Park Access".)',
-    ),
-    where=("https://foothillstrail.org/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+CLAIMS = ("foothills_gps_coordinates",)
+RESOURCES = [page_points(key) for key in CLAIMS]

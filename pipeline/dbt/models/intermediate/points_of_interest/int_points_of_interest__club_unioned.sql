@@ -43,6 +43,30 @@ select
     geom,
     properties,
     _loaded_at
+from {{ ref('stg_amc_berkshire__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
+from {{ ref('stg_ata__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
 from {{ ref('stg_black_hills__points_of_interest') }}
 union all by name
 select
@@ -68,6 +92,18 @@ select
     properties,
     _loaded_at
 from {{ ref('stg_bmecc__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
+from {{ ref('stg_bmta__points_of_interest') }}
 union all by name
 select
     source_key,
@@ -175,6 +211,18 @@ select
     geom,
     properties,
     _loaded_at
+from {{ ref('stg_foothills__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
 from {{ ref('stg_fpc__points_of_interest') }}
 union all by name
 select
@@ -236,6 +284,18 @@ select
     properties,
     _loaded_at
 from {{ ref('stg_massgis__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
+from {{ ref('stg_mdhta__points_of_interest') }}
 union all by name
 select
     source_key,
@@ -344,6 +404,18 @@ select
     properties,
     _loaded_at
 from {{ ref('stg_ota__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
+from {{ ref('stg_ouachita__points_of_interest') }}
 union all by name
 select
     source_key,

@@ -276,6 +276,16 @@ select
     geom,
     properties,
     _loaded_at
+from {{ ref('stg_palmetto__trail_lines') }}
+union all by name
+select
+    source_key,
+    club,
+    trail_segment_key,
+    name,
+    geom,
+    properties,
+    _loaded_at
 from {{ ref('stg_patc__trail_lines') }}
 union all by name
 select

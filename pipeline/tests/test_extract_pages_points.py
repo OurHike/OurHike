@@ -25,9 +25,12 @@ from extract._pages_points import (
     north_america,
     page_points,
     parse_amc_berkshire_at_parking,
+    parse_brbtc_section,
     parse_foot_trail_shelters,
     parse_foothills_gps_coordinates,
     parse_mdhta_trail_guide,
+    parse_ohta_major_trailheads,
+    parse_palmetto_passage,
 )
 from lib import http_retry
 from lib.freshness_state import Freshness
@@ -38,6 +41,8 @@ SHELTERS_PAGE = "https://club.example.org/hiker-info/trail-shelters/"
 SHELTERS_REST = "https://club.example.org/wp-json/wp/v2/pages/326"
 PARKING_URL = "https://chapter.example.org/documents-more.cgi?id=112"
 COORDINATES_REST = "https://conservancy.example.org/wp-json/wp/v2/pages/603"
+SECTIONS_SITEMAP = "https://conservancy.example.org/crb_trail-sitemap.xml"
+SECTION_PREFIX = "https://conservancy.example.org/trail/"
 
 
 @pytest.fixture
@@ -49,6 +54,7 @@ def registry(tmp_path, monkeypatch):
         {"key": "foot_trail_shelters", "url": SHELTERS_PAGE, "read_url": SHELTERS_REST, "crawl_delay": 10},
         {"key": "amc_wma_at_parking_points", "url": PARKING_URL},
         {"key": "foothills_gps_coordinates", "url": "https://conservancy.example.org/maps/", "read_url": COORDINATES_REST},
+        {"key": "brbtc_section_trailheads", "url": SECTIONS_SITEMAP, "sitemap": SECTIONS_SITEMAP, "page_prefix": SECTION_PREFIX},
     ]
     path.write_text(json.dumps({"sources": sources}))
     monkeypatch.setattr(_kinds, "REGISTRY_PATH", path)
@@ -230,6 +236,102 @@ def test_a_point_south_of_the_equator_or_east_of_greenwich_is_refused_not_repair
     with pytest.raises(PageLayoutChanged):
         north_america(-34.8, -83.1, "fixture")
     assert north_america(34.8, 83.1, "fixture")["coordinates"] == [-83.1, 34.8]  # unsigned, read west
+
+
+def section_page(number: int = 2, length: str = "9.3 miles", fixes: int = 1) -> str:
+    fix = "<div><h4>Fixture Gap Trailhead</h4>\n<p>34.8671, -83.2523</p></div>" * fixes
+    return (
+        "<nav><h5>Section 1</h5></nav>"
+        f"<h5>\n  Section {number}  </h5>\n<h1><span>Fixture Gap</span> to <span>Fixture Dell</span></h1>"
+        f"<div><h4>\n Length\n </h4>\n {length}\t</div>{fix}"
+    )
+
+
+def test_a_section_page_lands_its_own_number_not_the_menus_and_a_bare_length_as_miles():
+    (row,) = parse_brbtc_section(section_page(length="10.8"), SECTION_PREFIX + "fixture/")
+
+    assert row["section"] == "2"  # the menu's "Section 1" is not the section's
+    assert (row["section_name"], row["length_miles"], row["name"]) == (
+        "Fixture Gap to Fixture Dell",
+        10.8,
+        "Fixture Gap Trailhead",
+    )
+    assert row["geometry"]["coordinates"] == [-83.2523, 34.8671]
+
+
+def test_a_section_page_with_two_trailhead_fixes_refuses_rather_than_choosing_one():
+    with pytest.raises(PageLayoutChanged, match="2 found"):
+        parse_brbtc_section(section_page(fixes=2), SECTION_PREFIX + "fixture/")
+
+
+def passage(*calls: str) -> str:
+    return (
+        f"<h1>Fixture Passage</h1><script>trailPage.helper.init({{lat: 33.0}});\n{''.join(calls)}trailPage.helper.run();</script>"
+    )
+
+
+MARKER = "trailPage.helper.addMarker(33.03735764719804, -79.61751800297665, 'Water Launch', '', []);\n"
+SEGMENT = 'trailPage.helper.addSegment(\'Fixture Trail\', [{"lng":"-79.6176","lat":"33.0375"},{"lng":"-79.6180","lat":"33.0377"}], []);\n'
+
+
+def test_a_passage_lands_each_marker_as_typed_and_its_line_and_never_reads_a_water_launch_as_water():
+    rows = parse_palmetto_passage(passage(MARKER, MARKER.replace("Water Launch", "NULL"), SEGMENT), "https://trail.example.org/p")
+
+    assert [(row["kind"], row["marker_type"], row["name"]) for row in rows] == [
+        ("marker", "Water Launch", None),
+        ("marker", "NULL", None),
+        ("segment", None, "Fixture Trail"),
+    ]
+    assert rows[2]["geometry"] == {"type": "LineString", "coordinates": [[-79.6176, 33.0375], [-79.618, 33.0377]]}
+    assert {row["passage"] for row in rows} == {"Fixture Passage"}
+
+
+def test_a_passage_whose_script_call_no_longer_parses_refuses_rather_than_landing_the_rest():
+    changed = MARKER.replace("'Water Launch', '', []", "{type: 'Water Launch'}")
+    with pytest.raises(PageLayoutChanged, match="2 addMarker"):
+        parse_palmetto_passage(passage(MARKER, changed, SEGMENT), "https://trail.example.org/p")
+
+
+OHTA_PAGE = (
+    "<h3>FIXTURE MOUNTAINS</h3><h4>Major trail heads</h4><ul>"
+    "<li>Fixture Lake (mile 0): 35.694624, -94.11849</li>"
+    "<li>Fixture Ford (mile 164): Parking at 35.971941,-92.886213. The river level here can be too high.</li>"
+    "</ul><h3>FIXTURE RIVER</h3><h4>Major trail heads</h4><ul>"
+    "<li>Fixture Ford (mile 164): Parking at 35.97194,-92.88621.</li>"
+    "<li>Fixture Ridge (LBW) access: approximately 36.0977,-92.5223</li></ul>"
+)
+
+
+def test_a_trailhead_at_a_segments_end_lands_under_both_segments_with_what_its_lead_says_of_the_fix():
+    rows = parse_ohta_major_trailheads(OHTA_PAGE, "https://club.example.org/trail/")
+
+    assert [(row["segment"], row["name"], row["mile"], row["fix_note"]) for row in rows] == [
+        ("FIXTURE MOUNTAINS", "Fixture Lake", 0.0, None),
+        ("FIXTURE MOUNTAINS", "Fixture Ford", 164.0, "parking"),
+        ("FIXTURE RIVER", "Fixture Ford", 164.0, "parking"),
+        ("FIXTURE RIVER", "Fixture Ridge (LBW) access", None, "approximate"),
+    ]
+    assert all("river level" not in str(value) for row in rows for value in row.values())
+
+
+def test_a_trailhead_entry_with_no_fix_refuses_the_list():
+    with pytest.raises(PageLayoutChanged, match="no measured shape"):
+        parse_ohta_major_trailheads(OHTA_PAGE.replace("35.694624, -94.11849", "see map"), "https://club.example.org/trail/")
+
+
+def test_a_sitemaps_pages_under_the_prefix_are_read_and_a_sitemap_listing_none_there_refuses(registry, requests_mock):
+    first, second = SECTION_PREFIX + "one/", SECTION_PREFIX + "two/"
+    sitemap = "".join(f"<url><loc>{url}</loc></url>" for url in (first, "https://conservancy.example.org/about/", second))
+    requests_mock.get(SECTIONS_SITEMAP, text=f"<urlset>{sitemap}</urlset>")
+    requests_mock.get(first, text=section_page(1), headers={"Content-Type": "text/html"})
+    requests_mock.get(second, text=section_page(2), headers={"Content-Type": "text/html"})
+
+    rows = list(resource("brbtc_section_trailheads").rows({}))
+
+    assert [(row["section"], row["source_url"]) for row in rows] == [("1", first), ("2", second)]
+    requests_mock.get(SECTIONS_SITEMAP, text="<urlset><url><loc>https://elsewhere.example.com/trail/x/</loc></url></urlset>")
+    with pytest.raises(PageLayoutChanged, match="lists no page"):
+        list(resource("brbtc_section_trailheads").rows({}))
 
 
 def test_html_lines_drop_scripts_and_break_at_blocks():

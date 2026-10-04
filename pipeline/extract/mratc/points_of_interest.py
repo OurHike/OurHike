@@ -1,11 +1,14 @@
-"""Mount Rogers Appalachian Trail Club: points of interest, published, and not landed (coverage audit
-2026-10-01, batch c3_at_clubs_south).
+"""Mount Rogers Appalachian Trail Club: points of interest, published with no coordinate, and not landed
+(decision 54, wave 5, read live 2026-10-04).
 
-Cherry Tree Shelter is named on the 2026 official A.T. detour (MRATC homepage). Sandy Flats and
-Straight Branch sit on the IMT stretch the detour uses (Reasoned from MRATC's mileages; not checked
-on a map). Hikers on the detour pass shelters our map does not show.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+The club's backpacking-rules page lists its shelters and campsites with miles north of Damascus, the trail
+each is on, and bear box and privy yes or no, and no coordinate. A HIKER'S SAFETY: three of them are on the Iron
+Mountain Trail, in neither ATC's shelter layer nor USFS's `usfs_rec_sites` by name (the coverage audit,
+2026-10-01): Sandy Flats Campsite (8.2 mi; bear box no, privy yes), Straight Branch Shelter (13.2 mi; no, no)
+and Cherry Tree Shelter (19 mi; no, yes). Cherry Tree is named on the 2026 official A.T. detour (MRATC's home
+page, the coverage audit), so hikers on the detour pass shelters the map does not show. A point is never looked
+up from a name; needs a per-site reader, not built in this pull request, and a fix for each that a person
+reviews.
 """
 
 from datetime import date
@@ -13,15 +16,16 @@ from datetime import date
 from extract._contract import NotAvailable
 
 NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
+    confirmed=date(2026, 10, 4),
     checked=(
-        "LOADED via `atc` (code 25): shelters 7, campsites 5, privies 12, parking 13, viewpoints 37, bridges "
-        "18. Not loaded: `https://www.mratc.org/backpacking-rules` (page) lists 12 shelter and campsite rows "
-        "with miles north of Damascus, bear box Y/N and privy Y/N. Three of them are on the Iron Mountain Trail"
-        " and are in neither ATC's shelter layer nor USFS `usfs_rec_sites` by name: Sandy Flats Campsite (8.2 "
-        "mi; bear box no, privy yes), Straight Branch Shelter (13.2 mi; no, no) and Cherry Tree Shelter (19 mi;"
-        " no, yes).",
+        "robots.txt (Wix's: `Allow: /`, `Disallow: *?lightbox=`, no Crawl-delay for our agent), then "
+        "/backpacking-rules, read 2026-10-04 under lib/user_agent.py's agent: 200, 895,241 bytes. Its "
+        "'Shelter/Campsite Info' list, 'Location + Miles north of Damascus + Trail', from 'Sandy Flats Campsite - "
+        "8.2 mi - I.M.T. Bearbox - No; Privy - Yes' to 'Trimpi Shelter - 53.6 mi - A.T.'; no coordinate, decimal "
+        "or DDM, in the page.",
+        "the coverage audit (2026-10-01, batch c3_at_clubs_south): ATC code 25 holds shelters 7 and campsites 5; "
+        "the three I.M.T. sites are not in ATC's shelters layer nor in usfs_rec_sites by name.",
     ),
     where=("https://www.mratc.org/backpacking-rules",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
+    reason="needs a per-site reader, not built in this pull request: the shelter list gives miles from Damascus and no coordinate",
 )

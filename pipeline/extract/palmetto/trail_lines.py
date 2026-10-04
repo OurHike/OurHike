@@ -1,26 +1,14 @@
-"""Palmetto Conservation Foundation: trail lines, published, and not landed (coverage audit 2026-10-01,
-batch c7_regional_4).
+"""The Palmetto Trail's 33 passage lines, which palmetto/points_of_interest.py extracts as
+`palmetto_trail_passages` with each passage's map markers: one page per passage, one upstream, one resource
+and one raw table (decision 34).
 
-HTML-embedded, so it means scraping 33 pages. The MMPK is a 313 MB binary, not a service. Partly
-LOADED via `usfs_trails` (about 92.3 mi, correction 7). `kblazzard_WCUEDU` layers (e.g. 108 feature
-points) belong to a university person, so they are leads only.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Each passage page draws its line from `trailPage.helper.addSegment(<name>, [{"lng", "lat"}, ...], [])` in its
+own script (read live 2026-10-04: 33 lines, 70,104 vertices). The row's `kind` 'segment' marks them, and
+int_trail_lines__club_lines keeps only the lines. Partly drawn already by usfs_trails (about 92.3 mi, the
+coverage audit's correction 7), so the dedupe after the load meets them there. A club line draws and never
+routes until that dedupe has checked it (decision 64). Not read: the 313,124,546-byte Mobile Map Package
+'Palmetto Trail - Statewide Map' on the foundation's ArcGIS account, a binary package rather than a service,
+and the per-passage Avenza maps.
 """
 
-from datetime import date
-
-from extract._contract import NotAvailable
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "33 passage pages, `https://www.palmettotrail.org/trails/trail/<passage>` (`sitemap.xml`). Each embeds "
-        "its line as inline JSON: `trailPage.helper.addSegment('EastatoePassage09282018', "
-        '[{"lng":…,"lat":…},…])`. Also free per-passage Avenza maps, and the org\'s own ArcGIS account '
-        '`palmettoconservation`, which holds a Mobile Map Package "Palmetto Trail - Statewide Map" (313,124,546'
-        " B, modified 2026-08-25).",
-    ),
-    where=("https://www.palmettotrail.org/trails/trail/",),
-    reason="published and not landed: no sources.json row registers it, and a builder takes a registered key",
-)
+SHARES = "points_of_interest"

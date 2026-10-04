@@ -67,6 +67,18 @@ select
     geom,
     properties,
     _loaded_at
+from {{ ref('stg_bartram__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
 from {{ ref('stg_black_hills__points_of_interest') }}
 union all by name
 select
@@ -403,6 +415,18 @@ select
     geom,
     properties,
     _loaded_at
+from {{ ref('stg_ohta__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
 from {{ ref('stg_ota__points_of_interest') }}
 union all by name
 select
@@ -416,6 +440,18 @@ select
     properties,
     _loaded_at
 from {{ ref('stg_ouachita__points_of_interest') }}
+union all by name
+select
+    source_key,
+    club,
+    poi_key,
+    name,
+    category,
+    source_id,
+    geom,
+    properties,
+    _loaded_at
+from {{ ref('stg_palmetto__points_of_interest') }}
 union all by name
 select
     source_key,

@@ -409,6 +409,158 @@ def parse_foothills_gps_coordinates(page: str, url: str) -> list[dict]:
     return rows
 
 
+#: A BRBTC section page (blueridgebartram.org/trail/<section>/, read 2026-10-04): an `<h5>` "Section 2", an `<h1>`
+#: of two `<span>`s, from and to, a "Length" `<h4>` and its figure ("9.3 miles" on 11 of 13 pages, a bare "10.8" on
+#: Hale Ridge Road's and Jones Gap's), and the section's starting trailhead as an `<h4>` name over a `<p>` fix in
+#: decimal degrees, "34.8671, -83.2523".
+#: The `<h5>` read is the one straight above the `<h1>`: the site's menu lists "Section 1" in an `<h5>` too.
+BRBTC_SECTION = re.compile(r"(?is)<h5[^>]*>\s*Section\s+(?P<section>\d+[A-Za-z]?)\s*</h5>\s*<h1[^>]*>(?P<title>.*?)</h1>")
+BRBTC_LENGTH = re.compile(r"(?is)<h4[^>]*>\s*Length\s*</h4>\s*(?P<miles>\d+(?:\.\d+)?)(?:\s*miles)?\s*<")
+BRBTC_TRAILHEAD = re.compile(r"(?s)<h4>(?P<name>[^<]+)</h4>\s*<p>\s*(?P<lat>-?\d+\.\d+),\s*(?P<lon>-?\d+\.\d+)\s*</p>")
+
+
+@_parser("brbtc_section_trailheads")
+def parse_brbtc_section(page: str, url: str) -> list[dict]:
+    """One Bartram Trail section page: its number, its name, its length in miles and its starting trailhead's fix.
+
+    The page's length is read as miles where it states no unit, as it does on 2 of 13, because the other 11 say
+    "miles" (Reasoned). The section's prose (camping, water, the road to the trailhead) lands nowhere, among it
+    Sandy Ford's "it is now posted Private Property and not advised" about the old parking at Dicks Creek. A page
+    that states no section number, or not exactly one trailhead fix, refuses.
+    """
+    section = BRBTC_SECTION.search(page)
+    trailheads = list(BRBTC_TRAILHEAD.finditer(page))
+    if section is None or len(trailheads) != 1:
+        raise PageLayoutChanged(
+            f"{url}: a section page states its Section number, its title and one trailhead fix ({len(trailheads)} found)"
+        )
+    length = BRBTC_LENGTH.search(page)
+    name = " ".join(html.unescape(trailheads[0]["name"]).split())
+    return [
+        {
+            "section": section["section"],
+            "section_name": " ".join(" ".join(html_lines(section["title"])).split()),
+            "length_miles": float(length["miles"]) if length else None,
+            "name": name,
+            "geometry": point(float(trailheads[0]["lat"]), float(trailheads[0]["lon"]), f"{url} {name}"),
+        }
+    ]
+
+
+#: A Palmetto Trail passage page (www.palmettotrail.org/trails/trail/<passage>, read 2026-10-04) draws its map from
+#: calls in its own script: `trailPage.helper.addMarker(lat, lon, 'Parking', '', [])` for each typed marker (363 on
+#: the 33 pages: Parking 72, Trail Head 52, Information Sign 40, Point of Interest 39, Camping 34, Water Launch 19
+#: and 15 other types, 14 of them typed 'NULL'), and `trailPage.helper.addSegment('Palmetto Trail', [{"lng": "...",
+#: "lat": "..."}, ...], [])` for the passage's line, one a page. The `<h1>` names the passage.
+PALMETTO_MARKER = re.compile(
+    r"trailPage\.helper\.addMarker\(\s*(?P<lat>-?\d+(?:\.\d+)?)\s*,\s*(?P<lon>-?\d+(?:\.\d+)?)\s*,\s*'(?P<type>(?:[^'\\]|\\.)*)'"
+    r"\s*,\s*'(?P<label>(?:[^'\\]|\\.)*)'\s*,\s*\[[^\]]*\]\s*\)"
+)
+PALMETTO_SEGMENT = re.compile(
+    r"(?s)trailPage\.helper\.addSegment\(\s*'(?P<name>(?:[^'\\]|\\.)*)'\s*,\s*(?P<points>\[\{.*?\}\])\s*,\s*\[[^\]]*\]\s*\)"
+)
+PALMETTO_CALL = re.compile(r"trailPage\.helper\.(addMarker|addSegment)\(")
+
+
+@_parser("palmetto_trail_passages")
+def parse_palmetto_passage(page: str, url: str) -> list[dict]:
+    """One Palmetto Trail passage: each marker its map plots, typed as the page types it, and the passage's line.
+
+    A marker row is `kind` 'marker' with the page's own `marker_type` and a Point; a line row is `kind` 'segment'
+    with the segment's own name and a LineString, which palmetto/trail_lines.py's SHARES reads (one page, one
+    resource). A 'NULL' marker type lands as the page writes it, untyped: no type is guessed for it. Every call the
+    page makes must parse, so a page whose script changed shape refuses rather than landing the calls that still
+    happen to match.
+    """
+    title = re.search(r"(?is)<h1[^>]*>(?P<title>.*?)</h1>", page)
+    if title is None:
+        raise PageLayoutChanged(f"{url}: a passage page with no <h1>")
+    passage = " ".join(" ".join(html_lines(title["title"])).split())
+    calls = PALMETTO_CALL.findall(page)
+    markers, segments = list(PALMETTO_MARKER.finditer(page)), list(PALMETTO_SEGMENT.finditer(page))
+    if len(markers) != calls.count("addMarker") or len(segments) != calls.count("addSegment") or not segments:
+        raise PageLayoutChanged(
+            f"{url}: {calls.count('addMarker')} addMarker and {calls.count('addSegment')} addSegment calls, of which "
+            f"{len(markers)} and {len(segments)} parse"
+        )
+    rows = [
+        {
+            "passage": passage,
+            "kind": "marker",
+            "marker_type": found["type"].replace("\\'", "'"),
+            "name": None,
+            "geometry": point(float(found["lat"]), float(found["lon"]), f"{url} marker"),
+        }
+        for found in markers
+    ]
+    for found in segments:
+        try:
+            vertices = [[float(vertex["lng"]), float(vertex["lat"])] for vertex in json.loads(found["points"])]
+        except (ValueError, KeyError, TypeError) as error:
+            raise PageLayoutChanged(f"{url}: a segment whose vertices are not lng/lat pairs") from error
+        if len(vertices) < 2:
+            raise PageLayoutChanged(f"{url}: a segment with {len(vertices)} vertex")
+        point(vertices[0][1], vertices[0][0], f"{url} segment")  # the first vertex in range, as GisFile checks
+        rows.append(
+            {
+                "passage": passage,
+                "kind": "segment",
+                "marker_type": None,
+                "name": found["name"].replace("\\'", "'"),
+                "geometry": {"type": "LineString", "coordinates": vertices},
+            }
+        )
+    return rows
+
+
+#: OHTA's trail page (WordPress page 15, read 2026-10-04, modified 2026-09-10): a "Major trail heads" `<h4>` and
+#: `<ul>` under each segment's heading (Boston Mountains, Buffalo River, Sylamore, Norfork Lake), each `<li>`
+#: "Name (mile N): lat, lon" with the mile left out on Norfork Lake's and the two Lower Buffalo Wilderness
+#: accesses, and a lead before the fix on some: "Parking at", "Parking area at", "Park at", "approximately". What
+#: follows the fix ("The river level here can be too high to cross after big rains.") is the club's sentence.
+OHTA_LIST = re.compile(r"(?is)<h4[^>]*>\s*Major trail heads\s*</h4>\s*<ul[^>]*>(?P<items>.*?)</ul>")
+OHTA_SEGMENT = re.compile(r"(?is)<h[23][^>]*>(?P<segment>.*?)</h[23]>")
+OHTA_ITEM = re.compile(
+    r"^(?P<name>.+?)(?:\s*\(mile\s+(?P<mile>\d+(?:\.\d+)?)\))?:\s*"
+    r"(?P<lead>Parking area at|Parking at|Park at|approximately)?\s*(?P<lat>\d{2}\.\d+),\s*(?P<lon>-\d{2,3}\.\d+)"
+)
+#: What a lead says about the fix: where the car goes, or that the club calls the fix approximate.
+OHTA_LEADS = {"Parking area at": "parking", "Parking at": "parking", "Park at": "parking", "approximately": "approximate"}
+
+
+@_parser("ohta_major_trailheads")
+def parse_ohta_major_trailheads(page: str, url: str) -> list[dict]:
+    """The Ozark Highlands Trail's major trailheads, segment by segment: name, mile where given, and the fix.
+
+    A trailhead at a segment's end is listed under both segments (Woolum Ford, Spring Creek, Matney Knob), once
+    a segment, and lands once a segment, as the page lists it. `fix_note` says what the page's lead says of the
+    fix ("parking", "approximate"), and is null where it says nothing. A list item in another shape refuses.
+    """
+    rows = []
+    for found in OHTA_LIST.finditer(page):
+        headings = OHTA_SEGMENT.findall(page[: found.start()])
+        if not headings:
+            raise PageLayoutChanged(f"{url}: a trailhead list under no segment heading")
+        segment = " ".join(" ".join(html_lines(headings[-1])).split())
+        for item in re.findall(r"(?is)<li[^>]*>(.*?)</li>", found["items"]):
+            text = " ".join(" ".join(html_lines(item)).split())
+            entry = OHTA_ITEM.match(text)
+            if entry is None:
+                raise PageLayoutChanged(f"{url}: a trailhead entry in no measured shape: {text!r}")
+            rows.append(
+                {
+                    "segment": segment,
+                    "name": entry["name"].strip(),
+                    "mile": float(entry["mile"]) if entry["mile"] else None,
+                    "fix_note": OHTA_LEADS.get(entry["lead"] or ""),
+                    "geometry": north_america(float(entry["lat"]), float(entry["lon"]), f"{url} {entry['name']}"),
+                }
+            )
+    if not rows:
+        raise PageLayoutChanged(f"{url}: no Major trail heads list")
+    return rows
+
+
 # --- The resource -------------------------------------------------------------------------------------------------
 
 WP_ROUTE = "/wp-json/wp/v2/"
@@ -432,11 +584,31 @@ class PagePoints(Resource):
 
         A WordPress page is asked through its REST route (`read_url`, `/wp-json/wp/v2/pages/<id>`, no query
         string, which foothillstrail.org's `Disallow: /*?` leaves allowed), and its rows link the page itself.
+        A row with a `sitemap` lists its pages there instead (_page_list()).
         """
         entry = self.entry
         if entry.get("pages"):
             return tuple((page, page) for page in entry["pages"])
         return ((entry.get("read_url") or entry["url"], entry["url"]),)
+
+    def _page_list(self, http: requests.Session) -> list[tuple[str, str]]:
+        """The pages this run reads: the sitemap's <loc>s under the row's `page_prefix`, where the row names a
+        `sitemap` (BRBTC's 13 trail sections, read 2026-10-04), so a section the club adds is read without a
+        registry edit; else `pages`. A sitemap that lists none under the prefix refuses, and so does one that
+        lists a page on another host, whose robots.txt nobody read for this row."""
+        entry = self.entry
+        if not entry.get("sitemap"):
+            return list(self.pages)
+        sitemap = self._get(http, entry["sitemap"])
+        listed = [html.unescape(loc) for loc in re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", sitemap.text)]
+        prefix = entry.get("page_prefix") or ""
+        pages = [loc for loc in listed if loc.startswith(prefix)]
+        if not pages:
+            raise PageLayoutChanged(f"{self.key}: {entry['sitemap']} lists no page under {prefix!r}")
+        for page in pages:
+            if not _notices.same_site(entry["sitemap"], page) or urlparse(page).scheme != "https":
+                raise PageLayoutChanged(f"{self.key}: the sitemap lists {page}, not an https page on its own host")
+        return [(page, page) for page in pages]
 
     @property
     def part(self) -> str:
@@ -481,7 +653,7 @@ class PagePoints(Resource):
         parse = PAGE_PARSERS[self.key]
         http = _notices.polite(_kinds.session(), self.crawl_delay)
         rows = []
-        for asked, link in self.pages:
+        for asked, link in self._page_list(http):
             response = self._get(http, asked)
             modified = None
             if WP_ROUTE in urlparse(asked).path + "/":
@@ -521,7 +693,7 @@ class PagePoints(Resource):
             raise kept
         rows = kept if kept is not None else self._read()
         proofs[self.table] = len(rows)
-        print(f"  {self.key}: {len(rows)} points from {len(self.pages)} page(s)")
+        print(f"  {self.key}: {len(rows)} points from {len({row['source_url'] for row in rows})} page(s)")
         yield from (dict(row) for row in rows)
 
 
@@ -529,7 +701,7 @@ def page_points(key: str, **overrides) -> PagePoints:
     entry = _kinds.registry_entry(key)  # a key that is not registered fails at import, in the layout test, not mid-run
     if key not in PAGE_PARSERS:
         raise KeyError(f"{key}: extract/_pages_points.py's PAGE_PARSERS has no parser for it")
-    for url in [entry["url"], entry.get("read_url"), *(entry.get("pages") or [])]:
+    for url in [entry["url"], entry.get("read_url"), entry.get("sitemap"), *(entry.get("pages") or [])]:
         if url is not None and urlparse(url).scheme != "https":
             raise KeyError(f"{key}: {url} is not an https URL")
         if url is not None and urlparse(url).query and (refused := _notices.query_refused(url)):

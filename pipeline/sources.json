@@ -12883,6 +12883,37 @@
       "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header), the map is captioned 'For illustrative purposes only', which no decision names, and its bushwhack is dropped (layer_rules). Decision 63 turns it true once that is no longer so."
     },
     {
+      "key": "ohta_major_trailheads",
+      "title": "Ozark Highlands Trail major trailheads (OHTA's trail page)",
+      "provider": "OHTA",
+      "kind": "page_points",
+      "url": "https://ozarkhighlandstrail.com/trail/",
+      "read_url": "https://ozarkhighlandstrail.com/wp-json/wp/v2/pages/15",
+      "trust": "authoritative",
+      "steward": "Ozark Highlands Trail Association",
+      "steward_contact": "https://ozarkhighlandstrail.com/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a), read as mtsg_map_locations' row reads it: the club's own list of its trail's major trailheads, segment by segment, each with a fix, on a public page its website serves anonymously, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION. int_sources__publication's rule 3 admits `public_gis` only for a GIS endpoint, and a web page's points (`page_points`) is not one, so this row is held there whatever its `reaches_hikers` says: whether the points a club prints on its own page publish under decision 21a is the maintainer's to say. ozarkhighlandstrail.com's robots.txt, read 2026-10-04T16:47:37Z under lib/user_agent.py's USER_AGENT: WooCommerce's paths and /wp-admin/ are disallowed, then Yoast's empty `Disallow:`; no Crawl-delay. The page is read through WordPress page 15's REST route.",
+      "licence_basis": "public_gis",
+      "attribution": "Ozark Highlands Trail Association",
+      "terms": "ozarkhighlandstrail.com footer, read 2026-10-04: \"© Copyright 2026 OHTA\"; no terms page is linked (ohta_website_track's reading).",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://ozarkhighlandstrail.com/wp-json/wp/v2/pages/15",
+        "notes": "200 application/json, 38,130 bytes, no ETag and no Last-Modified, modified_gmt 2026-09-10T21:26:38 (read 2026-10-04): every monthly run reads the route (one request) and is FRESH only when the trailheads it parses hash as the last committed load did."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "segment",
+        "name"
+      ],
+      "key_comment": "(`segment`, `name`): unique on 41 of 41 (measured 2026-10-04 on the live REST answer, parsed as extract/_pages_points.py parses it). `name` alone is 38 of 41: Woolum ford, Spring Creek and Matney Knob end one segment and start the next, and are listed under both.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 4 and 5, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, the host's Crawl-delay or two seconds or more between requests: page 15's REST route whole, for the four trailhead lists, the count and the key.",
+      "discovered_date": "2026-10-04",
+      "notes": "41 trailheads in four segments, read 2026-10-04 (page modified 2026-09-10): Boston Mountains 10, Buffalo River 12, Sylamore 5 and Norfork Lake 14, the coverage audit's 'about 38 distinct points', each landing its `segment`, `name`, `mile` (25 of 41; Norfork Lake's and the two Lower Buffalo Wilderness accesses state none) and its fix (bbox lon -94.118 to -92.241, lat 35.673 to 36.485). `fix_note` is 'parking' where the page writes 'Parking at', 'Parking area at' or 'Park at' before the fix (4) and 'approximate' where it writes 'approximately' (Jackson Ridge and Log Wagon Gap, the wilderness accesses). A HIKER'S SAFETY, in the page's prose, which lands nowhere: Woolum ford's 'The river level here can be too high to cross after big rains', and the FAQ's water: 'In the drier months (July – September) the water can be hard to find' (the coverage audit).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04: extracted by extract/_pages_points.py, staged by pipeline/make_dbt_staging.py and held, because no club_poi_types row types it yet and rule 3 holds `public_gis` on a web page. Decision 63 turns it true once it is typed trailhead and the maintainer has said whether a club's page of points publishes under decision 21a."
+    },
+    {
       "key": "palmetto_trail_closures",
       "title": "Palmetto Trail current trail closures",
       "provider": "PCF",
@@ -12929,6 +12960,39 @@
       "notes": "One row: the page's notice (extract/_notices.py's PageNotice), keyed by `url`. Read 2026-10-03: title 'Hunting Season - Palmetto Trails', no stated date, region <main> of 1,337 characters: the season (late August to early March) and blaze orange. A standing seasonal warning.",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_palmetto__palmetto_hunting_season reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
+      "key": "palmetto_trail_passages",
+      "title": "Palmetto Trail passages: each passage page's map markers and its line",
+      "provider": "PCF",
+      "kind": "page_points",
+      "url": "https://www.palmettotrail.org/sitemap.xml",
+      "sitemap": "https://www.palmettotrail.org/sitemap.xml",
+      "page_prefix": "https://www.palmettotrail.org/trails/trail/",
+      "trust": "authoritative",
+      "steward": "Palmetto Conservation Foundation",
+      "steward_contact": "https://www.palmettotrail.org/contact",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a), read as mtsg_map_locations' row reads it: the club's own trail map data, the markers and the line each passage page's map draws from its own script, on a public page its website serves anonymously, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION. int_sources__publication's rule 3 admits `public_gis` only for a GIS endpoint, and a web page's points (`page_points`) is not one, so this row is held there whatever its `reaches_hikers` says: whether the points a club prints on its own page publish under decision 21a is the maintainer's to say. www.palmettotrail.org's robots.txt answered 200 with an empty body at 2026-10-04T16:42:30Z under lib/user_agent.py's USER_AGENT (no rules, no Crawl-delay; 2 s are kept between requests), as palmetto_trail_closures' reading found on 2026-10-03. palmettoconservation.org/sitemap.xml redirects to the same host's.",
+      "licence_basis": "public_gis",
+      "attribution": "Palmetto Conservation Foundation",
+      "terms": "None found: www.palmettotrail.org/terms-of-use (read 2026-10-04, Last-Modified 2025-07-02) holds no terms text, only the site's menu and forms; the footer reads '© 2026 Palmetto Trails'.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.palmettotrail.org/sitemap.xml",
+        "notes": "The sitemap and the 33 passage pages it lists, every monthly run (34 requests, 2 s apart). The pages send `cache-control: no-store` and a Last-Modified that 30 of 33 share (Mon, 13 Jul 2026 18:25:50 GMT, read 2026-10-04), a site's date and not a page's, so only the hash of the parsed markers and lines decides FRESH."
+      },
+      "name_field": "name",
+      "type_field": "marker_type",
+      "key_fields": [
+        "source_url",
+        "geometry"
+      ],
+      "key_comment": "(`source_url`, the geometry): unique on 396 of 396 (measured 2026-10-04 on the 33 live pages, parsed as extract/_pages_points.py parses them). The geometry alone is 357 of 396, because a marker at a passage's end is on both passages' pages; each page's copy is a row of that page.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 4 and 5, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, the host's Crawl-delay or two seconds or more between requests: the site's sitemap and all 33 passage pages it lists, each read whole for its map calls.",
+      "discovered_date": "2026-10-04",
+      "notes": "396 rows from 33 passages, read 2026-10-04: 363 markers (`kind` 'marker', Point) typed in `marker_type` as the page types them, Parking 72, Trail Head 52, Information Sign 40, Point of Interest 39, Camping 34, Water Launch 19, Restrooms 16, Scenic Observation 16, Picnic Area 14, 'NULL' 14, Fishing 12, 'High Hills 2018 v2' 11, Waterfall 7, Visitor Center 7 and 7 others; and 33 lines (`kind` 'segment', LineString, 70,104 vertices), one a passage, each under the segment's own name. Bbox lon -83.125 to -79.561, lat 33.030 to 35.215. palmetto/trail_lines.py SHARES this table for its lines. A WATER LAUNCH IS A BOAT LAUNCH, never drinking water; no marker type on any page says water. The pages carry the site's Google Maps API key in their script, which no column loads.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04: extracted by extract/_pages_points.py, staged by pipeline/make_dbt_staging.py as points and as trail lines and held, because no club_poi_types row types its markers yet (a Water Launch must never read as water), its lines draw only once their rules are tested (decision 64), and rule 3 holds `public_gis` on a web page. Decision 63 turns it true once its marker types are typed with those rules tested and the maintainer has said whether a club's page of map data publishes under decision 21a."
     },
     {
       "key": "pnta_trail_alerts",
@@ -16290,6 +16354,38 @@
       "notes": "245 placemarks in 7 folders, read 2026-10-04 (embedded on /page-1647833; the legacy `mid` redirects to mid=1JSaaiHnemeuLmR_vUIjlnM-N_F4, which serves the same export): Bartram Sites 65 points, Markers 41 points and 35 placemarks with no geometry, Bartram Trail 38 lines, 3 points and 1 polygon, John Bartram 1765 14 lines, Properties 5 polygons, Federal_Road 22 lines and Branches 21 lines (one description is a shapefile's attribute dump, 'FID 20 … Source La Tourette'). Every line is a historic route (William and John Bartram's travels, the Federal Road), never tread.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads int_places__unioned yet; every line is a historic route, and 35 placemarks have no geometry. Decision 63 turns it true once that is no longer so."
+    },
+    {
+      "key": "brbtc_section_trailheads",
+      "title": "Bartram Trail section trailheads (Blue Ridge Bartram Trail Conservancy's 13 section pages)",
+      "provider": "Bartram Trail Conference",
+      "kind": "page_points",
+      "url": "https://blueridgebartram.org/crb_trail-sitemap.xml",
+      "sitemap": "https://blueridgebartram.org/crb_trail-sitemap.xml",
+      "page_prefix": "https://blueridgebartram.org/trail/",
+      "crawl_delay": 10,
+      "trust": "authoritative",
+      "steward": "Blue Ridge Bartram Trail Conservancy",
+      "steward_contact": "https://blueridgebartram.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a), read as mtsg_map_locations' row reads it: the club's own section guide, one page a section, each naming its starting trailhead with a fix, on a public page its website serves anonymously, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION. int_sources__publication's rule 3 admits `public_gis` only for a GIS endpoint, and a web page's points (`page_points`) is not one, so this row is held there whatever its `reaches_hikers` says: whether the points a club prints on its own page publish under decision 21a is the maintainer's to say. blueridgebartram.org's robots.txt, read 2026-10-04T16:37:11Z under lib/user_agent.py's USER_AGENT: Yoast's `User-agent: *` with an empty `Disallow:`, under a `Crawl-delay: 10` line that sits above every group, so no parser applies it; it is honoured all the same (the stricter reading). The registry's provider is the Bartram Trail Conference, this folder's org, which the coverage audit read as an umbrella; the trail's steward is the Conservancy (c8_regional_5).",
+      "licence_basis": "public_gis",
+      "attribution": "Blue Ridge Bartram Trail Conservancy",
+      "terms": "None found: the section pages link no terms page and carry no copyright line (read 2026-10-04).",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://blueridgebartram.org/crb_trail-sitemap.xml",
+        "notes": "The sitemap (4,081 bytes, no validator) lists the 13 section pages with a lastmod each, and each page sends its own Last-Modified, 2025-10-13 to 2026-03-19, matching its lastmod to the minute in another time zone (read 2026-10-04). The reader asks the sitemap and every page each monthly run, 14 requests at the 10 s Crawl-delay, and is FRESH only when the trailheads it parses hash as the last committed load did; neither validator is trusted on one read."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "section"
+      ],
+      "key_comment": "`section`, the page's own section number, 1 to 13: unique on 13 of 13 (measured 2026-10-04 on the live pages, parsed as extract/_pages_points.py parses them). `name` and the geometry are 13 of 13 too.",
+      "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 4 and 5, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, the host's Crawl-delay or two seconds or more between requests: the Conservancy's trail-section sitemap and all 13 pages it lists, whose host the coverage audit names (blueridgebartram.org; bartramtrail.org, the Conference's, has no such sitemap).",
+      "discovered_date": "2026-10-04",
+      "notes": "13 sections, read 2026-10-04: section 1 'Russell Bridge to Sandy Ford' to 13 'Cheoah Bald to Joanna Bald', 125.4 miles in all, each landing its number, `section_name`, `length_miles` and its starting trailhead's `name` and fix (bbox lon -83.694 to -83.169, lat 34.867 to 35.285). Two pages state their length as a bare number (Hale Ridge Road 10.8, Jones Gap 9.6), read as miles as the other 11 write them (Reasoned). Each page's map loads a GeoJSON of the section's line (`/wp-content/themes/blue-ridge-bartram/assets/trails/Section2.geojson`, two identical LineStrings in that one), a GIS file this row does not read. A HIKER'S SAFETY, in the pages' prose, which lands nowhere: Sandy Ford's old parking at Dicks Creek 'is now posted Private Property and not advised', and its ford 'can be difficult during high water and is not advised for low clearance vehicles'.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-04: extracted by extract/_pages_points.py, staged by pipeline/make_dbt_staging.py and held, because no club_poi_types row types it yet and rule 3 holds `public_gis` on a web page. Decision 63 turns it true once it is typed trailhead and the maintainer has said whether a club's page of points publishes under decision 21a."
     },
     {
       "key": "phta_trails_map",

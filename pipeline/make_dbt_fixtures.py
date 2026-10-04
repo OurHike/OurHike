@@ -8697,8 +8697,11 @@ def gis_file_and_geo_api_fixtures() -> dict[str, str]:
 # `data-lat`, `data-long`, and a trail line's `data-geojson`), FoOT's shelter list through WordPress page 326's
 # REST answer (`modified_gmt`, `content.rendered`, `<li>` entries in both of the page's shapes), AMC Berkshire's
 # `<h3>` parking areas with their `bullets02` lists (the three ways the page writes a coordinate, a nested day-use
-# list, an unclosed `<li>` and a heading with no list), and the Foothills Trail's GPS Coordinates table through
-# page 603's REST answer. THE SHAPES ARE MEASURED (read 2026-10-04, each row's sources.json `notes`); THE VALUES
+# list, an unclosed `<li>` and a heading with no list), the Foothills Trail's GPS Coordinates table through
+# page 603's REST answer, BRBTC's and the Palmetto Trail's sitemaps with two section or passage pages each (the
+# menu's own "Section 1" `<h5>`, a bare length, the map script's `addMarker` and `addSegment` calls, a 'NULL'
+# marker type, and a sitemap entry outside the page prefix), and OHTA's trail page through page 15's REST answer
+# (a trailhead listed under two segments, a "Parking at" and an "approximately" lead). THE SHAPES ARE MEASURED (read 2026-10-04, each row's sources.json `notes`); THE VALUES
 # ARE INVENTED, every name starts with 'Fixture', and every point sits on the fixture grid (_point), inside each
 # source's region box. `rows` is what the parser must land.
 #
@@ -8852,6 +8855,100 @@ PAGE_POINTS_FIXTURES = {
 }
 
 
+def _sitemap(*urls: str) -> str:
+    entries = "".join(f"<url><loc>{url}</loc><lastmod>2026-03-19T15:51:29+00:00</lastmod></url>" for url in urls)
+    return f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{entries}</urlset>'
+
+
+BRBTC_SITEMAP = "https://blueridgebartram.org/crb_trail-sitemap.xml"
+BRBTC_PAGES = ("https://blueridgebartram.org/trail/fixture-one/", "https://blueridgebartram.org/trail/fixture-two/")
+
+
+def _brbtc_section(n: int) -> str:
+    """A section page: the menu's own "Section 1" <h5>, then the section's <h5> over its <h1>, its length, its fix."""
+    x, y = _point(n)["coordinates"]
+    length = "9.3 miles" if n == 1 else "10.8"  # two of the live pages state a bare number
+    return (
+        "<html><body><nav><h5>Section 1</h5></nav><div class='intro-home-text'>"
+        f"<h5>\n        Section {n}    </h5>\n<h1><span class='neue-haas'>Fixture Gap {n}</span> to "
+        f"<span class='neue-haas'>Fixture Bald {n}</span></h1></div><div><h4>\n Length\n </h4>\n {length}\t</div>"
+        f"<div><h4>Fixture Gap {n} Trailhead</h4>\n<p>{y}, {x}</p><a href='https://maps.app.goo.gl/fixture'>Get "
+        "Directions</a></div><p>Fixture prose about the road in.</p></body></html>"
+    )
+
+
+def _brbtc_answers() -> dict[str, tuple[str, str]]:
+    return {
+        BRBTC_SITEMAP: ("application/xml; charset=UTF-8", _sitemap(*BRBTC_PAGES, "https://blueridgebartram.org/fixture-page/")),
+        **{url: (PAGE_HTML, _brbtc_section(n)) for n, url in enumerate(BRBTC_PAGES, 1)},
+    }
+
+
+PALMETTO_SITEMAP = "https://www.palmettotrail.org/sitemap.xml"
+PALMETTO_PAGES = (
+    "https://www.palmettotrail.org/trails/trail/fixture-passage",
+    "https://www.palmettotrail.org/trails/trail/fixture-two-passage",
+)
+
+
+def _palmetto_passage(n: int) -> str:
+    """A passage page as its map script draws it: typed addMarker calls (one 'NULL') and the line's addSegment."""
+    markers = "".join(
+        f"trailPage.helper.addMarker({_point(i)['coordinates'][1]}, {_point(i)['coordinates'][0]}, '{kind}', '', []);\n"
+        for i, kind in enumerate(("Parking", "Trail Head", "Water Launch", "NULL"), 4 * n)
+    )
+    vertices = json.dumps([{"lng": str(x), "lat": str(y)} for x, y in _line(n)["coordinates"]], separators=(",", ":"))
+    return (
+        f"<html><body><h1>Fixture Passage {n}</h1><p>Fixture prose.</p><script>\nloadjs.ready('mapDisplay', {{\n"
+        f"trailPage.helper.init({{lat: 41.0, lng: -74.0, zoom: 14}});\n{markers}"
+        f"trailPage.helper.addSegment('Fixture Segment {n}', {vertices}, []);\ntrailPage.helper.run();\n}});\n</script>"
+        "</body></html>"
+    )
+
+
+def _palmetto_answers() -> dict[str, tuple[str, str]]:
+    return {
+        PALMETTO_SITEMAP: ("application/xml", _sitemap("https://www.palmettotrail.org/updates", *PALMETTO_PAGES)),
+        **{url: (PAGE_HTML, _palmetto_passage(n)) for n, url in enumerate(PALMETTO_PAGES, 1)},
+    }
+
+
+def _ohta_trail_rest() -> str:
+    def item(n: int, label: str) -> str:
+        x, y = _point(n)["coordinates"]
+        return f"<li>{label}: {y:.5f}, {x:.5f}. Fixture sentence after the fix.</li>"
+
+    rendered = (
+        "<h3>FIXTURE MOUNTAINS</h3><p>Fixture prose.</p><h4>Major trail heads</h4><ul>"
+        + item(0, "Fixture Lake (mile 0)")
+        + item(1, "Fixture Ford (mile 16.4)").replace(": ", ": Parking at ", 1)
+        + "</ul><h3>FIXTURE LAKE</h3><h4>Major trail heads</h4><ul>"
+        + item(1, "Fixture Ford (mile 16.4)")
+        + item(2, "Fixture Ridge (LBW) access").replace(": ", ": approximately ", 1)
+        + "</ul>"
+    )
+    return json.dumps(
+        {
+            "id": 15,
+            "modified_gmt": "2026-09-10T21:26:38",
+            "link": "https://ozarkhighlandstrail.com/trail/",
+            "content": {"rendered": rendered},
+        }
+    )
+
+
+#: Registry key -> (its answers, {url: (content type, body)}, and the rows its parser lands), for the sources a
+#: sitemap lists pages for.
+PAGE_POINTS_SITE_FIXTURES = {
+    "brbtc_section_trailheads": (_brbtc_answers, 2),
+    "palmetto_trail_passages": (_palmetto_answers, 10),
+    "ohta_major_trailheads": (
+        lambda: {"https://ozarkhighlandstrail.com/wp-json/wp/v2/pages/15": (PAGE_REST, _ohta_trail_rest())},
+        4,
+    ),
+}
+
+
 def page_points_fixtures() -> dict[str, str]:
     """Decision 54's waves 4 and 5 (section S): one answers document per club page read for its points."""
     files = {}
@@ -8860,6 +8957,9 @@ def page_points_fixtures() -> dict[str, str]:
         files[f"conditions/page_points/{key}.json"] = json.dumps({"answers": {url: answer}, "rows": rows})
         if key == "amc_wma_at_parking_points":
             files["conditions/notices/amc_wma_at_parking.json"] = json.dumps({"answers": {url: answer}, "rows": 1})
+    for key, (answers, rows) in PAGE_POINTS_SITE_FIXTURES.items():
+        served = {url: {"content_type": content_type, "body": body} for url, (content_type, body) in answers().items()}
+        files[f"conditions/page_points/{key}.json"] = json.dumps({"answers": served, "rows": rows})
     return files
 
 

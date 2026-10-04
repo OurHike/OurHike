@@ -414,5 +414,6 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Decision 54's wave 3 content feeds and APIs (section C) add 34: 11 and 23; waves 2 and 3's GIS files and
     # geographic APIs add 30: 26 `public_gis` and 4 `stated_by_org` (above). Waves 4 and 5's points (section S)
     # add 6: 5 `public_gis` and 1 `unresolved`; their content pages and PDFs (section K) add 12, all `unresolved`
-    # (above).
-    assert counts == {"maintainer_authorisation": 186, "public_gis": 248, "stated_by_org": 192, "unresolved": 40}
+    # (above). Section S's second batch adds 3 `public_gis` (BRBTC's sections, the Palmetto Trail's passages and
+    # OHTA's trailheads).
+    assert counts == {"maintainer_authorisation": 186, "public_gis": 251, "stated_by_org": 192, "unresolved": 40}

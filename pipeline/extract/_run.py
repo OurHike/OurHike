@@ -134,6 +134,16 @@ LEGS = {"conditions_production": "hourly", "conditions_ua": "hourly"}
 # size plus ten, and the step summary's per-part timings on the runs that take
 # the new tables on will settle whether it is too many or too few.
 NEW_TABLES_PER_LEG_RUN = 10
+# A CONDITIONS LEG'S CHANGE CHECKS END AFTER THIS MANY SECONDS, as its reads do
+# after --read-seconds (by_folder()). A check still out is refused on its own:
+# its last committed table stands and it is not read this run. Soak run 512
+# (publish-conditions.yml 37179583519) waited 2 m 12 s on one change check,
+# dnrmaps.wi.gov refusing connections (a 30 s connect timeout, three attempts,
+# 5 and 30 s apart), and the 150 s read budget that followed ran past the
+# extract step's 4-minute cap. Run 510's 89 checks, a folder per thread, took
+# well under this (Reasoned from its 2 m 49 s whole step). 45 is @unvalidated:
+# the step summary's "change checks" timing settles whether it is too tight.
+LEG_CHECK_SECONDS = 45
 # A daily resource has no job of its own: it rides the hourly lane and runs
 # when its last good check is a day old, so no second job writes the hourly
 # lane's raw store (ELT.md, "Every node carries its cadence"). NYNJTC's alert
@@ -380,7 +390,11 @@ def quiet_refusals(report: RunReport, resources: list[Resource]) -> set[str]:
     return quiet
 
 
-def by_folder(resources: list[Resource], work: Callable) -> list:
+class CheckTimedOut(Exception):
+    """A change check by_folder() stopped waiting for: the leg's LEG_CHECK_SECONDS ran out first."""
+
+
+def by_folder(resources: list[Resource], work: Callable, seconds: float | None = None) -> list:
     """`work(resource)` for each resource, in order, one thread per extract folder.
 
     A folder's resources are asked one after another, so no host is asked
@@ -388,6 +402,10 @@ def by_folder(resources: list[Resource], work: Callable) -> list:
     returned, or the exception it raised, for the caller to handle in order.
     Soak run 508 (publish-conditions.yml 37158027469) spent 29 s asking 89
     upstreams one at a time, with 190 more notice sources being wired.
+
+    `seconds` bounds the whole wait, as read_each()'s budget does: a resource
+    with no answer by then gets a CheckTimedOut, and its daemon thread is
+    abandoned, so a host that never answers holds no other club back.
     """
     answers: dict[int, object] = {}
 
@@ -402,11 +420,14 @@ def by_folder(resources: list[Resource], work: Callable) -> list:
     for index, resource in enumerate(resources):
         groups[resource.club].append((index, resource))
     threads = [threading.Thread(target=run, args=(items,), name=f"check {club}", daemon=True) for club, items in groups.items()]
+    deadline = None if seconds is None else time.monotonic() + seconds
     for thread in threads:
         thread.start()
     for thread in threads:
-        thread.join()
-    return [answers[index] for index in range(len(resources))]
+        thread.join(None if deadline is None else max(0.0, deadline - time.monotonic()))
+    answered = dict(answers)  # a thread that finishes after the deadline changes nothing below
+    late = CheckTimedOut(f"no answer within the leg's {seconds:g} s change-check budget") if seconds is not None else None
+    return [answered.get(index, late) for index in range(len(resources))]
 
 
 def exit_status(report: RunReport) -> int:
@@ -1301,7 +1322,17 @@ def _run(
 
         # The upstreams are asked one folder per thread (by_folder()), and
         # everything that touches the store or the report happens here, in order.
-        for resource, outcome in zip(plan_resources, by_folder(plan_resources, ask)):
+        budget = LEG_CHECK_SECONDS if lane in LEGS else None
+        for resource, outcome in zip(plan_resources, by_folder(plan_resources, ask, budget)):
+            if isinstance(outcome, CheckTimedOut):
+                # Refused on its own, as a read that ran out of time is (read_each()): its last
+                # committed table stands, it is not read this run, and it is logged `refused`.
+                report.isolated[resource.name] = f"change check: {outcome}"
+                print(f"::error title={resource.name} refused::{report.isolated[resource.name]}; its last committed table stands")
+                stored = recorded.get(resource.name) if resource.table in current else None
+                planned.append(Planned(resource, Freshness.UNKNOWN, stored, None))
+                report.verdicts[resource.name] = Freshness.UNKNOWN.value
+                continue
             if isinstance(outcome, Unavailable):
                 # An annotation, so the gap reaches the run summary rather than only the step log.
                 print(f"::warning title={resource.name} is unavailable::{outcome}")
@@ -1322,7 +1353,7 @@ def _run(
                     verdict = Freshness.UNKNOWN
             planned.append(Planned(resource, verdict, stored, marker))
             report.verdicts[resource.name] = verdict.value
-    to_run = [item for item in planned if item.verdict is not Freshness.FRESH]
+    to_run = [item for item in planned if item.verdict is not Freshness.FRESH and item.resource.name not in report.isolated]
     print(
         f"{lane}: {len(planned) + len(unavailable)} resources, {len(to_run)} to read, "
         f"{len(planned) - len(to_run)} fresh, {len(unavailable)} unavailable"

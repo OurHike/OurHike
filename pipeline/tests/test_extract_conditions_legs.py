@@ -554,3 +554,33 @@ def test_change_checks_run_a_folder_at_a_time_in_order_and_hand_back_a_failure()
 
     assert answers[:3] == ["a", "b", "a"] and answers[4:] == ["b", "a"]
     assert isinstance(answers[3], RuntimeError) and not any(overlapped)
+
+
+@dataclass(frozen=True)
+class HangingCheck(ClubAnswer):
+    """A club whose change check never answers in time, as dnrmaps.wi.gov refused connections in soak run 512."""
+
+    def change_check(self, recorded):
+        time.sleep(30)
+        return Freshness.UNKNOWN, None
+
+
+def test_a_change_check_that_never_answers_is_refused_on_its_own_and_the_rest_load(store, monkeypatch):
+    monkeypatch.setattr(_run, "LEG_CHECK_SECONDS", 1)
+    leg(store, club_closures("atc", "a1", count=1), club_closures("nynjtc", "n1", count=1))
+    hanging = HangingCheck(key="closures", club="atc", type="closures", answer=({"id": "a2"},), count=1)
+    started = time.monotonic()
+
+    report = leg(store, hanging, club_closures("nynjtc", "n1", "n2", count=2))
+
+    assert time.monotonic() - started < 15, "the leg does not wait for the 30 s check"
+    assert set(report.isolated) == {"raw_atc__closures"} and "change-check budget" in report.isolated["raw_atc__closures"]
+    assert report.rows == {"raw_nynjtc__closures": 2}
+    assert warehouse_ids(store) == {"raw_atc__closures": ["a1"], "raw_nynjtc__closures": ["n1", "n2"]}
+    latest = [
+        row for row in run_log_rows(make_pipeline("conditions_ua", store["url"], store["dir"])) if row["run_id"] == report.run_id
+    ]
+    assert {row["table_name"]: row["outcome"] for row in latest} == {
+        "raw_atc__closures": "refused",
+        "raw_nynjtc__closures": "loaded",
+    }

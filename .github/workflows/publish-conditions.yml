@@ -1003,7 +1003,12 @@ jobs:
       - name: Extract this leg's closures and warnings into the raw store (dbt path)
         id: extract
         if: env.PHONE_FILES == 'dbt'
-        timeout-minutes: 4
+        # 6, not 4: soak runs 506 and 512 each ran out of 4 minutes, one on its
+        # load and one on a change check that waited 2 m 12 s for a host
+        # refusing connections. The maintainer, 2026-10-04: "if this is going
+        # to be too hard to keep fast, let's expand now". The job's 10 minutes
+        # still hold: run 512 spent about 1 minute before this step and 40 s after.
+        timeout-minutes: 6
         env:
           LEG: conditions_${{ matrix.data_environment }}
           ENVIRONMENT: ${{ matrix.data_environment }}

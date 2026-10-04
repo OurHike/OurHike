@@ -12,3 +12,13 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_alaska_trails__points_of_interest
+    description: >
+      The alaska_trails/ folder's points of interest layers (`alaska_trails_access_points`,
+      `alaska_trails_cabins_and_campsites`), one row per base row, renamed to
+      int_points_of_interest__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

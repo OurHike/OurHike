@@ -24,3 +24,129 @@ models:
           usgs_gnis_populated_places, incounty_id, the registry key first and then the
           fields measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_usgs_tnm__usgs_gnis_springs
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usgs_tnm', 'raw_usgs_tnm__usgs_gnis_springs')
+          config:
+            severity: warn
+    description: >
+      USGS GNIS named springs, every row, keyed and deduped (decision 40), the layer's own
+      columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
+      int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_usgs_tnm__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usgs_gnis_springs, gaz_id, county_name, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_usgs_tnm__usgs_structures_cabins
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usgs_tnm', 'raw_usgs_tnm__usgs_structures_cabins')
+          config:
+            severity: warn
+    description: >
+      USGS National Structures Dataset: cabins, every row, keyed and deduped (decision 40),
+      the layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_usgs_tnm__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usgs_structures_cabins, permanent_identifier, the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_usgs_tnm__usgs_structures_campgrounds
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usgs_tnm', 'raw_usgs_tnm__usgs_structures_campgrounds')
+          config:
+            severity: warn
+    description: >
+      USGS National Structures Dataset: campgrounds, every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_usgs_tnm__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usgs_structures_campgrounds, permanent_identifier, the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_usgs_tnm__usgs_structures_ranger_stations
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usgs_tnm', 'raw_usgs_tnm__usgs_structures_ranger_stations')
+          config:
+            severity: warn
+    description: >
+      USGS National Structures Dataset: ranger stations, every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_usgs_tnm__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usgs_structures_ranger_stations, permanent_identifier, the registry key first
+          and then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_usgs_tnm__usgs_structures_shelters
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usgs_tnm', 'raw_usgs_tnm__usgs_structures_shelters')
+          config:
+            severity: warn
+    description: >
+      USGS National Structures Dataset: shelters, every row, keyed and deduped (decision 40),
+      the layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_usgs_tnm__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usgs_structures_shelters, permanent_identifier, the registry key first and then
+          the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_usgs_tnm__usgs_structures_trailheads
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usgs_tnm', 'raw_usgs_tnm__usgs_structures_trailheads')
+          config:
+            severity: warn
+    description: >
+      USGS National Structures Dataset: trailheads, every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_usgs_tnm__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usgs_structures_trailheads, permanent_identifier, the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]

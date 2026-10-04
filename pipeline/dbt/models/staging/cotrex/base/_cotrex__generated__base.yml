@@ -3,6 +3,48 @@
 version: 2
 
 models:
+  - name: base_cotrex__cotrex_trailheads
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cotrex', 'raw_cotrex__cotrex_trailheads')
+          config:
+            severity: warn
+    description: >
+      COTREX trailheads (CPW), every row, keyed and deduped (decision 40), the layer's own
+      columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
+      int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_cotrex__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          cotrex_trailheads, feature_id, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cotrex__cpw_facilities
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cotrex', 'raw_cotrex__cpw_facilities')
+          config:
+            severity: warn
+    description: >
+      CPW facilities (state parks and wildlife areas), every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_cotrex__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          cpw_facilities, globalid_2, the registry key first and then the fields measured
+          unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_cotrex__cpw_managed_properties
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

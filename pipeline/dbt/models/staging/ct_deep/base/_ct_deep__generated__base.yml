@@ -45,3 +45,45 @@ models:
           ct_deep_property, globalid, the registry key first and then the fields measured
           unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_ct_deep__ct_deep_trail_access
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ct_deep', 'raw_ct_deep__ct_deep_trail_access')
+          config:
+            severity: warn
+    description: >
+      CT DEEP trail access points (DEEP Trails Set), every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_ct_deep__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ct_deep_trail_access, geometry_key('geom'), sitename, the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_ct_deep__ct_deep_trail_interest
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ct_deep', 'raw_ct_deep__ct_deep_trail_interest')
+          config:
+            severity: warn
+    description: >
+      CT DEEP trail points of interest (DEEP Trails Set), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_ct_deep__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ct_deep_trail_interest, geometry_key('geom'), maplabel, the registry key first
+          and then the fields measured unique for this layer.
+        data_tests: [not_null, unique]

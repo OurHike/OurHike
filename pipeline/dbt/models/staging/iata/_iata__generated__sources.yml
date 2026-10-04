@@ -28,6 +28,18 @@ sources:
         description: >
           Ice Age Trail Communities (sources.json `iat_trail_communities`). Key: `Name` is
           unique and non-null on all 29 rows read 2026-10-03.
+      - name: raw_iata__iata_camping
+        data_tests:
+          # Rows sharing base_iata__iata_camping's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'iata_camping'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Ice Age Trail camping (IATA's own layer) (sources.json `iata_camping`). Key: the
+          geometry: 247 of 247 (measured 2026-10-04 by reading every row and every vertex
+          as the extract reads the layer (f=geojson, outSR 4326), under
+          lib/user_agent.py's USER_AGENT, robots.txt first). `id_field` names the object
+          id, which a reload mints again (decision 40).
       - name: raw_iata__iata_land_ownership
         data_tests:
           # Rows sharing base_iata__iata_land_ownership's key must be exact copies (decision 40).
@@ -38,6 +50,18 @@ sources:
           Land Ownership along the Ice Age Trail (public view) (sources.json
           `iata_land_ownership`). Key: `GlobalID` is unique and non-null on all 194 rows
           read 2026-10-03.
+      - name: raw_iata__iata_parking
+        data_tests:
+          # Rows sharing base_iata__iata_parking's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'iata_parking'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Ice Age Trail parking (IATA's own layer) (sources.json `iata_parking`). Key: the
+          geometry: 443 of 443 (measured 2026-10-04 by reading every row and every vertex
+          as the extract reads the layer (f=geojson, outSR 4326), under
+          lib/user_agent.py's USER_AGENT, robots.txt first). `id_field` names the object
+          id, which a reload mints again (decision 40).
       - name: raw_iata__iata_properties
         data_tests:
           # Rows sharing base_iata__iata_properties's key must be exact copies (decision 40).
@@ -52,3 +76,16 @@ sources:
           (f=geojson, outSR 4326), under lib/user_agent.py's USER_AGENT, robots.txt
           first). The geometry stands alone because it is the smallest key: phase C's base
           model keys and dedupes on it.
+      - name: raw_iata__iata_water
+        data_tests:
+          # Rows sharing base_iata__iata_water's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'iata_water'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+        description: >
+          Ice Age Trail water features (IATA's own layer) (sources.json `iata_water`).
+          Key: the geometry: 422 of 422 after 1 exact copy, which the base model's dedupe
+          removes (measured 2026-10-04 by reading every row and every vertex as the
+          extract reads the layer (f=geojson, outSR 4326), under lib/user_agent.py's
+          USER_AGENT, robots.txt first). `id_field` names the object id, which a reload
+          mints again (decision 40).

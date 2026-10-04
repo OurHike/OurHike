@@ -11,6 +11,16 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_massgis__points_of_interest
+    description: >
+      The massgis/ folder's points of interest layers (`ma_dcr_blue_hills_intersections`,
+      `ma_dcr_blue_hills_parking`), one row per base row, renamed to
+      int_points_of_interest__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_massgis__trail_lines
     description: >
       The massgis/ folder's trail lines layers (`dcr_roads_and_trails`), one row per base row,

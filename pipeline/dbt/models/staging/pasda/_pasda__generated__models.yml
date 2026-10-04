@@ -22,3 +22,14 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_pasda__points_of_interest
+    description: >
+      The pasda/ folder's points of interest layers (`pasda_explore_pa_trail_access`,
+      `pasda_geoheritage_features`, `pasda_state_forest_campsites`,
+      `pasda_state_park_amenities`, `pasda_state_park_buildings`), one row per base row,
+      renamed to int_points_of_interest__club_unioned's columns, with each layer's own columns
+      in `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

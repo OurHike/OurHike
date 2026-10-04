@@ -45,13 +45,14 @@ def test_every_staged_types_arcgis_layer_has_a_model_reading_its_raw_table():
 
 
 def test_there_are_layers_to_stage():
-    """Decision 54's wave 1 on this branch: 83 places layers, 6 elevation layers and 98 trail-line layers at least."""
+    """Decision 54's wave 1 on this branch: 83 places, 6 elevation, 98 trail-line and 69 point layers at least."""
     by_type = {}
     for table in make_dbt_staging.tables():
         by_type[table.type] = by_type.get(table.type, 0) + 1
     assert by_type.get("places", 0) >= 83
     assert by_type.get("elevation", 0) >= 6
     assert by_type.get("trail_lines", 0) >= 98
+    assert by_type.get("points_of_interest", 0) >= 69
 
 
 def _table(entry: dict, type_: str = "places") -> Table:
@@ -119,6 +120,34 @@ def test_a_trail_line_layer_is_staged_with_its_name():
         _table({"key": "a", "key_fields": ["geometry"], "name_field": "TRAILNAME"}, "trail_lines")
     )
     assert conformed == ["cast(trailname as varchar) as name"]
+
+
+def test_a_point_layer_is_staged_with_its_name_its_type_and_the_id_it_publishes_under():
+    """A point publishes under its layer's own id, and under its base model's key where id_field is a server row id."""
+    own = make_dbt_staging._conformed(
+        _table({"key": "a", "id_field": "GlobalID", "name_field": "FET_NAME", "type_field": "FET_TYPE"}, "points_of_interest")
+    )
+    assert own == [
+        "cast(fet_name as varchar) as name",
+        "cast(fet_type as varchar) as category",
+        "cast(globalid as varchar) as source_id",
+    ]
+    keyed = make_dbt_staging._conformed(
+        _table({"key": "a", "id_field": "OBJECTID", "key_fields": ["geometry"], "name_field": "Name"}, "points_of_interest")
+    )
+    assert keyed == [
+        "cast(name as varchar) as name",
+        "cast(null as varchar) as category",
+        "cast(poi_key as varchar) as source_id",
+    ]
+
+
+def test_the_point_union_is_not_the_hand_written_one_it_feeds():
+    """int_points_of_interest__unioned is hand-written and reads the generated union as one branch."""
+    shape = make_dbt_staging.SHAPES["points_of_interest"]
+    assert shape.union != "int_points_of_interest__unioned"
+    hand = (MODELS / "intermediate" / "points_of_interest" / "int_points_of_interest__unioned.sql").read_text()
+    assert make_dbt_staging.GENERATED not in hand.split("\n", 1)[0]
 
 
 def test_an_elevation_layer_names_its_field_or_its_geometry_z():

@@ -19,6 +19,24 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_cotrex__cotrex_trailheads
+        data_tests:
+          # Rows sharing base_cotrex__cotrex_trailheads's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'cotrex_trailheads'", "feature_id"]
+        description: >
+          COTREX trailheads (CPW) (sources.json `cotrex_trailheads`). Key: the registry's
+          `id_field`; its row records no measurement of it.
+      - name: raw_cotrex__cpw_facilities
+        data_tests:
+          # Rows sharing base_cotrex__cpw_facilities's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'cpw_facilities'", "globalid_2"]
+        description: >
+          CPW facilities (state parks and wildlife areas) (sources.json `cpw_facilities`).
+          Key: the registry's `id_field`; its row records no measurement of it.
       - name: raw_cotrex__cpw_managed_properties
         data_tests:
           # Rows sharing base_cotrex__cpw_managed_properties's key must be exact copies (decision 40).

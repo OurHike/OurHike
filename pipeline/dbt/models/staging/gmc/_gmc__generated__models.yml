@@ -3,6 +3,16 @@
 version: 2
 
 models:
+  - name: stg_gmc__points_of_interest
+    description: >
+      The gmc/ folder's points of interest layers (`gmc_map_features`, `gmc_overnight_sites`,
+      `gmc_parking`, `gmc_privies`, `gmc_viewpoints`), one row per base row, renamed to
+      int_points_of_interest__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_gmc__trail_lines
     description: >
       The gmc/ folder's trail lines layers (`gmc_trail_master`), one row per base row, renamed

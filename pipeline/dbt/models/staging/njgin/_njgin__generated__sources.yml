@@ -31,6 +31,16 @@ sources:
           elevation read's own measurement, 2026-10-03, in `notes`), the layer's own id.
           `id_field` names the object id, which a reload mints again (decision 40); COUNTY
           is unique too.
+      - name: raw_njgin__nj_open_space_points_of_interest
+        data_tests:
+          # Rows sharing base_njgin__nj_open_space_points_of_interest's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nj_open_space_points_of_interest'", "globalid"]
+        description: >
+          New Jersey state-owned open space points of interest (NJDEP) (sources.json
+          `nj_open_space_points_of_interest`). Key: the registry's `id_field`; its row
+          records no measurement of it.
       - name: raw_njgin__nj_parks_points
         data_tests:
           # Rows sharing base_njgin__nj_parks_points's key must be exact copies (decision 40).

@@ -3,6 +3,27 @@
 version: 2
 
 models:
+  - name: base_usfws__usfws_refuge_access_points
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usfws', 'raw_usfws__usfws_refuge_access_points')
+          config:
+            severity: warn
+    description: >
+      USFWS refuge access points (public view), every row, keyed and deduped (decision 40),
+      the layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_usfws__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usfws_refuge_access_points, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_usfws__usfws_refuge_boundaries
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -23,6 +44,27 @@ models:
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
           usfws_refuge_boundaries, globalid, the registry key first and then the fields
           measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_usfws__usfws_refuge_property_points
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('usfws', 'raw_usfws__usfws_refuge_property_points')
+          config:
+            severity: warn
+    description: >
+      USFWS refuge property points (public view), every row, keyed and deduped (decision 40),
+      the layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_usfws__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          usfws_refuge_property_points, globalid, the registry key first and then the
+          fields measured unique for this layer.
         data_tests: [not_null, unique]
   - name: base_usfws__usfws_trail_segments
     data_tests:

@@ -66,3 +66,24 @@ models:
           fltc_non_flt_trails, geometry_key('geom'), the registry key first and then the
           fields measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_fltc__fltc_waypoints
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('fltc', 'raw_fltc__fltc_waypoints')
+          config:
+            severity: warn
+    description: >
+      Finger Lakes Trail waypoints (FLTC's own layer), every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_fltc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          fltc_waypoints, category, mapname, name, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]

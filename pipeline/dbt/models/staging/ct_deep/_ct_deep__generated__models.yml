@@ -12,3 +12,13 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_ct_deep__points_of_interest
+    description: >
+      The ct_deep/ folder's points of interest layers (`ct_deep_trail_access`,
+      `ct_deep_trail_interest`), one row per base row, renamed to
+      int_points_of_interest__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

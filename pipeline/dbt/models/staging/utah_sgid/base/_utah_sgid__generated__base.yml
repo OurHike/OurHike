@@ -108,3 +108,66 @@ models:
           ugrc_state_park_points, full_name, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_utah_sgid__utah_highest_peaks
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('utah_sgid', 'raw_utah_sgid__utah_highest_peaks')
+          config:
+            severity: warn
+    description: >
+      Utah highest peaks (UGRC), every row, keyed and deduped (decision 40), the layer's own
+      columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
+      int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_utah_sgid__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          utah_highest_peaks, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_utah_sgid__utah_state_park_campsites
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('utah_sgid', 'raw_utah_sgid__utah_state_park_campsites')
+          config:
+            severity: warn
+    description: >
+      Utah State Parks campsites (UGRC's Campsites Aspira), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_utah_sgid__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          utah_state_park_campsites, site_id, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_utah_sgid__utah_trailheads
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('utah_sgid', 'raw_utah_sgid__utah_trailheads')
+          config:
+            severity: warn
+    description: >
+      Utah trailheads (UGRC), every row, keyed and deduped (decision 40), the layer's own
+      columns under dlt's names. Its sources.json row reads `reaches_hikers: false`, so
+      int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_utah_sgid__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          utah_trailheads, primaryname, trailheadid, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]

@@ -24,6 +24,28 @@ models:
           nj_high_elevation_points, globalid, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_njgin__nj_open_space_points_of_interest
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('njgin', 'raw_njgin__nj_open_space_points_of_interest')
+          config:
+            severity: warn
+    description: >
+      New Jersey state-owned open space points of interest (NJDEP), every row, keyed and
+      deduped (decision 40), the layer's own columns under dlt's names. Its sources.json row
+      reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_points_of_interest__club_unioned reads it through
+      stg_njgin__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nj_open_space_points_of_interest, globalid, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_njgin__nj_parks_points
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy

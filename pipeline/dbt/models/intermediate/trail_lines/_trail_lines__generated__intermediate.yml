@@ -9,8 +9,8 @@ models:
       stages, unioned by name: one line of a trail-line layer: a trail, a section, a route or
       an alignment, as the layer draws it. Each row carries its layer's registry key, the club
       folder that extracted it, the base model's key, the conformed columns below, its
-      geometry as landed and its layer's own columns as `properties`. Unfiltered, and read by
-      no mart.
+      geometry as landed and its layer's own columns as `properties`. Unfiltered: whatever
+      reads it keeps int_sources__publication's verdict.
     data_tests:
       # The lon/lat swap test, against the box each source's rows are held
       # to (macros/generated_regions.sql, read by

@@ -6,9 +6,8 @@
 -- all by name` of every stg_<folder>__trail_lines it writes. The branch
 -- list is the registry's, written by the generator from sources.json and
 -- the extract's club folders, so a layer registered later joins by running
--- it again. Nothing reads this yet: every layer here is held back by its
--- sources.json row, and a mart that reads it must keep
--- int_sources__publication's verdict.
+-- it again. Nothing here is filtered for publication: whatever reads it
+-- keeps int_sources__publication's verdict, the one home of may_publish.
 select
     source_key,
     club,

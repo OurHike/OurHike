@@ -12,3 +12,15 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_usgs_tnm__points_of_interest
+    description: >
+      The usgs_tnm/ folder's points of interest layers (`usgs_gnis_springs`,
+      `usgs_structures_cabins`, `usgs_structures_campgrounds`,
+      `usgs_structures_ranger_stations`, `usgs_structures_shelters`,
+      `usgs_structures_trailheads`), one row per base row, renamed to
+      int_points_of_interest__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

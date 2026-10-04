@@ -29,6 +29,26 @@ sources:
           DCR Roads and Trails, statewide (MA DCR) (sources.json `dcr_roads_and_trails`).
           Key: GlobalID: unique and non-null on all 36,859 rows (measured 2026-10-03 over
           every row's attributes).
+      - name: raw_massgis__ma_dcr_blue_hills_intersections
+        data_tests:
+          # Rows sharing base_massgis__ma_dcr_blue_hills_intersections's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ma_dcr_blue_hills_intersections'", "globalid"]
+        description: >
+          Blue Hills Reservation numbered trail intersections (MA DCR) (sources.json
+          `ma_dcr_blue_hills_intersections`). Key: the registry's `id_field`; its row
+          records no measurement of it.
+      - name: raw_massgis__ma_dcr_blue_hills_parking
+        data_tests:
+          # Rows sharing base_massgis__ma_dcr_blue_hills_parking's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ma_dcr_blue_hills_parking'", "globalid"]
+        description: >
+          Blue Hills Reservation public parking (MA DCR) (sources.json
+          `ma_dcr_blue_hills_parking`). Key: the registry's `id_field`; its row records no
+          measurement of it.
       - name: raw_massgis__massgis_openspace
         data_tests:
           # Rows sharing base_massgis__massgis_openspace's key must be exact copies (decision 40).

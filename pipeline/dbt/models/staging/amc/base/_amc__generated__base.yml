@@ -24,6 +24,89 @@ models:
           amc_chapter_boundaries, names, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_amc__amc_destinations
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('amc', 'raw_amc__amc_destinations')
+          config:
+            severity: warn
+    description: >
+      AMC destinations (AMC's own layer), every row, keyed and deduped (decision 40), the
+      layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          amc_destinations, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_amc__amc_lodging
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('amc', 'raw_amc__amc_lodging')
+          config:
+            severity: warn
+    description: >
+      AMC lodging in the White Mountains (AMC's own layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over amc_lodging,
+          name, the registry key first and then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_amc__amc_net_parking
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('amc', 'raw_amc__amc_net_parking')
+          config:
+            severity: warn
+    description: >
+      New England Trail parking in Connecticut (AMC's own layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          amc_net_parking, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_amc__amc_net_points_of_interest
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('amc', 'raw_amc__amc_net_points_of_interest')
+          config:
+            severity: warn
+    description: >
+      New England Trail points of interest in Connecticut (AMC's own layer), every row, keyed
+      and deduped (decision 40), the layer's own columns under dlt's names. Its sources.json
+      row reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          amc_net_points_of_interest, trailid, id, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_amc__amc_properties_and_landscapes
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -44,4 +127,25 @@ models:
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
           amc_properties_and_landscapes, name, the registry key first and then the fields
           measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_amc__amc_trailheads_and_parking
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('amc', 'raw_amc__amc_trailheads_and_parking')
+          config:
+            severity: warn
+    description: >
+      AMC trailheads and parking lots (AMC's own layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_amc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          amc_trailheads_and_parking, geometry_key('geom'), the registry key first and
+          then the fields measured unique for this layer.
         data_tests: [not_null, unique]

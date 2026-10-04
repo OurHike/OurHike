@@ -3,6 +3,27 @@
 version: 2
 
 models:
+  - name: base_cdtc__cdtc_bootheel_water_caches
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cdtc', 'raw_cdtc__cdtc_bootheel_water_caches')
+          config:
+            severity: warn
+    description: >
+      CDT Bootheel water caches (CDTC's own layer), every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_cdtc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          cdtc_bootheel_water_caches, geometry_key('geom'), the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
   - name: base_cdtc__cdtc_gateway_communities
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -24,6 +45,27 @@ models:
           cdtc_gateway_communities, globalid, the registry key first and then the fields
           measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_cdtc__cdtc_parking
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cdtc', 'raw_cdtc__cdtc_parking')
+          config:
+            severity: warn
+    description: >
+      CDT parking (CDTC's own CDTC_Waypoints layer), every row, keyed and deduped (decision
+      40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_cdtc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over cdtc_parking,
+          geometry_key('geom'), the registry key first and then the fields measured unique
+          for this layer.
+        data_tests: [not_null, unique]
   - name: base_cdtc__cdtc_trail_sections
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -44,4 +86,47 @@ models:
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
           cdtc_trail_sections, section_number, the registry key first and then the fields
           measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cdtc__cdtc_trailheads_and_mail
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cdtc', 'raw_cdtc__cdtc_trailheads_and_mail')
+          config:
+            severity: warn
+    description: >
+      CDT trailheads, access points and mail drops (CDTC's own CDTC_Waypoints layer), every
+      row, keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_points_of_interest__club_unioned reads it through
+      stg_cdtc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          cdtc_trailheads_and_mail, geometry_key('geom'), wp_type, the registry key first
+          and then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_cdtc__cdtc_water_caches
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('cdtc', 'raw_cdtc__cdtc_water_caches')
+          config:
+            severity: warn
+    description: >
+      CDT water caches (CDTC's own layer), every row, keyed and deduped (decision 40), the
+      layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_cdtc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          cdtc_water_caches, geometry_key('geom'), the registry key first and then the
+          fields measured unique for this layer.
         data_tests: [not_null, unique]

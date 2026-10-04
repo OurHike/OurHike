@@ -40,6 +40,26 @@ sources:
           per 1,000-ft band (the elevation read's own measurement, 2026-10-03, in
           `notes`). `id_field` names the object id, which a reload mints again (decision
           40).
+      - name: raw_pcta__pcta_halfmile_campsites
+        data_tests:
+          # Rows sharing base_pcta__pcta_halfmile_campsites's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'pcta_halfmile_campsites'", "name"]
+        description: >
+          PCT campsites (Halfmile's 2018 survey, on PCTA's org) (sources.json
+          `pcta_halfmile_campsites`). Key: the registry's `id_field`; its row records no
+          measurement of it.
+      - name: raw_pcta__pcta_halfmile_water_sources
+        data_tests:
+          # Rows sharing base_pcta__pcta_halfmile_water_sources's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'pcta_halfmile_water_sources'", "name"]
+        description: >
+          PCT water sources (Halfmile's 2018 survey, on PCTA's org) (sources.json
+          `pcta_halfmile_water_sources`). Key: the registry's `id_field`; its row records
+          no measurement of it.
       - name: raw_pcta__pcta_letter_sections
         data_tests:
           # Rows sharing base_pcta__pcta_letter_sections's key must be exact copies (decision 40).
@@ -87,6 +107,16 @@ sources:
         description: >
           PCT Trail Town Resupply points (sources.json `pcta_trail_towns`). Key:
           `Location` is unique and non-null on all 106 rows read 2026-10-03.
+      - name: raw_pcta__pcta_trailheads
+        data_tests:
+          # Rows sharing base_pcta__pcta_trailheads's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'pcta_trailheads'", "id"]
+        description: >
+          PCT trailheads and access points (PCTA's own layer) (sources.json
+          `pcta_trailheads`). Key: the registry's `id_field`; its row records no
+          measurement of it.
       - name: raw_pcta__pcta_wilderness_areas
         data_tests:
           # Rows sharing base_pcta__pcta_wilderness_areas's key must be exact copies (decision 40).

@@ -6523,6 +6523,8 @@ CLUB_POINT_FIXTURES = {
         ("OBJECTID_1", "ObjectID", "TrailID", "ID", "Type", "Descriptio", "Easting", "Northing"),
         {
             "OBJECTID_1": (1, 2),
+            "TrailID": ("Fixture trail 0", "Fixture trail 1"),
+            "ID": (1, 2),
             "Descriptio": ("Fixture amc net points of interest 0", "Fixture amc net points of interest 1"),
             "Type": ("View", "Point of Interest"),
         },
@@ -7524,7 +7526,12 @@ CLUB_POINT_FIXTURES = {
             "objectid_1",
             "isunknowncoords",
         ),
-        {"OBJECTID": (1, 2), "gaz_name": ("Fixture usgs gnis springs 0", "Fixture usgs gnis springs 1")},
+        {
+            "OBJECTID": (1, 2),
+            "gaz_id": (1, 2),
+            "county_name": ("Fixture County 0", "Fixture County 1"),
+            "gaz_name": ("Fixture usgs gnis springs 0", "Fixture usgs gnis springs 1"),
+        },
     ),
     "external/nc_state_parks_points.geojson": (
         ("FID", "PK_TYPE", "NAME", "ABBR", "FullName", "add1", "add2", "city", "county", "email", "ophone", "zip", "Website"),

@@ -108,3 +108,110 @@ models:
           pasda_dcnr_wild_natural_areas, globalid, the registry key first and then the
           fields measured unique for this layer.
         data_tests: [not_null, unique]
+  - name: base_pasda__pasda_explore_pa_trail_access
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('pasda', 'raw_pasda__pasda_explore_pa_trail_access')
+          config:
+            severity: warn
+    description: >
+      Explore PA Trails access points (PASDA), every row, keyed and deduped (decision 40), the
+      layer's own columns under dlt's names. Its sources.json row reads `reaches_hikers:
+      false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_pasda__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          pasda_explore_pa_trail_access, geometry_key('geom'), name01, subtype_co, the
+          registry key first and then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_pasda__pasda_geoheritage_features
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('pasda', 'raw_pasda__pasda_geoheritage_features')
+          config:
+            severity: warn
+    description: >
+      Pennsylvania geoheritage features (PASDA's DCNR2 layer 36), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_pasda__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          pasda_geoheritage_features, geometry_key('geom'), the registry key first and
+          then the fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_pasda__pasda_state_forest_campsites
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('pasda', 'raw_pasda__pasda_state_forest_campsites')
+          config:
+            severity: warn
+    description: >
+      Pennsylvania state forest designated campsites (PA DCNR Bureau of Forestry), every row,
+      keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_points_of_interest__club_unioned reads it through
+      stg_pasda__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          pasda_state_forest_campsites, globalid, the registry key first and then the
+          fields measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_pasda__pasda_state_park_amenities
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('pasda', 'raw_pasda__pasda_state_park_amenities')
+          config:
+            severity: warn
+    description: >
+      Pennsylvania state park amenities (PASDA's DCNR2 layer 27), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_pasda__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          pasda_state_park_amenities, icsorg, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_pasda__pasda_state_park_buildings
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('pasda', 'raw_pasda__pasda_state_park_buildings')
+          config:
+            severity: warn
+    description: >
+      Pennsylvania state park buildings (PA DCNR's StateParkBuildingsMASTER), every row, keyed
+      and deduped (decision 40), the layer's own columns under dlt's names. Its sources.json
+      row reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_points_of_interest__club_unioned reads it through
+      stg_pasda__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          pasda_state_park_buildings, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]

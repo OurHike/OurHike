@@ -12,3 +12,13 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_amc__points_of_interest
+    description: >
+      The amc/ folder's points of interest layers (`amc_destinations`, `amc_lodging`,
+      `amc_net_parking`, `amc_net_points_of_interest`, `amc_trailheads_and_parking`), one row
+      per base row, renamed to int_points_of_interest__club_unioned's columns, with each
+      layer's own columns in `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

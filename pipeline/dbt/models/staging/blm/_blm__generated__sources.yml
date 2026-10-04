@@ -88,6 +88,16 @@ sources:
           BLM Recreation Sites (polygons) (sources.json `blm_recreation_site_polygons`).
           Key: `Original_GlobalID` is unique and non-null on all 3,477 rows read
           2026-10-03.
+      - name: raw_blm__blm_recreation_sites
+        data_tests:
+          # Rows sharing base_blm__blm_recreation_sites's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'blm_recreation_sites'", "globalid"]
+        description: >
+          BLM national recreation sites (BLM's own layer) (sources.json
+          `blm_recreation_sites`). Key: the registry's `id_field`; its row records no
+          measurement of it.
       - name: raw_blm__blm_wilderness_areas
         data_tests:
           # Rows sharing base_blm__blm_wilderness_areas's key must be exact copies (decision 40).

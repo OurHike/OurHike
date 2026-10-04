@@ -25,8 +25,11 @@ WHAT EACH sources.json ROW GIVES IT:
   A row without it has its dates, if it has any, left as the integers dlt landed.
 - per type, the fields a staging model renames to the union's columns (SHAPES): `name_field` or
   `name_constant` and `category_field` for places, `elevation_source` for elevation, `name_field` or
-  `name_constant` for trail lines. A rule a layer needs beyond these (a historic alignment, a road a trail layer
-  carries) is a row of the dbt/seeds/layer_rules.csv seed, which the type's intermediate reads.
+  `name_constant` for trail lines, and `name_field`, `type_field` and the id a point publishes under
+  (`id_field`, unless it is a server row id) for points of interest. A rule a layer needs beyond these (a
+  historic alignment, a road a trail layer carries, a planned trailhead, a water type that is not water) is a
+  row of the dbt/seeds/layer_rules.csv seed, which the type's intermediate reads, and a point's POI type is a
+  row of dbt/seeds/club_poi_types.csv.
 
 Column names are the registry's field names as dlt names them on landing (the `sql_ci_v1` convention
 .dlt/config.toml sets, path by path), quoted where DuckDB reserves the word, so `DESC_` is `"desc"`.
@@ -36,8 +39,9 @@ WHAT IT WRITES, for each club folder <f> with such layers, under dbt/models/stag
 - `base/base_<f>__<key>.sql` and `base/_<f>__generated__base.yml`: one base model per raw table.
 - `stg_<f>__<type>.sql` and `_<f>__generated__models.yml`: one staging model per type, every layer of that
   type in the folder conformed to its union's columns, the layer's own columns kept whole as `properties`.
-And per type, under dbt/models/intermediate/<type>/: `int_<type>__unioned.sql` and its YAML, a `union all by
-name` of every staging model this writes for the type. And `dbt/macros/generated_regions.sql`, the region box
+And per type, under dbt/models/intermediate/<type>/: the type's union (SHAPES' `union`: `int_<type>__unioned`,
+or `int_points_of_interest__club_unioned` beside the hand-written int_points_of_interest__unioned that reads it)
+and its YAML, a `union all by name` of every staging model this writes for the type. And `dbt/macros/generated_regions.sql`, the region box
 each generated source's rows are held to (macros/lands_outside_its_region.sql).
 
 Every file it writes opens with GENERATED, which is how it knows which files are its own.
@@ -84,7 +88,10 @@ DEFAULT_REGION = "us_and_territories"
 #: box and its header says a row it leaves out sits inside it, so leaving one out is a decision, eastern, which a
 #: generated box would widen. Those boxes were read off each layer's returnExtentOnly but one (usfws_trail_segments,
 #: from its vertices), so int_trail_lines__source_extents is what checks them on a live build.
-REGIONS_DECIDED_BY_HAND = frozenset({"trail_lines"})
+#: The point-of-interest rows the same way (2026-10-03, 643eecdf and a1c39d8c): that macro lists the 41 whose
+#: points reach outside the eastern box, each boxed by every point of the layer read with outSR 4326, and its
+#: header says a point row it leaves out has all its points inside the eastern box.
+REGIONS_DECIDED_BY_HAND = frozenset({"trail_lines", "points_of_interest"})
 
 LINE = 76  # SQL comment width: SQLFluff's LT05 holds every line to 80
 
@@ -120,6 +127,25 @@ SHAPES = {
             (
                 "published_elevation",
                 "The elevation field the registry's `elevation_source` names (`field <name>`), as text, exactly as the layer publishes it; null for a layer whose elevation is its geometry's Z. Its unit is the registry's `elevation_unit`, which int_elevation__club_samples reads row by row.",
+            ),
+        ),
+    ),
+    "points_of_interest": Shape(
+        key_column="poi_key",
+        row="one point of a points-of-interest layer: a shelter, a campsite, a water source, a trailhead, a parking area",
+        union="int_points_of_interest__club_unioned",
+        columns=(
+            (
+                "name",
+                "The layer's own name for the point, from the registry's `name_field`, or its `name_constant`; null where it has neither.",
+            ),
+            (
+                "category",
+                "The layer's own type for the point, from the registry's `type_field`, as text exactly as the layer publishes it (a coded value is its code, not its label); null where the registry names none. No value here is a POI type by itself: the club_poi_types seed maps a layer's own field values to POI types, and int_points_of_interest__club_points applies it.",
+            ),
+            (
+                "source_id",
+                "The id the point publishes under: the registry `id_field`'s value, as text, where that field is the layer's own id, and the base model's key where it is a server row id (decision 40: a reload mints OBJECTID and FID again).",
             ),
         ),
     ),
@@ -471,6 +497,14 @@ def _conformed(table: Table) -> list[str]:
     entry = table.entry
     if table.type == "trail_lines":
         return [_name(entry)]
+    if table.type == "points_of_interest":
+        category = f"cast({column(entry['type_field'])} as varchar)" if entry.get("type_field") else "cast(null as varchar)"
+        id_field = entry.get("id_field")
+        if id_field and column(id_field).strip('"') not in ROW_IDS:
+            source_id = f"cast({column(id_field)} as varchar)"
+        else:
+            source_id = f"cast({table.shape.key_column} as varchar)"
+        return [_name(entry), f"{category} as category", f"{source_id} as source_id"]
     if table.type == "places":
         category = (
             f"cast({column(entry['category_field'])} as varchar)" if entry.get("category_field") else "cast(null as varchar)"
@@ -545,9 +579,8 @@ def union_sql(type_: str, staging_models: list[str]) -> str:
         f"Every {type_.replace('_', ' ')} row of the clubs' registered ArcGIS layers that pipeline/make_dbt_staging.py "
         "stages, one row each, unfiltered: a `union all by name` of every stg_<folder>__"
         f"{type_} it writes. The branch list is the registry's, written by the generator from sources.json and the "
-        "extract's club folders, so a layer registered later joins by running it again. Nothing reads this yet: "
-        "every layer here is held back by its sources.json row, and a mart that reads it must keep "
-        "int_sources__publication's verdict."
+        "extract's club folders, so a layer registered later joins by running it again. Nothing here is filtered "
+        "for publication: whatever reads it keeps int_sources__publication's verdict, the one home of may_publish."
     )
     select = ",\n    ".join(columns)
     branches = [f"select\n    {select}\nfrom {{{{ ref('{model}') }}}}" for model in staging_models]
@@ -566,7 +599,8 @@ def union_yaml(type_: str, type_tables: list[Table]) -> str:
             f"Every {type_.replace('_', ' ')} row of the {len(type_tables)} registered ArcGIS layers "
             f"pipeline/make_dbt_staging.py stages, unioned by name: {shape.row}. Each row carries its layer's "
             "registry key, the club folder that extracted it, the base model's key, the conformed columns below, "
-            "its geometry as landed and its layer's own columns as `properties`. Unfiltered, and read by no mart.",
+            "its geometry as landed and its layer's own columns as `properties`. Unfiltered: whatever reads it keeps "
+            "int_sources__publication's verdict.",
             6,
         ),
         "    data_tests:",

@@ -12,6 +12,18 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_cumberland__points_of_interest
+    description: >
+      The cumberland/ folder's points of interest layers (`cumberland_trail_campsites`,
+      `cumberland_trail_natural_features`, `cumberland_trail_trailheads`,
+      `tn_state_parks_campgrounds`, `tn_state_parks_campsites`,
+      `tn_state_parks_hiking_assets`), one row per base row, renamed to
+      int_points_of_interest__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]
   - name: stg_cumberland__trail_lines
     description: >
       The cumberland/ folder's trail lines layers (`ctsst_comp_trails_2020`,

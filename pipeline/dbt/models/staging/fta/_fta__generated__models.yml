@@ -12,3 +12,12 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_fta__points_of_interest
+    description: >
+      The fta/ folder's points of interest layers (`fta_campsites`, `fta_trailheads`), one row
+      per base row, renamed to int_points_of_interest__club_unioned's columns, with each
+      layer's own columns in `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

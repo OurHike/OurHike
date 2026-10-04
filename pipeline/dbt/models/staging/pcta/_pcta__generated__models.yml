@@ -22,3 +22,13 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_pcta__points_of_interest
+    description: >
+      The pcta/ folder's points of interest layers (`pcta_halfmile_campsites`,
+      `pcta_halfmile_water_sources`, `pcta_trailheads`), one row per base row, renamed to
+      int_points_of_interest__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

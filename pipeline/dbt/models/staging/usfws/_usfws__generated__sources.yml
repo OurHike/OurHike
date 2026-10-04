@@ -19,6 +19,16 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_usfws__usfws_refuge_access_points
+        data_tests:
+          # Rows sharing base_usfws__usfws_refuge_access_points's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usfws_refuge_access_points'", "globalid"]
+        description: >
+          USFWS refuge access points (public view) (sources.json
+          `usfws_refuge_access_points`). Key: the registry's `id_field`; its row records
+          no measurement of it.
       - name: raw_usfws__usfws_refuge_boundaries
         data_tests:
           # Rows sharing base_usfws__usfws_refuge_boundaries's key must be exact copies (decision 40).
@@ -29,6 +39,16 @@ sources:
           FWS National Realty Boundaries (National Wildlife Refuge System) (sources.json
           `usfws_refuge_boundaries`). Key: `GlobalID` is unique and non-null on all 1,085
           rows read 2026-10-03.
+      - name: raw_usfws__usfws_refuge_property_points
+        data_tests:
+          # Rows sharing base_usfws__usfws_refuge_property_points's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usfws_refuge_property_points'", "globalid"]
+        description: >
+          USFWS refuge property points (public view) (sources.json
+          `usfws_refuge_property_points`). Key: the registry's `id_field`; its row records
+          no measurement of it.
       - name: raw_usfws__usfws_trail_segments
         data_tests:
           # Rows sharing base_usfws__usfws_trail_segments's key must be exact copies (decision 40).

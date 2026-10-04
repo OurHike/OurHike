@@ -12,3 +12,13 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_cdtc__points_of_interest
+    description: >
+      The cdtc/ folder's points of interest layers (`cdtc_bootheel_water_caches`,
+      `cdtc_parking`, `cdtc_trailheads_and_mail`, `cdtc_water_caches`), one row per base row,
+      renamed to int_points_of_interest__club_unioned's columns, with each layer's own columns
+      in `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

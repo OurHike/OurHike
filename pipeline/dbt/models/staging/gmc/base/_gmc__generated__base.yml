@@ -3,6 +3,90 @@
 version: 2
 
 models:
+  - name: base_gmc__gmc_map_features
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('gmc', 'raw_gmc__gmc_map_features')
+          config:
+            severity: warn
+    description: >
+      Long Trail map features (GMC's own MAPFEATURES_MASTER layer), every row, keyed and
+      deduped (decision 40), the layer's own columns under dlt's names. Its sources.json row
+      reads `reaches_hikers: false`, so int_sources__publication holds it back from every
+      mart. int_points_of_interest__club_unioned reads it through stg_gmc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          gmc_map_features, globalid, the registry key first and then the fields measured
+          unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_gmc__gmc_overnight_sites
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('gmc', 'raw_gmc__gmc_overnight_sites')
+          config:
+            severity: warn
+    description: >
+      Long Trail overnight sites (GMC's own OS_MASTER layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_gmc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          gmc_overnight_sites, globalid, the registry key first and then the fields
+          measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_gmc__gmc_parking
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('gmc', 'raw_gmc__gmc_parking')
+          config:
+            severity: warn
+    description: >
+      Long Trail parking (GMC's own PARKING_MASTER layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_gmc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over gmc_parking,
+          globalid, the registry key first and then the fields measured unique for this
+          layer.
+        data_tests: [not_null, unique]
+  - name: base_gmc__gmc_privies
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('gmc', 'raw_gmc__gmc_privies')
+          config:
+            severity: warn
+    description: >
+      Long Trail privies (GMC's own PRIVIES_MASTER layer), every row, keyed and deduped
+      (decision 40), the layer's own columns under dlt's names. Its sources.json row reads
+      `reaches_hikers: false`, so int_sources__publication holds it back from every mart.
+      int_points_of_interest__club_unioned reads it through stg_gmc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over gmc_privies,
+          globalid, the registry key first and then the fields measured unique for this
+          layer.
+        data_tests: [not_null, unique]
   - name: base_gmc__gmc_trail_master
     data_tests:
       # Says how many rows the dedupe dropped. Each is an exact copy
@@ -22,5 +106,27 @@ models:
         description: >
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
           gmc_trail_master, globalid, the registry key first and then the fields measured
+          unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_gmc__gmc_viewpoints
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('gmc', 'raw_gmc__gmc_viewpoints')
+          config:
+            severity: warn
+    description: >
+      Long Trail vistas and summits (GMC's own VIEWPOINTS_SUMMITS_MASTER layer), every row,
+      keyed and deduped (decision 40), the layer's own columns under dlt's names. Its
+      sources.json row reads `reaches_hikers: false`, so int_sources__publication holds it
+      back from every mart. int_points_of_interest__club_unioned reads it through
+      stg_gmc__points_of_interest.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          gmc_viewpoints, globalid, the registry key first and then the fields measured
           unique for this layer.
         data_tests: [not_null, unique]

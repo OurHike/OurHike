@@ -13,3 +13,13 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_utah_sgid__points_of_interest
+    description: >
+      The utah_sgid/ folder's points of interest layers (`utah_highest_peaks`,
+      `utah_state_park_campsites`, `utah_trailheads`), one row per base row, renamed to
+      int_points_of_interest__club_unioned's columns, with each layer's own columns in
+      `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

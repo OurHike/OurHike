@@ -19,6 +19,15 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_fta__fta_campsites
+        data_tests:
+          # Rows sharing base_fta__fta_campsites's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'fta_campsites'", "globalid"]
+        description: >
+          Florida Trail campsites (FTA's own layer) (sources.json `fta_campsites`). Key:
+          the registry's `id_field`; its row records no measurement of it.
       - name: raw_fta__fta_gateway_communities
         data_tests:
           # Rows sharing base_fta__fta_gateway_communities's key must be exact copies (decision 40).
@@ -38,3 +47,12 @@ sources:
           Managed Conservation Areas along the Florida Trail (sources.json
           `fta_managed_conservation_areas`). Key: `GlobalID` is unique and non-null on all
           103 rows read 2026-10-03.
+      - name: raw_fta__fta_trailheads
+        data_tests:
+          # Rows sharing base_fta__fta_trailheads's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'fta_trailheads'", "globalid"]
+        description: >
+          Florida Trail trailheads (FTA's own layer) (sources.json `fta_trailheads`). Key:
+          the registry's `id_field`; its row records no measurement of it.

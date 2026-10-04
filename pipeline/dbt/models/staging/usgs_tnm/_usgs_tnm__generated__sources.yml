@@ -33,3 +33,66 @@ sources:
           USER_AGENT, robots.txt first), the smallest key; gaz_id repeats once per county
           a place spans (174,416 distinct, the server's own count), and the geometry alone
           is 174,319.
+      - name: raw_usgs_tnm__usgs_gnis_springs
+        data_tests:
+          # Rows sharing base_usgs_tnm__usgs_gnis_springs's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usgs_gnis_springs'", "gaz_id", "county_name"]
+        description: >
+          USGS GNIS named springs (sources.json `usgs_gnis_springs`). Key: (gaz_id,
+          county_name): 34,885 of 34,885 under the row's `where` (measured 2026-10-04 by
+          reading every row and every vertex as the extract reads the layer (f=geojson,
+          outSR 4326), under lib/user_agent.py's USER_AGENT, robots.txt first), the
+          smallest key; gaz_id repeats once per county a spring's name spans, and the
+          geometry alone is 34,826 distinct (113 rows share a point).
+      - name: raw_usgs_tnm__usgs_structures_cabins
+        data_tests:
+          # Rows sharing base_usgs_tnm__usgs_structures_cabins's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usgs_structures_cabins'", "permanent_identifier"]
+        description: >
+          USGS National Structures Dataset: cabins (sources.json
+          `usgs_structures_cabins`). Key: the registry's `id_field`; its row records no
+          measurement of it.
+      - name: raw_usgs_tnm__usgs_structures_campgrounds
+        data_tests:
+          # Rows sharing base_usgs_tnm__usgs_structures_campgrounds's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usgs_structures_campgrounds'", "permanent_identifier"]
+        description: >
+          USGS National Structures Dataset: campgrounds (sources.json
+          `usgs_structures_campgrounds`). Key: the registry's `id_field`; its row records
+          no measurement of it.
+      - name: raw_usgs_tnm__usgs_structures_ranger_stations
+        data_tests:
+          # Rows sharing base_usgs_tnm__usgs_structures_ranger_stations's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usgs_structures_ranger_stations'", "permanent_identifier"]
+        description: >
+          USGS National Structures Dataset: ranger stations (sources.json
+          `usgs_structures_ranger_stations`). Key: the registry's `id_field`; its row
+          records no measurement of it.
+      - name: raw_usgs_tnm__usgs_structures_shelters
+        data_tests:
+          # Rows sharing base_usgs_tnm__usgs_structures_shelters's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usgs_structures_shelters'", "permanent_identifier"]
+        description: >
+          USGS National Structures Dataset: shelters (sources.json
+          `usgs_structures_shelters`). Key: the registry's `id_field`; its row records no
+          measurement of it.
+      - name: raw_usgs_tnm__usgs_structures_trailheads
+        data_tests:
+          # Rows sharing base_usgs_tnm__usgs_structures_trailheads's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usgs_structures_trailheads'", "permanent_identifier"]
+        description: >
+          USGS National Structures Dataset: trailheads (sources.json
+          `usgs_structures_trailheads`). Key: the registry's `id_field`; its row records
+          no measurement of it.

@@ -19,6 +19,16 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_ridgetrail__ridgetrail_campsites
+        data_tests:
+          # Rows sharing base_ridgetrail__ridgetrail_campsites's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ridgetrail_campsites'", "globalid"]
+        description: >
+          Bay Area Ridge Trail campsites (the Council's own layer) (sources.json
+          `ridgetrail_campsites`). Key: the registry's `id_field`; its row records no
+          measurement of it.
       - name: raw_ridgetrail__ridgetrail_official_route
         data_tests:
           # Rows sharing base_ridgetrail__ridgetrail_official_route's key must be exact copies (decision 40).

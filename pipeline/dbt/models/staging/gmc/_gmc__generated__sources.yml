@@ -19,6 +19,46 @@ sources:
         # threshold and open question as _atc__sources.yml.
         warn_after: {count: 7, period: day}
     tables:
+      - name: raw_gmc__gmc_map_features
+        data_tests:
+          # Rows sharing base_gmc__gmc_map_features's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'gmc_map_features'", "globalid"]
+        description: >
+          Long Trail map features (GMC's own MAPFEATURES_MASTER layer) (sources.json
+          `gmc_map_features`). Key: the registry's `id_field`; its row records no
+          measurement of it.
+      - name: raw_gmc__gmc_overnight_sites
+        data_tests:
+          # Rows sharing base_gmc__gmc_overnight_sites's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'gmc_overnight_sites'", "globalid"]
+        description: >
+          Long Trail overnight sites (GMC's own OS_MASTER layer) (sources.json
+          `gmc_overnight_sites`). Key: the registry's `id_field`; its row records no
+          measurement of it.
+      - name: raw_gmc__gmc_parking
+        data_tests:
+          # Rows sharing base_gmc__gmc_parking's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'gmc_parking'", "globalid"]
+        description: >
+          Long Trail parking (GMC's own PARKING_MASTER layer) (sources.json
+          `gmc_parking`). Key: the registry's `id_field`; its row records no measurement
+          of it.
+      - name: raw_gmc__gmc_privies
+        data_tests:
+          # Rows sharing base_gmc__gmc_privies's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'gmc_privies'", "globalid"]
+        description: >
+          Long Trail privies (GMC's own PRIVIES_MASTER layer) (sources.json
+          `gmc_privies`). Key: the registry's `id_field`; its row records no measurement
+          of it.
       - name: raw_gmc__gmc_trail_master
         data_tests:
           # Rows sharing base_gmc__gmc_trail_master's key must be exact copies (decision 40).
@@ -29,3 +69,13 @@ sources:
           Long Trail system, TRAIL_MASTER (GMC) (sources.json `gmc_trail_master`). Key:
           GlobalID: unique and non-null on all 403 rows (measured 2026-10-03 over every
           row's attributes).
+      - name: raw_gmc__gmc_viewpoints
+        data_tests:
+          # Rows sharing base_gmc__gmc_viewpoints's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'gmc_viewpoints'", "globalid"]
+        description: >
+          Long Trail vistas and summits (GMC's own VIEWPOINTS_SUMMITS_MASTER layer)
+          (sources.json `gmc_viewpoints`). Key: the registry's `id_field`; its row records
+          no measurement of it.

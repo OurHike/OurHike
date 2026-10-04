@@ -165,6 +165,16 @@ sources:
           designated alignment (NPS and BLM) (sources.json
           `nps_el_camino_tierra_adentro_nht`). Key: GlobalID: unique and non-null on all 5
           rows (measured 2026-10-03 over every row's attributes).
+      - name: raw_nps__nps_grsm_backcountry_shelters
+        data_tests:
+          # Rows sharing base_nps__nps_grsm_backcountry_shelters's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nps_grsm_backcountry_shelters'", "globalid"]
+        description: >
+          Great Smoky Mountains backcountry shelters (NPS's own layer) (sources.json
+          `nps_grsm_backcountry_shelters`). Key: the registry's `id_field`; its row
+          records no measurement of it.
       - name: raw_nps__nps_legislated_wilderness
         data_tests:
           # Rows sharing base_nps__nps_legislated_wilderness's key must be exact copies (decision 40).

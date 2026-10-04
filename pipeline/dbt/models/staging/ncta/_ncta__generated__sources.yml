@@ -53,6 +53,16 @@ sources:
           Key: geometry with seg_name and updated: 2,243 of 2,243 (measured 2026-10-03).
           Geometry alone is 2,240; seg_name is null on 491 and updated on 538, so the key
           leans on nulls.
+      - name: raw_ncta__ncta_points
+        data_tests:
+          # Rows sharing base_ncta__ncta_points's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ncta_points'", "globalid"]
+        description: >
+          North Country Trail points (NCTA's own Point Data - Public layer) (sources.json
+          `ncta_points`). Key: the registry's `id_field`; its row records no measurement
+          of it.
       - name: raw_ncta__ncta_spurs
         data_tests:
           # Rows sharing base_ncta__ncta_spurs's key must be exact copies (decision 40).

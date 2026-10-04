@@ -12,3 +12,13 @@ models:
       - name: place_key
         description: The base model's key, carried.
         data_tests: [not_null, unique]
+  - name: stg_tahoe_rim__points_of_interest
+    description: >
+      The tahoe_rim/ folder's points of interest layers (`tahoe_rim_campgrounds`,
+      `tahoe_rim_points_of_interest`, `tahoe_rim_trailheads`, `tahoe_rim_water_sources`), one
+      row per base row, renamed to int_points_of_interest__club_unioned's columns, with each
+      layer's own columns in `properties`.
+    columns:
+      - name: poi_key
+        description: The base model's key, carried.
+        data_tests: [not_null, unique]

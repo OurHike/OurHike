@@ -127,6 +127,23 @@ def test_a_shared_folders_file_of_an_hourly_type_stales_the_extract_path_and_a_m
     assert "fresh  extract-notices.yml" in _verdict(["pipeline/extract/_shared/ourhike/highlights.py"])
 
 
+def test_a_monthly_types_extract_file_stales_the_publishing_path_that_runs_the_monthly_lane():
+    """refresh-reference.yml runs `-m extract._run --lane monthly` and publishes what dbt builds from it, so the files
+    of the types that lane carries are its scope, OSM's Geofabrik extracts (#1652) among them, while an hourly type's
+    file stays outside it."""
+    for changed in (
+        "pipeline/extract/_shared/osm/geofabrik.py",
+        "pipeline/extract/_geofabrik.py",
+        "pipeline/extract/usfs/trail_lines.py",
+        "pipeline/extract/_shared/ourhike/highlights.py",
+    ):
+        verdict = _verdict([changed])
+        assert "STALE  refresh-reference.yml" in verdict, changed
+        assert f"unclaimed  {changed}" not in verdict, changed
+    assert "fresh  refresh-reference.yml" in _verdict(["pipeline/extract/usfs/closures.py"])
+    assert "fresh  refresh-reference.yml" in _verdict(["pipeline/extract/_shared/nifc/perimeters.py"])
+
+
 def test_workflows_that_only_mention_the_publisher_are_not_publishing_paths():
     """#1552. Both of these explain in a comment why they do not publish, and
     matching the whole file's text counted that explanation as a publish -

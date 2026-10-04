@@ -50,10 +50,17 @@ extract package's own modules (pipeline/extract/_*.py) and their import
 closure, the club files of the types on the hourly lane (extract/_contract.py's
 CADENCE_BY_TYPE, read out of that file), the extract's pins and dlt's
 committed config. It is reported beside the publishing paths and claims
-nothing for the `unclaimed` line, which is about publishing paths: an
-extract file is still unclaimed by them until scripts/pipelines.sh learns
-the extract layout (pipeline/ELT.md, "scripts/pipelines.sh must learn the
-new layout").
+nothing for the `unclaimed` line, which is about publishing paths.
+
+A PUBLISHING PATH THAT RUNS THE MONTHLY LANE CLAIMS THE MONTHLY EXTRACT.
+refresh-reference.yml runs `python -m extract._run --lane monthly` and
+publishes what dbt builds from it, so its scope adds the extract package's
+modules and their import closure and every club or _shared/ file of a type
+the hourly lane does not carry (monthly_extract_scope()): a change to
+`_shared/osm/geofabrik.py` (#1652) stales the path that lands it. The hourly
+types' files are still unclaimed by publishing paths, since
+publish-conditions.yml's legs read them and are not modelled here yet
+(pipeline/ELT.md, "scripts/pipelines.sh must learn the new layout").
 
 THE CONSERVATIVE DIRECTION IS "STALE". A false STALE costs somebody a
 minute deciding not to dispatch; a false fresh is the #1123 failure - a
@@ -117,6 +124,8 @@ INVOKES_PUBLISH_RE = re.compile(r"(?<![\w.])python3?\s+(?:(?:[\w./-]*/)?publish\
 #: `python -m extract._run`, from any interpreter path: the workflows run the
 #: extract's own venv, `"$RUNNER_TEMP/extract/bin/python" -m extract._run`.
 INVOKES_EXTRACT_RE = re.compile(r"python3?\"?\s+-m\s+extract\._run\b")
+#: The same, running the monthly lane, on one line: refresh-reference.yml's extract step.
+INVOKES_MONTHLY_EXTRACT_RE = re.compile(r"python3?\"?\s+-m\s+extract\._run\b[^\n]*--lane\s+monthly\b")
 #: A _shared/ extract file's type, as it declares it.
 SHARED_TYPE_RE = re.compile(r'^TYPE = "([a-z_]+)"', re.M)
 #: An extract path's scope beyond its modules' import closure (see extract_scope_for()).
@@ -185,10 +194,10 @@ def hourly_types() -> set[str]:
     raise ValueError("extract/_contract.py has no CADENCE_BY_TYPE literal to read the hourly types from")
 
 
-def extract_scope_for(workflow: Path) -> set[str]:
-    """Repo-relative paths whose change stales what an extract path lands: the workflow, the extract package's own
-    modules and their import closure, and every club folder's file of an hourly type. EXTRACT_ROOTS and SHARED_ROOTS
-    are prefixes, matched in print_verdict()."""
+def _lane_extract_files(hourly: bool) -> set[str]:
+    """The extract package's own modules and their import closure, and every club folder's or _shared/ file whose type
+    rides the hourly lane (`hourly`) or does not (the monthly lane's). A file that declares no type (a _shared/
+    notes.py, not_clubs.py) is neither lane's."""
     modules = {str(path.relative_to(PIPELINE)) for path in (PIPELINE / "extract").glob("_*.py")}
     files = {f"pipeline/{name}" for name in import_closure(modules)}
     kinds = hourly_types()
@@ -196,13 +205,25 @@ def extract_scope_for(workflow: Path) -> set[str]:
         if path.parent.parent.name == "_shared":
             # A _shared/ file is named freely and says its type in `TYPE = "<type>"` (extract/_contract.py).
             declared = SHARED_TYPE_RE.search(path.read_text())
-            hourly = declared is not None and declared.group(1) in kinds
+            kind = declared.group(1) if declared is not None else None
         else:
-            hourly = path.parent.parent.name == "extract" and path.stem in kinds
-        if hourly:
+            kind = path.stem if path.parent.parent.name == "extract" and not path.parent.name.startswith("_") else None
+        if kind is not None and (kind in kinds) == hourly:
             files.add(f"pipeline/{path.relative_to(PIPELINE)}")
-    files.add(f".github/workflows/{workflow.name}")
     return files
+
+
+def extract_scope_for(workflow: Path) -> set[str]:
+    """Repo-relative paths whose change stales what an extract path lands: the workflow, the extract package's own
+    modules and their import closure, and every club folder's file of an hourly type. EXTRACT_ROOTS and SHARED_ROOTS
+    are prefixes, matched in print_verdict()."""
+    return _lane_extract_files(hourly=True) | {f".github/workflows/{workflow.name}"}
+
+
+def monthly_extract_scope() -> set[str]:
+    """What a publishing path that runs the monthly lane lands through the extract: the package and every file of a
+    monthly type (the module docstring, "A PUBLISHING PATH THAT RUNS THE MONTHLY LANE")."""
+    return _lane_extract_files(hourly=False)
 
 
 def import_closure(scripts: set[str]) -> set[str]:
@@ -228,6 +249,8 @@ def scope_for(workflow: Path) -> set[str]:
     direct = {n for n in SCRIPT_MENTION_RE.findall(workflow.read_text()) if (PIPELINE / n).is_file()}
     files = {f"pipeline/{name}" for name in import_closure(direct)}
     files.add(f".github/workflows/{workflow.name}")
+    if INVOKES_MONTHLY_EXTRACT_RE.search(run_scripts(workflow)):
+        files |= monthly_extract_scope()
     return files
 
 

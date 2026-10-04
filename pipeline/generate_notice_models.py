@@ -627,6 +627,20 @@ def _dump(document: dict) -> str:
     return yaml.safe_dump(document, sort_keys=False, width=100, allow_unicode=True)
 
 
+def is_pdf_notice(source: NoticeSource) -> bool:
+    """A page notice read from a PDF: no freshness, because the fixture warehouse never holds its table.
+
+    PageNotice reads a PDF through pypdf, which the pipeline and dbt jobs do not
+    install, so fixture mode leaves these out (make_dbt_fixtures.py's note on the
+    four PDFs) and CI's `dbt source freshness` would fail on a table that is not
+    there. Each has a fct_sources_without_freshness row in
+    seeds/dbt_project_evaluator_exceptions.csv, which
+    tests/test_generated_notice_models.py holds to this list. The gate still
+    holds an absent one (int_closures__notice_tables).
+    """
+    return source.reader_class == "PageNotice" and str((source.entry or {}).get("url", "")).lower().endswith(".pdf")
+
+
 def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
     tables = []
     for source in sources:
@@ -636,7 +650,7 @@ def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
                 f"{_title(source)} (sources.json `{source.key}`), landed by extract/{source.club}/{source.type}.py's "
                 f"{source.reader_class}. Key: {', '.join(_key_columns(source))}. {_measured(source)}"
             ),
-            "config": {"meta": {"cadence": source.cadence}},
+            "config": {"meta": {"cadence": source.cadence}, **({"freshness": None} if is_pdf_notice(source) else {})},
             "data_tests": [
                 {
                     "duplicates_are_exact": {

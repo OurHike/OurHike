@@ -39,6 +39,7 @@ sources:
     config:
       meta:
         cadence: hourly
+      freshness: null
     data_tests:
     - duplicates_are_exact:
         arguments:

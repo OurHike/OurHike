@@ -8948,15 +8948,15 @@ TUSCARORA_PAGES = tuple(
 
 def _tuscarora_section_page(n: int) -> str:
     """A Wix section page as hikethetuscarora.org's are: the menu, then a <p> of spans per paragraph, one section
-    a page here: an Access fix with a parking lead, and a Camping list of a shelter, a name with no fix, and on the
-    first page a campground; the advisory and the footer are prose that lands nowhere."""
+    a page here: an Access fix with a parking lead, and a Camping list of a shelter, a name with no fix, and on
+    section 3 a campground; the advisory and the footer are prose that lands nowhere."""
     x, y = _point(30 + 2 * n)["coordinates"]
     sx, sy = _point(31 + 2 * n)["coordinates"]
     camping = f"Fixture Ridge Shelter {n} ({sy:.3f},{sx:.3f}), Fixture State Park."
-    if n == 1:
+    if n == 3:
         camping = f"Fixture Creek Campground ({sy + 0.002:.3f}, {sx:.3f}), " + camping
     # The last section's access sits off the trail, as the live Skyline Drive one does: its distance lands.
-    approach = ", 0.4 mi SB on Fixture Trail to the junction." if n == 7 else "."
+    approach = ", 0.4 mi SB on Fixture Trail to the junction." if n == 8 else "."
     paragraphs = (
         f"Section {n}: Fixture Gap {n}",
         f"Fixture Gap {n} to Fixture Road {n}, 9.{n} miles.",
@@ -8973,6 +8973,18 @@ def _tuscarora_section_page(n: int) -> str:
     )
 
 
+def _tuscarora_answers() -> dict[str, tuple[str, str]]:
+    """The seven section pages. Fixture mode serves one body per URL to every reader, and section K's
+    patc_tuscarora_sections reads /section-1-3 too, so that page is section K's own fixture body (sections 1 and
+    2, a shelter's fix each), which this parser reads as it would the live page; the other six are sections 3
+    to 8, one a page."""
+    shared = {url: (content_type, body) for url, content_type, body in _tuscarora_pages()}
+    first = TUSCARORA_PAGES[0]
+    answers = {first: (PAGE_HTML, shared[first][1])}
+    answers.update({url: (PAGE_HTML, _tuscarora_section_page(n)) for n, url in enumerate(TUSCARORA_PAGES[1:], 3)})
+    return answers
+
+
 #: Registry key -> (its answers, {url: (content type, body)}, and the rows its parser lands), for the sources a
 #: sitemap lists pages for, or a row's `pages` list.
 PAGE_POINTS_SITE_FIXTURES = {
@@ -8982,10 +8994,7 @@ PAGE_POINTS_SITE_FIXTURES = {
         lambda: {"https://ozarkhighlandstrail.com/wp-json/wp/v2/pages/15": (PAGE_REST, _ohta_trail_rest())},
         4,
     ),
-    "patc_tuscarora_points": (
-        lambda: {url: (PAGE_HTML, _tuscarora_section_page(n)) for n, url in enumerate(TUSCARORA_PAGES, 1)},
-        15,
-    ),
+    "patc_tuscarora_points": (_tuscarora_answers, 15),
 }
 
 

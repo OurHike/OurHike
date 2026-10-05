@@ -162,15 +162,19 @@ def podcast_episodes(key: str, *, crawl_delay: float = 0.0, **overrides) -> Podc
 
 # --- NPS's content lists ------------------------------------------------------------------------------------------
 
-# The page asked for, NpsAlerts' NPS_PAGE_SIZE: the reader steps by the rows each page returns, so a smaller cap
-# on the server costs a request, never a row.
-NPS_CONTENT_PAGE_SIZE = _json_apis.NPS_PAGE_SIZE
+# The page asked for. The reader steps by the rows each page returns, so a smaller cap on the server costs a
+# request, never a row. 100, not NpsAlerts' 500: monthly runs 16, 17 and 18 left nps_multimedia_audio out, and run
+# 18 (refresh-reference.yml 37245577210) said why: a 500-item page arrived as 1,966,080 bytes ending inside a
+# string ("Unterminated string ... char 1783562"), cut short in transit (Reasoned: two items of the same list parse,
+# 2026-10-04). A page of 100 is about a fifth of that, at 52 requests for the audio list's 5,173 items.
+# @unvalidated: that 100 keeps every page whole; the next monthly run's log says.
+NPS_CONTENT_PAGE_SIZE = 100
 # @unvalidated: a ceiling, not an ending, picked above the largest list these rows read (the gallery assets for
-# the clubs' 27 park codes, 14,630 on 2026-10-04, 30 pages) and below NPS's whole gallery-asset list (206,685,
-# 414 pages), so a park-code read the API stopped honouring raises rather than loading every photo NPS holds;
-# reaching it raises rather than loading a short list. What would settle it is the page count a few monthly
+# the clubs' 27 park codes, 14,630 on 2026-10-04, 147 pages of 100) and below NPS's whole gallery-asset list
+# (206,685, 2,067 pages), so a park-code read the API stopped honouring raises rather than loading every photo NPS
+# holds; reaching it raises rather than loading a short list. What would settle it is the page count a few monthly
 # runs print.
-NPS_CONTENT_MAX_PAGES = 120
+NPS_CONTENT_MAX_PAGES = 400
 
 
 #: Each list's columns that staging reads, by the endpoint's path, hinted so a column is there even on a run where

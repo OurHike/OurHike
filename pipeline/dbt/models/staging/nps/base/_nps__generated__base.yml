@@ -221,8 +221,8 @@ models:
       - name: place_key
         description: >
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
-          nps_api_places, id, the registry key first and then the fields measured unique
-          for this layer.
+          nps_api_places, id, url, the registry key first and then the fields measured
+          unique for this layer.
         data_tests: [not_null, unique]
   - name: base_nps__nps_butterfield_overland_nht
     data_tests:

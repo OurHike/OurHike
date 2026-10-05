@@ -4279,9 +4279,10 @@
         "notes": "No change check: the list carries no modified date to hash (extract/_ogc.py's JsonFeatures answers UNKNOWN), so every monthly run reads it whole, 500 a page."
       },
       "key_fields": [
-        "id"
+        "id",
+        "url"
       ],
-      "key_comment": "`id`, the API's own UUID for the item. Not unique on the first keyed read: monthly run 17 (refresh-reference.yml 37232256991, 2026-10-04) landed one `id` on two rows that differ, of 17,505 items the API counted, and duplicates_are_exact failed the build. What differed was not kept, and the demo key (10 requests an hour) cannot read the list again. extract/_ogc.py's JsonFeatures now reads a paged list once more when it holds fewer distinct keys than the API counts, and refuses copies that still differ, naming the fields, so the next monthly read says whether the list moved during the read (Reasoned) or the API lists one id twice.",
+      "key_comment": "`id` with `url`. `id` alone, the API's own UUID for the item, is not unique: monthly run 17 (refresh-reference.yml 37232256991, 2026-10-04) landed one `id` on two rows that differ, of 17,505 the API counted, and duplicates_are_exact failed the build; run 18 (37245577210, 2026-10-05) read the whole list twice and found the same: one `id` (00415454-F93C-4D58-B612-BFC81442F17A) on two items differing in `latLong`, `latitude`, `longitude`, `title` and `url`, so two different places under one id rather than a list moving during the read. With `url` the two are distinct (Reasoned from that refusal, which names the only repeated id; not re-read here, since the demo key allows 10 requests an hour and the list is 36 pages).",
       "name_field": "title",
       "category_field": "tags",
       "discovered_via": "reference/org_coverage.json's AVAILABLE_NOT_LOADED places and POI rows naming NPSAPI (coverage audit 2026-10-01), then one request each on 2026-10-04 with api.data.gov's public DEMO_KEY for the total and the item shape; nothing else, because the demo key's 10 requests an hour are shared.",

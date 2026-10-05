@@ -661,6 +661,47 @@ def test_a_paged_list_whose_copies_differ_on_two_reads_is_refused_with_the_field
     assert len(requests_mock.request_history) == 6, "read twice, three pages each"
 
 
+def test_a_key_of_two_fields_reads_two_places_under_one_id_as_two_items(registry, requests_mock, monkeypatch):
+    """Monthly run 18 (refresh-reference.yml 37245577210): nps_api_places lists two places under one `id`.
+
+    Keyed on `id` and `url`, as its sources.json row now is, they are two items: the list is read once and both land.
+    """
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+    monkeypatch.setitem(_kinds.registry_entry("nps_places"), "key_fields", ["id", "url"])
+
+    def page(request, context):
+        start = int(request.qs["start"][0])
+        item = [
+            {"id": "id-0", "url": "https://example.org/a", "title": "A"},
+            {"id": "id-0", "url": "https://example.org/b", "title": "B"},
+            {"id": "id-1", "url": "https://example.org/c", "title": "C"},
+        ][start]
+        return {"total": "3", "data": [{**item, "latitude": "41", "longitude": "-74"}]}
+
+    requests_mock.get(NPS_URL, json=page)
+
+    rows = list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
+
+    assert [row["title"] for row in rows] == ["A", "B", "C"]
+    assert len(requests_mock.request_history) == 3, "read once: no repeat on the two-field key"
+
+
+def test_a_key_of_two_fields_still_refuses_one_item_read_twice_with_different_content(registry, requests_mock, monkeypatch):
+    """The repeat check reads every key field, not only a key of one: a two-field key still catches a repeat."""
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+    monkeypatch.setitem(_kinds.registry_entry("nps_places"), "key_fields", ["id", "url"])
+
+    def page(request, context):
+        start = int(request.qs["start"][0])
+        item = {"id": "id-0", "url": "https://example.org/a", "title": f"t{start}"} if start < 2 else {"id": "id-2", "url": "u"}
+        return {"total": "3", "data": [{**item, "latitude": "41", "longitude": "-74"}]}
+
+    requests_mock.get(NPS_URL, json=page)
+
+    with pytest.raises(RuntimeError, match=r"1 id / url value\(s\) on items that differ"):
+        list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
+
+
 def test_a_next_url_api_follows_the_url_each_page_names_until_none(registry, requests_mock):
     second = f"{VENUES_URL}/?page=2"
     requests_mock.get(

@@ -118,18 +118,19 @@ sources:
           # Rows sharing base_nps__nps_api_places's key must be exact copies (decision 40).
           - duplicates_are_exact:
               arguments:
-                key_columns: ["'nps_api_places'", "id"]
+                key_columns: ["'nps_api_places'", "id", "url"]
         description: >
           NPS Data API /places: every place the Park Service lists, nationally
-          (sources.json `nps_api_places`). Key: `id`, the API's own UUID for the item. Not
-          unique on the first keyed read: monthly run 17 (refresh-reference.yml
-          37232256991, 2026-10-04) landed one `id` on two rows that differ, of 17,505
-          items the API counted, and duplicates_are_exact failed the build. What differed
-          was not kept, and the demo key (10 requests an hour) cannot read the list again.
-          extract/_ogc.py's JsonFeatures now reads a paged list once more when it holds
-          fewer distinct keys than the API counts, and refuses copies that still differ,
-          naming the fields, so the next monthly read says whether the list moved during
-          the read (Reasoned) or the API lists one id twice.
+          (sources.json `nps_api_places`). Key: `id` with `url`. `id` alone, the API's own
+          UUID for the item, is not unique: monthly run 17 (refresh-reference.yml
+          37232256991, 2026-10-04) landed one `id` on two rows that differ, of 17,505 the
+          API counted, and duplicates_are_exact failed the build; run 18 (37245577210,
+          2026-10-05) read the whole list twice and found the same: one `id`
+          (00415454-F93C-4D58-B612-BFC81442F17A) on two items differing in `latLong`,
+          `latitude`, `longitude`, `title` and `url`, so two different places under one id
+          rather than a list moving during the read. With `url` the two are distinct
+          (Reasoned from that refusal, which names the only repeated id; not re-read here,
+          since the demo key allows 10 requests an hour and the list is 36 pages).
       - name: raw_nps__nps_butterfield_overland_nht
         data_tests:
           # Rows sharing base_nps__nps_butterfield_overland_nht's key must be exact copies (decision 40).

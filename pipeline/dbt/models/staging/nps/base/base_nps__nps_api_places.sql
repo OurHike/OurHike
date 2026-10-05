@@ -5,15 +5,17 @@
 -- (decision 40), with nothing filtered and nothing joined. A base model,
 -- the one place this dataset is staged (decision 34).
 --
--- Key: `id`, the API's own UUID for the item. Not unique on the first keyed
--- read: monthly run 17 (refresh-reference.yml 37232256991, 2026-10-04)
--- landed one `id` on two rows that differ, of 17,505 items the API counted,
--- and duplicates_are_exact failed the build. What differed was not kept,
--- and the demo key (10 requests an hour) cannot read the list again.
--- extract/_ogc.py's JsonFeatures now reads a paged list once more when it
--- holds fewer distinct keys than the API counts, and refuses copies that
--- still differ, naming the fields, so the next monthly read says whether
--- the list moved during the read (Reasoned) or the API lists one id twice.
+-- Key: `id` with `url`. `id` alone, the API's own UUID for the item, is not
+-- unique: monthly run 17 (refresh-reference.yml 37232256991, 2026-10-04)
+-- landed one `id` on two rows that differ, of 17,505 the API counted, and
+-- duplicates_are_exact failed the build; run 18 (37245577210, 2026-10-05)
+-- read the whole list twice and found the same: one `id`
+-- (00415454-F93C-4D58-B612-BFC81442F17A) on two items differing in
+-- `latLong`, `latitude`, `longitude`, `title` and `url`, so two different
+-- places under one id rather than a list moving during the read. With `url`
+-- the two are distinct (Reasoned from that refusal, which names the only
+-- repeated id; not re-read here, since the demo key allows 10 requests an
+-- hour and the list is 36 pages).
 with source as (
     -- dlt lands geometry as GeoJSON text and an ArcGIS date as epoch
     -- milliseconds (extract/_kinds.py's ESRI_TYPES); both are cast here, as
@@ -23,7 +25,7 @@ with source as (
         st_geomfromgeojson(cast(geometry as varchar)) as geom
     from {{ raw_or_empty(
         source('nps', 'raw_nps__nps_api_places'),
-        ['id', 'geometry', 'title', 'tags']
+        ['id', 'url', 'geometry', 'title', 'tags']
     ) }}
 ),
 
@@ -32,6 +34,7 @@ renamed as (
         {{ dbt_utils.generate_surrogate_key([
             "'nps_api_places'",
             'id',
+            'url',
         ]) }} as place_key,
         source.*
     from source

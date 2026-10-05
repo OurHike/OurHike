@@ -334,20 +334,21 @@ class JsonFeatures(_Paged):
         return compare_marker(json.dumps(recorded, sort_keys=True), json.dumps(marker, sort_keys=True)), marker
 
     def _copies(self, items: list) -> tuple[int, dict[str, list[str]]]:
-        """How many distinct values of the row's one-field key the items hold, and {value: the fields its copies differ in}.
+        """How many distinct values of the row's key the items hold, and {value: the fields its copies differ in}.
 
+        The key is every field of the row's `key_fields`, read from each item.
         Only values whose copies differ are named; exact copies are the staging
-        dedupe's (decision 40). A row whose key is not one item field, or is
-        the geometry, answers (len(items), {}).
+        dedupe's (decision 40). A row with no key, or whose key holds the
+        geometry, answers (len(items), {}).
         """
         fields = self.entry.get("key_fields") or []
-        if len(fields) != 1 or fields[0] == "geometry":
+        if not fields or "geometry" in fields:
             return len(items), {}
         groups: dict[str, list] = {}
         for item in items:
-            value = _path(item, fields[0])
-            if value is not None:
-                groups.setdefault(str(value), []).append(item)
+            values = [_path(item, field) for field in fields]
+            if all(value is not None for value in values):
+                groups.setdefault(" / ".join(str(value) for value in values), []).append(item)
         differing = {}
         for value, group in groups.items():
             if len(group) > 1:
@@ -390,7 +391,7 @@ class JsonFeatures(_Paged):
         if differing:
             value, names = next(iter(differing.items()))
             raise RuntimeError(
-                f"{self.key}: {len(differing)} {self.entry['key_fields'][0]} value(s) on items that differ "
+                f"{self.key}: {len(differing)} {' / '.join(self.entry['key_fields'])} value(s) on items that differ "
                 f"(first: {value}, in {', '.join(names)}), so its key would drop a real item"
             )
         return items, total

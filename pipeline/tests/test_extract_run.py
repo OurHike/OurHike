@@ -53,7 +53,7 @@ from extract._kinds import (
 from extract._run import ExtractRefused, Planned, make_pipeline, run_check, run_pipeline
 from extract._warehouse import load_warehouse
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
-from lib import http_retry
+from lib import arcgis, http_retry
 from lib.freshness_state import Freshness
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.user_agent import USER_AGENT
@@ -66,6 +66,7 @@ LINES_URL = f"{AGOL}/Trails/FeatureServer/0"
 LINES_Z_URL = f"{AGOL}/CenterlineZ/FeatureServer/9"
 UNPAGED_URL = "https://gis.example.org/arcgis/rest/services/Trail/MapServer/0"
 CLOSURES_URL = f"{AGOL}/Closures/FeatureServer/0"
+STATUS_URL = f"{AGOL}/SiteStatus/FeatureServer/0"
 STAFFED_URL = f"{AGOL}/Waypoints/FeatureServer/1"
 ONPREM_URL = "https://gis.example.gov/arcgis/rest/services/assets/MapServer/3"
 FEED_URL = "https://feeds.example.org/show.xml"
@@ -181,6 +182,7 @@ def registry(tmp_path, monkeypatch):
                     {"key": "centerline_z", "url": LINES_Z_URL, "return_z": True},
                     {"key": "unpaged", "url": UNPAGED_URL},
                     {"key": "closures_layer", "url": CLOSURES_URL},
+                    {"key": "status_layer", "url": STATUS_URL, "where": "status = 'closed'"},
                     {
                         "key": "staffed",
                         "url": STAFFED_URL,
@@ -723,6 +725,108 @@ def test_a_read_shorter_than_the_servers_count_fails_before_anything_loads(regis
     requests_mock.get(LINES_URL + "/query", json=short_query)
     with pytest.raises(Exception, match="the server counts 3 features and 2 were read"):
         lane(store, lines(), closures())
+
+
+class StatusLayer:
+    """A layer read under `status = 'closed'`, offset-paged over the sites closed at the moment each page is asked.
+
+    That is how SQL's OFFSET pages: a site that reopens below the offset
+    shifts every later site down one, and one that closes below it shifts
+    them up. `edit(pages_served, layer)` runs after each page with features,
+    so a test can reopen or close a site part-way through a read.
+    """
+
+    def __init__(self, requests_mock, closed, edit=None):
+        self.closed = sorted(closed)
+        self.edit = edit or (lambda pages_served, layer: None)
+        self.pages_served = 0
+        requests_mock.get(STATUS_URL, json={"objectIdField": "OBJECTID", "fields": FIELDS})
+        requests_mock.get(STATUS_URL + "/query", json=self.query)
+
+    def query(self, request, context):
+        params = {key.lower(): value[0] for key, value in request.qs.items()}
+        if params.get("returncountonly") == "true":
+            return {"count": len(self.closed)}
+        offset, size = int(params["resultoffset"]), int(params["resultrecordcount"])
+        page = [feature(oid, name=f"Site {oid}") for oid in self.closed[offset : offset + size]]
+        if page:
+            self.pages_served += 1
+            self.edit(self.pages_served, self)
+        return {"type": "FeatureCollection", "features": page}
+
+
+def status_layer():
+    return ArcgisLayer(key="status_layer", club="testclub", type="closures")
+
+
+def test_a_site_that_reopens_between_two_pages_does_not_cost_a_still_closed_site_its_row(registry, requests_mock, monkeypatch):
+    """Site 2 reopens after the first page of 3, so the second page starts one site late and site 4 was never served.
+
+    The count after the pages is 6, the rows read are 6, and before the fix
+    nothing refused: site 4, still closed, was missing from closures until
+    the next read (review finding EXD-1).
+    """
+    monkeypatch.setattr(arcgis, "PAGE_SIZE", 3)
+
+    def reopen_site_2_after_the_first_page(pages_served, layer):
+        if pages_served == 1:
+            layer.closed.remove(2)
+
+    StatusLayer(requests_mock, range(1, 8), edit=reopen_site_2_after_the_first_page)
+    proofs = {}
+
+    landed = [row["OBJECTID"] for row in status_layer().rows(proofs)]
+
+    assert landed == [1, 3, 4, 5, 6, 7], "read again once the layer moved, so every site closed after the edit lands"
+    assert proofs == {"raw_testclub__status_layer": 6}
+
+
+def test_a_site_that_closes_between_two_pages_is_not_missed_behind_a_repeated_one(registry, requests_mock, monkeypatch):
+    """Site 2 closes after the first page, below the offset: the next page repeats site 4 and site 2 is never served.
+
+    Seven rows are read and the server counts seven, so before the fix the
+    count check passed with the newly closed site missing.
+    """
+    monkeypatch.setattr(arcgis, "PAGE_SIZE", 3)
+
+    def close_site_2_after_the_first_page(pages_served, layer):
+        if pages_served == 1:
+            layer.closed = sorted([*layer.closed, 2])
+
+    StatusLayer(requests_mock, [1, 3, 4, 5, 6, 7], edit=close_site_2_after_the_first_page)
+
+    landed = [row["OBJECTID"] for row in status_layer().rows({})]
+
+    assert sorted(set(landed)) == [1, 2, 3, 4, 5, 6, 7]
+    assert len(landed) == 7, "the read that repeated site 4 was not the one that landed"
+
+
+def test_a_layer_edited_during_both_reads_is_refused_rather_than_landed_short(registry, requests_mock, monkeypatch):
+    """A site reopens part-way through the first read and another part-way through the second: neither read is whole."""
+    monkeypatch.setattr(arcgis, "PAGE_SIZE", 3)
+
+    def reopen_the_lowest_site_after_each_reads_first_page(pages_served, layer):
+        if len(layer.closed) > 3 and pages_served in (1, 3):
+            layer.closed.pop(0)
+
+    StatusLayer(requests_mock, range(1, 8), edit=reopen_the_lowest_site_after_each_reads_first_page)
+
+    with pytest.raises(RuntimeError, match="changed while it was read, twice"):
+        list(status_layer().rows({}))
+
+
+def test_a_layer_read_in_one_page_is_not_read_again_when_its_count_moves(registry, requests_mock):
+    """One page cannot be shifted by an edit, so a count that moves between the reads before and after it is no reason to read again."""
+
+    def reopen_site_2_after_the_only_page(pages_served, layer):
+        if pages_served == 1:
+            layer.closed.remove(2)
+
+    layer = StatusLayer(requests_mock, range(1, 4), edit=reopen_site_2_after_the_only_page)
+
+    landed = [row["OBJECTID"] for row in status_layer().rows({})]
+
+    assert landed == [1, 2, 3] and layer.pages_served == 1
 
 
 def test_a_field_added_to_person_fields_is_dropped_from_a_layer_that_has_not_moved_upstream(

@@ -87,7 +87,7 @@ from fetch_hikefinder import sign_in as hikefinder_sign_in
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
 from fetch_opentrail import strip_comments as strip_opentrail_comments
 from lib.arcgis import PAGE_SIZE as ARCGIS_PAGE_SIZE
-from lib.arcgis import iter_layer_pages, layer_count
+from lib.arcgis import feature_object_id, iter_layer_pages, layer_count
 from lib.atc_scrape import parse_update as parse_atc_update
 from lib.atc_scrape import update_url as atc_update_url
 from lib.club_pdfs import PARSERS as CLUB_PDF_PARSERS
@@ -522,7 +522,8 @@ class ArcgisLayer(Resource):
         extract, after 15 silent minutes, with decision 54's largest layers to
         read (USGS's 176,566 populated places, Washington's 32,563 public-land
         polygons). That memory was the cause is Reasoned, not measured; the
-        line each monthly layer now prints with its peak RSS settles it.
+        line each monthly layer now prints with its peak RSS settles it. A
+        read an edit may have shifted is read again, once (`_read_into`).
         """
         named = session()
         metadata = self.metadata(self.read_backoff)
@@ -540,24 +541,17 @@ class ArcgisLayer(Resource):
         # A server that refuses resultOffset says so in its metadata, and is read by
         # object id in batches no larger than its own maxRecordCount (lib/arcgis.py).
         paginate = (metadata.get("advancedQueryCapabilities") or {}).get("supportsPagination") is not False
-        pages = iter_layer_pages(
-            self.url,
-            where=self.where,
-            out_fields=out_fields,
-            session=named,
-            backoff=self.read_backoff,
-            return_z=self.return_z,
-            paginate=paginate,
-            page_size=None if paginate else min(ARCGIS_PAGE_SIZE, metadata.get("maxRecordCount") or ARCGIS_PAGE_SIZE),
-        )
+        oid_field = object_id_field(metadata)
         with tempfile.TemporaryFile("w+", encoding="utf-8") as spool:
-            read = 0
-            for page in pages:
-                for feature in page:
-                    spool.write(json.dumps(feature, separators=(",", ":")))
-                    spool.write("\n")
-                    read += 1
-            count = layer_count(self.url + "/query", where=self.where, session=named, backoff=self.read_backoff)
+            for attempt in (1, 2):
+                spool.seek(0)
+                spool.truncate()
+                read, count, moved = self._read_into(spool, named, out_fields, paginate, metadata, oid_field)
+                if moved is None:
+                    break
+                if attempt == 2:
+                    raise RuntimeError(f"{self.key}: the layer changed while it was read, twice ({moved}); not landed short")
+                print(f"::warning title={self.key} changed while it was read::{moved}; reading the layer again, once")
             if count is not None:
                 if read < count:
                     raise RuntimeError(f"{self.key}: the server counts {count} features and {read} were read")
@@ -575,6 +569,67 @@ class ArcgisLayer(Resource):
                 }
                 row["geometry"] = feature.get("geometry")
                 yield row
+
+    def _read_into(self, spool, named, out_fields: str, paginate: bool, metadata: dict, oid_field: str):
+        """One whole read into `spool`: (features read, the server's count after, why the read cannot stand or None).
+
+        AN OFFSET PAGE IS ASKED OF THE LAYER AS IT IS AT THAT MOMENT, so a row
+        that leaves the `where` set below the offset between two pages shifts
+        every later row down one and the next page starts a row late, and one
+        that joins it below the offset shifts them up and repeats a row. Either
+        way a live row is never served while the rows read can still equal
+        the count read after them (review finding EXD-1: a site reopening
+        under `status = 'closed'` cost a still-closed site its row, and the
+        count passed). So the count is read before the pages as well as
+        after: a read of more than one page whose count moved between the two
+        may have been shifted, and a read that makes up the count only with
+        repeated object ids served one row in place of another. Either is read
+        again by the caller, once, and refused if the second read is no better.
+        One page cannot be shifted, so its count moving is no reason to read
+        again; a read shorter than the count is the caller's refusal, as
+        before; and a layer read by object id (`paginate` false) asks for ids,
+        not offsets, so it cannot be shifted at all.
+
+        STILL OPEN: a row leaving the set and another joining it inside one
+        read leaves the count where it was and repeats nothing, and that skip
+        is not seen. Keyset paging (`orderByFields` on the object id, `where`
+        past the last id read) would close it, and changes every page query
+        every layer is asked; it is not built (Reasoned, not measured: no
+        registered server has been tried with it).
+        """
+        query_url = self.url + "/query"
+        before = layer_count(query_url, where=self.where, session=named, backoff=self.read_backoff) if paginate else None
+        pages = iter_layer_pages(
+            self.url,
+            where=self.where,
+            out_fields=out_fields,
+            session=named,
+            backoff=self.read_backoff,
+            return_z=self.return_z,
+            paginate=paginate,
+            page_size=None if paginate else min(ARCGIS_PAGE_SIZE, metadata.get("maxRecordCount") or ARCGIS_PAGE_SIZE),
+        )
+        read, pages_read, ids = 0, 0, set()
+        for page in pages:
+            pages_read += 1
+            for feature in page:
+                spool.write(json.dumps(feature, separators=(",", ":")))
+                spool.write("\n")
+                read += 1
+                if ids is not None:
+                    oid = feature_object_id(feature, oid_field)
+                    if oid is None:
+                        ids = None  # a feature with no id: the repeat check cannot be made, and is not guessed
+                    else:
+                        ids.add(oid)
+        count = layer_count(query_url, where=self.where, session=named, backoff=self.read_backoff)
+        if not paginate or count is None:
+            return read, count, None
+        if ids is not None and len(ids) < count <= read:
+            return read, count, f"{len(ids)} distinct object ids in {read} features read, and the server counts {count}"
+        if pages_read > 1 and before is not None and before != count:
+            return read, count, f"the server counted {before} features before the {pages_read} pages and {count} after"
+        return read, count, None
 
 
 def arcgis_layer(key: str, **overrides) -> ArcgisLayer:

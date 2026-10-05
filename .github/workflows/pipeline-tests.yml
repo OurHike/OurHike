@@ -179,8 +179,9 @@ jobs:
   # and renaming a required job hangs the merge queue
   # (.github/workflows/README.md).
   #
-  # Cheapest failure first: lint and `dbt parse` need no warehouse, so a
-  # style slip or a YAML shape v2 refuses fails in seconds.
+  # Cheapest failure first: `dbt parse` and `dbt lint` need no warehouse, so
+  # a YAML shape v2 refuses fails in seconds. SQLFluff, no longer cheap, runs
+  # last (its step says why).
   dbt:
     runs-on: ubuntu-latest
     defaults:
@@ -382,15 +383,6 @@ jobs:
         with:
           path: pipeline/dbt/dbt_packages
           key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
-
-      # The jinja templater (pipeline/.sqlfluff says why not the dbt one), so
-      # this needs no warehouse. It does need the packages: dbt_utils' macros
-      # render from dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py), so it runs
-      # after deps. The enforced lint (decision 33): 0 violations, 3.8 s serial
-      # on the 32 files of 2026-10-01.
-      - name: sqlfluff lint
-        if: steps.scope.outputs.run == 'true'
-        run: sqlfluff lint dbt/models dbt/tests
 
       # The v2 YAML check: dbt-oss 2.0.5 refused this project's v1-shaped
       # YAML with 64 errors until it moved to v2's shape, which 2.0.6 parses
@@ -729,6 +721,29 @@ jobs:
         env:
           DBT_PROJECT_EVALUATOR_SEVERITY: error
         run: dbt build -s package:dbt_project_evaluator --profiles-dir .
+
+      # SQLFLUFF, LAST AND ON EVERY CORE (WF7 of the PR #1805 review). The
+      # jinja templater (pipeline/.sqlfluff says why not the dbt one) needs no
+      # warehouse, but it does need the packages: dbt_utils' macros render
+      # from dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py). The enforced lint
+      # (decision 33): 0 violations.
+      #
+      # It used to run first, from when it took 3.8 s serial on the 32 files
+      # of 2026-10-01. On the 1,446 SQL files of 2026-10-05 it took 19 m 31 s
+      # on run 37246416152 and 25 m 35 s on run 37248247711, one process, so a
+      # failed build reported 20 minutes late. Now it runs after everything
+      # else, and whatever the build did unless the run was cancelled, so one
+      # round trip still reports both. `--processes 0` is SQLFluff's "every
+      # CPU", four on a hosted runner; that it scales near four times is
+      # Reasoned (each file lints alone) and @unvalidated until this step's
+      # first time on a runner. A step of this job, never a job of its own:
+      # `dbt` is the required check (.github/expected-protections.yml).
+      # .github/tests/test_sqlfluff_after_the_build.py holds the order.
+      - name: sqlfluff lint
+        if: >-
+          !cancelled() && steps.scope.outputs.run == 'true'
+          && (steps.dbt-packages.outputs.cache-hit == 'true' || steps.deps.outcome == 'success')
+        run: sqlfluff lint dbt/models dbt/tests --processes 0
 
       # Saved on a miss, and on a failed run too: the downloads happen on the
       # job's first dbt command, so a run that fails later still holds them

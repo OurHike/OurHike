@@ -446,9 +446,6 @@ if selected_has dbt; then
     else
       step "dbt deps"            "${dbt_cmd[@]}" deps --profiles-dir .
     fi
-    # The jinja templater, as CI runs it: no warehouse, but after deps, because
-    # dbt_utils' macros render from dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py).
-    step "dbt sqlfluff lint"     env -C pipeline "$DBT_DIR/sqlfluff" lint dbt/models dbt/tests
     step "dbt parse"             "${dbt_cmd[@]}" parse --profiles-dir .
     step "dbt lint"              "${dbt_cmd[@]}" lint --profiles-dir .
     # Fixture mode, as CI runs it: the extract over the fixture files, under
@@ -479,6 +476,10 @@ if selected_has dbt; then
     step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
     step "dbt docs site"         env -C pipeline "$PY" check_docs_site.py dbt/target/docs
     step "dbt project evaluator" env DBT_PROJECT_EVALUATOR_SEVERITY=error "${dbt_cmd[@]}" build -s package:dbt_project_evaluator --profiles-dir .
+    # Last and on every core, as CI runs it (its step says why): the jinja
+    # templater needs no warehouse, but dbt_utils' macros render from
+    # dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py).
+    step "dbt sqlfluff lint"     env -C pipeline "$DBT_DIR/sqlfluff" lint dbt/models dbt/tests --processes 0
   fi
 fi
 if selected_has client; then

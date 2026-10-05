@@ -44,6 +44,7 @@ NOTES_FEED = "https://feeds.example.org/notes.rss"
 AUDIO = "https://nps.example.gov/api/v1/multimedia/audio"
 ASSETS = "https://nps.example.gov/api/v1/multimedia/galleries/assets"
 ALERTS = "https://nps.example.gov/api/v1/alerts"
+THINGS_TO_DO = "https://nps.example.gov/api/v1/thingstodo"
 SITE = "https://club.example.org"
 WIKI = "https://club.example.org/clubwiki/api.php"
 
@@ -59,6 +60,7 @@ def registry(tmp_path, monkeypatch):
         {"key": "nps_audio", "url": AUDIO, "person_fields": ["transcript"]},
         {"key": "nps_assets", "url": ASSETS, "park_codes_from": "nps_alerts"},
         {"key": "nps_alerts", "url": ALERTS, "park_codes": {"semo": ["semo"], "lecl": ["lc-trust", "lcthf"]}},
+        {"key": "nps_todo", "url": THINGS_TO_DO, "key_fields": ["id", "url"]},
         {"key": "guide_pages", "url": f"{SITE}/trails/"},
         {"key": "club_hikes", "url": f"{SITE}/wp-json/wp/v2/hikes"},
         {"key": "wiki_notices", "url": WIKI, "template": "Template:Announcement"},
@@ -304,8 +306,41 @@ def test_a_repeated_nps_id_refuses_the_read(registry, key, requests_mock):
     """Repeated on the second read as well, so the list is refused and its last committed table stands."""
     requests_mock.get(AUDIO, json={"total": "2", "data": [clip(1), clip(1)]})
 
-    with pytest.raises(RuntimeError, match="missing or repeated"):
+    with pytest.raises(RuntimeError, match="id .* is repeated within one read, the copies exact"):
         list(NpsContent(key="nps_audio", club="nps", type="podcasts").rows({}))
+    assert requests_mock.call_count == 2, "read twice, then refused"
+
+
+def thing_to_do(n: int, url: str, title: str | None = None) -> dict:
+    return {"id": "00000000-0000-4000-8000-000000001360", "url": url, "title": title or f"Fixture Hike {n}"}
+
+
+def test_an_nps_list_keyed_on_id_and_url_lands_two_things_to_do_that_share_an_id(registry, key, requests_mock, capsys):
+    """Monthly runs 17 to 20 refused nps_things_to_do on one repeated id at pages of 500 and 100, so NPS lists it twice.
+
+    Keyed on `id` and `url`, as its sources.json row now is, two items under one id at two URLs are two items: the
+    list is read once and both land. Before the fix the repeated id refused the list on both reads.
+    """
+    rows = [
+        thing_to_do(1, "https://www.nps.gov/thingstodo/fixture-1.htm"),
+        thing_to_do(2, "https://www.nps.gov/thingstodo/fixture-2.htm"),
+    ]
+    requests_mock.get(THINGS_TO_DO, json={"total": "2", "data": rows})
+    proofs = {}
+
+    landed = list(NpsContent(key="nps_todo", club="nps", type="suggested_hikes").rows(proofs))
+
+    assert landed == rows and proofs == {"raw_nps__nps_todo": 2}
+    assert requests_mock.call_count == 1 and "reading the list again" not in capsys.readouterr().out
+
+
+def test_two_nps_copies_of_one_id_and_url_that_differ_in_title_are_refused_naming_the_field(registry, key, requests_mock):
+    """The key holds `url` too, but one key on two different items still refuses, as JsonFeatures' differing copies do."""
+    same = "https://www.nps.gov/thingstodo/fixture-1.htm"
+    requests_mock.get(THINGS_TO_DO, json={"total": "2", "data": [thing_to_do(1, same), thing_to_do(2, same)]})
+
+    with pytest.raises(RuntimeError, match=r"id / url .* is repeated within one read, the copies differing in title\b"):
+        list(NpsContent(key="nps_todo", club="nps", type="suggested_hikes").rows({}))
     assert requests_mock.call_count == 2, "read twice, then refused"
 
 

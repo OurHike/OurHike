@@ -38,6 +38,7 @@ Crawl-delay where the registry row records one (extract/_notices.py's polite()).
 
 from __future__ import annotations
 
+import json
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from urllib.parse import urlencode
@@ -199,7 +200,23 @@ NPS_CONTENT_COLUMNS = {
 
 
 class RepeatedId(RuntimeError):
-    """An NPS list served an id it had already served within one read: its order moved at a page boundary."""
+    """An NPS list served a key it had already served within one read: a page served twice, or two items under one key."""
+
+
+def _repeated(fields: list[str], value: str, first: dict, again: dict) -> str:
+    """The refusal's words for two items under one key: the key, and the names of the fields the two differ in.
+
+    Names only, never what either copy holds, so no person field's value reaches a log (decision 59).
+    """
+    differing = sorted(
+        name
+        for name in {*first, *again}
+        if json.dumps(first.get(name), sort_keys=True) != json.dumps(again.get(name), sort_keys=True)
+    )
+    copies = f"the copies differing in {', '.join(differing)}" if differing else "the copies exact"
+    return (
+        f"{' / '.join(fields)} {value!r} is repeated within one read, {copies}: a page served twice, or two items under one key"
+    )
 
 
 def nps_content_url(base: str, park_codes: list[str], start: int, limit: int = NPS_CONTENT_PAGE_SIZE) -> str:
@@ -216,8 +233,11 @@ class NpsContent(_json_apis.NpsAlerts):
     header: with the variable unset the change check raises Unavailable, so the run leaves the resource out
     and the table is withdrawn, never read as an empty list. No change check otherwise (the API sends no
     validators), so every run reads the list. THE ZERO and THE COUNT are the answer's own `total`, read on
-    every page: a total that moves within one read, a missing `id`, a repeated one on a second read (the first
+    every page: a total that moves within one read, a missing `id`, a repeated key on a second read (the first
     is read again, `rows`), or a read that ends short of the total raises, and the last good table stands.
+    The key is the registry row's `key_fields`, the fields staging keys the table on (`id` where it names
+    none), so two items NPS lists under one `id` at two URLs land on a key of `id` and `url`, and two copies of
+    one key still refuse, naming the fields they differ in and never the values (_repeated).
 
     THE SCOPE is the registry row's: national when it names no park codes, or the codes another row lists in
     `park_codes`, named by `park_codes_from` (nps_alerts' map, the one home for which club folder draws on
@@ -238,6 +258,11 @@ class NpsContent(_json_apis.NpsAlerts):
     def person_fields(self) -> frozenset[str]:
         return frozenset(self.entry.get("person_fields") or ())
 
+    @property
+    def key_fields(self) -> list[str]:
+        """The fields one item is told apart by: the row's `key_fields`, as JsonFeatures' _copies reads them."""
+        return list(self.entry.get("key_fields") or ["id"])
+
     def column_hints(self) -> dict:
         path = self.entry["url"].rstrip("/").split("/api/v1/", 1)[-1]
         # Every list titles its rows but the stamp locations, which label them (`label`, hinted below).
@@ -246,7 +271,7 @@ class NpsContent(_json_apis.NpsAlerts):
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        """Every row, read once more where the first read met an id it had already read; refused if the second does too.
+        """Every row, read once more where the first read met a key it had already read; refused if the second does too.
 
         NPS's start/limit order wobbled at a page boundary in monthly runs 17
         and 18 (refresh-reference.yml 37232256991 and 37245577210), and
@@ -256,12 +281,17 @@ class NpsContent(_json_apis.NpsAlerts):
         extract/_ogc.py's JsonFeatures._consistent_read does; a second read
         that repeats an id too is refused, so a list one item short never
         lands, and the last committed table stands.
+
+        That id was not a wobble: runs 19 and 20 (37253303123 and
+        37296900535) refused on it again at pages of 100 rather than 500, run
+        20 on both of its reads, so NPS lists it twice (Reasoned from the
+        four refusals), and nps_things_to_do now keys on `id` and `url`.
         """
         headers = {"X-Api-Key": _json_apis.nps_api_key(), "Accept": "application/json"}
         try:
             collected, total = self._read_list(headers)
         except RepeatedId as repeat:
-            print(f"::warning title={self.key} read an id twice::{repeat}; reading the list again, once")
+            print(f"::warning title={self.key} read a key twice::{repeat}; reading the list again, once")
             collected, total = self._read_list(headers)
         proofs[self.table] = total
         left_out = self.person_fields
@@ -270,9 +300,9 @@ class NpsContent(_json_apis.NpsAlerts):
 
     def _read_list(self, headers: dict) -> tuple[list[dict], int]:
         """One whole read of the list, page by page, held to the `total` every page states."""
-        base, codes = self.entry["url"].rstrip("/"), self.park_codes
+        base, codes, fields = self.entry["url"].rstrip("/"), self.park_codes, self.key_fields
         collected: list[dict] = []
-        seen: set[str] = set()
+        seen: dict[str, dict] = {}
         total: int | None = None
         start = 0
         for _ in range(NPS_CONTENT_MAX_PAGES):
@@ -287,10 +317,12 @@ class NpsContent(_json_apis.NpsAlerts):
                 raise RuntimeError(f"{self.key}: NPS counted {total} rows and then {page_total} within one read")
             for row in body["data"]:
                 row_id = row.get("id") if isinstance(row, dict) else None
-                if not row_id or row_id in seen:
-                    refusal = RepeatedId if row_id else RuntimeError  # a row with no id is the API changing shape
-                    raise refusal(f"{self.key}: id {row_id!r} is missing or repeated, so a page was served twice")
-                seen.add(row_id)
+                if not row_id:
+                    raise RuntimeError(f"{self.key}: id {row_id!r} is missing, so the API has changed shape")
+                value = " / ".join(str(row.get(field)) for field in fields)  # as JsonFeatures' _copies joins it
+                if value in seen:
+                    raise RepeatedId(f"{self.key}: {_repeated(fields, value, seen[value], row)}")
+                seen[value] = row
                 collected.append(row)
             if not body["data"] or len(collected) >= total:
                 break

@@ -64,10 +64,13 @@ DuckDB's whole memory limit to itself. Monthly run 20 (refresh-reference.yml
 37296900535) failed at "what derived.poi_photos unblocks" with
 int_places__resolved and int_trail_network__cuts building side by side:
 "Out of Memory Error: failed to allocate data of size 16.0 MiB (12.5 GiB/12.4
-GiB used)" (its log, 2026-10-05). That each of the two fits in the limit on
-its own is @unvalidated until a monthly run passes that build: run 20's cuts
-reached the limit 23 s after resolved had already failed (the log's
-timestamps). dbt has no per-model setting that keeps two
+GiB used)" (its log, 2026-10-05). Alone was not enough: monthly run 21
+(37323395441) built each of them by itself, the rest of the step waiting on
+it, and each ran out the same way, so both queries were rewritten to hold
+less (each model's own header says how, and what it was measured on). That
+either now fits in the limit is @unvalidated until a monthly run passes that
+build; the tag stays, so neither shares the limit while that is unknown.
+dbt has no per-model setting that keeps two
 table models apart: `concurrent_batches` is a microbatch model's, about its
 own batches. So every dbt build here but the writers' and the hourly lane's
 is split into up to three, each keeping the build's selection and excludes:

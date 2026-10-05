@@ -386,6 +386,17 @@ vars:
   # "nearby". The long-trail threshold is TL12's,
   # trail_lines_network_named_trail_threshold_miles above.
   places_trail_radius_miles: 5.0
+  # The most vertices one piece of a park polygon holds when
+  # int_places__resolved measures the lines inside it (its "MEMORY" note):
+  # a bigger polygon is halved until no piece has more, so a park crossed by
+  # many lines is never held whole once per line. @unvalidated: 1,024 keeps a
+  # 2,048-row chunk near 35 MB of polygon (Reasoned, from 16.8 bytes a
+  # vertex a row, measured 2026-10-05 on synthetic rows), and was never
+  # timed on real parks; a monthly build timed at 256, 1,024 and 4,096
+  # settles it. Never below 5, the points of the smallest closed ring: a
+  # piece that cannot get under it is halved until piece_halvings stops it.
+  # A unit test sets it to 5 so the fixtures' small polygons are cut too.
+  places_piece_vertices: 1024
 
   # The suggested_hikes family (sh), read by the int_suggested_hikes__ models
   # and the pub_suggested_hikes and pub_highlights writers, and held to the

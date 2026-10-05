@@ -496,6 +496,37 @@ unit_tests:
     expect:
       rows:
         - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Pine State Park", "poi_id": null, "category": "State Park", "state": "NY", "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": "[-74.0,41.0,-73.9232,41.05788]", "trail_miles": "3.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
+  - name: places_a_park_cut_into_pieces_carries_the_same_miles_as_the_whole_polygon
+    model: int_places__resolved
+    description: >
+      The park of places_a_park_carries_the_miles_of_published_line_inside_its_boundary,
+      drawn with 17 points rather than 5, measured with places_piece_vertices
+      at 5 so the polygon is halved into pieces (int_places__resolved's
+      "MEMORY" note) and the line crossing it is measured piece by piece:
+      the same 3.0 miles, centroid and box as the uncut park.
+    # A dbt 2.0.6 unit test's vars are its overrides alone, so every var the
+    # model reads is listed, as places_a_point_s_miles_are_bounded_by_places_trail_radius_miles lists them.
+    overrides:
+      vars:
+        places_trail_radius_miles: 5.0
+        trail_lines_network_named_trail_threshold_miles: 50.0
+        places_piece_vertices: 5
+    given:
+      - input: ref('int_places__park_units')
+        rows:
+          - {"place_id": "oprhp_park_polygons:g1", "name": "Pine State Park", "category": "State Park", "state": "NY", "unit_order": 0, "polygons": 1, "park_wkt": "POLYGON ((-74.0 41.0, -73.9808 41.0, -73.9616 41.0, -73.9424 41.0, -73.9232 41.0, -73.9232 41.01447, -73.9232 41.02894, -73.9232 41.04341, -73.9232 41.05788, -73.9424 41.05788, -73.9616 41.05788, -73.9808 41.05788, -74.0 41.05788, -74.0 41.04341, -74.0 41.02894, -74.0 41.01447, -74.0 41.0))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Pine Trail", "trail_name": "Pine Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9904, 41.02894], [-73.9328, 41.02894]]}"}
+          - {"trail_line_id": "oprhp_trails:2", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Far Trail", "trail_name": "Far Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.808, 41.0], [-73.76960000000001, 41.0]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Pine State Park", "poi_id": null, "category": "State Park", "state": "NY", "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": "[-74.0,41.0,-73.9232,41.05788]", "trail_miles": "3.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
   - name: places_a_park_centres_on_its_centroid_and_carries_its_bbox
     model: int_places__resolved
     description: >
@@ -732,6 +763,7 @@ unit_tests:
       vars:
         places_trail_radius_miles: 3.0
         trail_lines_network_named_trail_threshold_miles: 50.0
+        places_piece_vertices: 1024
     given:
       - input: ref('int_places__park_units')
         rows: []

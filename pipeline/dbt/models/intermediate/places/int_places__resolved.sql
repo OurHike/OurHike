@@ -8,7 +8,7 @@
 {%- set threshold = var('trail_lines_network_named_trail_threshold_miles') %}
 {#- The most vertices a measured piece of a polygon holds, and the most
     times one polygon is halved ("MEMORY" below). -#}
-{%- set piece_vertices = 1024 %}
+{%- set piece_vertices = var('places_piece_vertices') %}
 {%- set piece_halvings = 32 %}
 -- Every row places.json publishes, measured, in file order:
 -- export_places.py's load_named_trails(), measure() and the end of
@@ -65,7 +65,7 @@
 -- one 50,001-vertex polygon peaked at 0.78 GiB (16.8 bytes a vertex a
 -- row), where ST_Intersects on the same rows took 0.01 GiB. Which real
 -- polygons did that in run 21 is unmeasured. So a park or club park of
--- more than `piece_vertices` vertices (set at the top) is halved across
+-- more than `piece_vertices` vertices (places_piece_vertices) is halved across
 -- its longer side, and each half again, until no piece has more
 -- (polygon_pieces), and the lines are measured against the pieces: at
 -- 1,024 a row holds at most about 17 kB of polygon, 35 MB for a chunk

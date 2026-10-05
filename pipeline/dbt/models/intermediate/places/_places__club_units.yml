@@ -104,6 +104,7 @@ unit_tests:
       vars:
         places_trail_radius_miles: 5.0
         trail_lines_network_named_trail_threshold_miles: 50.0
+        places_piece_vertices: 1024
     given:
       - input: ref('int_places__park_units')
         rows: []

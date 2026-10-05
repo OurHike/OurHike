@@ -84,6 +84,7 @@ from extract._run import (
     make_pipeline,
     proven_zero,
     raw_store_url,
+    run_log_bytes,
     run_log_rows,
     table_files,
     table_listing,
@@ -372,18 +373,20 @@ def served_copies(fs, bucket_url: str) -> list[str]:
     return sorted({os.path.basename(os.path.dirname(path.rstrip("/"))) for path in found}, reverse=True)
 
 
-def _log_arrow(pipeline, tables: set[str]) -> pa.Table | None:
+def _log_arrow(pipeline, tables: set[str], cache: Path | None = None) -> pa.Table | None:
     """`_extract_runs` as dlt wrote it, every file, with its column types, less the rows of tables not in `tables`.
 
     Kept as Arrow, never as Python rows, so a column that is null on every
     row keeps the type dlt declared for it (RUNS_COLUMNS) instead of landing
-    as DuckDB's INTEGER.
+    as DuckDB's INTEGER. With `cache`, a file the extract step kept there is
+    read from it, not from the store again (extract/_run.py's run_log_bytes()).
     """
-    client = _client(pipeline)
     files = table_files(pipeline, RUNS_TABLE)
     if not files:
         return None
-    arrow = pa.concat_tables([pq.read_table(client.fs_client.open(path)) for path in files], promote_options="permissive")
+    arrow = pa.concat_tables(
+        [pq.read_table(io.BytesIO(run_log_bytes(pipeline, path, cache))) for path in files], promote_options="permissive"
+    )
     return arrow.filter(pc.is_in(arrow["table_name"], value_set=pa.array(sorted(tables), pa.string())))
 
 
@@ -406,7 +409,7 @@ class ServedWrite:
     problems: list[str] = field(default_factory=list)
 
 
-def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrite:
+def write_served_copy(pipeline, bucket_url: str, tables: set[str], run_log_cache: Path | None = None) -> ServedWrite:
     """Copy what a build reads of this leg, as of its newest run, to `<bucket-url>/served/<run_id>/`, manifest last.
 
     WRITE-ONCE, as a pin is: a copy that exists is read back, never rewritten.
@@ -426,10 +429,11 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrit
     (WF2 in PR #1805's review).
 
     Then every finished copy past the newest SERVED_KEEP is deleted, and so
-    is any unfinished one older than this.
+    is any unfinished one older than this. `run_log_cache` is the extract
+    step's --run-log-cache, so the run log is read from the store once a run.
     """
     fs = _client(pipeline).fs_client
-    log_arrow = _log_arrow(pipeline, tables)
+    log_arrow = _log_arrow(pipeline, tables, run_log_cache)
     if log_arrow is None or log_arrow.num_rows == 0:
         raise BuildRefused("the run log holds no run of this leg's tables, so there is nothing to serve")
     log = log_arrow.to_pylist()
@@ -999,7 +1003,7 @@ def _leg_command(args) -> int:
                 handle.write(text)
 
     if args.command == "serve":
-        written = write_served_copy(pipeline, bucket_url, tables)
+        written = write_served_copy(pipeline, bucket_url, tables, args.run_log_cache)
         manifest = written.manifest
         rows = sum(entry["rows"] for entry in manifest["tables"].values())
         verb = "copied" if written.wrote else "was already copied, so it was read back and not rewritten:"
@@ -1097,7 +1101,10 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--summary", type=Path, help="append what was copied or read, as Markdown, to this file")
         return command
 
-    add_leg("serve", "after a leg's run: copy what a build reads of it under <bucket-url>/served/<run_id>/ (write-once)")
+    serve = add_leg("serve", "after a leg's run: copy what a build reads of it under <bucket-url>/served/<run_id>/ (write-once)")
+    serve.add_argument(
+        "--run-log-cache", type=Path, help="the extract step's --run-log-cache: run log files read there, not from the store"
+    )
     served = add_leg("add-served", "add a leg's newest readable served copy to --warehouse, beside what is there")
     served.add_argument("--warehouse", type=Path, required=True)
     served.add_argument(

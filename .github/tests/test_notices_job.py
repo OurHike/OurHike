@@ -139,6 +139,14 @@ def test_the_notices_job_extracts_into_its_legs_store_copies_it_and_publishes_no
     assert names.index(EXTRACT_STEP) < names.index(SERVE_STEP) and "if" not in serve, "copied only after a run that loaded"
 
 
+def test_the_copy_step_reads_the_run_log_the_extract_step_kept_rather_than_the_store_again():
+    """EXR-5 and ARCH-10 in PR #1805's review: each run log file is a GET on R2, one more every run, and the copy
+    step read them all straight after the extract step had."""
+    extract, serve = _step(NOTICES, "extract", EXTRACT_STEP), _step(NOTICES, "extract", SERVE_STEP)
+    (kept,) = re.findall(r'--run-log-cache "([^"]+)"', extract["run"])
+    assert re.findall(r'--run-log-cache "([^"]+)"', serve["run"]) == [kept] and kept.startswith("$RUNNER_TEMP/")
+
+
 @pytest.mark.parametrize(("status", "outcome", "partial"), [(0, 0, None), (3, 0, "true"), (1, 1, None)])
 @pytest.mark.parametrize("name", [EXTRACT_STEP, SERVE_STEP])
 def test_a_source_refused_on_its_own_still_lets_the_run_copy_and_then_turns_it_red(tmp_path, name, status, outcome, partial):

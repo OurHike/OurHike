@@ -224,7 +224,8 @@ jobs:
         run: |
           set +e
           "$RUNNER_TEMP/extract/bin/python" -m extract._run --lane "$LEG" --raw-bucket "$R2_RAW_BUCKET" \
-            --read-seconds 1800 --pipelines-dir "$RUNNER_TEMP/dlt" --summary "$GITHUB_STEP_SUMMARY"
+            --read-seconds 1800 --pipelines-dir "$RUNNER_TEMP/dlt" --summary "$GITHUB_STEP_SUMMARY" \
+            --run-log-cache "$RUNNER_TEMP/run_log"
           status=$?
           set -e
           if [ "$status" -eq 3 ]; then
@@ -240,7 +241,10 @@ jobs:
       # last step turns the run red. Five minutes: the copy is one read and
       # one write of each of the leg's tables (soak run 508 read 92 conditions
       # tables, 11,999 rows, in about 55 s one at a time), @unvalidated
-      # against R2 at this job's size.
+      # against R2 at this job's size. --run-log-cache is the extract step's:
+      # the run log's files, one per past run and each a GET on R2, are read
+      # from the runner's disk, so this job reads them from the store once
+      # (extract/_run.py's run_log_bytes()).
       - name: Copy what the hourly build reads of this leg
         id: serve
         timeout-minutes: 5
@@ -254,7 +258,7 @@ jobs:
         run: |
           set +e
           "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse serve --lane "$LEG" --raw-bucket "$R2_RAW_BUCKET" \
-            --pipelines-dir "$RUNNER_TEMP/dlt" --summary "$GITHUB_STEP_SUMMARY"
+            --pipelines-dir "$RUNNER_TEMP/dlt" --summary "$GITHUB_STEP_SUMMARY" --run-log-cache "$RUNNER_TEMP/run_log"
           status=$?
           set -e
           if [ "$status" -eq 3 ]; then

@@ -347,6 +347,43 @@ def test_the_command_line_says_when_no_copy_exists_and_when_an_older_one_was_rea
     assert ids(tmp_path / "older.duckdb")[USFS.table] == ["u1", "u2"]
 
 
+def test_a_notices_run_and_its_serve_read_each_run_log_file_from_the_store_once_between_them(
+    stores, command, tmp_path, monkeypatch
+):
+    """EXR-5 and ARCH-10 in PR #1805's review: every `_extract_runs` file is a GET on R2, one file per past run, and
+    the serve step read them all again right after the extract step had. extract-notices.yml hands the serve the
+    extract's read through --run-log-cache, so a notices run reads its run log from the store once."""
+    import fsspec.implementations.local as local
+
+    resources = [USFS, NPS]
+    monkeypatch.setattr(_run, "discover", list)
+    monkeypatch.setattr(_run, "discover_shared", list)
+    monkeypatch.setattr(_run, "all_resources", lambda files: resources)
+    extract = ["--lane", LEG, "--bucket-url", stores["notices"], "--pipelines-dir", stores["dir"]]
+    for _ in range(5):
+        _run.main(extract)
+    cache = str(tmp_path / "run_log")
+    opened = []
+    first_open = local.LocalFileSystem._open
+
+    def counting_open(self, path, mode="rb", *rest, **options):
+        if "r" in mode and "/_extract_runs/" in str(path) and "/served/" not in str(path):
+            opened.append(os.path.basename(str(path)))
+        return first_open(self, path, mode, *rest, **options)
+
+    monkeypatch.setattr(local.LocalFileSystem, "_open", counting_open)
+
+    _run.main([*extract, "--run-log-cache", cache])
+    assert command("serve", "--run-log-cache", cache) == 0
+
+    assert len(opened) == len(set(opened)) == 6, "6 run log files after the sixth run, each read from the store once"
+    copy = (
+        Path(served_root(stores["notices"]))
+        / served_copies(_warehouse._client(notices_pipeline(stores)).fs_client, stores["notices"])[0]
+    )
+    assert pq.read_table(copy / "_extract_runs.parquet").num_rows == len(run_log_rows(notices_pipeline(stores)))
+
+
 def test_the_command_line_serve_exits_partial_when_a_table_was_not_copied_whole(stores, command):
     notices_run(stores, USFS, NPS)
     for path in table_files(notices_pipeline(stores), USFS.table):

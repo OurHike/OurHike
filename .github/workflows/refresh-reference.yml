@@ -487,8 +487,16 @@ jobs:
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        # ONE dbt THREAD. Monthly run 20 (37296900535) was the first live build past
+        # stage A, and its step 13 ("what derived.poi_photos unblocks") failed when
+        # int_places__resolved and int_trail_network__cuts built side by side:
+        # "Out of Memory Error: failed to allocate data of size 16.0 MiB (12.5 GiB/
+        # 12.4 GiB used)", DuckDB's default limit on this 16 GB runner (Measured
+        # 2026-10-05). One thread gives each model the whole limit. What it costs in
+        # build time is @unvalidated until the next monthly run's step times say;
+        # the job's 240 minutes had about 145 left when run 20 stopped.
         run: >-
-          python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
+          python build_marts.py --lane monthly --threads 1 --python "$RUNNER_TEMP/pipeline/bin/python"
           --history-url "s3://$R2_RAW_BUCKET/history/monthly" --history-python "$RUNNER_TEMP/extract/bin/python"
 
       - name: Save dbt's DuckDB driver and v2's spatial extension

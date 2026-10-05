@@ -843,7 +843,30 @@ def definition_digest(resource: Resource) -> str:
     # turning it on changes the geometry a read lands, so the layer is read once more.
     if getattr(resource, "return_z", False):
         definition["return_z"] = True
+    # The same, for two registry fields kinds read outside `field_rules` (EXR-3 in
+    # PR #1805's review): the row's own `person_fields` where WordpressPosts,
+    # PodcastEpisodes and NpsContent read them as a property, so a name added
+    # there stops loading on the next run rather than the club's next edit; and a
+    # sheet's `as_of_label` (extract/_gis_files.py), which decides the date its rows
+    # carry. Only when set, so no other resource's digest moves.
+    if own := sorted(_registry_field(resource, "person_fields") or ()):
+        definition["row_person_fields"] = own
+    if label := _registry_row(resource).get("as_of_label"):
+        definition["as_of_label"] = label
     return hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
+
+
+def _registry_row(resource: Resource) -> dict:
+    """The resource's sources.json row where its kind reads one (`entry`), else {}: a resource built in code has none."""
+    return _registry_field(resource, "entry") or {}
+
+
+def _registry_field(resource: Resource, name: str):
+    """getattr(), with a key no sources.json row carries (registry_entry()'s KeyError) read as no value."""
+    try:
+        return getattr(resource, name, None)
+    except KeyError:
+        return None
 
 
 def recorded_markers(pipeline) -> dict[str, dict | None]:

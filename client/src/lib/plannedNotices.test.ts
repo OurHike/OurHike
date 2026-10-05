@@ -293,8 +293,57 @@ describe('a long hike’s 7-day stretch', () => {
       source_key: 'gmc_trail_conditions',
     })
     const { hikes } = pick([gmc], [tenDayTrip()], [])
-    expect([...hikes[0].stretch.providers].sort()).toEqual(['ATC', 'GMC'])
+    // NOPE is a section acronym no steward lists: it is kept as a provider,
+    // and matches only a notice that carries that exact provider.
+    expect([...hikes[0].stretch.providers].sort()).toEqual(['ATC', 'GMC', 'NOPE'])
     expect(hikes[0].fromClubs.map((n) => n.notice_id)).toEqual(['gmc_trail_conditions:1'])
+  })
+
+  it('shows a section club’s unplaced notice though stewards.json does not list that club', () => {
+    // stewards.json changes only with a release and notices.json hourly: on
+    // UA's release 2026-10-03-2, 29 of the 30 section acronyms were in no
+    // steward row, so their clubs' notices were dropped here.
+    const unlisted = notice({
+      notice_id: 'nope_alerts:1',
+      source_key: 'nope_alerts',
+      provider: 'NOPE',
+      steward_kind: 'club',
+    })
+    const { hikes } = pick([unlisted], [tenDayTrip()], [])
+    expect(hikes[0].fromClubs.map((n) => n.notice_id)).toEqual(['nope_alerts:1'])
+  })
+
+  it('reads a chapter’s section acronym (AMC-WMA) as its club’s provider (AMC)', () => {
+    const chapter: ClubSections = {
+      ...SECTIONS,
+      clubs: [
+        {
+          acronym: 'AMC-WMA',
+          name: 'Fixture chapter',
+          region: null,
+          runs: [{ startMile: 20, endMile: 69 }],
+          miles: 49,
+        },
+      ],
+    }
+    const amc = notice({
+      notice_id: 'amc_fixture:1',
+      source_key: 'amc_fixture',
+      provider: 'AMC',
+      steward_kind: 'club',
+    })
+    const { hikes } = plannedNotices({
+      notices: [amc],
+      trips: [tenDayTrip()],
+      dayHikes: [],
+      today: TODAY,
+      trailIndex: INDEX,
+      routeDayHike: null,
+      clubSections: chapter,
+      stewards: STEWARDS,
+    })
+    expect([...hikes[0].stretch.providers].sort()).toEqual(['AMC', 'ATC'])
+    expect(hikes[0].fromClubs.map((n) => n.notice_id)).toEqual(['amc_fixture:1'])
   })
 })
 
@@ -595,6 +644,48 @@ describe('a day hike', () => {
       'BTA',
       'NYS OPRHP',
     ])
+  })
+
+  /** A day hike up the fixture centerline from lat 34.05 to 34.15, about
+   *  miles 3.5 to 10.4: inside GMC's section (0 to 20). */
+  function onTheAt(source = 'centerline'): DayHike {
+    return dayHike(TODAY, {
+      segments: [
+        [
+          { coord: [-77, 34.05], poiId: null },
+          { coord: [-77, 34.15], poiId: null },
+        ],
+      ],
+      figures: {
+        miles: 7,
+        legs: [{ name: 'Appalachian Trail', source, blaze_color: 'White', miles: 7 }],
+      },
+    })
+  }
+  const gmc = notice({
+    notice_id: 'gmc_trail_conditions:1',
+    source_key: 'gmc_trail_conditions',
+  })
+
+  it('on the A.T. takes the clubs whose sections hold its A.T. miles', () => {
+    const { hikes } = pick([gmc], [], [onTheAt()])
+    expect([...hikes[0].stretch.providers].sort()).toEqual(['ATC', 'GMC', 'NOPE'])
+    expect(hikes[0].fromClubs.map((n) => n.notice_id)).toEqual(['gmc_trail_conditions:1'])
+  })
+
+  it('beside the A.T. on another trail takes no A.T. club, and none without the centerline loaded', () => {
+    expect(pick([gmc], [], [onTheAt('oprhp_trails')]).hikes[0].fromClubs).toEqual([])
+    const noIndex = plannedNotices({
+      notices: [gmc],
+      trips: [],
+      dayHikes: [onTheAt()],
+      today: TODAY,
+      trailIndex: null,
+      routeDayHike: null,
+      clubSections: SECTIONS,
+      stewards: STEWARDS,
+    })
+    expect([...noIndex.hikes[0].stretch.providers]).toEqual(['ATC'])
   })
 })
 

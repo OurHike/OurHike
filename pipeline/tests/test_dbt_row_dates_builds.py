@@ -10,7 +10,9 @@ every row reloaded with a new `_dlt_id` and `_loaded_at`, as a dlt reload
 stamps them. Then:
 
 (a) A keeps the `_changed_at` and `_first_seen_at` build 1 gave it, so the
-    load's own columns do not count as a change (macros/row_hash.sql);
+    load's own columns do not count as a change (macros/row_hash.sql), and
+    its `_loaded_at` is build 2's load, not the one that opened its version
+    (macros/row_history.sql's row_history_refresh());
 (b) B's `_changed_at` moves to build 2's time while its `_first_seen_at`
     stays at build 1's;
 (c) C leaves the mart, and its version in int_podcasts__history gets a
@@ -123,6 +125,13 @@ _DATES = "timezone('UTC', _first_seen_at), timezone('UTC', _changed_at)"
 _DATE_TYPES = "select distinct typeof(_first_seen_at), typeof(_changed_at) from marts.podcasts_v1"
 
 
+def _loaded(warehouse: Path) -> dict[str, object]:
+    return {
+        title[0]: loaded
+        for title, loaded in _query(warehouse, "select title, timezone('UTC', _loaded_at) from marts.podcasts_v1")
+    }
+
+
 def _dates(warehouse: Path) -> dict[str, tuple]:
     rows = _query(warehouse, f"select title, {_DATES} from marts.podcasts_v1")
     return {title[0]: (first, changed) for title, first, changed in rows}
@@ -159,6 +168,8 @@ def builds(tmp_path_factory) -> dict:
         "first": _dates(one),
         "types": _query(one, _DATE_TYPES),
         "second": _dates(two),
+        "first_loaded": _loaded(one),
+        "second_loaded": _loaded(two),
         "versions": versions,
         "restored": restored,
         "pointer": json.loads((root / "history" / row_history.POINTER).read_text()),
@@ -174,6 +185,10 @@ def test_the_second_build_restored_the_first_builds_history_into_its_fresh_wareh
 
 def test_a_row_reloaded_unchanged_keeps_its_changed_at_and_first_seen_at(builds):
     assert builds["second"]["A"] == builds["first"]["A"]
+
+
+def test_a_row_reloaded_unchanged_carries_the_second_loads_loaded_at(builds):
+    assert builds["second_loaded"]["A"] > builds["first_loaded"]["A"], "the mart's _loaded_at froze at build 1's load"
 
 
 def test_an_edited_row_moves_its_changed_at_to_the_second_build_and_keeps_its_first_seen_at(builds):

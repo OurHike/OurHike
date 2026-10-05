@@ -20,7 +20,7 @@
 // identified nothing.
 
 import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
-import { POI_DOT_LAYER_ID, POI_ID_PROPERTY } from './poiLayers'
+import { POI_DOT_LAYER_ID, POI_ID_PROPERTY } from './poiLayerIds'
 import { warningIdAt } from './warningLayers'
 import { closureIdAt } from './closureLayers'
 import { atcBandIdAt } from './atcUpdateLayers'

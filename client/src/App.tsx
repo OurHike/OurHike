@@ -519,7 +519,7 @@ import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
 } from './chrome/waypointFiltersPanel'
-import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiLayers'
+import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiLayerIds'
 import { useTappedLinePanel } from './chrome/tappedLinePanel'
 import {
   paceEstimate,
@@ -545,7 +545,7 @@ import {
   type PlannedHike,
 } from './lib/plannedHike'
 import { closureBands } from './map/closureLayers'
-import { corridorWithHighlights, EMPTY_CORRIDOR } from './map/corridorLayers'
+import { corridorWithHighlights, EMPTY_CORRIDOR } from './map/corridorFeatures'
 import {
   isSeriousWarning,
   placeAll,

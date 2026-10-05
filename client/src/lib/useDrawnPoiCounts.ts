@@ -35,7 +35,7 @@ import { useEffect, useState } from 'react'
 import { drawnPoiCounts, type DrawnPoiMap } from '../map/drawnPois'
 import { drawsNearbyTrails } from '../map/drawnBlazes'
 import { CHOSEN_SYSTEM_SOURCES } from '../map/nearbyTrails'
-import { POI_LAYER_ID, POI_PIN_MIN_ZOOM, POI_SOURCE_ID } from '../map/poiLayers'
+import { POI_LAYER_ID, POI_PIN_MIN_ZOOM, POI_SOURCE_ID } from '../map/poiLayerIds'
 import { poiIconId } from '../map/poiIcons'
 import { onSettled } from '../map/settle'
 

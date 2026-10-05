@@ -423,16 +423,20 @@ if (serviceWorker !== undefined) {
 // is 240 KB: 16,615 bytes of room over that figure, the same order of room
 // 250 had over the first, with features/LAUNCH_BUDGET.md §4.4 naming what
 // can still leave (the entry card, the planning modules behind their hooks,
-// four layer builders reached for an id, Capacitor). The line follows the
-// closure down as each cut lands; it does not lead it. What an absolute
-// line still cannot do is tell organic growth from a drift smaller than the
-// room left; a check against `main`'s own figure would, and is #1591's open
-// half.
+// four layer builders reached for an id, Capacitor). The four builders left
+// on 2026-10-05 - 245,500 to 241,580 bytes on a plain build of
+// claude/intelligent-feynman-sw3ewm, by this walk - and EAGER_FORBIDDEN
+// below names each of them; the line did not move with them, because moving
+// it is the maintainer's call (features/LAUNCH_BUDGET.md §3). The line
+// follows the closure down as each cut lands; it does not lead it. What an
+// absolute line still cannot do is tell organic growth from a drift smaller
+// than the room left; a check against `main`'s own figure would, and is
+// #1591's open half.
 const EAGER_JS_BUDGET_BYTES = 240 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
 /**
- * Three more modules the eager closure must not carry, each named by a string
+ * Seven more modules the eager closure must not carry, each named by a string
  * only it holds (#1591). The MapLibre markers above catch the engine; these
  * catch the #1300 shape one size down, which the byte budget alone cannot
  * tell from the shell growing: a constant read out of a screen-sized module
@@ -444,6 +448,17 @@ const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
  * a leaf (map/styleIds.ts, map/sheetInks.ts, map/sheets.ts, map/heldCells.ts,
  * map/archiveUrls.ts) and the module that builds layers or reads archives
  * stays behind import().
+ *
+ * The last four are the layer builders §4.4's table still listed, taken out
+ * the same way on 2026-10-05: map/poiLayers.ts for six ids and zooms,
+ * map/corridorLayers.ts for the corridor's GeoJSON shaping, and
+ * map/dayHikeLayers.ts for two casing ids - with map/routeLayers.ts behind
+ * it, through ROUTE_INK. Measured that day by the same attribution, against
+ * a plain `vite build` of claude/intelligent-feynman-sw3ewm at 5a9532b6: the
+ * four were 12,226 raw bytes of the closure and the modules only they
+ * reached (map/stalenessRing.ts, map/poiCrowding.ts, map/poiIconImages.ts)
+ * 2,458 more. Each marker is a layer id or feature property the builder
+ * writes and no leaf holds.
  */
 const EAGER_FORBIDDEN = [
   {
@@ -460,6 +475,27 @@ const EAGER_FORBIDDEN = [
     marker: 'Wrong magic number for PMTiles archive',
     what: 'the pmtiles library, through a tile handler or map/protocol.ts',
     where: 'map/heldCells.ts for the cell setters, map/archiveUrls.ts for a URL',
+  },
+  {
+    marker: 'ring_lift',
+    what: 'the waypoint layer builder (map/poiLayers.ts)',
+    where: 'map/poiLayerIds.ts for a source or layer id, or the pin seam zoom',
+  },
+  {
+    marker: 'corridor-unattributed-casing',
+    what: 'the corridor layer builder (map/corridorLayers.ts)',
+    where: "map/corridorFeatures.ts for the corridor's GeoJSON and its kinds",
+  },
+  {
+    marker: 'day-hike-mile-tick-labels',
+    what: 'the day-hike layer builder (map/dayHikeLayers.ts)',
+    where: 'map/dayHikeLayerIds.ts for a casing layer id',
+  },
+  {
+    marker: 'route_point_role',
+    what: 'the route layer builder (map/routeLayers.ts)',
+    where:
+      'a new one beside it, as map/dayHikeLayerIds.ts is beside map/dayHikeLayers.ts',
   },
 ]
 

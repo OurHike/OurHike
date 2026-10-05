@@ -431,6 +431,8 @@ unit_tests:
           - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
       - input: ref('stg_derived__long_path_guide')
         rows: []
+      - input: ref('int_points_of_interest__gatc_water')
+        rows: []
     expect:
       rows:
         - {poi_id: 'fmst_primary_trailheads:dated', description: 'From the club''s sheet, which says it is current as of 8/12/2026.'}

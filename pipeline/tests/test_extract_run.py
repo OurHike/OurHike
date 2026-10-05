@@ -943,6 +943,47 @@ def test_no_staff_column_lands_under_any_name_and_the_dates_beside_them_still_do
     assert "['CreatedBy', 'LAST_EDITOR', 'LastEdBy', 'LastEdited', 'TELEPHONE']" in printed, printed
 
 
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"error": {"code": 500, "message": "Service Waypoints/FeatureServer not started"}},
+        {"objectIdField": "OBJECTID"},
+    ],
+    ids=["an error body", "no field list"],
+)
+def test_a_layer_whose_metadata_names_no_fields_is_refused_before_any_page_is_asked_for_every_field(
+    registry, requests_mock, metadata
+):
+    """With no field list nothing could be left out of the request, so it would have asked outFields=* (review finding EXD-2)."""
+    layer = StaffedLayer(requests_mock, STAFFED_URL, [staffed_feature(1)])
+    requests_mock.get(STAFFED_URL, json=metadata)
+
+    with pytest.raises(RuntimeError, match="no field list"):
+        list(staffed().rows({}))
+    asked_pages = [r for r in requests_mock.request_history if "outfields" in r.qs]
+    assert asked_pages == [], [r.qs["outfields"] for r in asked_pages]
+    assert layer.features, "the layer had a staffed row to give"
+
+
+def test_a_staff_column_the_metadata_does_not_list_still_never_lands(registry, requests_mock):
+    """A row can carry a field its layer document leaves out; the name rules judge it at the row, as they do in the field list."""
+    StaffedLayer(requests_mock, STAFFED_URL, [staffed_feature(1)])
+    requests_mock.get(
+        STAFFED_URL,
+        json={
+            "objectIdField": "OBJECTID",
+            "fields": [field for field in STAFFED_FIELDS if field["name"] in ("OBJECTID", "NAME")],
+        },
+    )
+
+    rows = list(staffed().rows({}))
+
+    # `last_edited_date` goes too: unlisted, its type is unknown, so it is judged by its editor-shaped name.
+    assert set(rows[0]) == {"OBJECTID", "NAME", "LastEdit_1", "Surveyor", "geometry"}, rows[0]
+    assert "GPS A. Person" not in json.dumps(rows), "the row's person_fields, `source`, is judged by name too"
+    assert "555-0100" not in json.dumps(rows)
+
+
 def test_a_name_added_to_a_rows_person_fields_reads_an_unmoved_layer_again(registry, monkeypatch):
     """The row's lists live in sources.json, not in the resource, so definition_digest() has to read them itself."""
     before = _run.definition_digest(staffed())

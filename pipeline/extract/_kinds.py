@@ -191,6 +191,27 @@ def _name_words(name: str) -> str:
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
 
 
+def left_out_of_row(name: str, listed: set[str], dropped: dict[str, str], rules: dict[str, list[str]]) -> bool:
+    """Whether an ArcGIS row's property never lands: dropped from the field list, or, if the list never named it, by name.
+
+    `listed` and `dropped` are the layer metadata's field names and
+    ArcgisLayer.dropped_fields' verdicts on them, lower-cased; `rules` is the
+    row's field_rules. A property the metadata did not list is judged by the
+    name rules alone (PERSON_FIELDS, the row's `person_fields`, and
+    PERSON_SHAPED unless `not_person_fields` clears it), since without its
+    type even a date named like an editor cannot be told from one: it is left
+    out, which costs a column, never a person (review finding EXD-2).
+    """
+    lower = name.lower()
+    if lower in dropped or lower in PERSON_FIELDS:
+        return True
+    if lower in listed:
+        return False
+    return lower in rules["person_fields"] or (
+        lower not in rules["not_person_fields"] and bool(PERSON_SHAPED.search(_name_words(name)))
+    )
+
+
 # ArcGIS field types -> dlt data types. Hinting every column from the layer's
 # own `fields` is what makes a column that is null on every row exist at all
 # (dlt creates no column it never saw a value for; measured 2026-10-01, ELT.md
@@ -527,9 +548,17 @@ class ArcgisLayer(Resource):
         """
         named = session()
         metadata = self.metadata(self.read_backoff)
+        fields = [field.get("name") for field in metadata.get("fields") or [] if isinstance(field, dict) and field.get("name")]
+        if metadata.get("error") or not fields:
+            # ArcGIS answers many errors with HTTP 200 and an `error` object (page_refusal()), and a layer
+            # document without its field list names nothing to leave out: asking "*" then would send every
+            # person field this layer has (review finding EXD-2). Refused, so the last committed table stands.
+            said = metadata.get("error") or "no `fields` key"
+            raise RuntimeError(f"{self.key}: the layer's metadata answered no field list ({said}), so nothing could be left out")
         dropped = self.dropped_fields(metadata)
-        fields = [field.get("name") for field in metadata.get("fields") or [] if field.get("name")]
         kept = [name for name in fields if name.lower() not in dropped]
+        listed = {name.lower() for name in fields}
+        rules = self.field_rules
         shaped = sorted(name for name in fields if dropped.get(name.lower()) == "a person-shaped name")
         if shaped:
             print(
@@ -565,7 +594,7 @@ class ArcgisLayer(Resource):
                 row = {
                     name: value
                     for name, value in (feature.get("properties") or {}).items()
-                    if name.lower() not in dropped and name.lower() not in PERSON_FIELDS
+                    if not left_out_of_row(name, listed, dropped, rules)
                 }
                 row["geometry"] = feature.get("geometry")
                 yield row

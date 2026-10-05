@@ -2807,6 +2807,21 @@
   background: var(--surface-warning);
 }
 
+/* The source's own category under a row's title (decision 78): card N2's
+   frame A, the maintainer's pick on 2026-10-05, draws it as the card's warn
+   line, a caution-tinted strip the row's width. The tint is
+   `--surface-warning` and the text `--fg-1`, for the reason the warm tag
+   above gives, so "Closed" keeps its contrast in both themes. */
+.planned-notices__category {
+  margin: 3px 0 0;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  background: var(--surface-warning);
+  color: var(--fg-1);
+}
+
 .planned-notices__empty {
   display: flex;
   flex-direction: column;

@@ -199,6 +199,116 @@ describe('PlannedNoticeList', () => {
     expect(within(list).queryByText('Advisory')).toBeNull()
   })
 
+  // Decision 78 (card N2, frame A): the source's own category, on its own line
+  // under the title. Every row here is invented.
+  function renderRows(...rows: TrailNotice[]) {
+    renderList({
+      empty: null,
+      undated: 0,
+      hikes: [{ stretch: STRETCH, onRoute: rows, stateWide: [], fromClubs: [] }],
+    })
+  }
+
+  function row(title: string): HTMLElement {
+    const item = screen.getByText(title).closest('li')
+    if (item === null) throw new Error(`no row holds ${title}`)
+    return item
+  }
+
+  it('shows a category "closed" as "Closed" under the title and before the locality (decision 78)', () => {
+    renderRows(
+      notice({
+        notice_id: 'usfs:1',
+        title: 'Fixture Creek Campground',
+        category: 'closed',
+        locality: 'Fixture National Forest',
+      }),
+    )
+    const lines = Array.from(row('Fixture Creek Campground').children).map(
+      (line) => line.textContent,
+    )
+    expect(lines.slice(0, 3)).toEqual([
+      'Notice Fixture Creek Campground',
+      'Closed',
+      'Fixture National Forest',
+    ])
+    expect(screen.getByText('Closed').className).toBe('planned-notices__category')
+  })
+
+  it('keeps a category as its source wrote it past the first letter (decision 78)', () => {
+    renderRows(
+      notice({
+        notice_id: 'usfs:2',
+        title: 'Fixture Lake Site',
+        category: 'temporarily closed',
+      }),
+      notice({ notice_id: 'usfs:3', title: 'Fixture Order', category: 'Closure Order' }),
+    )
+    expect(within(row('Fixture Lake Site')).getByText('Temporarily closed')).toBeTruthy()
+    expect(within(row('Fixture Order')).getByText('Closure Order')).toBeTruthy()
+  })
+
+  // A row beside the ones under test whose category does show, so neither test
+  // below can pass on a list that never shows a category at all.
+  const SHOWN = notice({
+    notice_id: 'gmc:shown',
+    title: 'Fixture shown',
+    category: 'Detour',
+  })
+
+  it('adds no category line to a row whose category is null or blank (decision 78)', () => {
+    renderRows(
+      SHOWN,
+      notice({ notice_id: 'gmc:null', title: 'Fixture null category', category: null }),
+      notice({ notice_id: 'gmc:blank', title: 'Fixture blank category', category: '  ' }),
+    )
+    expect(within(row('Fixture shown')).getByText('Detour')).toBeTruthy()
+    for (const title of ['Fixture null category', 'Fixture blank category']) {
+      expect(row(title).querySelector('.planned-notices__category')).toBeNull()
+    }
+  })
+
+  it('does not repeat a category equal to the title or to the tag, ignoring case and spacing (decision 78)', () => {
+    renderRows(
+      SHOWN,
+      notice({
+        notice_id: 'usfs:fire',
+        title: 'Fixture Creek Fire',
+        category: 'fixture creek  FIRE',
+      }),
+      notice({
+        notice_id: 'gmc:closed',
+        title: 'Fixture footbridge out',
+        category: 'closure',
+        obstructs_trail: true,
+      }),
+    )
+    expect(within(row('Fixture shown')).getByText('Detour')).toBeTruthy()
+    for (const title of ['Fixture Creek Fire', 'Fixture footbridge out']) {
+      expect(row(title).querySelector('.planned-notices__category')).toBeNull()
+    }
+  })
+
+  it('still shows a category that only appears inside the title, or names another tag (decision 78)', () => {
+    renderRows(
+      notice({
+        notice_id: 'usfs:order',
+        title: 'Fixture Fire Closure Superseding',
+        category: 'Fixture Fire',
+      }),
+      // The source says Closure where OurHike's tag says Notice.
+      notice({ notice_id: 'cdtc:1', title: 'Fixture washout', category: 'Closure' }),
+    )
+    expect(
+      within(row('Fixture Fire Closure Superseding')).getByText('Fixture Fire'),
+    ).toBeTruthy()
+    const washout = row('Fixture washout')
+    expect(within(washout).getByText('Notice')).toBeTruthy()
+    expect(washout.querySelector('.planned-notices__category')?.textContent).toBe(
+      'Closure',
+    )
+  })
+
   it('says a day hike was matched to its taps when the network is not on the phone', () => {
     renderList({
       empty: null,

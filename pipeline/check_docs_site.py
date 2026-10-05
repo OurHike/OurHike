@@ -30,8 +30,13 @@ FAILS (exit 1) on any of:
    lon, lng, latitude or longitude key holding a decimal; and a bare pair of
    decimals of four or more places, each within +-180.
 
-ONE EXEMPTION, on provenance: the unit tests' `given` and `expect` cells in
-`dbt.unit_tests`. Measured 2026-10-03 on dbt 2.0.6, with the docs built
+TWO EXEMPTIONS, on provenance: the unit tests' `given` and `expect` cells in
+`dbt.unit_tests`, and a singular test's `raw_code` and `compiled_code` in
+`dbt.data_tests` when the test is a hand-written file under `tests/singular/`
+(added 2026-10-05 for decision 77's
+`assert_a_notice_area_covers_every_vertex_of_its_source`, whose made-up shapes
+are WKT; the same rule as the unit tests below, and the same open question
+for the maintainer). Measured 2026-10-03 on dbt 2.0.6, with the docs built
 against an empty warehouse: 159 of the 244 unit tests carry coordinate-shaped
 text there (hand-written rows such as
 `LINESTRING (-74.12345678901 41.00000049999, ...)`), and all 8,209 numbers of
@@ -77,9 +82,13 @@ SHAPES: dict[str, re.Pattern[str]] = {
 BUILD_SETTINGS = re.compile(r"window\.__DBT_DOCS__\s*=\s*(\{.*?\});\s*</script>", re.DOTALL)
 # A number precise enough to name a place: three decimal places or more.
 PRECISE_NUMBER = re.compile(r"[-+]?\d+\.\d{3,}")
-# The table, and the cells in it, that may carry coordinates on provenance.
+# The tables, and the cells in them, that may carry coordinates on provenance:
+# a unit test's rows, and a hand-written singular test's own SQL.
 UNIT_TESTS = "dbt.unit_tests.parquet"
 UNIT_TEST_ROWS = ("given", "expect")
+DATA_TESTS = "dbt.data_tests.parquet"
+SINGULAR_TEST_CODE = ("raw_code", "compiled_code")
+SINGULAR_TESTS_DIR = "tests/singular/"
 
 
 def coordinate_shapes(text: str) -> list[str]:
@@ -153,16 +162,20 @@ def _check_parquet(path: Path, site: Path, project: Path, report: Report, cache:
             if row[at] not in (None, "", "{}", "null"):
                 report.failures.append(f"{relative}: invocation {row[0]} records a --vars override, which the page publishes")
     unit_tests = path.name == UNIT_TESTS
+    data_tests = path.name == DATA_TESTS
     for row in rows:
         row_id = row[0]
+        declared_in = row[columns.index("original_file_path")] if "original_file_path" in columns else None
         for column, value in zip(columns, row):
             if value is None:
                 continue
             shapes = coordinate_shapes(value)
             if not shapes:
                 continue
-            if unit_tests and column in UNIT_TEST_ROWS and "original_file_path" in columns:
-                declared_in = row[columns.index("original_file_path")]
+            traceable = (unit_tests and column in UNIT_TEST_ROWS) or (
+                data_tests and column in SINGULAR_TEST_CODE and (declared_in or "").startswith(SINGULAR_TESTS_DIR)
+            )
+            if traceable and "original_file_path" in columns:
                 numbers = _project_numbers(project, declared_in, cache) if declared_in else None
                 if numbers is None:
                     report.failures.append(
@@ -219,8 +232,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"{args.site}: {len(files)} files, {sum(path.stat().st_size for path in files):,} bytes, "
         f"{sum(1 for path in files if path.suffix == '.parquet')} Parquet; "
-        f"{report.traced:,} precise numbers in the coordinate-shaped rows of {len(report.traced_tests)} unit tests, "
-        "each in the test's own YAML; "
+        f"{report.traced:,} precise numbers in the coordinate-shaped cells of {len(report.traced_tests)} tests, "
+        "each in the test's own file; "
         f"{len(report.failures)} failure(s)."
     )
     return 1 if report.failures else 0

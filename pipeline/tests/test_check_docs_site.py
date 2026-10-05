@@ -173,7 +173,7 @@ def test_a_unit_test_row_whose_numbers_are_all_in_its_own_yaml_passes(tmp_path, 
     )
     code, out = _run(site, project, capsys)
     assert code == 0, out
-    assert "4 precise numbers in the coordinate-shaped rows of 1 unit tests" in out
+    assert "4 precise numbers in the coordinate-shaped cells of 1 tests" in out
 
 
 def test_a_unit_test_row_with_a_number_its_yaml_does_not_hold_fails(tmp_path, capsys):
@@ -242,3 +242,56 @@ def test_a_unit_test_path_that_climbs_out_of_the_project_is_not_the_projects_yam
     code, out = _run(site, _project(tmp_path, ""), capsys)
     assert code == 1
     assert "(../elsewhere.yml) is not under" in out
+
+
+SINGULAR_TEST = "tests/singular/assert_a_made_up_area.sql"
+
+
+def _with_data_tests(site: Path, rows: list[dict[str, str | None]]) -> Path:
+    _parquet(site / "info_schema" / "v1" / "dbt.data_tests.parquet", rows)
+    return site
+
+
+def test_a_singular_tests_made_up_wkt_passes_when_every_number_is_in_its_own_sql_file(tmp_path, capsys):
+    code_text = "select st_geomfromtext('POLYGON ((-97 38.007, -96.993004 38.007004, -97 38.007))')"
+    project = _project(tmp_path, "")
+    (project / SINGULAR_TEST).parent.mkdir(parents=True)
+    (project / SINGULAR_TEST).write_text(code_text, encoding="utf-8")
+    site = _with_data_tests(
+        _site(tmp_path),
+        [{"unique_id": "test.ourhike.assert_a_made_up_area", "original_file_path": SINGULAR_TEST, "raw_code": code_text}],
+    )
+    code, out = _run(site, project, capsys)
+    assert code == 0, out
+
+
+def test_a_generic_tests_code_holding_wkt_still_fails(tmp_path, capsys):
+    """Only a hand-written file under tests/singular/ is traced; a test a model's YAML declares is not."""
+    code_text = "select 'POINT (-74.987654 41.987654)'"
+    site = _with_data_tests(
+        _site(tmp_path),
+        [{"unique_id": "test.ourhike.not_null_x", "original_file_path": UNIT_TEST_YAML, "raw_code": code_text}],
+    )
+    code, out = _run(site, _project(tmp_path, code_text), capsys)
+    assert code == 1
+    assert "raw_code of test.ourhike.not_null_x holds WKT" in out
+    assert "41.987654" not in out
+
+
+def test_a_singular_tests_number_its_own_file_does_not_hold_fails(tmp_path, capsys):
+    project = _project(tmp_path, "")
+    (project / SINGULAR_TEST).parent.mkdir(parents=True)
+    (project / SINGULAR_TEST).write_text("select 1", encoding="utf-8")
+    site = _with_data_tests(
+        _site(tmp_path),
+        [
+            {
+                "unique_id": "test.ourhike.assert_a_made_up_area",
+                "original_file_path": SINGULAR_TEST,
+                "raw_code": "select 'POINT (-74.987654 41.987654)'",
+            }
+        ],
+    )
+    code, out = _run(site, project, capsys)
+    assert code == 1
+    assert "with 2 number(s) not in tests/singular/assert_a_made_up_area.sql" in out

@@ -101,7 +101,7 @@ read_status as (
         cast(timezone('UTC', notices.starts_at) as date) as starts_on,
         cast(timezone('UTC', notices.ends_at) as date) as ends_on,
         cast(timezone('UTC', notices.rescinded_at) as date) as rescinded_on,
-        cast(timezone('UTC', now()) as date) as build_date
+        {{ notice_build_date() }} as build_date
     from notices
     left join status_values
         on
@@ -115,6 +115,8 @@ read_status as (
             and lower(trim(notices.category)) = hazard_values.category_value
 ),
 
+-- Rule 1's dates come last, from macros/notice_date_holds.sql, which
+-- int_closures__held_carried applies to a carried row too.
 judged as (
     select
         *,
@@ -132,12 +134,9 @@ judged as (
                     'its own category, ' || coalesce(category, 'none')
                     || ', is not one notice_hazard_areas reads as '
                     || hazard
-            when rescinded_on is not null and rescinded_on <= build_date
-                then 'its own order was rescinded on ' || rescinded_on
-            when ends_on is not null and ends_on < build_date - 1
-                then 'its own end date, ' || ends_on || ', has passed'
-            when starts_on is not null and starts_on > build_date + 1
-                then 'its own start date, ' || starts_on || ', has not come'
+            {{ notice_date_holds(
+                'starts_on', 'ends_on', 'build_date', rescinded_on='rescinded_on'
+            ) }}
         end as held_because
     from read_status
 )

@@ -2264,3 +2264,51 @@ unit_tests:
     expect:
       rows:
         - {notice_id: 'club_held:1', title: 'Fixture carried two builds ago', carried_since: '2026-10-04 08:00:00+00'}
+
+  - name: int_closures__held_carried_drops_a_carried_notice_whose_own_end_has_passed
+    description: >
+      Rule 1 (int_closures__club_notices) holds a notice back once its own
+      end day is more than a day behind the build's UTC date, and a notice
+      carried for a held source is held to the same date: an obstructing
+      closure that ended two days ago leaves the marts although its source
+      cannot be read, one that ended yesterday stays for the margin's day, and
+      one with no end stays. The dates are relative to the build, so the
+      margin is what is tested, not a fixed calendar.
+    model: int_closures__held_carried
+    given:
+      - input: ref('stg_row_history__closures')
+        format: sql
+        rows: |
+          select
+              closure_id,
+              'club_held' as source_key,
+              cast(null as timestamp) as dbt_valid_to,
+              json_object('title', closure_id, 'obstructs_trail', true, 'ends_on', cast(ends_on as varchar)) as row_json
+          from (
+              values
+              ('club_held:ended_two_days_ago', cast(timezone('UTC', now()) as date) - 2),
+              ('club_held:ended_yesterday', cast(timezone('UTC', now()) as date) - 1),
+              ('club_held:no_end', cast(null as date))
+          ) as saved (closure_id, ends_on)
+      - input: ref('stg_row_history__warnings')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as warning_id,
+              cast(null as varchar) as warning_kind,
+              cast(null as varchar) as source_key,
+              cast(null as timestamp) as dbt_valid_to,
+              cast(null as json) as row_json
+          where false
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: club_held, passed: false, may_publish: true}
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: club_held, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_held, staged_by: stg_a__club_held}
+      - input: ref('int_closures__window_carried')
+        rows: []
+    expect:
+      rows:
+        - {notice_id: 'club_held:ended_yesterday', obstructs_trail: true}
+        - {notice_id: 'club_held:no_end', obstructs_trail: true}

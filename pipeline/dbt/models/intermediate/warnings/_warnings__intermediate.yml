@@ -602,3 +602,26 @@ unit_tests:
       rows:
         - {mart: closures, row_id: 'src_a:2', column_name: category, source_key: src_a}
         - {mart: warnings, row_id: 'src_b:3', column_name: title, source_key: src_b}
+
+  - name: int_warnings__wording_leaks_never_searches_a_geometry_for_wording
+    description: >
+      `geom_geojson` is a coordinate string, which no wording can be, and it
+      was most of the text the scan searched: on UA run 538's notices.json,
+      22,073,095 of 24,101,736 characters (the review of PR #1805 — dlt →
+      dbt re-platform as one go/no-go change, 2026-10-05). So it is not
+      read: an invented geometry carrying a source's paragraph is no leak,
+      while the same paragraph in the row's category still is one.
+    model: int_warnings__wording_leaks
+    given:
+      - input: ref('int_warnings__notice_wording_unioned')
+        rows:
+          - {wording_key: w1, source_key: src_a, notice_key: k1, column_name: notes, wording: 'Closed until further notice due to the August flash flood damage'}
+      - input: ref('int_closures__final')
+        rows:
+          - {closure_id: 'src_a:1', source_key: src_a, notice_kind: club_arcgis_layer, title: 'River Trail', geom_geojson: '{"type":"Point","coordinates":[-76.5,42.4],"note":"Closed until further notice due to the August flash flood damage"}'}
+          - {closure_id: 'src_a:2', source_key: src_a, notice_kind: club_arcgis_layer, title: 'River Trail', category: 'Closed until further notice due to the August flash flood damage'}
+      - input: ref('int_warnings__final')
+        rows: []
+    expect:
+      rows:
+        - {mart: closures, row_id: 'src_a:2', column_name: category, source_key: src_a}

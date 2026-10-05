@@ -50,6 +50,10 @@ published as (
     where starts_with(notice_kind, 'club_')
 ),
 
+-- Every text value but the geometry: `geom_geojson` is a coordinate string,
+-- which no wording can be, and it was most of what this searched (22,073,095
+-- of 24,101,736 characters of UA run 538's notices.json, read in the review
+-- of PR #1805 — dlt → dbt re-platform as one go/no-go change, 2026-10-05).
 published_values as (
     select
         published.mart,
@@ -60,7 +64,7 @@ published_values as (
             as published_text
     from published
     cross join json_each(published.row_json) as entry
-    where json_type(entry.value) = 'VARCHAR'
+    where json_type(entry.value) = 'VARCHAR' and entry.key != 'geom_geojson'
 )
 
 select

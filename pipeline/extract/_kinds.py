@@ -1091,9 +1091,16 @@ class ClubPdf(Resource):
 
         GATC's file answers with its validators (fetch_club_pdfs.py), so a 304
         is FRESH; a 200 with the same sha256 as the last load is FRESH too.
+
+        A marker recorded under an older CLUB_PDF_MANIFEST is STALE whatever
+        the bytes, and is asked for without validators so no 304 can keep it:
+        the rows it loaded lack what `_document` carries now, and unchanged
+        bytes would otherwise keep them for good. GATC's card would then say
+        "a PDF of 2026-03-02" and never "July 2020".
         """
+        current = bool(recorded) and recorded.get("manifest") == CLUB_PDF_MANIFEST
         headers = {}
-        if recorded:
+        if current:
             if recorded.get("etag"):
                 headers["If-None-Match"] = recorded["etag"]
             if recorded.get("last_modified"):
@@ -1109,8 +1116,9 @@ class ClubPdf(Resource):
             "sha256": hashlib.sha256(response.content).hexdigest(),
             "etag": response.headers.get("ETag"),
             "last_modified": response.headers.get("Last-Modified"),
+            "manifest": CLUB_PDF_MANIFEST,
         }
-        if not recorded or not recorded.get("sha256"):
+        if not current or not recorded.get("sha256"):
             return Freshness.STALE, marker
         return (Freshness.FRESH if recorded["sha256"] == marker["sha256"] else Freshness.STALE), marker
 
@@ -1129,6 +1137,11 @@ class ClubPdf(Resource):
         }
         for row in rows:
             yield {**row, "_document": document}
+
+
+#: What a ClubPdf row's `_document` carries, by version: 1 the HTTP manifest, 2 the PDF's own title and creation
+#: date beside it (2026-10-05). A load recorded under an older version is read again (ClubPdf.change_check).
+CLUB_PDF_MANIFEST = 2
 
 
 def club_pdf_document_info(body: bytes) -> dict:

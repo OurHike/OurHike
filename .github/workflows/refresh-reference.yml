@@ -487,16 +487,18 @@ jobs:
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
-        # ONE dbt THREAD. Monthly run 20 (37296900535) was the first live build past
-        # stage A, and its step 13 ("what derived.poi_photos unblocks") failed when
-        # int_places__resolved and int_trail_network__cuts built side by side:
-        # "Out of Memory Error: failed to allocate data of size 16.0 MiB (12.5 GiB/
-        # 12.4 GiB used)", DuckDB's default limit on this 16 GB runner (Measured
-        # 2026-10-05). One thread gives each model the whole limit. What it costs in
-        # build time is @unvalidated until the next monthly run's step times say;
-        # the job's 240 minutes had about 145 left when run 20 stopped.
+        # THE MODELS TAGGED builds_alone BUILD ONE AT A TIME, everything else at
+        # dbt's own thread count. Monthly run 20 (37296900535), the first live build
+        # past stage A, failed at "what derived.poi_photos unblocks" when
+        # int_places__resolved and int_trail_network__cuts built side by side: "Out
+        # of Memory Error: failed to allocate data of size 16.0 MiB (12.5 GiB/12.4
+        # GiB used)", DuckDB's default limit on this 16 GB runner (Measured
+        # 2026-10-05). Both carry the tag, and build_marts.py splits each build
+        # around it (its docstring, "A MODEL TAGGED `builds_alone`"). Whether each
+        # fits in the limit alone is @unvalidated until a monthly run passes that
+        # step: run 20's cuts hit the limit 23 s after resolved had already failed.
         run: >-
-          python build_marts.py --lane monthly --threads 1 --python "$RUNNER_TEMP/pipeline/bin/python"
+          python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
           --history-url "s3://$R2_RAW_BUCKET/history/monthly" --history-python "$RUNNER_TEMP/extract/bin/python"
 
       - name: Save dbt's DuckDB driver and v2's spatial extension

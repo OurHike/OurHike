@@ -290,10 +290,27 @@ export function noticeBandId(notice: TrailNotice): string {
  * a prettified guess would say something nobody stands behind. It happens for
  * real when a phone holds a notice artifact and a stewards artifact from
  * different releases.
+ *
+ * ONE STEP COMES BEFORE IT: the notice's own `provider`, the registry's short
+ * name for its source, which the pipeline writes onto every row from
+ * sources.json, so it is the registry's word and not a guess. A key no steward
+ * claims is read through that provider, by the steward's full name where
+ * stewards.json lists the provider, else as the row gives it ("BLM"). The
+ * maintainer chose this on 2026-10-05, from a frame of a hazard-area sheet
+ * reading "oprhp_hunting_areas' layer": UA's stewards.json came from a
+ * release built before decision 67's hazard sources were registered.
  */
 export function noticeOrgLabel(stewards: Stewards): (notice: TrailNotice) => string {
   const label = orgLabelFrom(stewards)
-  return (notice) => label(notice.source_key || null)
+  const byProvider = new Map(stewards.map((steward) => [steward.provider, steward.name]))
+  return (notice) => {
+    const key = notice.source_key || null
+    const named = label(key)
+    if (key === null || named !== key) return named
+    const { provider } = notice
+    if (typeof provider !== 'string' || provider === '') return named
+    return byProvider.get(provider) ?? provider
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -1863,8 +1863,8 @@ unit_tests:
       Decision 53's phase C: every registered notice source gets a gate row
       without an edit here, and an unregistered key gets none (held back by
       the marts' inner join, never published unchecked). One whose table the
-      run log never shows the extract running is held with that reason,
-      ahead of any count. A generated club
+      run log never shows the extract loading (never run, or only ever
+      `incomplete`) is held with that reason, ahead of any count. A generated club
       notice source with rows passes; one with none passes only where the
       latest load read the source's own count of zero; one whose table was
       never loaded (a leg's ten-a-run limit, or a withdrawn table, read as
@@ -2013,10 +2013,107 @@ unit_tests:
         - {source_key: club_with_conflicts, club: a, rows_total: 2, passed: false, held_because: '1 of 2 club_with_conflicts notices share their key with a raw row that differs (decision 40 allows only exact copies), so which one is current cannot be told'}
         - {source_key: club_proven_empty, club: a, rows_total: 0, passed: true, held_because: null}
         - {source_key: club_unproven_empty, club: a, rows_total: 0, passed: false, held_because: 'club_unproven_empty has no rows, and no count of zero from the source itself backs that, so the read may have broken or not happened yet'}
-        - {source_key: club_never_loaded, club: a, rows_total: 0, passed: false, held_because: 'club_never_loaded has no rows, and no count of zero from the source itself backs that, so the read may have broken or not happened yet'}
+        - {source_key: club_never_loaded, club: a, rows_total: 0, passed: false, held_because: 'the run log shows no run that loaded raw_a__club_never_loaded or found it unchanged, so nothing says club_never_loaded was read'}
         - {source_key: club_held_by_the_registry, club: a, passed: false, held_because: 'int_sources__publication holds club_held_by_the_registry back (held_back_by_the_registry)'}
-        - {source_key: club_never_run, club: a, rows_total: 0, passed: false, held_because: 'the run log shows no run of raw_a__club_never_run, so nothing says club_never_run was read'}
+        - {source_key: club_never_run, club: a, rows_total: 0, passed: false, held_because: 'the run log shows no run that loaded raw_a__club_never_run or found it unchanged, so nothing says club_never_run was read'}
         - {source_key: club_table_absent, club: a, rows_total: 0, passed: false, held_because: 'raw_a__club_table_absent is not in this warehouse (a notices table waiting its turn, one the served copy left out, or a build without the notices), so nothing says club_table_absent has no notices'}
+
+  - name: int_closures__gate_holds_a_hand_staged_source_whose_only_runs_were_refused
+    description: >
+      A conditions leg that refuses one table on its own logs it `refused`
+      with its column hints, and for a table that has never committed a load
+      the warehouse then creates that table empty (extract/_warehouse.py's
+      not_yet_loaded()). So a `refused` or `incomplete` run is not a read:
+      only a `loaded` run, or a `skipped` one (unchanged since a load), says
+      the extract read the table. NYS Parks' closures, refused on a new
+      store's first read, are held rather than published as "no closures",
+      since nothing else holds a hand-staged source with no rows. NYNJTC's
+      alerts, refused this run after an earlier load, pass, because that
+      load's rows still stand; and ATC passes on its reviewed file's load
+      while its pages are still being read (`incomplete`), as on any new
+      store.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'nynjtc_trail_alerts', cast([] as varchar[])
+          union all
+          select 'ourhike_closures', cast([] as varchar[])
+      - input: ref('int_closures__atc_checked')
+        format: sql
+        rows: |
+          select 0 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": [{}]}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261005T010000.000000Z' as run_id, 'raw_nysparks__oprhp_trail_closures' as table_name, 'refused' as outcome, cast(null as bigint) as rows_loaded, cast(null as bigint) as count_proof
+          union all
+          select '20261005T020000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'refused', null, null
+          union all
+          select '20261005T010000.000000Z', 'raw_nynjtc__nynjtc_trail_alerts', 'loaded', 1, 1
+          union all
+          select '20261005T020000.000000Z', 'raw_nynjtc__nynjtc_trail_alerts', 'refused', null, null
+          union all
+          select '20261005T010000.000000Z', 'raw_atc__atc_trail_updates', 'loaded', 1, null
+          union all
+          select '20261005T010000.000000Z', 'raw_atc__atc_trail_updates_pages', 'incomplete', null, null
+          union all
+          select '20261005T020000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261005T020000.000000Z', 'raw_atc__atc_trail_updates_pages', 'incomplete', null, null
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: atc_trail_update_pages, listing: full, raw_table: raw_atc__atc_trail_updates_pages, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as bigint) as key_versions where false
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, passed: true, held_because: null}
+        - {source_key: nynjtc_trail_alerts, rows_total: 1, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, rows_total: 0, passed: false, held_because: 'the run log shows no run that loaded raw_nysparks__oprhp_trail_closures or found it unchanged, so nothing says oprhp_trail_closures was read'}
+        - {source_key: ourhike_closures, passed: true, held_because: null}
+        - {source_key: ourhike_reports, passed: true, held_because: null}
+        - {source_key: nws_alerts, passed: true, held_because: null}
+        - {source_key: 'reference/work_projects.json', passed: true, held_because: null}
 
   - name: int_closures__window_carried_keeps_a_feed_notice_that_left_its_window
     description: >

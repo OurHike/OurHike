@@ -19,8 +19,9 @@ tests/test_dbt_row_dates_builds.py drives dbt through builds and a restore.
   build_marts.py's --history-on-failure degrade);
 - every mart reads int_<mart>__history and int_<mart>__final under its own
   key, the snapshot's body is row_history_snapshot('int_<mart>__final')
-  under that key, and the final model exists in the mart's intermediate
-  folder;
+  under that key (with a `skip=[...]` list, for a column that changes on
+  every run while the row does not), and the final model exists in the
+  mart's intermediate folder;
 - no snapshot exists but these.
 """
 
@@ -40,7 +41,7 @@ DATES = ("_first_seen_at", "_changed_at")
 MART_CALL = re.compile(r"row_history_mart\(\s*'int_(\w+)__history',\s*'int_(\w+)__final',\s*(\[[^\]]*\]|'\w+')\s*\)", re.S)
 SNAPSHOT_BODY = re.compile(
     r"\{%\s*snapshot\s+(\w+)\s*%\}.*?config\(\s*unique_key=(\[[^\]]*\]|'\w+')\s*\).*?"
-    r"row_history_snapshot\(\s*'(\w+)'\s*\).*?\{%\s*endsnapshot\s*%\}",
+    r"row_history_snapshot\(\s*'(\w+)'\s*(?:,\s*skip=\[[^\]]*\]\s*)?\).*?\{%\s*endsnapshot\s*%\}",
     re.S,
 )
 #: What the not_null tests on the two dates must say, so a degraded conditions leg's null dates warn.

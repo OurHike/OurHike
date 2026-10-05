@@ -28,7 +28,7 @@
 
 import type { Map as MapLibreMap, MapGeoJSONFeature, PointLike } from 'maplibre-gl'
 import { POI_PIN_SIZE } from './poiIcons'
-import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
+import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayerIds'
 
 /** `--min-touch-target` (chrome/chrome.css), which every other control on the
  *  map screen already meets. */

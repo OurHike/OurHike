@@ -39,9 +39,19 @@ import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import { ROUTE_INK } from './routeLayers'
 import { whenStyleReady } from './styleReady'
 import type { MileTick } from '../lib/dayHikeCourse'
+import {
+  DAY_HIKE_CASING_LAYER_ID,
+  DAY_HIKE_OUTER_CASING_LAYER_ID,
+} from './dayHikeLayerIds'
+
+// The two casing ids chrome/useRouteHover.ts reads live in a leaf
+// (map/dayHikeLayerIds.ts), so that reading them does not bring this builder
+// - and map/routeLayers.ts, through ROUTE_INK - into the eager bundle
+// (features/LAUNCH_BUDGET.md §4.4). Re-exported, so nothing that imported
+// one from here has to change.
+export * from './dayHikeLayerIds'
 
 export const DAY_HIKE_SOURCE_ID = 'day-hike-route'
-export const DAY_HIKE_CASING_LAYER_ID = 'day-hike-route-casing'
 export const DAY_HIKE_GAP_LAYER_ID = 'day-hike-route-gap'
 export const DAY_HIKE_POINT_LAYER_ID = 'day-hike-route-points'
 /** Flags a feature as a gap rather than a routed stretch. A property rather
@@ -122,8 +132,6 @@ const CASING_OPACITY = 0.6
 const OUTER_CASING_INK = '#122016'
 const OUTER_CASING_WIDTH = 17
 const OUTER_CASING_OPACITY = 0.85
-
-export const DAY_HIKE_OUTER_CASING_LAYER_ID = 'day-hike-route-outer-casing'
 
 /** The mile ticks and their numbers (#1194). Two layers over one source. */
 export const DAY_HIKE_TICK_LAYER_ID = 'day-hike-mile-ticks'

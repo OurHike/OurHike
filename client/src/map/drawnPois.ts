@@ -25,7 +25,7 @@
 // recomputed mid-fling is a query per frame for a number nobody can read yet.
 
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
+import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayerIds'
 
 /** The real MapLibre map, as map/poiTaps.ts and map/poiLayers.ts also take it.
  *  A structural stand-in was tried and does not work: `queryRenderedFeatures`

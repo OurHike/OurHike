@@ -1313,8 +1313,10 @@ unit_tests:
       sections that meet is a through route; one name in two places, or
       two organizations sharing a name, is not; two spellings the alias
       table folds into one trail chain as one, under the trail's name. The
-      100 m line is simplify_records()' own. tests/test_dbt_trail_lines_network_parity.py
-      runs _through_routes() over these rows with the same aliases.
+      100 m line is _simplified_part_by_part()'s, so a MultiLineString
+      carrying a ring a few metres round is simplified everywhere but the
+      ring. tests/test_dbt_trail_lines_network_parity.py runs
+      _through_routes() over these rows with the same aliases.
     model: int_trail_lines__network_overview_routes
     given:
       - input: ref('int_trail_lines__network_navigation')
@@ -1399,6 +1401,7 @@ unit_tests:
           - {"trail_segment_key": "test_export_nearby_trails::test_two_organizations_sharing_a_name_are_still_never_summed[a 2]", "source_key": "oprhp_trails", "trail_line_id": "oprhp_trails:test_export_nearby_trails::test_two_organizations_sharing_a_name_are_still_never_summed[a 2]", "name": "Ridge Trail", "blaze_color": "Blue", "trail_status": "open", "geom_wkt": "LINESTRING (-73 42.28913762127201, -73 42.433706431908014)"}
           - {"trail_segment_key": "test_export_nearby_trails::test_two_organizations_sharing_a_name_are_still_never_summed[b 2]", "source_key": "dec_hiking_trails", "trail_line_id": "dec_hiking_trails:test_export_nearby_trails::test_two_organizations_sharing_a_name_are_still_never_summed[b 2]", "name": "Ridge Trail", "blaze_color": "Blue", "trail_status": "open", "geom_wkt": "LINESTRING (-73 42.28913762127201, -73 42.433706431908014)"}
           - {"trail_segment_key": "sql::a_line_with_no_name_is_on_no_trail", "source_key": "oprhp_trails", "trail_line_id": "oprhp_trails:sql::a_line_with_no_name_is_on_no_trail", "name": null, "blaze_color": "Red", "trail_status": "open", "geom_wkt": "LINESTRING (-74.2 41.5, -74.25 41.55)"}
+          - {"trail_segment_key": "test_export_nearby_trails::test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch", "source_key": "cdtc_centerline", "trail_line_id": "cdtc_centerline:test_export_nearby_trails::test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch", "name": null, "blaze_color": "Unknown", "trail_status": "open", "geom_wkt": "MULTILINESTRING ((-106.5 39, -106.50001 39.01, -106.5 39.02, -106.50002 39.03, -106.5 39.045), (-106.4504 39.0204, -106.45038 39.0204, -106.45038 39.02042, -106.4504 39.02042, -106.4504 39.0204))"}
       - input: ref('int_trail_lines__network_name_aliases')
         rows:
           - {"alias_key": "cdt", "source_key": "usfs_trails", "published_spelling": "CONTINENTAL DIVIDE", "trail_name": "Continental Divide Trail"}
@@ -1485,14 +1488,17 @@ unit_tests:
         - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_two_organizations_sharing_a_name_are_still_never_summed[a 2]", "trail_identity": "Ridge Trail", "through_route": null, "coarse_wkt": "LINESTRING (-73 42.28913762127201, -73 42.43370643190797)"}
         - {"trail_line_id": "dec_hiking_trails:test_export_nearby_trails::test_two_organizations_sharing_a_name_are_still_never_summed[b 2]", "trail_identity": "Ridge Trail", "through_route": null, "coarse_wkt": "LINESTRING (-73 42.28913762127201, -73 42.43370643190797)"}
         - {"trail_line_id": "oprhp_trails:sql::a_line_with_no_name_is_on_no_trail", "trail_identity": null, "through_route": null, "coarse_wkt": "LINESTRING (-74.2 41.500000000000036, -74.25000000000001 41.54999999999999)"}
+        - {"trail_line_id": "cdtc_centerline:test_export_nearby_trails::test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch", "trail_identity": null, "through_route": null, "coarse_wkt": "MULTILINESTRING ((-106.5 39.00000000000001, -106.5 39.045000000000044), (-106.4504 39.0204, -106.45038 39.0204, -106.45038 39.02042, -106.4504 39.02042, -106.4504 39.0204))"}
   - name: int_trail_lines__network_overview_seam_answers_what_the_floor_and_seam_answer
     description: >
-      _above_the_seam_floor() and the seam's simplify_records() (#1775,
-      TL20), one row per pytest case: a line whose box is under one z5
-      pixel is dropped and one twice that is kept, a through route's
-      sub-pixel sections are all kept, and a kept line is simplified to
-      half a z5 pixel. tests/test_dbt_trail_lines_network_parity.py runs
-      the two Python functions over these rows.
+      _above_the_seam_floor() and the seam's _simplified_part_by_part()
+      (#1775, TL20), one row per pytest case: a line whose box is under one
+      z5 pixel is dropped and one twice that is kept, a through route's
+      sub-pixel sections are all kept, a kept line is simplified to half a
+      z5 pixel, and a ring a few metres round keeps its own vertices
+      without keeping the rest of its MultiLineString's.
+      tests/test_dbt_trail_lines_network_parity.py runs the two Python
+      functions over these rows.
     model: int_trail_lines__network_overview_seam
     given:
       - input: ref('int_trail_lines__network_overview_routes')
@@ -1504,6 +1510,7 @@ unit_tests:
           - {"trail_line_id": "nynjtc_long_path:test_export_nearby_trails::test_a_through_route_stays_in_the_sketch_however_short_its_sections_are[2]", "source_key": "nynjtc_long_path", "blaze_color": "Blue", "trail_status": "open", "through_route": "Long Path", "coarse_wkt": "LINESTRING (-74 41.0289137621272, -74 41.043370643190805)"}
           - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_the_sketch_is_cut_for_its_own_top_zoom_and_not_the_ats", "source_key": "oprhp_trails", "blaze_color": "Blue", "trail_status": "open", "through_route": null, "coarse_wkt": "LINESTRING (-74.1 41.25, -74.103 41.26, -74.1 41.30049586267773)"}
           - {"trail_line_id": "oprhp_trails:sql::a_line_whose_box_is_one_pixel_across_is_kept", "source_key": "oprhp_trails", "blaze_color": "Blue", "trail_status": "open", "through_route": null, "coarse_wkt": "LINESTRING (-74.5 41, -74.5 41.01683363742133)"}
+          - {"trail_line_id": "cdtc_centerline:test_export_nearby_trails::test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch", "source_key": "cdtc_centerline", "blaze_color": "Unknown", "trail_status": "open", "through_route": null, "coarse_wkt": "MULTILINESTRING ((-106.5 39, -106.503 39.02, -106.5 39.045), (-106.4504 39.0204, -106.45038 39.0204, -106.45038 39.02042, -106.4504 39.02042, -106.4504 39.0204))"}
     expect:
       rows:
         - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_a_trail_smaller_than_a_pixel_at_the_seam_is_not_in_the_sketch[big]", "through_route": null, "seam_wkt": "LINESTRING (-74.1 41.24999999999999, -74.1 41.283663908451786)"}
@@ -1512,6 +1519,7 @@ unit_tests:
         - {"trail_line_id": "nynjtc_long_path:test_export_nearby_trails::test_a_through_route_stays_in_the_sketch_however_short_its_sections_are[2]", "through_route": "Long Path", "seam_wkt": "LINESTRING (-74 41.02891376212721, -74 41.043370643190805)"}
         - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_the_sketch_is_cut_for_its_own_top_zoom_and_not_the_ats", "through_route": null, "seam_wkt": "LINESTRING (-74.1 41.24999999999999, -74.1 41.300495862677764)"}
         - {"trail_line_id": "oprhp_trails:sql::a_line_whose_box_is_one_pixel_across_is_kept", "through_route": null, "seam_wkt": "LINESTRING (-74.5 41, -74.5 41.01683363742129)"}
+        - {"trail_line_id": "cdtc_centerline:test_export_nearby_trails::test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch", "through_route": null, "seam_wkt": "MULTILINESTRING ((-106.5 39.00000000000001, -106.5 39.045000000000044), (-106.4504 39.0204, -106.45038 39.0204, -106.45038 39.02042, -106.4504 39.02042, -106.4504 39.0204))"}
   - name: int_trail_lines__network_overview_features_answer_what_write_overview_writes
     description: >
       write_overview()'s grouping (#1135, #1307; TL20): an open and a

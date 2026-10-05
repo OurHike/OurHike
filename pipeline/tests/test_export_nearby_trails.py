@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 from pmtiles.reader import MmapSource, Reader
+from shapely import wkt as shapely_wkt
 from shapely.geometry import shape
 
 import export_nearby_trails as ex
@@ -2248,6 +2249,43 @@ def test_a_sketch_group_whose_every_line_cuts_to_one_point_writes_no_feature(mon
     body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
     assert [f["properties"]["trail_status"] for f in body["features"]] == ["open"]
     assert body["features"][0]["properties"]["name"] == "Long Path"
+
+
+def test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch(monkeypatch, tmp_path):
+    # Douglas-Peucker hands a closed ring shorter than its tolerance back as
+    # its two equal endpoints, and simplify_records keeps the WHOLE line it
+    # was given when any part comes back like that. One ring per state was
+    # enough to ship 1,244,673 of the CDT's coordinates at their 1 m density.
+    # The 5 km dense line here is straight to within 2 m, so at the sketch's
+    # tolerance it is its two ends.
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    assert lines == [[[-106.5, 39.0], [-106.5, 39.045]]]
+
+
+def test_each_part_of_a_multilinestring_keeps_its_own_vertices_only_where_simplifying_would_collapse_it():
+    record = _dense_line_with_a_ring()
+    dense, ring = shapely_wkt.loads(record["wkt"]).geoms
+
+    (out,) = ex._simplified_part_by_part([record], ex.OVERVIEW_SEAM_TOLERANCE_M)
+
+    simplified_dense, kept_ring = shapely_wkt.loads(out["wkt"]).geoms
+    assert len(simplified_dense.coords) == 2 < len(dense.coords)
+    assert list(kept_ring.coords) == list(ring.coords)
+    assert {k: v for k, v in out.items() if k != "wkt"} == {k: v for k, v in record.items() if k != "wkt"}
+
+
+def test_a_multilinestring_with_no_collapsing_part_simplifies_exactly_as_simplify_records_does():
+    record = {
+        **_dense_line_with_a_ring(),
+        "wkt": "MULTILINESTRING ((-106.5 39, -106.50001 39.01, -106.5 39.045), (-106.4 39, -106.43 39.02, -106.4 39.045))",
+    }
+    line = {**record, "id": "line", "wkt": "LINESTRING (-106.3 39, -106.30001 39.01, -106.3 39.045)"}
+
+    for tolerance in (ex.OVERVIEW_SIMPLIFY_TOLERANCE_M, ex.OVERVIEW_SEAM_TOLERANCE_M):
+        assert ex._simplified_part_by_part([record, line], tolerance) == ex.simplify_records([record, line], tolerance)
 
 
 # --- a trail whose name is the layer (#1778) --------------------------------------

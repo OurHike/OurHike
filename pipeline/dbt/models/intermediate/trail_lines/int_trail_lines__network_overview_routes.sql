@@ -6,9 +6,10 @@
 --
 -- THE COARSE LINE: simplify_records() at 100 m, in EPSG:5070, on the 1 m
 -- line at full precision (int_trail_lines__network_navigation's, as
--- main() hands write_overview() the simplified records), keeping the 1 m
--- line where the pass would leave a part undrawable. The same pass as the
--- navigation model's, measured there against shapely at 100 m too.
+-- main() hands write_overview() the simplified records), keeping a part's
+-- 1 m vertices where the pass would leave that part undrawable (PART BY
+-- PART, below). The same pass as the navigation model's, measured there
+-- against shapely at 100 m too.
 --
 -- A THROUGH ROUTE is a run of shared tread inside one trail identity whose
 -- coarse lines total NAMED_TRAIL_THRESHOLD_MILES, 50, or more:
@@ -60,36 +61,81 @@ reduced as (
     from navigation
 ),
 
-coarse as (
+judged as (
+    select
+        *,
+        coalesce(
+            not st_isempty(reduced)
+            and list_bool_and(
+                list_transform(
+                    st_dump(reduced),
+                    lambda part: (
+                        st_xmin(struct_extract(part, 'geom'))
+                        < st_xmax(struct_extract(part, 'geom'))
+                    )
+                    or (
+                        st_ymin(struct_extract(part, 'geom'))
+                        < st_ymax(struct_extract(part, 'geom'))
+                    )
+                )
+            ),
+            false
+        ) as is_drawable
+    from reduced
+),
+
+-- PART BY PART, _simplified_part_by_part(): where the pass leaves a part of
+-- a MultiLineString undrawable, that part keeps the 1 m line's vertices and
+-- every other part keeps the pass's. Asked of the whole line, one ring a
+-- few metres round kept five of CDTC's eight states at 1 m (that
+-- function's docstring has the measurement).
+reduced_parts as (
     select
         trail_line_id,
-        source_key,
-        name,
-        blaze_color,
-        trail_status,
+        unnest(st_dump(reduced)) as reduced_part,
+        unnest(st_dump(navigation_line)) as given_part,
+        generate_subscripts(st_dump(navigation_line), 1) as part_index
+    from judged
+    where
+        not is_drawable
+        and st_geometrytype(navigation_line) = 'MULTILINESTRING'
+),
+
+by_part as (
+    select
+        trail_line_id,
+        st_collect(
+            list(
+                case
+                    when
+                        st_xmin(struct_extract(reduced_part, 'geom'))
+                        < st_xmax(struct_extract(reduced_part, 'geom'))
+                        or st_ymin(struct_extract(reduced_part, 'geom'))
+                        < st_ymax(struct_extract(reduced_part, 'geom'))
+                        then struct_extract(reduced_part, 'geom')
+                    else struct_extract(given_part, 'geom')
+                end
+                order by part_index
+            )
+        ) as by_part_line
+    from reduced_parts
+    group by trail_line_id
+),
+
+coarse as (
+    select
+        judged.trail_line_id,
+        judged.source_key,
+        judged.name,
+        judged.blaze_color,
+        judged.trail_status,
         case
-            when
-                coalesce(
-                    not st_isempty(reduced)
-                    and list_bool_and(
-                        list_transform(
-                            st_dump(reduced),
-                            lambda part: (
-                                st_xmin(struct_extract(part, 'geom'))
-                                < st_xmax(struct_extract(part, 'geom'))
-                            )
-                            or (
-                                st_ymin(struct_extract(part, 'geom'))
-                                < st_ymax(struct_extract(part, 'geom'))
-                            )
-                        )
-                    ),
-                    false
-                )
-                then reduced
-            else navigation_line
+            when judged.is_drawable then judged.reduced
+            when by_part.by_part_line is not null then by_part.by_part_line
+            else judged.navigation_line
         end as coarse_line
-    from reduced
+    from judged
+    left join by_part on judged.trail_line_id = by_part.trail_line_id
 ),
 
 measured as (

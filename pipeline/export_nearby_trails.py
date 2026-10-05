@@ -1571,6 +1571,63 @@ def exported_bbox(records: list[dict]) -> list[float] | None:
     ]
 
 
+def _simplified_part_by_part(records: list[dict], tolerance_m: float) -> list[dict]:
+    """simplify_records, with its never-drop rule asked of each part of a
+    MultiLineString rather than of the whole line: a part that would come
+    back with fewer than two distinct vertices keeps its own, and every other
+    part is simplified. A LineString, or anything else, is simplify_records'
+    own answer, and so is a MultiLineString none of whose parts collapse:
+    Douglas-Peucker simplifies each part of one on its own (Reasoned, and
+    Measured below).
+
+    WHY THE SKETCH NEEDS IT: simplify_records keeps the WHOLE line it was
+    given when any part collapses. Douglas-Peucker hands a closed ring shorter
+    than its tolerance back as its two equal endpoints, and CDTC publishes the
+    Continental Divide as eight lines, one a state, five of them
+    MultiLineStrings carrying such rings: 27 of them, 0.2 to 21.3 m long, in
+    cdtc_centerline:2, 3, 5, 7 and 8 (Measured 2026-10-05 on the records UA's
+    release 2026-10-03-2 published in nearby_trails.geojson, 704,095
+    vertices in :3 alone). So write_overview's 100 m and 937 m passes both
+    kept those five states at the 1 m line's density, and the sketch drew
+    the CDT from 1,244,673 coordinates. Part by part, a ring keeps its few
+    vertices (which _drawn_at_the_cut then leaves out, as one grid point),
+    and the rest of the state is simplified like every other trail.
+
+    The ring keeps its own vertices rather than being dropped here, for
+    simplify_records' own reason (this pipeline has lost trail geometry
+    silently before): whether a part draws anything is decided once, at the
+    grid the sketch is cut to, by _drawn_at_the_cut.
+
+    WHAT IT MOVES, Measured 2026-10-05 by re-running write_overview over all
+    329,446 of those records. It answers differently from simplify_records
+    for 431 records at 100 m and 636 at 937 m, and every one is a
+    MultiLineString simplify_records kept whole. The sketch goes from
+    4,851,338 bytes and 270,158 coordinates to 2,597,165 and 139,566, the
+    CDT's share from 52,430 coordinates to 1,736. And two through routes stop
+    qualifying, because _through_routes now measures them on the 100 m line
+    its own comment says it reads rather than on a 1 m line kept whole:
+    pasda_dcnr_trails' Panther Snowmobile Trails (50.1 miles to 49.1) and
+    Rock Run ATV Trails (54.0 to 41.2), each one MultiLineString record."""
+    if tolerance_m == 0:
+        return simplify_records(records, tolerance_m)
+    geoms = from_wkt_all([record["wkt"] for record in records])
+    is_multi = (shapely.get_type_id(geoms) == 5) & ~shapely.is_empty(geoms)
+    multi = np.flatnonzero(is_multi).tolist()
+    single = np.flatnonzero(~is_multi).tolist()
+    out: list = [None] * len(records)
+    for index, record in zip(single, simplify_records([records[i] for i in single], tolerance_m)):
+        out[index] = record
+    if multi:
+        parts, owner = shapely.get_parts(geoms[multi], return_index=True)
+        simplified = simplify_records(
+            [{"wkt": wkt} for wkt in shapely.to_wkt(parts, rounding_precision=-1).tolist()], tolerance_m
+        )
+        rebuilt = shapely.multilinestrings(from_wkt_all([part["wkt"] for part in simplified]), indices=owner)
+        for index, wkt in zip(multi, shapely.to_wkt(rebuilt, rounding_precision=-1).tolist()):
+            out[index] = {**records[index], "wkt": wkt}
+    return out
+
+
 def _drawn_at_the_cut(lines: list[list[list[float]]]) -> list[list[list[float]]]:
     """`lines`, already cut to OVERVIEW_SEAM_DECIMALS, without what the cut
     made of them that draws nothing: a vertex equal to the one before it is
@@ -1578,11 +1635,12 @@ def _drawn_at_the_cut(lines: list[list[list[float]]]) -> list[list[list[float]]]
     on one grid point - is dropped whole.
 
     WHY: the cut lands neighbouring vertices on the same grid point wherever a
-    line is denser than the 0.001-degree grid, which is any line
+    line is denser than the 0.001-degree grid, which is any part
     write_overview's two simplifications hand back at its own density
-    (simplify_records keeps the line it was given wherever simplifying would
-    leave a part with fewer than two distinct vertices), and nothing removed
-    the copies. Measured 2026-10-05 on UA's release 2026-10-03-2:
+    (_simplified_part_by_part keeps a part's own vertices wherever
+    simplifying would leave it with fewer than two distinct ones), and
+    nothing removed the copies. Measured 2026-10-05 on UA's release
+    2026-10-03-2, built without this rule or that function: its
     network_overview.geojson was 41,216,145 bytes and 2,351,742 coordinates,
     over the client's 33,554,432-byte launch budget
     (client/src/lib/artifactBudget.ts), and `cdtc_centerline` alone was
@@ -1693,7 +1751,7 @@ def write_overview(records: list[dict]) -> dict:
     source the registry gains, and that they move LESS than linearly now is the
     whole point of the floor.
     """
-    coarse = simplify_records(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
+    coarse = _simplified_part_by_part(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
 
     qualifying = _through_routes(coarse)
     for index, record in enumerate(coarse):
@@ -1713,7 +1771,7 @@ def write_overview(records: list[dict]) -> dict:
     # 100 + 937 m from where it started, which is under a pixel and a half at
     # the seam and a fourteenth of one at the opening camera.
     kept = _above_the_seam_floor(coarse)
-    seam = simplify_records(kept, OVERVIEW_SEAM_TOLERANCE_M)
+    seam = _simplified_part_by_part(kept, OVERVIEW_SEAM_TOLERANCE_M)
 
     # The group key is always this four-tuple, name "" standing for "not a
     # qualifying named trail" - never None, which would make sorted() below

@@ -21,8 +21,8 @@ by running the Python over each dbt unit test's own rows, one test per model:
 - int_trail_lines__network_navigation: simplify_records() at 1 m (TL15);
 - int_trail_lines__network_published: _rounded_geometry() (TL23);
 - the overview's three models: _through_routes(), _above_the_seam_floor(),
-  the seam's simplify_records() and write_overview() itself (TL12, TL20,
-  TL21);
+  both passes' _simplified_part_by_part() and write_overview() itself (TL12,
+  TL20, TL21);
 - the network's dbt_project.yml vars are the Python's constants.
 
 dbt runs the other half: each unit test holds the SQL to those expectations.
@@ -606,7 +606,7 @@ def test_through_routes_are_the_ones_through_routes_finds(monkeypatch):
         }
         for row in rows
     ]
-    coarse = export_trails.simplify_records(records, export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M)
+    coarse = export_nearby_trails._simplified_part_by_part(records, export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M)
     qualifying = export_nearby_trails._through_routes(coarse)
     expected = {row["trail_line_id"]: row for row in test["expect"]["rows"]}
     assert set(qualifying.values()) == {"Long Path", "Continental Divide Trail"}, "the cases no longer reach both branches"
@@ -633,7 +633,7 @@ def test_the_floor_and_the_seam_keep_and_cut_what_the_python_keeps_and_cuts():
         record[export_nearby_trails._THROUGH_ROUTE_KEY] = row["through_route"]
         records.append(record)
     kept = export_nearby_trails._above_the_seam_floor(records)
-    seam = export_trails.simplify_records(kept, export_nearby_trails.OVERVIEW_SEAM_TOLERANCE_M)
+    seam = export_nearby_trails._simplified_part_by_part(kept, export_nearby_trails.OVERVIEW_SEAM_TOLERANCE_M)
     expected = {row["trail_line_id"]: row for row in test["expect"]["rows"]}
     assert len(kept) < len(records), "no row is under the floor, so the floor is untested"
     assert set(expected) == {record["id"] for record in seam}

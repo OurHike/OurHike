@@ -243,10 +243,48 @@ describe('a long hike’s 7-day stretch', () => {
     expect(hikes[0].onRoute.map((n) => n.notice_id)).toEqual(['atc_trail_updates:bridge'])
   })
 
-  it('starts the stretch at today for a hike already under way', () => {
+  it('starts the stretch after the last day called walked, not at today’s date, for a hike already under way', () => {
+    // Days 1 to 3 (2026-10-01 to 10-03) called walked: the hiker is at mile
+    // 15, and days 4 to 10 (10-04 to 10-10) are in the window, miles 15 to 50.
+    const underWay = tenDayTrip('2026-10-01')
+    underWay.plan.days = underWay.plan.days.map((day, i) =>
+      i < 3 ? { ...day, walked: true } : day,
+    )
+    expect(pick([], [underWay], []).hikes[0].stretch.atSpans).toEqual([[15, 50]])
+    // With no day called, nothing says the hiker has left mile 0, so the
+    // three days dated before today are still ahead of them: miles 0 to 50.
     const { hikes } = pick([], [tenDayTrip('2026-10-01')], [])
-    // Days 4 to 10 (2026-10-04 to 10-10) are in the window: miles 15 to 50.
-    expect(hikes[0].stretch.atSpans).toEqual([[15, 50]])
+    expect(hikes[0].stretch.atSpans).toEqual([[0, 50]])
+    expect(hikes[0].stretch.from).toBe(TODAY)
+  })
+
+  it('keeps the unwalked days a hiker is behind on, dated before today, and shows a closure on them', () => {
+    // Day 1 (2026-10-01) walked; days 2 and 3 (10-02, 10-03) not: two
+    // unplanned zeros, so the hiker stands at mile 5 on 2026-10-04 and walks
+    // miles 5 to 15 next, though the calendar puts them in the past.
+    const behind = tenDayTrip('2026-10-01')
+    behind.plan.days[0] = { ...behind.plan.days[0], walked: true }
+    const bridge = notice({
+      notice_id: 'atc_trail_updates:bridge',
+      source_key: 'atc_trail_updates',
+      place: { kind: 'at_miles', start: 6, end: 8 },
+      obstructs_trail: true,
+    })
+    const { hikes } = pick([bridge], [behind], [])
+    expect(hikes[0].stretch.atSpans).toEqual([[5, 50]])
+    expect(hikes[0].onRoute.map((n) => n.notice_id)).toEqual(['atc_trail_updates:bridge'])
+    // The days behind are walked from today on, so the stretch still starts
+    // today, and a notice that ended yesterday does not touch it.
+    expect(hikes[0].stretch.from).toBe(TODAY)
+    const endedYesterday = { ...bridge, notice_id: 'x', ends_on: shiftDay(TODAY, -1) }
+    expect(pick([endedYesterday], [behind], []).hikes[0].onRoute).toEqual([])
+  })
+
+  it('leaves out a plan whose unwalked days are all dated before today, as abandoned', () => {
+    const abandoned = tenDayTrip('2026-09-01')
+    const { hikes, empty } = pick([], [abandoned], [])
+    expect(hikes).toEqual([])
+    expect(empty).toBe('nothing_in_the_window')
   })
 
   it('finds the clubs from ATC’s club sections, by provider and never by name', () => {

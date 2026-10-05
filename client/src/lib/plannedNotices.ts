@@ -28,7 +28,9 @@
 //    yet walked. That is the maintainer's "for a long hike get everything
 //    along the planned hike in the next 7": a thru-hike starting tomorrow is
 //    the next seven days of it, never all 2,197 miles. A short trip that
-//    falls inside the window whole is all of it, by the same rule.
+//    falls inside the window whole is all of it, by the same rule. A hiker
+//    behind their dates also has the unwalked days dated before today, which
+//    are the miles they walk next (`plannedStretches` says why).
 //
 // An UNDATED plan is not planned for any day, so it is not in the window:
 // thru-hikers plan loosely and plan.ts makes the date optional for that
@@ -314,19 +316,30 @@ export function plannedStretches({
   const known = new Set(stewards.map((steward) => steward.provider))
   const stretches: PlannedStretch[] = []
 
+  const lastDay = shiftDay(today, NOTICE_WINDOW_DAYS - 1)
   for (const trip of trips) {
     if (trip.recorded === true) continue
     const { stops, days } = trip.plan
+    const dated = days.map((day) => (day.walked === true ? undefined : day.date))
+    // A hiker BEHIND their dates has unwalked days dated before today, and
+    // those are the miles they walk next (plan.ts's `currentDayIndex`: "the
+    // calendar is a label, where the hiker is is a fact"; a plan is re-dated
+    // only on the hiker's say, lib/cascade.ts). So they are taken too, while
+    // the plan still has an unwalked day in the window - a plan with none is
+    // one nobody is walking, and shows nothing. Walked days are a prefix
+    // (plan.ts's validator), so this adds exactly the days behind. A hiker
+    // AHEAD of their dates is still read by the calendar: the days dated past
+    // the window are left out, though they may reach them this week.
+    if (!dated.some((date) => date !== undefined && inNoticeWindow(date, today))) continue
     const spans: Array<[number, number]> = []
     const dates: string[] = []
-    days.forEach((day, index) => {
-      if (day.walked === true || day.date === undefined) return
-      if (!inNoticeWindow(day.date, today)) return
+    dated.forEach((date, index) => {
+      if (date === undefined || date > lastDay) return
       const start = stops[index]
       const end = stops[index + 1]
       if (start === undefined || end === undefined) return
       spans.push([start.mile, end.mile])
-      dates.push(day.date)
+      dates.push(date < today ? today : date)
     })
     if (spans.length === 0) continue
     const atSpans = mergeSpans(spans)
@@ -335,6 +348,8 @@ export function plannedStretches({
       id: `trip:${trip.id}`,
       kind: 'long_hike',
       label: trip.name,
+      // A day behind is walked today at the earliest, so the stretch starts
+      // today and a notice that ended yesterday does not touch it.
       from: dates[0],
       to: dates[dates.length - 1],
       atSpans,

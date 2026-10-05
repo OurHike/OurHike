@@ -90,7 +90,8 @@ class NotJson(ValueError):
 
 
 def _json(response: requests.Response, what: str):
-    """The body as JSON; NotJson naming its content type, its length, where it stopped parsing, and its Content-Length.
+    """The body as JSON; NotJson naming its content type, its length, where it stopped parsing and what the text holds
+    there (_at_failure), and its Content-Length.
 
     Monthly run 17 (refresh-reference.yml 37232256991) left nps_multimedia_audio out on
     "answered 'application/json;charset=utf-8', not JSON" and nothing else, while two items
@@ -106,8 +107,37 @@ def _json(response: requests.Response, what: str):
     except ValueError as error:
         raise NotJson(
             f"{what} answered {response.headers.get('Content-Type')!r}, not JSON: {len(response.content):,} bytes, "
-            f"{error}; {_against_content_length(response)}"
+            f"{error}{_at_failure(error)}; {_against_content_length(response)}"
         ) from error
+
+
+#: How many characters either side of where the parser stopped _at_failure() quotes. Enough to show the field name
+#: before a string and how its value opens; short, because the body can carry a person field that never loads
+#: (nps_multimedia_audio's `transcript`). A choice for a log line, not a measurement.
+FAILURE_CONTEXT_CHARS = 20
+
+
+def _at_failure(error: ValueError) -> str:
+    """What the text holds where the parser stopped, as repr(), for _json()'s refusal, or "" with no position.
+
+    "Unterminated string starting at" is raised only when the text ends before that string closes: a raw control
+    character or NUL inside a string is "Invalid control character" instead, and an escaped lone surrogate or a
+    byte that is not UTF-8 parses (tests/test_extract_content.py, on the simplejson the extract job installs). So
+    `strict=False`, which accepts raw control characters, would not read such a body, and is not used. The position
+    is where the string began, not where the text stopped, so monthly runs 19 and 20 (refresh-reference.yml
+    37253303123 and 37296900535) reporting char 23,867 on 163,840 bytes and on 98,304 is what one string running
+    from char 23,867 past the end of both bodies looks like, cut at two points (Reasoned from that). The quote names
+    the field, and the count says how much of the string arrived.
+    """
+    text, position = getattr(error, "doc", None), getattr(error, "pos", None)
+    if not isinstance(text, str) or not isinstance(position, int):
+        return ""
+    before = text[max(0, position - FAILURE_CONTEXT_CHARS) : position]
+    after = text[position : position + FAILURE_CONTEXT_CHARS]
+    said = f" (before it {before!r}, from it {after!r}"
+    if getattr(error, "msg", "") == "Unterminated string starting at":
+        said += f"; the text ends {len(text) - position:,} characters later, still inside that string"
+    return said + ")"
 
 
 def _against_content_length(response: requests.Response) -> str:
@@ -142,8 +172,9 @@ def _get_json(url: str, *, what: str, headers: dict | None = None, label: str | 
     multiples of 16,384, which reads as a body cut off in transit rather than one the API wrote wrong (Reasoned
     from the two lengths, not measured: neither body was kept). So the page is asked for once more, through
     _get(), which waits POLITE_GAP_SECONDS after the last request to the host ended, and a second answer that will
-    not parse is refused as the first was, so a list missing a page never lands. @unvalidated: that one more ask
-    gets a whole body; the next monthly run's log says, by this warning followed by no refusal.
+    not parse is refused as the first was, so a list missing a page never lands. Run 20 (37296900535) asked one
+    page twice and got 98,304 bytes both times, each ending inside a string that starts at char 23,867, where run
+    19's did, so for that page one more ask does not help; whether it helps a page cut at random is @unvalidated.
     """
     try:
         return _json(_get(url, headers=headers, label=label), what)

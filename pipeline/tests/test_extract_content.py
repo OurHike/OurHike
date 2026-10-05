@@ -13,6 +13,7 @@ monthly lane; and two templates on one wiki are two reads, not one dataset extra
 """
 
 import json
+import re
 import xml.etree.ElementTree as ElementTree
 from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit
@@ -429,11 +430,87 @@ def test_an_nps_page_cut_short_twice_is_refused_naming_how_far_short_of_its_cont
     assert requests_mock.call_count == 2, "asked twice, then refused"
 
 
+def test_an_nps_page_that_will_not_parse_is_refused_naming_where_in_the_list_the_page_starts(registry, key, requests_mock):
+    """Runs 18 to 20 named the list and not the page; the refusal now names the page by its `start`."""
+    server = FakeList(requests_mock, AUDIO, [clip(n) for n in range(5)], cap=2)
+
+    def second_page_cut(request, context):
+        body = json.dumps(server.answer(request, context))
+        return body[: len(body) // 2] if query(request)["start"] == "2" else body
+
+    requests_mock.get(AUDIO, text=second_page_cut)
+
+    with pytest.raises(_json_apis.NotJson, match=r"^nps_audio from 2 answered"):
+        list(NpsContent(key="nps_audio", club="nps", type="podcasts").rows({}))
+
+
 def test_an_unparsed_answer_with_no_content_length_says_there_was_nothing_to_compare_it_against(requests_mock):
     requests_mock.get(AUDIO, text='{"data": ["cut', headers={"Content-Type": "application/json"})
 
     with pytest.raises(ValueError, match="no Content-Length to compare against"):
         _json_apis._json(_json_apis._get(AUDIO), "nps_audio")
+
+
+# What makes the extract job's JSON parser say "Unterminated string starting at", which refused nps_multimedia_audio in
+# monthly runs 18, 19 and 20 (refresh-reference.yml 37245577210, 37253303123 and 37296900535). The parser is the one
+# `requests` picks: simplejson, which requirements-extract.txt and requirements-dev.txt both pin. A transcript-long
+# string, escapes and all, as JSON writes them: 192,000 characters.
+TRANSCRIPT = 'Fixture words, \\"quoted\\", then a line break\\n. ' * 4000
+LONG_BODY = ('{"data": [{"id": "clip-1", "transcript": "' + TRANSCRIPT + '"}]}').encode()
+
+
+def json_answer(requests_mock, body: bytes):
+    requests_mock.get(AUDIO, content=body, headers={"Content-Type": "application/json;charset=utf-8"})
+    return _json_apis._get(AUDIO)
+
+
+@pytest.mark.parametrize(
+    ("body", "refusal"),
+    [
+        (b'{"data": [{"title": "Fixture\nclip"}]}', "Invalid control character"),
+        (b'{"data": [{"title": "Fixture\x00clip"}]}', "Invalid control character"),
+        (b'{"data": [{"title": "Fixture \\ud800 clip"}]}', None),
+        (b'{"data": [{"title": "Fixture \xe2 clip"}]}', None),
+        (b'{"data": [{"title": "Fixture clip', "Unterminated string starting at"),
+    ],
+    ids=["raw newline", "raw NUL", "escaped lone surrogate", "invalid UTF-8 byte", "body ends inside a string"],
+)
+def test_only_a_body_that_ends_inside_a_string_is_an_unterminated_string_to_the_json_parser(requests_mock, body, refusal):
+    """A raw control character or NUL inside a string is a refusal of its own; a lone surrogate and a byte that is not
+    UTF-8 parse (the second decoded as U+FFFD). So none of them is what refused nps_multimedia_audio."""
+    response = json_answer(requests_mock, body)
+    if refusal is None:
+        assert _json_apis._json(response, "nps_audio")["data"]
+    else:
+        with pytest.raises(_json_apis.NotJson, match=refusal):
+            _json_apis._json(response, "nps_audio")
+
+
+def test_two_bodies_cut_at_different_lengths_inside_one_long_string_are_refused_at_the_same_position(requests_mock):
+    """Run 19 refused 163,840 bytes and run 20 98,304 at the same 'line 545 column 15 (char 23867)'.
+
+    The position is where the string the body stopped inside began, not where the body stopped, so one position at
+    two lengths is what one long string cut at two points looks like, and does not show either body was whole.
+    """
+    positions = set()
+    for cut in (98_304, 163_840):
+        with pytest.raises(_json_apis.NotJson, match="Unterminated string starting at") as refused:
+            _json_apis._json(json_answer(requests_mock, LONG_BODY[:cut]), "nps_audio")
+        positions.add(re.search(r"\(char (\d+)\)", str(refused.value)).group(1))
+    assert positions == {str(LONG_BODY.index(b'"Fixture words'))}
+
+
+def test_a_body_that_stops_inside_a_string_is_refused_quoting_the_field_and_how_far_the_string_ran(requests_mock):
+    """The refusal quotes 20 characters either side of where the parser stopped, so the next monthly log names the
+    field a cut body stopped inside, and says how much of that string arrived."""
+    with pytest.raises(_json_apis.NotJson) as refused:
+        _json_apis._json(json_answer(requests_mock, LONG_BODY[:98_304]), "nps_audio")
+
+    said = str(refused.value)
+    assert """before it 'p-1", "transcript": '""" in said
+    assert """from it '"Fixture words, \\\\"qu'""" in said
+    assert "the text ends 98,263 characters later, still inside that string" in said
+    assert said.endswith("; no Content-Length to compare against")
 
 
 def test_without_an_nps_key_a_content_list_is_unavailable_and_nothing_is_asked(registry, requests_mock, monkeypatch):

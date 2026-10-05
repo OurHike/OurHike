@@ -89,10 +89,52 @@
     plans. A source loading outside the eastern box without a row in
     `regions` fails here: that is the design, since widening a safety bound
     is part of registering a source.
+
+    THE BOX A SOURCE IS HELD TO is source_region() below, the one home of
+    the `regions` map, read by lands_outside_its_region and by
+    point_outside_its_region, which the places union clears a stray point
+    with (its own comment says why and how many it may clear).
 -#}
 {% macro lands_outside_its_region(
     relation, geometry, source_key_column='source_key'
 ) %}
+
+with placed as (
+    select
+        {{ source_key_column }} as source_key,
+        {{ geometry }} as geom
+    from {{ relation }}
+),
+
+boxed as (
+    select
+        source_key,
+        st_xmin(geom) as xmin,
+        st_xmax(geom) as xmax,
+        st_ymin(geom) as ymin,
+        st_ymax(geom) as ymax,
+        {{ source_region('source_key') }} as region
+    from placed
+    where geom is not null
+)
+
+select boxed.*
+from boxed
+inner join {{ region_boxes() }} on boxed.region = boxes.region
+where
+    boxed.ymin < boxes.lat_min or boxed.ymax > boxes.lat_max
+    or boxed.xmin < boxes.lon_min or boxed.xmax > boxes.lon_max
+
+{% endmacro %}
+
+{#-
+    The region a source's rows are held to, as a CASE on `column` (a SQL
+    expression for the row's source key): the `regions` map below, else
+    macros/generated_regions.sql's box, else
+    macros/generated_notice_regions.sql's, else `eastern`. This file's
+    header says what each box rests on.
+-#}
+{% macro source_region(column) -%}
 
 {%- set regions = {
     'usfs_trails': 'national',
@@ -243,46 +285,91 @@
     'ohta_major_trailheads': 'national',
 } -%}
 
-with placed as (
-    select
-        {{ source_key_column }} as source_key,
-        {{ geometry }} as geom
-    from {{ relation }}
-),
+case
+    {% for key, region in regions.items() -%}
+    when {{ column }} = '{{ key }}' then '{{ region }}'
+    {% endfor -%}
+    {{ generated_region_cases(column) }}
+    {{ generated_notice_region_cases(column) }}
+    else 'eastern'
+end
+{%- endmacro %}
 
-boxed as (
-    select
-        source_key,
-        st_xmin(geom) as xmin,
-        st_xmax(geom) as xmax,
-        st_ymin(geom) as ymin,
-        st_ymax(geom) as ymax,
-        case
-            {% for key, region in regions.items() -%}
-            when source_key = '{{ key }}' then '{{ region }}'
-            {% endfor -%}
-            {{ generated_region_cases('source_key') }}
-            {{ generated_notice_region_cases('source_key') }}
-            else 'eastern'
-        end as region
-    from placed
-    where geom is not null
+{#-
+    True where `geometry` is one point (POINT, never a multipoint, line or
+    polygon) outside the box its source is held to (source_region(),
+    region_boxes()), false otherwise, never null: a row with no geometry is
+    not outside anything. `geometry` and `source_key_column` are SQL
+    expressions for the row's GEOMETRY and its source key.
+
+    WHY A POINT AND NOTHING ELSE. Monthly run 19 (refresh-reference.yml
+    37253303123, 2026-10-05) failed the places union's lon/lat swap test on
+    three points of the 16,127 the Park Service's /places list
+    (nps_api_places) located: lat -88.618 lon 104.0625 (Antarctica), lat
+    -40.919 lon -49.256 (the South Atlantic) and lat 83.677 lon -171.5625
+    (the Arctic), against us_and_territories' lat -20 to 72. Three points
+    scattered over three oceans read as the Park Service's own data-entry
+    errors, not a swapped layer, which moves every point (Reasoned from
+    those three rows; nobody has asked NPS). A point that wrong is unknown,
+    so the places union clears it, as it leaves the 1,378 places with no
+    coordinate at all with none (run 19's extract log: 17,505 items, 16,127
+    with a coordinate); absent means unknown. A line or polygon
+    with one bad vertex still fails the swap test: clearing it would drop a
+    whole park's or trail's shape for one vertex, which is a different
+    question from one stray point.
+-#}
+{% macro point_outside_its_region(geometry, source_key_column='source_key') -%}
+coalesce(
+    st_geometrytype({{ geometry }}) = 'POINT'
+    and (
+        select
+            st_ymin({{ geometry }}) < boxes.lat_min
+            or st_ymax({{ geometry }}) > boxes.lat_max
+            or st_xmin({{ geometry }}) < boxes.lon_min
+            or st_xmax({{ geometry }}) > boxes.lon_max
+        from {{ region_boxes() }}
+        where boxes.region = {{ source_region(source_key_column) }}
+    ),
+    false
 )
+{%- endmacro %}
 
-select boxed.*
-from boxed
-inner join {{ region_boxes() }} on boxed.region = boxes.region
-where
-    boxed.ymin < boxes.lat_min or boxed.ymax > boxes.lat_max
-    or boxed.xmin < boxes.lon_min or boxed.xmax > boxes.lon_max
+{#-
+    True where a source lost too many of its located rows (those that
+    landed with a geometry) to point_outside_its_region for them to be
+    stray points: every one of them, or more than one and more than 1% of
+    them. `cleared` and `located` are SQL expressions for the two counts.
+    vertex_extents below carries it per source for the places union, and
+    int_places__source_extents' test fails the build on it.
 
-{% endmacro %}
+    A lon/lat swap moves every point of a layer outside its box, so a
+    swapped point layer loses all of them and fails here, as it failed the
+    swap test before its points were cleared. Run 19's nps_api_places
+    would have lost 3 of 16,127 located places (0.019%: that run's extract
+    log counts the located places, its failed rows the three) and passes.
+
+    @unvalidated: 1% is picked, about fifty times run 19's share and a
+    hundredth of a swap's, not measured; and one point is let through
+    whatever the layer's size, so that a layer of a few points that gains
+    one data-entry error does not stop the monthly build, as run 19 was
+    stopped. The cost: in a layer of two or more points, one point outside
+    its box never fails the build, whatever put it there. What would settle
+    both is the `points_outside_region` int_places__source_extents counts
+    per source over a few monthly runs: how many a real layer loses,
+    against all of them for a swap.
+-#}
+{% macro loses_too_many_points_outside_its_region(cleared, located) -%}
+    (
+        (({{ cleared }}) > 0 and ({{ cleared }}) = ({{ located }}))
+        or ({{ cleared }}) > greatest(1, 0.01 * ({{ located }}))
+    )
+{%- endmacro %}
 
 {#-
     The three boxes, as a table `boxes` (region, lat_min, lat_max, lon_min,
     lon_max) for a FROM or JOIN: this file's header says what each rests
-    on. One home, read by lands_outside_its_region above and by
-    vertex_extents below. SQL rather than a returned dict, so SQLFluff's
+    on. One home, read by lands_outside_its_region and
+    point_outside_its_region above and by vertex_extents below. SQL rather than a returned dict, so SQLFluff's
     jinja templater renders it as dbt does.
 -#}
 {% macro region_boxes() -%}
@@ -305,12 +392,23 @@ where
     trail segments answered lat -24.99 to 90 for vertices at 13.64 to 63.20
     (pipeline/ELT.md, "What wave 1's live reads found that phase C must
     honour", 2026-10-03).
+
+    With `cleared_column`, a column of `relation` marking a row whose point
+    was cleared as outside its box (point_outside_its_region), it also
+    counts those rows (`points_outside_region`, not among
+    `rows_with_geometry`) and says whether that is too many
+    (`loses_too_many_points_outside_region`,
+    loses_too_many_points_outside_its_region above).
 -#}
-{% macro vertex_extents(relation, geometry='geom', source_key_column='source_key') -%}
+{% macro vertex_extents(
+    relation, geometry='geom', source_key_column='source_key', cleared_column=none
+) -%}
 with placed as (
     select
         {{ source_key_column }} as source_key,
         {{ geometry }} as geom
+        {%- if cleared_column %},
+        {{ cleared_column }} as cleared{% endif %}
     from {{ relation }}
 ),
 
@@ -323,6 +421,8 @@ extents as (
         max(st_xmax(geom)) as lon_max,
         min(st_ymin(geom)) as lat_min,
         max(st_ymax(geom)) as lat_max
+        {%- if cleared_column %},
+        count(*) filter (where cleared) as points_outside_region{% endif %}
     from placed
     group by source_key
 ),
@@ -355,6 +455,13 @@ select
     extents.lat_min,
     extents.lat_max,
     fits.region as vertex_region
+    {%- if cleared_column %},
+    extents.points_outside_region,
+    {{ loses_too_many_points_outside_its_region(
+        'extents.points_outside_region',
+        'extents.rows_with_geometry + extents.points_outside_region'
+    ) }} as loses_too_many_points_outside_region
+    {%- endif %}
 from extents
 left join fits
     on extents.source_key = fits.source_key and fits.narrowest = 1

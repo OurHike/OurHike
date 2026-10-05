@@ -163,6 +163,10 @@ class Shape:
     # False for a content type (section C, decision 54 wave 3): its rows are episodes, write-ups, list items and
     # photo manifest rows, with no geometry column, so no geom, no region box and no CRS cast.
     geometry: bool = True
+    # True where the union clears a row landed as one point outside its source's box and marks it in
+    # `point_outside_region` (union_sql()): places only, since monthly run 19 (refresh-reference.yml 37253303123)
+    # failed the places union's swap test on three stray NPS points. The other types' unions are unchanged.
+    clears_stray_points: bool = False
 
 
 SHAPES = {
@@ -177,6 +181,7 @@ SHAPES = {
             ),
             ("category", "The layer's own category, from the registry's `category_field`; null where the registry names none."),
         ),
+        clears_stray_points=True,
     ),
     "elevation": Shape(
         key_column="elevation_feature_key",
@@ -1069,7 +1074,32 @@ def union_sql(type_: str, staging_models: list[str]) -> str:
     )
     select = ",\n    ".join(columns)
     branches = [f"select\n    {select}\nfrom {{{{ ref('{model}') }}}}" for model in staging_models]
-    return SQL_MARK + "{{ config(materialized='table') }}\n" + head + "\n" + "\nunion all by name\n".join(branches) + "\n"
+    union = "\nunion all by name\n".join(branches)
+    if not shape.clears_stray_points:
+        return SQL_MARK + "{{ config(materialized='table') }}\n" + head + "\n" + union + "\n"
+    head += "\n--\n" + _comment(
+        "A STRAY POINT IS CLEARED, NOT PUBLISHED. A row that landed as one point outside the box its source is held "
+        "to keeps no geometry here, and `point_outside_region` marks it (macros/lands_outside_its_region.sql's "
+        "point_outside_its_region says why a point and nothing else): absent means unknown, as for a row that "
+        "landed with no coordinate. So the lon/lat swap test reads what is left, and a swapped point layer, "
+        f"which loses every point, fails int_{type_}__source_extents' loses_too_many_points_outside_region test "
+        "instead."
+    )
+    indented = "\n".join(f"    {line}" for line in union.split("\n"))
+    cleared = "case\n        when point_outside_region then null\n        else geom\n    end as geom"
+    final = [cleared if name == "geom" else name for name in columns]
+    final.insert(columns.index("geom") + 1, "point_outside_region")
+    checked = (
+        "checked as (\n"
+        "    select\n"
+        "        unioned.*,\n"
+        "        {{ point_outside_its_region('unioned.geom', 'unioned.source_key') }}\n"
+        "            as point_outside_region\n"
+        "    from unioned\n"
+        ")"
+    )
+    body = f"with unioned as (\n{indented}\n),\n\n{checked}\n\nselect\n    " + ",\n    ".join(final) + "\nfrom checked\n"
+    return SQL_MARK + "{{ config(materialized='table') }}\n" + head + "\n" + body
 
 
 def union_yaml(type_: str, type_tables: list[Table]) -> str:
@@ -1082,6 +1112,11 @@ def union_yaml(type_: str, type_tables: list[Table]) -> str:
             "its geometry as landed and its layer's own columns as `properties`. Unfiltered: whatever reads it keeps "
             "int_sources__publication's verdict."
         )
+        if shape.clears_stray_points:
+            description += (
+                " A row landed as one point outside the box its source is held to keeps no geometry here and is "
+                "marked `point_outside_region`, so it cannot be published at a wrong spot."
+            )
         region_test = [
             "    data_tests:",
             "      # The lon/lat swap test, against the box each source's rows are held",
@@ -1091,6 +1126,13 @@ def union_yaml(type_: str, type_tables: list[Table]) -> str:
             "          arguments:",
             "            geometry: geom",
         ]
+        if shape.clears_stray_points:
+            region_test[4:4] = [
+                "      # It reads `geom` after a stray point is cleared, so a line or",
+                "      # polygon reaching outside its box fails here, and a point layer",
+                "      # that loses too many points to the clearing, as a swapped one loses",
+                f"      # all of them, fails int_{type_}__source_extents' test.",
+            ]
     else:
         description = (
             f"Every {type_.replace('_', ' ')} row of the {len(type_tables)} registered sources "
@@ -1127,7 +1169,29 @@ def union_yaml(type_: str, type_tables: list[Table]) -> str:
     ]
     for name, description in shape.columns:
         lines += [f"      - name: {name}", "        description: >", _folded(description, 10)]
-    if shape.geometry:
+    if shape.clears_stray_points:
+        lines += [
+            "      - name: geom",
+            "        description: >",
+            _folded(
+                "The feature's geometry as the layer published it, in OGC:CRS84, with a Z where the layer's vertices "
+                "carry one; null where it landed with none, or as one point outside the box its source is held to "
+                "(`point_outside_region`).",
+                10,
+            ),
+            "      - name: point_outside_region",
+            "        description: >",
+            _folded(
+                "True where the row landed as one point outside the box its source is held to, so `geom` is null "
+                "here (macros/lands_outside_its_region.sql's point_outside_its_region); false on every other row. "
+                f"int_{type_}__source_extents counts them per source.",
+                10,
+            ),
+            "        data_tests: [not_null]",
+            "      - name: properties",
+            "        description: The base row's own columns, under dlt's names, as JSON, the geometry left out.",
+        ]
+    elif shape.geometry:
         lines += [
             "      - name: geom",
             "        description: The feature's geometry as the layer published it, in OGC:CRS84, with a Z where the layer's vertices carry one.",

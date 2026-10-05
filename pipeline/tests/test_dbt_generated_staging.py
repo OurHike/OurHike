@@ -188,6 +188,27 @@ def test_an_elevation_layer_names_its_field_or_its_geometry_z():
         make_dbt_staging._conformed(_table({"key": "a", "id_field": "GlobalID"}, "elevation"))
 
 
+def test_only_the_places_union_clears_a_point_outside_its_sources_box_and_marks_the_row():
+    """Monthly run 19 (refresh-reference.yml 37253303123) stopped on three stray NPS points in the places union.
+
+    The places union nulls such a point and marks it `point_outside_region`, which its YAML documents and
+    int_places__source_extents counts; every other union is written as before, a bare `union all by name`.
+    """
+    files = make_dbt_staging.render()
+    for type_, shape in make_dbt_staging.SHAPES.items():
+        union = files.get(MODELS / "intermediate" / type_ / f"{shape.union}.sql")
+        if union is None:
+            continue
+        clears = "point_outside_its_region('unioned.geom', 'unioned.source_key')" in union
+        assert clears == (type_ == "places"), type_
+    union = files[MODELS / "intermediate" / "places" / "int_places__unioned.sql"]
+    assert "when point_outside_region then null\n        else geom\n    end as geom," in union
+    yaml = files[MODELS / "intermediate" / "places" / "_places__generated__intermediate.yml"]
+    assert "      - name: point_outside_region\n" in yaml and "lands_in_the_region_its_source_publishes_in" in yaml
+    extents = (MODELS / "intermediate" / "places" / "int_places__source_extents.sql").read_text()
+    assert "cleared_column='point_outside_region'" in extents
+
+
 def test_each_union_reads_exactly_the_staging_models_the_generator_writes_for_its_type():
     files = make_dbt_staging.render()
     for type_, shape in make_dbt_staging.SHAPES.items():

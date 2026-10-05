@@ -8,442 +8,476 @@
 -- extract's club folders, so a layer registered later joins by running it
 -- again. Nothing here is filtered for publication: whatever reads it keeps
 -- int_sources__publication's verdict, the one home of may_publish.
+--
+-- A STRAY POINT IS CLEARED, NOT PUBLISHED. A row that landed as one point
+-- outside the box its source is held to keeps no geometry here, and
+-- `point_outside_region` marks it (macros/lands_outside_its_region.sql's
+-- point_outside_its_region says why a point and nothing else): absent means
+-- unknown, as for a row that landed with no coordinate. So the lon/lat swap
+-- test reads what is left, and a swapped point layer, which loses every
+-- point, fails int_places__source_extents'
+-- loses_too_many_points_outside_region test instead.
+with unioned as (
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_alaska_trails__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_amc__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_austin_trail__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_azgeo__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_bartram__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_blm__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_bmecc__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_buckeye__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_catamount__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_cdtc__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_cotrex__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_ct_deep__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_cumberland__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_duluth__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_fltc__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_fpc__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_fta__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_iata__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_massgis__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_mohonk__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_mtsg__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_nc_dpr__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_nh_granit__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_njgin__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_nps__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_nysdec__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_pasda__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_patc__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_pcta__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_rmfi__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_sbts__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_spnhf__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_tahoe_rim__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_trustees__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_usfs__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_usfws__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_usgs_tnm__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_utah_sgid__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_wa_rco__places') }}
+    union all by name
+    select
+        source_key,
+        club,
+        place_key,
+        name,
+        category,
+        geom,
+        properties,
+        _loaded_at
+    from {{ ref('stg_wi_dnr__places') }}
+),
+
+checked as (
+    select
+        unioned.*,
+        {{ point_outside_its_region('unioned.geom', 'unioned.source_key') }}
+            as point_outside_region
+    from unioned
+)
+
 select
     source_key,
     club,
     place_key,
     name,
     category,
-    geom,
+    case
+        when point_outside_region then null
+        else geom
+    end as geom,
+    point_outside_region,
     properties,
     _loaded_at
-from {{ ref('stg_alaska_trails__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_amc__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_austin_trail__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_azgeo__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_bartram__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_blm__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_bmecc__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_buckeye__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_catamount__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_cdtc__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_cotrex__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_ct_deep__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_cumberland__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_duluth__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_fltc__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_fpc__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_fta__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_iata__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_massgis__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_mohonk__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_mtsg__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_nc_dpr__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_nh_granit__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_njgin__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_nps__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_nysdec__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_pasda__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_patc__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_pcta__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_rmfi__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_sbts__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_spnhf__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_tahoe_rim__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_trustees__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_usfs__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_usfws__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_usgs_tnm__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_utah_sgid__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_wa_rco__places') }}
-union all by name
-select
-    source_key,
-    club,
-    place_key,
-    name,
-    category,
-    geom,
-    properties,
-    _loaded_at
-from {{ ref('stg_wi_dnr__places') }}
+from checked

@@ -8655,12 +8655,20 @@ def _geo_api_documents() -> dict[str, dict]:
             "contacts": {"phoneNumbers": []},
         }
 
+    # A place whose coordinate is a data-entry error far outside every box, at the latitude of one of the three that
+    # failed monthly run 19's places swap test (refresh-reference.yml 37253303123): the places union clears it, so
+    # the build runs past it as it did not then.
+    stray = {**nps_item(2, "places"), "latitude": "-88.6", "longitude": "104.06"}
+    data = {
+        "places": [nps_item(0, "places"), nps_item(1, "places"), stray],
+        "campgrounds": [nps_item(n, "campgrounds") for n in (0, 1)],
+    }
     nps = {
         route: {
             "answers": [
                 _answer(
                     f"https://developer.nps.gov/api/v1/{route}",
-                    {"total": "2", "limit": "500", "start": "0", "data": [nps_item(0, route), nps_item(1, route)]},
+                    {"total": str(len(data[route])), "limit": "500", "start": "0", "data": data[route]},
                     {"start": "0"},
                 )
             ]

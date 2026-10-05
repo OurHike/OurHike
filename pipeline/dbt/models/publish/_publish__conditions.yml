@@ -98,8 +98,10 @@ models:
       notices in one file: one OrgNotice (features/ORG_NOTICES.md section 2)
       per row of a notice source (seeds/notice_readers.csv) in the closures
       and warnings marts, facts and a link only (decision 55), each with its
-      place (ATC's A.T. miles, the source's own geometry simplified at 10 m
-      for a phone, NYNJTC's trail and park terms, or unplaced), decision
+      place (ATC's A.T. miles, the source's own geometry shaped for a phone
+      by decision 77, an area grown 100 m and simplified at 100 m and a line
+      or point simplified at 10 m, NYNJTC's trail and park terms, or
+      unplaced), decision
       67's `hazard` where it is a hunting area, shooting site or burned area,
       the club's own `updated_at` and OurHike's `checked_at` (the run log's
       latest read that loaded the source or found it unchanged), and the
@@ -341,11 +343,14 @@ unit_tests:
   - name: pub_conditions_notices_simplifies_an_area_for_a_phone
     model: pub_conditions_notices
     description: >
-      The geometry a phone needs (the writer's header): Douglas-Peucker at
-      10 m in EPSG:5070 drops a vertex that sits 3 m off the hunting area's
-      edge, and the two that lie on it, and keeps the four corners of a
-      parcel about 4 km by 1.1 km, at 6 decimal places, so a layer's survey
-      detail does not ride to every phone each hour. The shell is wound
+      The geometry a phone needs (decision 77, the writer's header): a
+      hunting parcel about 4 km by 1.1 km, with a vertex 3 m off its edge and
+      two that lie on it, is grown 100 m outward and simplified at 100 m to
+      four corners at 5 decimal places, the corners' curves cut by the
+      simplifier, so a layer's survey detail does not ride to every phone.
+      Every corner of the parcel is inside it
+      (assert_a_notice_area_covers_every_vertex_of_its_source holds that for
+      this parcel and the shapes that bite). The shell is wound
       counterclockwise, as RFC 7946 asks of a writer.
     overrides:
       macros:
@@ -402,7 +407,7 @@ unit_tests:
           - {table_name: raw_iata__iata_lands_hunting_regs, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
     expect:
       rows:
-        - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.51],[-89.5,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+        - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.50126,44.5],[-89.44975,44.49911],[-89.44876,44.51018],[-89.50025,44.51089],[-89.50126,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
 
   - name: pub_conditions_notice_states_writes_each_shape_with_its_margin_and_the_files_own_date
     model: pub_conditions_notice_states

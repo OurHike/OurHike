@@ -98,10 +98,12 @@ This is the design's one genuinely new idea, and the arm that matters most is th
 
 **The `geometry` arm** arrived with `conditions/notices.json` (**#1805 — dlt → dbt
 re-platform as one go/no-go change**, decision 53 phase D): a notice whose source
-publishes its own polygon, line or point carries it, simplified for a phone at 10 m
-(`pipeline/dbt/models/publish/pub_conditions_notices.sql` says why that tolerance). It
-is the source's shape and nothing derived from it, so it keeps the rule below. The two
-older files never carry it.
+publishes its own polygon, line or point carries it, shaped for a phone by decision 77:
+an area grown 100 m outward and simplified at 100 m so that it still covers every point
+of the source's, a line or a point simplified at 10 m
+(`pipeline/dbt/models/publish/pub_conditions_notices.sql` says why). It is the source's
+shape, never one inferred from anything else, so it keeps the rule below. The two older
+files never carry it.
 
 **ATC's rows become `at_miles` and nothing about their behaviour changes.** That arm is
 the existing mechanism, named. The migration is mechanical and the client's mile

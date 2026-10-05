@@ -231,6 +231,39 @@ def test_a_table_the_store_left_torn_is_carried_from_the_copy_before_and_the_res
     assert USFS.table in problem and "carried from copy" in problem
 
 
+def logged_runs(path: Path, table: str) -> list[tuple[str, str, int | None]]:
+    with duckdb.connect(str(path), read_only=True) as con:
+        return con.execute(
+            "select run_id, outcome, rows from raw._extract_runs where pipeline = ? and table_name = ? order by run_id",
+            [LEG, table],
+        ).fetchall()
+
+
+def test_a_carried_tables_run_log_rows_are_those_of_the_copy_its_rows_came_from(stores, tmp_path):
+    """WF2 in PR #1805's review: the copy carried run 1's 2 rows while its run log still said run 2 loaded 3, so the
+    hourly build would date run 1's rows by run 2's read. Twice torn, the rows and their log still agree."""
+    first = notices_run(stores, USFS, NPS)
+    serve(stores, TABLES)
+    second = notices_run(stores, club_closures("usfs", "u1", "u2", "u3", count=3), club_closures("nps", "p1", "p2", count=2))
+    for path in table_files(notices_pipeline(stores), USFS.table):
+        os.remove(path)
+    assert serve(stores, TABLES).manifest["tables"][USFS.table]["rows"] == 2, "carried"
+
+    hourly_warehouse(stores, tmp_path / "warehouse.duckdb", TABLES)
+
+    assert logged_runs(tmp_path / "warehouse.duckdb", USFS.table) == [(first.run_id, "loaded", 2)]
+    assert logged_runs(tmp_path / "warehouse.duckdb", NPS.table) == [(first.run_id, "loaded", 1), (second.run_id, "loaded", 2)]
+
+    notices_run(stores, club_closures("usfs", "u1", "u2", "u3", "u4", count=4), NPS)
+    for path in table_files(notices_pipeline(stores), USFS.table):
+        os.remove(path)
+    assert serve(stores, TABLES).manifest["tables"][USFS.table]["rows"] == 2, "carried from a copy that carried it"
+
+    hourly_warehouse(stores, tmp_path / "again.duckdb", TABLES)
+
+    assert logged_runs(tmp_path / "again.duckdb", USFS.table) == [(first.run_id, "loaded", 2)]
+
+
 def test_a_torn_table_with_no_copy_before_is_left_out_and_named(stores):
     notices_run(stores, USFS, NPS)
     for path in table_files(notices_pipeline(stores), USFS.table):
@@ -241,6 +274,9 @@ def test_a_torn_table_with_no_copy_before_is_left_out_and_named(stores):
     assert set(written.manifest["tables"]) == {NPS.table}
     (problem,) = written.problems
     assert USFS.table in problem and "left out" in problem
+    copy = Path(served_root(stores["notices"])) / written.manifest["run_id"]
+    logged = set(pq.read_table(copy / written.manifest["extract_runs"]["file"])["table_name"].to_pylist())
+    assert logged == {NPS.table}, "no run log row says a load of the table left out is here"
 
 
 def test_each_write_keeps_the_newest_copies_and_clears_an_unfinished_one(stores):

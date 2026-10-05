@@ -420,7 +420,10 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrit
     the new ones, and its run log. That table is carried from the copy
     before, its last good rows, and named in `problems`; with no copy
     before, it is left out and named. The next run that reads it whole mends
-    the store.
+    the store. A carried table's run log rows are carried with it, from the
+    copy its rows came from, and a table left out takes none, so the hourly
+    build never dates a table's rows by a read whose rows it does not hold
+    (WF2 in PR #1805's review).
 
     Then every finished copy past the newest SERVED_KEEP is deleted, and so
     is any unfinished one older than this.
@@ -441,6 +444,19 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrit
     previous = _previous_manifest(fs, bucket_url, run_id)
     entries: dict[str, dict] = {}
     problems: list[str] = []
+    # Tables whose run log rows this copy takes from the copy before, and tables it leaves out with no rows at all.
+    carried_logs: set[str] = set()
+    left_out: set[str] = set()
+    previous_log: list[pa.Table] = []
+
+    def log_before() -> pa.Table:
+        """The copy before's run log, verified, read once and only when a table is carried from it."""
+        if not previous_log:
+            runs = previous[1]["extract_runs"]
+            path = f"{served_root(bucket_url)}/{previous[0]}/{runs['file']}"
+            previous_log.append(pq.read_table(io.BytesIO(_verified_bytes(fs, path, runs["sha256"]))))
+        return previous_log[0]
+
     fs.makedirs(f"{root}/tables", exist_ok=True)
     for table, load_id in sorted(committed.items()):
         files = [path for path in listing.get(table, []) if os.path.basename(path).startswith(f"{load_id}.")]
@@ -455,13 +471,21 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrit
             found = "no file" if arrow is None else f"{arrow.num_rows} rows in its files"
             why = f"{table}: load {load_id} has {found}, and the run log says it landed {row.get('rows')}"
             carried = previous[1]["tables"].get(table) if previous else None
+            if carried is not None:
+                try:
+                    log_before()
+                except SERVED_READ_ERRORS as failure:
+                    why += f"; copy {previous[0]}'s run log will not read ({type(failure).__name__}: {failure})"
+                    carried = None
             if carried is None:
-                problems.append(f"{why}; no copy before this one has it, so it is left out")
+                left_out.add(table)
+                problems.append(f"{why}; no copy before this one can give it, so it is left out")
                 continue
             if carried.get("file"):
                 fs.copy(f"{served_root(bucket_url)}/{previous[0]}/{carried['file']}", f"{root}/{carried['file']}")
             entries[table] = dict(carried, carried_from=previous[0])
-            problems.append(f"{why}; carried from copy {previous[0]}, its last good rows")
+            carried_logs.add(table)
+            problems.append(f"{why}; carried from copy {previous[0]}, its last good rows and their run log rows")
             continue
         relative = f"tables/{table}.parquet"
         with fs.open(f"{root}/{relative}", "wb") as handle:
@@ -474,6 +498,13 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrit
         }
     for table, hints in sorted(not_yet_loaded(pipeline, committed, log).items()):
         entries[table] = {"load_id": None, "rows": 0, "file": None, "column_hints": hints, "not_yet_loaded": True}
+    if carried_logs or left_out:
+        replaced = pa.array(sorted(carried_logs | left_out), pa.string())
+        log_arrow = log_arrow.filter(pc.invert(pc.is_in(log_arrow["table_name"], value_set=replaced)))
+        if carried_logs:
+            before = log_before()
+            before = before.filter(pc.is_in(before["table_name"], value_set=pa.array(sorted(carried_logs), pa.string())))
+            log_arrow = pa.concat_tables([log_arrow, before], promote_options="permissive")
     with fs.open(f"{root}/{RUNS_TABLE}.parquet", "wb") as handle:
         pq.write_table(log_arrow, handle, compression="zstd")
     manifest = {

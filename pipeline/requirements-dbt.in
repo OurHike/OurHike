@@ -7,7 +7,7 @@
 # duckdb is pinned identically to requirements.in's hand-written pin, and for
 # the same ABI reason - the spatial extension the profiles.yml loads is
 # ABI-locked to the exact DuckDB version. Keep the two pins moving together.
-duckdb==1.5.5
+duckdb==1.5.6
 dbt-duckdb
 sqlfluff
 sqlfluff-templater-dbt

@@ -71,13 +71,41 @@ function rings(value: unknown): Position[][] {
     : []
 }
 
-/** A geometry's parts, or empty parts for one this module cannot read. */
+/**
+ * How many GeometryCollections deep a geometry may nest before the whole of it
+ * reads as having no parts.
+ *
+ * RFC 7946 §3.1.8 asks producers not to nest collections at all, and DuckDB's
+ * `ST_AsGeoJSON`, which writes conditions/notices.json, does not nest them
+ * (Reasoned, not measured). The bound is for a corrupted or hostile file: in
+ * the review of #1805 — dlt → dbt re-platform as one go/no-go change, a row
+ * nested 20,000 deep overflowed the stack in vitest on 2026-10-05, which on
+ * a phone is inside a hook `App` renders, so the whole app goes down, and
+ * the copy the phone kept repeats it offline.
+ *
+ * @unvalidated 8 is picked: deeper than anything a producer here writes, and
+ * nine frames of recursion at most. What would settle it: a real source that
+ * nests deeper, which none is known to.
+ */
+export const MAX_COLLECTION_DEPTH = 8
+
+/** A geometry's parts, or empty parts for one this module cannot read - or
+ *  one nested past {@link MAX_COLLECTION_DEPTH}, of which none is kept. */
 export function geometryParts(
   geometry: NoticeGeometryValue | null | undefined,
 ): GeometryParts {
   const parts: GeometryParts = { points: [], lines: [], polygons: [] }
+  return addParts(parts, geometry, 0) ? parts : { points: [], lines: [], polygons: [] }
+}
+
+/** Adds one geometry's parts to `parts`; false once it nests too deep. */
+function addParts(
+  parts: GeometryParts,
+  geometry: NoticeGeometryValue | null | undefined,
+  depth: number,
+): boolean {
   if (geometry === null || geometry === undefined || typeof geometry !== 'object')
-    return parts
+    return true
   const { coordinates } = geometry
   switch (geometry.type) {
     case 'Point':
@@ -113,19 +141,17 @@ export function geometryParts(
       }
       break
     case 'GeometryCollection':
+      if (depth >= MAX_COLLECTION_DEPTH) return false
       if (Array.isArray(geometry.geometries)) {
         for (const member of geometry.geometries as NoticeGeometryValue[]) {
-          const inner = geometryParts(member)
-          parts.points.push(...inner.points)
-          parts.lines.push(...inner.lines)
-          parts.polygons.push(...inner.polygons)
+          if (!addParts(parts, member, depth + 1)) return false
         }
       }
       break
     default:
       break
   }
-  return parts
+  return true
 }
 
 /** The box around a geometry's parts, or null when it has none. */

@@ -4,6 +4,7 @@ import {
   inPolygon,
   insideByMoreThan,
   linesMeetGeometry,
+  MAX_COLLECTION_DEPTH,
   positionMeetsParts,
   type Position,
 } from './noticeGeometry'
@@ -135,6 +136,37 @@ describe('linesMeetGeometry', () => {
       linesMeetGeometry([north], { type: 'Polygon', coordinates: 'nope' }, 1000),
     ).toBe(false)
     expect(linesMeetGeometry([north], null, 1000)).toBe(false)
+  })
+})
+
+describe('geometryParts of nested GeometryCollections', () => {
+  /** A point wrapped in `depth` GeometryCollections. */
+  function nested(depth: number): unknown {
+    let geometry: unknown = { type: 'Point', coordinates: [-74.005, 41.005] }
+    for (let i = 0; i < depth; i += 1) {
+      geometry = { type: 'GeometryCollection', geometries: [geometry] }
+    }
+    return geometry
+  }
+
+  it('reads a point inside a collection inside a collection', () => {
+    expect(geometryParts(nested(2) as never).points).toEqual([[-74.005, 41.005]])
+  })
+
+  it('reads a collection nested 20,000 deep as no parts, rather than overflowing the stack', () => {
+    const deep = nested(20_000) as never
+    expect(() => geometryParts(deep)).not.toThrow()
+    expect(geometryParts(deep)).toEqual({ points: [], lines: [], polygons: [] })
+    expect(linesMeetGeometry([north], deep, 1000)).toBe(false)
+  })
+
+  it('reads a collection nested past MAX_COLLECTION_DEPTH as no parts, whatever its shallower members hold', () => {
+    const past = {
+      type: 'GeometryCollection',
+      geometries: [SQUARE, nested(MAX_COLLECTION_DEPTH)],
+    }
+    expect(geometryParts(past as never)).toEqual({ points: [], lines: [], polygons: [] })
+    expect(geometryParts(nested(MAX_COLLECTION_DEPTH) as never).points).toHaveLength(1)
   })
 })
 

@@ -117,6 +117,16 @@ describe('a geometry place', () => {
     expect(hikes[0].fromClubs.map((n) => n.notice_id)).toEqual(['oprhp_trail_closures:7'])
   })
 
+  it('nested 20,000 GeometryCollections deep is unplaced, and the row is kept', () => {
+    let geometry: unknown = { type: 'Point', coordinates: [-74.1, 41.2] }
+    for (let i = 0; i < 20_000; i += 1) {
+      geometry = { type: 'GeometryCollection', geometries: [geometry] }
+    }
+    const deep = validNotice(row({ place: { kind: 'geometry', geometry } }))
+    expect(deep?.notice_id).toBe('oprhp_trail_closures:7')
+    expect(deep?.place).toEqual({ kind: 'unplaced' })
+  })
+
   it('with a readable coordinate is kept as it came', () => {
     const point = { type: 'Point', coordinates: [-74.1, 41.2] }
     expect(

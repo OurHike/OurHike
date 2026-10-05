@@ -1,10 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import type { FeatureCollection } from 'geojson'
 import { useNoticesPanel } from './noticesPanel'
 import { ATC_SOURCE_KEY, noticeSilenceKey, type TrailNotice } from '../lib/notices'
 import type { AtcUpdate } from '../lib/atcUpdates'
 import type { Stewards } from '../lib/stewards'
 import type { DayHike } from '../lib/dayHikes'
+import { HAZARD_ADVISORIES } from '../lib/hazardAreas'
+import { buildTrailIndex } from '../lib/trailPosition'
 
 // #327 moved this feature out of App.tsx whole. These tests are about the
 // seams the move created - what the hook hands back, and what it still has to
@@ -404,5 +407,230 @@ describe('with conditions/notices.json (#1805, decision 66)', () => {
     const { result } = listedPanel([dayHike(TODAY)])
     expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
     expect(result.current.mapScreen.noticeCount).toBe(2)
+  })
+})
+
+describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)', () => {
+  // Decision 77 downloads notices.json only once a hike is planned, and the
+  // areas were drawn from it alone, so a phone with nothing planned drew
+  // none. These hold the panel to the maintainer's answer: the areas' own
+  // file, read whatever is planned, and never an area drawn twice.
+
+  /** A centerline due north along 77° W, 34° to 35° N, as
+   *  lib/hazardAreas.test.ts's own. */
+  const INDEX = buildTrailIndex({
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { source: 'centerline' },
+        geometry: {
+          type: 'LineString',
+          coordinates: Array.from({ length: 101 }, (_, i) => [-77, 34 + i * 0.01]),
+        },
+      },
+    ],
+  } as FeatureCollection)
+
+  /** An invented hunting area the centerline crosses at 34.3° N. */
+  function huntingArea(id: string, west = -77.01, east = -76.99): TrailNotice {
+    return orgNotice({
+      notice_id: `oprhp_hunting_areas:${id}`,
+      source_key: 'oprhp_hunting_areas',
+      title: `Fixture hunting area ${id}`,
+      hazard: 'hunting',
+      updated_at: null,
+      place: {
+        kind: 'geometry',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [west, 34.3],
+              [east, 34.3],
+              [east, 34.31],
+              [west, 34.31],
+              [west, 34.3],
+            ],
+          ],
+        },
+      },
+    })
+  }
+
+  function hazardPanel({
+    clubNotices = null,
+    clubNoticesGeneratedAt = null,
+    hazardFile = null,
+  }: {
+    clubNotices?: readonly TrailNotice[] | null
+    clubNoticesGeneratedAt?: Date | null
+    hazardFile?: { items: readonly TrailNotice[]; generatedAt: Date } | null
+  }) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [],
+        orgNotices: [],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: INDEX,
+        bbox: BBOX,
+        now: NOW,
+        clubNotices,
+        clubNoticesGeneratedAt,
+        hazardFile,
+      }),
+    )
+  }
+
+  it('draws an area from hazard_areas.json, with its advisory on the tapped stretch, on a phone with no hike planned and no notices.json', async () => {
+    const { result } = hazardPanel({
+      hazardFile: { items: [huntingArea('1')], generatedAt: NOW },
+    })
+    await waitFor(() => expect(result.current.hazardAreas).toHaveLength(1))
+    expect(result.current.mapScreen.hazardAreas).toBe(result.current.hazardAreas)
+    expect(result.current.hazardAdvisoriesAt([-77, 34.305])).toEqual([
+      { id: 'oprhp_hunting_areas:1', ...HAZARD_ADVISORIES.hunting },
+    ])
+    // The planned-hike panel is not what this file turns on: with neither
+    // notices.json nor a plan the list stays today's.
+    expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
+  })
+
+  it('draws an area once when both files hold it from one build', async () => {
+    const area = huntingArea('1')
+    const { result } = hazardPanel({
+      clubNotices: [area],
+      clubNoticesGeneratedAt: NOW,
+      hazardFile: { items: [area], generatedAt: NOW },
+    })
+    await waitFor(() => expect(result.current.hazardAreas).toHaveLength(1))
+    expect(result.current.hazardAdvisoriesAt([-77, 34.305])).toHaveLength(1)
+  })
+
+  it('takes the areas from whichever file is newer, so a copy kept from before decision 77 never outranks a fresh hazard file', async () => {
+    const older = new Date(NOW.getTime() - 30 * 86_400_000)
+    const fresh = hazardPanel({
+      clubNotices: [huntingArea('kept-copy')],
+      clubNoticesGeneratedAt: older,
+      hazardFile: { items: [huntingArea('fresh')], generatedAt: NOW },
+    })
+    await waitFor(() => expect(fresh.result.current.hazardAreas).toHaveLength(1))
+    expect(fresh.result.current.hazardAreas[0].notice.notice_id).toBe(
+      'oprhp_hunting_areas:fresh',
+    )
+    cleanup()
+
+    const newerNotices = hazardPanel({
+      clubNotices: [huntingArea('this-hour')],
+      clubNoticesGeneratedAt: NOW,
+      hazardFile: { items: [huntingArea('last-month')], generatedAt: older },
+    })
+    await waitFor(() => expect(newerNotices.result.current.hazardAreas).toHaveLength(1))
+    expect(newerNotices.result.current.hazardAreas[0].notice.notice_id).toBe(
+      'oprhp_hunting_areas:this-hour',
+    )
+  })
+
+  it('draws the areas from notices.json on a bucket without hazard_areas.json, never reading the missing file as no area', async () => {
+    const { result } = hazardPanel({
+      clubNotices: [huntingArea('1')],
+      clubNoticesGeneratedAt: NOW,
+    })
+    await waitFor(() => expect(result.current.hazardAreas).toHaveLength(1))
+  })
+})
+
+describe('the "new notices" banner with conditions/notices.json (decision 87)', () => {
+  // A notice with no `updated_at` of its own counts as new only if OurHike
+  // first saw it after its source's earliest row in the file, worded "seen".
+  // Invented rows shaped like soak run 536's: every first_seen_at between
+  // 2026-10-03T20:24Z and 2026-10-05T00:23Z, the file generated at 00:23:54Z.
+  const LATER = new Date('2026-10-05T00:30:00Z')
+  const DAY = '2026-10-05'
+
+  function hike(): DayHike {
+    return {
+      id: 'hike-1',
+      name: 'Harriman loop',
+      date: DAY,
+      segments: [
+        [
+          { coord: [-74.1, 41.25], poiId: null },
+          { coord: [-74.09, 41.25], poiId: null },
+        ],
+      ],
+      figures: {
+        miles: 5,
+        legs: [
+          {
+            name: 'Fixture Trail',
+            source: 'nynjtc_trail_alerts',
+            blaze_color: null,
+            miles: 5,
+          },
+        ],
+      },
+      looped: false,
+      recorded: 'planned',
+      note: '',
+    }
+  }
+
+  /** NYNJTC's unplaced notices touch a hike on NYNJTC's trails. */
+  function seen(id: string, firstSeenAt: string): TrailNotice {
+    return orgNotice({
+      notice_id: `nynjtc_trail_alerts:${id}`,
+      updated_at: null,
+      first_seen_at: firstSeenAt,
+      changed_at: firstSeenAt,
+    })
+  }
+
+  const INITIAL_LOAD = [
+    seen('one', '2026-10-03T20:24:05Z'),
+    seen('two', '2026-10-03T20:24:05Z'),
+  ]
+
+  function bannerPanel(clubNotices: readonly TrailNotice[]) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [],
+        orgNotices: [],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: LATER,
+        clubNotices,
+        clubNoticesGeneratedAt: new Date('2026-10-05T00:23:54Z'),
+        dayHikes: [hike()],
+      }),
+    )
+  }
+
+  it('stays dark for the notices OurHike first saw with their source, the file’s initial load', async () => {
+    const { result } = bannerPanel(INITIAL_LOAD)
+    await waitFor(() => expect(result.current.mapScreen.noticeCount).toBe(2))
+    expect(result.current.mapScreen.newNoticeCount).toBe(0)
+  })
+
+  it('counts a closure with no updated_at that OurHike first saw in a later build, worded seen, and silences it once the list is read', async () => {
+    const { result } = bannerPanel([
+      ...INITIAL_LOAD,
+      seen('closure', '2026-10-04T22:01:56Z'),
+    ])
+    await waitFor(() => expect(result.current.mapScreen.newNoticeCount).toBe(1))
+    expect(result.current.mapScreen.newNoticeLabel).toBe(
+      'New York-New Jersey Trail Conference · New notice seen',
+    )
+
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    expect(result.current.mapScreen.newNoticeCount).toBe(0)
+    expect(localStorage.getItem(`${NYNJTC_SILENCE_KEY}:seen`)).toBe(
+      '2026-10-04T22:01:56.000Z',
+    )
+    // The club's own clock is not touched by a first-seen dismissal.
+    expect(localStorage.getItem(NYNJTC_SILENCE_KEY)).toBeNull()
   })
 })

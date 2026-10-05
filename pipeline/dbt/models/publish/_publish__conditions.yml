@@ -1,16 +1,18 @@
 version: 2
 
 # The closures and warnings family's phone files (pipeline/ELT.md, "Publish
-# (reverse ETL)"): eight writers, and an exposure for each of the ten files
-# they and export_conditions.py's notes and disputes write. Each writer but
-# pub_conditions_notices names its int_closures__gate row in `meta.gate` and
-# selects no row while that source is held, so its last copy stays on the
+# (reverse ETL)"): nine writers, and an exposure for each of the eleven
+# files they and export_conditions.py's notes and disputes write. Each writer
+# but pub_conditions_notices names its int_closures__gate row in `meta.gate`
+# and selects no row while that source is held, so its last copy stays on the
 # phone while the others are written, and publish.py fails the run
 # afterwards. pub_conditions_notices spans every club, so a held club keeps
 # its last good rows inside the file instead (decision 53, phase D), and it
-# names no gate row. Only it and pub_conditions_notice_states (decision 76's
-# state shapes, a monthly node that reads no notice source, so no gate row)
-# are new data with no exporter. None of them uploads
+# names no gate row; nor does pub_conditions_hazard_areas (decision 84),
+# which keeps that writer's hazard rows as it wrote them. Only those two and
+# pub_conditions_notice_states (decision 76's state shapes, a monthly node
+# that reads no notice source, so no gate row) are new data with no
+# exporter. None of them uploads
 # anything: publish-conditions.yml and publish-weather.yml still upload the
 # Python exporters' files until stage 4 of #1793 — Rebuild the data platform
 # as dlt → dbt: seven contracted marts, a monthly refresh, published docs,
@@ -130,6 +132,34 @@ models:
           of a source seeds/notice_states.csv names (decision 76). No other
           field of a source, its person fields or its prose among them, can
           reach it.
+        data_type: json
+
+  - name: pub_conditions_hazard_areas
+    description: >
+      Writes conditions/hazard_areas.json (decision 84): the notices of
+      pub_conditions_notices that carry decision 67's `hazard`, each exactly
+      as that writer wrote it, in its order, under its `generated_at`.
+      Decision 77 has a phone download notices.json only once a hike is
+      planned; the phone reads this file at launch whatever is planned, and
+      draws hunting areas, shooting sites and burned areas from it. Writes
+      nothing while that writer writes nothing (a build without the row
+      history while a notice source is held), so the phone keeps its last
+      copy; an empty list when no notice carries a hazard. No parity line:
+      no exporter writes this file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: pub_conditions_notices' own `generated_at`, so the two files of one build carry one stamp.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: notices
+        description: >
+          Every notice of conditions/notices.json whose `hazard` is not null,
+          by source_key and then notice_id, each the same object of the same
+          keys that file carries.
         data_type: json
 
   - name: pub_conditions_notice_states
@@ -409,6 +439,60 @@ unit_tests:
       rows:
         - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.50126,44.5],[-89.44975,44.49911],[-89.44876,44.51018],[-89.50025,44.51089],[-89.50126,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
 
+  - name: pub_conditions_hazard_areas_keeps_only_the_hazard_rows_of_the_notices_file_as_written
+    model: pub_conditions_hazard_areas
+    description: >
+      Decision 84's file: of a notices file holding a club's unplaced
+      notice, a hunting area, a shooting site and a burned area (the first
+      two hazards out of order), the three hazard rows, each object exactly
+      as notices.json carries it, by source_key then notice_id, under that
+      file's own `generated_at`.
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              '2026-10-05T00:23:54Z' as generated_at,
+              cast('[{"notice_id":"club_page:1","source_key":"club_page","hazard":null,"place":{"kind":"unplaced"}},{"notice_id":"oprhp_hunting_areas:2","source_key":"oprhp_hunting_areas","hazard":"hunting","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-74.09,41.24],[-74.08,41.24],[-74.08,41.25],[-74.09,41.24]]]}},"first_seen_at":"2026-10-04T22:01:56Z"},{"notice_id":"blm_shooting_points:1","source_key":"blm_shooting_points","hazard":"shooting","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-112.0,40.5]}}},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","hazard":"burned_area","states":["ID","MT"]}]' as json) as notices
+    expect:
+      rows:
+        - {generated_at: '2026-10-05T00:23:54Z', notices: '[{"notice_id":"blm_shooting_points:1","source_key":"blm_shooting_points","hazard":"shooting","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-112.0,40.5]}}},{"notice_id":"oprhp_hunting_areas:2","source_key":"oprhp_hunting_areas","hazard":"hunting","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-74.09,41.24],[-74.08,41.24],[-74.08,41.25],[-74.09,41.24]]]}},"first_seen_at":"2026-10-04T22:01:56Z"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","hazard":"burned_area","states":["ID","MT"]}]'}
+
+  - name: pub_conditions_hazard_areas_writes_an_empty_list_when_no_notice_carries_a_hazard
+    model: pub_conditions_hazard_areas
+    description: >
+      A notices file with no hazard row gives a file with an empty list:
+      the file arrived and no source publishes a hazard area, which the
+      phone may draw as none.
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              '2026-10-05T00:23:54Z' as generated_at,
+              cast('[{"notice_id":"club_page:1","source_key":"club_page","hazard":null}]' as json) as notices
+    expect:
+      rows:
+        - {generated_at: '2026-10-05T00:23:54Z', notices: '[]'}
+
+  - name: pub_conditions_hazard_areas_writes_nothing_while_the_notices_writer_writes_nothing
+    model: pub_conditions_hazard_areas
+    description: >
+      A build without the row history while a notice source is held, where
+      pub_conditions_notices selects no row: this selects none either, so
+      the phone keeps its last copy rather than reading an empty list as no
+      hazard area anywhere.
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as generated_at,
+              cast(null as json) as notices
+          where false
+    expect:
+      rows: []
+
   - name: pub_conditions_notice_states_writes_each_shape_with_its_margin_and_the_files_own_date
     model: pub_conditions_notice_states
     description: >
@@ -557,6 +641,35 @@ exposures:
     config:
       meta:
         r2_keys: [conditions/notices.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_hazard_areas_json
+    label: conditions/hazard_areas.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Decision 67's hunting areas, shooting sites and burned areas (decision
+      84): the hazard rows of conditions/notices.json in a file of their own,
+      read by client/src/lib/publishedNotices.ts as
+      PUBLISHED_HAZARD_AREAS_KEY at launch, whatever the hiker has planned,
+      because decision 77 downloads notices.json only once a hike is
+      planned. The map draws an area where a downloaded trail crosses one,
+      and a tapped stretch inside it carries the area's advisory. Rewritten
+      in place under conditions/, outside every release folder. Published by
+      the dbt path of publish-conditions.yml (publish.py with
+      OURHIKE_PHONE_FILES=dbt); the exporters' path has no writer for it,
+      and a phone without it draws the areas from notices.json where that
+      file has reached it, as before this file existed.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_hazard_areas')
+    config:
+      meta:
+        r2_keys: [conditions/hazard_areas.json]
         format: json
         cadence: hourly
 

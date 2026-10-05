@@ -107,6 +107,8 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         # folder written once and never overwritten cannot express.
         "conditions/closures.json",
         "conditions/reports.json",
+        # Decision 84's hazard areas, beside conditions/notices.json.
+        "conditions/hazard_areas.json",
     ],
 )
 def test_accepts_the_layout_as_documented(key):

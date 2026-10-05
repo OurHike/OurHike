@@ -25,7 +25,9 @@
 // says what counts as planned and what "touches" means), and an empty state
 // that says why when nothing is planned - never every club. Decision 67's
 // hunting areas, shooting sites and burned areas come out of the same file,
-// drawn where a trail this phone holds crosses one. Without the file - a
+// or out of conditions/hazard_areas.json, which a phone reads whatever is
+// planned (decision 84), drawn where a trail this phone holds crosses one.
+// Without the file - a
 // bucket the exporters still publish - everything above is exactly as it
 // was. The map's A.T. bands and dots come from ATC's own file either way.
 //
@@ -126,8 +128,8 @@ export type NoticesMapProps = Pick<
   | 'hazardAreaSheet'
 >
 
-/** No hazard area, as one shared reference for a phone without
- *  conditions/notices.json - a fresh array per render would re-push the
+/** No hazard area, as one shared reference for a phone with neither
+ *  conditions/notices.json nor hazard_areas.json - a fresh array per render would re-push the
  *  map's source on every one. */
 const NO_HAZARD_AREAS: readonly HazardArea[] = []
 
@@ -153,7 +155,7 @@ export interface NoticesPanel {
   hazardAreas: readonly HazardArea[]
   /** The advisories for a tapped place on a trail: each drawn area it is
    *  inside or beside. Always a function, answering none until the rule has
-   *  loaded and none on a phone without conditions/notices.json. */
+   *  loaded and none on a phone with neither file that carries the areas. */
   hazardAdvisoriesAt: (at: Position) => StretchAdvisory[]
 }
 
@@ -213,6 +215,14 @@ export interface NoticesInput {
    * from the file, never from its absence.
    */
   clubNoticesListed?: boolean
+  /**
+   * conditions/hazard_areas.json (decision 84), read whatever is planned,
+   * or null when it has not reached this phone. Decision 67's areas draw
+   * from it, or from `clubNotices` when that file is the newer of the two
+   * or this one is missing (lib/noticeSelection.ts's `hazardView`), so a
+   * phone with no hike planned still draws them and none draws twice.
+   */
+  hazardFile?: { items: readonly TrailNotice[]; generatedAt: Date } | null
   /** The hiker's long-hike plans (lib/trips.ts). */
   trips?: readonly Trip[]
   /** The hiker's day hikes (lib/dayHikes.ts). */
@@ -239,6 +249,7 @@ export function useNoticesPanel({
   clubNotices = null,
   clubNoticesGeneratedAt = null,
   clubNoticesListed = false,
+  hazardFile = null,
   trips = NO_TRIPS,
   dayHikes = NO_DAY_HIKES,
   graph = null,
@@ -374,8 +385,11 @@ export function useNoticesPanel({
   const clubMode =
     clubNotices !== null || (clubNoticesListed && !anyHikePlanned(trips, dayHikes))
 
+  // Also for the hazard areas' own file alone (decision 84): a phone with
+  // nothing planned and no notices.json still draws them.
+  const wantsSelection = clubMode || hazardFile !== null
   useEffect(() => {
-    if (!clubMode || selection !== null) return
+    if (!wantsSelection || selection !== null) return
     let live = true
     void import('../lib/noticeSelection').then((module) => {
       loadedSelection = module
@@ -384,7 +398,7 @@ export function useNoticesPanel({
     return () => {
       live = false
     }
-  }, [clubMode, selection])
+  }, [wantsSelection, selection])
 
   const today = localDay(now)
   const view = useMemo(
@@ -419,15 +433,22 @@ export function useNoticesPanel({
 
   /**
    * Decision 67's areas a trail on this phone runs through (#1805), drawn
-   * under the trail. Every one is a notice in conditions/notices.json; an
+   * under the trail, from conditions/hazard_areas.json or notices.json,
+   * whichever lib/noticeSelection.ts's `hazardView` takes (decision 84); an
    * area no held trail meets is not drawn (lib/hazardAreas.ts).
    */
   const hazards = useMemo(
     () =>
-      clubNotices === null || selection === null
+      selection === null
         ? null
-        : selection.hazardView(clubNotices, trailIndex, graph),
-    [clubNotices, selection, trailIndex, graph],
+        : selection.hazardView(
+            clubNotices,
+            clubNoticesGeneratedAt,
+            hazardFile,
+            trailIndex,
+            graph,
+          ),
+    [clubNotices, clubNoticesGeneratedAt, hazardFile, selection, trailIndex, graph],
   )
   const hazardAreas = hazards?.areas ?? NO_HAZARD_AREAS
   const hazardAdvisoriesAt = hazards?.advisoriesAt ?? noAdvisories
@@ -475,8 +496,11 @@ export function useNoticesPanel({
     // silenceVersion is not read inside - it is the dependency that re-runs
     // this after a dismissal writes new watermarks. See its declaration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    () => newNoticesSince(allNotices, now, readNoticeSilence),
-    [allNotices, now, silenceVersion],
+    () =>
+      view === null
+        ? newNoticesSince(allNotices, now, readNoticeSilence)
+        : view.newSince(now, readNoticeSilence),
+    [allNotices, now, silenceVersion, view],
   )
 
   const silenceNotices = useCallback(() => {

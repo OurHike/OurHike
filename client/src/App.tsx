@@ -1534,6 +1534,7 @@ function App() {
     clubNotices,
     clubNoticesGeneratedAt,
     clubNoticesListed,
+    hazardFile,
     drought,
     droughtWeek,
     workProjects,
@@ -3466,6 +3467,9 @@ function App() {
     clubNotices,
     clubNoticesGeneratedAt,
     clubNoticesListed,
+    // Decision 84: the hazard areas from their own file, read whatever is
+    // planned, so a phone with no hike planned still draws them.
+    hazardFile,
     trips: tripStore.trips,
     dayHikes: dayHikeStore.hikes,
     graph: dayHikeIndex ?? graphIndex,

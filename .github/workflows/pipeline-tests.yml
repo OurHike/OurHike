@@ -123,6 +123,7 @@ jobs:
             client/src/lib/mapSheets.ts
             client/src/lib/podcasts.ts
             client/src/lib/publishedConditions.ts
+            client/src/lib/publishedNotices.ts
             .github/workflows/pipeline-tests.yml
             .github/actions/changed-paths/
 

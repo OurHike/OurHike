@@ -901,8 +901,10 @@ class TestTheRegistryTheConsoleReads:
         # registered the Friends of the Blue Hills (its Suggested Hikes page), and 118 since its fourth
         # registered the Wasatch Mountain Club (its Hiking Trail Database PDF), and 119 since its fifth
         # registered the Carolina Mountain Club (its Lookout Tower Challenge), and 120 since its sixth
-        # registered the Tennessee Trails Association (its 36 Great Hikes form).
-        assert len(orgs) == 120
+        # registered the Tennessee Trails Association (its 36 Great Hikes form), and 121 since decision 76
+        # (section B, 2026-10-04) registered the U.S. Census Bureau (org:census), for the TIGER/Line state
+        # boundaries a state-wide notice is placed by. Recounted from the merged registry 2026-10-05.
+        assert len(orgs) == 121
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -919,6 +921,7 @@ class TestTheRegistryTheConsoleReads:
             "org:bta",
             "org:catamount",
             "org:cdpr",
+            "org:census",
             "org:cdtc",
             "org:cfpa",
             "org:chesapeakeconservancy",

@@ -17420,6 +17420,36 @@
       "notes": "Read 2026-10-04T18:19:06Z at the host's `Crawl-delay: 60`: HTTP 200, application/pdf, 95,680 bytes, Last-Modified 2020-12-21, ETag \"5fe12e77-175c0\"; 1 page, OpenOffice 4.0.0, created 2013-08-23. 36 hikes in Tennessee state parks and on the Cumberland Trail, matching the title's 36. One ('S. Cumberland -Buggytop Cave') is marked '*', whose footnote reads that entry to state owned caves is forbidden 'Until the ban is lifted' for white nose syndrome, and lands with `cave_entry_forbidden` (safety-relevant: a closure as of the form's 2020 upload, not checked against the park's notices). The programme is 2026's 15th year (the coverage audit); its page is HTML and is not read.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
+    },
+    {
+      "key": "census_tiger_states",
+      "title": "TIGER/Line Shapefiles 2025: states and equivalent entities (U.S. Census Bureau)",
+      "provider": "U.S. Census Bureau",
+      "kind": "gis_file",
+      "url": "https://www2.census.gov/geo/tiger/TIGER2025/STATE/tl_2025_us_state.zip",
+      "file_format": "shapefile_zip",
+      "trust": "authoritative",
+      "steward": "U.S. Census Bureau",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105 and the maintainer's adoption of it for usfs_trails (2026-09-02), the reading blm_trails ships on: a work of the U.S. Government, and the file's own metadata says so (`terms`): the products \"are not copyrighted\" and \"are free to use in a product or publication\", with acknowledgement to the U.S. Census Bureau \"as the source\", which `attribution` carries. Its sentence that the boundaries \"are for statistical data collection and tabulation purposes only\" goes on to say that their depiction \"does not constitute a determination of jurisdictional authority or rights of ownership or entitlement\": it disclaims what a line means, and is read as a disclaimer, not a limit on use (the lead's reading for decision 76, 2026-10-04, which #1805 lists for the maintainer to overrule; dbt/seeds/licence_restriction_phrases.csv's census_tiger_states row). WHAT PUBLISHES: only the states dbt/seeds/notice_states.csv names, simplified (int_closures__notice_state_shapes), in conditions/notice_states.json. The phone reads a shape only to decide whether a planned route is in that state, for a state-wide agency notice (client/src/lib/plannedNotices.ts). The shapes are never drawn: no map layer reads them.",
+      "licence_basis": "stated_by_org",
+      "attribution": "U.S. Census Bureau",
+      "terms": "The file's own ISO metadata (tl_2025_us_state.shp.iso.xml inside the zip, read 2026-10-04): \"Access constraints: None\" and \"Use Constraints: The TIGER/Line Shapefile products are not copyrighted however TIGER/Line and Census TIGER are registered trademarks of the U.S. Census Bureau. These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source. The boundary information in the TIGER/Line Shapefiles are for statistical data collection and tabulation purposes only; their depiction and designation for statistical purposes does not constitute a determination of jurisdictional authority or rights of ownership or entitlement and they are not legal land descriptions. Coordinates in the TIGER/Line shapefiles have six implied decimal places, but the positional accuracy of these coordinates is not as great as the six decimal places suggest.\"",
+      "person_fields": [],
+      "person_fields_comment": "None: the .dbf's 15 columns (REGION, DIVISION, STATEFP, STATENS, GEOID, GEOIDFQ, STUSPS, NAME, LSAD, MTFCC, FUNCSTAT, ALAND, AWATER, INTPTLAT, INTPTLON) are codes, a state's name, its areas and an interior point, read 2026-10-04; none names a person, and none is person-shaped by extract/_kinds.py's PERSON_SHAPED.",
+      "key_fields": [
+        "stusps"
+      ],
+      "key_comment": "The state's two-letter code, `STUSPS` (dlt's `stusps`): unique and non-null on 56 of 56 records read 2026-10-04 with extract/_gis_files.py's own reader. GEOID, STATEFP and NAME are 56 of 56 too; the code is what dbt/seeds/notice_states.csv names a state by.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www2.census.gov/geo/tiger/TIGER2025/STATE/tl_2025_us_state.zip",
+        "notes": "9,956,072 bytes, application/zip, `Last-Modified: Tue, 23 Sep 2025 02:15:56 GMT` with a Content-Length and no ETag (HEAD at 2026-10-04T22:04:38Z), so extract/_gis_files.py's per-file change check answers FRESH while both hold, and a monthly run reads the file only when Census republishes it. Each year's vintage is a new URL (TIGER2025/), which no change check sees: moving to the next vintage is an edit to this row."
+      },
+      "discovered_via": "Decision 76 (pipeline/ELT.md, 2026-10-04): a state-wide agency notice shows to a hike planned in its state, and nothing the phone held could tell whether a route is in a state (section B's design, approved by the lead the same day). Read live under lib/user_agent.py's USER_AGENT: www2.census.gov's robots.txt first (its `User-agent: *` group is empty, and no Crawl-delay is asked of us), then HEADs and one GET of the file, two seconds or more apart.",
+      "discovered_date": "2026-10-04",
+      "notes": "56 records (50 states, DC and 5 territories), 45 Polygon and 11 MultiPolygon, 970,709 vertices, read 2026-10-04 with extract/_gis_files.py's shapefile reader in 1.1 s; NAD83 geographic (.prj GCS_North_American_1983), which the reader accepts. About 24 MB of GeoJSON text once landed. Each state runs out over its coastal water (AWATER), which is why this file and not the cartographic boundary file (cb_2025_us_state_500k), which stops at the shoreline: a beach trail sits well inside its state here. Simplified at 250 m for the phone, the 14 states the seed named on 2026-10-04 came to 184,420 bytes, the worst original vertex 341 m (Colorado) from its simplified edge (int_closures__notice_state_shapes says how that was measured). No fixture: fixture mode serves an answer as text and a .shp is binary, so CI's warehouse holds no table and the base model reads it as no rows (dbt/macros/raw_or_empty.sql), as a PDF table's does.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 76 (2026-10-04): stg_census__states reads it into int_closures__notice_state_shapes, which simplifies only the states dbt/seeds/notice_states.csv names, and pub_conditions_notice_states writes them to conditions/notice_states.json, both unit-tested; assert_notice_state_shapes_stay_inside_their_edge_margin fails the build when a simplified shape strays from its original by more than the margin the phone reads. Never drawn: client/src/lib/plannedNotices.ts reads a shape only to decide whether a planned route is in its state."
     }
   ],
   "usdm_licence": {
@@ -18074,6 +18104,10 @@
       "TTA": {
         "state": "not_asked",
         "note": "Not asked. Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "U.S. Census Bureau": {
+        "state": "not_asked",
+        "note": "Not asked. Its state boundaries reach a phone only inside conditions/notice_states.json, which the app never draws (decision 76, 2026-10-04), so there is nothing an org mark would sit beside. Nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -19065,6 +19099,11 @@
         "provider": "TTA",
         "name": "Tennessee Trails Association",
         "note": "Tennessee's statewide hiking trails association, which builds and maintains the Cumberland Trail with the state; registered for its 36 Great Hikes qualification form (decision 54, wave 4, section K, 2026-10-04), at reaches_hikers: false."
+      },
+      "org:census": {
+        "provider": "U.S. Census Bureau",
+        "name": "United States Census Bureau",
+        "note": "The federal statistical agency. Registered for its TIGER/Line state boundaries alone (decision 76, 2026-10-04), which reach a phone only as the shapes conditions/notice_states.json carries for a state-wide agency notice, and are never drawn."
       }
     }
   },
@@ -24684,6 +24723,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its 36 Great Hikes qualification form under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "U.S. Census Bureau": {
+        "probed_date": "2026-10-04",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
           }
         }
       }

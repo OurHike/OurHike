@@ -6,19 +6,36 @@
 // be parsed before it. The fetch, the cache and the refusals are
 // lib/publishedConditions.ts's `fetchPublished`, the same path every other
 // conditions file takes.
+//
+// AND THE STATES' SHAPES BESIDE IT (decision 76): conditions/notice_states.json,
+// read here in the same breath and attached to each state-wide notice as its
+// `state_areas`, so lib/plannedNotices.ts can ask whether a planned route is
+// in one of its states. Here, behind the same import(), rather than one more
+// file the conditions hook asks for: the hook is on the first frame's path,
+// and this adds no launch byte. Its key is here too, for the same reason;
+// pipeline/tests/test_published_key_contract.py reads this file for it.
 
 import {
   fetchPublished,
   PUBLISHED_NOTICES_KEY,
   type NoticeHazard,
   type NoticePlace,
+  type NoticeStateArea,
   type OrgNotice,
   type PublishedConditions,
   type PublishedReadOptions,
 } from './publishedConditions'
 import type { NoticeGeometryValue } from './noticeGeometry'
 
+/** The shapes of the states a state-wide notice names (decision 76): written
+ *  by pipeline/dbt's pub_conditions_notice_states, on the dbt path only, so
+ *  a bucket without it serves a 404 and no state-wide notice shows - as
+ *  decision 68 left them. */
+export const PUBLISHED_NOTICE_STATES_KEY = 'conditions/notice_states.json'
+
 const HAZARDS: ReadonlySet<string> = new Set(['hunting', 'shooting', 'burned_area'])
+
+const STATE_CODE = /^[A-Z]{2}$/
 
 function textOrNull(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
@@ -55,6 +72,56 @@ function validPlace(value: unknown): NoticePlace {
   return { kind: 'unplaced' }
 }
 
+/** Decision 76's `states`: the two-letter codes a row carries, or nothing -
+ *  an unreadable code is left out, and a row left with none is an ordinary
+ *  unplaced notice. */
+function validStates(value: unknown): { states?: string[] } {
+  if (!Array.isArray(value)) return {}
+  const states = value.filter(
+    (code): code is string => typeof code === 'string' && STATE_CODE.test(code),
+  )
+  return states.length > 0 ? { states } : {}
+}
+
+/** One conditions/notice_states.json state, or null for one this build
+ *  cannot use: no code, no positive margin, or a shape with no polygon. */
+export function validStateArea(value: unknown): NoticeStateArea | null {
+  if (typeof value !== 'object' || value === null) return null
+  const row = value as Record<string, unknown>
+  if (typeof row.state !== 'string' || !STATE_CODE.test(row.state)) return null
+  const margin = row.edge_margin_m
+  if (typeof margin !== 'number' || !Number.isFinite(margin) || margin <= 0) return null
+  const geometry = row.geometry as { type?: unknown } | null
+  if (
+    typeof geometry !== 'object' ||
+    geometry === null ||
+    (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')
+  ) {
+    return null
+  }
+  return {
+    state: row.state,
+    name: typeof row.name === 'string' && row.name !== '' ? row.name : row.state,
+    edge_margin_m: margin,
+    geometry: geometry as NoticeGeometryValue,
+  }
+}
+
+/** Each state-wide notice with the shapes of its states this phone holds,
+ *  as `state_areas`; a notice none of whose states has a shape is left as
+ *  it came. */
+export function withStateAreas(
+  notices: OrgNotice[],
+  areas: readonly NoticeStateArea[],
+): OrgNotice[] {
+  if (areas.length === 0) return notices
+  const byState = new Map(areas.map((area) => [area.state, area]))
+  return notices.map((notice) => {
+    const found = (notice.states ?? []).flatMap((state) => byState.get(state) ?? [])
+    return found.length > 0 ? { ...notice, state_areas: found } : notice
+  })
+}
+
 /**
  * One conditions/notices.json row, read defensively, or null for one with no
  * id or no source - the two things every surface keys on.
@@ -87,6 +154,7 @@ export function validNotice(value: unknown): OrgNotice | null {
       row.steward_kind === 'club' || row.steward_kind === 'agency'
         ? row.steward_kind
         : null,
+    ...validStates(row.states),
     hazard:
       typeof row.hazard === 'string' && HAZARDS.has(row.hazard)
         ? (row.hazard as NoticeHazard)
@@ -113,17 +181,16 @@ export async function fetchPublishedNotices(
   signal?: AbortSignal,
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<OrgNotice> | null> {
-  const published = await fetchPublished<unknown>(
-    PUBLISHED_NOTICES_KEY,
-    'notices',
-    signal,
-    options,
-  )
+  const [published, states] = await Promise.all([
+    fetchPublished<unknown>(PUBLISHED_NOTICES_KEY, 'notices', signal, options),
+    fetchPublished<unknown>(PUBLISHED_NOTICE_STATES_KEY, 'states', signal, options),
+  ])
   if (published === null) return null
   const items: OrgNotice[] = []
   for (const row of published.items) {
     const notice = validNotice(row)
     if (notice !== null) items.push(notice)
   }
-  return { ...published, items }
+  const areas = (states?.items ?? []).flatMap((row) => validStateArea(row) ?? [])
+  return { ...published, items: withStateAreas(items, areas) }
 }

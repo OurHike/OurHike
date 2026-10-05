@@ -54,6 +54,44 @@
 // type); a file without the field keeps the provider match, so a missing
 // field shows a notice rather than hiding one.
 //
+// EXCEPT A STATE-WIDE ONE, PLACED BY ITS STATE (decision 76, the maintainer's
+// poll of 2026-10-04 from statewide_notice_mock.html's frame A): BLM's Utah
+// fire restrictions name no shape, and apply to all of BLM's land in Utah. An
+// agency's unplaced notice whose row names `states`
+// (pipeline/dbt/seeds/notice_states.csv: BLM's 12 state fire-restriction
+// pages and CT DEEP's state parks emergency message on 2026-10-04) shows to a
+// hike that
+//
+//  - walks that agency's trails: the notice's provider is one of the route's
+//    providers, the same match a club's notice takes;
+//  - is in one of those states: some vertex of the route is inside the
+//    state's shape (conditions/notice_states.json, which
+//    lib/publishedNotices.ts attaches as `state_areas`) and farther than the
+//    shape's `edge_margin_m` from its edge. A vertex nearer an edge counts
+//    for no state, so a hike within the margin of a state line misses the
+//    notice rather than being shown the next state's: a Utah notice never
+//    shows for a Colorado hike. The margin and the measurement behind it
+//    are pipeline/dbt's int_closures__notice_state_shapes';
+//  - and overlaps it in time, as every notice must.
+//
+// Three limits, each a miss and never a wrong state:
+//
+//  - PER ROUTE, NOT PER LEG. A day hike's legs carry no geometry, so the
+//    rule asks whether the route walks the agency's trails and whether the
+//    route is in the state, separately. A route on BLM's trails in Colorado
+//    that also walks a Forest Service trail into Utah is shown BLM Utah's
+//    notice;
+//  - NO LONG HIKE. A long hike's providers are the A.T. centerline's and
+//    the clubs ATC's sections name, never an agency's, so no state-wide
+//    agency notice reaches one;
+//  - ALASKA STATE PARKS' PAGE IS NOT IN THE SEED, and could not match
+//    anyway: it is an index of per-park reports, not a notice about all of
+//    Alaska, and no trail line on a phone is published under its provider.
+//
+// A phone without conditions/notice_states.json (a bucket the dbt path has
+// not written) holds no shape, and shows no state-wide notice, as decision
+// 68 left them.
+//
 // AND IN TIME: a notice whose own start is after the hike's last planned day,
 // or whose own end is before its first, does not touch it. Most notices state
 // neither, and then only the place decides.
@@ -84,11 +122,15 @@
 import type { DayHike, DayHikeLeg } from './dayHikes'
 import {
   geometryParts,
+  insideByMoreThan,
   linesMeetParts,
+  partsBounds,
+  type Bounds,
   type GeometryParts,
   type Position,
 } from './noticeGeometry'
 import type { TrailNotice } from './notices'
+import type { NoticeStateArea } from './publishedConditions'
 import { clubTimeline, type ClubSections } from './clubSections'
 import type { Stewards } from './stewards'
 import type { RouteLeg } from './trailGraph'
@@ -150,6 +192,9 @@ export interface PlannedHikeNotices {
   /** Unplaced notices from the clubs that maintain its trails; never an
    *  agency's (the module comment's "clubs only"). */
   fromClubs: TrailNotice[]
+  /** An agency's state-wide notices for a state the route is in, on the
+   *  agency's trails (decision 76). */
+  stateWide: TrailNotice[]
 }
 
 export type NoPlannedHike =
@@ -373,19 +418,64 @@ function byWeight(a: TrailNotice, b: TrailNotice): number {
   return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')
 }
 
+/** A state's shape as the rule reads it, worked out once per shape. */
+const STATE_PARTS = new WeakMap<
+  NoticeStateArea,
+  { parts: GeometryParts; bounds: Bounds | null }
+>()
+
+function stateParts(area: NoticeStateArea): {
+  parts: GeometryParts
+  bounds: Bounds | null
+} {
+  let found = STATE_PARTS.get(area)
+  if (found === undefined) {
+    const parts = geometryParts(area.geometry)
+    found = { parts, bounds: partsBounds(parts) }
+    STATE_PARTS.set(area, found)
+  }
+  return found
+}
+
+/** Whether some vertex of the route is inside one of the notice's states by
+ *  more than that state's margin (the module comment's decision 76). */
+function routeInItsStates(notice: TrailNotice, stretch: PlannedStretch): boolean {
+  for (const area of notice.state_areas ?? []) {
+    const { parts, bounds } = stateParts(area)
+    if (bounds === null) continue
+    for (const line of stretch.lines) {
+      for (const at of line) {
+        if (
+          at[0] < bounds.minLon ||
+          at[0] > bounds.maxLon ||
+          at[1] < bounds.minLat ||
+          at[1] > bounds.maxLat
+        ) {
+          continue
+        }
+        if (insideByMoreThan(at, parts, area.edge_margin_m)) return true
+      }
+    }
+  }
+  return false
+}
+
 /** Whether one notice touches one planned hike (the module comment's rule). */
 export function noticeTouches(
   notice: TrailNotice,
   stretch: PlannedStretch,
   trailIndex: TrailIndex | null,
   byKey: Map<string, string>,
-): 'on_route' | 'from_club' | null {
+): 'on_route' | 'from_club' | 'state_wide' | null {
   if (!overlapsInTime(notice, stretch)) return null
   const { place } = notice
   if (place.kind === 'unplaced' || place.kind === 'org_terms') {
-    if (notice.steward_kind === 'agency') return null
     const provider = noticeProvider(notice, byKey)
-    return provider !== undefined && stretch.providers.has(provider) ? 'from_club' : null
+    const onItsTrails = provider !== undefined && stretch.providers.has(provider)
+    if (notice.steward_kind === 'agency') {
+      return onItsTrails && routeInItsStates(notice, stretch) ? 'state_wide' : null
+    }
+    return onItsTrails ? 'from_club' : null
   }
   if (place.kind === 'at_miles') {
     const low = Math.min(place.start, place.end)
@@ -448,14 +538,17 @@ export function plannedNotices({
   const hikes = stretches.map((stretch) => {
     const onRoute: TrailNotice[] = []
     const fromClubs: TrailNotice[] = []
+    const stateWide: TrailNotice[] = []
     for (const notice of notices) {
       const touch = noticeTouches(notice, stretch, trailIndex, byKey)
       if (touch === 'on_route') onRoute.push(notice)
       else if (touch === 'from_club') fromClubs.push(notice)
+      else if (touch === 'state_wide') stateWide.push(notice)
     }
     onRoute.sort(byWeight)
     fromClubs.sort(byWeight)
-    return { stretch, onRoute, fromClubs }
+    stateWide.sort(byWeight)
+    return { stretch, onRoute, fromClubs, stateWide }
   })
   return { hikes, empty: null, undated }
 }
@@ -465,7 +558,7 @@ export function plannedNotices({
 export function shownNotices(planned: PlannedNotices): TrailNotice[] {
   const seen = new Map<string, TrailNotice>()
   for (const hike of planned.hikes) {
-    for (const notice of [...hike.onRoute, ...hike.fromClubs])
+    for (const notice of [...hike.onRoute, ...hike.stateWide, ...hike.fromClubs])
       seen.set(notice.notice_id, notice)
   }
   return [...seen.values()]

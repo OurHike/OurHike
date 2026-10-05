@@ -398,6 +398,134 @@ describe('an unplaced notice', () => {
   })
 })
 
+describe('a state-wide agency notice (decision 76)', () => {
+  // Two invented states sharing a meridian at -76.4: "UT" to its west, where
+  // the fixture day hike's taps (-76.5, 41.1 to 41.2) sit about 8 km from the
+  // line, and "CO" to its east. Boxes, not anybody's real shape.
+  function box(
+    state: string,
+    name: string,
+    west: number,
+    east: number,
+    south = 40.5,
+    north = 42,
+  ) {
+    return {
+      state,
+      name,
+      edge_margin_m: 500,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [west, south],
+            [east, south],
+            [east, north],
+            [west, north],
+            [west, south],
+          ],
+        ],
+      },
+    }
+  }
+  const UTAH = box('UT', 'Utah', -77, -76.4)
+  const COLORADO = box('CO', 'Colorado', -76.4, -75.8)
+
+  function stateWide(
+    states: Array<ReturnType<typeof box>>,
+    id = 'oprhp_trail_closures:fire',
+  ) {
+    return notice({
+      notice_id: id,
+      source_key: 'oprhp_trail_closures',
+      steward_kind: 'agency',
+      states: states.map((area) => area.state),
+      state_areas: states,
+    })
+  }
+
+  function hikeAt(lon: number, lat = 41.1): DayHike {
+    return dayHike(TODAY, {
+      segments: [
+        [
+          { coord: [lon, lat], poiId: null },
+          { coord: [lon, lat + 0.1], poiId: null },
+        ],
+      ],
+    })
+  }
+
+  it('shows to a hike in its state on its agency’s trails, apart from the clubs’ notices', () => {
+    const { hikes } = pick([stateWide([UTAH])], [], [dayHike(TODAY)])
+    expect(hikes[0].stateWide.map((n) => n.notice_id)).toEqual([
+      'oprhp_trail_closures:fire',
+    ])
+    expect(hikes[0].fromClubs).toEqual([])
+    expect(shownNotices(pick([stateWide([UTAH])], [], [dayHike(TODAY)]))).toHaveLength(1)
+  })
+
+  it('never shows the state next door’s: a Utah notice does not reach a Colorado hike', () => {
+    expect(
+      pick([stateWide([COLORADO])], [], [dayHike(TODAY)]).hikes[0].stateWide,
+    ).toEqual([])
+    expect(pick([stateWide([UTAH])], [], [hikeAt(-76.0)]).hikes[0].stateWide).toEqual([])
+  })
+
+  it('counts a hike within the margin of a state line in no state, and misses it there', () => {
+    // 0.003 degrees of longitude at 41 N is about 250 m, inside the 500 m margin.
+    const nearTheLine = hikeAt(-76.403)
+    expect(pick([stateWide([UTAH])], [], [nearTheLine]).hikes[0].stateWide).toEqual([])
+    expect(pick([stateWide([COLORADO])], [], [nearTheLine]).hikes[0].stateWide).toEqual(
+      [],
+    )
+    // About 1.7 km from the line, it is in Utah again.
+    expect(
+      pick([stateWide([UTAH])], [], [hikeAt(-76.42)]).hikes[0].stateWide,
+    ).toHaveLength(1)
+  })
+
+  it('reaches a hike in either of its states, as BLM’s one Oregon and Washington page does', () => {
+    const both = stateWide([UTAH, COLORADO])
+    expect(pick([both], [], [hikeAt(-76.0)]).hikes[0].stateWide).toHaveLength(1)
+    expect(pick([both], [], [dayHike(TODAY)]).hikes[0].stateWide).toHaveLength(1)
+  })
+
+  it('does not reach a hike in its state that walks none of its agency’s trails', () => {
+    const other = dayHike(TODAY, {
+      figures: {
+        miles: 7,
+        legs: [
+          {
+            name: 'Fixture Trail',
+            source: 'bta_trail_closures',
+            blaze_color: null,
+            miles: 7,
+          },
+        ],
+      },
+    })
+    expect(pick([stateWide([UTAH])], [], [other]).hikes[0].stateWide).toEqual([])
+  })
+
+  it('shows nowhere without the states’ shapes, as decision 68 left it', () => {
+    const noShapes = { ...stateWide([UTAH]), state_areas: undefined }
+    expect(pick([noShapes], [], [dayHike(TODAY)]).hikes[0].stateWide).toEqual([])
+  })
+
+  it('never reaches a long hike, whose providers are the A.T.’s and its clubs’', () => {
+    // A state around the whole fixture centerline (-77, 34 to 35 N).
+    const aroundTheAt = stateWide([box('VA', 'Virginia', -78, -76, 33, 36)])
+    const { hikes } = pick([aroundTheAt], [tenDayTrip()], [])
+    expect(hikes[0].stretch.kind).toBe('long_hike')
+    expect(hikes[0].stateWide).toEqual([])
+  })
+
+  it('does not touch a hike its own dates end before', () => {
+    const ended = { ...stateWide([UTAH]), ends_on: shiftDay(TODAY, -1) }
+    expect(pick([ended], [], [dayHike(TODAY)]).hikes[0].stateWide).toEqual([])
+  })
+})
+
 describe('a day hike', () => {
   it('without the graph is matched to its tapped ends, and says so', () => {
     const { hikes } = pick([], [], [dayHike(TODAY)])

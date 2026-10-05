@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: stg_census__states
+    description: >
+      One row per state or equivalent from the U.S. Census Bureau's TIGER/Line
+      file: its code, its name and its shape (decision 76). Read by
+      int_closures__notice_state_shapes, which simplifies only the states
+      seeds/notice_states.csv names. No row here reaches a map.
+    columns:
+      - name: state
+        description: The two-letter USPS code.
+        data_tests: [not_null, unique]
+      - name: state_name
+        description: The state's name, as the Census Bureau spells it.
+        data_tests: [not_null]
+      - name: geom
+        description: The shape in NAD83 degrees, its coastal water included.
+        data_tests: [not_null]
+      - name: _loaded_at
+        description: When the extract landed the file, which moves only when Census republishes it.

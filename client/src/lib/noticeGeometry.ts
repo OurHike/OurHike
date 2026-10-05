@@ -318,6 +318,38 @@ export function linesMeetGeometry(
   return linesMeetParts(lines, geometryParts(geometry), reachFeet)
 }
 
+/**
+ * Whether a place is inside one of a geometry's polygons AND farther than
+ * `marginMetres` from every edge of it - decision 76's question of a state's
+ * simplified shape (lib/plannedNotices.ts). A place near an edge answers no,
+ * on purpose: the shape is a simplification, and near its edge it cannot
+ * tell one state from the next.
+ *
+ * Measured about the place's own latitude rather than the shape's, because
+ * a state spans degrees of latitude and the margin is about the place.
+ */
+export function insideByMoreThan(
+  at: Position,
+  parts: GeometryParts,
+  marginMetres: number,
+): boolean {
+  const project = projector(at[1])
+  const here = project(at)
+  for (const polygon of parts.polygons) {
+    if (!inPolygon(at, polygon)) continue
+    let nearEdge = false
+    for (const ring of polygon) {
+      for (let i = 0; i + 1 < ring.length && !nearEdge; i += 1) {
+        nearEdge =
+          pointSegmentMetres(here, project(ring[i]), project(ring[i + 1])) <= marginMetres
+      }
+      if (nearEdge) break
+    }
+    return !nearEdge
+  }
+  return false
+}
+
 /** Whether one place is inside one of a geometry's polygons, or within
  *  `reachFeet` of its points and lines - the tapped-line card's question. */
 export function positionMeetsParts(

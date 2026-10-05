@@ -454,3 +454,103 @@ describe('fetchPublishedNotices', () => {
     expect(await fetchPublishedNotices()).toBeNull()
   })
 })
+
+// Decision 76: a state-wide notice names its states, and
+// conditions/notice_states.json carries their shapes, read beside it.
+const A_STATE_WIDE_DOCUMENT = {
+  generated_at: '2026-10-04T12:00:00Z',
+  notices: [
+    {
+      notice_id: 'agency_fire:1',
+      source_key: 'agency_fire',
+      title: 'Fixture fire restrictions',
+      place: { kind: 'unplaced' },
+      steward_kind: 'agency',
+      states: ['OR', 'WA'],
+    },
+    {
+      notice_id: 'agency_fire:2',
+      source_key: 'agency_fire',
+      title: 'Fixture notice with unreadable states',
+      place: { kind: 'unplaced' },
+      steward_kind: 'agency',
+      states: ['or', 5],
+    },
+  ],
+}
+
+const A_NOTICE_STATES_DOCUMENT = {
+  generated_at: '2026-10-01T06:00:00Z',
+  states: [
+    {
+      state: 'OR',
+      name: 'Oregon',
+      edge_margin_m: 500,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [-124, 42],
+            [-117, 42],
+            [-117, 46],
+            [-124, 42],
+          ],
+        ],
+      },
+    },
+    // No margin it could hold a route to: left out, so WA has no shape here.
+    {
+      state: 'WA',
+      name: 'Washington',
+      edge_margin_m: 0,
+      geometry: { type: 'Polygon', coordinates: [] },
+    },
+  ],
+}
+
+function mockByKey(bodies: Record<string, unknown>) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    const key = Object.keys(bodies).find((name) => url.endsWith(name))
+    return key === undefined
+      ? new Response('', { status: 404 })
+      : new Response(JSON.stringify(bodies[key]), { status: 200 })
+  })
+}
+
+describe('fetchPublishedNotices with the states’ shapes (decision 76)', () => {
+  it('attaches the shape of each named state the file holds, and leaves the rest out', async () => {
+    const fetchSpy = mockByKey({
+      'conditions/notices.json': A_STATE_WIDE_DOCUMENT,
+      'conditions/notice_states.json': A_NOTICE_STATES_DOCUMENT,
+    })
+    const { fetchPublishedNotices, PUBLISHED_NOTICE_STATES_KEY } =
+      await loadWithBase(BASE)
+
+    const items = (await fetchPublishedNotices())?.items ?? []
+
+    expect(PUBLISHED_NOTICE_STATES_KEY).toBe('conditions/notice_states.json')
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${BASE}/conditions/notice_states.json`,
+      expect.anything(),
+    )
+    expect(items[0].states).toEqual(['OR', 'WA'])
+    expect(items[0].state_areas?.map((area) => [area.state, area.name])).toEqual([
+      ['OR', 'Oregon'],
+    ])
+    // Codes it cannot read are not states, and a row left with none is an
+    // ordinary unplaced notice.
+    expect(items[1].states).toBeUndefined()
+    expect(items[1].state_areas).toBeUndefined()
+  })
+
+  it('attaches no shape where the bucket has no states file, so no state-wide notice can match', async () => {
+    mockByKey({ 'conditions/notices.json': A_STATE_WIDE_DOCUMENT })
+    const { fetchPublishedNotices } = await loadWithBase(BASE)
+
+    const items = (await fetchPublishedNotices())?.items ?? []
+
+    expect(items[0].states).toEqual(['OR', 'WA'])
+    expect(items[0].state_areas).toBeUndefined()
+  })
+})

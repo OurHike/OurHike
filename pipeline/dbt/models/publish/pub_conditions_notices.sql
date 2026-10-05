@@ -19,6 +19,12 @@
 -- `steward_kind` is the readers seed's club or agency (decision 66's "clubs
 -- only": the phone shows an agency's notice to a planned hike only where it
 -- is placed on or near the route).
+-- `states` is decision 76's: on the rows of a source seeds/notice_states.csv
+-- names, the two-letter codes of the states it speaks for, and absent on
+-- every other row. The phone shows such an agency notice to a hike planned
+-- in one of them that walks the agency's trails, reading the states' shapes
+-- from conditions/notice_states.json (pub_conditions_notice_states). The
+-- place stays `unplaced`, so nothing is drawn.
 -- `locality` is the source's own words for where, ATC's the states it names
 -- (as lib/notices.ts's atcUpdateAsNotice joins them), and '' where it gives
 -- none (ORG_NOTICES.md section 2: no locality, never a guess).
@@ -102,6 +108,14 @@ hazards as (
         any_value(hazard) as hazard
     from {{ ref('notice_hazard_areas') }}
     group by source_key
+),
+
+-- Decision 76's state-wide sources and the states each speaks for.
+named_states as (
+    select
+        source_key,
+        to_json(string_split(states, ' ')) as states
+    from {{ ref('notice_states') }}
 ),
 
 nynjtc_terms as (
@@ -382,6 +396,24 @@ notice_rows as (
             and club_notices.carried_since = carried_checks.carried_since
 ),
 
+-- Decision 76's `states` (seeds/notice_states.csv), on a state-wide source's
+-- rows only, so no other row carries a null for it.
+stated_rows as (
+    select
+        notice_rows.source_key,
+        notice_rows.notice_id,
+        case
+            when named_states.states is null then notice_rows.notice
+            else
+                json_merge_patch(
+                    notice_rows.notice,
+                    json_object('states', named_states.states)
+                )
+        end as notice
+    from notice_rows
+    left join named_states on notice_rows.source_key = named_states.source_key
+),
+
 -- Whether a notice source that may publish is held this build: in a build
 -- without the row history its last good rows cannot be carried.
 held as (
@@ -400,13 +432,13 @@ published as (
         coalesce(
             to_json(
                 list(
-                    notice_rows.notice
-                    order by notice_rows.source_key, notice_rows.notice_id
+                    stated_rows.notice
+                    order by stated_rows.source_key, stated_rows.notice_id
                 )
             ),
             cast('[]' as json)
         ) as notices
-    from notice_rows
+    from stated_rows
 )
 
 select

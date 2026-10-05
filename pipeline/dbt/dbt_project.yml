@@ -198,6 +198,14 @@ vars:
   poi_corridor_buffer_miles: 30            # lib/corridor.py BUFFER_MILES
   poi_metres_per_degree: 111320.0          # lib/spurs.py METERS_PER_DEGREE, distance_m()'s scale
   poi_metres_per_foot: 0.3048              # export_poi.py M_PER_FT
+  # Decision 76's state shapes (int_closures__notice_state_shapes, published
+  # as conditions/notice_states.json): how far Douglas-Peucker may move a
+  # state's edge, and how far inside its shape a route's vertex must be
+  # before the phone counts it as in that state. The model's header has the
+  # measurement behind both; the phone reads the margin from the file, so
+  # this is its one home.
+  notice_state_simplify_tolerance_m: 250.0
+  notice_state_edge_margin_m: 500.0
   poi_site_name_radius_m: 150.0            # lib/poi_sites.py NAME_MATCH_RADIUS_M
   poi_site_proximity_radius_m: 60.0        # lib/poi_sites.py PROXIMITY_RADIUS_M
   poi_site_max_radius_m: 1609.344          # lib/poi_sites.py MAX_SITE_RADIUS_M

@@ -422,8 +422,10 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # 3 `public_gis` (BRBTC's sections, the Palmetto Trail's passages and OHTA's trailheads), and its fourth 1
     # `public_gis` (PATC's Tuscarora access points and camping), recounted from the registry 2026-10-04. Decision 75
     # (section G, 2026-10-04) moves GATC's water PDF from `unresolved` to `maintainer_authorisation`: the maintainer's
-    # answer to card Q5, with GATC's answer still not in. Recounted from the merged registry 2026-10-05.
-    assert counts == {"maintainer_authorisation": 219, "public_gis": 252, "stated_by_org": 192, "unresolved": 29}
+    # answer to card Q5, with GATC's answer still not in. Decision 76 (section B, 2026-10-04) adds 1 `stated_by_org`:
+    # the Census Bureau's TIGER/Line states, a federal work on 17 U.S.C. 105 whose own metadata says it is "free to
+    # use". Recounted from the merged registry 2026-10-05.
+    assert counts == {"maintainer_authorisation": 219, "public_gis": 252, "stated_by_org": 193, "unresolved": 29}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

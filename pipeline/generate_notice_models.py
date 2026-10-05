@@ -114,6 +114,18 @@ ROLES = ("title", "category", "status", "starts", "ends", "rescinded", "edited",
 DATE_ROLES = frozenset({"starts", "ends", "rescinded", "edited"})
 #: ArcGIS's server row ids. Decision 40: never one of these alone, so the geometry joins them in the key.
 SERVER_ROW_IDS = frozenset({"objectid", "objectid_1", "fid", "oid"})
+#: THE SOURCES WHOSE BASE MODEL IS A TABLE, where every other one is a view. Each holds large polygons and keys them
+#: by their full text (geometry_key), and a view computes that key again for every test and union that reads it. The
+#: unique tests on the keys of three of them were three of hourly UA run 538's five slowest nodes: 24.44 s (BAER),
+#: 22.86 s (Utah FFSL) and 21.56 s (R04's forest orders), read from that run's log in the review of PR #1805 — dlt →
+#: dbt re-platform as one go/no-go change, 2026-10-05. NIFC's current perimeters, the fourth, held 112 rows and
+#: 134,230 vertices that day (the same review). As a table the key is computed once a build. @unvalidated as a saving on real polygons: the fixtures' rows are too
+#: small to show one (the four base and staging models and their 16 tests, one thread, summed to 2.50 to 2.94 s as
+#: views and 2.67 to 2.97 s as tables, three runs each, measured 2026-10-05), and what settles it is the same nodes'
+#: times in the next hourly run's log.
+TABLE_BASES = frozenset(
+    {"usfs_baer_assessments", "usfs_r04_forest_orders", "nifc_wfigs_current_perimeters", "utah_ffsl_fire_restrictions"}
+)
 
 
 @dataclass(frozen=True)
@@ -429,7 +441,10 @@ def render_base(source: NoticeSource) -> str:
     if _uses_geometry_in_key(source):
         key_items.append("geometry_key('geom')")
     empty_columns = (["geometry"] if source.reader.spatial else []) + keys
-    lines = [f"-- {MARKER}; do not edit by hand.", "--"]
+    lines = [f"-- {MARKER}; do not edit by hand."]
+    if source.key in TABLE_BASES:
+        lines += ["{{ config(materialized='table') }}"]
+    lines += ["--"]
     lines += _wrap(
         f"{_title(source)} (sources.json `{source.key}`, landed by extract/{source.club}/{source.type}.py's "
         f"{source.reader_class}): every row, keyed and deduped (decision 40), with nothing filtered and nothing "
@@ -450,6 +465,12 @@ def render_base(source: NoticeSource) -> str:
         "Read through notice_raw_table(): a table a conditions leg has not loaded, or has withdrawn as unreadable, "
         "reads as no rows here rather than stopping every other club's closures."
     )
+    if source.key in TABLE_BASES:
+        lines.append("--")
+        lines += _wrap(
+            "A table, not a view: its key hashes large polygons, which a view would hash again for every test and "
+            "union that reads it (generate_notice_models.py's TABLE_BASES says how slow, and what is not yet known)."
+        )
     source_call = f"source({_sql_string(source.club)}, {_sql_string(source.table)})"
     if len(source_call) + 9 > MAX_LINE:
         source_call = f"source(\n            {_sql_string(source.club)},\n            {_sql_string(source.table)}\n        )"

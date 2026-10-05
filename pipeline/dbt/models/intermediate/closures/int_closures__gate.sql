@@ -67,9 +67,13 @@
 -- (generate_notice_models.py writes it from the extract's own declarations),
 -- so a source registered in a club's closures.py or warnings.py gets its
 -- answer without an edit here, and one with no rows still gets one. The run
--- log says whether the extract has run its raw table, in any outcome: one
--- it never ran is held with that reason, never read as nothing closed, and
--- publish.py names it rather than refusing over a missing row. ATC's,
+-- log says whether the extract has read its raw table: a `loaded` run, or a
+-- `skipped` one (unchanged since a load). A `refused` or `incomplete` run is
+-- not a read, and on a table that has never committed a load the warehouse
+-- creates it empty from that run's column hints (extract/_warehouse.py's
+-- not_yet_loaded()). A source none of whose tables has been read is held
+-- with that reason, never read as nothing closed, and publish.py names it
+-- rather than refusing over a missing row. ATC's,
 -- NYNJTC's and NYS Parks' rows come this way too. FOUR ROWS STAY TYPED:
 -- OurHike's closures and reports, NWS's alerts and
 -- reference/work_projects.json have no sources.json row
@@ -228,14 +232,20 @@ notice_tables as (
 
 -- Every registered notice source. `is_generated` marks the ones
 -- generate_notice_models.py stages, which the club-notice checks read;
--- `ran` whether the run log shows the extract running its table at all.
+-- `ran` whether the run log shows a run that loaded one of its tables, or
+-- found it unchanged since one that did. ATC's reviewed file loads on a
+-- store's first run while its pages are still `incomplete`, so ATC has run.
 registered_sources as (
     select
         readers.source_key,
         any_value(readers.club) as club,
         bool_or(readers.staged_by != 'hand') as is_generated,
-        bool_or(readers.raw_table in (select runs.table_name from runs))
-            as ran,
+        bool_or(
+            readers.raw_table in (
+                select runs.table_name from runs
+                where runs.outcome in ('loaded', 'skipped')
+            )
+        ) as ran,
         any_value(readers.raw_table) as raw_table
     from readers
     inner join registry on readers.source_key = registry.source_key
@@ -394,8 +404,9 @@ judged as (
                     || ' has no notices'
             when not gated_sources.ran
                 then
-                    'the run log shows no run of ' || gated_sources.raw_table
-                    || ', so nothing says ' || gated_sources.source_key
+                    'the run log shows no run that loaded '
+                    || gated_sources.raw_table || ' or found it unchanged, '
+                    || 'so nothing says ' || gated_sources.source_key
                     || ' was read'
             when
                 gated_sources.is_generated

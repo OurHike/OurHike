@@ -121,6 +121,8 @@ select
     carried.title,
     carried.category,
     carried.locality,
+    carried.starts_on,
+    carried.ends_on,
     carried.source_edited_at,
     carried.updated_at,
     carried.source_url,

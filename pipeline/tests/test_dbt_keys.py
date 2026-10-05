@@ -376,3 +376,42 @@ def test_each_socrata_model_keeps_the_copy_with_the_lowest_socrata_id(path):
     from the same upstream rows each month; parity.py's _exact_copy_reasons expects the lowest id kept.
     """
     assert DEDUPE.search(path.read_text().rstrip()).group(2) == "_socrata_id"
+
+
+#: A header's measured count of the exact copies its dedupe drops (ELT.md, "One key per table"): "after 2 exact copies".
+EXACT_COPIES = re.compile(r"after (\d+) exact cop(?:y|ies)")
+
+
+def _drops_exact_copies(text: str) -> bool:
+    header = " ".join(line.removeprefix("--").strip() for line in text.splitlines() if line.startswith("--"))
+    return any(int(count) > 0 for count in EXACT_COPIES.findall(header))
+
+
+# Hand-written only: a generated base model's dedupe is make_dbt_staging.py's or generate_notice_models.py's line.
+HAND_WRITTEN_COPY_MODELS = [
+    path for path in MODELS if not path.read_text().startswith("-- GENERATED") and _drops_exact_copies(path.read_text())
+]
+
+
+def test_the_hand_written_models_that_drop_exact_copies_are_the_five_measured():
+    assert {path.stem for path in HAND_WRITTEN_COPY_MODELS} == {
+        "base_alaska_trails__alaska_trails",
+        "base_blm__trails",
+        "base_nycdot__nyc_dot_greenways",
+        "base_nycparks__nyc_parks_trails",
+        "base_nycparks__nyc_public_restrooms",
+    }
+
+
+@pytest.mark.parametrize("path", HAND_WRITTEN_COPY_MODELS, ids=lambda p: p.stem)
+def test_each_hand_written_model_that_drops_exact_copies_keeps_the_one_with_the_lowest_server_row_id(path):
+    """Exact copies differ only in a server's row id, which the network then publishes as the line's id.
+
+    BLM's and Alaska's trails kept whichever copy dlt's random `_dlt_id` put first, so the same upstream
+    rows could publish a different `trail_line_id` on each monthly load (the review of PR #1805 — dlt → dbt
+    re-platform as one go/no-go change, 2026-10-05).
+    Ordering by the row id keeps the lowest, as the DEC and NYC models already do.
+    """
+    order = DEDUPE.search(path.read_text().rstrip()).group(2)
+    server_row_ids = set(_default_row_ids()) - {"_dlt_id"}
+    assert order in server_row_ids, f"{path.stem} keeps a copy by `{order}`, not by a server row id"

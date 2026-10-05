@@ -22,6 +22,15 @@ deleted, as a warehouse with only the hourly store's tables has them. Then:
     last file whole rather than publishing every club as having no notices
     (decision 53, phase D).
 
+The same warehouse then carries NWS's alerts, the hourly job's own rows,
+through two snapshots of the warnings history, the second after a reload
+that moved only the collection's `updated` and one alert's headline:
+
+(f) the alert whose headline changed opens a new version, and no other NWS
+    alert does, so the collection's `updated`, one value per NWS answer, is
+    not read as every alert changing (snapshots/warnings/
+    int_warnings__history.sql).
+
 The narrower cases run in every fixture build: four notice tables have no
 fixture rows and are never created, and
 tests/singular/assert_a_notice_source_whose_raw_table_is_absent_is_held.sql
@@ -30,7 +39,8 @@ fails the build unless each is held with a reason.
 It needs dbt 2.0.6 with the packages under pipeline/dbt/dbt_packages/, and
 runs only when OURHIKE_DBT names that dbt, as tests/test_dbt_row_dates_builds.py
 does. Measured 2026-10-04 on 3df39f10's fixtures: 272 s on a four-core
-sandbox, 231 s of it the fixture load, the seeds and the build.
+sandbox, 231 s of it the fixture load, the seeds and the build. With (f)'s
+snapshot and rebuild, 465 s in a sandbox on 2026-10-05.
 """
 
 from __future__ import annotations
@@ -156,6 +166,46 @@ def build(tmp_path_factory) -> dict:
         + _query(warehouse, "select count(*) from marts.closures_v1 where source_key = 'atc_trail_updates'")[0][0],
         "files": {writer: processed / f"conditions_{writer.removeprefix('pub_conditions_')}.json" for writer in WRITERS},
         "notices_file": processed / "conditions_notices.json",
+        "warehouse": warehouse,
+        "dbt_env": dbt_env,
+        "paths": paths,
+    }
+
+
+#: The fixture alert whose headline the reload edits, and the collection `updated` it moves to.
+EDITED_ALERT = "urn:oid:2.49.0.1.840.0.fixture.1"
+RELOADED_UPDATED = "2026-10-05T03:15:00+00:00"
+_NWS_VERSIONS = (
+    "select warning_id, count(*) from intermediate.int_warnings__history where source_key = 'nws_alerts' group by warning_id"
+)
+
+
+@pytest.fixture(scope="module")
+def nws_history(build) -> dict:
+    """The warnings history snapshotted twice on that warehouse, with history on, around a reload of NWS's alerts."""
+    warehouse, paths = build["warehouse"], build["paths"]
+    env = {**build["dbt_env"], "OURHIKE_ROW_HISTORY": "on"}
+    _run([DBT, "snapshot", "-s", "int_warnings__history", *paths], DBT_DIR, env)
+    before = dict(_query(warehouse, _NWS_VERSIONS))
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("update raw.raw_nws__alerts set collection_updated = ?", [RELOADED_UPDATED])
+        con.execute("update raw.raw_nws__alerts set headline = headline || ' (reissued)' where id = ?", [EDITED_ALERT])
+    # The chain from NWS's base model to the snapshot, rebuilt as the next hourly build would read the reload.
+    selection = "base_nws__alerts+,+int_warnings__history"
+    _run(
+        [DBT, "build", "-s", selection, "--exclude", "resource_type:test", "resource_type:unit_test", *paths],
+        DBT_DIR,
+        env,
+    )
+    return {
+        "before": before,
+        "after": dict(_query(warehouse, _NWS_VERSIONS)),
+        # The edited alert's new version is the final model's row as the reload left it (the view itself needs spatial).
+        "reloaded_updated": _query(
+            warehouse,
+            "select collection_updated from intermediate.int_warnings__history "
+            f"where warning_id = 'nws_alerts:{EDITED_ALERT}' and dbt_valid_to is null",
+        ),
     }
 
 
@@ -189,3 +239,11 @@ def test_no_club_notice_reaches_a_mart(build):
 
 def test_the_notices_file_keeps_its_last_copy_while_a_club_is_held_without_history(build):
     assert not build["notices_file"].exists(), "notices.json was written with every club held and nothing to carry"
+
+
+def test_a_new_nws_collection_updated_opens_no_warnings_version_and_a_reissued_alert_opens_one(nws_history):
+    assert nws_history["reloaded_updated"] == [(RELOADED_UPDATED,)], "the reload reached int_warnings__final"
+    before, after = nws_history["before"], nws_history["after"]
+    assert len(before) >= 2 and set(after) == set(before), "the fixtures' NWS alerts, each snapshotted once"
+    opened = {warning_id: after[warning_id] - before[warning_id] for warning_id in before}
+    assert opened == {warning_id: int(warning_id == f"nws_alerts:{EDITED_ALERT}") for warning_id in before}

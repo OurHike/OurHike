@@ -18,11 +18,18 @@
 --    everywhere in the United States, UTC-4 to UTC-10, by 10:00 UTC the day
 --    after, so the margin errs toward showing a closure a day too long and
 --    never hides one early (Reasoned, not measured on any source). An order
---    the source says was rescinded on a day already reached is held too, and
---    so is a notice whose own start is still to come (Yellowstone's bear
---    management areas, New Jersey's WMA restrictions and King County's alerts
---    state one): held while its UTC start day is more than one day ahead,
---    so the margin shows a closure a day early, never a day late.
+--    the source says was rescinded is held too, once the build's UTC date is
+--    past the UTC day of its rescission: an order is lifted at that instant,
+--    not at the end of a stated day, and the first build to hold it starts at
+--    00:00 UTC the next day, after the instant whatever the zone it was
+--    stated in. So it rounds toward showing an order up to a day after it
+--    was lifted, never hiding one still in force (Reasoned, as above; with
+--    no margin, before 2026-10-05, a Denver order rescinded at local
+--    midnight was held from 18:00 local the evening before). A notice whose
+--    own start is still to come is held too (Yellowstone's bear management
+--    areas, New Jersey's WMA restrictions and King County's alerts state
+--    one): held while its UTC start day is more than one day ahead, so the
+--    margin shows a closure a day early, never a day late.
 -- 2. A STATUS ALONE IS NEVER READ AS CLOSED NOW WHEN ITS OWN END HAS PASSED.
 --    `obstructs_trail` is true only where the source's own status field
 --    holds a value seeds/notice_status_values.csv reads as `closes_trail`,
@@ -101,7 +108,7 @@ read_status as (
         cast(timezone('UTC', notices.starts_at) as date) as starts_on,
         cast(timezone('UTC', notices.ends_at) as date) as ends_on,
         cast(timezone('UTC', notices.rescinded_at) as date) as rescinded_on,
-        cast(timezone('UTC', now()) as date) as build_date
+        {{ notice_build_date() }} as build_date
     from notices
     left join status_values
         on
@@ -115,6 +122,8 @@ read_status as (
             and lower(trim(notices.category)) = hazard_values.category_value
 ),
 
+-- Rule 1's dates come last, from macros/notice_date_holds.sql, which
+-- int_closures__held_carried applies to a carried row too.
 judged as (
     select
         *,
@@ -132,12 +141,9 @@ judged as (
                     'its own category, ' || coalesce(category, 'none')
                     || ', is not one notice_hazard_areas reads as '
                     || hazard
-            when rescinded_on is not null and rescinded_on <= build_date
-                then 'its own order was rescinded on ' || rescinded_on
-            when ends_on is not null and ends_on < build_date - 1
-                then 'its own end date, ' || ends_on || ', has passed'
-            when starts_on is not null and starts_on > build_date + 1
-                then 'its own start date, ' || starts_on || ', has not come'
+            {{ notice_date_holds(
+                'starts_on', 'ends_on', 'build_date', rescinded_on='rescinded_on'
+            ) }}
         end as held_because
     from read_status
 )

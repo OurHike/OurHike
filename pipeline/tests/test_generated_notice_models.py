@@ -215,3 +215,19 @@ def test_every_unit_test_input_on_a_generated_notice_model_is_sql_rows():
                 if name in bases and given.get("format", "dict") != "sql":
                     offenders.append(f"{unit_test['name']}: {name}")
     assert not offenders, offenders
+
+
+def test_only_the_named_polygon_sources_base_models_are_tables(files):
+    """generate_notice_models.py's TABLE_BASES: each is a generated, spatial notice source, and only its base model is a table.
+
+    A key renamed in sources.json would otherwise leave its polygons hashed again by every test and union, silently.
+    """
+    sources = {source.key: source for source in generator.notice_sources() if not source.hand_staged}
+    assert generator.TABLE_BASES <= set(sources), sorted(generator.TABLE_BASES - set(sources))
+    assert all(sources[key].reader.spatial for key in generator.TABLE_BASES)
+    tables = {
+        path.stem
+        for path, text in files.items()
+        if path.name.startswith("base_") and path.suffix == ".sql" and "{{ config(materialized='table') }}" in text
+    }
+    assert tables == {sources[key].base_model for key in generator.TABLE_BASES}

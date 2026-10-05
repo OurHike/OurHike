@@ -29,10 +29,25 @@
 -- carried is a different claim from confirmed (Reasoned; macros/row_history.sql
 -- says what else moves a hash).
 --
+-- WHAT ENDS IT EARLY: rule 1's dates (macros/notice_date_holds.sql), as for
+-- a row read this build. A carried notice whose own end day is more than a
+-- day behind the build's UTC date is dropped, so a closure its source says
+-- has ended stops publishing although the source cannot be read; the
+-- snapshot then closes its version. Only the end can pass while a row is
+-- carried (its start was within the margin when it was read), and its
+-- rescission day cannot be checked: rescinded_on does not reach the marts,
+-- so the history holds none to carry.
+--
 -- WHAT IT DOES NOT DO. With OURHIKE_ROW_HISTORY=off, or on a cold start, the
--- history is empty and nothing is carried; pub_conditions_notices then keeps
--- the phone's last file whole rather than publishing a held club as having no
--- notices.
+-- history is empty and nothing is carried. With the history off,
+-- pub_conditions_notices then keeps the phone's last file whole rather than
+-- publishing a held club as having no notices (when_row_history_is_off()).
+-- ON A COLD START IT DOES NOT: the history is on, so that guard is not
+-- rendered, and a source held that build is published as having no notices.
+-- So is a source held on every build since its history began, which has no
+-- saved row to carry (traced from macros/row_history.sql and
+-- build_marts.resolve_history() in the review of PR #1805 — dlt → dbt
+-- re-platform as one go/no-go change, 2026-10-05; not yet fixed).
 with closures_history as (
     select
         'closures' as mart,
@@ -82,56 +97,66 @@ carried as (
         not gate.passed
         and gate.may_publish
         and window_carried.notice_id is null
+),
+
+read_back as (
+    select
+        mart,
+        notice_id,
+        json_extract_string(row_json, '$.club') as club,
+        source_key,
+        try_cast(json_extract_string(row_json, '$._loaded_at') as timestamptz)
+            as _loaded_at,
+        json_extract_string(row_json, '$.notice_kind') as notice_kind,
+        try_cast(json_extract_string(row_json, '$.obstructs_trail') as boolean)
+            as obstructs_trail,
+        json_extract_string(row_json, '$.review_state') as review_state,
+        json_extract_string(row_json, '$.atc_id') as atc_id,
+        json_extract_string(row_json, '$.title') as title,
+        json_extract_string(row_json, '$.category') as category,
+        case
+            when json_type(json_extract(row_json, '$.states')) not in ('NULL')
+                then json_extract(row_json, '$.states')
+        end as states,
+        json_extract_string(row_json, '$.locality') as locality,
+        json_extract_string(row_json, '$.trail_id') as trail_id,
+        try_cast(json_extract_string(row_json, '$.mile_start') as double)
+            as mile_start,
+        try_cast(json_extract_string(row_json, '$.mile_end') as double)
+            as mile_end,
+        -- The two miles as the history saved them, for the unit test: a
+        -- 2.0.6 unit test compares a double only after rounding it to one
+        -- decimal place (the dbt skill's contract traps), and an A.T. mile is
+        -- to a tenth.
+        json_extract_string(row_json, '$.mile_start') as mile_start_text,
+        json_extract_string(row_json, '$.mile_end') as mile_end_text,
+        try_cast(json_extract_string(row_json, '$.starts_on') as date)
+            as starts_on,
+        try_cast(json_extract_string(row_json, '$.ends_on') as date) as ends_on,
+        try_cast(
+            json_extract_string(row_json, '$.source_edited_at') as timestamptz
+        ) as source_edited_at,
+        json_extract_string(row_json, '$.updated_at') as updated_at,
+        json_extract_string(row_json, '$.source_url') as source_url,
+        try_cast(json_extract_string(row_json, '$.list_position') as bigint)
+            as list_position,
+        json_extract_string(row_json, '$.closure_kind') as closure_kind,
+        json_extract_string(row_json, '$.closure_reason') as closure_reason,
+        json_extract_string(row_json, '$.closure_place') as closure_place,
+        json_extract_string(row_json, '$.geom_geojson') as geom_geojson,
+        json_extract_string(row_json, '$.source_row_key') as source_row_key,
+        coalesce(
+            try_cast(
+                json_extract_string(row_json, '$.carried_since') as timestamptz
+            ),
+            cast({{ python_run_stamp() }} as timestamptz)
+        ) as carried_since
+    from carried
 )
 
-select
-    mart,
-    notice_id,
-    json_extract_string(row_json, '$.club') as club,
-    source_key,
-    try_cast(json_extract_string(row_json, '$._loaded_at') as timestamptz)
-        as _loaded_at,
-    json_extract_string(row_json, '$.notice_kind') as notice_kind,
-    try_cast(json_extract_string(row_json, '$.obstructs_trail') as boolean)
-        as obstructs_trail,
-    json_extract_string(row_json, '$.review_state') as review_state,
-    json_extract_string(row_json, '$.atc_id') as atc_id,
-    json_extract_string(row_json, '$.title') as title,
-    json_extract_string(row_json, '$.category') as category,
+select *
+from read_back
+where
     case
-        when json_type(json_extract(row_json, '$.states')) not in ('NULL')
-            then json_extract(row_json, '$.states')
-    end as states,
-    json_extract_string(row_json, '$.locality') as locality,
-    json_extract_string(row_json, '$.trail_id') as trail_id,
-    try_cast(json_extract_string(row_json, '$.mile_start') as double)
-        as mile_start,
-    try_cast(json_extract_string(row_json, '$.mile_end') as double)
-        as mile_end,
-    -- The two miles as the history saved them, for the unit test: a 2.0.6
-    -- unit test compares a double only after rounding it to one decimal
-    -- place (the dbt skill's contract traps), and an A.T. mile is to a tenth.
-    json_extract_string(row_json, '$.mile_start') as mile_start_text,
-    json_extract_string(row_json, '$.mile_end') as mile_end_text,
-    try_cast(json_extract_string(row_json, '$.starts_on') as date)
-        as starts_on,
-    try_cast(json_extract_string(row_json, '$.ends_on') as date) as ends_on,
-    try_cast(
-        json_extract_string(row_json, '$.source_edited_at') as timestamptz
-    ) as source_edited_at,
-    json_extract_string(row_json, '$.updated_at') as updated_at,
-    json_extract_string(row_json, '$.source_url') as source_url,
-    try_cast(json_extract_string(row_json, '$.list_position') as bigint)
-        as list_position,
-    json_extract_string(row_json, '$.closure_kind') as closure_kind,
-    json_extract_string(row_json, '$.closure_reason') as closure_reason,
-    json_extract_string(row_json, '$.closure_place') as closure_place,
-    json_extract_string(row_json, '$.geom_geojson') as geom_geojson,
-    json_extract_string(row_json, '$.source_row_key') as source_row_key,
-    coalesce(
-        try_cast(
-            json_extract_string(row_json, '$.carried_since') as timestamptz
-        ),
-        cast({{ python_run_stamp() }} as timestamptz)
-    ) as carried_since
-from carried
+        {{ notice_date_holds('starts_on', 'ends_on', notice_build_date()) }}
+    end is null

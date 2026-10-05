@@ -164,9 +164,25 @@ PERSON_FIELDS = frozenset(
 # @unvalidated: the word list was drafted for decision 54 on 2026-10-03 from
 # the names seen so far, not from a survey of field names. What would settle
 # it is the names a few monthly runs print, read for false matches and misses.
+#
+# `manager`, `superintendent`, `steward` and `surveyor` were added, and `user`
+# matched at the end of a run-together word (NPS's `CREATEUSER`, `EDITUSER`),
+# for review finding EXD-3 of PR #1805: PA DCNR's park layer loaded a
+# `MANAGER` whose values have the shape of people's names (61 distinct over
+# 125 parks, 123 with a space, none naming a park, region or bureau: the
+# review counted them and read no value), and its row now names it in
+# `person_fields`. In the 167 live field lists make_dbt_fixtures.py copies,
+# `manager` matches six other columns. Three rows record theirs as agencies
+# and clear it in `not_person_fields` (cotrex_trailheads, pcta_trailheads,
+# ridgetrail_campsites), as mohonk_trails does the `Manager` its staging model
+# reads; the other three are left out until a person reads them
+# (nj_open_space_points_of_interest's LAND_MANAGER, portland_parks_trails'
+# Manager, amc_trailheads_and_parking's Tr_Manager, whose row lists 78 of its
+# 106 values). `steward`, `superintendent` and `surveyor` match none of them.
 PERSON_SHAPED = re.compile(
     r"(^|_)(user|user_?name|editor|edited_?by|created_?by|creator|last_?ed_?by|last_?edit(ed|or)?(_?by)?"
-    r"|owner|phone|telephone|tel|fax|email|e_?mail|contact)($|_|\d)"
+    r"|owner|phone|telephone|tel|fax|email|e_?mail|contact|manager|superintendent|steward|surveyor)($|_|\d)"
+    r"|[a-z]user($|_|\d)"
 )
 
 # Field types whose values are never a person's name, whatever the field is

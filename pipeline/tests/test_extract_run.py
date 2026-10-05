@@ -979,9 +979,55 @@ def test_a_staff_column_the_metadata_does_not_list_still_never_lands(registry, r
     rows = list(staffed().rows({}))
 
     # `last_edited_date` goes too: unlisted, its type is unknown, so it is judged by its editor-shaped name.
-    assert set(rows[0]) == {"OBJECTID", "NAME", "LastEdit_1", "Surveyor", "geometry"}, rows[0]
+    # So does `Surveyor`, which the person-shaped backstop reads as a person's field.
+    assert set(rows[0]) == {"OBJECTID", "NAME", "LastEdit_1", "geometry"}, rows[0]
     assert "GPS A. Person" not in json.dumps(rows), "the row's person_fields, `source`, is judged by name too"
     assert "555-0100" not in json.dumps(rows)
+
+
+@pytest.mark.parametrize("name", ["MANAGER", "Park_Manager", "SUPERINTENDENT", "STEWARD", "SURVEYOR", "CREATEUSER", "EDITUSER"])
+def test_a_manager_steward_or_surveyor_column_and_an_all_capitals_user_column_are_person_shaped(registry, name):
+    """Names the backstop missed, so such a field loaded unless a person had named it on its row (review finding EXD-3).
+
+    PA DCNR's park layer loaded a `MANAGER` whose values have the shape of
+    people's names; NPS's layers spell editor tracking `CREATEUSER` and
+    `EDITUSER`, one word each.
+    """
+    layer = ArcgisLayer(key="trails", club="testclub", type="trail_lines")
+
+    dropped = layer.dropped_fields({"fields": [{"name": name, "type": "esriFieldTypeString"}]})
+
+    assert dropped == {name.lower(): "a person-shaped name"}
+
+
+def test_a_manager_column_a_row_clears_as_an_agency_still_loads(registry):
+    """`not_person_fields` clears the new words as it clears `owner`: Mohonk's `Manager` is "Mohonk Preserve" on every row."""
+    entries = json.loads(registry.read_text())
+    next(e for e in entries["sources"] if e["key"] == "trails")["not_person_fields"] = ["Manager"]
+    registry.write_text(json.dumps(entries))
+    _kinds._registry.cache_clear()
+    layer = ArcgisLayer(key="trails", club="testclub", type="trail_lines")
+
+    assert layer.dropped_fields({"fields": [{"name": "Manager", "type": "esriFieldTypeString"}]}) == {}
+
+
+@pytest.mark.parametrize(
+    ("key", "field", "dropped"),
+    [
+        ("pasda_state_park_amenities", "MANAGER", True),
+        ("mohonk_trails", "Manager", False),
+        ("cotrex_trailheads", "manager", False),
+        ("pcta_trailheads", "external_trailheadManager", False),
+        ("ridgetrail_campsites", "MANAGER", False),
+    ],
+)
+def test_each_registered_layers_manager_column_is_ruled_on_its_own_row(key, field, dropped):
+    """The real rows: PA DCNR's park managers never load; the four whose row records the column as agencies keep it."""
+    layer = ArcgisLayer(key=key, club="testclub", type="points_of_interest")
+
+    verdict = layer.dropped_fields({"fields": [{"name": field, "type": "esriFieldTypeString"}]})
+
+    assert bool(verdict) is dropped, verdict
 
 
 def test_a_name_added_to_a_rows_person_fields_reads_an_unmoved_layer_again(registry, monkeypatch):

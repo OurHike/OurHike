@@ -31,7 +31,7 @@ import {
   type PublishedConditions,
   type PublishedReadOptions,
 } from './publishedConditions'
-import type { NoticeGeometryValue } from './noticeGeometry'
+import { geometryParts, partsBounds, type NoticeGeometryValue } from './noticeGeometry'
 import { DATA_CONFIGURED, dataUrl } from './config'
 
 /** The shapes of the states a state-wide notice names (decision 76): written
@@ -49,7 +49,9 @@ function textOrNull(value: unknown): string | null {
 }
 
 /** A place this build can read, or `unplaced` - a notice nobody can place is
- *  still one a hiker is told about (ORG_NOTICES.md §3). */
+ *  still one a hiker is told about (ORG_NOTICES.md §3). A geometry with no
+ *  coordinate this build can read is unplaced too: kept as a geometry, it
+ *  would meet no route and, being placed, show from no club either. */
 function validPlace(value: unknown): NoticePlace {
   if (typeof value !== 'object' || value === null) return { kind: 'unplaced' }
   const place = value as Record<string, unknown>
@@ -74,7 +76,9 @@ function validPlace(value: unknown): NoticePlace {
     place.geometry !== null &&
     typeof (place.geometry as { type?: unknown }).type === 'string'
   ) {
-    return { kind: 'geometry', geometry: place.geometry as NoticeGeometryValue }
+    const geometry = place.geometry as NoticeGeometryValue
+    if (partsBounds(geometryParts(geometry)) !== null)
+      return { kind: 'geometry', geometry }
   }
   return { kind: 'unplaced' }
 }

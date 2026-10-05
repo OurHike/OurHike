@@ -81,11 +81,12 @@
 --   what those 95 texts needed, and its coverage of a wording nobody has
 --   read is what the backstop is for; what would show it too loose is a
 --   restriction a person finds in a row this rule passed.
---   Re-measured 2026-10-04 on the registry after decisions 69 to 75, 670
---   rows, with the seeds' patterns run in DuckDB over sources.json as these
---   CTEs run them (a reproduction, not a dbt run): 424 quote words; 149
---   carry a restriction; 77 are unanswered, every one held by its own
---   `reaches_hikers`. The answers took three off that list: OHTA's
+--   Re-measured 2026-10-05 on the registry after decisions 69 to 75 and
+--   section K's merge (43989398), 692 rows, with the seeds' patterns run in
+--   DuckDB over sources.json as these CTEs run them (a reproduction, not a
+--   dbt run): 446 quote words; 153 carry a restriction; 79 are unanswered,
+--   every one held by its own `reaches_hikers`. Before the answers, on 670
+--   rows at 3510e68e, 80 were. The answers took three off that list: OHTA's
 --   copyright footer (decision 69), FMST's "updated only when" (decision
 --   72) and IN.gov's clause on bots (decision 75). Decision 71 moved no
 --   verdict: rule 5 already read a hold-harmless line as a liability line.

@@ -73,7 +73,7 @@ import type { BoundingBox } from '../lib/legendContents'
 import type { TrailIndex } from '../lib/trailPosition'
 import type { Stewards } from '../lib/stewards'
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from '../lib/clubSections'
-import type { DayHike } from '../lib/dayHikes'
+import { anyHikePlanned, type DayHike } from '../lib/dayHikes'
 import type { Trip } from '../lib/trips'
 import { routeLines, type TrailGraphIndex } from '../lib/trailGraph'
 import { resolveDayHike } from '../lib/dayHikeCard'
@@ -204,6 +204,15 @@ export interface NoticesInput {
   clubNotices?: readonly TrailNotice[] | null
   /** When conditions/notices.json was baked. */
   clubNoticesGeneratedAt?: Date | null
+  /**
+   * Whether the bucket serves conditions/notices.json though this phone has
+   * not downloaded it (lib/useConditions.ts): decision 77 downloads it only
+   * once a hike is planned. With it and nothing planned, the panel is still
+   * decision 66's, saying no hike is planned, and never the list above. With
+   * a hike planned it counts for nothing: a planned hike's notices come only
+   * from the file, never from its absence.
+   */
+  clubNoticesListed?: boolean
   /** The hiker's long-hike plans (lib/trips.ts). */
   trips?: readonly Trip[]
   /** The hiker's day hikes (lib/dayHikes.ts). */
@@ -229,6 +238,7 @@ export function useNoticesPanel({
   now,
   clubNotices = null,
   clubNoticesGeneratedAt = null,
+  clubNoticesListed = false,
   trips = NO_TRIPS,
   dayHikes = NO_DAY_HIKES,
   graph = null,
@@ -342,22 +352,30 @@ export function useNoticesPanel({
   /**
    * Decision 66's panel (#1805): each hike planned in the next 7 days and
    * the notices that touch it, or why there is none. Only with
-   * conditions/notices.json; without it the panel stays today's.
+   * conditions/notices.json, or with the bucket serving it and nothing
+   * planned; otherwise the panel stays today's.
    *
    * Keyed on the calendar day rather than the clock, so a minute's tick does
    * not re-run the geometry: the window only moves at midnight.
    */
   /**
-   * The rule and the geometry (lib/noticeSelection.ts), imported when
-   * conditions/notices.json first lands and not before: the launch budget's
-   * reason, which that module's header gives. Until it has loaded, a phone
-   * holding the file shows the planned-hike row with nothing counted yet,
+   * The rule and the geometry (lib/noticeSelection.ts), imported when the
+   * panel first becomes decision 66's and not before: the launch budget's
+   * reason, which that module's header gives. Until it has loaded, such a
+   * phone shows the planned-hike row with nothing counted yet,
    * never today's list of everything - which would flash the old panel for a
    * moment on every launch.
    */
   const [selection, setSelection] = useState<NoticeSelection | null>(loadedSelection)
+
+  /** Whether the panel is decision 66's: conditions/notices.json is on the
+   *  phone, whether or not its rule has finished loading - or the bucket
+   *  serves it and nothing is planned, so decision 77 downloaded nothing. */
+  const clubMode =
+    clubNotices !== null || (clubNoticesListed && !anyHikePlanned(trips, dayHikes))
+
   useEffect(() => {
-    if (clubNotices === null || selection !== null) return
+    if (!clubMode || selection !== null) return
     let live = true
     void import('../lib/noticeSelection').then((module) => {
       loadedSelection = module
@@ -366,15 +384,15 @@ export function useNoticesPanel({
     return () => {
       live = false
     }
-  }, [clubNotices, selection])
+  }, [clubMode, selection])
 
   const today = localDay(now)
   const view = useMemo(
     () =>
-      clubNotices === null || selection === null
+      !clubMode || selection === null
         ? null
         : selection.plannedView({
-            notices: clubNotices,
+            notices: clubNotices ?? [],
             trips,
             dayHikes,
             today,
@@ -385,6 +403,7 @@ export function useNoticesPanel({
             stewards,
           }),
     [
+      clubMode,
       clubNotices,
       selection,
       trips,
@@ -412,10 +431,6 @@ export function useNoticesPanel({
   )
   const hazardAreas = hazards?.areas ?? NO_HAZARD_AREAS
   const hazardAdvisoriesAt = hazards?.advisoriesAt ?? noAdvisories
-
-  /** Whether the panel is decision 66's: conditions/notices.json is on the
-   *  phone, whether or not its rule has finished loading. */
-  const clubMode = clubNotices !== null
 
   const selectedHazard = useMemo(
     () =>

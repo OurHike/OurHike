@@ -423,6 +423,7 @@ import { useTrailGraph } from './lib/useTrailGraph'
 import { orgLabelFrom, orgProviderFrom, trailSourceTableFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
+  anyHikePlanned,
   loadDayHikes,
   logWalk,
   saveDayHikeOpenId,
@@ -1532,13 +1533,19 @@ function App() {
     orgNotices,
     clubNotices,
     clubNoticesGeneratedAt,
+    clubNoticesListed,
     drought,
     droughtWeek,
     workProjects,
     workProjectsGeneratedAt,
     lastSyncedAt,
     markSynced,
-  } = useConditions(online, afterFirstFrame)
+  } = useConditions(
+    online,
+    afterFirstFrame,
+    // Decision 77: conditions/notices.json only once a hike is planned.
+    anyHikePlanned(tripStore.trips, dayHikeStore.hikes),
+  )
 
   /**
    * This phone's own just-written notes, echoed locally (FIELD_NOTES.md).
@@ -3458,6 +3465,7 @@ function App() {
     // alone, which routes nothing - the panel then says so.
     clubNotices,
     clubNoticesGeneratedAt,
+    clubNoticesListed,
     trips: tripStore.trips,
     dayHikes: dayHikeStore.hikes,
     graph: dayHikeIndex ?? graphIndex,

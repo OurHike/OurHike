@@ -7,6 +7,12 @@
 // lib/publishedConditions.ts's `fetchPublished`, the same path every other
 // conditions file takes.
 //
+// ONLY ONCE A HIKE IS PLANNED (decision 77, the maintainer's poll of
+// 2026-10-05): the file was 24,966,662 bytes, 6,203,870 gzipped, on soak run
+// 536, and every phone fetched it on each conditions refresh.
+// `readPublishedNotices` downloads it only for a phone with a hike planned;
+// any other phone asks the bucket whether it serves the file, and no more.
+//
 // AND THE STATES' SHAPES BESIDE IT (decision 76): conditions/notice_states.json,
 // read here in the same breath and attached to each state-wide notice as its
 // `state_areas`, so lib/plannedNotices.ts can ask whether a planned route is
@@ -26,6 +32,7 @@ import {
   type PublishedReadOptions,
 } from './publishedConditions'
 import type { NoticeGeometryValue } from './noticeGeometry'
+import { DATA_CONFIGURED, dataUrl } from './config'
 
 /** The shapes of the states a state-wide notice names (decision 76): written
  *  by pipeline/dbt's pub_conditions_notice_states, on the dbt path only, so
@@ -193,4 +200,53 @@ export async function fetchPublishedNotices(
   }
   const areas = (states?.items ?? []).flatMap((row) => validStateArea(row) ?? [])
   return { ...published, items: withStateAreas(items, areas) }
+}
+
+/**
+ * Whether the bucket serves conditions/notices.json, asked with a HEAD
+ * request, so no byte of the file is downloaded (decision 77). False for a
+ * 404, a dead spot or no bucket, which the caller reads as "not said", never
+ * as "not served".
+ *
+ * A HEAD and not the manifest, though `latest.json` lists the file: this
+ * build reads the pinned release's manifest (lib/dataRelease.ts's
+ * RELEASE_MANIFEST_PATH), and that one lists no `conditions/` key, because
+ * those files are rewritten in place outside every release folder (measured
+ * 2026-10-05 on UA: 0 of releases/2026-10-03-2/manifest.json's 4,436
+ * entries). Reading the root `latest.json` instead would cost 245,744 bytes
+ * on the wire each time (measured the same day), against about 800 bytes of
+ * headers for this, and the bucket answers HEAD with the same CORS headers
+ * as GET (measured on data.ourhike.org from https://ourhike.org: 200 on
+ * UA's file, 404 on production's, both with access-control-allow-origin).
+ */
+export async function noticesListed(): Promise<boolean> {
+  if (!DATA_CONFIGURED) return false
+  try {
+    return (await fetch(dataUrl(PUBLISHED_NOTICES_KEY), { method: 'HEAD' })).ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * conditions/notices.json as decision 77 has a phone read it: downloaded
+ * only while `hikePlanned`. With nothing planned it is the copy this phone
+ * kept, read with no request (lib/conditionsCache.ts keeps one only under
+ * its size ceiling), and `listed` is the bucket's answer to a HEAD, asked
+ * only with signal. With a hike planned, a file that arrives says it is
+ * listed too.
+ */
+export async function readPublishedNotices(
+  hikePlanned: boolean,
+  options: PublishedReadOptions,
+): Promise<{ published: PublishedConditions<OrgNotice> | null; listed: boolean }> {
+  if (hikePlanned) {
+    const published = await fetchPublishedNotices(undefined, options)
+    return { published, listed: published !== null }
+  }
+  const [published, listed] = await Promise.all([
+    fetchPublishedNotices(undefined, { online: false }),
+    options.online === false ? false : noticesListed(),
+  ])
+  return { published, listed }
 }

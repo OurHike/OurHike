@@ -287,11 +287,16 @@ export function PlannedNoticeList({
         ))
       )}
 
-      <p className="closure-sheet__age">
-        {generatedAt === null
-          ? 'OurHike can’t tell when these notices were gathered.'
-          : `Gathered by OurHike on ${longDate(generatedAt)}.`}
-      </p>
+      {/* No date and no hike is a phone with nothing planned, which
+          downloaded no notices to date (decision 77), so it says nothing
+          about when they were gathered. */}
+      {generatedAt !== null ? (
+        <p className="closure-sheet__age">{`Gathered by OurHike on ${longDate(generatedAt)}.`}</p>
+      ) : planned.hikes.length > 0 ? (
+        <p className="closure-sheet__age">
+          OurHike can’t tell when these notices were gathered.
+        </p>
+      ) : null}
     </div>
   )
 }

@@ -523,10 +523,12 @@ test.describe('every trail notice the app holds', () => {
   // TODAY'S LIST, which a phone shows while conditions/notices.json has not
   // reached it: production's state until the cutover (#1805). UA has served
   // that file since soak run 529 (publish-conditions.yml 37232255266,
-  // 2026-10-04), and a phone holding it shows decision 66's planned-hike
-  // panel in this list's place, so these two tests went red the first time
-  // they met it. They reach the list by answering the file 404, exactly as a
-  // bucket the exporters publish does; the panel has its own test below.
+  // 2026-10-04), and a phone on a bucket that serves it shows decision 66's
+  // planned-hike panel in this list's place, so these two tests went red the
+  // first time they met it. They reach the list by answering the file 404,
+  // its GET and the HEAD a phone with nothing planned sends instead
+  // (decision 77) alike, exactly as a bucket the exporters publish does; the
+  // panel has its own test below.
   test.beforeEach(async ({ page }) => {
     await page
       .context()
@@ -608,20 +610,31 @@ test.describe('every trail notice the app holds', () => {
 })
 
 test.describe('the notices for planned hikes', () => {
-  test('entrance: a phone holding the published notices.json opens the planned-hike panel, and with nothing planned says so', async ({
+  test('entrance: a phone with nothing planned downloads none of notices.json, and still opens the planned-hike panel, saying so', async ({
     page,
   }) => {
     // Decision 66 (#1805): with conditions/notices.json a phone shows the
     // notices that touch a hike planned in the next 7 days, never every
-    // club's list. This phone plans nothing, so the panel's answer is its
-    // empty state, and the "Gathered by OurHike on" line is the proof that
-    // the real file parsed: one that does not parse reads as no file, and
-    // the list above would show instead.
-    const notices = page.waitForResponse((response) =>
-      new URL(response.url()).pathname.endsWith('/conditions/notices.json'),
+    // club's list. Decision 77: the file is downloaded only once a hike is
+    // planned, and this phone plans nothing, so it only asks the bucket
+    // with a HEAD whether the file is served (lib/publishedNotices.ts's
+    // noticesListed). That HEAD is the response waited on here; it used to
+    // be the file's own GET, and the "Gathered by OurHike on" line that
+    // proved the file parsed is gone with it, as nothing was downloaded to
+    // date. What proves the bucket's answer was read is the panel itself:
+    // without it the phone shows the list the tests above hold.
+    const methods: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/conditions/notices.json'))
+        methods.push(request.method())
+    })
+    const listed = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith('/conditions/notices.json') &&
+        response.request().method() === 'HEAD',
     )
     await openMap(page)
-    const response = await notices
+    const response = await listed
     test.skip(
       response.status() === 404,
       'This environment serves no conditions/notices.json, so a phone shows the list the tests above hold.',
@@ -633,7 +646,8 @@ test.describe('the notices for planned hikes', () => {
     const panel = page.getByRole('dialog', { name: 'Notices for your planned hikes' })
     await expect(panel).toBeVisible()
     await expect(panel).toContainText('You have no hike planned')
-    await expect(panel).toContainText(/Gathered by OurHike on /)
+    await expect(panel).not.toContainText('Gathered by OurHike')
+    expect(methods).not.toContain('GET')
   })
 })
 

@@ -39,6 +39,7 @@
 import { del, get, set, update } from 'idb-keyval'
 import { recordDayHikeEdits } from './dayHikeSyncState'
 import type { RouteClimb } from './trailGraph'
+import type { Trip } from './trips'
 
 export const DAY_HIKES_KEY = 'ourhike:day-hikes'
 
@@ -305,6 +306,25 @@ export interface DayHikeStore {
 }
 
 export const EMPTY_DAY_HIKES: DayHikeStore = { hikes: [], openId: null }
+
+/**
+ * Whether the hiker has any hike planned: a day hike laid out as a plan, or a
+ * long hike that is not a recorded walk, dated or not. The one home of that
+ * rule (#1805, decision 77): lib/plannedNotices.ts's `nothing_planned` is
+ * exactly its negation, lib/useConditions.ts downloads conditions/notices.json
+ * only while it is true, and chrome/noticesPanel.tsx keeps the planned-hike
+ * panel without that file only while it is false. Here, beside the store the
+ * first frame already holds, because plannedNotices.ts loads later.
+ */
+export function anyHikePlanned(
+  trips: readonly Trip[],
+  dayHikes: readonly DayHike[],
+): boolean {
+  return (
+    trips.some((trip) => trip.recorded !== true) ||
+    dayHikes.some((hike) => hike.recorded === 'planned')
+  )
+}
 
 /** plan.ts's own date shape - dates are stored the same way everywhere. */
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/

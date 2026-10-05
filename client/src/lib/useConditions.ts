@@ -152,6 +152,16 @@ export interface Conditions {
   /** When conditions/notices.json was baked, for the panel's "as of". */
   clubNoticesGeneratedAt: Date | null
   /**
+   * Whether the bucket has said it serves conditions/notices.json, though
+   * this phone may not have downloaded it (decision 77): what keeps the
+   * notices panel the planned-hike one on a phone with nothing planned,
+   * which downloads nothing. False until a HEAD request answers 200, and
+   * never set back by a 404 or a dead spot, as a held list is never taken
+   * away. lib/publishedNotices.ts's `noticesListed` says why a HEAD and not
+   * the manifest.
+   */
+  clubNoticesListed: boolean
+  /**
    * This week's drought bands, and the week they describe (#720).
    *
    * Empty rather than null when there is nothing: unlike a closure, an
@@ -188,8 +198,17 @@ export interface Conditions {
  *   is, and every line they fill renders "unknown" until they land anyway.
  *   Defaults to true so a screen or a test that mounts this hook alone
  *   behaves as before.
+ * @param hikePlanned Whether the hiker has any hike planned
+ *   (lib/dayHikes.ts's `anyHikePlanned`): conditions/notices.json, about
+ *   2 MB gzipped, is downloaded only while it is true (decision 77), and the
+ *   moment it turns true, not at the next hourly read. Defaults to true for
+ *   the same reason `ready` does.
  */
-export function useConditions(online: boolean, ready = true): Conditions {
+export function useConditions(
+  online: boolean,
+  ready = true,
+  hikePlanned = true,
+): Conditions {
   // One state each rather than a list plus a separate "where did this come
   // from", because the two reads race and updating two states from a race is
   // how you get fresh closures labelled stale. lib/conditionState.ts owns the
@@ -212,6 +231,7 @@ export function useConditions(online: boolean, ready = true): Conditions {
   const [clubNotices, setClubNotices] = useState<PublishedConditions<OrgNotice> | null>(
     null,
   )
+  const [clubNoticesListed, setClubNoticesListed] = useState(false)
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
@@ -371,21 +391,6 @@ export function useConditions(online: boolean, ready = true): Conditions {
       setOrgNotices(published.items)
     })
 
-    // Every club's notices in one file (#1805). A null keeps whatever this
-    // phone already holds: a 404 on a bucket the exporters publish is the
-    // ordinary state, and a dead spot must not take a held list away. The
-    // reader comes in behind import(), for the launch budget
-    // (lib/publishedNotices.ts says why); a chunk that cannot load reads as
-    // no file, exactly as a 404 does.
-    void import('./publishedNotices')
-      .then(({ fetchPublishedNotices }) => fetchPublishedNotices(undefined, how))
-      .then(
-        (published) => {
-          if (!cancelled && published !== null) setClubNotices(published)
-        },
-        () => undefined,
-      )
-
     // The volunteer workdays (#760). Reviewed-file data like the ATC
     // notices, so a plain set - and the generated_at travels because the
     // 48-hour opportunity ceiling is judged against it.
@@ -422,6 +427,36 @@ export function useConditions(online: boolean, ready = true): Conditions {
       cancelled = true
     }
   }, [online, refreshCount, ready])
+
+  // Every club's notices in one file (#1805), in an effect of its own so
+  // that planning a hike reads it at once without re-reading the rest.
+  // DOWNLOADED ONLY WHILE A HIKE IS PLANNED (decision 77): it is about 2 MB
+  // gzipped, and only the planned-hike panel and the areas drawn for it read
+  // it. With nothing planned, lib/publishedNotices.ts's readPublishedNotices
+  // reads the copy this phone kept, if any, and asks the bucket with a HEAD
+  // whether it serves the file at all, so the panel stays the planned-hike
+  // one. A null keeps whatever this phone already holds: a 404 on a bucket
+  // the exporters publish is the ordinary state, and a dead spot must not
+  // take a held list away. The reader comes in behind import(), for the
+  // launch budget (lib/publishedNotices.ts says why); a chunk that cannot
+  // load reads as no file, exactly as a 404 does.
+  useEffect(() => {
+    if (!ready) return
+    let cancelled = false
+    void import('./publishedNotices')
+      .then(({ readPublishedNotices }) => readPublishedNotices(hikePlanned, { online }))
+      .then(
+        ({ published, listed }) => {
+          if (cancelled) return
+          if (published !== null) setClubNotices(published)
+          if (listed) setClubNoticesListed(true)
+        },
+        () => undefined,
+      )
+    return () => {
+      cancelled = true
+    }
+  }, [online, refreshCount, ready, hikePlanned])
 
   // The map's own reads (#232), deliberately not gated on an account: browsing
   // has never needed one, and the reads send a token only if there is one
@@ -501,6 +536,7 @@ export function useConditions(online: boolean, ready = true): Conditions {
     orgNotices,
     clubNotices: clubNotices?.items ?? null,
     clubNoticesGeneratedAt: clubNotices?.generatedAt ?? null,
+    clubNoticesListed,
     drought,
     droughtWeek,
     workProjects,

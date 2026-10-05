@@ -1,4 +1,5 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', tags=['builds_alone']) }}
+-- builds_alone: Out of Memory Error here in monthly run 20 (37296900535).
 {#- The disc's radius in metres, multiplied as doubles, the way Python's
     `radius_miles * METERS_PER_MILE` multiplies (8046.72 at 5 miles). -#}
 {%- set radius = var('places_trail_radius_miles') %}

@@ -1,4 +1,5 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', tags=['builds_alone']) }}
+-- builds_alone: Out of Memory Error here in monthly run 20 (37296900535).
 {%- set snap_m = var('trail_network_endpoint_snap_m') %}
 -- Where the routable lines must be cut, as node_lines() decides it
 -- (build_trail_graph.py, TN04's inputs and TN05): one row per pair of parts

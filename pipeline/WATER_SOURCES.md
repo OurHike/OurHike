@@ -202,6 +202,17 @@ either). That search does not need repeating.
   and distance-off columns arrive fused — the PDF's text layer holds no boundary).
   Publication still waits on the email this bullet asks for; the registry entry's
   `licence` field records that gate.
+  *Amended 2026-10-04:* the maintainer published it without the email (decision 75,
+  card Q5's option C): low confidence, each source placed on ATC's mile axis from
+  GATC's own mile and checked against ATC's same-named shelter, campsite or road
+  gap. Measured that day: GATC's A.T. miles count from Springer on ATC's marker
+  scale, within 0.122 mi at six on-trail named places to mile 38.3 and 0.18 to
+  0.33 mi short at the shelters north of Low Gap; 18 of 61 have a namesake, along
+  the trail median 0.121 mi, worst 0.407 mi. 59 of the 65 ship and 6 are held
+  (the approach trail's 4, Stover Creek's "very low or dry", and Hawk Mountain's
+  tent sites, past the 0.37 mi bound). The card says the point is placed from
+  GATC's mile, not surveyed, beside the PDF's 2026-03-02 date and its "July 2020"
+  title. `int_points_of_interest__gatc_water`'s header has the whole measurement.
 - **WhiteBlaze 2024 shelter PDF**: ~198 of ~240 shelters carry a free-text water
   description ("Water (spring) 80 yards on a blue blazed trail…") — the best
   per-shelter water *prose* found anywhere — but water GPS on only 24 shelters

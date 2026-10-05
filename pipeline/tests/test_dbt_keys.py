@@ -97,8 +97,9 @@ def _row_tables() -> frozenset[str]:
     """The raw tables of the kinds whose rows have no geometry column: WordPress posts and their place
     terms, OurHike's own conditions queries, whose closures, reports and notes give a place as lat/lon, the
     Hike Finder's pages, whose one coordinate is a lat/lon pair in `start`, ATC's Trail Updates pages,
-    which give one as an A.T. mile, and a guide's section pages (the guide_pages kind), whose entries carry
-    NYNJTC's own coordinates and miles inside their JSON."""
+    which give one as an A.T. mile, a guide's section pages (the guide_pages kind), whose entries carry
+    NYNJTC's own coordinates and miles inside their JSON, and a club PDF (ClubPdf: GATC's water list), whose
+    rows give a place as a club's mile and nothing else."""
     from extract._contract import all_resources, discover, discover_shared
     from extract._json_apis import (
         DcnrParkAdvisories,
@@ -109,6 +110,7 @@ def _row_tables() -> frozenset[str]:
     )
     from extract._kinds import (
         AtcTrailUpdatePages,
+        ClubPdf,
         ConditionsQuery,
         FeedNotices,
         GuidePages,
@@ -120,6 +122,7 @@ def _row_tables() -> frozenset[str]:
 
     resources = all_resources(discover() + discover_shared())
     kinds = WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes | AtcTrailUpdatePages | GuidePages
+    kinds |= ClubPdf
     # Decision 53's notice readers whose rows carry no geometry (pipeline/generate_notice_models.py's READERS).
     kinds |= FeedNotices | PageNotice | NpsAlerts | DcnrParkAdvisories | UsgsElevatedVolcanoes | MediawikiAnnouncements
     kinds |= SheetCsvSegments
@@ -236,6 +239,7 @@ def test_the_row_kinds_models_read_no_geometry():
         "base_atc__atc_trail_updates_pages",
         "base_nynjtc__nynjtc_hike_finder",
         "stg_nynjtc__long_path_guide",
+        "base_gatc__gatc_water_sources",
     }
 
 

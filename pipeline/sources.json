@@ -238,13 +238,15 @@
       "trust": "authoritative",
       "steward": "Georgia Appalachian Trail Club",
       "steward_contact": "https://georgia-atclub.org/contact/",
-      "licence": "Unstated - a free public download from GATC's own site, fetched for REVIEW AND CROSS-CHECKS ONLY. Nothing from this source reaches a published artifact until GATC answers a redistribution ask (CONTRIBUTING.md, 'A note on data and licences'; the ask is the same shape as https://github.com/OurHike/OurHike/issues/98 records for opentrail.org). WATER_SOURCES.md §4 sizes this document as 'a pilot-state candidate after an email' and notes its embedded title is 'GATC Water Update July 2020.xlsx', so the 2026-03 file may re-export older data - a second reason the ask precedes any publication.",
+      "licence": "Published on decision 75 (the maintainer's poll of 2026-10-04, card Q5): the list publishes now, at low confidence, each source placed from GATC's own mile point and credited and linked to this PDF, with the document's own date and title; NOT a grant from the Georgia Appalachian Trail Club, whose site states no terms (`terms`). Facts only: GATC's mile and its entry as printed, nothing else of the document. The PDF's embedded title is 'GATC Water Update July 2020.xlsx' (read 2026-10-04), so the 2026-03 file may re-export 2020 data, and the card says both dates (int_points_of_interest__gatc_water).",
+      "licence_basis": "maintainer_authorisation",
       "attribution": "Georgia Appalachian Trail Club",
+      "terms": "None found: no terms page found on georgia-atclub.org (decision 53 inventory, batch 4, 2026-10-03), and the PDF's two pages state none (read 2026-10-04).",
       "discovered_via": "SOURCE_SURVEY.md §5's club sweep (the 'water-sources PDF (2026-03-02)' row); fetched and parsed live 2026-08-13 (#669). Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-13",
-      "notes": "Fetched by fetch_club_pdfs.py to data/raw/club_pdfs/<key>.pdf (never by fetch_all.py), parsed by lib/club_pdfs.py to <key>.json beside it: 65 rows (4 approach trail + 61 A.T., measured on the live PDF 2026-08-13, agreeing with WATER_SOURCES.md §4's count) of GATC mile point + entry text. The PDF's text layer stores each printed row as one string, so the 'Source Name' and 'Distance Off AT' columns arrive fused and are kept that way rather than split by guesswork - lib/club_pdfs.py's docstring holds the measurement.",
-      "reaches_hikers": false,
-      "licence_basis": "unresolved"
+      "notes": "Fetched by fetch_club_pdfs.py to data/raw/club_pdfs/<key>.pdf (never by fetch_all.py), parsed by lib/club_pdfs.py to <key>.json beside it: 65 rows (4 approach trail + 61 A.T., measured on the live PDF 2026-08-13, agreeing with WATER_SOURCES.md §4's count) of GATC mile point + entry text. The PDF's text layer stores each printed row as one string, so the 'Source Name' and 'Distance Off AT' columns arrive fused and are kept that way rather than split by guesswork - lib/club_pdfs.py's docstring holds the measurement. Re-read live 2026-10-04T21:46:17Z under lib/user_agent.py's agent (robots.txt allows the path, Crawl-delay 10): HTTP 200, 83,408 bytes, ETag \"69a6013e-145d0\", Last-Modified Mon, 02 Mar 2026 21:29:34 GMT, sha256 e070c586..., the same 65 rows. Key (`trail`, `mile`): unique on 65 of 65; `entry` alone 57 of 65.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decisions 63 and 75 (2026-10-04): int_points_of_interest__gatc_water places each A.T. source on ATC's mile axis from GATC's mile and checks it against ATC's same-named point, measured 2026-10-04 against ATC's live layers (18 of 61 matched; along the trail median 0.121 mi, worst 0.407 mi; held past the derived 0.37 mi bound), with its holds unit-tested: the 4 approach-trail rows, a mile no axis piece carries, GATC's own 'very low or dry' (layer_rules), and a namesake past the bound. 59 of the 65 ship, at low confidence."
     },
     {
       "key": "gatc_alerts",
@@ -271,8 +273,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (pages, feeds and WordPress).",
       "discovered_date": "2026-10-03",
       "notes": "The `alerts` custom post type's feed, the only machine-readable route to it (the type is absent from /wp-json/wp/v2/types). Its weak ETag and Last-Modified are identical on /feed/ and /alerts/feed/, a site-wide cache stamp, so the check is the read. georgia-atclub.org asks `Crawl-delay: 10`. Read live at 2026-10-03T22:07:56Z under lib/user_agent.py's agent, robots.txt allows the path for our agent, Crawl-delay 10: HTTP 200, 3,307 bytes, ETag W/\"51bf3e3b1ad6118c2729a84ad48ab8b8\" and Last-Modified Sat, 03 Oct 2026 20:11:26 GMT. Through FeedNotices that answer lands 2 rows, one an item, `item_id` taken from the guid on 2 and distinct on 2 of 2: the key. The proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero, and every row carries `listing = 'window'`.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): GATC's organization row says nothing of theirs reaches a hiker until GATC answers a redistribution ask (org:gatc; tests/test_export_sources.py holds that no Georgia steward is named), and no decision records that decision 55's facts and a link reach past it. Settled by the maintainer saying whether it does, or by GATC's answer."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decisions 63 and 75 (2026-10-04): the maintainer's answer to card Q5 publishes GATC's alerts as facts and a link, as every other club's notices publish under decision 55, so the organization row's old hold (written 2026-08-13 about the water PDF) no longer reaches them. stg_gatc__gatc_alerts reads it into the closures and warnings paths, whose phase C rules are unit-tested, as every FeedNotices source's are."
     },
     {
       "key": "gatc_news_feed",
@@ -302,7 +304,7 @@
       "discovered_date": "2026-10-03",
       "notes": "The site feed, the newest 10 of GATC's 30 posts (X-WP-Total, 2026-10-03), all in the one category `uncategorized`: closures ('Byron Herbert Reece Trail Reroute', the January 2026 winter-storm posts) beside club news, so which items are notices is decision 7's classifier and a person's review in dbt, never a filter here. The REST posts route would be the complete list, but its rendered content carries a person's e-mail address and a phone number (measured 2026-10-03), which decision 59 keeps out whole; the feed reader lands no prose and no person. Read live at 2026-10-03T22:11:16Z under lib/user_agent.py's agent, robots.txt allows the path for our agent, Crawl-delay 10: HTTP 200, 23,804 bytes, ETag \"51bf3e3b1ad6118c2729a84ad48ab8b8\" and Last-Modified Sat, 03 Oct 2026 20:11:26 GMT. Through FeedNotices that answer lands 10 rows, one an item, `item_id` taken from the guid on 10 and distinct on 10 of 10: the key. The proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero, and every row carries `listing = 'window'`.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): a news feed that mixes notices with the club's or office's news, so every item lands as a warning nobody reviewed, and a feed is a window that phase C never reads as lifted: each press release or club post would stand as a current warning for good. Settled by decision 7's classifier, or a reviewed list of which items are notices, as its notes say."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): a news feed that mixes notices with the club's or office's news, so every item lands as a warning nobody reviewed, and a feed is a window that phase C never reads as lifted: each press release or club post would stand as a current warning for good. Settled by decision 7's classifier, or a reviewed list of which items are notices, as its notes say. Decision 75 (2026-10-04) answered the licence half, GATC's notices as facts and a link; this hold is the other half, the one cvatc_news and mcomd_club_news_feed carry too."
     },
     {
       "key": "gatc_georgia_4000",
@@ -18470,7 +18472,7 @@
       "org:gatc": {
         "provider": "GATC",
         "name": "Georgia Appalachian Trail Club",
-        "note": "One of the thirty maintaining clubs, registered for its water-source PDF. Nothing of theirs reaches a hiker until they answer a redistribution ask."
+        "note": "One of the thirty maintaining clubs, registered for its water-source PDF. Decision 75 (the maintainer's poll of 2026-10-04) publishes that list, placed from GATC's own miles at low confidence, and its alerts as facts and a link, without waiting for GATC's answer to a redistribution ask."
       },
       "org:nynjtc": {
         "provider": "NYNJTC",

@@ -46,6 +46,7 @@ The kinds built so far for stage 2 (#1793 — Rebuild the data platform as dlt �
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import tempfile
@@ -1071,6 +1072,15 @@ class ClubPdf(Resource):
     text comes from fetch_club_pdfs.py's `extract_page_texts`, which needs
     pypdf: requirements-extract.in pins it, and requirements.in's note says
     why the build jobs do not.
+
+    THE DOCUMENT'S OWN TITLE AND CREATION DATE ride `_document` too
+    (club_pdf_document_info), because the HTTP date is not the data's date.
+    GATC's file, read 2026-10-04: `Last-Modified` Mon, 02 Mar 2026, and its
+    embedded title "GATC Water Update July 2020.xlsx" (WATER_SOURCES.md §4),
+    so a card that printed only the first would present six-year-old water
+    data as this year's. Decision 75 publishes that list at low confidence
+    with its document date; the title is the half of that date a hiker
+    needs. Either is null where the PDF does not state it.
     """
 
     def _get(self, headers: dict | None = None) -> requests.Response:
@@ -1081,9 +1091,16 @@ class ClubPdf(Resource):
 
         GATC's file answers with its validators (fetch_club_pdfs.py), so a 304
         is FRESH; a 200 with the same sha256 as the last load is FRESH too.
+
+        A marker recorded under an older CLUB_PDF_MANIFEST is STALE whatever
+        the bytes, and is asked for without validators so no 304 can keep it:
+        the rows it loaded lack what `_document` carries now, and unchanged
+        bytes would otherwise keep them for good. GATC's card would then say
+        "a PDF of 2026-03-02" and never "July 2020".
         """
+        current = bool(recorded) and recorded.get("manifest") == CLUB_PDF_MANIFEST
         headers = {}
-        if recorded:
+        if current:
             if recorded.get("etag"):
                 headers["If-None-Match"] = recorded["etag"]
             if recorded.get("last_modified"):
@@ -1099,8 +1116,9 @@ class ClubPdf(Resource):
             "sha256": hashlib.sha256(response.content).hexdigest(),
             "etag": response.headers.get("ETag"),
             "last_modified": response.headers.get("Last-Modified"),
+            "manifest": CLUB_PDF_MANIFEST,
         }
-        if not recorded or not recorded.get("sha256"):
+        if not current or not recorded.get("sha256"):
             return Freshness.STALE, marker
         return (Freshness.FRESH if recorded["sha256"] == marker["sha256"] else Freshness.STALE), marker
 
@@ -1115,9 +1133,40 @@ class ClubPdf(Resource):
             "last_modified": response.headers.get("Last-Modified"),
             "sha256": hashlib.sha256(body).hexdigest(),
             "bytes": len(body),
+            **club_pdf_document_info(body),
         }
         for row in rows:
             yield {**row, "_document": document}
+
+
+#: What a ClubPdf row's `_document` carries, by version: 1 the HTTP manifest, 2 the PDF's own title and creation
+#: date beside it (2026-10-05). A load recorded under an older version is read again (ClubPdf.change_check).
+CLUB_PDF_MANIFEST = 2
+
+
+def club_pdf_document_info(body: bytes) -> dict:
+    """The PDF's own `/Title` and creation date (ISO 8601), each None where the file states none.
+
+    Read with pypdf, as the text is (extract_page_texts). A metadata block
+    pypdf cannot read is None for both rather than a failed load: the rows
+    were already read from the same bytes, and a missing title only means
+    the card says less about the document's age, never something wrong.
+    """
+    from pypdf import PdfReader
+    from pypdf.errors import PdfReadError
+
+    try:
+        metadata = PdfReader(io.BytesIO(body)).metadata
+    except (PdfReadError, ValueError):
+        metadata = None
+    if metadata is None:
+        return {"title": None, "created": None}
+    title = (metadata.title or "").strip() or None
+    try:
+        created = metadata.creation_date
+    except ValueError:
+        created = None
+    return {"title": title, "created": created.isoformat() if created else None}
 
 
 def club_pdf(key: str, **overrides) -> ClubPdf:

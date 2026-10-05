@@ -1,0 +1,241 @@
+version: 2
+
+# GATC's water list on its way into the points_of_interest family (decision 75,
+# the maintainer's poll of 2026-10-04): int_points_of_interest__gatc_water places
+# each A.T. source on ATC's mile axis from GATC's own mile, holds what it cannot
+# stand behind, and types the rest water at low confidence, as a record
+# int_points_of_interest__unioned reads whole. Its rules are unit tests below;
+# the measurement they rest on is in the model's header.
+models:
+  - name: int_points_of_interest__gatc_water_namesakes
+    description: >
+      ATC's own shelters, campsites and parking areas that name the place a GATC water source
+      is at, one row per gatc_water_atc_names seed row per ATC point of that Name in that layer,
+      with the point. int_points_of_interest__gatc_water reads each onto the mile axis.
+    data_tests:
+      # One row per seed row per ATC point: the pair is the key.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [gatc_mile, entry_starts, atc_layer, atc_global_id]
+    columns:
+      - name: gatc_mile
+        description: GATC's mile, as text, from the seed.
+        data_tests: [not_null]
+      - name: entry_starts
+        description: The words GATC's entry opens with, from the seed.
+        data_tests: [not_null]
+      - name: atc_layer
+        description: The ATC layer, by registry key.
+        data_tests: [not_null]
+      - name: atc_name
+        description: ATC's Name for the point, verbatim.
+        data_tests: [not_null]
+      - name: atc_global_id
+        description: ATC's GlobalID for the point.
+        data_tests: [not_null]
+      - name: atc_geom
+        description: ATC's point, in OGC:CRS84.
+
+  - name: int_points_of_interest__gatc_water
+    description: >
+      GATC's water list, one row per source the PDF prints, each A.T. source placed on ATC's mile
+      axis at GATC's own mile, typed water at low confidence, with the sentence its card prints,
+      the id it publishes under, the check against ATC's same-named point, and, where the
+      placement cannot be stood behind, the reason it is held: the approach trail's four rows,
+      a mile no piece of the axis carries, GATC's own word that a source is dry, or a namesake
+      farther along the trail than the bound the 2026-10-04 measurement derived (0.37 mi).
+    data_tests:
+      # Every source is water, and none of it high: nobody surveyed a point placed from a mile.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "poi_type = 'water' and confidence = 'low'"
+      # A shipped source has a point and a sentence that says how it was placed.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              rule_drop_reason is not null
+              or (geom_wkt is not null and description like '%placed from that mile and not surveyed%')
+      # A placed point reads back at GATC's own mile, through axis_mile: the inversion of
+      # mile_at_along is exact to within 0.005 mi (8 m) or the build stops.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              placed_mile is null
+              or abs(cast(placed_mile as double) - cast(gatc_mile as double)) <= 0.005
+    columns:
+      - name: poi_key
+        description: The base model's key (decision 40), carried.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: "`gatc_water_sources`."
+        data_tests: [not_null]
+      - name: club
+        description: "`gatc`."
+        data_tests: [not_null]
+      - name: name
+        description: >
+          GATC's entry whole, its name and its way off the trail as the PDF fuses them: the pin
+          marks the mile on the tread, and these words are how a hiker gets from it to water down
+          a side trail.
+        data_tests: [not_null]
+      - name: source_id
+        description: "`<list>-<GATC's mile>`, as stg_gatc__water_sources makes it."
+        data_tests: [not_null]
+      - name: derived_id
+        description: "`gatc_water_sources:<source_id>`, the id the source publishes under."
+        data_tests: [not_null, unique]
+      - name: poi_type
+        description: "`water` on every row."
+        data_tests: [not_null]
+      - name: confidence
+        description: "`low` on every row: a point placed from a mile is nobody's survey."
+        data_tests: [not_null]
+      - name: rule_drop_reason
+        description: Why the source is held, in the first rule's words; null where it ships.
+      - name: trail
+        description: "`approach` or `at`, the list the row is in."
+        data_tests: [not_null]
+      - name: gatc_mile
+        description: GATC's mile, as GATC printed it.
+        data_tests: [not_null]
+      - name: placed_mile
+        description: >
+          The placed point's own A.T. mile, read back through axis_mile, three decimals, as text
+          (a unit test compares a double to one decimal only); null where nothing was placed.
+      - name: placed_piece_id
+        description: The axis piece the point was placed on; null where none carries the mile.
+      - name: namesake_layer
+        description: The ATC layer of the same-named point the source is checked against; null with none.
+      - name: namesake_name
+        description: ATC's Name for that point; null with none.
+      - name: namesake_gap_mi
+        description: >
+          How far along the axis the namesake reads from GATC's mile, in miles, three decimals, as
+          text; null with no namesake.
+      - name: description
+        description: >
+          The card's sentence: GATC's mile, that the point is placed from it and not surveyed, how
+          far off it can be, and the document's own date and title; null on a held source.
+      - name: placement
+        description: "`gatc_mile`: placed by walking GATC's mile along ATC's axis."
+        data_tests: [not_null]
+      - name: source_url
+        description: The PDF's URL, the link a card gives.
+      - name: position_error_m
+        description: The bound in metres (0.37 mi, 595 m), how far off a shipped point can be.
+        data_tests: [not_null]
+      - name: water_source_kind
+        description: "`spigot` where GATC's entry says the water comes from one; null otherwise."
+      - name: geom_wkt
+        description: The placed point in OGC:CRS84 as WKT; null where nothing was placed.
+      - name: properties
+        description: >
+          What the record carries into the union: the list, GATC's mile, `on_at_axis` (true where
+          the point is on ATC's centerline, which int_points_of_interest__in_corridor reads),
+          `water_source_kind`, and the document's URL and title.
+      - name: _loaded_at
+        description: When the extract landed the row.
+
+unit_tests:
+  - name: gatc_water_places_each_mile_on_the_axis_and_holds_what_it_cannot_stand_behind
+    description: >
+      Decision 75 on three axis pieces in EPSG:5070 metres (the miles unit test's): a mile between
+      two anchors, before the first and past the last on piece 0, and on piece 1's one anchor,
+      each placed and read back at its own mile; the start of piece 2. Held: an approach-trail
+      row, a mile in the gap between pieces 0 and 1 (never moved to the nearer), an entry that
+      calls itself very low or dry (layer_rules), and a source whose same-named ATC point reads
+      0.5 mi from GATC's mile, past the 0.37 mi bound. A namesake 0.011 mi away passes. A spigot
+      is said so. The sentence carries the document's own date and title where the PDF states
+      them, the HTTP date where only that is known, and neither where neither is.
+    model: int_points_of_interest__gatc_water
+    given:
+      - input: ref('stg_gatc__water_sources')
+        rows:
+          - {water_source_key: 'g-01', source_key: 'gatc_water_sources', club: 'gatc', trail: 'at', mile: 100.1, mile_text: '100.1', entry: 'Fixture Spring On-Trail', source_id: 'at-100.1', document_url: 'https://club.example.org/water.pdf', document_last_modified: 'Mon, 02 Mar 2026 21:29:34 GMT', document_title: 'Fixture Water Update May 2011.xlsx', document_created: '2026-03-02T15:57:47-05:00'}
+          - {water_source_key: 'g-02', source_key: 'gatc_water_sources', club: 'gatc', trail: 'at', mile: 99.95, mile_text: '99.95', entry: 'Fixture Brook On-Trail', source_id: 'at-99.95', document_url: null, document_last_modified: null, document_title: null, document_created: null}
+          - {water_source_key: 'g-03', source_key: 'gatc_water_sources', club: 'gatc', trail: 'at', mile: 100.5, mile_text: '100.5', entry: 'Fixture Run .1 W', source_id: 'at-100.5', document_url: 'https://club.example.org/water.pdf', document_last_modified: 'Mon, 02 Mar 2026 21:29:34 GMT', document_title: null, document_created: null}
+          - {water_source_key: 'g-04', source_key: 'gatc_water_sources', club: 'gatc', trail: 'approach', mile: 3.0, mile_text: '3.0', entry: 'Fixture Stream - approach trail On Trail', source_id: 'approach-3.0', document_url: null, document_last_modified: null, document_title: null, document_created: null}
+          - {water_source_key: 'g-05', source_key: 'gatc_water_sources', club: 'gatc', trail: 'at', mile: 100.6, mile_text: '100.6', entry: 'Fixture Pond .1 E', source_id: 'at-100.6', document_url: null, document_last_modified: null, document_title: null, document_created: null}
+          - {water_source_key: 'g-06', source_key: 'gatc_water_sources', club: 'gatc', trail: 'at', mile: 100.9, mile_text: '100.9', entry: 'Fixture Shelter Typically very low or dry. Use creek at MP 101.0', source_id: 'at-100.9', document_url: null, document_last_modified: null, document_title: null, document_created: null}
+          - {water_source_key: 'g-07', source_key: 'gatc_water_sources', club: 'gatc', trail: 'at', mile: 101.0, mile_text: '101.0', entry: 'Fixture Gap Shelter .1 W', source_id: 'at-101.0', document_url: null, document_last_modified: null, document_title: null, document_created: null}
+          - {water_source_key: 'g-08', source_key: 'gatc_water_sources', club: 'gatc', trail: 'at', mile: 200.0, mile_text: '200.0', entry: 'Fixture Knob Shelter Behind shelter', source_id: 'at-200.0', document_url: null, document_last_modified: null, document_title: null, document_created: null}
+          - {water_source_key: 'g-09', source_key: 'gatc_water_sources', club: 'gatc', trail: 'at', mile: 100.3, mile_text: '100.3', entry: 'Fixture Hostel, Water outside via spigot on patio', source_id: 'at-100.3', document_url: null, document_last_modified: null, document_title: null, document_created: null}
+      - input: ref('int_trail_lines__mile_axis')
+        format: sql
+        rows: |
+          select 0 as piece_id, 0 as pre_calibration_order, st_geomfromtext('LINESTRING (1818414.0207331162 2210531.895375706, 1819414.0207331162 2210531.895375706)') as geom_5070, cast(1000.0 as double) as length_m, cast(99.9 as double) as start_mile, cast(100.52137119223734 as double) as end_mile, cast([0.1, 0.5] as double[]) as anchor_along_mi, cast([100.0, 100.4] as double[]) as anchor_mile, 2 as anchor_count, 2 as snapped_marker_count, false as reversed_by_markers
+          union all
+          select 1 as piece_id, 1 as pre_calibration_order, st_geomfromtext('LINESTRING (1819414.0207331162 2210531.895375706, 1820414.0207331162 2210531.895375706)') as geom_5070, cast(1000.0 as double) as length_m, cast(100.7 as double) as start_mile, cast(101.32137119223734 as double) as end_mile, cast([0.2] as double[]) as anchor_along_mi, cast([100.9] as double[]) as anchor_mile, 1 as anchor_count, 1 as snapped_marker_count, false as reversed_by_markers
+          union all
+          select 2 as piece_id, 2 as pre_calibration_order, st_geomfromtext('LINESTRING (1819414.0207331162 2215531.895375706, 1820414.0207331162 2215531.895375706)') as geom_5070, cast(1000.0 as double) as length_m, cast(200.0 as double) as start_mile, cast(201.0 as double) as end_mile, cast([0.0, 0.621371192237334] as double[]) as anchor_along_mi, cast([200.0, 201.0] as double[]) as anchor_mile, 2 as anchor_count, 2 as snapped_marker_count, false as reversed_by_markers
+      - input: ref('layer_rules')
+        rows:
+          - {source_key: 'gatc_water_sources', rule: 'drop_where_contains', field: 'entry', matches: 'very low or dry', evidence: 'fixture'}
+          - {source_key: 'gatc_water_sources', rule: 'plumbed_water', field: 'water_source_kind', matches: 'spigot', evidence: 'fixture'}
+          - {source_key: 'iata_water', rule: 'drop_where_contains', field: 'entry', matches: 'spring', evidence: 'another layer''s rule, which reaches no GATC row'}
+      - input: ref('int_points_of_interest__gatc_water_namesakes')
+        rows:
+          # The miles unit test's points: m-05 reads 101.011 on piece 1, m-08 200.500 on piece 2.
+          - {gatc_mile: '101.0', entry_starts: 'Fixture Gap Shelter', atc_layer: 'shelters', atc_name: 'Fixture Gap Shelter', atc_global_id: 'G-07', atc_geom: 'POINT (-73.99416788369966 40.99897536064063)'}
+          - {gatc_mile: '200.0', entry_starts: 'Fixture Knob Shelter', atc_layer: 'shelters', atc_name: 'Fixture Knob Shelter', atc_global_id: 'G-08', atc_geom: 'POINT (-73.98038062112288 41.04252375611189)'}
+          # A seed row naming a mile no GATC row has checks nothing.
+          - {gatc_mile: '150.0', entry_starts: 'Fixture Nowhere', atc_layer: 'shelters', atc_name: 'Fixture Nowhere Shelter', atc_global_id: 'G-99', atc_geom: 'POINT (-73.99416788369966 40.99897536064063)'}
+    expect:
+      rows:
+        - {poi_key: 'g-01', derived_id: 'gatc_water_sources:at-100.1', rule_drop_reason: null, placed_mile: '100.100', placed_piece_id: 0, namesake_gap_mi: null, water_source_kind: null, description: 'Water source at GATC''s mile 100.1 on the A.T., placed from that mile and not surveyed, so the spot can be up to 0.4 mi off. From GATC''s water list, a PDF of 2026-03-02 titled "Fixture Water Update May 2011".'}
+        - {poi_key: 'g-02', derived_id: 'gatc_water_sources:at-99.95', rule_drop_reason: null, placed_mile: '99.950', placed_piece_id: 0, namesake_gap_mi: null, water_source_kind: null, description: 'Water source at GATC''s mile 99.95 on the A.T., placed from that mile and not surveyed, so the spot can be up to 0.4 mi off. From GATC''s water list.'}
+        - {poi_key: 'g-03', derived_id: 'gatc_water_sources:at-100.5', rule_drop_reason: null, placed_mile: '100.500', placed_piece_id: 0, namesake_gap_mi: null, water_source_kind: null, description: 'Water source at GATC''s mile 100.5 on the A.T., placed from that mile and not surveyed, so the spot can be up to 0.4 mi off. From GATC''s water list, a PDF of 2026-03-02.'}
+        - {poi_key: 'g-04', derived_id: 'gatc_water_sources:approach-3.0', rule_drop_reason: 'approach trail: GATC counts these miles from Amicalola Falls, along a trail ATC''s mile axis does not carry', placed_mile: null, placed_piece_id: null, namesake_gap_mi: null, water_source_kind: null, description: null}
+        - {poi_key: 'g-05', derived_id: 'gatc_water_sources:at-100.6', rule_drop_reason: 'no piece of ATC''s mile axis carries GATC''s mile 100.6', placed_mile: null, placed_piece_id: null, namesake_gap_mi: null, water_source_kind: null, description: null}
+        - {poi_key: 'g-06', derived_id: 'gatc_water_sources:at-100.9', rule_drop_reason: 'layer_rules drop_where_contains: entry contains very low or dry', placed_mile: '100.900', placed_piece_id: 1, namesake_gap_mi: null, water_source_kind: null, description: null}
+        - {poi_key: 'g-07', derived_id: 'gatc_water_sources:at-101.0', rule_drop_reason: null, placed_mile: '101.000', placed_piece_id: 1, namesake_gap_mi: '0.011', water_source_kind: null, description: 'Water source at GATC''s mile 101.0 on the A.T., placed from that mile and not surveyed, so the spot can be up to 0.4 mi off. From GATC''s water list.'}
+        - {poi_key: 'g-08', derived_id: 'gatc_water_sources:at-200.0', rule_drop_reason: 'ATC''s shelters point Fixture Knob Shelter reads 0.500 mi along the trail from GATC''s mile 200.0, past the 0.37 mi bound', placed_mile: '200.000', placed_piece_id: 2, namesake_gap_mi: '0.500', water_source_kind: null, description: null}
+        - {poi_key: 'g-09', derived_id: 'gatc_water_sources:at-100.3', rule_drop_reason: null, placed_mile: '100.300', placed_piece_id: 0, namesake_gap_mi: null, water_source_kind: 'spigot', description: 'Water source at GATC''s mile 100.3 on the A.T., placed from that mile and not surveyed, so the spot can be up to 0.4 mi off. From GATC''s water list.'}
+
+  - name: in_corridor_keeps_a_point_placed_on_the_at_by_the_corridor_not_the_ring
+    description: >
+      GATC's placed water (int_points_of_interest__gatc_water's `on_at_axis`) is a nearby_poi
+      record that lies on the A.T.'s centerline, which the published network leaves out, so it
+      is judged by the A.T. corridor and not by the ring: kept inside the corridor though no
+      network line is near, dropped outside it. Another organization's water with no such flag,
+      far from every network line, is still dropped by the ring.
+    model: int_points_of_interest__in_corridor
+    given:
+      - input: ref('int_points_of_interest__publishable')
+        rows:
+          - {poi_key: 'c-01', source_key: 'gatc_water_sources', phone_files: 'nearby_poi', poi_type: 'water', lon: -74.0, lat: 41.002, boundary_source: null, properties: '{"on_at_axis": true}'}
+          - {poi_key: 'c-02', source_key: 'gatc_water_sources', phone_files: 'nearby_poi', poi_type: 'water', lon: -76.0, lat: 43.0, boundary_source: null, properties: '{"on_at_axis": true}'}
+          - {poi_key: 'c-03', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'water', lon: -74.0, lat: 41.002, boundary_source: null, properties: '{}'}
+          - {poi_key: 'c-04', source_key: 'gatc_water_sources', phone_files: 'nearby_poi', poi_type: 'water', lon: -74.0, lat: 41.003, boundary_source: null, properties: '{"on_at_axis": false}'}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_row: 0, source_id: 'fixture-centerline-0', geom: 'LINESTRING (-74 41, -74 41.005)'}
+      - input: ref('int_trail_lines__network_published')
+        rows:
+          - {geom_geojson: '{"type": "LineString", "coordinates": [[-77.0, 44.0], [-77.0, 44.01]]}', trail_status: 'open'}
+      - input: ref('base_nycparks__nyc_park_polygons')
+        rows: []
+    expect:
+      rows:
+        - {poi_key: 'c-01', source_key: 'gatc_water_sources'}
+
+  - name: described_prints_gatc_waters_own_sentence_and_how_it_was_placed
+    description: >
+      A GATC water record on nearby_poi takes int_points_of_interest__gatc_water's sentence, which
+      says it was placed from GATC's mile and not surveyed, and carries `placement`, the PDF's URL
+      and the bound as `position_error_m` in the guide's columns.
+    model: int_points_of_interest__described
+    given:
+      - input: ref('int_points_of_interest__enriched')
+        rows:
+          - {poi_id: 'gatc_water_sources:at-100.1', poi_type: 'water', phone_files: 'nearby_poi', properties: '{"on_at_axis": true}', capacity: null}
+      - input: ref('poi_description_terms')
+        rows: []
+      - input: ref('stg_derived__long_path_guide')
+        rows: []
+      - input: ref('int_points_of_interest__gatc_water')
+        rows:
+          - {derived_id: 'gatc_water_sources:at-100.1', description: 'Water source at GATC''s mile 100.1 on the A.T., placed from that mile and not surveyed, so the spot can be up to 0.4 mi off. From GATC''s water list.', placement: 'gatc_mile', source_url: 'https://club.example.org/water.pdf', position_error_m: 595}
+    expect:
+      rows:
+        - {poi_id: 'gatc_water_sources:at-100.1', description: 'Water source at GATC''s mile 100.1 on the A.T., placed from that mile and not surveyed, so the spot can be up to 0.4 mi off. From GATC''s water list.', placement: 'gatc_mile', source_url: 'https://club.example.org/water.pdf', position_error_m: 595}

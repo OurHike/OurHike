@@ -6,8 +6,10 @@ Every failure this file guards is SILENT and prints a wrong sentence under an
 organization's name on a hiker's phone. There is no crash to notice:
 
 - A steward whose data does not ship, named anyway, with a licence beside it.
-  Two of them are in the registry right now (GATC, NYS OPRHP), both fetched
-  for review only pending a licence answer.
+  GATC and NYS OPRHP were the first two, both fetched for review only
+  pending a licence answer; GATC's water list and alerts ship since decision
+  75 (2026-10-04), and test_names_no_steward_that_is_fetch_and_review_only
+  now asks the rule of every steward.
 - A steward whose data DOES ship, omitted, when its licence obliges the
   attribution the omission removes.
 - A tier or a licence inferred rather than recorded, which reads exactly like
@@ -547,12 +549,30 @@ class TestAgainstTheRealRegistry:
         self.real()
 
     def test_names_no_steward_that_is_fetch_and_review_only(self):
-        # Measured 2026-08-23: GATC's own licence field says "Nothing from this
-        # source reaches a published artifact until GATC answers a
-        # redistribution ask".
+        """A steward none of whose rows reaches a hiker is not named. This used
+        to be GATC by name (measured 2026-08-23, its licence field said nothing
+        reached a published artifact until GATC answered a redistribution ask);
+        the rule outlived GATC's turn, so it is asked of every steward."""
+        registry = json.loads((ROOT / "sources.json").read_text())
+        stewards: dict[str, bool] = {}
+        for source in registry["sources"]:
+            name = source.get("steward")
+            if name:
+                stewards[name] = stewards.get(name, False) or bool(source.get("reaches_hikers"))
+        review_only = {name for name, ships in stewards.items() if not ships}
         named = {s["name"] for s in self.real()["stewards"]}
 
-        assert not any("Georgia" in n for n in named)
+        assert review_only, "no steward is review-only, so this proves nothing"
+        assert not named & review_only
+
+    def test_names_gatc_now_that_its_water_and_alerts_ship(self):
+        """GATC moved from review-only to shipped on 2026-10-04 (decision 75:
+        its water list placed from its own miles, its alerts as facts and a
+        link), the same turn OPRHP's and NYNJTC's lines took below. A steward
+        whose data is on a hiker's phone is named."""
+        named = {s["name"] for s in self.real()["stewards"]}
+
+        assert "Georgia Appalachian Trail Club" in named
 
     def test_names_the_two_trail_stewards_now_that_their_lines_ship(self):
         """OPRHP and NYNJTC moved from held-back to shipped on 2026-08-24
@@ -785,17 +805,19 @@ class TestTheRegistryTheConsoleReads:
         return export_sources.build_registry(json.loads((ROOT / "sources.json").read_text()))
 
     def test_names_the_sources_that_reach_no_hiker(self):
-        """The whole reason for a second artifact. GATC and the held-back
-        OPRHP layer are registrations somebody has to be able to see."""
+        """The whole reason for a second artifact. GATC's news feed (held for
+        its mix of news and notices since its water list shipped, decision 75)
+        and the held-back OPRHP layer are registrations somebody has to be able
+        to see."""
         keys = {row["key"] for row in self.real()["sources"]}
 
-        assert "gatc_water_sources" in keys
+        assert "gatc_news_feed" in keys
         assert "oprhp_park_polygons" in keys
 
     def test_carries_the_flag_rather_than_filtering_on_it(self):
         rows = {row["key"]: row for row in self.real()["sources"]}
 
-        assert rows["gatc_water_sources"]["reaches_hikers"] is False
+        assert rows["gatc_news_feed"]["reaches_hikers"] is False
         assert rows["nynjtc_trail_alerts"]["reaches_hikers"] is True
 
     def test_every_row_carries_the_stable_id_of_its_organization(self):

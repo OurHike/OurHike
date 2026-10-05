@@ -1,0 +1,40 @@
+version: 2
+
+# GATC's water-sources PDF, the one gatc/ table neither generator writes:
+# pipeline/generate_notice_models.py stages the club's two notice feeds
+# (notices/_gatc_notices__sources.yml declares this same source for them), and
+# pipeline/make_dbt_staging.py stages no `club_pdf` row (its KINDS). So this
+# table is declared and staged by hand, as the registry tables before decision
+# 54 were.
+sources:
+  - name: gatc
+    description: >
+      The Georgia Appalachian Trail Club's water-sources PDF, landed by the extract's gatc/
+      folder (pipeline/extract/gatc/points_of_interest.py) off sources.json's
+      `gatc_water_sources` row.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      meta:
+        cadence: monthly
+    tables:
+      - name: raw_gatc__gatc_water_sources
+        description: >
+          GATC Water Sources (sources.json `gatc_water_sources`), landed by
+          extract/gatc/points_of_interest.py's ClubPdf: one row per row lib/club_pdfs.py
+          parses off the PDF (`trail`, `mile`, `entry`), each carrying the document's
+          manifest as `_document` JSON (url, etag, last_modified, sha256, bytes, and the
+          PDF's own title and creation date). Key: (`trail`, `mile`): unique on 65 of 65
+          (measured 2026-10-04 on the live PDF, sha256 e070c586..., parsed as
+          lib/club_pdfs.py parses it). `entry` alone is 57 of 65 ("Stream On-Trail" and
+          two more repeat at different miles).
+        config:
+          # Read off a PDF, which the fixture warehouse never holds: pypdf is the extract
+          # job's, not fixture mode's (requirements.in's note). Its
+          # fct_sources_without_freshness row in dbt_project_evaluator_exceptions.csv says why.
+          freshness: null
+        data_tests:
+          # Rows sharing base_gatc__gatc_water_sources's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'gatc_water_sources'", "trail", "mile"]

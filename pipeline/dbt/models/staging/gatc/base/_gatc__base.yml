@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: base_gatc__gatc_water_sources
+    description: >
+      GATC Water Sources (sources.json `gatc_water_sources`), every row of
+      raw_gatc__gatc_water_sources, keyed and deduped (decision 40): a GATC mile, the entry
+      GATC printed beside it, which list it is in, and the document's manifest.
+      stg_gatc__water_sources reads it.
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      # A raw table that never landed passes (tests/generic/).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('gatc', 'raw_gatc__gatc_water_sources')
+          config:
+            severity: warn
+    columns:
+      - name: water_source_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          gatc_water_sources, trail, mile, the registry key first and then the fields
+          measured unique on the live PDF.
+        data_tests: [not_null, unique]

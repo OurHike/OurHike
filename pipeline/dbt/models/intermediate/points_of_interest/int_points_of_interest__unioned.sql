@@ -2,8 +2,9 @@
 -- Every staged row of every layer a POI file publishes from, one row each,
 -- unfiltered and unclassified: the A.T. family export_poi.py writes as the
 -- eight poi_<type>.geojson files, the other organizations' layers
--- export_nearby_poi.py writes as nearby_poi.geojson, and decision 54's wave
--- 1 point layers, which no exporter reads (the last branch). A row here is
+-- export_nearby_poi.py writes as nearby_poi.geojson, decision 54's wave 1
+-- point layers, which no exporter reads, and GATC's water list placed from
+-- its miles (decision 75; the last two branches). A row here is
 -- not a publishable POI; int_points_of_interest__classified and
 -- int_points_of_interest__publishable decide that.
 --
@@ -157,3 +158,29 @@ select
     ) as properties,
     club._loaded_at
 from {{ ref('int_points_of_interest__club_points') }} as club
+union all by name
+-- GATC's water list (decision 75), int_points_of_interest__gatc_water's
+-- records: each A.T. source placed on ATC's mile axis from GATC's own mile,
+-- typed water at low confidence there, with its hold reason where one holds
+-- it (the approach trail, a mile no piece carries, GATC's own "dry", a
+-- namesake past the bound), read as the wave 1 records above are. A held
+-- source with no point arrives with a null geom; the classifier reads its
+-- rule_drop_reason first.
+select
+    gatc.source_key,
+    gatc.poi_key,
+    cast(null as bigint) as source_row,
+    st_geomfromtext(gatc.geom_wkt) as geom,
+    json_merge_patch(
+        gatc.properties,
+        json_object(
+            'id', gatc.derived_id,
+            'source_id', gatc.source_id,
+            'name', gatc.name,
+            'poi_type', gatc.poi_type,
+            'confidence', gatc.confidence,
+            'rule_drop_reason', gatc.rule_drop_reason
+        )
+    ) as properties,
+    gatc._loaded_at
+from {{ ref('int_points_of_interest__gatc_water') }} as gatc

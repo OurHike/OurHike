@@ -1,0 +1,44 @@
+version: 2
+
+# Which of GATC's water sources name a place ATC has a point for (decision 75):
+# a judgement somebody reviews row by row, so a seed and not a generated file.
+# int_points_of_interest__gatc_water reads it to check each placed source
+# against ATC's own point of the same name on every build.
+seeds:
+  - name: gatc_water_atc_names
+    description: >
+      One row per GATC water source whose entry names a place ATC also has a point for: GATC's
+      mile and the words its entry opens with, which pick out the row, and the ATC layer and
+      Name (verbatim) of the same place. Same name means same place: a creek is not matched
+      to the gap it is named after (GATC's Dick's Creek against ATC's Dicks Creek Gap lot),
+      and a stream on a side trail is not matched to the lot at the side trail's far end
+      (Byron Reece). `evidence` says why the two are one place and what the axis measured
+      between them on 2026-10-04. A row that no longer finds its GATC row or its ATC point
+      checks nothing, which assert_gatc_water_names_find_both_halves says at warn.
+    config:
+      column_types:
+        gatc_mile: varchar
+        entry_starts: varchar
+        atc_layer: varchar
+        atc_name: varchar
+        evidence: varchar
+    columns:
+      - name: gatc_mile
+        description: GATC's mile, as text, as stg_gatc__water_sources' `mile_text` prints it.
+        data_tests: [not_null, unique]
+      - name: entry_starts
+        description: The words GATC's entry opens with, which name the place (the rest is directions).
+        data_tests: [not_null]
+      - name: atc_layer
+        description: The ATC layer holding the point, by its registry key.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [shelters, campsites, parking]
+      - name: atc_name
+        description: ATC's own `Name` for the point, verbatim.
+        data_tests: [not_null]
+      - name: evidence
+        description: Why the two are one place, and the axis's measurement of the pair.
+        data_tests: [not_null]

@@ -1408,6 +1408,12 @@ def water():
 
 def test_a_club_pdf_lands_its_parsed_rows_each_with_the_documents_manifest(registry, requests_mock, monkeypatch):
     monkeypatch.setattr(_kinds, "extract_page_texts", lambda body: [PAGE_1, PAGE_2])
+    # An invented title and date: pypdf is the extract job's, not this suite's (requirements.in's note).
+    monkeypatch.setattr(
+        _kinds,
+        "club_pdf_document_info",
+        lambda body: {"title": "Fixture Water Update May 2011.xlsx", "created": "2026-03-02T15:00:00-05:00"},
+    )
     requests_mock.get(
         PDF_URL, content=b"%PDF-1.7 water", headers={"ETag": '"w1"', "Last-Modified": "Mon, 02 Mar 2026 00:00:00 GMT"}
     )
@@ -1415,6 +1421,9 @@ def test_a_club_pdf_lands_its_parsed_rows_each_with_the_documents_manifest(regis
     assert [row["mile"] for row in rows] == [0.8, 7.3, 0.2, 2.8, 38.0, 80.7]
     assert rows[0]["_document"]["etag"] == '"w1"' and rows[0]["_document"]["bytes"] == 14
     assert rows[0]["_document"]["last_modified"] == "Mon, 02 Mar 2026 00:00:00 GMT", "the club's own date is in the warehouse"
+    # The HTTP date is the file's; the title is what says how old the data in it is (decision 75).
+    assert rows[0]["_document"]["title"] == "Fixture Water Update May 2011.xlsx"
+    assert rows[0]["_document"]["created"] == "2026-03-02T15:00:00-05:00"
 
 
 def test_a_club_pdf_is_fresh_on_a_304_or_the_same_bytes_and_stale_on_new_ones(registry, requests_mock):
@@ -1430,9 +1439,31 @@ def test_a_club_pdf_is_fresh_on_a_304_or_the_same_bytes_and_stale_on_new_ones(re
     verdict, marker = water().change_check(None)
     assert verdict is Freshness.STALE and marker["etag"] == '"w1"'
     assert water().change_check(marker) == (Freshness.FRESH, marker), "a 304"
-    assert water().change_check({"sha256": marker["sha256"]})[0] is Freshness.FRESH, "WordPress re-served the same bytes"
+    same_bytes = {"sha256": marker["sha256"], "manifest": _kinds.CLUB_PDF_MANIFEST}
+    assert water().change_check(same_bytes)[0] is Freshness.FRESH, "WordPress re-served the same bytes"
     document["bytes"] = b"%PDF-1.7 water, revised"
-    assert water().change_check({"sha256": marker["sha256"]})[0] is Freshness.STALE
+    assert water().change_check(same_bytes)[0] is Freshness.STALE
+
+
+def test_a_club_pdf_loaded_under_an_older_manifest_is_read_again_whatever_its_bytes(registry, requests_mock):
+    """Rows loaded before `_document` carried the PDF's own title lack it, and unchanged bytes would keep them for
+    good, so a marker without the current manifest version is STALE, asked for without validators so a 304 cannot
+    keep it either."""
+
+    def answer(request, context):
+        if request.headers.get("If-None-Match") == '"w1"':
+            context.status_code = 304
+            return b""
+        context.headers["ETag"] = '"w1"'
+        return b"%PDF-1.7 water"
+
+    requests_mock.get(PDF_URL, content=answer)
+    _, marker = water().change_check(None)
+    old = {key: value for key, value in marker.items() if key != "manifest"}
+    verdict, renewed = water().change_check(old)
+    assert verdict is Freshness.STALE and renewed["manifest"] == _kinds.CLUB_PDF_MANIFEST
+    assert "If-None-Match" not in requests_mock.request_history[-1].headers, "no validator, so no 304 can keep it"
+    assert water().change_check(renewed) == (Freshness.FRESH, renewed), "once read again, a 304 is FRESH"
 
 
 def test_a_club_pdf_whose_layout_changed_refuses_rather_than_relabelling(registry, requests_mock, monkeypatch):

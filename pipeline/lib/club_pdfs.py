@@ -32,6 +32,14 @@ The document is two lists in one table: the approach trail's rows first
 restarting at 0.2). The restart is the boundary - the one place the mile
 sequence may fall - and a second fall is a document shape this parser does
 not know, so it raises rather than guessing which list a row belongs to.
+
+What an A.T. mile here IS was measured on 2026-10-04 rather than assumed,
+against ATC's live centerline and half-mile markers: northbound from
+Springer Mountain's summit, on ATC's marker scale and not the centerline's
+own length, within 0.122 mi of ATC's axis at six on-trail named places to
+mile 38.3 and 0.18 to 0.33 mi short of it at the shelters north of Low Gap.
+dbt's int_points_of_interest__gatc_water carries the whole measurement and
+places each row from it (decision 75); this parser still only reads text.
 """
 
 from __future__ import annotations

@@ -365,7 +365,8 @@ def test_the_weekly_planner_gives_way_on_its_schedule_only_once_the_monthly_lane
 
     assert workflow["jobs"]["plan"]["needs"] == "give-way"
     assert workflow["jobs"]["plan"]["if"] == "needs.give-way.outputs.plan == 'true'"
-    assert '"schedule"' in script and "refresh-reference.yml/runs?status=success" in script
+    # Which runs count is test_monthly_refresh_counts_a_run_that_refreshed_ua.py's, against a stand-in API.
+    assert '"schedule"' in script and "refresh-reference.yml/runs?branch=main&status=completed" in script
     assert "workflow_dispatch" in _triggers(workflow), "the dispatch stays (decision 28a)"
     assert not _secrets(give_way) and not _secrets(workflow["jobs"]["plan"])
 

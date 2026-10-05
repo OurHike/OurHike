@@ -36,11 +36,11 @@
 #
 # ITS MONDAY RUN GIVES WAY TO THE MONTHLY LANE (pipeline/ELT.md, "Workflows",
 # decision 28a). refresh-reference.yml builds and stages a release on UA every
-# month, which is the build this planner could only recommend. So once that
-# workflow has one successful run, a scheduled run of this one says so and
-# plans nothing; until then, and on every dispatch, it plans as before. The
-# schedule line itself goes in the change after that first run, which is
-# then a deletion with evidence behind it rather than a guess.
+# month, which is the build this planner could only recommend. So once one
+# run of that workflow on main has refreshed UA, a scheduled run of this one
+# says so and plans nothing; until then, and on every dispatch, it plans as
+# before. The schedule line itself goes in the change after that first run,
+# which is then a deletion with evidence behind it rather than a guess.
 #
 # SO WHAT IS IT FOR, today. It turns "should I dispatch the expensive build
 # this week" from a guess into a weekly report, and it is the thing that
@@ -107,10 +107,15 @@ jobs:
     outputs:
       plan: ${{ steps.decide.outputs.plan }}
     steps:
-      # A dispatch always plans. A scheduled run plans unless
-      # refresh-reference.yml has succeeded at least once. An API answer this
-      # cannot read plans too: this workflow writes nothing, so planning when
-      # unsure costs a report and never a publish.
+      # A dispatch always plans. A scheduled run plans unless a run of
+      # refresh-reference.yml on main has refreshed UA: its job "Confirm UA
+      # serves what the build wrote" passed, whatever the run concluded,
+      # because a monthly run that leaves one layer out refreshes UA and is
+      # then failed on purpose (decision 49; WF3 of the PR #1805 review).
+      # check-upstream-freshness.yml's 35-day alarm asks the same question the
+      # same way. An API answer this cannot read plans too: this workflow
+      # writes nothing, so planning when unsure costs a report and never a
+      # publish.
       - name: Has refresh-reference.yml run
         id: decide
         env:
@@ -125,20 +130,30 @@ jobs:
           import urllib.error
           import urllib.request
 
+          headers = {"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"}
+
+          def get(url):
+              with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as response:
+                  return json.load(response)
+
+          def refreshed_ua(run):
+              """The run's confirm job passed: UA's latest.json names every phone file its build wrote."""
+              jobs = get(f"{run['jobs_url']}?filter=all&per_page=100").get("jobs") or []
+              return any(job.get("name") == "Confirm UA serves what the build wrote" and job.get("conclusion") == "success" for job in jobs)
+
           plan, why = True, "a dispatch always plans"
           if os.environ["EVENT"] == "schedule":
-              url = f"{os.environ['API_URL']}/repos/{os.environ['REPOSITORY']}/actions/workflows/refresh-reference.yml/runs?status=success&per_page=1"
-              request = urllib.request.Request(url, headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"})
+              url = f"{os.environ['API_URL']}/repos/{os.environ['REPOSITORY']}/actions/workflows/refresh-reference.yml/runs?branch=main&status=completed&per_page=30"
               try:
-                  with urllib.request.urlopen(request, timeout=30) as response:
-                      runs = json.load(response).get("workflow_runs") or []
+                  runs = get(url).get("workflow_runs") or []
+                  last = next((run for run in runs if refreshed_ua(run)), None)
               except (urllib.error.URLError, TimeoutError, ValueError) as error:
                   plan, why = True, f"refresh-reference.yml's runs could not be read ({error}), so this plans as before"
               else:
-                  if runs:
-                      plan, why = False, f"refresh-reference.yml last succeeded at {runs[0]['run_started_at']} ({runs[0]['html_url']}), and it builds monthly what this would plan"
+                  if last:
+                      plan, why = False, f"refresh-reference.yml last refreshed UA from main at {last['run_started_at']} ({last['html_url']}), and it builds monthly what this would plan"
                   else:
-                      why = "refresh-reference.yml has not succeeded yet, so this plans as before"
+                      why = f"none of refresh-reference.yml's last {len(runs)} completed runs on main refreshed UA, so this plans as before"
           print(why)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write(f"plan={'true' if plan else 'false'}\n")

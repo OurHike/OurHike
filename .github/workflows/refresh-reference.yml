@@ -45,8 +45,9 @@ on:
     # weekly job in .github/workflows/README.md. Off the 1st only by analogy
     # with avoiding :00 (@unvalidated: GitHub's load by day of month is
     # unmeasured; scheduled runs' queue delays on the 1st against other days
-    # would settle it). Schedules fire from main only. If the last success is over
-    # 35 days old, check-upstream-freshness.yml reports it in #478 - Upstream
+    # would settle it). Schedules fire from main only. If the last run on main
+    # whose "Confirm UA serves what the build wrote" job passed is over 35
+    # days old, check-upstream-freshness.yml reports it in #478 - Upstream
     # data freshness, and a dispatch is the fallback.
     - cron: "15 5 3 * *"
   # No inputs, on purpose: the environment is not a choice here.

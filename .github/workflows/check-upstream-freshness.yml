@@ -22,10 +22,10 @@
 # IT ALSO WATCHES THE MONTHLY LANE. refresh-reference.yml refreshes UA on the
 # 3rd of each month, and a monthly cron nobody has watched fire may not
 # (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd"). So when its last
-# successful run is more than 35 days old, the tracking issue carries a row
-# saying so, and the remedy is a dispatch of refresh-reference.yml. Reading
-# the run list needs `actions: read` and nothing else; this job still cannot
-# write to R2 or start a run.
+# run on main that refreshed UA is more than 35 days old, the tracking issue
+# carries a row saying so, and the remedy is a dispatch of
+# refresh-reference.yml. Reading the run list and its jobs needs `actions:
+# read` and nothing else; this job still cannot write to R2 or start a run.
 
 name: Check upstream freshness
 
@@ -149,14 +149,26 @@ jobs:
       # measured on a weekly cron here (8.1 h, smoke-published.yml), rounded
       # up to a margin: @unvalidated until a year of monthly firings shows the
       # real spread (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd").
-      # The age runs from the last successful run, or, before there is one,
-      # from the workflow's own `created_at`, so the alarm does not ring in
-      # the month after the merge (that GitHub sets it when the file reaches
-      # the default branch is @unvalidated; the first run after the merge
-      # shows the value). A workflow that
-      # is not on the default branch at all says so and rings nothing; an
-      # answer the API would not give is `could not be checked`, which this
-      # job never rounds down to fine.
+      # The age runs from the last run on main that refreshed UA, or, before
+      # there is one, from the workflow's own `created_at`, so the alarm does
+      # not ring in the month after the merge (that GitHub sets it when the
+      # file reaches the default branch is @unvalidated; the first run after
+      # the merge shows the value). A workflow that is not on the default
+      # branch at all says so and rings nothing; an answer the API would not
+      # give is `could not be checked`, which this job never rounds down to
+      # fine.
+      #
+      # REFRESHED UA, NOT GREEN (WF3 of the PR #1805 review). A monthly run
+      # that leaves one layer out still refreshes UA, and its last job then
+      # fails the run on purpose (decision 49); runs 16 and 17 both concluded
+      # `failure` that way. So a run counts when its job "Confirm UA serves
+      # what the build wrote" succeeded, whatever the run concluded, and only
+      # a run of main counts: a pull request branch's dispatch is not the
+      # monthly lane running. Up to 30 completed runs are read, newest first,
+      # with one job listing each until one counts. build-data-release.yml's
+      # give-way asks the same question the same way, and
+      # .github/tests/test_monthly_refresh_counts_a_run_that_refreshed_ua.py
+      # runs both scripts against a stand-in for the API.
       - name: Is the monthly refresh overdue
         id: monthly
         if: always()
@@ -184,22 +196,32 @@ jobs:
           def stamp(text):
               return datetime.fromisoformat(text.replace("Z", "+00:00"))
 
+          def refreshed_ua(run):
+              """The run's confirm job passed: UA's latest.json names every phone file its build wrote."""
+              jobs = get(f"{run['jobs_url']}?filter=all&per_page=100").get("jobs") or []
+              return any(job.get("name") == "Confirm UA serves what the build wrote" and job.get("conclusion") == "success" for job in jobs)
+
           now, limit = datetime.now(timezone.utc), int(os.environ["MAX_AGE_DAYS"])
           answer = {"workflow": os.environ["MONTHLY_WORKFLOW"], "max_age_days": limit, "checked_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+          workflow = None
           try:
               workflow = get(base)
-              runs = get(f"{base}/runs?status=success&per_page=1").get("workflow_runs") or []
+              runs = get(f"{base}/runs?branch=main&status=completed&per_page=30").get("workflow_runs") or []
+              last = next((run for run in runs if refreshed_ua(run)), None)
           except urllib.error.HTTPError as error:
-              answer.update(state="absent" if error.code == 404 else "unknown", detail=f"the API answered {error.code}")
+              # Absent only when the workflow itself is not there; any other refusal is `unknown`, never fine.
+              absent = workflow is None and error.code == 404
+              answer.update(state="absent" if absent else "unknown", detail=f"the API answered {error.code}")
           except (urllib.error.URLError, TimeoutError, ValueError) as error:
               answer.update(state="unknown", detail=f"the API did not answer: {error}")
           else:
-              since = stamp(runs[0]["run_started_at"]) if runs else stamp(workflow["created_at"])
+              since = stamp(last["run_started_at"]) if last else stamp(workflow["created_at"])
               age = (now - since).total_seconds() / 86400
               answer.update(
                   since=since.strftime("%Y-%m-%dT%H:%M:%SZ"),
                   age_days=round(age, 1),
-                  last_success=runs[0]["html_url"] if runs else None,
+                  last_refresh=last["html_url"] if last else None,
+                  runs_read=len(runs),
                   state="overdue" if age > limit else "ok",
               )
           print(json.dumps(answer, indent=2))
@@ -323,7 +345,7 @@ jobs:
                   ...stale.map(s => row(s, 'changed upstream')),
                   ...unknown.map(s => row(s, 'could not be checked')),
                   ...(refreshAlarm
-                    ? [`| \`${monthly.workflow}\` | ${monthly.state === 'overdue' ? `monthly refresh overdue: ${monthly.age_days} days since ${monthly.since}, past ${monthly.max_age_days}` : 'monthly refresh could not be checked'} | ${firstSeen[monthly.workflow]} | ${cell(monthly.detail ?? (monthly.last_success ? `last success ${monthly.last_success}` : 'no successful run yet'))} |`]
+                    ? [`| \`${monthly.workflow}\` | ${monthly.state === 'overdue' ? `monthly refresh overdue: ${monthly.age_days} days since ${monthly.since}, past ${monthly.max_age_days}` : 'monthly refresh could not be checked'} | ${firstSeen[monthly.workflow]} | ${cell(monthly.detail ?? (monthly.last_refresh ? `last refreshed UA: ${monthly.last_refresh}` : `none of the last ${monthly.runs_read} runs on main refreshed UA`))} |`]
                     : []),
                   '',
                   unknown.length
@@ -338,7 +360,7 @@ jobs:
                     : '',
                   '',
                   'Changed data is not published data — this job holds no R2 credentials. Run **Publish vector data** to rebuild.',
-                  refreshAlarm ? 'The monthly row clears when **Refresh reference data** (refresh-reference.yml) next succeeds: dispatch it.' : '',
+                  refreshAlarm ? 'The monthly row clears when a run of **Refresh reference data** (refresh-reference.yml) on main next refreshes UA, which its job "Confirm UA serves what the build wrote" passing shows, even when a refused layer turns that run red: dispatch it.' : '',
                   '',
                   `Last checked ${verdict.checked_at ?? monthly.checked_at} · [run](${process.env.RUN_URL})`,
                   '',

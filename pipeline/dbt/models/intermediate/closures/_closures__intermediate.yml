@@ -1892,8 +1892,9 @@ unit_tests:
       (var notices_build_date), so that a margin cut or a comparison flipped
       goes red: a notice that ended yesterday still publishes and one that
       ended the day before is held; one starting tomorrow publishes and one
-      starting the day after is held; an order rescinded yesterday or today
-      is held, and one rescinded tomorrow is not. Every stated time is noon
+      starting the day after is held; an order rescinded the day before
+      yesterday or yesterday is held, and one rescinded today or tomorrow is
+      not, the same day of margin an end date has. Every stated time is noon
       UTC, so each row's day is the same in every US zone.
     model: int_closures__club_notices
     overrides:
@@ -1922,7 +1923,7 @@ unit_tests:
         - {notice_id: 'usfs_r03_forest_orders:starts_in_two_days', held_because: 'its own start date, 2026-10-07, has not come'}
         - {notice_id: 'usfs_r03_forest_orders:rescinded_two_days_ago', held_because: 'its own order was rescinded on 2026-10-03'}
         - {notice_id: 'usfs_r03_forest_orders:rescinded_yesterday', held_because: 'its own order was rescinded on 2026-10-04'}
-        - {notice_id: 'usfs_r03_forest_orders:rescinded_today', held_because: 'its own order was rescinded on 2026-10-05'}
+        - {notice_id: 'usfs_r03_forest_orders:rescinded_today', held_because: null}
         - {notice_id: 'usfs_r03_forest_orders:rescinded_tomorrow', held_because: null}
 
   - name: int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log

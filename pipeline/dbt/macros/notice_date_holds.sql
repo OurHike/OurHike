@@ -32,7 +32,7 @@
 
 {% macro notice_date_holds(starts_on, ends_on, build_date, rescinded_on=none) -%}
     {%- if rescinded_on %}
-    when {{ rescinded_on }} is not null and {{ rescinded_on }} <= {{ build_date }}
+    when {{ rescinded_on }} is not null and {{ rescinded_on }} < {{ build_date }}
         then 'its own order was rescinded on ' || {{ rescinded_on }}
     {%- endif %}
     when {{ ends_on }} is not null and {{ ends_on }} < {{ build_date }} - 1

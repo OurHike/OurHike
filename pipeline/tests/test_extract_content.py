@@ -500,15 +500,16 @@ def test_two_bodies_cut_at_different_lengths_inside_one_long_string_are_refused_
     assert positions == {str(LONG_BODY.index(b'"Fixture words'))}
 
 
-def test_a_body_that_stops_inside_a_string_is_refused_quoting_the_field_and_how_far_the_string_ran(requests_mock):
-    """The refusal quotes 20 characters either side of where the parser stopped, so the next monthly log names the
-    field a cut body stopped inside, and says how much of that string arrived."""
+def test_a_body_that_stops_inside_a_string_is_refused_naming_the_field_but_never_quoting_its_value(requests_mock):
+    """The refusal names the field a cut body stopped inside, by its JSON key, and says how much of that string
+    arrived, so the next monthly log shows where the body broke. It never quotes the value: the log is public, and
+    the field can be one that never loads because it can hold people's names (a transcript)."""
     with pytest.raises(_json_apis.NotJson) as refused:
         _json_apis._json(json_answer(requests_mock, LONG_BODY[:98_304]), "nps_audio")
 
     said = str(refused.value)
-    assert """before it 'p-1", "transcript": '""" in said
-    assert """from it '"Fixture words, \\\\"qu'""" in said
+    assert "(in the value of 'transcript'" in said
+    assert "Fixture words" not in said
     assert "the text ends 98,263 characters later, still inside that string" in said
     assert said.endswith("; no Content-Length to compare against")
 

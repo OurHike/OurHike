@@ -111,14 +111,14 @@ def _json(response: requests.Response, what: str):
         ) from error
 
 
-#: How many characters either side of where the parser stopped _at_failure() quotes. Enough to show the field name
-#: before a string and how its value opens; short, because the body can carry a person field that never loads
-#: (nps_multimedia_audio's `transcript`). A choice for a log line, not a measurement.
-FAILURE_CONTEXT_CHARS = 20
+#: How far before where the parser stopped _at_failure() looks for the field's name: far enough for a long key and
+#: its whitespace, and only ever a name, never a value (below).
+FIELD_NAME_LOOKBACK_CHARS = 200
+_FIELD_NAME_BEFORE = re.compile(r'"([A-Za-z0-9_]{1,80})"\s*:\s*$')
 
 
 def _at_failure(error: ValueError) -> str:
-    """What the text holds where the parser stopped, as repr(), for _json()'s refusal, or "" with no position.
+    """Which field the parser stopped in, by its name only, and how much of it arrived, for _json()'s refusal.
 
     "Unterminated string starting at" is raised only when the text ends before that string closes: a raw control
     character or NUL inside a string is "Invalid control character" instead, and an escaped lone surrogate or a
@@ -126,15 +126,17 @@ def _at_failure(error: ValueError) -> str:
     `strict=False`, which accepts raw control characters, would not read such a body, and is not used. The position
     is where the string began, not where the text stopped, so monthly runs 19 and 20 (refresh-reference.yml
     37253303123 and 37296900535) reporting char 23,867 on 163,840 bytes and on 98,304 is what one string running
-    from char 23,867 past the end of both bodies looks like, cut at two points (Reasoned from that). The quote names
-    the field, and the count says how much of the string arrived.
+    from char 23,867 past the end of both bodies looks like, cut at two points (Reasoned from that).
+
+    NO VALUE IS QUOTED. The log is public, and the field the parser stops in can be one this extract never loads
+    because it can hold people's names (nps_multimedia_audio's `transcript` is in its row's person_fields), so
+    only the field's name, read off the JSON key just before the position, and a character count reach it.
     """
     text, position = getattr(error, "doc", None), getattr(error, "pos", None)
     if not isinstance(text, str) or not isinstance(position, int):
         return ""
-    before = text[max(0, position - FAILURE_CONTEXT_CHARS) : position]
-    after = text[position : position + FAILURE_CONTEXT_CHARS]
-    said = f" (before it {before!r}, from it {after!r}"
+    named = _FIELD_NAME_BEFORE.search(text[max(0, position - FIELD_NAME_LOOKBACK_CHARS) : position])
+    said = f" (in the value of {named.group(1)!r}" if named else " (in a field this could not name"
     if getattr(error, "msg", "") == "Unterminated string starting at":
         said += f"; the text ends {len(text) - position:,} characters later, still inside that string"
     return said + ")"

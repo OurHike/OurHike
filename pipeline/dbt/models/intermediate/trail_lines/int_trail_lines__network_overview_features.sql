@@ -87,6 +87,61 @@ rounded as (
     from parts
 ),
 
+-- WHAT THE CUT LEAVES, _drawn_at_the_cut(): a vertex the cut lands on the
+-- one before it is dropped, then a part left with fewer than two vertices.
+-- Neither draws anything on a phone, and dropping both takes UA's release
+-- 2026-10-03-2 file from 41,216,145 bytes to 4,851,329 (Measured 2026-10-05;
+-- that function's docstring has the rest). A group with no part left has
+-- no row here, and so writes no feature. A window over the vertices rather
+-- than a two-parameter lambda, which SQLFluff 4.3.0 cannot parse
+-- (int_elevation__sample_points says so too).
+cut_vertices as (
+    select
+        is_club,
+        source_key,
+        route_name,
+        blaze_color,
+        trail_status,
+        trail_line_id,
+        part_index,
+        unnest(cut_part) as vertex,
+        generate_subscripts(cut_part, 1) as vertex_index
+    from rounded
+),
+
+drawn_vertices as (
+    select *
+    from cut_vertices
+    qualify coalesce(
+        lag(vertex) over (
+            partition by is_club, trail_line_id, part_index
+            order by vertex_index
+        ) != vertex,
+        true
+    )
+),
+
+drawn as (
+    select
+        is_club,
+        source_key,
+        route_name,
+        blaze_color,
+        trail_status,
+        trail_line_id,
+        part_index,
+        list(vertex order by vertex_index) as drawn_part
+    from drawn_vertices
+    group by
+        is_club,
+        source_key,
+        route_name,
+        blaze_color,
+        trail_status,
+        trail_line_id,
+        part_index
+),
+
 grouped as (
     select
         is_club,
@@ -94,8 +149,9 @@ grouped as (
         route_name,
         blaze_color,
         trail_status,
-        list(cut_part order by trail_line_id, part_index) as group_lines
-    from rounded
+        list(drawn_part order by trail_line_id, part_index) as group_lines
+    from drawn
+    where len(drawn_part) >= 2
     group by is_club, source_key, route_name, blaze_color, trail_status
 )
 

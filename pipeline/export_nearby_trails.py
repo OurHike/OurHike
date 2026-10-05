@@ -1571,6 +1571,43 @@ def exported_bbox(records: list[dict]) -> list[float] | None:
     ]
 
 
+def _drawn_at_the_cut(lines: list[list[list[float]]]) -> list[list[list[float]]]:
+    """`lines`, already cut to OVERVIEW_SEAM_DECIMALS, without what the cut
+    made of them that draws nothing: a vertex equal to the one before it is
+    dropped, and then a line left with fewer than two vertices - every vertex
+    on one grid point - is dropped whole.
+
+    WHY: the cut lands neighbouring vertices on the same grid point wherever a
+    line is denser than the 0.001-degree grid, which is any line
+    write_overview's two simplifications hand back at its own density
+    (simplify_records keeps the line it was given wherever simplifying would
+    leave a part with fewer than two distinct vertices), and nothing removed
+    the copies. Measured 2026-10-05 on UA's release 2026-10-03-2:
+    network_overview.geojson was 41,216,145 bytes and 2,351,742 coordinates,
+    over the client's 33,554,432-byte launch budget
+    (client/src/lib/artifactBudget.ts), and `cdtc_centerline` alone was
+    1,244,673 coordinates of which 49,277 were distinct. This rule applied to
+    that file gives 4,851,329 bytes and 270,144 coordinates, every one of its
+    211 features still there.
+
+    WHAT A PHONE DRAWS IS UNCHANGED, Reasoned from maplibre-gl 6.7.0's
+    LineBucket.addLine() (src/data/bucket/line_bucket.ts): it skips a vertex
+    equal to the next one and ignores a line left with fewer than two
+    vertices, so both were drawing nothing already. A group none of whose
+    lines survive writes no feature rather than an empty MultiLineString:
+    write_overview skips a record with no line left, so it never opens that
+    record's group."""
+    drawn = []
+    for line in lines:
+        kept = line[:1]
+        for vertex in line[1:]:
+            if vertex != kept[-1]:
+                kept.append(vertex)
+        if len(kept) >= 2:
+            drawn.append(kept)
+    return drawn
+
+
 def write_overview(records: list[dict]) -> dict:
     """Write the corridor-view sketch of the network to OUT_DIR, and return its
     manifest entry (#1135).
@@ -1685,7 +1722,10 @@ def write_overview(records: list[dict]) -> dict:
     # this export's existing convention for closure_kind above.
     groups: dict[tuple[str, str, str, str], list[list[list[float]]]] = {}
     coarse_lines = _overview_coordinates_all(from_wkt_all([record["wkt"] for record in seam]), OVERVIEW_SEAM_DECIMALS)
-    for record, lines in zip(seam, coarse_lines):
+    for record, cut in zip(seam, coarse_lines):
+        lines = _drawn_at_the_cut(cut)
+        if not lines:
+            continue
         # THE NAME WRITTEN IS THE TRAIL'S, not the spelling the steward
         # published: USFS's "PCT: MT HOOD" and "PCNST" are both the Pacific
         # Crest Trail, and a map labelling one of them "PCNST" has told a

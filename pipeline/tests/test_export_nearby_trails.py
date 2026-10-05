@@ -2180,6 +2180,76 @@ def test_the_sketch_is_cut_for_its_own_top_zoom_and_not_the_ats(monkeypatch, tmp
     assert entry["min_feature_m"] == ex.OVERVIEW_MIN_FEATURE_M
 
 
+# --- what the three-decimal cut leaves behind -------------------------------------
+#
+# CDTC publishes the Continental Divide as eight lines, one a state, and five
+# of them are MultiLineStrings carrying closed rings a few metres round as
+# parts of their own (UA's release 2026-10-03-2, read back 2026-10-05: 27
+# rings 0.2 to 21.3 m long, of 3 to 6 vertices, in cdtc_centerline:2, 3, 5, 7
+# and 8). The fixture is that shape at one screen's size: a dense 5 km line,
+# 5 m between vertices with a 2 m wiggle, and a ring about 2 m across, every
+# vertex of the ring inside one 0.001-degree grid cell.
+
+
+def _dense_line_with_a_ring() -> dict:
+    dense = ", ".join(f"{-106.5004 + (i % 2) * 0.00002:.5f} {39.00005 + i * 0.000045:.6f}" for i in range(1000))
+    ring = "-106.4504 39.0204, -106.45038 39.0204, -106.45038 39.02042, -106.4504 39.02042, -106.4504 39.0204"
+    return {
+        "id": "cdt-shaped",
+        "source": "cdtc_centerline",
+        "name": None,
+        "blaze_color": "Unknown",
+        "trail_status": "open",
+        "wkt": f"MULTILINESTRING (({dense}), ({ring}))",
+    }
+
+
+def _sketch_lines(records: list[dict]) -> list[list[list[float]]]:
+    ex.write_overview(records)
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    return [line for feature in body["features"] for line in feature["geometry"]["coordinates"]]
+
+
+def test_no_sketch_line_repeats_the_vertex_before_it_once_cut_to_three_decimals(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    repeats = [(n, i) for n, line in enumerate(lines) for i in range(1, len(line)) if line[i] == line[i - 1]]
+    assert repeats == [], f"{len(repeats)} vertices repeat the one before them"
+
+
+def test_a_sketch_line_the_three_decimal_cut_leaves_as_one_point_is_not_written(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    assert all(len({tuple(vertex) for vertex in line}) >= 2 for line in lines)
+    # The dense line is still drawn, from one end to the other; the ring, at
+    # -106.450, is not.
+    (line,) = lines
+    assert (line[0], line[-1]) == ([-106.5, 39.0], [-106.5, 39.045])
+
+
+def test_a_sketch_group_whose_every_line_cuts_to_one_point_writes_no_feature(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    # A closed ring a few metres round on a through route, which the floor
+    # never drops, closed where the rest of the trail is open: its own group,
+    # and every vertex of it on the grid point (-74.000, 41.000).
+    run = _chained_run("nynjtc_long_path", "Long Path", -74.0, 41.0, int(ex.NAMED_TRAIL_THRESHOLD_MILES) + 1, "lp")
+    ring = {
+        **_one_named_row("closed-ring", "nynjtc_long_path", "Long Path", -74.0, 41.0, 0),
+        "trail_status": "closed",
+        "wkt": "LINESTRING (-74 41, -73.99998 41, -73.99998 41.00002, -74 41.00002, -74 41)",
+    }
+
+    ex.write_overview(run + [ring])
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    assert [f["properties"]["trail_status"] for f in body["features"]] == ["open"]
+    assert body["features"][0]["properties"]["name"] == "Long Path"
+
+
 # --- a trail whose name is the layer (#1778) --------------------------------------
 #
 # Some stewards publish one trail as a layer with no name column: PCTA's

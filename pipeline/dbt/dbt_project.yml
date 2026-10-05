@@ -214,13 +214,14 @@ vars:
   # 24,966,662 bytes and 6,203,870 gzipped at 10 m, at 9,706,068 and
   # 1,692,475 re-simplified at 100 m, its lines at 100 m too. With the lines
   # left at 10 m, as decision 77 has them, UA's file of 2026-10-05
-  # (24,966,875 bytes) came to 10,830,465 and 2,008,195 gzipped (measured;
+  # (24,966,875 bytes) came to 10,832,088 and 2,008,557 gzipped (measured;
   # pub_conditions_notices' header has how).
   notice_area_m: 100.0
-  # How far the area is also grown before it is joined to the simplified one,
-  # so the 5 decimal places cannot move an edge across the source's area:
-  # Reasoned from the grid in macros/notice_phone_geometry.sql (at most
-  # 0.78 m), not measured.
+  # How far inside the simplified area's edge the source's area must lie for
+  # it to be published as it is, and otherwise how far the source's area is
+  # grown before it is joined to it, so the 5 decimal places cannot move an
+  # edge across the source's area: Reasoned from the grid in
+  # macros/notice_phone_geometry.sql (at most 0.78 m), not measured.
   notice_area_snap_allowance_m: 1.0
   poi_site_name_radius_m: 150.0            # lib/poi_sites.py NAME_MATCH_RADIUS_M
   poi_site_proximity_radius_m: 60.0        # lib/poi_sites.py PROXIMITY_RADIUS_M

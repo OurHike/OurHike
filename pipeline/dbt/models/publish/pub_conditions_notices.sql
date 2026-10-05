@@ -43,16 +43,18 @@
 -- 2026-10-05), macros/notice_phone_geometry.sql. The phone draws an area and
 -- asks whether a planned route meets it within NOTICE_REACH_FEET, 300 ft
 -- (lib/plannedNotices.ts); it never measures along it.
---   An AREA is grown outward by `notice_area_m` (100 m), simplified at the
---   same 100 m, and joined to itself grown 1 m, so the published area covers
---   every point of the source's: a route that met the source's area meets
---   this one, and a notice is shown rather than missed (Reasoned in the
---   macro, held by
+--   An AREA is grown outward by `notice_area_m` (100 m) and simplified at
+--   the same 100 m, and where that leaves the source's area less than 1 m
+--   inside its edge it is joined to the source's area grown 1 m, so the
+--   published area covers every point of the source's: a route that met the
+--   source's area meets this one, and a notice is shown rather than missed
+--   (Reasoned in the macro, held by
 --   tests/singular/assert_a_notice_area_covers_every_vertex_of_its_source.sql).
 --   The join is there because the simplifier alone cut past the source, on
 --   UA's file below by up to 61 m inside its edge, so it can take the whole
 --   100 m band away in places: a route up to 100 m outside the source's area
---   meets the published one mostly, not always.
+--   meets the published one mostly, not always. What the shaping costs the
+--   hourly build is @unvalidated (the macro has the sandbox's timings).
 --   A LINE OR A POINT is not grown: Douglas-Peucker at 10 m, topology
 --   preserved, in EPSG:5070 where a metre is a metre on both axes. 10 m is
 --   under one screen pixel at zoom 14 in the lower 48 (a 256 px tile there
@@ -66,11 +68,11 @@
 -- 7,392 notices, 1,063 of them areas), re-shaped by the macro as dbt
 -- compiles it, run on DuckDB 1.5.5 with spatial eb1e57c (dbt 2.0.6's own
 -- DuckDB is 1.5.4): 24,966,875 bytes and 6,207,005 gzipped at level 6
--- (publish.py's) became 10,830,465 and 2,008,195; each of the 1,063 areas
+-- (publish.py's) became 10,832,088 and 2,008,557; each of the 1,063 areas
 -- covered its source whole, and none of their 765,166 vertices fell
 -- outside. That file's areas were already the 10 m ones, so the source's
--- own outlines may come out a little larger. Of the 10,830,465,
--- 4,284,491 are the areas, 1,945,390 the lines and points, and 4,600,584
+-- own outlines may come out a little larger. Of the 10,832,088,
+-- 4,286,114 are the areas, 1,945,390 the lines and points, and 4,600,584
 -- every other field. A part the shaping would empty keeps its full shape.
 --
 -- THE DATES. `updated_at` is the club's own edit stamp, null where it gives

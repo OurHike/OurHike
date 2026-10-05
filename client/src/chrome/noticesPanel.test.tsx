@@ -357,4 +357,52 @@ describe('with conditions/notices.json (#1805, decision 66)', () => {
     }
     expect(list.type.displayName).toBe('Deferred(PlannedNoticeList)')
   })
+
+  // Decision 77: a phone downloads conditions/notices.json only once a hike
+  // is planned, and lib/useConditions.ts says when the bucket serves it
+  // anyway (`clubNoticesListed`, a HEAD request's answer).
+  function listedPanel(dayHikes: readonly DayHike[]) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [update()],
+        orgNotices: [orgNotice()],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: NOW,
+        clubNotices: null,
+        clubNoticesGeneratedAt: null,
+        clubNoticesListed: true,
+        dayHikes,
+      }),
+    )
+  }
+
+  it('says no hike is planned, never the list of everything, when the bucket serves notices.json and nothing is planned', async () => {
+    const { result } = listedPanel([])
+    expect(result.current.mapScreen.noticeRowLabel).toBe('Notices for your planned hikes')
+    expect(result.current.mapScreen.noticeCount).toBe(0)
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    await waitFor(() => expect(result.current.mapScreen.noticeList).not.toBeNull())
+    const list = result.current.mapScreen.noticeList as {
+      type: { displayName?: string }
+      props: {
+        planned: { empty: string | null; hikes: unknown[] }
+        generatedAt: Date | null
+      }
+    }
+    expect(list.type.displayName).toBe('Deferred(PlannedNoticeList)')
+    expect(list.props.planned.empty).toBe('nothing_planned')
+    expect(list.props.planned.hikes).toEqual([])
+    expect(list.props.generatedAt).toBeNull()
+  })
+
+  it('keeps today’s list for a planned hike whose notices.json has not arrived, rather than calling it clear', () => {
+    // The file is what a planned hike's notices come from, so its absence
+    // must never read as "nothing touches this hike".
+    const { result } = listedPanel([dayHike(TODAY)])
+    expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
+    expect(result.current.mapScreen.noticeCount).toBe(2)
+  })
 })

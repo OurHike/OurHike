@@ -119,7 +119,7 @@
 // instead is the feed this decision exists to avoid; the notices the map
 // draws still open their own sheet when tapped.
 
-import type { DayHike, DayHikeLeg } from './dayHikes'
+import { anyHikePlanned, type DayHike, type DayHikeLeg } from './dayHikes'
 import {
   geometryParts,
   insideByMoreThan,
@@ -526,10 +526,11 @@ export function plannedNotices({
       .length
 
   if (stretches.length === 0) {
-    const anything = plannedDayHikes.length + plannedTrips.length > 0
     return {
       hikes: [],
-      empty: anything ? 'nothing_in_the_window' : 'nothing_planned',
+      empty: anyHikePlanned(trips, dayHikes)
+        ? 'nothing_in_the_window'
+        : 'nothing_planned',
       undated,
     }
   }

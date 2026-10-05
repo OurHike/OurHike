@@ -1,5 +1,6 @@
 {{ config(materialized='table', tags=['builds_alone']) }}
 -- builds_alone: Out of Memory Error here in monthly run 20 (37296900535).
+-- Run 21 (37323395441) built it alone and ran out again: see pair_facts.
 {%- set snap_m = var('trail_network_endpoint_snap_m') %}
 -- Where the routable lines must be cut, as node_lines() decides it
 -- (build_trail_graph.py, TN04's inputs and TN05): one row per pair of parts
@@ -62,40 +63,105 @@ with parts as (
     where refused_because is null
 ),
 
--- The pairs whose envelopes meet, each once, the lower part first. WHY
--- sign(): written `lower < higher`, DuckDB 1.5.4 planned the inequality as
--- the join (PIECEWISE_MERGE_JOIN) and the envelope test as a filter on all
--- 1,181,953 pairs of 1,538 real Harriman parts, 5.2 s that grows as the
--- square of the parts, in every placement tried: in the WHERE, in the ON,
--- outside a materialized CTE. As sign() of the difference it is no join
--- condition, and the envelope test plans as a SPATIAL_JOIN, 0.3 s (EXPLAIN
--- and timings measured 2026-10-02 on DuckDB 1.5.4 with spatial 28db190).
-touching_boxes as (
+-- The pairs whose envelopes meet, each once, the lower part first, and every
+-- fact node_lines() reads off a pair, worked out in the one pass that holds
+-- both geometries. WHY sign(): written `lower < higher`, DuckDB 1.5.4
+-- planned the inequality as the join (PIECEWISE_MERGE_JOIN) and the envelope
+-- test as a filter on all 1,181,953 pairs of 1,538 real Harriman parts,
+-- 5.2 s that grows as the square of the parts, in every placement tried: in
+-- the WHERE, in the ON, outside a materialized CTE. As sign() of the
+-- difference it is no join condition, and the envelope test plans as a
+-- SPATIAL_JOIN, 0.3 s (EXPLAIN and timings measured 2026-10-02 on DuckDB
+-- 1.5.4 with spatial 28db190).
+--
+-- WHY ONE PASS, and why `pair_facts` keeps no geometry: monthly run 21
+-- (refresh-reference.yml run 37323395441, 2026-10-05) ran out of DuckDB's
+-- 12.4 GiB on this model, building alone, on 332,630 network lines. The
+-- query before this one kept both parts' geometries on every pair in a CTE
+-- that five others read, so DuckDB materialized it: memory that grows with
+-- the touching pairs times their vertices. Here the geometries go no
+-- further than the expressions that read them, and only the pairs that cut
+-- anything are kept: a crossing, or an end within the tolerance. Measured
+-- 2026-10-05 on DuckDB 1.5.5 against synthetic random-walk trails, 330,000
+-- lines with 21.8 million vertices, each run giving the old query's rows
+-- exactly (EXCEPT ALL empty both ways), peak memory old then new:
+-- 5.31 then 1.95 GiB; with the pairs tripled (330 lines a cluster, not
+-- 110), 10.69 then 2.34; with 40 lines of 40,000 vertices added, 5.59 then
+-- 2.00. What the real network peaks at is unmeasured: no synthetic run
+-- made the old query fail, so run 21's failure is explained by that growth
+-- (Reasoned), and the next monthly run is what settles it.
+pair_facts as (
     select
-        lower_box.part_order as low_order,
-        higher_box.part_order as high_order
-    from parts as lower_box
-    inner join parts as higher_box
-        on st_intersects(
-            st_envelope(lower_box.geom_m), st_envelope(higher_box.geom_m)
-        )
-    where sign(higher_box.part_order - lower_box.part_order) = 1
-),
-
-candidates as (
-    select
-        touching_boxes.low_order,
-        touching_boxes.high_order,
-        low_part.part_id as low_part_id,
-        high_part.part_id as high_part_id,
-        low_part.geom_m as low_m,
-        high_part.geom_m as high_m,
-        st_intersects(low_part.geom_m, high_part.geom_m) as crosses
-    from touching_boxes
-    inner join parts as low_part
-        on touching_boxes.low_order = low_part.part_order
-    inner join parts as high_part
-        on touching_boxes.high_order = high_part.part_order
+        low_order,
+        high_order,
+        low_part_id,
+        high_part_id,
+        crosses,
+        low_start_m,
+        low_end_m,
+        high_start_m,
+        high_end_m,
+        case
+            when low_start_m <= {{ snap_m }}
+                then st_astext(st_startpoint(low_m))
+        end as low_start_wkt,
+        case
+            when low_end_m <= {{ snap_m }}
+                then st_astext(st_endpoint(low_m))
+        end as low_end_wkt,
+        case
+            when high_start_m <= {{ snap_m }}
+                then st_astext(st_startpoint(high_m))
+        end as high_start_wkt,
+        case
+            when high_end_m <= {{ snap_m }}
+                then st_astext(st_endpoint(high_m))
+        end as high_end_wkt
+    from (
+        -- An end's distance only for a pair that does not cross: a pair
+        -- that crosses is never also joined, as the Python `continue`s.
+        select
+            *,
+            case
+                when not crosses
+                    then st_distance_geos(st_startpoint(low_m), high_m)
+            end as low_start_m,
+            case
+                when not crosses
+                    then st_distance_geos(st_endpoint(low_m), high_m)
+            end as low_end_m,
+            case
+                when not crosses
+                    then st_distance_geos(st_startpoint(high_m), low_m)
+            end as high_start_m,
+            case
+                when not crosses
+                    then st_distance_geos(st_endpoint(high_m), low_m)
+            end as high_end_m
+        from (
+            select
+                lower_part.part_order as low_order,
+                higher_part.part_order as high_order,
+                lower_part.part_id as low_part_id,
+                higher_part.part_id as high_part_id,
+                lower_part.geom_m as low_m,
+                higher_part.geom_m as high_m,
+                st_intersects(lower_part.geom_m, higher_part.geom_m) as crosses
+            from parts as lower_part
+            inner join parts as higher_part
+                on st_intersects(
+                    st_envelope(lower_part.geom_m),
+                    st_envelope(higher_part.geom_m)
+                )
+            where sign(higher_part.part_order - lower_part.part_order) = 1
+        ) as touching
+    ) as measured
+    where
+        crosses
+        or ({{ snap_m }} > 0 and low_start_m <= {{ snap_m }})
+        or ({{ snap_m }} > 0 and low_end_m <= {{ snap_m }})
+        or ({{ snap_m }} > 0 and high_start_m <= {{ snap_m }})
+        or ({{ snap_m }} > 0 and high_end_m <= {{ snap_m }})
 ),
 
 crossings as (
@@ -109,7 +175,7 @@ crossings as (
         high_part_id as other_part_id,
         cast(null as varchar) as end_side,
         cast(null as varchar) as end_point_wkt
-    from candidates
+    from pair_facts
     where crosses
 ),
 
@@ -124,9 +190,9 @@ ends as (
         low_part_id as line_part_id,
         high_part_id as other_part_id,
         'start' as end_side,
-        st_distance_geos(st_startpoint(low_m), high_m) as end_distance_m,
-        st_astext(st_startpoint(low_m)) as end_point_wkt
-    from candidates
+        low_start_m as end_distance_m,
+        low_start_wkt as end_point_wkt
+    from pair_facts
     where not crosses
     union all
     select
@@ -137,9 +203,9 @@ ends as (
         low_part_id as line_part_id,
         high_part_id as other_part_id,
         'end' as end_side,
-        st_distance_geos(st_endpoint(low_m), high_m) as end_distance_m,
-        st_astext(st_endpoint(low_m)) as end_point_wkt
-    from candidates
+        low_end_m as end_distance_m,
+        low_end_wkt as end_point_wkt
+    from pair_facts
     where not crosses
     union all
     select
@@ -150,9 +216,9 @@ ends as (
         high_part_id as line_part_id,
         low_part_id as other_part_id,
         'start' as end_side,
-        st_distance_geos(st_startpoint(high_m), low_m) as end_distance_m,
-        st_astext(st_startpoint(high_m)) as end_point_wkt
-    from candidates
+        high_start_m as end_distance_m,
+        high_start_wkt as end_point_wkt
+    from pair_facts
     where not crosses
     union all
     select
@@ -163,9 +229,9 @@ ends as (
         high_part_id as line_part_id,
         low_part_id as other_part_id,
         'end' as end_side,
-        st_distance_geos(st_endpoint(high_m), low_m) as end_distance_m,
-        st_astext(st_endpoint(high_m)) as end_point_wkt
-    from candidates
+        high_end_m as end_distance_m,
+        high_end_wkt as end_point_wkt
+    from pair_facts
     where not crosses
 ),
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   geometryParts,
   inPolygon,
+  linesMeetParts,
   insideByMoreThan,
   linesMeetGeometry,
   MAX_COLLECTION_DEPTH,
@@ -136,6 +137,60 @@ describe('linesMeetGeometry', () => {
       linesMeetGeometry([north], { type: 'Polygon', coordinates: 'nope' }, 1000),
     ).toBe(false)
     expect(linesMeetGeometry([north], null, 1000)).toBe(false)
+  })
+})
+
+describe('linesMeetParts on a state-sized area of many polygons', () => {
+  // The shape of Utah FFSL's fire-restriction order 19 after decision 77's
+  // shaping (899 polygons and 53,358 vertices, measured 2026-10-05 by running
+  // the macro's SQL over soak run 536's row in DuckDB): invented here as 899
+  // 60-gons, 53,940 vertices, on a 30 x 30 grid over a box the size of Utah,
+  // with one grid square left empty for a hike to walk through.
+  function stateOfPolygons(): ReturnType<typeof geometryParts> {
+    const polygons: number[][][][] = []
+    for (let r = 0; r < 30; r += 1) {
+      for (let c = 0; c < 30; c += 1) {
+        if ((r === 15 && c === 15) || polygons.length === 899) continue
+        const cx = -114 + (c + 0.5) / 6
+        const cy = 37 + (r + 0.5) / 6
+        const ring: number[][] = []
+        for (let k = 0; k < 59; k += 1) {
+          const a = (2 * Math.PI * k) / 59
+          ring.push([cx + 0.05 * Math.cos(a), cy + 0.05 * Math.sin(a)])
+        }
+        ring.push(ring[0])
+        polygons.push([ring])
+      }
+    }
+    return geometryParts({ type: 'MultiPolygon', coordinates: polygons })
+  }
+  /** About 7 miles due north through the empty square, 400 vertices. */
+  const throughTheGap: Position[] = Array.from({ length: 400 }, (_, i) => [
+    -114 + 15.5 / 6,
+    37 + 15.05 / 6 + (0.1 * i) / 399,
+  ])
+
+  it('answers a hike that misses every polygon in under 250 ms, where measuring every edge took 2.3 s', () => {
+    // Before the box test, every one of the 400 pieces was measured against
+    // every one of the 53,940 edges: 2,294 ms in this sandbox's vitest on
+    // 2026-10-05, and the whole case 33 to 56 ms after, under coverage or
+    // not. The bound is loose on purpose, for a slower CI runner.
+    const parts = stateOfPolygons()
+    expect(parts.polygons).toHaveLength(899)
+    const started = performance.now()
+    expect(linesMeetParts([throughTheGap], parts, 300)).toBe(false)
+    expect(performance.now() - started).toBeLessThan(250)
+  })
+
+  it('still meets the one polygon a hike passes within reach of, among 899', () => {
+    const parts = stateOfPolygons()
+    // The square west of the gap has its 60-gon's east edge 0.05 degrees
+    // short of the square's own east side: move the hike to 50 ft east of it.
+    const westEdge = -114 + 14.5 / 6 + 0.05
+    const feet50 = 50 / 3.28084 / (111_320 * Math.cos(((37 + 15.5 / 6) * Math.PI) / 180))
+    const beside = throughTheGap.map(([, lat]): Position => [westEdge + feet50, lat])
+    expect(linesMeetParts([beside], parts, 300)).toBe(true)
+    expect(linesMeetParts([beside], parts, 10)).toBe(false)
   })
 })
 

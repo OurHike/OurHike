@@ -157,6 +157,33 @@ never reads a failed build as a publishable one. The
 default, `fail`, is the monthly lane's: a restore that fails stops the build
 before dbt runs.
 
+ONE SOURCE OR ONE WRITER NEVER STOPS THE REST (decision 81, the maintainer's
+poll of 2026-10-05: "Hold that source and publish the rest"; review finding
+ARCH-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change). Five of
+the hourly soak's first ten runs published nothing because of one source:
+runs 525 to 527 and 530 on a test of one source's rows, run 531 on one
+writer's SQL after six other writers had written. Three things now answer
+PARTIAL_EXIT instead, once everything else has run, so the workflow publishes
+what was written and then turns the run red:
+- a test whose `meta` sets `holds_a_source` warned: it names rows that
+  int_closures__gate holds their source for (a club's wording in a published
+  column, a row outside its region box), and its rows are printed as a failed
+  test's are;
+- a model of one generated club notice source failed in stage A (a SQL error
+  on one source's rows): that source's raw tables are dropped from the
+  warehouse and stage A runs once more, so the gate holds the source as "not
+  in this warehouse" and it carries its last good rows. Any other failure in
+  stage A stops the build, as before;
+- some pub_ writers failed and every failure in that dbt run is a writer's
+  own (its model, or a test or unit test of it): each failed writer's file is
+  removed from the processed directory, so a half-written or untested file
+  is never there to publish, and its key keeps the bucket's last copy. The
+  log says which files were written. publish.py, told so by
+  OURHIKE_BUILD_PARTIAL, keeps a failed writer's key rather than refusing
+  the whole publish.
+The row history is still saved: the marts passed their tests, and a source
+held this way carries its rows rather than losing them (Reasoned).
+
 --dbt and --python differ in CI, where dbt is in the job's
 requirements-dbt.txt venv and the steps need requirements.txt's rasterio
 ($RUNNER_TEMP/pipeline); this file imports only the standard library, so it
@@ -168,6 +195,7 @@ warehouse.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import subprocess
@@ -185,6 +213,8 @@ DERIVED_SOURCE = "derived"
 # The first run, after which the manifest it wrote is checked against STEPS.
 SEED = "dbt seed"
 MANIFEST_PATH = DBT_DIR / "target" / "manifest.json"
+#: What the dbt run that just ended did, node by node: read for its failed tests, its warnings and its failed writers.
+RUN_RESULTS_PATH = DBT_DIR / "target" / "run_results.json"
 
 #: The scheduled lanes (the module docstring, "A LANE BUILDS ONLY ITS OWN NODES").
 MONTHLY, HOURLY = "monthly", "hourly"
@@ -378,6 +408,21 @@ SNAPSHOTS = "resource_type:snapshot"
 #: and nothing was saved. Not 0, so the workflow goes red once it has published; not 1, so it can tell.
 DEGRADED_EXIT = 4
 HISTORY_ON_FAILURE = ("fail", "degrade")
+#: build_marts.py's exit when the build finished with part of it held back (the module docstring, "ONE SOURCE OR ONE
+#: WRITER NEVER STOPS THE REST"): every file written may publish, and the workflow goes red once it has. Not 0 and not
+#: 1 for DEGRADED_EXIT's reason; and DEGRADED_PARTIAL_EXIT when the build was degraded too, so the workflow can say both.
+PARTIAL_EXIT = 5
+DEGRADED_PARTIAL_EXIT = 6
+#: The exits that mean "built, publish what was written": a dbt command or step that answers one of them itself is
+#: answered with 1, so the workflow never reads a failed build as a publishable one.
+PUBLISHABLE_EXITS = (DEGRADED_EXIT, PARTIAL_EXIT, DEGRADED_PARTIAL_EXIT)
+#: How much older than the writers' run a file may look and still count as written by it: publish.py's
+#: WRITER_CLOCK_SLACK_S, for the same filesystems, @unvalidated there.
+WRITER_CLOCK_SLACK_S = 2.0
+#: The `meta` key of a test whose warning means int_closures__gate held a source for the rows it returns.
+HOLDS_A_SOURCE = "holds_a_source"
+#: The readers seed: which raw tables are each club notice source's, and which of them are generated.
+NOTICE_READERS = DBT_DIR / "seeds" / "notice_readers.csv"
 
 
 @dataclass(frozen=True)
@@ -445,11 +490,18 @@ def started_history_stores(path: Path = HISTORY_STORES) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class Run:
-    """One command of the build: what the log calls it, its argv, and the directory it runs in."""
+    """One command of the build: what the log calls it, its argv, the directory it runs in, and which of the two dbt
+    runs main() answers a failure of differently it is (STAGE_A or WRITERS; the module docstring, "ONE SOURCE OR ONE
+    WRITER NEVER STOPS THE REST")."""
 
     label: str
     argv: tuple[str, ...]
     cwd: Path
+    stage: str = ""
+
+
+#: Run.stage of stage A, and of the pub_ writers' dbt run.
+STAGE_A, WRITERS = "stage_a", "writers"
 
 
 def _builds(
@@ -463,13 +515,16 @@ def _builds(
     after: tuple[str, ...],
     split: bool,
     manifest: dict | None,
+    stage: str = "",
 ) -> list[Run]:
     """One `dbt build -s <select> --exclude <exclude>`, or with `split` its three passes (the module docstring, "A MODEL
     TAGGED `builds_alone`"), `alone` being `common` at one thread. Given the manifest, a pass that selects nothing is
-    left out, and a build whose tagged-models pass selects nothing is not split at all."""
+    left out, and a build whose tagged-models pass selects nothing is not split at all. Every run carries `stage`, so
+    each of stage A's passes is answered as stage A (Run.stage)."""
 
     def run(name: str, options: tuple[str, ...], chosen: tuple[str, ...], excluded: tuple[str, ...]) -> Run:
-        return Run(name, (dbt, "build", *options, *(("-s", *chosen) if chosen else ()), "--exclude", *excluded, *after), DBT_DIR)
+        argv = (dbt, "build", *options, *(("-s", *chosen) if chosen else ()), "--exclude", *excluded, *after)
+        return Run(name, argv, DBT_DIR, stage)
 
     tagged, below = f"tag:{BUILDS_ALONE}", f"tag:{BUILDS_ALONE}+"
     # (a), (b) and (c) of the module docstring: name, options, -s items, --exclude items.
@@ -548,7 +603,7 @@ def plan(
     label = "stage A: everything no Python step reads back"
     if lane == HOURLY:
         label = "stage A of the hourly lane: every node an hourly or daily source reaches, no step reads back"
-    runs += _builds(label, **builds, select=selection, exclude=tuple(stage_a_exclude), after=after)
+    runs += _builds(label, **builds, select=selection, exclude=tuple(stage_a_exclude), after=after, stage=STAGE_A)
     for position, step in enumerate(running):
         arguments = step.command + (step.fixture_args if fixtures else dict(step.lane_args).get(lane, ()))
         runs.append(Run(step.name, (python, *(argument.format(**fields) for argument in arguments)), PIPELINE_DIR))
@@ -568,7 +623,7 @@ def plan(
         label = "the pub_ writers"
     if held or lane_exclude:
         writers += ("--exclude", *lane_exclude, *held)
-    runs.append(Run(label, (dbt, "build", *common, *writers, *after), DBT_DIR))
+    runs.append(Run(label, (dbt, "build", *common, *writers, *after), DBT_DIR, WRITERS))
     if history is not None:
         store = ("--url", history.url, "--warehouse", str(paths.warehouse))
         restore = (history.python, "row_history.py", "restore", *store, *(("--cold-start",) if history.cold_start else ()))
@@ -798,9 +853,16 @@ def _rows_query(result: dict, manifest: dict) -> str:
 
 
 def failed_test_rows(
-    warehouse: Path, since: float, results_path: Path | None = None, manifest_path: Path | None = None
+    warehouse: Path,
+    since: float,
+    results_path: Path | None = None,
+    manifest_path: Path | None = None,
+    *,
+    statuses: tuple[str, ...] = ("fail", "error"),
+    only: set[str] | None = None,
 ) -> list[str]:
-    """What each test that failed or errored in the dbt run that just ended returned, as log lines.
+    """What each test that failed or errored in the dbt run that just ended returned, as log lines (`statuses` to ask
+    for others, such as the warnings of the tests that hold a source; `only` to ask for these unique ids alone).
 
     dbt 2.0.6 prints a failed test's name and row count and nothing of the rows, and no artifact keeps the
     warehouse, so a failure on data only a live run holds (soak run 525, publish-conditions.yml 37216623795: three
@@ -809,7 +871,7 @@ def failed_test_rows(
     expression_is_true, the attached model's own failing rows, since soak run 526 printed its constant). `since` is when
     the run started:
     run_results.json older than that is an earlier stage's, and says nothing about this failure."""
-    path = results_path or DBT_DIR / "target" / "run_results.json"
+    path = results_path or RUN_RESULTS_PATH
     try:
         if path.stat().st_mtime < since:
             return []
@@ -819,7 +881,9 @@ def failed_test_rows(
     failed = [
         result
         for result in results
-        if result.get("unique_id", "").startswith("test.") and result.get("status") in ("fail", "error")
+        if result.get("unique_id", "").startswith("test.")
+        and result.get("status") in statuses
+        and (only is None or result.get("unique_id") in only)
     ]
     if not failed:
         return []
@@ -852,6 +916,199 @@ def failed_test_rows(
                 lines.append(f"(not asked again: {failure})")
             lines.append("::endgroup::")
     return lines
+
+
+def read_run_results(since: float, results_path: Path | None = None) -> list[dict] | None:
+    """The results of the dbt run that started at `since`, or None when run_results.json is missing, unreadable or an
+    earlier run's."""
+    path = results_path or RUN_RESULTS_PATH
+    try:
+        if path.stat().st_mtime < since:
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))["results"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _node(manifest: dict, unique_id: str) -> dict:
+    return (manifest.get("nodes") or {}).get(unique_id) or (manifest.get("unit_tests") or {}).get(unique_id) or {}
+
+
+def source_holds(results: list[dict], manifest: dict) -> set[str]:
+    """The tests that warned in this run and whose `meta` says a warning holds a source (HOLDS_A_SOURCE)."""
+    held = set()
+    for result in results:
+        if result.get("status") != "warn":
+            continue
+        node = _node(manifest, result.get("unique_id", ""))
+        meta = {**(node.get("meta") or {}), **((node.get("config") or {}).get("meta") or {})}
+        if meta.get(HOLDS_A_SOURCE):
+            held.add(result["unique_id"])
+    return held
+
+
+#: A dbt result that is a failure: a model or snapshot that errored, a test that failed or errored, and a node dbt
+#: skipped because something it needs failed.
+FAILED_STATUSES = ("error", "fail", "skipped", "runtime error")
+
+
+def _depends_on(manifest: dict, unique_id: str) -> list[str]:
+    node = _node(manifest, unique_id)
+    return list((node.get("depends_on") or {}).get("nodes") or []) + (
+        [node["attached_node"]] if node.get("attached_node") else []
+    )
+
+
+def failed_writers(results: list[dict], manifest: dict) -> tuple[dict[str, str], list[str]]:
+    """The pub_ writers this dbt run failed, each with why, and every other failure in it.
+
+    A writer fails when its own model did not succeed, or when a test or unit test of it failed: dbt builds a model
+    before its tests, so a writer whose not_null test failed has already written its file."""
+    models: dict[str, str] = {}
+    tests: dict[str, str] = {}
+    others: list[str] = []
+    for result in results:
+        unique_id = result.get("unique_id", "")
+        status = result.get("status")
+        if status not in FAILED_STATUSES:
+            continue
+        if _is_writer(unique_id):
+            models[unique_id] = f"its model finished {status}"
+            continue
+        tested = [node for node in _depends_on(manifest, unique_id) if _is_writer(node)]
+        if tested and unique_id.split(".", 1)[0] in ("test", "unit_test"):
+            # A test skipped because its writer failed says nothing the writer's own result does not.
+            if status != "skipped":
+                for writer in tested:
+                    tests.setdefault(writer, f"{unique_id} finished {status}")
+            continue
+        others.append(unique_id)
+    # A failed unit test says more than the writer dbt then skipped; a writer's own error, more than nothing.
+    return {**models, **tests}, others
+
+
+def writer_files(manifest: dict, writers: set[str] | list[str], processed_dir: Path) -> dict[str, Path]:
+    """Each writer's file in the processed directory, by its `location` (macros/materializations/phone_file.sql)."""
+    files = {}
+    for writer in writers:
+        location = (_node(manifest, writer).get("config") or {}).get("location")
+        if location:
+            files[writer] = processed_dir / location
+    return files
+
+
+def notice_readers(path: Path | None = None) -> list[dict[str, str]]:
+    with (path or NOTICE_READERS).open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _ancestor_sources(manifest: dict, unique_id: str) -> set[str]:
+    """Every source node above `unique_id`, by the manifest's parent_map (else each node's depends_on)."""
+    parents = manifest.get("parent_map")
+    seen: set[str] = set()
+    sources: set[str] = set()
+    queue = [unique_id]
+    while queue:
+        node = queue.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        if node.startswith("source."):
+            sources.add(node)
+            continue
+        queue.extend((parents.get(node) or []) if parents is not None else _depends_on(manifest, node))
+    return sources
+
+
+def one_sources_failures(results: list[dict], manifest: dict, readers: list[dict[str, str]]) -> dict[str, list[str]] | None:
+    """The generated club notice sources whose own models errored in this dbt run, each with its raw tables, or None
+    unless every failure in it is that (the module docstring, "ONE SOURCE OR ONE WRITER NEVER STOPS THE REST").
+
+    A model is one source's own when the only club notice raw tables above it are that one source's, and the source
+    is generated (seeds/notice_readers.csv's `staged_by` is a model, never `hand`): its base and staging models read
+    an absent table as typed and empty (macros/notices.sql's notice_raw_table), and the gate holds the source with
+    that reason. A union of several sources, a hand-staged source's model, any failed test or unit test, and anything
+    else is not one source's own, so the build stops on it as before. Skipped nodes are what a failure left unbuilt
+    and say nothing of their own."""
+    by_table = {row["raw_table"]: row for row in readers}
+    tables_of: dict[str, list[str]] = {}
+    for row in readers:
+        tables_of.setdefault(row["source_key"], []).append(row["raw_table"])
+    hand = {row["source_key"] for row in readers if row["staged_by"] == "hand"}
+    sources = manifest.get("sources") or {}
+    held: dict[str, list[str]] = {}
+    for result in results:
+        unique_id = result.get("unique_id", "")
+        status = result.get("status")
+        if status not in FAILED_STATUSES or status == "skipped":
+            continue
+        if not unique_id.startswith("model.") or status != "error":
+            return None
+        keys = set()
+        for source in _ancestor_sources(manifest, unique_id):
+            node = sources.get(source) or {}
+            for name in (node.get("identifier"), node.get("name")):
+                if name in by_table:
+                    keys.add(by_table[name]["source_key"])
+        if len(keys) != 1 or keys & hand:
+            return None
+        (key,) = keys
+        held[key] = sorted(set(tables_of[key]))
+    return held or None
+
+
+def drop_raw_tables(warehouse: Path, tables: list[str], schema: str = "raw") -> list[str]:
+    """Drop each of `tables` the warehouse holds in `schema`, a table or a view, and return the ones it held."""
+    import duckdb
+
+    dropped = []
+    with duckdb.connect(str(warehouse)) as con:
+        for table in tables:
+            found = con.execute(
+                "select table_type from information_schema.tables where table_schema = ? and table_name = ?", [schema, table]
+            ).fetchone()
+            if found is None:
+                continue
+            kind = "view" if found[0] == "VIEW" else "table"
+            con.execute(f'drop {kind} "{schema}"."{table}"')
+            dropped.append(table)
+    return dropped
+
+
+def _read_manifest() -> dict:
+    try:
+        return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _report_writers(results: list[dict], manifest: dict, failed: dict[str, str], processed_dir: Path, since: float) -> str:
+    """Remove each failed writer's file and say which files the others wrote: the lines publish-conditions.yml's log
+    keeps, and the summary for the build's last line.
+
+    A failed writer's file is removed whatever its age, so nothing it half-wrote, and nothing a test of it refused,
+    can be published; its key then keeps the bucket's last copy (publish.py's `kept`)."""
+    for writer, path in sorted(writer_files(manifest, failed, processed_dir).items()):
+        removed = path.exists()
+        path.unlink(missing_ok=True)
+        print(
+            f"::error title={writer.rsplit('.', 1)[-1]} failed::{failed[writer]}, so {path.name} "
+            f"{'is removed' if removed else 'was not written'} and its key keeps the bucket's last copy. Every other "
+            "writer's file still publishes, and the run goes red afterwards.",
+            flush=True,
+        )
+    succeeded = [
+        result["unique_id"]
+        for result in results
+        if _is_writer(result.get("unique_id", "")) and result.get("status") == "success" and result["unique_id"] not in failed
+    ]
+    wrote = sorted(
+        path.name
+        for path in writer_files(manifest, succeeded, processed_dir).values()
+        if path.exists() and path.stat().st_mtime >= since - WRITER_CLOCK_SLACK_S
+    )
+    print(f"-- build_marts: wrote {len(wrote)} file(s): {', '.join(wrote) or 'none'}", flush=True)
+    return f"{len(failed)} writer(s) failed: {', '.join(sorted(name.rsplit('.', 1)[-1] for name in failed))}"
 
 
 def derived_source_problems(manifest: dict, steps: list[Step]) -> list[str]:
@@ -986,6 +1243,10 @@ def main(argv: list[str] | None = None) -> int:
     # COPY creates no directory (phone_file.sql), and the writers write here.
     paths.processed_dir.mkdir(parents=True, exist_ok=True)
     degraded = False
+    # What this build held back and still finished, for PARTIAL_EXIT (the module docstring, "ONE SOURCE OR ONE WRITER
+    # NEVER STOPS THE REST").
+    partial: list[str] = []
+    stage_a_rerun = False
     position = 0
     while position < len(runs):
         run = runs[position]
@@ -993,6 +1254,45 @@ def main(argv: list[str] | None = None) -> int:
         print(f"-- build_marts {position}/{len(runs)}: {run.label}", flush=True)
         started = time.time()
         completed = subprocess.run(run.argv, cwd=run.cwd, env=env, check=False)
+        if completed.returncode != 0 and run.stage in (STAGE_A, WRITERS) and completed.returncode not in PUBLISHABLE_EXITS:
+            print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
+            for line in failed_test_rows(paths.warehouse, started):
+                print(line, flush=True)
+            results, manifest = read_run_results(started), _read_manifest()
+            if results is not None and run.stage == STAGE_A and not stage_a_rerun:
+                if held := one_sources_failures(results, manifest, notice_readers()):
+                    for key, tables in sorted(held.items()):
+                        dropped = drop_raw_tables(paths.warehouse, tables)
+                        print(
+                            f"::error title={key} held for a failed model::a model of {key} alone failed in {run.label}, "
+                            f"so its raw tables ({', '.join(dropped) or 'none held'}) are dropped from this build's "
+                            "warehouse and int_closures__gate holds it as not in this warehouse: it carries its last good "
+                            "rows, every other source still publishes, and the run goes red afterwards.",
+                            flush=True,
+                        )
+                    partial.append(f"{', '.join(sorted(held))} held for a failed model")
+                    stage_a_rerun = True
+                    position -= 1  # stage A once more, with those tables gone
+                    continue
+            if results is not None and run.stage == WRITERS:
+                writers, others = failed_writers(results, manifest)
+                if writers and not others:
+                    partial.append(_report_writers(results, manifest, writers, paths.processed_dir, started))
+                    continue
+            return completed.returncode
+        if completed.returncode == 0 and run.argv[1:2] == ("build",) and run.cwd == DBT_DIR:
+            results = read_run_results(started)
+            if results is not None and (holds := source_holds(results, _read_manifest())):
+                for line in failed_test_rows(paths.warehouse, started, statuses=("warn",), only=holds):
+                    print(line, flush=True)
+                for test in sorted(holds):
+                    print(
+                        f"::error title=A source held for its rows::{test} warned: int_closures__gate holds the source "
+                        "of each row it names, which carries its last good rows while every other source publishes. "
+                        "The run goes red afterwards.",
+                        flush=True,
+                    )
+                partial.append(f"{len(holds)} test(s) holding a source")
         if completed.returncode != 0 and run.label == RESTORE_LABEL and args.history_on_failure == "degrade":
             # The module docstring, "--history-on-failure degrade": build and publish with null dates, save nothing.
             print(
@@ -1010,8 +1310,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
             for line in failed_test_rows(paths.warehouse, started):
                 print(line, flush=True)
-            # DEGRADED_EXIT means built-and-publishable to publish-conditions.yml, so a command's own 4 is a 1.
-            return 1 if completed.returncode == DEGRADED_EXIT else completed.returncode
+            # PUBLISHABLE_EXITS mean built-and-publishable to publish-conditions.yml, so a command's own 4 is a 1.
+            return 1 if completed.returncode in PUBLISHABLE_EXITS else completed.returncode
         if run.label == SEED:
             manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
             checked = derived_source_problems(manifest, STEPS) + lane_problems(manifest, STEPS, args.lane)
@@ -1030,9 +1330,15 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
             runs = runs[:position] + again
+    if partial:
+        print(f"-- build_marts: built with part of it held back ({'; '.join(partial)})", flush=True)
     if degraded:
-        print(f"-- build_marts: built without the row history; exit {DEGRADED_EXIT}", flush=True)
-        return DEGRADED_EXIT
+        code = DEGRADED_PARTIAL_EXIT if partial else DEGRADED_EXIT
+        print(f"-- build_marts: built without the row history; exit {code}", flush=True)
+        return code
+    if partial:
+        print(f"-- build_marts: exit {PARTIAL_EXIT}: publish what was written, then go red", flush=True)
+        return PARTIAL_EXIT
     return 0
 
 

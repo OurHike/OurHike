@@ -72,10 +72,23 @@ models:
       # The lon/lat swap test, which the range test above cannot be: a swapped
       # point is still inside +/-180 and +/-90. Its boxes and their evidence are
       # tests/generic/lands_in_the_region_its_source_publishes_in.sql's.
+      #
+      # WARN, NOT ERROR (decision 81): int_closures__rows_outside_region runs
+      # the same boxes before the gate, which holds such a source, so a row
+      # this finds is one that hold leaves in the mart: a row carried from
+      # the row history, or an NWS alert, which reaches the warnings mart
+      # past the gate (the gate holds NWS's own file instead).
+      # `holds_a_source` makes build_marts.py print the rows and turn the run
+      # red after the publish. At error, one source's rows stopped every
+      # hourly file (soak runs 525 to 527).
       - lands_in_the_region_its_source_publishes_in:
           name: warnings_alert_areas_land_in_the_region_their_source_publishes_in
           arguments:
             geometry: st_geomfromgeojson(geom_geojson)
+          config:
+            severity: warn
+            meta:
+              holds_a_source: true
     columns:
       - name: warning_id
         description: >

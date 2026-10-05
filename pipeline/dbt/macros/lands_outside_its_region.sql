@@ -94,14 +94,22 @@
     the `regions` map, read by lands_outside_its_region and by
     point_outside_its_region, which the places union clears a stray point
     with (its own comment says why and how many it may clear).
+
+    `id_column`, where given, is a SQL expression for the row's own id,
+    carried as `row_id`, so a caller can name the row as well as its source
+    (int_closures__rows_outside_region, which holds the source in
+    int_closures__gate, decision 81).
 -#}
 {% macro lands_outside_its_region(
-    relation, geometry, source_key_column='source_key'
+    relation, geometry, source_key_column='source_key', id_column=none
 ) %}
 
 with placed as (
     select
         {{ source_key_column }} as source_key,
+        {%- if id_column %}
+        {{ id_column }} as row_id,
+        {%- endif %}
         {{ geometry }} as geom
     from {{ relation }}
 ),
@@ -109,6 +117,9 @@ with placed as (
 boxed as (
     select
         source_key,
+        {%- if id_column %}
+        row_id,
+        {%- endif %}
         st_xmin(geom) as xmin,
         st_xmax(geom) as xmax,
         st_ymin(geom) as ymin,

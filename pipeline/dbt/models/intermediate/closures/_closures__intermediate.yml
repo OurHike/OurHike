@@ -359,12 +359,45 @@ models:
         description: Whether the table is in this warehouse's `raw` schema.
         data_tests: [not_null]
 
+  - name: int_closures__rows_outside_region
+    description: >
+      The lon/lat swap test before the gate (decision 81): one row per
+      notice, alert or closed area of int_closures__unioned or
+      int_warnings__unioned, not held as not current, whose geometry reaches
+      outside the box its source publishes in
+      (macros/lands_outside_its_region.sql). int_closures__gate holds each
+      source with a row here, so the source carries its last good rows and
+      every other source and file publishes.
+    data_tests:
+      # Warn, not error (decision 81): the gate holds the source, so the row
+      # never reaches a mart. `holds_a_source` makes build_marts.py print the
+      # rows and turn the run red after the publish (its PARTIAL_EXIT). The
+      # marts' own region tests failed at error until then, and stopped every
+      # hourly file (soak runs 525 to 527).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "false"
+          config:
+            severity: warn
+            meta:
+              holds_a_source: true
+    columns:
+      - name: row_id
+        description: The row's notice_id, as the marts' key carries it.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The source int_closures__gate holds for it.
+        data_tests: [not_null]
+      - name: region
+        description: The box source_region() holds the source to.
   - name: int_closures__gate
     description: >
       The per-source gate: one row per source a conditions file is written
       from, with `passed` and `held_because`, so one bad ATC row holds back
       ATC's file and nothing else (pipeline/ELT.md, "A whole-file gate becomes
-      a per-source gate"). The marts keep only the notice sources that pass.
+      a per-source gate"). The marts keep only the notice sources that pass,
+      and a source with a row int_warnings__wording_leaks or
+      int_closures__rows_outside_region returns is held (decision 81).
       Each pub_conditions_* writer names its row in `meta.gate` and selects no
       row while it is held, so the phone keeps its last file and every other
       file is written; publish.py then fails the run for each held file.
@@ -775,6 +808,15 @@ unit_tests:
       empty closures layer is a good week.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -858,6 +900,15 @@ unit_tests:
       loaded run counted some, is a read that may have broken.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -934,6 +985,15 @@ unit_tests:
       holds back OurHike's closures and nothing else.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -1006,6 +1066,15 @@ unit_tests:
       list", read from the file landed whole, before any row's.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -1078,6 +1147,15 @@ unit_tests:
       that belongs to the other.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -1158,6 +1236,15 @@ unit_tests:
       report" rather than "not ours to publish".
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -1229,6 +1316,15 @@ unit_tests:
       sources' files are still written.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -1313,6 +1409,15 @@ unit_tests:
       the hold export_work_projects.py exits 0 for, whatever its rows hold.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -1387,6 +1492,15 @@ unit_tests:
       (skipped, no count) and the earlier one with posts do not decide.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -1464,6 +1578,15 @@ unit_tests:
       refused run's count of zero is no proof, because nothing of it loaded.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -1946,6 +2069,15 @@ unit_tests:
       rows come from the same three inputs.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -2102,6 +2234,15 @@ unit_tests:
       store.
     model: int_closures__gate
     given:
+      # Decision 81's two per-row checks, neither of which returns a row here.
+      - input: ref('int_warnings__wording_leaks')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id where false
+      - input: ref('int_closures__rows_outside_region')
+        format: sql
+        rows: |
+          select cast(null as varchar) as source_key, cast(null as varchar) as row_id, cast(null as varchar) as region where false
       - input: ref('int_closures__unioned')
         format: sql
         rows: |
@@ -2353,3 +2494,129 @@ unit_tests:
       rows:
         - {notice_id: 'club_held:ended_yesterday', obstructs_trail: true}
         - {notice_id: 'club_held:no_end', obstructs_trail: true}
+
+  - name: int_closures__gate_holds_a_source_whose_row_leaks_its_wording_or_lands_outside_its_region
+    description: >
+      Decision 81 (the maintainer's poll, 2026-10-05: "Hold that source and
+      publish the rest"): a club notice source with a row that holds its own
+      wording in a published column, and one with a row outside the box it
+      publishes in, are each held with that reason, the count and the first
+      row, where until then either test failed the whole build. A clean club
+      source beside them passes, and so do ATC, NYNJTC, OurHike and NWS's
+      reports. An NWS alert outside its box holds NWS's own file the same way.
+    model: int_closures__gate
+    given:
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'atc_trail_updates' as source_key, cast([] as varchar[]) as problems
+          union all
+          select 'nynjtc_trail_alerts', cast([] as varchar[])
+          union all
+          select 'ourhike_closures', cast([] as varchar[])
+      - input: ref('int_closures__atc_checked')
+        format: sql
+        rows: |
+          select 0 as file_row
+      - input: ref('base_atc__atc_updates')
+        rows:
+          - {atc_updates_document_key: d1, document_json: '{"reviewed_at": "2026-08-24", "updates": [{}]}'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: ourhike_reports, may_publish: true}
+          - {source_key: nws_alerts, may_publish: true}
+          - {source_key: 'reference/work_projects.json', may_publish: true}
+          - {source_key: club_clean, may_publish: true}
+          - {source_key: club_leaking, may_publish: true}
+          - {source_key: club_outside, may_publish: true}
+      - input: ref('base_ourhike__reports')
+        rows: []
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select 'k1' as nws_alert_key
+      - input: ref('int_closures__work_projects_checked')
+        format: sql
+        rows: |
+          select cast(null as bigint) as row_position, true as is_reviewed, cast([] as varchar[]) as row_problems, cast([] as varchar[]) as duplicate_problems
+      - input: ref('base_extract__runs')
+        format: sql
+        rows: |
+          select '20261003T000000.000000Z' as run_id, 'raw_nynjtc__nynjtc_trail_alerts' as table_name, 'loaded' as outcome, cast(1 as bigint) as rows_loaded, cast(1 as bigint) as count_proof
+          union all
+          select '20261003T000000.000000Z', 'raw_atc__atc_trail_updates', 'skipped', null, null
+          union all
+          select '20261003T000000.000000Z', 'raw_nysparks__oprhp_trail_closures', 'loaded', 0, 0
+          union all
+          select '20261003T000000.000000Z', 'raw_a__club_clean', 'loaded', 1, 1
+          union all
+          select '20261003T000000.000000Z', 'raw_a__club_leaking', 'loaded', 3, 3
+          union all
+          select '20261003T000000.000000Z', 'raw_a__club_outside', 'loaded', 2, 2
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand}
+          - {source_key: oprhp_trail_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__oprhp_trail_closures, staged_by: hand}
+          - {source_key: club_clean, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_clean, staged_by: stg_a__club_clean}
+          - {source_key: club_leaking, club: a, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_a__club_leaking, staged_by: stg_a__club_leaking}
+          - {source_key: club_outside, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_outside, staged_by: stg_a__club_outside}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates}
+          - {source_key: nynjtc_trail_alerts}
+          - {source_key: oprhp_trail_closures}
+          - {source_key: club_clean}
+          - {source_key: club_leaking}
+          - {source_key: club_outside}
+      - input: ref('int_closures__club_notices')
+        format: sql
+        rows: |
+          select 'club_clean' as source_key, cast(1 as bigint) as key_versions
+          union all
+          select 'club_leaking', 1
+          union all
+          select 'club_leaking', 1
+          union all
+          select 'club_leaking', 1
+          union all
+          select 'club_outside', 1
+          union all
+          select 'club_outside', 1
+      - input: ref('int_closures__notice_tables')
+        format: sql
+        rows: |
+          select source_key, raw_table, true as is_present
+          from (
+            values
+            ('club_clean', 'raw_a__club_clean'),
+            ('club_leaking', 'raw_a__club_leaking'),
+            ('club_outside', 'raw_a__club_outside')
+          ) as tables (source_key, raw_table)
+      # Two leaking values in one row count as one row, and the first row is
+      # the least id.
+      - input: ref('int_warnings__wording_leaks')
+        rows:
+          - {source_key: club_leaking, row_id: 'club_leaking:9', column_name: title}
+          - {source_key: club_leaking, row_id: 'club_leaking:2', column_name: title}
+          - {source_key: club_leaking, row_id: 'club_leaking:2', column_name: category}
+      - input: ref('int_closures__rows_outside_region')
+        rows:
+          - {source_key: club_outside, row_id: 'club_outside:1', region: eastern}
+          - {source_key: nws_alerts, row_id: 'nws_alerts:urn:x', region: us_and_territories}
+    expect:
+      rows:
+        - {source_key: atc_trail_updates, passed: true, held_because: null}
+        - {source_key: nynjtc_trail_alerts, passed: true, held_because: null}
+        - {source_key: oprhp_trail_closures, passed: true, held_because: null}
+        - {source_key: ourhike_closures, passed: true, held_because: null}
+        - {source_key: ourhike_reports, passed: true, held_because: null}
+        - {source_key: nws_alerts, passed: false, held_because: '1 nws_alerts row(s) reach outside the us_and_territories box its source publishes in, the first nws_alerts:urn:x: a lon/lat swap, or a source registered without its region (macros/lands_outside_its_region.sql), so none of its rows is published'}
+        - {source_key: 'reference/work_projects.json', passed: true, held_because: null}
+        - {source_key: club_clean, rows_total: 1, passed: true, held_because: null}
+        - {source_key: club_leaking, rows_total: 3, passed: false, held_because: '2 club_leaking row(s) hold the source''s own wording in a published column (decision 55), the first club_leaking:2, so none of its rows is published (int_warnings__wording_leaks names each)'}
+        - {source_key: club_outside, rows_total: 2, passed: false, held_because: '1 club_outside row(s) reach outside the eastern box its source publishes in, the first club_outside:1: a lon/lat swap, or a source registered without its region (macros/lands_outside_its_region.sql), so none of its rows is published'}

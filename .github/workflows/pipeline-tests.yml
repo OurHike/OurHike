@@ -249,6 +249,7 @@ jobs:
             pipeline/row_history_stores.toml
             pipeline/tests/test_dbt_row_dates_builds.py
             pipeline/tests/test_dbt_notice_tables_absent_builds.py
+            pipeline/tests/test_dbt_notice_source_held_for_its_rows_builds.py
             pipeline/tests/test_dbt_club_tables_absent_builds.py
             pipeline/tests/conftest.py
             pipeline/pyproject.toml
@@ -534,6 +535,20 @@ jobs:
         run: |
           # The fixture load imports dlt, which only the extract venv holds.
           OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_tables_absent_builds.py
+
+      # One club's row that leaks its wording and another's outside its region
+      # box (decision 81): two conditions builds in one warehouse, the history
+      # on, the second after those two invented edits. Both sources are held
+      # with their reasons and carry their last good rows, and every
+      # conditions writer still writes, where until decision 81 the build
+      # failed and wrote nothing. Measured 2026-10-05 in a four-core sandbox
+      # shared with other builds: its five tests took 350 s, and 496 s on a
+      # busier run, the fixture load and both builds included.
+      - name: A club held for its rows (tests/test_dbt_notice_source_held_for_its_rows_builds.py)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          # The fixture load imports dlt, which only the extract venv holds.
+          OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_held_for_its_rows_builds.py
 
       # A monthly layer that never landed is a missing raw table: one the
       # extract refused on its first run (extract/_run.py's ISOLATING_LANES),

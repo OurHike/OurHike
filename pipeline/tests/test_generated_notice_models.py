@@ -133,7 +133,8 @@ def test_a_conflicting_key_holds_its_source_and_never_stops_the_build(files):
 
 
 def test_no_pub_writer_reads_a_club_notice_model_except_through_the_marts():
-    """int_warnings__wording_leaks reads the finals, so a writer that read a club notice model directly would go unchecked."""
+    """int_warnings__wording_leaks reads the club rows the marts are built from (before the gate since decision 81), so a
+    writer that read a club notice model directly would go unchecked."""
     generated = {source.stg_model for source in generator.notice_sources() if not source.hand_staged}
     generated |= {source.base_model for source in generator.notice_sources() if not source.hand_staged}
     generated |= {

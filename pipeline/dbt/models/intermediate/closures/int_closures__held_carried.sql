@@ -39,15 +39,17 @@
 -- so the history holds none to carry.
 --
 -- WHAT IT DOES NOT DO. With OURHIKE_ROW_HISTORY=off, or on a cold start, the
--- history is empty and nothing is carried. With the history off,
--- pub_conditions_notices then keeps the phone's last file whole rather than
--- publishing a held club as having no notices (when_row_history_is_off()).
--- ON A COLD START IT DOES NOT: the history is on, so that guard is not
--- rendered, and a source held that build is published as having no notices.
--- So is a source held on every build since its history began, which has no
--- saved row to carry (traced from macros/row_history.sql and
--- build_marts.resolve_history() in the review of PR #1805 — dlt → dbt
--- re-platform as one go/no-go change, 2026-10-05; not yet fixed).
+-- history is empty and nothing is carried, and so for a source held on every
+-- build since its history began, which has no saved row to carry (review
+-- finding DBT-10 of PR #1805 — dlt → dbt re-platform as one go/no-go
+-- change, traced from macros/row_history.sql and
+-- build_marts.resolve_history()). pub_conditions_notices then keeps the
+-- phone's last file whole rather than publish such a club as having no
+-- notices: with the history off while any notice source is held
+-- (when_row_history_is_off()), and with it on while a source is held that
+-- this build read rows of. A held source this build read no rows of, with
+-- nothing to carry, is published as having none; that writer's header says
+-- why.
 with closures_history as (
     select
         'closures' as mart,

@@ -98,6 +98,23 @@
 -- any notice source that may publish is held the writer selects no row and
 -- the phone keeps its last file whole; with every source passing, it writes,
 -- with the two row dates null.
+-- NEVER "NO NOTICES" FOR A CLUB WHOSE NOTICES WERE READ AND HELD (review
+-- finding DBT-10, made more likely by decision 81's holds). A source the gate
+-- holds although this build read rows of it (a row leaking its wording, one
+-- outside its region box, a conflicting key, a row that cannot publish, an
+-- unreviewed ATC file), and of which the marts hold no row to carry (a cold
+-- start, or no build of this history ever passed it), would be published as
+-- having no notices while OurHike holds some. So the writer selects no row
+-- and the phone keeps its last file whole, with its own age, and the
+-- singular test assert_every_held_notice_source_with_notices_has_rows_to_carry
+-- turns the run red, naming the source. A held source this build read no
+-- rows of (its table absent, never loaded, or an empty read nothing proves)
+-- still publishes as having none when there is nothing to carry: with the
+-- history on, no file this history wrote carried a row of it either
+-- (Reasoned: every build that saves its history writes this file from the
+-- same marts; a --no-history-save build is the exception), and holding the
+-- file for it would stop every club's notices for as long as one source is
+-- never read, the outcome decision 81 rejected.
 --
 -- `conditions/atc_updates.json` and `conditions/nynjtc_alerts.json` are not
 -- touched: their writers, their parity lines and installed phones keep them
@@ -426,11 +443,24 @@ stated_rows as (
 ),
 
 -- Whether a notice source that may publish is held this build: in a build
--- without the row history its last good rows cannot be carried.
+-- without the row history its last good rows cannot be carried. And whether
+-- one is held with rows this build read and no row in the marts to carry
+-- (the header's DBT-10 paragraph): every row a held source has in the marts
+-- is carried, from the history or out of a feed's window.
+in_the_marts as (
+    select distinct source_key
+    from club_notices
+),
+
 held as (
-    select count(*) as sources_held
+    select
+        count(*) as sources_held,
+        count(*) filter (
+            where gate.rows_total > 0 and in_the_marts.source_key is null
+        ) as sources_held_with_nothing_carried
     from gate
     inner join notice_sources on gate.source_key = notice_sources.source_key
+    left join in_the_marts on gate.source_key = in_the_marts.source_key
     where not gate.passed and gate.may_publish
 ),
 
@@ -457,4 +487,5 @@ select
     published.notices
 from published
 cross join held
-{{ when_row_history_is_off('where held.sources_held = 0') }}
+where held.sources_held_with_nothing_carried = 0
+{{ when_row_history_is_off('and held.sources_held = 0') }}

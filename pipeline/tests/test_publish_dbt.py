@@ -56,6 +56,7 @@ def gates(monkeypatch, tmp_path):
     monkeypatch.setenv(publish.WRITE_ENABLED_ENV_VAR, "true")
     monkeypatch.setenv(data_env.ENVIRONMENT_VAR, data_env.PRODUCTION)
     monkeypatch.delenv(publish.PHONE_FILES_ENV_VAR, raising=False)
+    monkeypatch.delenv(publish.BUILD_PARTIAL_ENV_VAR, raising=False)
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path / "processed")
     monkeypatch.setattr(publish, "RAW_DIR", tmp_path / "raw")
 
@@ -135,6 +136,16 @@ class Project:
     def collect(self, gate=None) -> publish.DbtPhoneFiles:
         return publish.collect_dbt_phone_files(
             self.target / "manifest.json", self.target / "run_results.json", processed_dir=self.out, gate=gate
+        )
+
+    def collect_partial(self, gate=None) -> publish.DbtPhoneFiles:
+        """collect(), as after a build that exited build_marts.py's PARTIAL_EXIT."""
+        return publish.collect_dbt_phone_files(
+            self.target / "manifest.json",
+            self.target / "run_results.json",
+            processed_dir=self.out,
+            gate=gate,
+            writers_may_fail=True,
         )
 
 
@@ -305,6 +316,60 @@ def test_a_writer_that_did_not_succeed_refuses(project):
     _write_all(project)
     project.build(status="error")
 
+    with pytest.raises(RuntimeError, match="finished 'error'"):
+        project.collect()
+
+
+def _fail(project: Project, writers: dict[str, str] | None = None, tests: dict[str, str] | None = None) -> None:
+    """Rewrite the last build's run results: each of `writers` finished with that status, and each writer of `tests`
+    has a not_null test of its own, attached to it in the manifest, that finished with that status."""
+    manifest = json.loads((project.target / "manifest.json").read_text())
+    run_results = json.loads((project.target / "run_results.json").read_text())
+    for result in run_results["results"]:
+        result["status"] = (writers or {}).get(result["unique_id"], result["status"])
+    for writer, status in (tests or {}).items():
+        test_id = f"test.ourhike.not_null_{writer.rsplit('.', 1)[-1]}_generated_at.1"
+        manifest["nodes"][test_id] = {"attached_node": writer, "depends_on": {"nodes": [writer]}}
+        run_results["results"].append({"unique_id": test_id, "status": status, "failures": 1})
+    (project.target / "manifest.json").write_text(json.dumps(manifest))
+    (project.target / "run_results.json").write_text(json.dumps(run_results))
+
+
+def test_a_writer_whose_own_test_failed_refuses_because_its_file_is_already_written(project):
+    """dbt builds a model before its tests, so the file is on disk: it must not pass as written."""
+    _write_all(project)
+    project.build()
+    _fail(project, tests={"model.ourhike.pub_registry": "fail"})
+
+    with pytest.raises(RuntimeError, match="not_null_pub_registry_generated_at.1 finished 'fail'"):
+        project.collect()
+
+
+def test_after_a_partial_build_a_failed_writers_key_is_kept_its_file_unread_and_the_rest_collected(project):
+    """Decision 81 and soak run 531: one writer's error published nothing, though six others had written. Under
+    OURHIKE_BUILD_PARTIAL a failed writer's key keeps the bucket's last copy, and so does one whose own test failed,
+    whatever is on disk under their names, and every other file is collected."""
+    _write_all(project)
+    project.write("stewards.json", '{"stewards": ["half wri')
+    project.build()
+    _fail(project, writers={"model.ourhike.pub_stewards": "error"}, tests={"model.ourhike.pub_registry": "fail"})
+
+    found = project.collect_partial()
+
+    assert set(found.artifacts) == {"conditions/atc_updates.json"}
+    assert set(found.failed) == {"stewards.json", "registry.json"}
+    assert "pub_stewards failed this run (its model finished 'error')" in found.kept["stewards.json"]
+    assert found.held == {}, "a failed writer is not a held source; the workflow's last step turns the run red"
+
+
+def test_a_partial_build_is_read_from_the_environment_publish_conditions_sets(monkeypatch, project):
+    _write_all(project)
+    project.build()
+    _fail(project, writers={"model.ourhike.pub_stewards": "error"})
+    monkeypatch.setenv(publish.BUILD_PARTIAL_ENV_VAR, "true")
+
+    assert "stewards.json" in project.collect().failed
+    monkeypatch.setenv(publish.BUILD_PARTIAL_ENV_VAR, "")
     with pytest.raises(RuntimeError, match="finished 'error'"):
         project.collect()
 
@@ -688,6 +753,27 @@ def test_main_publishes_every_other_file_and_then_fails_for_a_held_one(monkeypat
     assert "conditions/nynjtc_alerts.json" not in published
     out = capsys.readouterr().out
     assert f"::error title=conditions/nynjtc_alerts.json not rewritten::nynjtc_trail_alerts is held: {HELD.held_because}" in out
+
+
+def test_main_after_a_partial_build_publishes_what_was_written_and_keeps_the_failed_writers_key(
+    monkeypatch, s3_client, project, capsys
+):
+    """publish-conditions.yml sets OURHIKE_BUILD_PARTIAL when build_marts.py exited PARTIAL_EXIT; its last step,
+    not publish.py, turns the run red."""
+    _write_gated(project)
+    project.write("conditions_nynjtc_alerts.json", '{"nynjtc_alerts": [')
+    project.build(writers=GATED)
+    _fail(project, writers={"model.ourhike.pub_conditions_nynjtc_alerts": "error"})
+    _main_on_dbt(monkeypatch, s3_client, project, {"nynjtc_trail_alerts": PASSED, "ourhike_closures": PASSED})
+    monkeypatch.setenv(publish.BUILD_PARTIAL_ENV_VAR, "true")
+
+    result = publish.main()
+
+    published = _keys(s3_client)
+    assert result["version_written"] is True
+    assert "stewards.json" in published and "conditions/closures.json" in published
+    assert "conditions/nynjtc_alerts.json" not in published
+    assert "KEPT: conditions/nynjtc_alerts.json carries the bucket's last good file forward" in capsys.readouterr().out
 
 
 def test_main_fails_for_a_held_file_when_nothing_else_changed(monkeypatch, s3_client, project):

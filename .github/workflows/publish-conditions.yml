@@ -1003,9 +1003,11 @@ jobs:
       # bake. A refusal exits 3: this step records it, and the last step
       # fails the run after everything that loaded is published. A refused
       # row whose sources.json says reaches_hikers false exits 0 instead
-      # (extract/_run.py's exit_status()). A leg takes on at most 10 tables
-      # it has never loaded per run (NEW_TABLES_PER_LEG_RUN), because run
-      # 506 met 70 at once and this step's cap stopped its load.
+      # (extract/_run.py's exit_status()). This leg takes on every table it
+      # has never loaded in one run (NEW_TABLES_PER_LEG_RUN's None for the
+      # conditions job): one left waiting would be absent from the warehouse
+      # and fail the build below. The limit of 10 it had came from run 506,
+      # which met 70 new layers at once, all of them the notices job's now.
       #
       # THE BUDGET: change checks end after 45 s (extract/_run.py's
       # LEG_CHECK_SECONDS), then 150 s of reading, inside the 6-minute step

@@ -196,16 +196,20 @@ def job_of(resource: Resource) -> str:
 # A LEG TAKES ON AT MOST THIS MANY TABLES IT HAS NEVER LOADED IN ONE RUN, after
 # every table it has (take_on_new_tables()); the rest wait, logged
 # INCOMPLETE as "not yet loaded", and come on over the next runs. One number
-# per job, because the two jobs have different budgets.
+# per job, because the two jobs have different budgets; None takes on every one.
 #
-# The conditions job's 10: soak run 506 (publish-conditions.yml 37154645937,
-# 2026-10-03) met 70 new hourly layers at once: 85 resources to read, the
-# 150 s read budget spent, and the extract step killed at its 4-minute cap
-# during dlt's load, so nothing committed and the next run would have met the
-# same 85. Run 505, an hour earlier, read 13 and loaded them inside 58 s. 10
-# is @unvalidated: it keeps a run near 505's size plus ten. Since decision 61
-# a conditions leg carries twelve tables, so the limit bites only on a new
-# store's first two runs, or when a source joins HOURLY_JOB_TABLES.
+# The conditions job's None: every one of its tables, on a new store's first
+# run. A waiting table lands no hints, so it is absent from the warehouse, and
+# a conditions table absent there fails the whole hourly build: its base
+# models read source() directly (base_ourhike__reports.sql among them). With
+# the limit of 10 this was, a new store's first run left raw_ourhike__reports
+# and raw_ourhike__work_projects waiting, and production's conditions store
+# has never been written (EXR-4 in PR #1805's review). The limit came from
+# soak run 506 (publish-conditions.yml 37154645937, 2026-10-03), which met 70
+# new hourly layers at once and overran its step; those layers are the
+# notices job's since decision 61, and a conditions leg carries twelve tables.
+# Run 505, an hour before 506, read 13 and loaded them inside 58 s, so twelve
+# at once fit the step (Reasoned from that one run).
 #
 # The notices job's 150, Reasoned from run 506 and @unvalidated. In 506 the
 # read budget ended at 21:22:23Z and the step was killed at 21:23:42Z, and in
@@ -219,7 +223,7 @@ def job_of(resource: Resource) -> str:
 # come on in two runs, where 10 a run would take 27. What would settle it:
 # the "Seconds:" line of the first two notices runs' summaries, against the
 # tables each took on.
-NEW_TABLES_PER_LEG_RUN = {CONDITIONS_JOB: 10, NOTICES_JOB: 150}
+NEW_TABLES_PER_LEG_RUN: dict[str, int | None] = {CONDITIONS_JOB: None, NOTICES_JOB: 150}
 # A LEG'S CHANGE CHECKS END AFTER THIS MANY SECONDS, as its reads do after
 # --read-seconds (by_folder()). A check still out is refused on its own: its
 # last committed table stands and it is not read this run. One number per
@@ -511,8 +515,10 @@ def stops_the_leg(resource: Resource) -> bool:
     return isinstance(resource, ConditionsQuery)
 
 
-def take_on_new_tables(report: RunReport, to_run: list[Planned], current: dict, log: list[dict], limit: int) -> list[Planned]:
-    """`to_run` less the never-loaded resources past `limit`, which go in `report.waiting`.
+def take_on_new_tables(
+    report: RunReport, to_run: list[Planned], current: dict, log: list[dict], limit: int | None
+) -> list[Planned]:
+    """`to_run` less the never-loaded resources past `limit`, which go in `report.waiting`; all of it for None.
 
     Every resource whose table has a logged, committed load (`current`) runs
     as before. Of the rest, those never tried come first, then those refused
@@ -520,7 +526,7 @@ def take_on_new_tables(report: RunReport, to_run: list[Planned], current: dict, 
     and cannot hold the others out; ties go by name.
     """
     new = [item for item in to_run if item.resource.table not in current]
-    if len(new) <= limit:
+    if limit is None or len(new) <= limit:
         return to_run
     tried: dict[str, str] = {}
     for row in log:

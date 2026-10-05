@@ -555,10 +555,32 @@ def test_a_never_loaded_table_refused_last_run_waits_behind_one_never_tried(stor
     assert set(second.waiting) == {"raw_c1__closures"} and second.rows == {"raw_c2__closures": 1}
 
 
-def test_each_job_takes_on_new_tables_by_its_own_limit(store, monkeypatch):
-    """The notices legs' hour holds more first reads than the conditions legs' 150 seconds (NEW_TABLES_PER_LEG_RUN)."""
+def every_conditions_table() -> list[Resource]:
+    """One stand-in per HOURLY_JOB_TABLES table, OurHike's own as ConditionsQuery, each with one row and its count."""
+    resources = []
+    for table in sorted(_run.HOURLY_JOB_TABLES):
+        club, key = table.removeprefix("raw_").split("__", 1)
+        kind = OurhikeAnswer if club == "ourhike" and key != "work_projects" else ClubAnswer
+        resources.append(kind(key=key, club=club, type="closures", answer=({"id": f"{key}-1"},), count=1))
+    assert {resource.table for resource in resources} == set(_run.HOURLY_JOB_TABLES)
+    return resources
+
+
+def test_a_new_conditions_store_takes_on_every_one_of_its_tables_on_its_first_run(store):
+    """EXR-4 in PR #1805's review: a conditions leg took on 10 of its 12 never-loaded tables, and left
+    raw_ourhike__reports and raw_ourhike__work_projects waiting with no hints, so neither was in the warehouse and
+    the hourly build failed on the base models that read them. Production's store has never been written."""
+    report = leg(store, *every_conditions_table(), name=CONDITIONS)
+
+    assert report.waiting == {}, "a conditions table absent from the warehouse fails the hourly build"
+    assert set(report.rows) == set(_run.HOURLY_JOB_TABLES)
+
+
+def test_the_notices_job_takes_on_new_tables_by_its_limit_and_the_conditions_job_takes_on_all_of_its_own(store, monkeypatch):
+    """The notices legs meet hundreds of first reads at once (NEW_TABLES_PER_LEG_RUN); a conditions leg's twelve
+    tables are each one the hourly build cannot do without, so none waits."""
     assert set(_run.NEW_TABLES_PER_LEG_RUN) == set(_run.JOBS)
-    monkeypatch.setitem(_run.NEW_TABLES_PER_LEG_RUN, _run.CONDITIONS_JOB, 1)
+    assert _run.NEW_TABLES_PER_LEG_RUN[_run.CONDITIONS_JOB] is None
     monkeypatch.setitem(_run.NEW_TABLES_PER_LEG_RUN, _run.NOTICES_JOB, 2)
 
     conditions = leg(store, ourhike_closures("o1", count=1), nynjtc_alerts("n1", count=1), name=CONDITIONS)
@@ -566,7 +588,7 @@ def test_each_job_takes_on_new_tables_by_its_own_limit(store, monkeypatch):
         {**store, "url": store["url"] + "/n"}, *(club_closures(club, f"{club}-1", count=1) for club in ("c1", "c2", "c3"))
     )
 
-    assert set(conditions.waiting) == {"raw_ourhike__closures"}, "1 a run: nynjtc's by name, then OurHike's"
+    assert conditions.waiting == {} and set(conditions.rows) == {"raw_ourhike__closures", "raw_nynjtc__nynjtc_trail_alerts"}
     assert set(notices.waiting) == {"raw_c3__closures"}, "2 a run"
 
 

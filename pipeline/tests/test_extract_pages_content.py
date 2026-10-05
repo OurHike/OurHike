@@ -400,6 +400,48 @@ def test_a_foothills_paragraph_continues_a_label_only_in_that_labels_shape():
     }, "a note for campers is the conservancy's prose, not a trailhead"
 
 
+FOOTHILLS_INDEX = "https://foothillstrail.org/section-by-section-2/"
+FOOTHILLS_SECTION = "https://foothillstrail.org/portfolio/fixture-s1/"
+# Two trailheads shaped like the S1 spur's, which monthly run 20 (2026-10-05) refused: 'S1 Sassafras Mountain, SC Hwy
+# 178, F Van Clayton Memorial Hw…', 167 characters for both ends joined. These are 90 and 86 characters, 178 joined.
+FOOTHILLS_LONG_HEADS = [
+    "S1 Fixture Mountain, SC Hwy 178, Fixture Memorial Highway, 4.5 miles north of Rocky Bottom",
+    "S2 Fixture Gorge Access, SC Hwy 130, Fixture Lake Road, 2.0 miles south of Fixture Gap",
+]
+
+
+def foothills(registry_path, requests_mock, trail_heads: list[str]) -> ContentPages:
+    """foothills_sections over a registry holding only it: an index linking one section whose Trail Head lines are these."""
+    registry_path.write_text(json.dumps({"sources": [{"key": "foothills_sections", "url": FOOTHILLS_INDEX}]}))
+    _kinds._registry.cache_clear()
+    requests_mock.get(FOOTHILLS_INDEX, text=f'<h1>Section By Section</h1><a href="{FOOTHILLS_SECTION}"></a><h2>Fixture S1</h2>')
+    heads = f"<p>Trail Head: {trail_heads[0]}</p>" + "".join(f"<p>{head}</p>" for head in trail_heads[1:])
+    requests_mock.get(
+        FOOTHILLS_SECTION,
+        text=f"<h1>Fixture Mountain (S1) To Fixture Gorge (S2)</h1><p>Distance: 3.5 miles</p>{heads}<p>Features:</p>",
+    )
+    return content_pages("foothills_sections", club="foothills", type="suggested_hikes")
+
+
+def test_a_foothills_section_whose_two_trailheads_join_past_the_fact_cap_lands_both_ends_joined(registry, requests_mock):
+    """Each trailhead is one fact under MAX_FACT_CHARS; joined by '; ' they are two facts, not a paragraph."""
+    assert all(len(head) <= MAX_FACT_CHARS for head in FOOTHILLS_LONG_HEADS)
+    assert len("; ".join(FOOTHILLS_LONG_HEADS)) > MAX_FACT_CHARS
+
+    (row,) = list(foothills(registry, requests_mock, FOOTHILLS_LONG_HEADS).rows({}))
+
+    assert row["place"] == "; ".join(FOOTHILLS_LONG_HEADS)
+    assert (row["name"], row["distance_mi"]) == ("Fixture Mountain (S1) To Fixture Gorge (S2)", 3.5)
+
+
+def test_a_foothills_trailhead_longer_than_the_fact_cap_on_its_own_still_refuses_as_prose(registry, requests_mock):
+    one_paragraph = "S1 " + "fixture paragraph " * 9
+    assert len(one_paragraph.strip()) > MAX_FACT_CHARS
+
+    with pytest.raises(ValueError, match="place is 164 characters, prose rather than a fact"):
+        list(foothills(registry, requests_mock, [one_paragraph, FOOTHILLS_LONG_HEADS[1]]).rows({}))
+
+
 def test_a_tuscarora_section_with_no_elevation_line_refuses():
     lines = "<p>Section 1: Fixture Gap</p><p>Fixture Road to Fixture Gap, 12 miles.</p><p>Highlights: x</p>"
     pages = {"https://www.hikethetuscarora.org/section-1-3": Page("x", parse_html(lines))}

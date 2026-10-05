@@ -543,13 +543,22 @@ def guarded_get(source: _NoticeSource, url: str, headers: dict | None = None) ->
 
 
 def checked_row(key: str, type_: str, columns: dict[str, str], row: dict) -> dict:
-    """`row` with every one of `columns` present, or a raise for a column outside them or a text too long for a fact."""
+    """`row` with every one of `columns` present, or a raise for a column outside them or a text too long for a fact.
+
+    A list of texts is several facts for one column (a Foothills section's two trailheads): each is held to
+    MAX_FACT_CHARS on its own, and they land joined by '; ', since two facts side by side are not a paragraph.
+    """
     if extra := sorted(set(row) - set(columns)):
         raise ValueError(f"{key}: the parser returned {extra}, outside {type_}'s columns (decision 55)")
-    for name, value in row.items():
-        if isinstance(value, str) and name not in URL_COLUMNS and len(value) > MAX_FACT_CHARS:
-            raise ValueError(f"{key}: {name} is {len(value)} characters, prose rather than a fact: {value[:60]!r}")
-    return {name: row.get(name) for name in columns}
+    checked = {}
+    for name in columns:
+        value = row.get(name)
+        parts = [part for part in map(fact, value) if part] if isinstance(value, list) else [value]
+        for part in parts:
+            if isinstance(part, str) and name not in URL_COLUMNS and len(part) > MAX_FACT_CHARS:
+                raise ValueError(f"{key}: {name} is {len(part)} characters, prose rather than a fact: {part[:60]!r}")
+        checked[name] = ("; ".join(parts) or None) if isinstance(value, list) else value
+    return checked
 
 
 def content_pages(key: str, *, site: str | None = None, crawl_delay: float = 0.0, **overrides) -> ContentPages:
@@ -894,9 +903,10 @@ def _foothills_sections(page: Page, fetch) -> list[dict]:
                 "name": fact(heading.text()),
                 "distance_mi": distance,
                 "distance_text": distance_text,
-                "difficulty": fact("; ".join(facts.get("difficulty", []))),
-                "blazes": fact("; ".join(facts.get("blazes", []))),
-                "place": fact("; ".join(facts.get("trail head", []))),
+                # Lists, which checked_row holds to the cap one fact at a time and joins by '; '.
+                "difficulty": facts.get("difficulty", []),
+                "blazes": facts.get("blazes", []),
+                "place": facts.get("trail head", []),
                 "link": section.url,
                 "source_url": section.url,
             }

@@ -730,8 +730,8 @@ models:
       - name: hike_key
         description: >
           The row's key (decision 40): dbt_utils.generate_surrogate_key over
-          nps_things_to_do, id, the registry key first and then the fields measured unique
-          for this layer.
+          nps_things_to_do, id, url, the registry key first and then the fields measured
+          unique for this layer.
         data_tests: [not_null, unique]
   - name: base_nps__nps_tours
     data_tests:

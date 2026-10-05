@@ -5,14 +5,20 @@
 -- nothing filtered and nothing joined. A base model, the one place this
 -- dataset is staged (decision 34).
 --
--- Key: `id`, NPS's own GUID for each item: present and unique on the 1 rows
--- of a sample read on 2026-10-04; the full read was refused by the public
--- DEMO_KEY's shared hourly limit (HTTP 429 OVER_RATE_LIMIT, 08:42 UTC). The
--- reader itself raises on a missing or repeated id within a read
--- (extract/_content.py's NpsContent), so a landed table is unique on it by
--- construction; that the whole list is, and that the id is stable from one
--- read to the next, is @unvalidated until the first monthly run under
--- NPS_API_KEY reads every row and re-measures it.
+-- Key: `id` with `url`. `id` alone, NPS's own GUID for each item, is not
+-- unique: monthly runs 17, 18, 19 and 20 (refresh-reference.yml
+-- 37232256991, 37245577210, 37253303123 and 37296900535, 2026-10-04 and
+-- 2026-10-05) each refused the list on one repeated `id`, the same one
+-- every time (1360BAA5-3EE8-4403-9A09-286E06648D59), at pages of 500 (runs
+-- 17 and 18) and of 100 (runs 19 and 20), run 20 on both of its reads. A
+-- list whose order moved during a read would not repeat the same item at
+-- two page sizes four times, so NPS lists that id on two items (Reasoned
+-- from the four refusals), as it lists one id twice in nps_api_places,
+-- which keys on `id` and `url` since runs 17 and 18. That the two items
+-- differ in `url` is @unvalidated: no refusal named what differs. If they
+-- share `url` too, extract/_content.py's NpsContent still refuses the list,
+-- and its refusal now names the fields the two copies differ in, so the
+-- next monthly run's log says what would tell them apart.
 with source as (
     -- A content table carries no geometry and is cast nowhere: each column is
     -- as dlt landed it (a WordPress date a timestamp, a feed's pubDate the
@@ -20,7 +26,7 @@ with source as (
     select *
     from {{ raw_or_empty(
         source('nps', 'raw_nps__nps_things_to_do'),
-        ['id', 'title', 'url']
+        ['id', 'url', 'title']
     ) }}
 ),
 
@@ -29,6 +35,7 @@ renamed as (
         {{ dbt_utils.generate_surrogate_key([
             "'nps_things_to_do'",
             'id',
+            'url',
         ]) }} as hike_key,
         source.*
     from source

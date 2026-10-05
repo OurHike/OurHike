@@ -13,6 +13,7 @@ monthly lane; and two templates on one wiki are two reads, not one dataset extra
 """
 
 import json
+import re
 import xml.etree.ElementTree as ElementTree
 from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit
@@ -44,6 +45,7 @@ NOTES_FEED = "https://feeds.example.org/notes.rss"
 AUDIO = "https://nps.example.gov/api/v1/multimedia/audio"
 ASSETS = "https://nps.example.gov/api/v1/multimedia/galleries/assets"
 ALERTS = "https://nps.example.gov/api/v1/alerts"
+THINGS_TO_DO = "https://nps.example.gov/api/v1/thingstodo"
 SITE = "https://club.example.org"
 WIKI = "https://club.example.org/clubwiki/api.php"
 
@@ -59,6 +61,7 @@ def registry(tmp_path, monkeypatch):
         {"key": "nps_audio", "url": AUDIO, "person_fields": ["transcript"]},
         {"key": "nps_assets", "url": ASSETS, "park_codes_from": "nps_alerts"},
         {"key": "nps_alerts", "url": ALERTS, "park_codes": {"semo": ["semo"], "lecl": ["lc-trust", "lcthf"]}},
+        {"key": "nps_todo", "url": THINGS_TO_DO, "key_fields": ["id", "url"]},
         {"key": "guide_pages", "url": f"{SITE}/trails/"},
         {"key": "club_hikes", "url": f"{SITE}/wp-json/wp/v2/hikes"},
         {"key": "wiki_notices", "url": WIKI, "template": "Template:Announcement"},
@@ -304,8 +307,41 @@ def test_a_repeated_nps_id_refuses_the_read(registry, key, requests_mock):
     """Repeated on the second read as well, so the list is refused and its last committed table stands."""
     requests_mock.get(AUDIO, json={"total": "2", "data": [clip(1), clip(1)]})
 
-    with pytest.raises(RuntimeError, match="missing or repeated"):
+    with pytest.raises(RuntimeError, match="id .* is repeated within one read, the copies exact"):
         list(NpsContent(key="nps_audio", club="nps", type="podcasts").rows({}))
+    assert requests_mock.call_count == 2, "read twice, then refused"
+
+
+def thing_to_do(n: int, url: str, title: str | None = None) -> dict:
+    return {"id": "00000000-0000-4000-8000-000000001360", "url": url, "title": title or f"Fixture Hike {n}"}
+
+
+def test_an_nps_list_keyed_on_id_and_url_lands_two_things_to_do_that_share_an_id(registry, key, requests_mock, capsys):
+    """Monthly runs 17 to 20 refused nps_things_to_do on one repeated id at pages of 500 and 100, so NPS lists it twice.
+
+    Keyed on `id` and `url`, as its sources.json row now is, two items under one id at two URLs are two items: the
+    list is read once and both land. Before the fix the repeated id refused the list on both reads.
+    """
+    rows = [
+        thing_to_do(1, "https://www.nps.gov/thingstodo/fixture-1.htm"),
+        thing_to_do(2, "https://www.nps.gov/thingstodo/fixture-2.htm"),
+    ]
+    requests_mock.get(THINGS_TO_DO, json={"total": "2", "data": rows})
+    proofs = {}
+
+    landed = list(NpsContent(key="nps_todo", club="nps", type="suggested_hikes").rows(proofs))
+
+    assert landed == rows and proofs == {"raw_nps__nps_todo": 2}
+    assert requests_mock.call_count == 1 and "reading the list again" not in capsys.readouterr().out
+
+
+def test_two_nps_copies_of_one_id_and_url_that_differ_in_title_are_refused_naming_the_field(registry, key, requests_mock):
+    """The key holds `url` too, but one key on two different items still refuses, as JsonFeatures' differing copies do."""
+    same = "https://www.nps.gov/thingstodo/fixture-1.htm"
+    requests_mock.get(THINGS_TO_DO, json={"total": "2", "data": [thing_to_do(1, same), thing_to_do(2, same)]})
+
+    with pytest.raises(RuntimeError, match=r"id / url .* is repeated within one read, the copies differing in title\b"):
+        list(NpsContent(key="nps_todo", club="nps", type="suggested_hikes").rows({}))
     assert requests_mock.call_count == 2, "read twice, then refused"
 
 
@@ -394,11 +430,87 @@ def test_an_nps_page_cut_short_twice_is_refused_naming_how_far_short_of_its_cont
     assert requests_mock.call_count == 2, "asked twice, then refused"
 
 
+def test_an_nps_page_that_will_not_parse_is_refused_naming_where_in_the_list_the_page_starts(registry, key, requests_mock):
+    """Runs 18 to 20 named the list and not the page; the refusal now names the page by its `start`."""
+    server = FakeList(requests_mock, AUDIO, [clip(n) for n in range(5)], cap=2)
+
+    def second_page_cut(request, context):
+        body = json.dumps(server.answer(request, context))
+        return body[: len(body) // 2] if query(request)["start"] == "2" else body
+
+    requests_mock.get(AUDIO, text=second_page_cut)
+
+    with pytest.raises(_json_apis.NotJson, match=r"^nps_audio from 2 answered"):
+        list(NpsContent(key="nps_audio", club="nps", type="podcasts").rows({}))
+
+
 def test_an_unparsed_answer_with_no_content_length_says_there_was_nothing_to_compare_it_against(requests_mock):
     requests_mock.get(AUDIO, text='{"data": ["cut', headers={"Content-Type": "application/json"})
 
     with pytest.raises(ValueError, match="no Content-Length to compare against"):
         _json_apis._json(_json_apis._get(AUDIO), "nps_audio")
+
+
+# What makes the extract job's JSON parser say "Unterminated string starting at", which refused nps_multimedia_audio in
+# monthly runs 18, 19 and 20 (refresh-reference.yml 37245577210, 37253303123 and 37296900535). The parser is the one
+# `requests` picks: simplejson, which requirements-extract.txt and requirements-dev.txt both pin. A transcript-long
+# string, escapes and all, as JSON writes them: 192,000 characters.
+TRANSCRIPT = 'Fixture words, \\"quoted\\", then a line break\\n. ' * 4000
+LONG_BODY = ('{"data": [{"id": "clip-1", "transcript": "' + TRANSCRIPT + '"}]}').encode()
+
+
+def json_answer(requests_mock, body: bytes):
+    requests_mock.get(AUDIO, content=body, headers={"Content-Type": "application/json;charset=utf-8"})
+    return _json_apis._get(AUDIO)
+
+
+@pytest.mark.parametrize(
+    ("body", "refusal"),
+    [
+        (b'{"data": [{"title": "Fixture\nclip"}]}', "Invalid control character"),
+        (b'{"data": [{"title": "Fixture\x00clip"}]}', "Invalid control character"),
+        (b'{"data": [{"title": "Fixture \\ud800 clip"}]}', None),
+        (b'{"data": [{"title": "Fixture \xe2 clip"}]}', None),
+        (b'{"data": [{"title": "Fixture clip', "Unterminated string starting at"),
+    ],
+    ids=["raw newline", "raw NUL", "escaped lone surrogate", "invalid UTF-8 byte", "body ends inside a string"],
+)
+def test_only_a_body_that_ends_inside_a_string_is_an_unterminated_string_to_the_json_parser(requests_mock, body, refusal):
+    """A raw control character or NUL inside a string is a refusal of its own; a lone surrogate and a byte that is not
+    UTF-8 parse (the second decoded as U+FFFD). So none of them is what refused nps_multimedia_audio."""
+    response = json_answer(requests_mock, body)
+    if refusal is None:
+        assert _json_apis._json(response, "nps_audio")["data"]
+    else:
+        with pytest.raises(_json_apis.NotJson, match=refusal):
+            _json_apis._json(response, "nps_audio")
+
+
+def test_two_bodies_cut_at_different_lengths_inside_one_long_string_are_refused_at_the_same_position(requests_mock):
+    """Run 19 refused 163,840 bytes and run 20 98,304 at the same 'line 545 column 15 (char 23867)'.
+
+    The position is where the string the body stopped inside began, not where the body stopped, so one position at
+    two lengths is what one long string cut at two points looks like, and does not show either body was whole.
+    """
+    positions = set()
+    for cut in (98_304, 163_840):
+        with pytest.raises(_json_apis.NotJson, match="Unterminated string starting at") as refused:
+            _json_apis._json(json_answer(requests_mock, LONG_BODY[:cut]), "nps_audio")
+        positions.add(re.search(r"\(char (\d+)\)", str(refused.value)).group(1))
+    assert positions == {str(LONG_BODY.index(b'"Fixture words'))}
+
+
+def test_a_body_that_stops_inside_a_string_is_refused_quoting_the_field_and_how_far_the_string_ran(requests_mock):
+    """The refusal quotes 20 characters either side of where the parser stopped, so the next monthly log names the
+    field a cut body stopped inside, and says how much of that string arrived."""
+    with pytest.raises(_json_apis.NotJson) as refused:
+        _json_apis._json(json_answer(requests_mock, LONG_BODY[:98_304]), "nps_audio")
+
+    said = str(refused.value)
+    assert """before it 'p-1", "transcript": '""" in said
+    assert """from it '"Fixture words, \\\\"qu'""" in said
+    assert "the text ends 98,263 characters later, still inside that string" in said
+    assert said.endswith("; no Content-Length to compare against")
 
 
 def test_without_an_nps_key_a_content_list_is_unavailable_and_nothing_is_asked(registry, requests_mock, monkeypatch):

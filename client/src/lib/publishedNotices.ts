@@ -49,6 +49,26 @@ function textOrNull(value: unknown): string | null {
 }
 
 /**
+ * Category values that stand for no category, compared whole after trimming
+ * and ignoring case, never as a part of a longer value.
+ *
+ * Decision 78 shows a notice's category under its title, so a source's blank
+ * spelled as a word read as a category it chose. Reviewed against soak run
+ * 536's file on 2026-10-05: Midpen's preserve-access layer sends "None" (2
+ * rows) and Santa Clara County Parks' closed areas send "na" (4 rows). "n/a"
+ * and "null" are in no row there, and are listed as the same blank spelled
+ * the other usual ways. NOT "unknown": it is one of USFS's recreation-site
+ * `openstatus` values, the Forest Service's own status for a site, as
+ * "unreachable" and "not cleared" are, and decision 78 shows it as sent.
+ */
+const NO_CATEGORY: ReadonlySet<string> = new Set(['none', 'na', 'n/a', 'null'])
+
+function categoryOrNull(value: unknown): string | null {
+  const text = textOrNull(value)
+  return text !== null && NO_CATEGORY.has(text.trim().toLowerCase()) ? null : text
+}
+
+/**
  * The source's page as an absolute http or https URL, or null.
  *
  * Stricter than lib/safeLink.ts's `isSafeLink`, which every row's link still
@@ -173,7 +193,7 @@ export function validNotice(value: unknown): OrgNotice | null {
     notice_id: row.notice_id,
     source_key: row.source_key,
     title: typeof row.title === 'string' ? row.title : '',
-    category: textOrNull(row.category),
+    category: categoryOrNull(row.category),
     locality: typeof row.locality === 'string' ? row.locality : '',
     place: validPlace(row.place),
     obstructs_trail: row.obstructs_trail === true,

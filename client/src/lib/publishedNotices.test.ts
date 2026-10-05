@@ -21,6 +21,33 @@ function row(overrides: Record<string, unknown> = {}) {
   }
 }
 
+describe('a category', () => {
+  const category = (value: unknown) => validNotice(row({ category: value }))?.category
+
+  it('that is a placeholder (None, na, n/a, null), in any case, is no category', () => {
+    // Midpen's preserve-access layer sends "None" and Santa Clara County
+    // Parks' sends "na" (soak run 536); decision 78 would show either under
+    // the title as if the source had named a category.
+    expect(category('None')).toBeNull()
+    expect(category('na')).toBeNull()
+    expect(category('N/A')).toBeNull()
+    expect(category(' null ')).toBeNull()
+  })
+
+  it('that is a source’s own status or word is kept as it came, unknown among them', () => {
+    // "unknown" is one of USFS's recreation-site openstatus values, as
+    // "unreachable" and "not cleared" are: the source's status, not a blank.
+    for (const value of [
+      'unknown',
+      'unreachable',
+      'not cleared',
+      'Regular',
+      'None of the above',
+    ])
+      expect(category(value)).toBe(value)
+  })
+})
+
 describe('a source_url', () => {
   it('that is a sentence is no link, though it ends in a URL', () => {
     // The shape of the value soak run 536 carried on all 111 nysdec_hab_reports

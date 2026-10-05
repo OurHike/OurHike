@@ -20,7 +20,9 @@ deleted, as a warehouse with only the hourly store's tables has them. Then:
 (e) conditions/notices.json is not written: with no row history there is no
     held club's last good rows to carry, so its writer keeps the phone's
     last file whole rather than publishing every club as having no notices
-    (decision 53, phase D).
+    (decision 53, phase D); nor is conditions/hazard_areas.json, whose
+    writer reads that one's rows (decision 84), so the phone keeps its last
+    hazard areas rather than reading an empty list as none.
 
 The same warehouse then carries NWS's alerts, the hourly job's own rows,
 through two snapshots of the warnings history, the second after a reload
@@ -78,6 +80,8 @@ HOURLY_SOURCES = {
 WRITERS = ("pub_conditions_atc_updates", "pub_conditions_nynjtc_alerts", "pub_conditions_closures")
 #: conditions/notices.json's writer, which spans every club and so keeps its last file while one is held here.
 NOTICES_WRITER = "pub_conditions_notices"
+#: conditions/hazard_areas.json's writer (decision 84), which keeps its last file whenever that one does.
+HAZARD_WRITER = "pub_conditions_hazard_areas"
 
 
 def _generated_tables() -> set[str]:
@@ -140,7 +144,7 @@ def build(tmp_path_factory) -> dict:
     }
     paths = ["--profiles-dir", ".", "--target-path", str(root / "target"), "--log-path", str(root / "logs")]
     _run([DBT, "seed", *paths], DBT_DIR, dbt_env)
-    selection = ["+closures", "+warnings", *(f"+{writer}" for writer in (*WRITERS, NOTICES_WRITER))]
+    selection = ["+closures", "+warnings", *(f"+{writer}" for writer in (*WRITERS, NOTICES_WRITER, HAZARD_WRITER))]
     _run(
         [DBT, "build", "-s", *selection, "--exclude", "resource_type:snapshot", "--indirect-selection", "cautious", *paths],
         DBT_DIR,
@@ -166,6 +170,7 @@ def build(tmp_path_factory) -> dict:
         + _query(warehouse, "select count(*) from marts.closures_v1 where source_key = 'atc_trail_updates'")[0][0],
         "files": {writer: processed / f"conditions_{writer.removeprefix('pub_conditions_')}.json" for writer in WRITERS},
         "notices_file": processed / "conditions_notices.json",
+        "hazard_file": processed / "conditions_hazard_areas.json",
         "warehouse": warehouse,
         "dbt_env": dbt_env,
         "paths": paths,
@@ -239,6 +244,10 @@ def test_no_club_notice_reaches_a_mart(build):
 
 def test_the_notices_file_keeps_its_last_copy_while_a_club_is_held_without_history(build):
     assert not build["notices_file"].exists(), "notices.json was written with every club held and nothing to carry"
+
+
+def test_the_hazard_areas_file_keeps_its_last_copy_whenever_the_notices_file_does(build):
+    assert not build["hazard_file"].exists(), "hazard_areas.json was written while notices.json kept its last copy"
 
 
 def test_a_new_nws_collection_updated_opens_no_warnings_version_and_a_reissued_alert_opens_one(nws_history):

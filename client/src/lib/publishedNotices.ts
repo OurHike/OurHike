@@ -20,6 +20,16 @@
 // file the conditions hook asks for: the hook is on the first frame's path,
 // and this adds no launch byte. Its key is here too, for the same reason;
 // pipeline/tests/test_published_key_contract.py reads this file for it.
+//
+// AND THE HAZARD AREAS AT LAUNCH, WHATEVER IS PLANNED (decision 84, the
+// maintainer's poll of 2026-10-05, Q5: "Their own small file, read at
+// launch"): conditions/hazard_areas.json, the rows of notices.json that carry
+// decision 67's `hazard`, written by pipeline/dbt's
+// pub_conditions_hazard_areas. Decision 77 left a phone with nothing planned
+// without notices.json, and so without the hunting areas, shooting sites and
+// burned areas the map draws from it. `readPublishedNotices` reads this file
+// on every call, planned or not, as every phone read notices.json before
+// decision 77; its key is here for the reason the states' key is.
 
 import {
   fetchPublished,
@@ -39,6 +49,12 @@ import { DATA_CONFIGURED, dataUrl } from './config'
  *  a bucket without it serves a 404 and no state-wide notice shows - as
  *  decision 68 left them. */
 export const PUBLISHED_NOTICE_STATES_KEY = 'conditions/notice_states.json'
+
+/** Decision 67's hazard notices in a file of their own (decision 84): on the
+ *  dbt path only, so a bucket without it (production until the cutover)
+ *  serves a 404, and the map draws the areas from notices.json where that
+ *  file has reached this phone, as it did before this file existed. */
+export const PUBLISHED_HAZARD_AREAS_KEY = 'conditions/hazard_areas.json'
 
 const HAZARDS: ReadonlySet<string> = new Set(['hunting', 'shooting', 'burned_area'])
 
@@ -251,6 +267,34 @@ export async function fetchPublishedNotices(
 }
 
 /**
+ * conditions/hazard_areas.json's notices (decision 84), or null if there
+ * isn't a usable file - read by the same row reader as notices.json, which
+ * the pipeline writes the same rows for, and holding only rows that carry a
+ * `hazard` this build knows: a row that does not is no area to draw.
+ *
+ * Null on a bucket without the file, which on a 404 or in a dead spot is the
+ * copy this phone kept (#447) if it kept one, as every file here: the caller
+ * reads null as "no answer", never as "no hazard area".
+ */
+export async function fetchPublishedHazardAreas(
+  options?: PublishedReadOptions,
+): Promise<PublishedConditions<OrgNotice> | null> {
+  const published = await fetchPublished<unknown>(
+    PUBLISHED_HAZARD_AREAS_KEY,
+    'notices',
+    undefined,
+    options,
+  )
+  if (published === null) return null
+  const items: OrgNotice[] = []
+  for (const row of published.items) {
+    const notice = validNotice(row)
+    if (notice !== null && notice.hazard !== null) items.push(notice)
+  }
+  return { ...published, items }
+}
+
+/**
  * Whether the bucket serves conditions/notices.json, asked with a HEAD
  * request, so no byte of the file is downloaded (decision 77). False for a
  * 404, a dead spot or no bucket, which the caller reads as "not said", never
@@ -283,18 +327,22 @@ export async function noticesListed(): Promise<boolean> {
  * its size ceiling), and `listed` is the bucket's answer to a HEAD, asked
  * only with signal. With a hike planned, a file that arrives says it is
  * listed too.
+ *
+ * `hazards` is conditions/hazard_areas.json (decision 84), read on every
+ * call whether or not a hike is planned, with signal as `options` says.
  */
 export async function readPublishedNotices(
   hikePlanned: boolean,
   options: PublishedReadOptions,
-): Promise<{ published: PublishedConditions<OrgNotice> | null; listed: boolean }> {
-  if (hikePlanned) {
-    const published = await fetchPublishedNotices(undefined, options)
-    return { published, listed: published !== null }
-  }
-  const [published, listed] = await Promise.all([
-    fetchPublishedNotices(undefined, { online: false }),
-    options.online === false ? false : noticesListed(),
+): Promise<{
+  published: PublishedConditions<OrgNotice> | null
+  listed: boolean
+  hazards: PublishedConditions<OrgNotice> | null
+}> {
+  const [published, listed, hazards] = await Promise.all([
+    fetchPublishedNotices(undefined, hikePlanned ? options : { online: false }),
+    hikePlanned || options.online === false ? false : noticesListed(),
+    fetchPublishedHazardAreas(options),
   ])
-  return { published, listed }
+  return { published, listed: listed || (hikePlanned && published !== null), hazards }
 }

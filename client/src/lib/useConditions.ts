@@ -162,6 +162,15 @@ export interface Conditions {
    */
   clubNoticesListed: boolean
   /**
+   * Decision 67's hunting areas, shooting sites and burned areas, from
+   * conditions/hazard_areas.json (decision 84), read whatever is planned,
+   * or null when that file has not reached this phone. Like `clubNotices`,
+   * never set back to null by a 404 or a dead spot, and null is "no
+   * answer", never "no hazard area": chrome/noticesPanel.tsx then draws the
+   * areas from notices.json if this phone holds it.
+   */
+  hazardFile: PublishedConditions<OrgNotice> | null
+  /**
    * This week's drought bands, and the week they describe (#720).
    *
    * Empty rather than null when there is nothing: unlike a closure, an
@@ -232,6 +241,9 @@ export function useConditions(
     null,
   )
   const [clubNoticesListed, setClubNoticesListed] = useState(false)
+  const [hazardFile, setHazardFile] = useState<PublishedConditions<OrgNotice> | null>(
+    null,
+  )
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
@@ -440,15 +452,22 @@ export function useConditions(
   // take a held list away. The reader comes in behind import(), for the
   // launch budget (lib/publishedNotices.ts says why); a chunk that cannot
   // load reads as no file, exactly as a 404 does.
+  //
+  // THE HAZARD AREAS RIDE THE SAME READ, PLANNED OR NOT (decision 84):
+  // conditions/hazard_areas.json is read on each run of this effect - at
+  // launch, on each refresh and visibility read, as notices.json was before
+  // decision 77, and once more when planning changes - with the same rule
+  // that a null keeps what this phone holds.
   useEffect(() => {
     if (!ready) return
     let cancelled = false
     void import('./publishedNotices')
       .then(({ readPublishedNotices }) => readPublishedNotices(hikePlanned, { online }))
       .then(
-        ({ published, listed }) => {
+        ({ published, listed, hazards }) => {
           if (cancelled) return
           if (published !== null) setClubNotices(published)
+          if (hazards !== null) setHazardFile(hazards)
           if (listed) setClubNoticesListed(true)
         },
         () => undefined,
@@ -537,6 +556,7 @@ export function useConditions(
     clubNotices: clubNotices?.items ?? null,
     clubNoticesGeneratedAt: clubNotices?.generatedAt ?? null,
     clubNoticesListed,
+    hazardFile,
     drought,
     droughtWeek,
     workProjects,

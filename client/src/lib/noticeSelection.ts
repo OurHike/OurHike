@@ -78,15 +78,37 @@ export function plannedView({
   return { planned, shown: shownNotices(planned) }
 }
 
-/** Decision 67's areas a trail on this phone runs through, and the
- *  advisories for a tapped place on a trail: each drawn area it is inside or
- *  beside (lib/hazardAreas.ts). */
+/**
+ * Decision 67's areas a trail on this phone runs through, and the
+ * advisories for a tapped place on a trail: each drawn area it is inside or
+ * beside (lib/hazardAreas.ts). Null with neither file here.
+ *
+ * FROM ONE FILE, so no area is drawn twice (decision 84): the areas are in
+ * both conditions/hazard_areas.json, read whatever is planned, and
+ * notices.json, read once a hike is planned (decision 77), and one build
+ * writes the same rows to both. The newer of the two by `generated_at`, the
+ * hazard file on a tie, so a copy of notices.json this phone kept from
+ * before decision 77 never outranks a fresh hazard file. With only
+ * notices.json here - a bucket without the hazard file, production until
+ * the cutover - the areas come from it, as before decision 84: a missing
+ * hazard file is never read as no hazard area.
+ */
 export function hazardView(
-  notices: readonly TrailNotice[],
+  notices: readonly TrailNotice[] | null,
+  noticesAt: Date | null,
+  hazardFile: { items: readonly TrailNotice[]; generatedAt: Date } | null,
   trailIndex: TrailIndex | null,
   graph: TrailGraphIndex | null,
-): { areas: HazardArea[]; advisoriesAt: (at: Position) => StretchAdvisory[] } {
-  const areas = crossedHazardAreas(hazardAreasOf(notices), trailIndex, graph)
+): { areas: HazardArea[]; advisoriesAt: (at: Position) => StretchAdvisory[] } | null {
+  const source =
+    hazardFile !== null &&
+    (notices === null ||
+      noticesAt === null ||
+      hazardFile.generatedAt.getTime() >= noticesAt.getTime())
+      ? hazardFile.items
+      : notices
+  if (source === null) return null
+  const areas = crossedHazardAreas(hazardAreasOf(source), trailIndex, graph)
   return {
     areas,
     advisoriesAt: (at) =>

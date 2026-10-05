@@ -154,6 +154,15 @@ Retention is therefore trivial and needs no prune job: one object per artifact, 
 in place, never accumulating. That is the exemption to DATA_RELEASES.md's rule that a new
 prefix needs a retention clock written for it — there is nothing to retain.
 
+**`conditions/hazard_areas.json` joined the prefix on 2026-10-05** (decision 84 of
+[ELT.md](ELT.md)), and like every key here it is permanent from its first upload. It holds
+the rows of `conditions/notices.json` that carry a `hazard` — the hunting areas, shooting
+sites and burned areas the map draws — written by the dbt writer `pub_conditions_hazard_areas`,
+because a phone downloads `notices.json` only once a hike is planned (decision 77) and reads
+this one at launch. Like `notices.json` it is written only on the dbt path, so a bucket the
+exporters still publish answers 404 for it, and the client reads that as no answer rather
+than as no hazard area (`client/src/lib/publishedNotices.ts`).
+
 `originals/` is a preservation copy and never a download. `photos/` holds the 640px
 rendering a card actually shows; this holds the full-resolution file it was reduced from,
 so that losing an upstream does not also lose the photograph. The prompt was ATC's

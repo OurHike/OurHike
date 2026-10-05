@@ -60,8 +60,8 @@ from lib.r2_keys import validate_key
 CLIENT_SRC = Path(__file__).resolve().parents[2] / "client" / "src"
 CONFIG = CLIENT_SRC / "lib" / "config.ts"
 PUBLISHED_CONDITIONS = CLIENT_SRC / "lib" / "publishedConditions.ts"
-#: The conditions/notices.json reader, behind import() for the launch budget, which declares the key of the file it
-#: reads beside that one: conditions/notice_states.json (decision 76).
+#: The conditions/notices.json reader, behind import() for the launch budget, which declares the keys of the files it
+#: reads beside that one: conditions/notice_states.json (decision 76) and conditions/hazard_areas.json (decision 84).
 PUBLISHED_NOTICES = CLIENT_SRC / "lib" / "publishedNotices.ts"
 HIKING_DETAIL = CLIENT_SRC / "lib" / "hikingDetail.ts"
 PACKAGES = CLIENT_SRC / "lib" / "packages.ts"
@@ -525,7 +525,9 @@ def dbt_exposure_keys() -> set[str]:
 #: than derived, so a second dbt-only key is a decision somebody writes here.
 #: conditions/notice_states.json (decision 76) is too: lib/publishedNotices.ts reads a 404 as no states' shapes, and
 #: the planned-hike panel then shows no state-wide notice, as decision 68 left them.
-DBT_ONLY_CLIENT_KEYS = {"conditions/notices.json", "conditions/notice_states.json"}
+#: conditions/hazard_areas.json (decision 84) is too: lib/publishedNotices.ts reads a 404 as no answer, and
+#: chrome/noticesPanel.tsx then draws the hazard areas from notices.json where that file has reached the phone.
+DBT_ONLY_CLIENT_KEYS = {"conditions/notices.json", "conditions/notice_states.json", "conditions/hazard_areas.json"}
 
 
 def test_every_key_the_app_fetches_is_a_key_the_pipeline_publishes(published):

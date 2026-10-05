@@ -6,6 +6,13 @@
 -- Key: TrailName, TrailType and geometry, 1,595 of 1,595 live rows after 7
 -- exact copies; TrailType is null on 126, and without it one line carries two
 -- named trails (pipeline/ELT.md, "One key per table", measured 2026-10-01).
+--
+-- The copies differ only in OBJECTID (duplicates_are_exact sets it aside),
+-- and int_trail_lines__network_judged publishes the survivor's OBJECTID as
+-- its trail_line_id, so the lowest survives: ordered by dlt's `_dlt_id`,
+-- minted at random each load, the same rows could publish another id each
+-- month (the review of PR #1805 — dlt → dbt re-platform as one go/no-go
+-- change, 2026-10-05). DEC's models order by it the same way.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
     -- hint); cast here, as decision 40 has staging do.
@@ -28,5 +35,5 @@ renamed as (
 )
 
 {{ dbt_utils.deduplicate(
-    relation='renamed', partition_by='trail_segment_key', order_by='_dlt_id'
+    relation='renamed', partition_by='trail_segment_key', order_by='objectid'
 ) }}

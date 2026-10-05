@@ -658,6 +658,36 @@ def test_a_page_that_answers_500_is_halved_at_once_and_a_down_server_still_gets_
     )
 
 
+def test_a_5xx_burst_that_halves_the_first_page_to_one_feature_does_not_read_the_rest_of_the_layer_one_at_a_time(
+    requests_mock,
+):
+    """Ten fast 503s on the first page halve 1,000 to 1 and round it; no page had answered yet to go back to.
+
+    Before the fix the size went back to the last page that answered, which
+    was that one rounded feature, so every later page asked for 1: a layer
+    of N features cost N + 12 requests (review finding EXD-5).
+    """
+    layer = "https://example.test/arcgis/rest/services/T/MapServer/0"
+    burst = {"left": 10}
+
+    def answer(request, context):
+        if burst["left"]:
+            burst["left"] -= 1
+            context.status_code = 503
+            return {"error": "Service Unavailable"}
+        count = int(request.qs["resultrecordcount"][0])
+        offset = int(request.qs["resultoffset"][0])
+        return {"features": [{"properties": {"n": n}} for n in range(offset, min(offset + count, 40))]}
+
+    requests_mock.get(layer + "/query", json=answer)
+
+    pages = list(arcgis.iter_layer_pages(layer, backoff=(1, 1)))
+
+    assert [feature["properties"]["n"] for page in pages for feature in page] == list(range(40))
+    sizes = [int(r.qs["resultrecordcount"][0]) for r in requests_mock.request_history]
+    assert sizes == [1000, 500, 250, 125, 62, 31, 15, 7, 3, 1, 1, 1000, 1000], "back to the size the read began at"
+
+
 def test_one_feature_no_page_can_hold_is_asked_once_at_six_decimals_and_only_it(requests_mock):
     """EDW_OtherNationalDesignatedArea_01's feature at offset 83 answered 500 alone and 200 at geometryPrecision=6."""
     layer = "https://example.test/arcgis/rest/services/D/MapServer/0"

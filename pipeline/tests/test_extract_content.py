@@ -412,3 +412,17 @@ def test_a_feed_item_is_parsed_as_xml_and_never_as_text():
     item = ElementTree.fromstring(feed(items=1)).find("channel/item")
     tags = {child.tag for child in item}
     assert "{http://www.itunes.com/dtds/podcast-1.0.dtd}author" in tags and "author" in tags
+
+
+def test_the_fixture_answers_ask_for_the_page_npscontent_asks_for():
+    """make_dbt_fixtures.py writes NPS_CONTENT_PAGE_SIZE out by hand, so a change to the constant must reach it.
+
+    3835ff58 moved the page from 500 to 100, and the pytest job's fixture-mode build then had no answer for any
+    NPS content list (pipeline-tests.yml run 37253264657).
+    """
+    import make_dbt_fixtures
+    from extract._content import NPS_CONTENT_PAGE_SIZE
+
+    for name, text in make_dbt_fixtures._content_nps_fixtures().items():
+        (answer,) = json.loads(text)["answers"]
+        assert answer["query"]["limit"] == str(NPS_CONTENT_PAGE_SIZE), name

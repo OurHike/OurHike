@@ -8097,11 +8097,13 @@ def _content_nps_fixtures() -> dict[str, str]:
     files = {}
     for key in CONTENT_NPS_KEYS:
         entry = _registry_entry(key)
-        query = {"limit": "500", "start": "0"}
+        # extract/_content.py's NPS_CONTENT_PAGE_SIZE, the page NpsContent asks for. Written out rather than
+        # imported, because this script runs on the suites' Python, which carries no dlt.
+        query = {"limit": "100", "start": "0"}
         if entry.get("park_codes_from"):
             query["parkCode"] = ",".join(sorted(_registry_entry(entry["park_codes_from"])["park_codes"]))
         rows = _nps_content_rows(key)
-        body = {"total": str(len(rows)), "limit": "500", "start": "0", "data": rows}
+        body = {"total": str(len(rows)), "limit": "100", "start": "0", "data": rows}
         files[f"conditions/json_apis/{key}.json"] = json.dumps({"answers": [_answer(entry["url"], body, query)]})
     return files
 

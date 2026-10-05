@@ -1,10 +1,15 @@
 {{ config(materialized='table', tags=['builds_alone']) }}
 -- builds_alone: Out of Memory Error here in monthly run 20 (37296900535).
+-- Not enough: alone in monthly run 21 (37323395441) it ran out at 12.4 GiB.
 {#- The disc's radius in metres, multiplied as doubles, the way Python's
     `radius_miles * METERS_PER_MILE` multiplies (8046.72 at 5 miles). -#}
 {%- set radius = var('places_trail_radius_miles') %}
 {%- set radius_m = "cast(" ~ radius ~ " as double) * 1609.344::double" %}
 {%- set threshold = var('trail_lines_network_named_trail_threshold_miles') %}
+{#- The most vertices a measured piece of a polygon holds, and the most
+    times one polygon is halved ("MEMORY" below). -#}
+{%- set piece_vertices = 1024 %}
+{%- set piece_halvings = 32 %}
 -- Every row places.json publishes, measured, in file order:
 -- export_places.py's load_named_trails(), measure() and the end of
 -- build_output() (PL07-PL11). The places mart is this, typed.
@@ -51,12 +56,46 @@
 -- otherwise turn on a layer's registry order. A club town carries no
 -- `poi_id`: it is a place a hiker names, not a waypoint the app opens.
 --
+-- MEMORY: A POLYGON IS MEASURED IN PIECES. Built alone, this model still
+-- ran out of its 12.4 GiB in monthly run 21 (37323395441: "failed to
+-- allocate data of size 16.0 MiB" after 32 s). ST_Intersection holds each
+-- row's polygon until its whole chunk of up to 2,048 rows is done, so the
+-- join of many lines against one detailed park held that park once per
+-- line. Measured 2026-10-05 on DuckDB 1.5.5's spatial: 999 lines against
+-- one 50,001-vertex polygon peaked at 0.78 GiB (16.8 bytes a vertex a
+-- row), where ST_Intersects on the same rows took 0.01 GiB. Which real
+-- polygons did that in run 21 is unmeasured. So a park or club park of
+-- more than `piece_vertices` vertices (set at the top) is halved across
+-- its longer side, and each half again, until no piece has more
+-- (polygon_pieces), and the lines are measured against the pieces: at
+-- 1,024 a row holds at most about 17 kB of polygon, 35 MB for a chunk
+-- (Reasoned, from the 16.8 bytes). That size is @unvalidated as the
+-- fastest: picked to keep a chunk small, never timed on the real polygons;
+-- a monthly build timed at 256, 1,024 and 4,096 would settle it. A park's
+-- metres are the sum of its pieces' (Reasoned): a line crossing a cut is
+-- measured on both sides of it, and only a stretch lying exactly along a
+-- cut, which falls on the midpoint of a piece's EPSG:5070 box rather than
+-- on anything surveyed, would count twice. A polygon of `piece_vertices`
+-- vertices or fewer is one piece, measured exactly as before. The lines
+-- are no longer held as a table carrying both their geometries
+-- (`published` is read where it is used), and one spatial join measures
+-- every kind of shape.
+-- Measured 2026-10-05 on invented national-scale rows (332,630 lines,
+-- 40,000 points, 300 parks, 8,000 club parks of 9.6 million vertices and
+-- 1,000 club towns; 4 threads): peak 3.44 GiB before, 2.67 GiB after. With
+-- one 245,141-vertex corridor park crossed by 8,000 more lines, the old
+-- query failed under a 5 GB memory_limit with run 21's own error, and this
+-- one peaked at 2.69 GiB, and built under a 2 GB limit too. On all 46,370
+-- rows every column but trail_metres came out equal, trail_miles text
+-- included, and trail_metres within 1.3e-14 relative. What the real
+-- network peaks at is unmeasured until a monthly run builds it.
+--
 -- `lon`, `lat`, `bbox` and `trail_miles` are JSON text, cast back in the
 -- places mart, because a dbt 2.0.6 unit test compares a DOUBLE only to one
 -- decimal (.claude/skills/dbt/SKILL.md, "Contracts, and the traps in
 -- them"). A park's and a trail's point and box are cut to 5 decimals, as
 -- round(x, 5) cuts them.
-with parks as (
+with recursive parks as (
     select * from {{ ref('int_places__park_units') }}
 ),
 
@@ -64,35 +103,37 @@ points as (
     select * from {{ ref('int_places__point_places') }}
 ),
 
-lines as (
-    select
-        source_key,
-        club,
-        _loaded_at,
-        trail_name,
-        geom,
-        st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true) as g
-    from (
-        select
-            *,
-            st_geomfromgeojson(geom_geojson) as geom
-        from {{ ref('int_places__lines') }}
-    ) as published
+-- Read where each use needs it, never held: DuckDB materializes a CTE read
+-- more than once, and the lines used to be held that way, carrying both
+-- geometries of every line ("MEMORY" above).
+published as not materialized (
+    select * from {{ ref('int_places__lines') }}
 ),
 
 measurement as (
-    select count(*) > 0 as measured from lines
+    select count(*) > 0 as measured from published
 ),
 
 trail_totals as (
     select
         source_key,
         trail_name,
-        sum(st_length(g)) as metres,
+        sum(
+            st_length(
+                st_transform(
+                    geom, 'EPSG:4326', 'EPSG:5070', always_xy := true
+                )
+            )
+        ) as metres,
         st_extent_agg(geom) as extent,
         any_value(club) as club,
         max(_loaded_at) as _loaded_at
-    from lines
+    from (
+        select
+            *,
+            st_geomfromgeojson(geom_geojson) as geom
+        from published
+    ) as published_lines
     group by source_key, trail_name
 ),
 
@@ -124,15 +165,6 @@ park_shapes as (
     ) as unit_shapes
 ),
 
-park_metres as (
-    select
-        park_shapes.place_id,
-        sum(st_length(st_intersection(lines.g, park_shapes.g))) as metres
-    from park_shapes
-    inner join lines on st_intersects(lines.g, park_shapes.g)
-    group by park_shapes.place_id
-),
-
 point_shapes as (
     select
         place_id,
@@ -144,15 +176,6 @@ point_shapes as (
             {{ radius_m }}
         ) as disc
     from points
-),
-
-point_metres as (
-    select
-        point_shapes.place_id,
-        sum(st_length(st_intersection(lines.g, point_shapes.disc))) as metres
-    from point_shapes
-    inner join lines on st_intersects(lines.g, point_shapes.disc)
-    group by point_shapes.place_id
 ),
 
 point_within as (
@@ -185,15 +208,6 @@ club_park_shapes as (
     ) as club_park_geoms
 ),
 
-club_park_metres as (
-    select
-        club_park_shapes.place_id,
-        sum(st_length(st_intersection(lines.g, club_park_shapes.g))) as metres
-    from club_park_shapes
-    inner join lines on st_intersects(lines.g, club_park_shapes.g)
-    group by club_park_shapes.place_id
-),
-
 club_town_shapes as (
     select
         place_id,
@@ -211,14 +225,182 @@ club_town_shapes as (
     ) as club_town_geoms
 ),
 
+-- Every park and club park polygon, cut into pieces ("MEMORY" above): a
+-- piece of more than `piece_vertices` vertices is replaced by its two
+-- halves, until none is or it has been halved `piece_halvings` times. GEOS
+-- returns a half as it finds it, so a club park that is a collection keeps
+-- its lines and points, as the uncut polygon measured them.
+polygon_shapes as (
+    select
+        'park' as shape_kind,
+        place_id,
+        g as piece,
+        0 as halvings
+    from park_shapes
+    union all
+    select
+        'club_park' as shape_kind,
+        place_id,
+        g as piece,
+        0 as halvings
+    from club_park_shapes
+),
+
+polygon_pieces as (
+    select
+        shape_kind,
+        place_id,
+        piece,
+        halvings
+    from polygon_shapes
+    union all
+    select
+        halves.shape_kind,
+        halves.place_id,
+        st_intersection(
+            halves.piece,
+            st_makeenvelope(
+                halves.west, halves.south, halves.east, halves.north
+            )
+        ) as piece,
+        halves.halvings + 1 as halvings
+    from (
+        -- The two halves of a piece's box, 1 m wider on its outer sides so
+        -- no cut meets the piece's own extreme vertices.
+        select
+            bounds.shape_kind,
+            bounds.place_id,
+            bounds.piece,
+            bounds.halvings,
+            case
+                when bounds.wide and sides.side = 1
+                    then (bounds.xmin + bounds.xmax) / 2
+                else bounds.xmin - 1
+            end as west,
+            case
+                when not bounds.wide and sides.side = 1
+                    then (bounds.ymin + bounds.ymax) / 2
+                else bounds.ymin - 1
+            end as south,
+            case
+                when bounds.wide and sides.side = 0
+                    then (bounds.xmin + bounds.xmax) / 2
+                else bounds.xmax + 1
+            end as east,
+            case
+                when not bounds.wide and sides.side = 0
+                    then (bounds.ymin + bounds.ymax) / 2
+                else bounds.ymax + 1
+            end as north
+        from (
+            select
+                polygon_pieces.*,
+                st_xmin(polygon_pieces.piece) as xmin,
+                st_ymin(polygon_pieces.piece) as ymin,
+                st_xmax(polygon_pieces.piece) as xmax,
+                st_ymax(polygon_pieces.piece) as ymax,
+                st_xmax(polygon_pieces.piece) - st_xmin(polygon_pieces.piece)
+                >= st_ymax(polygon_pieces.piece)
+                - st_ymin(polygon_pieces.piece) as wide
+            from polygon_pieces
+            where
+                st_npoints(polygon_pieces.piece) > {{ piece_vertices }}
+                and polygon_pieces.halvings < {{ piece_halvings }}
+        ) as bounds
+        cross join (values (0), (1)) as sides (side)
+    ) as halves
+),
+
+measured_pieces as (
+    select
+        shape_kind,
+        place_id,
+        piece
+    from polygon_pieces
+    where
+        (
+            st_npoints(piece) <= {{ piece_vertices }}
+            or halvings >= {{ piece_halvings }}
+        )
+        and not st_isempty(piece)
+),
+
+-- Every shape in one join: the parks' and club parks' pieces, the points'
+-- discs and the club towns' discs, each named by its kind, so a park's id
+-- and a waypoint's can never meet. The lines come in as bare EPSG:5070
+-- geometry.
+measured_shapes as (
+    select
+        shape_kind,
+        place_id,
+        piece as shape
+    from measured_pieces
+    union all
+    select
+        'point' as shape_kind,
+        place_id,
+        disc as shape
+    from point_shapes
+    union all
+    select
+        'club_town' as shape_kind,
+        place_id,
+        disc as shape
+    from club_town_shapes
+),
+
+lines as (
+    select
+        st_transform(
+            st_geomfromgeojson(geom_geojson),
+            'EPSG:4326',
+            'EPSG:5070',
+            always_xy := true
+        ) as g
+    from published
+),
+
+shape_metres as (
+    select
+        measured_shapes.shape_kind,
+        measured_shapes.place_id,
+        sum(st_length(st_intersection(lines.g, measured_shapes.shape)))
+            as metres
+    from measured_shapes
+    inner join lines on st_intersects(lines.g, measured_shapes.shape)
+    group by measured_shapes.shape_kind, measured_shapes.place_id
+),
+
+park_metres as (
+    select
+        place_id,
+        metres
+    from shape_metres
+    where shape_kind = 'park'
+),
+
+point_metres as (
+    select
+        place_id,
+        metres
+    from shape_metres
+    where shape_kind = 'point'
+),
+
+club_park_metres as (
+    select
+        place_id,
+        metres
+    from shape_metres
+    where shape_kind = 'club_park'
+),
+
 club_town_metres as (
     select
-        club_town_shapes.place_id,
-        sum(st_length(st_intersection(lines.g, club_town_shapes.disc)))
-            as metres
-    from club_town_shapes
-    inner join lines on st_intersects(lines.g, club_town_shapes.disc)
-    group by club_town_shapes.place_id
+        place_id,
+        metres
+    from shape_metres
+    where shape_kind = 'club_town'
 ),
 
 club_places as (

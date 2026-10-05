@@ -140,6 +140,8 @@ pyparsing==3.3.2
     # via
     #   -c pipeline/requirements.txt
     #   rasterio
+pypdf==6.19.0
+    # via -r pipeline/requirements-dev.in
 pyproj==3.7.2
     # via
     #   -c pipeline/requirements.txt

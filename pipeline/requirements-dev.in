@@ -28,3 +28,13 @@ ruff
 # here. One test expected that error and now expects ValueError
 # (test_spike_hike_photo_sources.py).
 dlt[parquet]==1.30.0
+
+# pypdf, so the pipeline suite runs the tests that read a real PDF: the
+# extract's read of a club PDF's own title and creation date
+# (extract/_kinds.py's club_pdf_document_info, which dates GATC's water list
+# by its title "GATC Water Update July 2020" under decision 75) and of a
+# notice PDF's dates. Only requirements-extract.in carried it, so those tests
+# skipped in CI (WF4 of the PR #1805 review). The same pin as
+# requirements-extract.txt's, which test_extract_layout.py holds equal. Pure
+# Python, about 2 MB, with no dependencies of its own on Python 3.12.
+pypdf==6.19.0

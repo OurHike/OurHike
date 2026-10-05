@@ -2,8 +2,8 @@
 
 A parser is a function of pypdf's page texts, so most cases hand it strings shaped exactly like pypdf's plain
 extraction of the live document (read 2026-10-04, each sources.json row's `notes`), with every name and number
-invented, and need no pypdf: the pipeline suite installs none (requirements.in's note). The read itself is run
-with fetch_club_pdfs.extract_page_texts stubbed, and once for real where pypdf is installed.
+invented, and need no pypdf. The read itself is run with fetch_club_pdfs.extract_page_texts stubbed, and once for
+real through the pypdf requirements-dev.in pins.
 
 The cases are the ones a document was measured to get wrong or a hiker's safety turns on: a description that
 wraps onto the lines before its numbers (ATA's Casa Blanca Canyon), a latitude printed with a space inside it,
@@ -191,8 +191,9 @@ def test_an_html_page_answered_where_the_pdf_was_is_refused_not_parsed(registry,
 
 
 def test_a_real_pdf_is_read_through_pypdf_where_the_extract_job_installs_it(registry, requests_mock):
-    """Needs pypdf, which only requirements-extract.txt pins, so the pipeline suite's environment skips it."""
-    pypdf = pytest.importorskip("pypdf")
+    """Through real pypdf, which requirements-dev.in pins at the extract's version (WF4 of the PR #1805 review)."""
+    import pypdf
+
     writer = pypdf.PdfWriter()
     writer.add_blank_page(width=72, height=72)
     buffer = __import__("io").BytesIO()

@@ -339,6 +339,21 @@ def test_the_dlt_pin_is_the_same_in_the_extract_and_dev_requirements():
     assert pin(PIPELINE_DIR / "requirements-extract.in") == pin(PIPELINE_DIR / "requirements-dev.in")
 
 
+def test_the_pipeline_suite_installs_the_pypdf_the_extract_job_runs():
+    """requirements-dev.in pins pypdf at requirements-extract.txt's version, so the tests that read a real PDF run in
+    CI (WF4 of the PR #1805 review): a pypdf bump that broke club_pdf_document_info would otherwise pass every suite
+    and date GATC's water list by its HTTP date instead of its title's year."""
+
+    def pin(path: Path) -> str | None:
+        lines = [line for line in path.read_text().splitlines() if line.startswith("pypdf==")]
+        assert len(lines) <= 1, path
+        return lines[0].split("==")[1] if lines else None
+
+    assert pin(PIPELINE_DIR / "requirements-extract.txt") is not None
+    assert pin(PIPELINE_DIR / "requirements-dev.in") == pin(PIPELINE_DIR / "requirements-extract.txt")
+    assert pin(PIPELINE_DIR / "requirements-dev.txt") == pin(PIPELINE_DIR / "requirements-extract.txt")
+
+
 def _import_closure(start: list[Path]) -> tuple[set[Path], set[str]]:
     """(the local files reached, the third-party top-level names imported), following local modules from `start`.
 

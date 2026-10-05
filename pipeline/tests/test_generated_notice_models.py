@@ -89,6 +89,20 @@ def test_every_status_value_belongs_to_a_source_whose_seed_row_names_a_status_fi
         assert has_status, f"{key}: a status value for a source whose status field is not staged"
 
 
+def test_the_recreation_site_layer_stages_its_own_status_as_its_category(files):
+    """Decision 78: USFS's `openstatus` is the recreation-site layer's category as well as its status.
+
+    Before it the seed row left `category` empty, so all 3,123 of the layer's rows in UA's
+    conditions/notices.json (soak run 536, 2026-10-05) read `category: null`, and the planned-hike
+    panel showed a bare campground name. The value crosses as the Forest Service sends it, a field
+    value and never wording; the phone decides its casing (chrome/PlannedNoticeList.tsx).
+    """
+    (row,) = [row for row in _seed("notice_source_fields") if row["source_key"] == "usfs_rec_opportunities_status"]
+    assert row["category"] == row["status"] == "openstatus"
+    model = files[DBT / "models" / "staging" / "usfs" / "notices" / "stg_usfs__usfs_rec_opportunities_status.sql"]
+    assert "{{ notice_field('openstatus') }} as category," in model
+
+
 def test_a_conflicting_key_holds_its_source_and_never_stops_the_build(files):
     """Every club notice source's exactness test warns, and the gate holds the source instead.
 

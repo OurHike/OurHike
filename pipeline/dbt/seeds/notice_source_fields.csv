@@ -1,5 +1,5 @@
 source_key,title,category,status,starts,ends,rescinded,edited,link,locality,why
-usfs_rec_opportunities_status,recareaname,,openstatus,,,,,recareaurl,forestname,"No date field (the row's notes): a closed row's age is unknown"
+usfs_rec_opportunities_status,recareaname,openstatus,openstatus,,,,,recareaurl,forestname,"No date field (the row's notes): a closed row's age is unknown. openstatus is the category too (decision 78), the Forest Service's own word as it sends it: closed 2,694, temporarily closed 305, unreachable 67, not cleared 34, unknown 23 under the row's `where`, read against the live layer 2026-10-05"
 usfs_r03_fire_restrictions,ordername,ordertype,,startdate,enddate,rescinddate,,hyperlink,forestname,"The ForestOrder schema: an order ends on enddate or when rescinddate is set"
 usfs_r03_forest_orders,ordername,ordertype,,startdate,enddate,rescinddate,,hyperlink,forestname,"As usfs_r03_fire_restrictions"
 usfs_r04_forest_orders,ordername,ordertype,,startdate,enddate,rescinddate,pub_date,hyperlink,forestname,"Standing orders run to 2099-12-31 (the row's notes), so an end date alone is not recency"

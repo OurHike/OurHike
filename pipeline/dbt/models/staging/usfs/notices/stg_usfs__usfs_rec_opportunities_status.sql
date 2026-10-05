@@ -43,7 +43,7 @@ select
     'full' as listing,
     {{ notice_field('objectid') }} as source_id,
     {{ notice_field('recareaname') }} as title,
-    cast(null as varchar) as category,
+    {{ notice_field('openstatus') }} as category,
     {{ notice_field('openstatus') }} as status,
     cast(null as timestamptz) as starts_at,
     cast(null as timestamptz) as ends_at,

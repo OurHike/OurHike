@@ -20,7 +20,9 @@
 -- Other organizations: export_nearby_poi.py's compose_description(), the
 -- asset (title-cased when written all in capitals) "in" the facility, or
 -- nothing without an asset; the Long Path guide's records carry their own
--- sentence (the `guide` CTE).
+-- sentence (the `guide` CTE). A club's sheet that dates itself (FMST's
+-- trailheads, decision 72) says so instead: "From the club's sheet, which
+-- says it is current as of <its date>.", its date as the sheet writes it.
 {%- set p = 'noted.properties' -%}
 {%- set rounding = var('poi_vista_arc_rounding_degrees') %}
 with enriched as (
@@ -613,6 +615,28 @@ described as (
                                     else asset
                                 end
                                 || coalesce(' in ' || facility, '')
+                                || '.'
+                        -- A club sheet's own date (decision 72): the cell
+                        -- extract/_gis_files.py lands as `source_as_of`,
+                        -- quoted as the sheet writes it and said to be the
+                        -- sheet's claim, never OurHike's.
+                        when
+                            nullif(
+                                trim(
+                                    json_extract_string(
+                                        properties, '$.source_as_of'
+                                    )
+                                ),
+                                ''
+                            ) is not null
+                            then
+                                'From the club''s sheet, which says it is'
+                                || ' current as of '
+                                || trim(
+                                    json_extract_string(
+                                        properties, '$.source_as_of'
+                                    )
+                                )
                                 || '.'
                     end
             when synthesized_description is not null

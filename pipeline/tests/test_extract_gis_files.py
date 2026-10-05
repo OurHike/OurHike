@@ -75,6 +75,7 @@ def registry(tmp_path, monkeypatch):
             "url": SHEET_URL,
             "file_format": "csv_points",
             "header_row": 2,
+            "as_of_label": "Current as of:",
             "lat_field": "Latitude",
             "lon_field": "Longitude",
         },
@@ -410,6 +411,38 @@ def test_a_sheet_whose_header_sits_under_a_title_line_keeps_both_ends_of_a_segme
     assert knob["feature_index"] == 2
     assert knob["geometry"] == {"type": "Point", "coordinates": [-83.4, 35.6]}
     assert knob["property_Latitude"] is None
+    # The sheet's own date, from the cell after its as_of_label above the header (decision 72).
+    assert (gap["source_as_of"], knob["source_as_of"]) == ("1/1/2026", "1/1/2026")
+
+
+@pytest.mark.parametrize(
+    "title_line",
+    [
+        pytest.param('"Fixture sheet, use as you like",,,,,,,\n', id="the label has gone"),
+        pytest.param('"Fixture sheet, use as you like",,,Current as of:,,,,\n', id="the date beside it has gone"),
+    ],
+)
+def test_a_sheet_whose_as_of_cell_has_gone_is_unreadable_rather_than_landed_undated(registry, requests_mock, title_line):
+    requests_mock.get(
+        SHEET_URL,
+        text=title_line
+        + "Segment,Trailhead 1,Latitude,Longitude,,Trailhead 2,Latitude,Longitude\n1,Fixture Gap,35.5,-83.5,,,,\n",
+    )
+
+    with pytest.raises(GisFileUnreadable, match="Current as of:"):
+        list(gis("trailhead_sheet").rows({}))
+
+
+def test_an_as_of_label_on_a_csv_whose_header_is_its_first_line_is_refused_at_import(tmp_path, monkeypatch):
+    path = tmp_path / "bad.json"
+    entry = {"key": "bad", "url": CSV_URL, "file_format": "csv_points", "lat_field": "LATITUDE", "lon_field": "LONGITUDE"}
+    path.write_text(json.dumps({"sources": [{**entry, "as_of_label": "Current as of:"}]}))
+    monkeypatch.setattr(_kinds, "REGISTRY_PATH", path)
+    _kinds._registry.cache_clear()
+
+    with pytest.raises(KeyError, match="as_of_label"):
+        gis_file("bad")
+    _kinds._registry.cache_clear()
 
 
 def test_a_csv_row_whose_header_row_is_not_a_line_number_is_refused_at_import(tmp_path, monkeypatch):

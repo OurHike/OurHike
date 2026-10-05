@@ -47,6 +47,8 @@
 --   publish as POIs (decision 53's notices are their home).
 -- - Closed sites in a layer's own words, and dispersed camping, which
 --   usfs_dispersed_camping_holdback holds back, drop the same way.
+-- - A POINT LISTED TWICE IS ONE POINT: of a layer's rows that share a name
+--   and a fix, one ships (the `repeats` CTE says which, and why).
 --
 -- THE ID a row publishes under is `<source_key>:<source_id>`, the layer's
 -- own id where its registry id_field is one, and the base model's key where
@@ -137,6 +139,35 @@ first_held as (
     group by poi_key
 ),
 
+repeats as (
+    -- A POINT LISTED TWICE IS ONE POINT. A layer that lists the same point
+    -- under two headings lands it once a heading: PATC's Tuscarora pages
+    -- list a section's end under both sections it joins (20 fixes, its
+    -- key_comment), and UGRC's trailheads carry two rows that share a name
+    -- and a fix and differ only in TrailheadID. Rows of one layer whose
+    -- name and point are the same are one pin; the first by poi_key that no
+    -- rule holds back is kept, so a held listing never hides its twin. A
+    -- point with no name is never folded: nothing says two are the same.
+    select listings.poi_key
+    from (
+        select
+            unioned.poi_key,
+            row_number() over (
+                partition by
+                    unioned.source_key,
+                    lower(trim(unioned.name)),
+                    st_astext(unioned.geom)
+                order by first_held.reason is not null, unioned.poi_key
+            ) as listing
+        from unioned
+        left join first_held on unioned.poi_key = first_held.poi_key
+        where
+            unioned.geom is not null
+            and nullif(trim(unioned.name), '') is not null
+    ) as listings
+    where listings.listing > 1
+),
+
 never_water as (
     select
         poi_key,
@@ -199,6 +230,8 @@ select
         when first_held.reason is not null then first_held.reason
         when typed.type_count > 1
             then 'two club_poi_types rows type it differently'
+        when repeats.poi_key is not null
+            then 'a second listing of a point its layer already lists'
         when typed.poi_type = 'water' and never_water.reason is not null
             then never_water.reason
     end as rule_drop_reason,
@@ -208,4 +241,5 @@ select
 from unioned
 left join typed on unioned.poi_key = typed.poi_key
 left join first_held on unioned.poi_key = first_held.poi_key
+left join repeats on unioned.poi_key = repeats.poi_key
 left join never_water on unioned.poi_key = never_water.poi_key

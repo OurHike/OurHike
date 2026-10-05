@@ -39,7 +39,9 @@ What each format's own columns are:
 - GeoJSON: `feature_id` (the feature's own `id`), then its properties.
 - Shapefile: its .dbf columns. CSV: its columns, named by the row's
   `header_row` (the line they are on, 1 unless a title line sits above them),
-  a repeated name landing as `property_<name>`.
+  a repeated name landing as `property_<name>`, and, where the row names an
+  `as_of_label`, `source_as_of`: the date the sheet gives itself above the
+  header, verbatim.
 
 PERSON FIELDS never load (ELT.md, "Who may publish", rule 8): a property whose
 name is in extract/_kinds.py's PERSON_FIELDS or the row's `person_fields`, or
@@ -575,7 +577,9 @@ def parse_shapefile_zip(body: bytes, source: str, member: str | None = None) -> 
 # --- CSV of points ----------------------------------------------------------------
 
 
-def parse_csv_points(body: bytes, source: str, lat_field: str, lon_field: str, header_row: int = 1) -> list[dict]:
+def parse_csv_points(
+    body: bytes, source: str, lat_field: str, lon_field: str, header_row: int = 1, as_of_label: str | None = None
+) -> list[dict]:
     """A CSV's rows, every column as text, and a Point from the two columns the row names; no Point where either is not a number.
 
     `header_row` is the line the column names are on, counted from 1: a
@@ -586,6 +590,13 @@ def parse_csv_points(body: bytes, source: str, lat_field: str, lon_field: str, h
     both (FMST's `Latitude` twice). A row whose every cell is blank is a
     spreadsheet's spacing, not a feature, and is skipped; `feature_index`
     stays the row's position after the header.
+
+    `as_of_label` names a cell above the header that a sheet dates itself
+    by, FMST's `Current as of:` (decision 72): the next non-empty cell on
+    that line lands verbatim on every row as `source_as_of`, so the date a
+    card prints is the sheet's own on the day it was read. A sheet whose
+    label or date has gone is unreadable, as a header without its columns
+    is: the run says so rather than land the rows undated.
     """
     text = body.decode("utf-8-sig")
     if text.lstrip()[:1] == "<":
@@ -595,6 +606,7 @@ def parse_csv_points(body: bytes, source: str, lat_field: str, lon_field: str, h
     if lat_field not in header or lon_field not in header:
         raise GisFileUnreadable(f"{source}: the CSV's header (line {header_row}) has no {lat_field!r} and {lon_field!r} columns")
     lat_at, lon_at = header.index(lat_field), header.index(lon_field)
+    as_of = _csv_as_of(lines[: header_row - 1], as_of_label, source) if as_of_label else None
     rows = []
     for index, record in enumerate(lines[header_row:]):
         if not any(cell.strip() for cell in record):
@@ -602,6 +614,9 @@ def parse_csv_points(body: bytes, source: str, lat_field: str, lon_field: str, h
         cells = [record[at].strip() if at < len(record) and record[at].strip() else None for at in range(len(header))]
         row: dict = {"source_file": source, "feature_index": index}
         reserved = {_normal(name) for name in BASE_COLUMNS}
+        if as_of_label:
+            row["source_as_of"] = as_of
+            reserved.add(_normal("source_as_of"))
         for name, value in zip(header, cells, strict=True):
             _put(row, name, value, reserved)
         try:
@@ -611,6 +626,20 @@ def parse_csv_points(body: bytes, source: str, lat_field: str, lon_field: str, h
         _check_lonlat(row["geometry"], source)
         rows.append(row)
     return rows
+
+
+def _csv_as_of(lines: list[list[str]], label: str, source: str) -> str:
+    """The cell after `label` on the lines above a CSV's header, as the sheet writes it."""
+    wanted = label.strip().casefold()
+    for record in lines:
+        cells = [cell.strip() for cell in record]
+        if wanted in (cell.casefold() for cell in cells):
+            after = cells[[cell.casefold() for cell in cells].index(wanted) + 1 :]
+            value = next((cell for cell in after if cell), None)
+            if value is None:
+                raise GisFileUnreadable(f"{source}: the {label!r} cell above the header has no value beside it")
+            return value
+    raise GisFileUnreadable(f"{source}: no {label!r} cell above the header, which this row's as_of_label names")
 
 
 # --- Zips -------------------------------------------------------------------------
@@ -750,7 +779,9 @@ class GisFile(Resource):
             members = entry.get("zip_members") or [None]
             return [row for member in members for row in parse_shapefile_zip(body, url, member)]
         if fmt == "csv_points":
-            return parse_csv_points(body, url, entry["lat_field"], entry["lon_field"], entry.get("header_row") or 1)
+            return parse_csv_points(
+                body, url, entry["lat_field"], entry["lon_field"], entry.get("header_row") or 1, entry.get("as_of_label")
+            )
         if fmt == "zip":
             archive = _zip(body, url)
             wanted = tuple(suffix.lower() for suffix in entry.get("zip_members") or ZIP_MEMBER_FORMATS)
@@ -803,4 +834,9 @@ def gis_file(key: str, **overrides) -> GisFile:
     header_row = entry.get("header_row", 1)
     if not isinstance(header_row, int) or isinstance(header_row, bool) or header_row < 1:
         raise KeyError(f"{key}: header_row is the header's line number, counted from 1")
+    as_of_label = entry.get("as_of_label")
+    if as_of_label is not None and not (
+        entry["file_format"] == "csv_points" and isinstance(as_of_label, str) and as_of_label.strip() and header_row > 1
+    ):
+        raise KeyError(f"{key}: as_of_label names a cell above a csv_points header, so it needs a header_row past 1")
     return GisFile(key=key, **overrides)

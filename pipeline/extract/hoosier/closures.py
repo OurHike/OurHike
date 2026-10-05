@@ -11,8 +11,8 @@ is fetched. The feed was dormant anyway: 6 items, the newest 'Second Knobstone T
 Trail conditions Update: July 21, 2026', 'TRAIL CONDITION: GOOD'), a steward with no club folder, so
 it is read once in _shared/in_dnr/ as `in_dnr_knobstone_conditions` (decision 34). IN.gov's terms
 restrict reuse to personal use and name bots among 'disruptive activities' (quoted in `checked`): a
-restriction on copying and on disruptive use, not on reading, which is decision 55's reading and the
-maintainer's to confirm.
+restriction on copying and on disruptive use, not on reading: decision 55's reading, which decision 75
+(the maintainer's poll, 2026-10-04) confirmed for the clause on bots.
 
 Before decision 53 phase B, 2026-10-03, this note read:
 

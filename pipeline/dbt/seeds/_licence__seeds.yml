@@ -10,7 +10,7 @@ seeds:
     description: >
       One row per phrase a source's quoted terms (`terms`, `terms_verbatim`)
       may carry, and what it is: a restriction (commercial, no_reuse,
-      permission, purpose_limited, condition, cannot_be_met), a line that
+      permission, purpose_limited, condition, conduct, cannot_be_met), a line that
       restricts nothing (not_a_restriction: warranty, liability, accuracy and
       credit lines, cut out of the words before anything else is read), or
       the backstop (unclassified), read on what every other phrase leaves.
@@ -38,6 +38,7 @@ seeds:
                   - permission
                   - purpose_limited
                   - condition
+                  - conduct
                   - cannot_be_met
                   - not_a_restriction
                   - unclassified
@@ -69,7 +70,7 @@ seeds:
           - not_null
           - accepted_values:
               arguments:
-                values: [commercial, no_reuse, permission, purpose_limited, condition]
+                values: [commercial, no_reuse, permission, purpose_limited, condition, conduct]
       - name: licence_basis
         description: The basis the answer publishes on, or `any`.
         data_tests: [not_null]

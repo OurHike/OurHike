@@ -13,7 +13,8 @@ models:
       with the POI type the club_poi_types seed maps it to, the confidence it ships at, the id it
       publishes under, and, where a layer_rules row holds it back whatever it maps to, the reason:
       a water type that is not water, a planned or proposed point, a point that is not public, a
-      notice in a POI layer, a closed site or dispersed camping. int_points_of_interest__unioned
+      notice in a POI layer, a closed site or dispersed camping, or a second listing of a point
+      its layer already lists. int_points_of_interest__unioned
       reads it as one branch of already-typed records.
     data_tests:
       # Water is never high confidence from a wave 1 layer: none reports flow.
@@ -332,6 +333,43 @@ unit_tests:
         - {poi_key: 'cp-2', name: null, poi_type: null, confidence: null, rule_drop_reason: null, derived_id: 'cdtc_parking:cp-2'}
         - {poi_key: 'ut-1', name: 'Fixture Trailhead', poi_type: 'trailhead', confidence: 'high', rule_drop_reason: null, derived_id: 'utah_trailheads:ut-1'}
         - {poi_key: 'gv-1', name: 'Fixture Tower', poi_type: null, confidence: null, rule_drop_reason: 'two club_poi_types rows type it differently', derived_id: 'gmc_viewpoints:{GV-1}'}
+
+  - name: club_points_publish_a_point_their_layer_lists_twice_once
+    model: int_points_of_interest__club_points
+    description: >
+      A point listed twice is one point: PATC's Tuscarora pages list a section's end under both
+      sections it joins, so of a layer's rows that share a name (trimmed and case-folded) and a fix,
+      the first by poi_key ships and the others are held as a second listing. A rule holding the
+      first back leaves its twin to ship. Another layer's point at the same fix, a same-named point
+      a few metres off, and two nameless points at one fix are all left alone.
+    given:
+      - input: ref('int_points_of_interest__club_unioned')
+        rows:
+          - {source_key: 'patc_tuscarora_points', club: 'patc', poi_key: 'pt-1', name: 'Fixture Road', category: null, source_id: 'pt-1', geom: 'POINT (-77.9 39.9)', properties: '{"kind": "access", "section": "1"}'}
+          - {source_key: 'patc_tuscarora_points', club: 'patc', poi_key: 'pt-2', name: 'fixture road ', category: null, source_id: 'pt-2', geom: 'POINT (-77.9 39.9)', properties: '{"kind": "access", "section": "2"}'}
+          - {source_key: 'patc_tuscarora_points', club: 'patc', poi_key: 'pt-3', name: 'Fixture Road', category: null, source_id: 'pt-3', geom: 'POINT (-77.9 39.9001)', properties: '{"kind": "access", "section": "3"}'}
+          - {source_key: 'patc_tuscarora_points', club: 'patc', poi_key: 'pt-4', name: null, category: null, source_id: 'pt-4', geom: 'POINT (-77.8 39.8)', properties: '{"kind": "access", "section": "4"}'}
+          - {source_key: 'patc_tuscarora_points', club: 'patc', poi_key: 'pt-5', name: null, category: null, source_id: 'pt-5', geom: 'POINT (-77.8 39.8)', properties: '{"kind": "access", "section": "5"}'}
+          - {source_key: 'patc_tuscarora_points', club: 'patc', poi_key: 'pt-6', name: 'Fixture Gap', category: null, source_id: 'pt-6', geom: 'POINT (-77.7 39.7)', properties: '{"kind": "access", "section": "6", "status": "closed"}'}
+          - {source_key: 'patc_tuscarora_points', club: 'patc', poi_key: 'pt-7', name: 'Fixture Gap', category: null, source_id: 'pt-7', geom: 'POINT (-77.7 39.7)', properties: '{"kind": "access", "section": "7"}'}
+          - {source_key: 'utah_trailheads', club: 'utah_sgid', poi_key: 'ut-1', name: 'Fixture Road', category: null, source_id: 'ut-1', geom: 'POINT (-77.9 39.9)', properties: '{"primaryname": "Fixture Road"}'}
+      - input: ref('club_poi_types')
+        rows:
+          - {source_key: 'patc_tuscarora_points', field: 'kind', value: 'access', poi_type: 'trailhead', confidence: 'low', evidence: 'access'}
+          - {source_key: 'utah_trailheads', field: null, value: null, poi_type: 'trailhead', confidence: 'high', evidence: 'every point'}
+      - input: ref('layer_rules')
+        rows:
+          - {source_key: 'patc_tuscarora_points', rule: 'drop_where', field: 'status', matches: 'closed', evidence: 'made to hold one listing'}
+    expect:
+      rows:
+        - {poi_key: 'pt-1', rule_drop_reason: null}
+        - {poi_key: 'pt-2', rule_drop_reason: 'a second listing of a point its layer already lists'}
+        - {poi_key: 'pt-3', rule_drop_reason: null}
+        - {poi_key: 'pt-4', rule_drop_reason: null}
+        - {poi_key: 'pt-5', rule_drop_reason: null}
+        - {poi_key: 'pt-6', rule_drop_reason: 'layer_rules drop_where: status is closed'}
+        - {poi_key: 'pt-7', rule_drop_reason: null}
+        - {poi_key: 'ut-1', rule_drop_reason: null}
 
   - name: classified_reads_a_wave_1_point_as_a_typed_record
     model: int_points_of_interest__classified

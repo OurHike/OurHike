@@ -356,6 +356,84 @@ unit_tests:
         - {poi_id: 'nynjtc_long_path_guide:s1-description-0.10-water-0', description: 'Water source at mile 0.10 of Long Path section 1; position estimated from the guide''s mile marker, not surveyed. The guide calls it reliable.'}
         - {poi_id: 'nynjtc_long_path_guide:s3-camping-5.13-shelter-0', description: 'Shelter at mile 5.13 of Long Path section 3; position estimated from the guide''s mile marker, not surveyed.'}
 
+  - name: int_points_of_interest__described_dates_a_club_sheet_by_its_own_cell
+    description: >
+      Decision 72: FMST's trailheads publish with the sheet's own "Current as
+      of:" date, which extract/_gis_files.py lands as `source_as_of`. A club
+      point whose row carries one says so, quoting the date as the sheet
+      writes it and calling it the sheet's claim; a blank cell and a row
+      without one say nothing; and an asset sentence still comes first.
+      No exporter composes these rows, so no parity test reads this one.
+    model: int_points_of_interest__described
+    given:
+      - input: ref('int_points_of_interest__enriched')
+        rows:
+          - {poi_id: 'fmst_primary_trailheads:dated', poi_type: 'trailhead', phone_files: 'nearby_poi', asset: null, facility: null, properties: '{"source_as_of": " 8/12/2026 "}'}
+          - {poi_id: 'fmst_primary_trailheads:blank', poi_type: 'trailhead', phone_files: 'nearby_poi', asset: null, facility: null, properties: '{"source_as_of": " "}'}
+          - {poi_id: 'other_club:undated', poi_type: 'trailhead', phone_files: 'nearby_poi', asset: null, facility: null, properties: '{"name": "Fixture Gap"}'}
+          - {poi_id: 'other_club:asset_first', poi_type: 'shelter', phone_files: 'nearby_poi', asset: 'LEAN-TO', facility: null, properties: '{"source_as_of": "1/1/2026"}'}
+      - input: ref('poi_description_terms')
+        rows:
+          - {vocabulary: 'storeys', code: '2', phrase: 'Two-storey'}
+          - {vocabulary: 'storeys', code: '3', phrase: 'Three-storey'}
+          - {vocabulary: 'exterior_material', code: '0', phrase: 'block'}
+          - {vocabulary: 'exterior_material', code: '1', phrase: 'board-and-batten'}
+          - {vocabulary: 'exterior_material', code: '2', phrase: 'clapboard'}
+          - {vocabulary: 'exterior_material', code: '3', phrase: 'corrugated-metal'}
+          - {vocabulary: 'exterior_material', code: '4', phrase: 'timber'}
+          - {vocabulary: 'exterior_material', code: '5', phrase: 'log'}
+          - {vocabulary: 'exterior_material', code: '6', phrase: 'log-and-stone'}
+          - {vocabulary: 'exterior_material', code: '7', phrase: 'plywood'}
+          - {vocabulary: 'exterior_material', code: '8', phrase: 'post-and-beam'}
+          - {vocabulary: 'exterior_material', code: '11', phrase: 'steel'}
+          - {vocabulary: 'exterior_material', code: '12', phrase: 'stone'}
+          - {vocabulary: 'parking_surface', code: '0', phrase: 'asphalt'}
+          - {vocabulary: 'parking_surface', code: '1', phrase: 'concrete'}
+          - {vocabulary: 'parking_surface', code: '3', phrase: 'gravel'}
+          - {vocabulary: 'parking_surface', code: '4', phrase: 'dirt'}
+          - {vocabulary: 'parking_surface', code: '5', phrase: 'grass'}
+          - {vocabulary: 'privy_type', code: '0', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '1', phrase: 'moldering'}
+          - {vocabulary: 'privy_type', code: '2', phrase: 'composting'}
+          - {vocabulary: 'privy_type', code: '3', phrase: 'pit'}
+          - {vocabulary: 'privy_type', code: '4', phrase: 'vault'}
+          - {vocabulary: 'vista_location', code: 'mtn/ridge/outcrop', phrase: 'a ridge or rock outcrop'}
+          - {vocabulary: 'vista_location', code: 'summit', phrase: 'a summit'}
+          - {vocabulary: 'vista_location', code: 'lookout tower', phrase: 'a lookout tower'}
+          - {vocabulary: 'vista_location', code: 'tower/platform', phrase: 'a tower platform'}
+          - {vocabulary: 'vista_location', code: 'viewing platform', phrase: 'a viewing platform'}
+          - {vocabulary: 'vista_location', code: 'overlook', phrase: 'an overlook'}
+          - {vocabulary: 'vista_location', code: 'bridge', phrase: 'a bridge'}
+          - {vocabulary: 'vista_location', code: 'water feature', phrase: 'the water'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility - powerline', phrase: 'a powerline corridor'}
+          - {vocabulary: 'vista_location', code: 'utility corridor - pipeline', phrase: 'a pipeline corridor'}
+          - {vocabulary: 'vista_location', code: 'open area', phrase: 'an open area'}
+          - {vocabulary: 'vista_location', code: 'open area - maintained', phrase: 'a maintained clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - managed', phrase: 'a managed clearing'}
+          - {vocabulary: 'vista_location', code: 'open area - natural', phrase: 'a natural clearing'}
+          - {vocabulary: 'vista_location', code: 'shelter', phrase: 'a shelter'}
+          - {vocabulary: 'vista_location', code: 'campsite', phrase: 'a campsite'}
+          - {vocabulary: 'stream_source', code: 'nhd', phrase: 'USGS'}
+          - {vocabulary: 'stream_source', code: 'osm', phrase: 'OpenStreetMap contributors'}
+          - {vocabulary: 'stream_claim', code: 'nhd', phrase: 'maps it as'}
+          - {vocabulary: 'stream_claim', code: 'osm', phrase: 'tag it as'}
+          - {vocabulary: 'stream_flow', code: 'perennial', phrase: 'year-round'}
+          - {vocabulary: 'stream_flow', code: 'intermittent', phrase: 'seasonal'}
+          - {vocabulary: 'stream_flow', code: 'ephemeral', phrase: 'seasonal'}
+          - {vocabulary: 'water_kind', code: 'spring', phrase: 'Spring'}
+          - {vocabulary: 'water_kind', code: 'drinking_water', phrase: 'Drinking water point'}
+          - {vocabulary: 'water_kind', code: 'water_tap', phrase: 'Water tap'}
+          - {vocabulary: 'water_kind', code: 'water_well', phrase: 'Well'}
+      - input: ref('stg_derived__long_path_guide')
+        rows: []
+    expect:
+      rows:
+        - {poi_id: 'fmst_primary_trailheads:dated', description: 'From the club''s sheet, which says it is current as of 8/12/2026.'}
+        - {poi_id: 'fmst_primary_trailheads:blank', description: null}
+        - {poi_id: 'other_club:undated', description: null}
+        - {poi_id: 'other_club:asset_first', description: 'Lean-To.'}
+
   - name: int_points_of_interest__described_says_what_describe_stream_point_says
     description: >
       PO07 and PO17's sentence: describe_stream_point(), which describe_water()

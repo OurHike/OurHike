@@ -396,8 +396,8 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
 
     DECISION 54'S WAVES 4 AND 5, POINTS ON CLUB PAGES AND IN CLUB PDFS (section S, 2026-10-04): rows
     registered at `reaches_hikers: false`. `public_gis` for the clubs' own pages and PDFs of points that state
-    no licence (decision 21a's presumption, read as mtsg_map_locations' row reads it; int_sources__publication
-    refuses it on a page or a PDF, rule 6, for the maintainer); `unresolved` for the ATA's water cache boxes,
+    no licence (decision 21a's presumption, read as mtsg_map_locations' row reads it, which decision 69 extended to
+    a club's own page or PDF of points on 2026-10-04); `unresolved` for the ATA's water cache boxes,
     whose terms ask written permission for information published online, which no decision answers for points.
 
     DECISION 54'S WAVES 4 AND 5, CONTENT PAGES AND PDFS (section K, 2026-10-04): 34 rows, all
@@ -422,3 +422,31 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # 3 `public_gis` (BRBTC's sections, the Palmetto Trail's passages and OHTA's trailheads), and its fourth 1
     # `public_gis` (PATC's Tuscarora access points and camping), recounted from the registry 2026-10-04.
     assert counts == {"maintainer_authorisation": 218, "public_gis": 252, "stated_by_org": 192, "unresolved": 30}
+
+
+#: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6
+#: admits under `public_gis` beside the GIS endpoints.
+CLUB_POINTS_KINDS = frozenset({"page_points", "pdf_points", "json_features"})
+
+
+def test_a_public_gis_page_pdf_or_map_route_is_a_clubs_own_points_and_carries_no_prose():
+    """Decision 69 (the maintainer's poll, 2026-10-04, cards Q1 and 8a) extends decision 21a's presumption to the
+    points a club prints on its own page or PDF, and to the route its own website's map reads them from: facts
+    only, none of the page's prose. int_sources__publication's rule 6 admits those kinds by `kind` alone, because
+    no model there knows an organization's type, so this holds the rest. Each such row is claimed by a club folder
+    whose trail_orgs.json `type` is a club's (generate_notice_models.py's CLUB_TYPES, decision 68's split), and it
+    names no `asset_field` or `facility_field`, the one route by which a club point's own text becomes the
+    sentence on its card (int_points_of_interest__described)."""
+    from extract._contract import discover, slug_for_folder
+    from generate_notice_models import CLUB_TYPES
+
+    types = {row["slug"]: row["type"] for row in json.loads((ROOT / "reference" / "trail_orgs.json").read_text())["orgs"]}
+    folder_of = {key: club_file.club for club_file in discover() for key in club_file.claims}
+    rows = [s for s in REGISTRY["sources"] if s.get("licence_basis") == "public_gis" and s.get("kind") in CLUB_POINTS_KINDS]
+
+    assert len(rows) == 10, sorted(s["key"] for s in rows)
+    org_type = {s["key"]: types.get(slug_for_folder(folder_of.get(s["key"], ""))) for s in rows}
+    not_a_club = {key: kind for key, kind in org_type.items() if kind not in CLUB_TYPES}
+    assert not not_a_club, f"decision 69 reaches a club's own points only: {not_a_club}"
+    prose = sorted(s["key"] for s in rows if s.get("asset_field") or s.get("facility_field"))
+    assert not prose, f"decision 69 publishes facts only, never a page's text as a card's sentence: {prose}"

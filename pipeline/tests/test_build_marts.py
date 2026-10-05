@@ -340,6 +340,44 @@ def test_the_dbt_jobs_scope_covers_build_marts_and_every_step_with_what_they_imp
     assert not uncovered, f"run by the dbt job's build and outside its paths: {uncovered}"
 
 
+#: A pipeline/ file a step's command names: a script, a test file, a requirements file.
+NAMED_FILE = re.compile(r"(?<![\w/.-])((?:\.\./)?[\w/.-]+\.(?:py|txt|toml))\b")
+#: `python -m <module>` for a module of the pipeline's own, not pytest.
+NAMED_MODULE = re.compile(r"-m ((?!pytest\b)[a-z_][\w.]*)")
+
+
+def test_the_dbt_jobs_scope_covers_every_file_its_steps_read():
+    """Every pipeline/ file a dbt-job step names, with what its Python imports, and what every pytest run loads.
+
+    WF6 of the PR #1805 review: the three pytest steps load tests/conftest.py, whose autouse fixtures apply to them,
+    and pyproject.toml, whose `pythonpath = ["."]` is what lets `import row_history` work; the row-dates step greps
+    its pytest pin out of requirements-dev.txt; and make_dbt_fixtures.py imports load_raw.py. None was in the list,
+    so a pull request touching only one of them skipped the one job that runs those tests (the pytest job skips
+    them without OURHIKE_DBT)."""
+    job = _dbt_job()
+    scope = next(step for step in job["steps"] if step.get("id") == "scope")["with"]["paths"].split()
+    default = REPO_DIR / job["defaults"]["run"]["working-directory"]
+    files: set[Path] = set()
+    for step in job["steps"]:
+        run = step.get("run") or ""
+        where = REPO_DIR / step["working-directory"] if "working-directory" in step else default
+        named = [(where / name).resolve() for name in NAMED_FILE.findall(run)]
+        named += [PIPELINE_DIR.joinpath(*module.split(".")).with_suffix(".py") for module in NAMED_MODULE.findall(run)]
+        if "-m pytest" in run:
+            named += [PIPELINE_DIR / "tests" / "conftest.py", PIPELINE_DIR / "pyproject.toml"]
+        for path in named:
+            if path.is_file() and path.is_relative_to(PIPELINE_DIR):
+                files |= _local_imports(path) if path.suffix == ".py" else {path}
+
+    assert PIPELINE_DIR / "make_dbt_fixtures.py" in files, "the walk did not reach the steps' own scripts"
+    uncovered = sorted(
+        relative
+        for relative in (str(path.relative_to(REPO_DIR)) for path in files)
+        if not any(relative.startswith(prefix) for prefix in scope)
+    )
+    assert not uncovered, f"read by the dbt job's steps and outside its paths: {uncovered}"
+
+
 def test_ci_and_test_sh_build_only_through_build_marts_apart_from_the_evaluator():
     runs = [step.get("run") or "" for step in _dbt_job()["steps"]]
     assert sum("build_marts.py --fixtures" in run for run in runs) == 1

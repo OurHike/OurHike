@@ -14,6 +14,7 @@ what TESTING.md's small-synthetic-fixture rule keeps out of CI. Parse plus
 the scope contract is the part that can be held without that.
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -139,6 +140,38 @@ def test_no_script_invokes_a_bare_python_or_python3():
         assert offenders == [], (
             f"{script.name} must run Python through the shared selection, not bare `python`/`python3`: {offenders}"
         )
+
+
+def _test_sh_parity_families(test_sh: str) -> set[str]:
+    """The parity families test.sh's dbt suite runs: its `for family in ...` lists and its direct parity.py lines."""
+    runs = {item.split(":")[0] for loop in re.findall(r"for family in ([a-z0-9_: ]+); do", test_sh) for item in loop.split()}
+    return runs | set(re.findall(r"parity\.py ([a-z0-9_]+) --new", test_sh))
+
+
+def test_test_sh_list_names_every_ci_dbt_parity_family_and_step_its_dbt_suite_leaves_out():
+    """WF8 of the PR #1805 review: test.sh's dbt suite ran 6 of the 47 parity families pipeline-tests.yml's dbt job
+    runs, and not its contract-versions step, while its comment said it followed that job "step for step". A change
+    that broke one of the other 41 passed test.sh and failed CI. `--list` now names every one it leaves out, from
+    CI's own step (scripts/dbt_ci_parity.py), and the array test.sh compares with is the families it runs."""
+    from test_refresh_reference import _ci_families
+
+    test_sh = (REPO_ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
+    runs = _test_sh_parity_families(test_sh)
+    (declared,) = re.findall(r"^dbt_local_parity=\(([a-z0-9_ ]+)\)$", test_sh, re.M)
+    assert set(declared.split()) == runs, "dbt_local_parity is not the families test.sh's parity lines run"
+
+    script = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "dbt_ci_parity.py")], capture_output=True, text=True, check=True
+    )
+    assert script.stdout.split() == list(_ci_families()), "scripts/dbt_ci_parity.py does not read CI's step"
+
+    listed = subprocess.run(
+        ["bash", str(REPO_ROOT / "scripts" / "test.sh"), "--all", "--list"], capture_output=True, text=True, check=True
+    )
+    (line,) = [line for line in listed.stdout.splitlines() if "parity families" in line]
+    named = set(line.split(" not run here: ", 1)[1].split(";", 1)[0].split())
+    assert named == set(_ci_families()) - runs and named, line
+    assert "check_contract_versions.py" in line, line
 
 
 def test_an_unknown_suite_is_an_error_not_an_empty_answer():

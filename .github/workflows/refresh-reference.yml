@@ -45,8 +45,9 @@ on:
     # weekly job in .github/workflows/README.md. Off the 1st only by analogy
     # with avoiding :00 (@unvalidated: GitHub's load by day of month is
     # unmeasured; scheduled runs' queue delays on the 1st against other days
-    # would settle it). Schedules fire from main only. If the last success is over
-    # 35 days old, check-upstream-freshness.yml reports it in #478 - Upstream
+    # would settle it). Schedules fire from main only. If the last run on main
+    # whose "Confirm UA serves what the build wrote" job passed is over 35
+    # days old, check-upstream-freshness.yml reports it in #478 - Upstream
     # data freshness, and a dispatch is the fallback.
     - cron: "15 5 3 * *"
   # No inputs, on purpose: the environment is not a choice here.
@@ -292,9 +293,29 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "duckdb-extension-spatial==$("$RUNNER_TEMP/pipeline/bin/python" -c 'import duckdb; print(duckdb.__version__)')"
           "$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py
 
+      # dbt's packages: pipeline-tests.yml's dbt job explains the key, why a
+      # hit skips deps, and why only a deps that succeeded is saved (ARCH-6 of
+      # the PR #1805 review).
+      - name: Restore dbt's packages
+        id: dbt-packages
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/dbt/dbt_packages
+          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
+
       - name: dbt deps
+        id: deps
+        if: steps.dbt-packages.outputs.cache-hit != 'true'
         working-directory: pipeline/dbt
         run: dbt deps --profiles-dir .
+
+      - name: Save dbt's packages
+        if: always() && steps.deps.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/dbt/dbt_packages
+          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
 
       # THE PIN: a write-once copy of this run's raw inputs (ELT.md, "Storage
       # tiers", the raw_inputs row). A rerun builds from the first attempt's

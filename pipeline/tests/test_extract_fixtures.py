@@ -80,8 +80,8 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         assert counts[resource.table] == expected, resource.table
 
 
-#: The notice resources fixture mode leaves out: PDFs, which PageNotice reads through pypdf, and the pipeline and dbt
-#: jobs install no pypdf (make_dbt_fixtures.py's notice comment).
+#: The notice resources fixture mode leaves out: PDFs, which PageNotice reads through pypdf, and fixture mode's Python
+#: need not have pypdf (make_dbt_fixtures.py's notice comment).
 NOTICE_PDFS = {"bmta_alerts_pdf", "foot_hiker_alert_mm195", "tatc_ridgerunner_reports", "trustees_hunting_designations"}
 
 

@@ -505,9 +505,10 @@ def test_a_pdf_notice_carries_the_registry_title_its_own_metadata_date_and_the_b
 
 
 def test_a_pdfs_metadata_dates_are_read_and_a_malformed_one_is_no_date():
-    """Needs pypdf, which only requirements-extract.txt pins, so the pipeline suite's environment skips it."""
-    pypdf = pytest.importorskip("pypdf")
+    """Through real pypdf, which requirements-dev.in pins at the extract's version (WF4 of the PR #1805 review)."""
     from io import BytesIO
+
+    import pypdf
 
     def pdf(metadata: dict) -> bytes:
         writer = pypdf.PdfWriter()

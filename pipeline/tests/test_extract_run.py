@@ -1408,7 +1408,7 @@ def water():
 
 def test_a_club_pdf_lands_its_parsed_rows_each_with_the_documents_manifest(registry, requests_mock, monkeypatch):
     monkeypatch.setattr(_kinds, "extract_page_texts", lambda body: [PAGE_1, PAGE_2])
-    # An invented title and date: pypdf is the extract job's, not this suite's (requirements.in's note).
+    # An invented title and date, so this holds the manifest; the read itself is the test below.
     monkeypatch.setattr(
         _kinds,
         "club_pdf_document_info",
@@ -1424,6 +1424,32 @@ def test_a_club_pdf_lands_its_parsed_rows_each_with_the_documents_manifest(regis
     # The HTTP date is the file's; the title is what says how old the data in it is (decision 75).
     assert rows[0]["_document"]["title"] == "Fixture Water Update May 2011.xlsx"
     assert rows[0]["_document"]["created"] == "2026-03-02T15:00:00-05:00"
+
+
+def test_a_club_pdfs_own_title_and_creation_date_are_read_through_pypdf_and_a_pdf_stating_neither_reads_as_none():
+    """club_pdf_document_info on PDFs written here with pypdf, which the pipeline suite now installs (WF4 of the PR
+    #1805 review). The first is GATC's case with an invented title: a title naming an older year than the file's
+    HTTP date (decision 75). Unreadable bytes are None for both, never a failed load."""
+    from io import BytesIO
+
+    import pypdf
+
+    def pdf(metadata: dict) -> bytes:
+        writer = pypdf.PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        writer.add_metadata(metadata)
+        buffer = BytesIO()
+        writer.write(buffer)
+        return buffer.getvalue()
+
+    dated = pdf({"/Title": "Fixture Water Update July 2020.xlsx", "/CreationDate": "D:20200715120000-04'00'"})
+    assert _kinds.club_pdf_document_info(dated) == {
+        "title": "Fixture Water Update July 2020.xlsx",
+        "created": "2020-07-15T12:00:00-04:00",
+    }
+    assert _kinds.club_pdf_document_info(pdf({})) == {"title": None, "created": None}
+    assert _kinds.club_pdf_document_info(pdf({"/Title": "  ", "/CreationDate": "not a date"})) == {"title": None, "created": None}
+    assert _kinds.club_pdf_document_info(b"%PDF-1.7 not a document") == {"title": None, "created": None}
 
 
 def test_a_club_pdf_is_fresh_on_a_304_or_the_same_bytes_and_stale_on_new_ones(registry, requests_mock):

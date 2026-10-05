@@ -272,6 +272,39 @@ fi
 echo "== running: ${selected[*]}"
 echo
 
+# WHAT THE DBT SUITE LEAVES OUT OF CI'S dbt JOB, said rather than implied
+# (WF8 of the PR #1805 review). These are the parity families its parity
+# lines below run. CI's job runs 47, and its contract-versions step besides:
+# most families' old sides read their inputs from pipeline/data/raw/
+# (parity.py's RAW_DIR and the exporters' own), where CI's fixture build
+# writes, and this script keeps its fixtures in a temporary directory
+# instead (see the dbt suite's note). Which of the others could run from
+# there has not been checked family by family. CI's list is read from its
+# own step by scripts/dbt_ci_parity.py, so this line cannot drift from it;
+# .github/tests/test_dev_scripts.py holds this array to the lines that run.
+dbt_local_parity=(podcasts stewards registry elevation trail_graph_elevation trail_graph_profile)
+
+# Sets dbt_ci_total and dbt_ci_left, CI's parity families this suite does not
+# run; fails when CI's step cannot be read.
+dbt_ci_left_out() {
+  local ci family
+  dbt_ci_left=()
+  ci="$("${SCOPE_PY}" scripts/dbt_ci_parity.py 2>/dev/null)" || return 1
+  dbt_ci_total="$(wc -l <<< "$ci" | tr -d ' ')"
+  while IFS= read -r family; do
+    [[ " ${dbt_local_parity[*]} " == *" ${family} "* ]] || dbt_ci_left+=("$family")
+  done <<< "$ci"
+}
+
+dbt_ci_skips() {
+  local contract="CI's contract-versions step (check_contract_versions.py against the base's manifest)"
+  if dbt_ci_left_out; then
+    echo "dbt suite: ${#dbt_ci_left[@]} of CI's ${dbt_ci_total} parity families not run here: ${dbt_ci_left[*]}; and ${contract}. CI's dbt job runs them regardless."
+  else
+    echo "dbt suite: CI's parity families could not be read (scripts/dbt_ci_parity.py), so how many it leaves out is unknown; and ${contract}."
+  fi
+}
+
 if $list_only; then
   # The files, not just the scope list. "Why is the backend suite running for
   # a client-only change" has a real answer - one of the six contract modules
@@ -283,6 +316,11 @@ if $list_only; then
       matched_files "$files" "$(scope_for_suite "$suite")" | sed 's/^/    /'
     else
       echo "    (everything - $reason)"
+    fi
+    if [ "$suite" = "dbt" ]; then
+      echo
+      dbt_ci_skips
+      echo
     fi
   done
   exit 0
@@ -412,12 +450,15 @@ if selected_has backend; then
   step "backend tests"  env -C backend "$PY" -m pytest -q "${PYTEST_PARALLEL[@]}" "${PYTEST_COVERAGE[@]}"
 fi
 
-# pipeline-tests.yml's `dbt` job, step for step and in its order, with three
-# differences and each one on purpose:
+# pipeline-tests.yml's `dbt` job, in its order, with four differences and
+# each one on purpose:
 #   - the fixtures and the warehouse go to a temporary directory, never to
 #     pipeline/data/. make_dbt_fixtures.py refuses to write over a real
 #     fetch, and fixture mode would replace a real warehouse; on a CI runner
 #     pipeline/data/ is empty, here it may be somebody's afternoon of fetching;
+#   - so it runs only dbt_local_parity's 6 of CI's 47 parity families, and
+#     not CI's contract-versions step. `--list` names every one left out,
+#     and the last line of a run counts them (dbt_ci_skips, above);
 #   - nothing is installed: no pip. Fixture mode runs under the suites' own
 #     Python rather than a venv of requirements-extract.txt;
 #   - --no-dbt-deps can skip `dbt deps`, out loud.
@@ -446,9 +487,6 @@ if selected_has dbt; then
     else
       step "dbt deps"            "${dbt_cmd[@]}" deps --profiles-dir .
     fi
-    # The jinja templater, as CI runs it: no warehouse, but after deps, because
-    # dbt_utils' macros render from dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py).
-    step "dbt sqlfluff lint"     env -C pipeline "$DBT_DIR/sqlfluff" lint dbt/models dbt/tests
     step "dbt parse"             "${dbt_cmd[@]}" parse --profiles-dir .
     step "dbt lint"              "${dbt_cmd[@]}" lint --profiles-dir .
     # Fixture mode, as CI runs it: the extract over the fixture files, under
@@ -479,6 +517,15 @@ if selected_has dbt; then
     step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
     step "dbt docs site"         env -C pipeline "$PY" check_docs_site.py dbt/target/docs
     step "dbt project evaluator" env DBT_PROJECT_EVALUATOR_SEVERITY=error "${dbt_cmd[@]}" build -s package:dbt_project_evaluator --profiles-dir .
+    # Last and on every core, as CI runs it (its step says why): the jinja
+    # templater needs no warehouse, but dbt_utils' macros render from
+    # dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py).
+    step "dbt sqlfluff lint"     env -C pipeline "$DBT_DIR/sqlfluff" lint dbt/models dbt/tests --processes 0
+    if dbt_ci_left_out; then
+      skipped+=("${#dbt_ci_left[@]} of CI's ${dbt_ci_total} dbt parity families and its contract-versions step (--list names them)")
+    else
+      skipped+=("CI's dbt parity families past these ${#dbt_local_parity[@]}, uncounted, and its contract-versions step")
+    fi
   fi
 fi
 if selected_has client; then

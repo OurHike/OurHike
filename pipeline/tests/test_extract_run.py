@@ -30,7 +30,7 @@ import pytest
 import requests
 from dlt.pipeline.exceptions import PipelineStepFailed
 
-from extract import _kinds, _run
+from extract import _kinds, _notices, _run
 from extract._contract import Resource
 from extract._kinds import (
     MONTHLY_READ_BACKOFF_SECONDS,
@@ -53,7 +53,7 @@ from extract._kinds import (
 from extract._run import ExtractRefused, Planned, make_pipeline, run_check, run_pipeline
 from extract._warehouse import load_warehouse
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
-from lib import http_retry
+from lib import arcgis, http_retry
 from lib.freshness_state import Freshness
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.user_agent import USER_AGENT
@@ -66,6 +66,7 @@ LINES_URL = f"{AGOL}/Trails/FeatureServer/0"
 LINES_Z_URL = f"{AGOL}/CenterlineZ/FeatureServer/9"
 UNPAGED_URL = "https://gis.example.org/arcgis/rest/services/Trail/MapServer/0"
 CLOSURES_URL = f"{AGOL}/Closures/FeatureServer/0"
+STATUS_URL = f"{AGOL}/SiteStatus/FeatureServer/0"
 STAFFED_URL = f"{AGOL}/Waypoints/FeatureServer/1"
 ONPREM_URL = "https://gis.example.gov/arcgis/rest/services/assets/MapServer/3"
 FEED_URL = "https://feeds.example.org/show.xml"
@@ -181,6 +182,7 @@ def registry(tmp_path, monkeypatch):
                     {"key": "centerline_z", "url": LINES_Z_URL, "return_z": True},
                     {"key": "unpaged", "url": UNPAGED_URL},
                     {"key": "closures_layer", "url": CLOSURES_URL},
+                    {"key": "status_layer", "url": STATUS_URL, "where": "status = 'closed'"},
                     {
                         "key": "staffed",
                         "url": STAFFED_URL,
@@ -193,7 +195,7 @@ def registry(tmp_path, monkeypatch):
                     {"key": "alerts", "url": "https://club.example.org/category/trail-alerts/", "kind": "published_notices"},
                     {"key": "nynjtc_long_path_guide", "url": GUIDE, "kind": "guide_pages"},
                     {"key": "hikes", "url": HIKES, "kind": "published_hikes"},
-                    {"key": "gatc_water_sources", "url": PDF_URL, "kind": "club_pdf"},
+                    {"key": "gatc_water_sources", "url": PDF_URL, "kind": "club_pdf", "crawl_delay": 10},
                     {
                         "key": "usgs_3dhp",
                         "url": "https://3dhp.example.gov/arcgis/rest/services/all/FeatureServer",
@@ -207,6 +209,7 @@ def registry(tmp_path, monkeypatch):
                         "domain": "data.example.gov",
                         "dataset_id": "abcd-1234",
                         "where": GREENWAY_WHERE,
+                        "crawl_delay": 1,
                     },
                 ]
             }
@@ -216,6 +219,27 @@ def registry(tmp_path, monkeypatch):
     _kinds._registry.cache_clear()
     yield path
     _kinds._registry.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def no_host_gap(monkeypatch):
+    """No host is asked anything, so extract/_notices.py's per-host gate waits nothing here, and starts each test empty."""
+    monkeypatch.setattr(_notices, "_pause", lambda seconds: None)
+    monkeypatch.setattr(_notices, "_GATES", {})
+
+
+@pytest.fixture
+def gate_clock(monkeypatch):
+    """The per-host gate on a clock that moves only when it pauses: the list of pauses it made, in order."""
+    clock, pauses = {"now": 1000.0}, []
+
+    def pause(seconds):
+        pauses.append(seconds)
+        clock["now"] += seconds
+
+    monkeypatch.setattr(_notices, "_now", lambda: clock["now"])
+    monkeypatch.setattr(_notices, "_pause", pause)
+    return pauses
 
 
 @pytest.fixture
@@ -725,6 +749,108 @@ def test_a_read_shorter_than_the_servers_count_fails_before_anything_loads(regis
         lane(store, lines(), closures())
 
 
+class StatusLayer:
+    """A layer read under `status = 'closed'`, offset-paged over the sites closed at the moment each page is asked.
+
+    That is how SQL's OFFSET pages: a site that reopens below the offset
+    shifts every later site down one, and one that closes below it shifts
+    them up. `edit(pages_served, layer)` runs after each page with features,
+    so a test can reopen or close a site part-way through a read.
+    """
+
+    def __init__(self, requests_mock, closed, edit=None):
+        self.closed = sorted(closed)
+        self.edit = edit or (lambda pages_served, layer: None)
+        self.pages_served = 0
+        requests_mock.get(STATUS_URL, json={"objectIdField": "OBJECTID", "fields": FIELDS})
+        requests_mock.get(STATUS_URL + "/query", json=self.query)
+
+    def query(self, request, context):
+        params = {key.lower(): value[0] for key, value in request.qs.items()}
+        if params.get("returncountonly") == "true":
+            return {"count": len(self.closed)}
+        offset, size = int(params["resultoffset"]), int(params["resultrecordcount"])
+        page = [feature(oid, name=f"Site {oid}") for oid in self.closed[offset : offset + size]]
+        if page:
+            self.pages_served += 1
+            self.edit(self.pages_served, self)
+        return {"type": "FeatureCollection", "features": page}
+
+
+def status_layer():
+    return ArcgisLayer(key="status_layer", club="testclub", type="closures")
+
+
+def test_a_site_that_reopens_between_two_pages_does_not_cost_a_still_closed_site_its_row(registry, requests_mock, monkeypatch):
+    """Site 2 reopens after the first page of 3, so the second page starts one site late and site 4 was never served.
+
+    The count after the pages is 6, the rows read are 6, and before the fix
+    nothing refused: site 4, still closed, was missing from closures until
+    the next read (review finding EXD-1).
+    """
+    monkeypatch.setattr(arcgis, "PAGE_SIZE", 3)
+
+    def reopen_site_2_after_the_first_page(pages_served, layer):
+        if pages_served == 1:
+            layer.closed.remove(2)
+
+    StatusLayer(requests_mock, range(1, 8), edit=reopen_site_2_after_the_first_page)
+    proofs = {}
+
+    landed = [row["OBJECTID"] for row in status_layer().rows(proofs)]
+
+    assert landed == [1, 3, 4, 5, 6, 7], "read again once the layer moved, so every site closed after the edit lands"
+    assert proofs == {"raw_testclub__status_layer": 6}
+
+
+def test_a_site_that_closes_between_two_pages_is_not_missed_behind_a_repeated_one(registry, requests_mock, monkeypatch):
+    """Site 2 closes after the first page, below the offset: the next page repeats site 4 and site 2 is never served.
+
+    Seven rows are read and the server counts seven, so before the fix the
+    count check passed with the newly closed site missing.
+    """
+    monkeypatch.setattr(arcgis, "PAGE_SIZE", 3)
+
+    def close_site_2_after_the_first_page(pages_served, layer):
+        if pages_served == 1:
+            layer.closed = sorted([*layer.closed, 2])
+
+    StatusLayer(requests_mock, [1, 3, 4, 5, 6, 7], edit=close_site_2_after_the_first_page)
+
+    landed = [row["OBJECTID"] for row in status_layer().rows({})]
+
+    assert sorted(set(landed)) == [1, 2, 3, 4, 5, 6, 7]
+    assert len(landed) == 7, "the read that repeated site 4 was not the one that landed"
+
+
+def test_a_layer_edited_during_both_reads_is_refused_rather_than_landed_short(registry, requests_mock, monkeypatch):
+    """A site reopens part-way through the first read and another part-way through the second: neither read is whole."""
+    monkeypatch.setattr(arcgis, "PAGE_SIZE", 3)
+
+    def reopen_the_lowest_site_after_each_reads_first_page(pages_served, layer):
+        if len(layer.closed) > 3 and pages_served in (1, 3):
+            layer.closed.pop(0)
+
+    StatusLayer(requests_mock, range(1, 8), edit=reopen_the_lowest_site_after_each_reads_first_page)
+
+    with pytest.raises(RuntimeError, match="changed while it was read, twice"):
+        list(status_layer().rows({}))
+
+
+def test_a_layer_read_in_one_page_is_not_read_again_when_its_count_moves(registry, requests_mock):
+    """One page cannot be shifted by an edit, so a count that moves between the reads before and after it is no reason to read again."""
+
+    def reopen_site_2_after_the_only_page(pages_served, layer):
+        if pages_served == 1:
+            layer.closed.remove(2)
+
+    layer = StatusLayer(requests_mock, range(1, 4), edit=reopen_site_2_after_the_only_page)
+
+    landed = [row["OBJECTID"] for row in status_layer().rows({})]
+
+    assert landed == [1, 2, 3] and layer.pages_served == 1
+
+
 def test_a_field_added_to_person_fields_is_dropped_from_a_layer_that_has_not_moved_upstream(
     registry, store, requests_mock, monkeypatch
 ):
@@ -837,6 +963,93 @@ def test_no_staff_column_lands_under_any_name_and_the_dates_beside_them_still_do
     assert "a.person" not in json.dumps(rows) and "555-0100" not in json.dumps(rows)
     printed = capsys.readouterr().out
     assert "['CreatedBy', 'LAST_EDITOR', 'LastEdBy', 'LastEdited', 'TELEPHONE']" in printed, printed
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"error": {"code": 500, "message": "Service Waypoints/FeatureServer not started"}},
+        {"objectIdField": "OBJECTID"},
+    ],
+    ids=["an error body", "no field list"],
+)
+def test_a_layer_whose_metadata_names_no_fields_is_refused_before_any_page_is_asked_for_every_field(
+    registry, requests_mock, metadata
+):
+    """With no field list nothing could be left out of the request, so it would have asked outFields=* (review finding EXD-2)."""
+    layer = StaffedLayer(requests_mock, STAFFED_URL, [staffed_feature(1)])
+    requests_mock.get(STAFFED_URL, json=metadata)
+
+    with pytest.raises(RuntimeError, match="no field list"):
+        list(staffed().rows({}))
+    asked_pages = [r for r in requests_mock.request_history if "outfields" in r.qs]
+    assert asked_pages == [], [r.qs["outfields"] for r in asked_pages]
+    assert layer.features, "the layer had a staffed row to give"
+
+
+def test_a_staff_column_the_metadata_does_not_list_still_never_lands(registry, requests_mock):
+    """A row can carry a field its layer document leaves out; the name rules judge it at the row, as they do in the field list."""
+    StaffedLayer(requests_mock, STAFFED_URL, [staffed_feature(1)])
+    requests_mock.get(
+        STAFFED_URL,
+        json={
+            "objectIdField": "OBJECTID",
+            "fields": [field for field in STAFFED_FIELDS if field["name"] in ("OBJECTID", "NAME")],
+        },
+    )
+
+    rows = list(staffed().rows({}))
+
+    # `last_edited_date` goes too: unlisted, its type is unknown, so it is judged by its editor-shaped name.
+    # So does `Surveyor`, which the person-shaped backstop reads as a person's field.
+    assert set(rows[0]) == {"OBJECTID", "NAME", "LastEdit_1", "geometry"}, rows[0]
+    assert "GPS A. Person" not in json.dumps(rows), "the row's person_fields, `source`, is judged by name too"
+    assert "555-0100" not in json.dumps(rows)
+
+
+@pytest.mark.parametrize("name", ["MANAGER", "Park_Manager", "SUPERINTENDENT", "STEWARD", "SURVEYOR", "CREATEUSER", "EDITUSER"])
+def test_a_manager_steward_or_surveyor_column_and_an_all_capitals_user_column_are_person_shaped(registry, name):
+    """Names the backstop missed, so such a field loaded unless a person had named it on its row (review finding EXD-3).
+
+    PA DCNR's park layer loaded a `MANAGER` whose values have the shape of
+    people's names; NPS's layers spell editor tracking `CREATEUSER` and
+    `EDITUSER`, one word each.
+    """
+    layer = ArcgisLayer(key="trails", club="testclub", type="trail_lines")
+
+    dropped = layer.dropped_fields({"fields": [{"name": name, "type": "esriFieldTypeString"}]})
+
+    assert dropped == {name.lower(): "a person-shaped name"}
+
+
+def test_a_manager_column_a_row_clears_as_an_agency_still_loads(registry):
+    """`not_person_fields` clears the new words as it clears `owner`: Mohonk's `Manager` is "Mohonk Preserve" on every row."""
+    entries = json.loads(registry.read_text())
+    next(e for e in entries["sources"] if e["key"] == "trails")["not_person_fields"] = ["Manager"]
+    registry.write_text(json.dumps(entries))
+    _kinds._registry.cache_clear()
+    layer = ArcgisLayer(key="trails", club="testclub", type="trail_lines")
+
+    assert layer.dropped_fields({"fields": [{"name": "Manager", "type": "esriFieldTypeString"}]}) == {}
+
+
+@pytest.mark.parametrize(
+    ("key", "field", "dropped"),
+    [
+        ("pasda_state_park_amenities", "MANAGER", True),
+        ("mohonk_trails", "Manager", False),
+        ("cotrex_trailheads", "manager", False),
+        ("pcta_trailheads", "external_trailheadManager", False),
+        ("ridgetrail_campsites", "MANAGER", False),
+    ],
+)
+def test_each_registered_layers_manager_column_is_ruled_on_its_own_row(key, field, dropped):
+    """The real rows: PA DCNR's park managers never load; the four whose row records the column as agencies keep it."""
+    layer = ArcgisLayer(key=key, club="testclub", type="points_of_interest")
+
+    verdict = layer.dropped_fields({"fields": [{"name": field, "type": "esriFieldTypeString"}]})
+
+    assert bool(verdict) is dropped, verdict
 
 
 def test_a_name_added_to_a_rows_person_fields_reads_an_unmoved_layer_again(registry, monkeypatch):
@@ -1249,6 +1462,20 @@ def test_a_socrata_change_check_that_errors_is_unknown(registry, requests_mock):
     assert greenways().change_check(None) == (Freshness.UNKNOWN, None)
 
 
+def test_a_socrata_dataset_keeps_a_gap_between_its_requests_to_a_host_that_asks_for_one(registry, requests_mock, gate_clock):
+    """NYC's portal asks `Crawl-delay: 1`, and its check, pages and count went back to back (review finding EXD-4).
+
+    The row's `crawl_delay` is 1, under DEFAULT_HOST_GAP_SECONDS, so the gap kept is the 2 s floor every reader keeps.
+    """
+    FakeSocrata(requests_mock, [1, 2, 3])
+
+    greenways().change_check(None)
+    list(greenways().rows({}))
+
+    assert len(requests_mock.request_history) == 4, "the check, a page, the empty page after it, the count"
+    assert gate_clock == [_notices.DEFAULT_HOST_GAP_SECONDS] * 3
+
+
 def wp_post(number, modified="2026-09-01T00:00:00"):
     return {
         "id": number,
@@ -1439,6 +1666,31 @@ def test_a_hike_finder_listing_that_links_nothing_or_miscounts_raises(registry, 
         list(hikes.rows({}))
 
 
+def test_the_hike_finder_waits_its_hosts_crawl_delay_after_the_sign_in_and_only_that_long_between_pages(
+    registry, requests_mock, monkeypatch, gate_clock
+):
+    """The host asks `Crawl-delay: 10`; the sign-in's POST kept only fetch_hikefinder's 0.5 s (review finding EXD-4).
+
+    Every request now passes the host's gate, the POST included, and the gate
+    is the only wait: 10 s end to start, never the gate's 10 and a throttle's
+    10 one after the other.
+    """
+    retry_sleeps = []
+    monkeypatch.setattr(http_retry.time, "sleep", retry_sleeps.append)
+    monkeypatch.setenv("HIKEFINDER_PASSWORD", "fixture-not-a-password")
+    requests_mock.post(HIKES + "hikes.php", text="signed in")
+    requests_mock.get(HIKES + "hikes.php", text='Results (1 hikes found) <a href="hike.php?id=1">a</a>')
+    requests_mock.get(HIKES + "hike.php?id=1", text=page(gpx=True))
+    requests_mock.get(HIKES + "download_gpx.php?id=1", text=GPX)
+
+    rows = list(PublishedHikes(key="hikes", club="testclub", type="suggested_hikes").rows({}))
+
+    assert len(rows) == 1 and rows[0]["gpx"] == GPX
+    assert [r.method for r in requests_mock.request_history] == ["POST", "GET", "GET", "GET"]
+    assert gate_clock == [10, 10, 10], "the listing, the hike and its track each wait 10 s after the request before"
+    assert all(seconds < 1 for seconds in retry_sleeps), retry_sleeps
+
+
 def test_a_category_of_exactly_one_full_page_never_asks_for_the_page_past_it(registry, requests_mock):
     FakeWordpress(requests_mock, [wp_post(n) for n in range(1, 101)])
     proofs = {}
@@ -1514,6 +1766,37 @@ def test_a_club_pdf_is_fresh_on_a_304_or_the_same_bytes_and_stale_on_new_ones(re
     assert water().change_check(same_bytes)[0] is Freshness.FRESH, "WordPress re-served the same bytes"
     document["bytes"] = b"%PDF-1.7 water, revised"
     assert water().change_check(same_bytes)[0] is Freshness.STALE
+
+
+def test_a_club_pdf_waits_its_hosts_crawl_delay_behind_the_other_reader_on_that_host(registry, requests_mock, gate_clock):
+    """GATC's host asks `Crawl-delay: 10`, and its peaks page and water PDF are read one after the other.
+
+    The page reader passes the host's gate; the PDF did not, so it was asked
+    straight after the page and the page after it waited only its own 10 s
+    from the first (review finding EXD-4).
+    """
+    page = "https://club.example.org/for-hikers/peaks/"
+    requests_mock.get(page, text="<html>peaks</html>")
+    requests_mock.get(PDF_URL, content=b"%PDF-1.7 water", headers={"ETag": '"w1"'})
+    page_reader = _notices.polite(_kinds.session(), 10.0)
+
+    page_reader.get(page)
+    water().change_check(None)
+    page_reader.get(page)
+
+    assert [r.url for r in requests_mock.request_history] == [page, PDF_URL, page]
+    assert gate_clock == [10.0, 10.0], "the PDF waits 10 s after the page, and the page 10 s after the PDF"
+
+
+def test_a_club_pdf_that_now_redirects_to_another_host_is_unknown_and_never_read_as_the_clubs(registry, requests_mock):
+    """A moved upload served from a host nobody read robots.txt or terms for is not the club's PDF (review finding EXD-10)."""
+    elsewhere = "https://parked-domain.example.net/water.pdf"
+    requests_mock.get(PDF_URL, status_code=301, headers={"Location": elsewhere})
+    requests_mock.get(elsewhere, content=b"%PDF-1.7 not the club's", headers={"ETag": '"p1"'})
+
+    assert water().change_check(None) == (Freshness.UNKNOWN, None)
+    with pytest.raises(RuntimeError, match="another host"):
+        list(water().rows({}))
 
 
 def test_a_club_pdf_loaded_under_an_older_manifest_is_read_again_whatever_its_bytes(registry, requests_mock):

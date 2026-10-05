@@ -169,6 +169,28 @@ def same_site(asked: str, served: str) -> bool:
     return _site(urlparse(asked).hostname) == _site(urlparse(served).hostname)
 
 
+def redirect_refused(entry: dict, asked: str, served: str) -> str | None:
+    """Why the answer served from `served` for `asked` is not this row's, or None when it is.
+
+    The same rule as same_site, for the GIS-file, JSON-API and club-PDF
+    readers, which followed any redirect (review finding EXD-10): a file whose
+    URL starts redirecting to another host is answered by a host whose
+    robots.txt and terms nobody read for the row. A row whose upstream always
+    redirects to another host that was read when the row was registered names
+    it in `redirect_hosts`, matched as that host or any host under it
+    (fmst_primary_trailheads' Google Sheets export, which answers from a
+    `doc-*-sheets.googleusercontent.com` host that changes per request).
+    """
+    if same_site(asked, served):
+        return None
+    host = _site(urlparse(served).hostname)
+    for read in entry.get("redirect_hosts") or ():
+        read = _site(read)
+        if host == read or host.endswith("." + read):
+            return None
+    return f"{asked} now redirects to {served}, another host, whose robots.txt and terms nobody has read for this row"
+
+
 # --- Politeness: one gap per host, across every reader and thread ----------
 
 # The gap kept between two requests to one host when its robots.txt asks for

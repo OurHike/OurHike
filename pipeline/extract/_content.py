@@ -196,6 +196,10 @@ NPS_CONTENT_COLUMNS = {
 }
 
 
+class RepeatedId(RuntimeError):
+    """An NPS list served an id it had already served within one read: its order moved at a page boundary."""
+
+
 def nps_content_url(base: str, park_codes: list[str], start: int, limit: int = NPS_CONTENT_PAGE_SIZE) -> str:
     """One page's URL: `parkCode` only when the row names codes (none reads the national list), then `limit`, `start`."""
     query = [("parkCode", ",".join(park_codes))] if park_codes else []
@@ -210,8 +214,8 @@ class NpsContent(_json_apis.NpsAlerts):
     header: with the variable unset the change check raises Unavailable, so the run leaves the resource out
     and the table is withdrawn, never read as an empty list. No change check otherwise (the API sends no
     validators), so every run reads the list. THE ZERO and THE COUNT are the answer's own `total`, read on
-    every page: a total that moves within one read, a repeated or missing `id`, or a read that ends short of
-    the total raises, and the last good table stands.
+    every page: a total that moves within one read, a missing `id`, a repeated one on a second read (the first
+    is read again, `rows`), or a read that ends short of the total raises, and the last good table stands.
 
     THE SCOPE is the registry row's: national when it names no park codes, or the codes another row lists in
     `park_codes`, named by `park_codes_from` (nps_alerts' map, the one home for which club folder draws on
@@ -240,7 +244,30 @@ class NpsContent(_json_apis.NpsAlerts):
         return hints
 
     def rows(self, proofs: dict[str, int]):
+        """Every row, read once more where the first read met an id it had already read; refused if the second does too.
+
+        NPS's start/limit order wobbled at a page boundary in monthly runs 17
+        and 18 (refresh-reference.yml 37232256991 and 37245577210), and
+        nps_things_to_do refused on the same repeated id both times, with no
+        second read where JsonFeatures over the same API reads again (review
+        finding EXD-9). So a repeat is read again once, as
+        extract/_ogc.py's JsonFeatures._consistent_read does; a second read
+        that repeats an id too is refused, so a list one item short never
+        lands, and the last committed table stands.
+        """
         headers = {"X-Api-Key": _json_apis.nps_api_key(), "Accept": "application/json"}
+        try:
+            collected, total = self._read_list(headers)
+        except RepeatedId as repeat:
+            print(f"::warning title={self.key} read an id twice::{repeat}; reading the list again, once")
+            collected, total = self._read_list(headers)
+        proofs[self.table] = total
+        left_out = self.person_fields
+        for row in collected:
+            yield {name: value for name, value in row.items() if name not in left_out}
+
+    def _read_list(self, headers: dict) -> tuple[list[dict], int]:
+        """One whole read of the list, page by page, held to the `total` every page states."""
         base, codes = self.entry["url"].rstrip("/"), self.park_codes
         collected: list[dict] = []
         seen: set[str] = set()
@@ -259,7 +286,8 @@ class NpsContent(_json_apis.NpsAlerts):
             for row in body["data"]:
                 row_id = row.get("id") if isinstance(row, dict) else None
                 if not row_id or row_id in seen:
-                    raise RuntimeError(f"{self.key}: id {row_id!r} is missing or repeated, so a page was served twice")
+                    refusal = RepeatedId if row_id else RuntimeError  # a row with no id is the API changing shape
+                    raise refusal(f"{self.key}: id {row_id!r} is missing or repeated, so a page was served twice")
                 seen.add(row_id)
                 collected.append(row)
             if not body["data"] or len(collected) >= total:
@@ -269,10 +297,7 @@ class NpsContent(_json_apis.NpsAlerts):
             raise RuntimeError(f"{self.key}: still paging at {NPS_CONTENT_MAX_PAGES} pages, a ceiling rather than an ending")
         if len(collected) != total:
             raise RuntimeError(f"{self.key}: NPS counts {total} rows and {len(collected)} were read")
-        proofs[self.table] = total
-        left_out = self.person_fields
-        for row in collected:
-            yield {name: value for name, value in row.items() if name not in left_out}
+        return collected, total
 
 
 def nps_content(key: str, **overrides) -> NpsContent:

@@ -42,6 +42,7 @@ OGC_URL = "https://ogc.example.org/collections/trails/items"
 WP_URL = "https://club.example.org/wp-json/wp/v2/cm-map-location"
 NPS_URL = "https://nps.example.gov/api/v1/places"
 VENUES_URL = "https://club.example.org/wp-json/tribe/events/v1/venues"
+MOVED_URL = "https://club.example.org/maps/trail.geojson"
 
 
 def kml(*placemarks: str, folder: str = "Fixture Folder", extra: str = "") -> str:
@@ -80,6 +81,8 @@ def registry(tmp_path, monkeypatch):
             "lon_field": "Longitude",
         },
         {"key": "staffed_map", "url": KML_URL, "file_format": "kml", "person_fields": ["Leader"]},
+        {"key": "moved_file", "url": MOVED_URL, "file_format": "geojson"},
+        {"key": "exported_file", "url": MOVED_URL, "file_format": "geojson", "redirect_hosts": ["files.example.net"]},
         {"key": "ogc_trails", "url": OGC_URL},
         {
             "key": "map_locations",
@@ -264,6 +267,36 @@ def shapefile_zip(prj: str | None) -> bytes:
     return buffer.getvalue()
 
 
+def springs_with_one_deleted() -> bytes:
+    """Three points, the second marked deleted (`*`) in the .dbf and still present in the .shp, as an unpacked edit leaves it."""
+    records = b""
+    for number, (x, y) in enumerate(((-75.0, 40.0), (-75.1, 40.1), (-75.2, 40.2)), start=1):
+        content = struct.pack("<i2d", 1, x, y)
+        records += struct.pack(">2i", number, len(content) // 2) + content
+    header = struct.pack(">7i", 9994, 0, 0, 0, 0, 0, (100 + len(records)) // 2) + struct.pack(
+        "<2i4d4d", 1000, 1, -75.2, 40.0, -75.0, 40.2, 0, 0, 0, 0
+    )
+    field = b"NAME".ljust(11, b"\x00") + b"C" + b"\x00" * 4 + bytes([20, 0]) + b"\x00" * 14
+    dbf = struct.pack("<BBBBIHH20x", 3, 126, 1, 1, 3, 32 + 32 + 1, 1 + 20) + field + b"\x0d"
+    dbf += b" " + b"North Spring".ljust(20) + b"*" + b"Removed Spring".ljust(20) + b" " + b"South Spring".ljust(20) + b"\x1a"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("springs.shp", header + records)
+        archive.writestr("springs.dbf", dbf)
+    return buffer.getvalue()
+
+
+def test_a_deleted_dbf_record_takes_its_geometry_with_it_rather_than_shifting_every_later_name_onto_the_wrong_point():
+    """Before the fix the deleted record was skipped in the .dbf only, so the second point was named "South Spring"
+    and the third landed with no name (review finding EXD-11)."""
+    rows = parse_shapefile_zip(springs_with_one_deleted(), SHP_URL)
+
+    assert [(row.get("NAME"), row["geometry"]["coordinates"], row["feature_index"]) for row in rows] == [
+        ("North Spring", [-75.0, 40.0], 0),
+        ("South Spring", [-75.2, 40.2], 2),
+    ]
+
+
 def test_a_zipped_shapefile_reads_its_points_and_its_dbf_columns_with_nothing_the_extract_does_not_pin():
     rows = parse_shapefile_zip(shapefile_zip('GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984"]]'), SHP_URL)
 
@@ -349,6 +382,44 @@ def test_a_wall_answered_where_the_file_was_raises_and_lands_nothing(registry, r
 
     with pytest.raises(Exception):
         list(gis("my_map").rows({}))
+
+
+ONE_FEATURE = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"n": 1}, "geometry": None}]}
+
+
+def test_a_gis_file_that_now_redirects_to_another_host_is_refused_and_lands_nothing(registry, requests_mock):
+    """The other host's robots.txt and terms were never read for the row, so its answer is not the club's file (review finding EXD-10)."""
+    elsewhere = "https://parked-domain.example.net/trail.geojson"
+    requests_mock.get(MOVED_URL, status_code=301, headers={"Location": elsewhere})
+    requests_mock.head(MOVED_URL, status_code=301, headers={"Location": elsewhere})
+    requests_mock.get(elsewhere, json=ONE_FEATURE)
+    requests_mock.head(elsewhere, headers={"ETag": '"x"'})
+
+    with pytest.raises(GisFileUnreadable, match="now redirects to https://parked-domain.example.net/trail.geojson, another host"):
+        list(gis("moved_file", "trail_lines").rows({}))
+    assert gis("moved_file", "trail_lines").change_check(None) == (Freshness.UNKNOWN, None)
+
+
+@pytest.mark.parametrize(
+    ("key", "served"),
+    [("moved_file", "https://www.club.example.org/maps/trail.geojson"), ("exported_file", "https://doc-1.files.example.net/x")],
+    ids=["the same site under www", "a host the row records reading"],
+)
+def test_a_gis_file_redirected_within_its_site_or_to_a_host_its_row_has_read_still_lands(registry, requests_mock, key, served):
+    requests_mock.get(MOVED_URL, status_code=301, headers={"Location": served})
+    requests_mock.get(served, json=ONE_FEATURE)
+
+    assert len(list(gis(key, "trail_lines").rows({}))) == 1
+
+
+def test_a_json_api_that_now_redirects_to_another_host_is_refused(registry, requests_mock, monkeypatch):
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+    elsewhere = "https://parked-domain.example.net/api/v1/places"
+    requests_mock.get(NPS_URL, status_code=302, headers={"Location": elsewhere})
+    requests_mock.get(elsewhere, json={"total": "1", "data": [{"id": "id-0", "latitude": "41", "longitude": "-74"}]})
+
+    with pytest.raises(RuntimeError, match="another host"):
+        list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
 
 
 # --- the change check, per file -----------------------------------------------------
@@ -673,6 +744,61 @@ def test_a_paged_list_whose_copies_differ_on_two_reads_is_refused_with_the_field
     with pytest.raises(RuntimeError, match=r"nps_places: 1 id value\(s\) on items that differ \(first: id-0, in title\)"):
         list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
     assert len(requests_mock.request_history) == 6, "read twice, three pages each"
+
+
+def test_a_list_that_repeats_an_item_in_place_of_another_on_both_reads_is_refused_rather_than_landed_one_short(
+    registry, requests_mock, monkeypatch
+):
+    """Page 2 repeats id-1 and never serves id-2, on every read: an unstable order at the page boundary.
+
+    The repeat makes up the API's count of 4, and the read stops there, so
+    before the fix the second read landed 4 rows holding 3 places and
+    nothing refused (review finding EXD-8).
+    """
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+
+    def page(request, context):
+        start = int(request.qs["start"][0])
+        ids = ["id-0", "id-1"] if start == 0 else ["id-1", "id-3"]
+        return {"total": "4", "data": [{"id": n, "title": n, "latitude": "41", "longitude": "-74"} for n in ids]}
+
+    requests_mock.get(NPS_URL, json=page)
+
+    with pytest.raises(
+        RuntimeError, match=r"nps_places: read twice, and both reads hold 3 distinct id values where the API counts 4"
+    ):
+        list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
+    assert len(requests_mock.request_history) == 4, "read twice, two pages each"
+
+
+def test_an_item_missing_its_key_is_not_a_repeat_and_does_not_hold_the_list(registry, requests_mock, monkeypatch):
+    """An item with no `id` cannot be shown to repeat another, so it counts as one distinct item, not as a shortfall."""
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+
+    def page(request, context):
+        start = int(request.qs["start"][0])
+        items = [{"id": "id-0"}, {"id": "id-1"}, {"title": "no id"}][start : start + 2]
+        return {"total": "3", "data": [{**item, "latitude": "41", "longitude": "-74"} for item in items]}
+
+    requests_mock.get(NPS_URL, json=page)
+
+    rows = list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
+
+    assert len(rows) == 3 and len(requests_mock.request_history) == 2, "read once"
+
+
+def test_a_paged_json_row_with_no_key_is_refused_at_import_since_a_repeated_item_could_not_be_seen(tmp_path, monkeypatch):
+    path = tmp_path / "unkeyed.json"
+    row = {"key": "unkeyed", "url": NPS_URL, "paging": "start_limit", "lat_field": "lat", "lon_field": "lon"}
+    path.write_text(json.dumps({"sources": [row, {**row, "key": "keyed", "key_fields": ["id"]}]}))
+    monkeypatch.setattr(_kinds, "REGISTRY_PATH", path)
+    _kinds._registry.cache_clear()
+    try:
+        with pytest.raises(KeyError, match="key_fields"):
+            json_features("unkeyed")
+        assert json_features("keyed").key == "keyed"
+    finally:
+        _kinds._registry.cache_clear()
 
 
 def test_a_key_of_two_fields_reads_two_places_under_one_id_as_two_items(registry, requests_mock, monkeypatch):

@@ -79,7 +79,16 @@ from extract._contract import (
 # Decision 53's notice readers, in a module of their own for this file's
 # length. They are builders like the rest, so a club file imports them from
 # here; extract/_notices.py's docstring says why it cannot import this file.
-from extract._notices import FeedNotices, PageNotice, feed_notices, page_notice, polite, query_refused  # noqa: F401
+from extract._notices import (  # noqa: F401
+    DEFAULT_HOST_GAP_SECONDS,
+    FeedNotices,
+    PageNotice,
+    feed_notices,
+    page_notice,
+    polite,
+    query_refused,
+    redirect_refused,
+)
 from fetch_atc_updates import TOLERATED_PARSE_FAILURES as ATC_TOLERATED_PARSE_FAILURES
 from fetch_club_pdfs import extract_page_texts
 from fetch_elevation import TILE_URL_TEMPLATE as DEM_TILE_URL_TEMPLATE
@@ -87,7 +96,7 @@ from fetch_hikefinder import sign_in as hikefinder_sign_in
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
 from fetch_opentrail import strip_comments as strip_opentrail_comments
 from lib.arcgis import PAGE_SIZE as ARCGIS_PAGE_SIZE
-from lib.arcgis import iter_layer_pages, layer_count
+from lib.arcgis import feature_object_id, iter_layer_pages, layer_count
 from lib.atc_scrape import parse_update as parse_atc_update
 from lib.atc_scrape import update_url as atc_update_url
 from lib.club_pdfs import PARSERS as CLUB_PDF_PARSERS
@@ -164,9 +173,25 @@ PERSON_FIELDS = frozenset(
 # @unvalidated: the word list was drafted for decision 54 on 2026-10-03 from
 # the names seen so far, not from a survey of field names. What would settle
 # it is the names a few monthly runs print, read for false matches and misses.
+#
+# `manager`, `superintendent`, `steward` and `surveyor` were added, and `user`
+# matched at the end of a run-together word (NPS's `CREATEUSER`, `EDITUSER`),
+# for review finding EXD-3 of PR #1805: PA DCNR's park layer loaded a
+# `MANAGER` whose values have the shape of people's names (61 distinct over
+# 125 parks, 123 with a space, none naming a park, region or bureau: the
+# review counted them and read no value), and its row now names it in
+# `person_fields`. In the 167 live field lists make_dbt_fixtures.py copies,
+# `manager` matches six other columns. Three rows record theirs as agencies
+# and clear it in `not_person_fields` (cotrex_trailheads, pcta_trailheads,
+# ridgetrail_campsites), as mohonk_trails does the `Manager` its staging model
+# reads; the other three are left out until a person reads them
+# (nj_open_space_points_of_interest's LAND_MANAGER, portland_parks_trails'
+# Manager, amc_trailheads_and_parking's Tr_Manager, whose row lists 78 of its
+# 106 values). `steward`, `superintendent` and `surveyor` match none of them.
 PERSON_SHAPED = re.compile(
     r"(^|_)(user|user_?name|editor|edited_?by|created_?by|creator|last_?ed_?by|last_?edit(ed|or)?(_?by)?"
-    r"|owner|phone|telephone|tel|fax|email|e_?mail|contact)($|_|\d)"
+    r"|owner|phone|telephone|tel|fax|email|e_?mail|contact|manager|superintendent|steward|surveyor)($|_|\d)"
+    r"|[a-z]user($|_|\d)"
 )
 
 # Field types whose values are never a person's name, whatever the field is
@@ -189,6 +214,27 @@ NEVER_PERSON_TYPES = frozenset(
 def _name_words(name: str) -> str:
     """`LastEdBy` as `last_ed_by`: split at each lower-to-upper step, then lower-cased, so PERSON_SHAPED sees the words."""
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
+
+
+def left_out_of_row(name: str, listed: set[str], dropped: dict[str, str], rules: dict[str, list[str]]) -> bool:
+    """Whether an ArcGIS row's property never lands: dropped from the field list, or, if the list never named it, by name.
+
+    `listed` and `dropped` are the layer metadata's field names and
+    ArcgisLayer.dropped_fields' verdicts on them, lower-cased; `rules` is the
+    row's field_rules. A property the metadata did not list is judged by the
+    name rules alone (PERSON_FIELDS, the row's `person_fields`, and
+    PERSON_SHAPED unless `not_person_fields` clears it), since without its
+    type even a date named like an editor cannot be told from one: it is left
+    out, which costs a column, never a person (review finding EXD-2).
+    """
+    lower = name.lower()
+    if lower in dropped or lower in PERSON_FIELDS:
+        return True
+    if lower in listed:
+        return False
+    return lower in rules["person_fields"] or (
+        lower not in rules["not_person_fields"] and bool(PERSON_SHAPED.search(_name_words(name)))
+    )
 
 
 # ArcGIS field types -> dlt data types. Hinting every column from the layer's
@@ -247,6 +293,16 @@ def session() -> requests.Session:
     named = requests.Session()
     named.headers["User-Agent"] = USER_AGENT
     return named
+
+
+def host_gated(entry: dict) -> requests.Session:
+    """session(), every request held by extract/_notices.py's per-host gate: the row's `crawl_delay`, at least DEFAULT_HOST_GAP_SECONDS.
+
+    One gate per host for the process, so two readers of one host keep the
+    gap between them as well as within each (GATC's water PDF and its peaks
+    page, both on a host asking `Crawl-delay: 10`; review finding EXD-4).
+    """
+    return polite(session(), max(float(entry.get("crawl_delay") or 0), DEFAULT_HOST_GAP_SECONDS))
 
 
 @lru_cache(maxsize=4)
@@ -522,13 +578,22 @@ class ArcgisLayer(Resource):
         extract, after 15 silent minutes, with decision 54's largest layers to
         read (USGS's 176,566 populated places, Washington's 32,563 public-land
         polygons). That memory was the cause is Reasoned, not measured; the
-        line each monthly layer now prints with its peak RSS settles it.
+        line each monthly layer now prints with its peak RSS settles it. A
+        read an edit may have shifted is read again, once (`_read_into`).
         """
         named = session()
         metadata = self.metadata(self.read_backoff)
+        fields = [field.get("name") for field in metadata.get("fields") or [] if isinstance(field, dict) and field.get("name")]
+        if metadata.get("error") or not fields:
+            # ArcGIS answers many errors with HTTP 200 and an `error` object (page_refusal()), and a layer
+            # document without its field list names nothing to leave out: asking "*" then would send every
+            # person field this layer has (review finding EXD-2). Refused, so the last committed table stands.
+            said = metadata.get("error") or "no `fields` key"
+            raise RuntimeError(f"{self.key}: the layer's metadata answered no field list ({said}), so nothing could be left out")
         dropped = self.dropped_fields(metadata)
-        fields = [field.get("name") for field in metadata.get("fields") or [] if field.get("name")]
         kept = [name for name in fields if name.lower() not in dropped]
+        listed = {name.lower() for name in fields}
+        rules = self.field_rules
         shaped = sorted(name for name in fields if dropped.get(name.lower()) == "a person-shaped name")
         if shaped:
             print(
@@ -540,24 +605,17 @@ class ArcgisLayer(Resource):
         # A server that refuses resultOffset says so in its metadata, and is read by
         # object id in batches no larger than its own maxRecordCount (lib/arcgis.py).
         paginate = (metadata.get("advancedQueryCapabilities") or {}).get("supportsPagination") is not False
-        pages = iter_layer_pages(
-            self.url,
-            where=self.where,
-            out_fields=out_fields,
-            session=named,
-            backoff=self.read_backoff,
-            return_z=self.return_z,
-            paginate=paginate,
-            page_size=None if paginate else min(ARCGIS_PAGE_SIZE, metadata.get("maxRecordCount") or ARCGIS_PAGE_SIZE),
-        )
+        oid_field = object_id_field(metadata)
         with tempfile.TemporaryFile("w+", encoding="utf-8") as spool:
-            read = 0
-            for page in pages:
-                for feature in page:
-                    spool.write(json.dumps(feature, separators=(",", ":")))
-                    spool.write("\n")
-                    read += 1
-            count = layer_count(self.url + "/query", where=self.where, session=named, backoff=self.read_backoff)
+            for attempt in (1, 2):
+                spool.seek(0)
+                spool.truncate()
+                read, count, moved = self._read_into(spool, named, out_fields, paginate, metadata, oid_field)
+                if moved is None:
+                    break
+                if attempt == 2:
+                    raise RuntimeError(f"{self.key}: the layer changed while it was read, twice ({moved}); not landed short")
+                print(f"::warning title={self.key} changed while it was read::{moved}; reading the layer again, once")
             if count is not None:
                 if read < count:
                     raise RuntimeError(f"{self.key}: the server counts {count} features and {read} were read")
@@ -571,10 +629,71 @@ class ArcgisLayer(Resource):
                 row = {
                     name: value
                     for name, value in (feature.get("properties") or {}).items()
-                    if name.lower() not in dropped and name.lower() not in PERSON_FIELDS
+                    if not left_out_of_row(name, listed, dropped, rules)
                 }
                 row["geometry"] = feature.get("geometry")
                 yield row
+
+    def _read_into(self, spool, named, out_fields: str, paginate: bool, metadata: dict, oid_field: str):
+        """One whole read into `spool`: (features read, the server's count after, why the read cannot stand or None).
+
+        AN OFFSET PAGE IS ASKED OF THE LAYER AS IT IS AT THAT MOMENT, so a row
+        that leaves the `where` set below the offset between two pages shifts
+        every later row down one and the next page starts a row late, and one
+        that joins it below the offset shifts them up and repeats a row. Either
+        way a live row is never served while the rows read can still equal
+        the count read after them (review finding EXD-1: a site reopening
+        under `status = 'closed'` cost a still-closed site its row, and the
+        count passed). So the count is read before the pages as well as
+        after: a read of more than one page whose count moved between the two
+        may have been shifted, and a read that makes up the count only with
+        repeated object ids served one row in place of another. Either is read
+        again by the caller, once, and refused if the second read is no better.
+        One page cannot be shifted, so its count moving is no reason to read
+        again; a read shorter than the count is the caller's refusal, as
+        before; and a layer read by object id (`paginate` false) asks for ids,
+        not offsets, so it cannot be shifted at all.
+
+        STILL OPEN: a row leaving the set and another joining it inside one
+        read leaves the count where it was and repeats nothing, and that skip
+        is not seen. Keyset paging (`orderByFields` on the object id, `where`
+        past the last id read) would close it, and changes every page query
+        every layer is asked; it is not built (Reasoned, not measured: no
+        registered server has been tried with it).
+        """
+        query_url = self.url + "/query"
+        before = layer_count(query_url, where=self.where, session=named, backoff=self.read_backoff) if paginate else None
+        pages = iter_layer_pages(
+            self.url,
+            where=self.where,
+            out_fields=out_fields,
+            session=named,
+            backoff=self.read_backoff,
+            return_z=self.return_z,
+            paginate=paginate,
+            page_size=None if paginate else min(ARCGIS_PAGE_SIZE, metadata.get("maxRecordCount") or ARCGIS_PAGE_SIZE),
+        )
+        read, pages_read, ids = 0, 0, set()
+        for page in pages:
+            pages_read += 1
+            for feature in page:
+                spool.write(json.dumps(feature, separators=(",", ":")))
+                spool.write("\n")
+                read += 1
+                if ids is not None:
+                    oid = feature_object_id(feature, oid_field)
+                    if oid is None:
+                        ids = None  # a feature with no id: the repeat check cannot be made, and is not guessed
+                    else:
+                        ids.add(oid)
+        count = layer_count(query_url, where=self.where, session=named, backoff=self.read_backoff)
+        if not paginate or count is None:
+            return read, count, None
+        if ids is not None and len(ids) < count <= read:
+            return read, count, f"{len(ids)} distinct object ids in {read} features read, and the server counts {count}"
+        if pages_read > 1 and before is not None and before != count:
+            return read, count, f"the server counted {before} features before the {pages_read} pages and {count} after"
+        return read, count, None
 
 
 def arcgis_layer(key: str, **overrides) -> ArcgisLayer:
@@ -592,7 +711,9 @@ class SocrataDataset(Resource):
     (lib/socrata.py). Pages come from `fetch_dataset_geojson`, ordered on
     `:id` so an offset is safe, and the read is held to the portal's own
     `count(*)` under the same `where` afterwards, the Socrata half of ELT.md's
-    "an allowed zero counts only with the upstream's own count".
+    "an allowed zero counts only with the upstream's own count". Every
+    request passes the host's gate (host_gated): NYC's portal asks
+    `Crawl-delay: 1`, and nycparks and nycdot read it from two threads.
     """
 
     @property
@@ -608,7 +729,7 @@ class SocrataDataset(Resource):
         if self.where:
             params["$where"] = self.where
         url = dataset_url(self.entry["domain"], self.entry["dataset_id"], extension="json")
-        rows = request_with_retry(url, session=session(), params=params, timeout=60).json()
+        rows = request_with_retry(url, session=host_gated(self.entry), params=params, timeout=60).json()
         return rows[0] if rows else {}
 
     def count(self) -> int | None:
@@ -643,7 +764,9 @@ class SocrataDataset(Resource):
         Read whole before the first row is yielded, as ArcgisLayer does, so a
         short read raises before dlt normalizes anything.
         """
-        collection = fetch_dataset_geojson(self.entry["domain"], self.entry["dataset_id"], where=self.where, session=session())
+        collection = fetch_dataset_geojson(
+            self.entry["domain"], self.entry["dataset_id"], where=self.where, session=host_gated(self.entry)
+        )
         features = collection["features"]
         count = self.count()
         if count is not None:
@@ -1000,7 +1123,10 @@ def guide_pages(key: str, **overrides) -> GuidePages:
 # The Hike Finder's host asks for this: robots.txt `Crawl-delay: 10`, read
 # 2026-10-01. fetch_hikefinder.py sends two a second; this layer does as the
 # host asks, so its 385 pages and 113 tracks take about 83 minutes on the
-# monthly lane (ELT.md, "The skip-unchanged check, by platform").
+# monthly lane (ELT.md, "The skip-unchanged check, by platform"). It is kept
+# by extract/_notices.py's per-host gate, end to start, on every request the
+# sign-in's POST included: the POST used to keep only fetch_hikefinder.py's
+# own 0.5 s, so the listing followed it inside the delay (review finding EXD-4).
 HIKEFINDER_THROTTLE_SECONDS = 10
 
 
@@ -1024,11 +1150,11 @@ class PublishedHikes(Resource):
         return Freshness.UNKNOWN, None
 
     def _get(self, http: requests.Session, url: str) -> str:
-        return request_with_retry(url, session=http, timeout=60, throttle_seconds=HIKEFINDER_THROTTLE_SECONDS).text
+        return request_with_retry(url, session=http, timeout=60).text
 
     def rows(self, proofs: dict[str, int]):
         base = registry_entry(self.key)["url"].rstrip("/") + "/"
-        http = session()
+        http = polite(session(), HIKEFINDER_THROTTLE_SECONDS)  # the host's gate, on the sign-in's POST too
         signed_in = hikefinder_sign_in(http, base)
         listing = self._get(http, urljoin(base, HIKEFINDER_LISTING_PATH))
         ids = hikefinder_listing_ids(listing)
@@ -1084,7 +1210,16 @@ class ClubPdf(Resource):
     """
 
     def _get(self, headers: dict | None = None) -> requests.Response:
-        return request_with_retry(registry_entry(self.key)["url"], session=session(), headers=headers or None, timeout=120)
+        """One GET of the PDF through the host's gate (host_gated), at the row's `crawl_delay`: GATC's host asks 10 s.
+
+        A PDF that now redirects to another host raises RuntimeError
+        (extract/_notices.py's redirect_refused), so the change check is UNKNOWN and the read refuses.
+        """
+        entry = registry_entry(self.key)
+        response = request_with_retry(entry["url"], session=host_gated(entry), headers=headers or None, timeout=120)
+        if refused := redirect_refused(entry, entry["url"], response.url):
+            raise RuntimeError(f"{self.key}: {refused}")
+        return response
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """A conditional GET, then the body's sha256: WordPress re-serves the same bytes without a 304.
@@ -1107,7 +1242,7 @@ class ClubPdf(Resource):
                 headers["If-Modified-Since"] = recorded["last_modified"]
         try:
             response = self._get(headers)
-        except requests.RequestException as error:
+        except (requests.RequestException, RuntimeError) as error:
             print(f"  {self.key}: change check failed ({error}); fetching")
             return Freshness.UNKNOWN, None
         if response.status_code == 304:

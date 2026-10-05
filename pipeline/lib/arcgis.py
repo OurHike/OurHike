@@ -208,6 +208,7 @@ def iter_layer_pages(
         return
     offset = 0
     previous = None
+    initial = records  # the size the read began at, to go back to when no page has answered yet
     last_good = None  # the last page size that answered, to go back to after one rounded feature
     rounded = False  # this one feature is being asked at PRECISION_FALLBACK
     while True:
@@ -269,13 +270,16 @@ def iter_layer_pages(
         previous = batch
         offset += len(batch)
         if rounded:
+            # With no page answered before it, the one rounded feature is no size to keep: a fast 5xx burst on
+            # the first page halved 1,000 to 1 and would have read the rest of the layer a feature a request
+            # (review finding EXD-5). A server that really cannot take `initial` halves again, ten requests at most.
             rounded = False
-            records = last_good or records
+            records = last_good or initial
         else:
             last_good = records
 
 
-def _feature_object_id(feature: dict, oid_field: str | None):
+def feature_object_id(feature: dict, oid_field: str | None):
     """A page's feature's object id, or None where it carries none: GeoJSON's `id`, else the id field's value."""
     if feature.get("id") is not None:
         return feature["id"]
@@ -348,7 +352,7 @@ def iter_pages_by_object_id(
         if return_z:
             features = [esri_feature_to_geojson(feature) for feature in features]
         asked = set(batch)
-        stray = [oid for oid in (_feature_object_id(f, oid_field) for f in features) if oid is not None and oid not in asked]
+        stray = [oid for oid in (feature_object_id(f, oid_field) for f in features) if oid is not None and oid not in asked]
         if stray:
             raise RuntimeError(f"{query_url} answered object ids it was not asked for ({stray[:3]}); it ignores objectIds")
         yield features

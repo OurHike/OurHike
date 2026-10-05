@@ -18,13 +18,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import duckdb
 import pyarrow.parquet as pq
 import pytest
 
-from extract import _contract, _warehouse
+from extract import _contract, _run, _warehouse
 from extract._run import make_pipeline, run_log_rows, run_pipeline, table_files
 from extract._warehouse import (
     SERVED_KEEP,
@@ -315,3 +317,63 @@ def test_the_command_line_serve_exits_partial_when_a_table_was_not_copied_whole(
         os.remove(path)
 
     assert command("serve") == _warehouse.PARTIAL_EXIT
+
+
+def notices_run_hours_ago(stores, monkeypatch, hours: float, *resources):
+    """A notices run whose clock read `hours` before now, so its run id and every run log row it writes are that old."""
+    then = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=hours)
+    with monkeypatch.context() as patched:
+        patched.setattr(_run, "utc_now_naive", lambda: then)
+        return notices_run(stores, *resources)
+
+
+def test_add_served_still_adds_a_notices_copy_whose_run_began_9_hours_ago_but_exits_stale(
+    stores, command, tmp_path, monkeypatch, capsys
+):
+    """WF1 in PR #1805's review: a copy of any age read as the newest and the run stayed green; soak run 538 read
+    one 3 h 01 min old. Past SERVED_STALE_HOURS the copy is still added, so the build still publishes, and the exit
+    says it is stale, so publish-conditions.yml turns the run red at the end."""
+    report = notices_run_hours_ago(stores, monkeypatch, 9, USFS, NPS)
+    assert command("serve") == 0
+    capsys.readouterr()
+
+    status = command("add-served", "--warehouse", str(tmp_path / "warehouse.duckdb"))
+
+    assert status != 0, "a copy whose run began 9 hours ago was read as the newest, and the run stayed green"
+    assert status == _warehouse.SERVED_STALE_EXIT
+    assert ids(tmp_path / "warehouse.duckdb") == {USFS.table: ["u1", "u2"], NPS.table: ["p1"]}, "still added"
+    out = capsys.readouterr().out
+    assert re.search(rf"copy {report.run_id}, whose run began 9 h \d\d min before this read", out), out
+    assert "::error title=The notices copy is stale::" in out
+
+
+def test_add_served_reads_a_notices_copy_under_8_hours_old_as_the_newest_and_says_its_age(
+    stores, command, tmp_path, monkeypatch, capsys
+):
+    report = notices_run_hours_ago(stores, monkeypatch, 7.5, USFS)
+    command("serve")
+    summary = tmp_path / "summary.md"
+    capsys.readouterr()
+
+    assert command("add-served", "--warehouse", str(tmp_path / "warehouse.duckdb"), "--summary", str(summary)) == 0
+
+    assert re.search(rf"copy {report.run_id}, whose run began 7 h \d\d min before this read", capsys.readouterr().out)
+    assert re.search(r"Its run began `\S+Z`, 7 h \d\d min before this read\.", summary.read_text())
+
+
+def test_add_served_hands_dbt_the_instant_its_copys_run_began_and_nothing_when_no_copy_was_read(stores, command, tmp_path):
+    """The copy's run time, for pub_conditions_notices to write as `notices_read_at`: the instant every run log row of
+    that run carries as `checked_at`, appended to the file publish-conditions.yml names as $GITHUB_ENV."""
+    env_file = tmp_path / "github_env"
+    report = notices_run(stores, USFS)
+    assert command("add-served", "--warehouse", str(tmp_path / "none.duckdb"), "--env-file", str(env_file)) == SERVED_NONE_EXIT
+    assert not env_file.exists(), "no copy read, so no read time: the build's notices_read_at is unknown"
+
+    command("serve")
+    assert command("add-served", "--warehouse", str(tmp_path / "warehouse.duckdb"), "--env-file", str(env_file)) == 0
+
+    (line,) = env_file.read_text().splitlines()
+    name, _, value = line.partition("=")
+    assert name == _warehouse.NOTICES_READ_AT_ENV == "OURHIKE_NOTICES_READ_AT"
+    (checked_at,) = {row["checked_at"] for row in run_log_rows(notices_pipeline(stores)) if row["run_id"] == report.run_id}
+    assert datetime.fromisoformat(value) == checked_at.replace(tzinfo=UTC), "the copy's run, as its rows' checked_at"

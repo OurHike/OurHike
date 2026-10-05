@@ -38,7 +38,10 @@ not yet loaded), and the run log rows of those tables, with `manifest.json`
 last, holding each file's sha256 (write_served_copy()). The hourly build
 reads the newest finished copy, which no load in flight can touch, and a
 copy that will not read falls back to the one before, the notices' last good
-rows (load_served()). SERVED_KEEP copies are kept.
+rows (load_served()). SERVED_KEEP copies are kept. A copy whose run began
+more than SERVED_STALE_HOURS before the read is still read, and add-served
+says so in its exit; when that run began is handed to dbt either way
+(NOTICES_READ_AT_ENV).
 """
 
 from __future__ import annotations
@@ -53,7 +56,7 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from itertools import islice
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -315,8 +318,33 @@ SERVED_MANIFEST = "manifest.json"
 SERVED_KEEP = 3
 #: add-served's exits besides 0 (the newest copy read) and 1 (none could be):
 #: an older copy was read because the newest could not be, or no copy has been
-#: written yet. Neither stops the hourly build; publish-conditions.yml says which.
+#: written yet. Neither stops the hourly build; publish-conditions.yml says
+#: which. SERVED_STALE_EXIT, below, is the third.
 SERVED_OLDER_EXIT, SERVED_NONE_EXIT = 5, 6
+#: A COPY WHOSE RUN BEGAN MORE THAN THIS MANY HOURS BEFORE add-served READ IT
+#: IS STALE. It is still added, so the hourly build still publishes, but
+#: add-served exits SERVED_STALE_EXIT and publish-conditions.yml turns the run
+#: red at the end. Before this bound a copy of any age read as the newest and
+#: the run stayed green: soak run 538 (publish-conditions.yml 37250913570,
+#: 2026-10-05) read one whose run began 3 h 01 min earlier (WF1 in PR #1805's
+#: review). 8 is @unvalidated: twice extract-notices.yml's 4-hour cron, so a
+#: copy reaches it only once the notices run after it has failed or not
+#: fired, and the one after that has not yet finished (Reasoned from the
+#: cron alone). What would settle it: the gaps between consecutive copies'
+#: run ids over a few weeks of the schedule, which #1346 — Every cron in this
+#: repository fires about five times a day, whatever it declares — including
+#: the conditions bake says may be hours longer than the cron declares, plus
+#: how long a notices run takes to write its copy.
+SERVED_STALE_HOURS = 8
+SERVED_STALE_EXIT = 7
+#: What add-served appends to --env-file ($GITHUB_ENV in publish-conditions.yml),
+#: so every later step, build_marts.py's dbt commands among them, inherits it:
+#: the instant the run of the copy it read began, which is also the
+#: `checked_at` of every run log row that run wrote. It is there for
+#: pub_conditions_notices.sql to publish as `notices_read_at`, which that
+#: writer does not do yet. Never written when no copy was read, so a missing
+#: or empty value means unknown.
+NOTICES_READ_AT_ENV = "OURHIKE_NOTICES_READ_AT"
 #: How many times load_served() lists the copies and reads the newest before it
 #: falls back to an older one, and the seconds between. A copy is write-once,
 #: so what this waits out is a transient error from the store, or a copy that
@@ -599,7 +627,34 @@ def load_served(
     return ServedRead(run_id, newest, loaded, problems)
 
 
-def served_summary(leg: str, read: ServedRead | None, failure: BaseException | None = None) -> str:
+def served_run_at(run_id: str) -> datetime | None:
+    """The instant a copy's run began, from its run id (extract/_run.py's run_pipeline() stamps one from the other),
+    or None for a name no run gave."""
+    try:
+        return datetime.strptime(run_id, "%Y%m%dT%H%M%S.%fZ").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def served_age(run_id: str, now: datetime) -> timedelta | None:
+    """How long before `now` a copy's run began; None when its run id says no time. Never below zero."""
+    run_at = served_run_at(run_id)
+    return None if run_at is None else max(timedelta(0), now - run_at)
+
+
+def _hours_minutes(age: timedelta | None) -> str:
+    if age is None:
+        return "an unknown time"
+    minutes = int(age.total_seconds() // 60)
+    return f"{minutes // 60} h {minutes % 60:02d} min"
+
+
+def is_stale(age: timedelta | None) -> bool:
+    """Past SERVED_STALE_HOURS, or of no known age: an unknown is held to the stricter rule."""
+    return age is None or age > timedelta(hours=SERVED_STALE_HOURS)
+
+
+def served_summary(leg: str, read: ServedRead | None, failure: BaseException | None = None, now: datetime | None = None) -> str:
     """add-served's evidence, as Markdown, for `$GITHUB_STEP_SUMMARY`."""
     lines = [f"### The served copy: `{leg}`", ""]
     if read is None:
@@ -609,6 +664,12 @@ def served_summary(leg: str, read: ServedRead | None, failure: BaseException | N
     else:
         which = "the newest" if read.newest else "**an older copy**, because the newest could not be read"
         lines += [f"Copy `{read.run_id}`, {which}: {len(read.loaded)} tables, {sum(read.loaded.values())} rows.", ""]
+        age = served_age(read.run_id, now or datetime.now(UTC))
+        run_at = served_run_at(read.run_id)
+        began = f"`{run_at:%Y-%m-%dT%H:%M:%SZ}`" if run_at else "at no time its run id says"
+        lines += [f"Its run began {began}, {_hours_minutes(age)} before this read.", ""]
+        if is_stale(age):
+            lines += [f"**Older than {SERVED_STALE_HOURS} h** (SERVED_STALE_HOURS), so the run turns red at the end.", ""]
     if read is not None and read.problems:
         lines += ["**Could not be read:**", "", *[f"- {problem}" for problem in read.problems], ""]
     return "\n".join(lines) + "\n"
@@ -927,12 +988,19 @@ def _leg_command(args) -> int:
     except BuildRefused as refused:
         summarise(served_summary(args.lane, None, refused))
         raise
-    summarise(served_summary(args.lane, read))
+    now = datetime.now(UTC)
+    summarise(served_summary(args.lane, read, now=now))
     if read.run_id is None:
         print(f"::warning title=No served copy yet::{args.lane} has written no copy yet, so this build has none of its tables")
         return SERVED_NONE_EXIT
+    age = served_age(read.run_id, now)
+    run_at = served_run_at(read.run_id)
+    if args.env_file is not None and run_at is not None:
+        with open(args.env_file, "a", encoding="utf-8") as handle:
+            handle.write(f"{NOTICES_READ_AT_ENV}={run_at:%Y-%m-%dT%H:%M:%S.%fZ}\n")
     print(
-        f"{len(read.loaded)} tables, {sum(read.loaded.values())} rows, from {args.lane}'s copy {read.run_id} into {args.warehouse}"
+        f"{len(read.loaded)} tables, {sum(read.loaded.values())} rows, from {args.lane}'s copy {read.run_id}, "
+        f"whose run began {_hours_minutes(age)} before this read, into {args.warehouse}"
     )
     if not read.newest:
         print(
@@ -940,6 +1008,13 @@ def _leg_command(args) -> int:
             f"its last good rows, from copy {read.run_id}: {'; '.join(read.problems)}"
         )
         return SERVED_OLDER_EXIT
+    if is_stale(age):
+        print(
+            f"::error title=The notices copy is stale::{args.lane}'s newest copy, {read.run_id}, began its run "
+            f"{_hours_minutes(age)} before this read, past SERVED_STALE_HOURS ({SERVED_STALE_HOURS} h): it is added and "
+            "published, and the run turns red at the end. extract-notices.yml has written no copy since."
+        )
+        return SERVED_STALE_EXIT
     return 0
 
 
@@ -994,6 +1069,9 @@ def main(argv: list[str] | None = None) -> int:
     add_leg("serve", "after a leg's run: copy what a build reads of it under <bucket-url>/served/<run_id>/ (write-once)")
     served = add_leg("add-served", "add a leg's newest readable served copy to --warehouse, beside what is there")
     served.add_argument("--warehouse", type=Path, required=True)
+    served.add_argument(
+        "--env-file", type=Path, help=f"append {NOTICES_READ_AT_ENV}=<when the copy's run began> here ($GITHUB_ENV)"
+    )
     args = parser.parse_args(argv)
 
     if args.command in ("serve", "add-served"):

@@ -1252,13 +1252,21 @@ def main(argv: list[str] | None = None) -> int:
         run = runs[position]
         position += 1
         print(f"-- build_marts {position}/{len(runs)}: {run.label}", flush=True)
+        # A dbt run's results are the run_results.json it leaves, and an earlier run's file is removed first so
+        # nothing else can be mistaken for them. Never told apart by mtime: Linux stamps a file from a coarse clock
+        # that can lag time.time() by a few milliseconds, so results written within one tick of `started` read as
+        # older than the run that wrote them (CI's pytest job on 461954c4, Pipeline tests run 37357769435, which
+        # lost a stage A hold that way). A Python step leaves none, so the mtime still turns the last dbt run's away.
+        if run.cwd == DBT_DIR:
+            RUN_RESULTS_PATH.unlink(missing_ok=True)
         started = time.time()
+        results_since = float("-inf") if run.cwd == DBT_DIR else started
         completed = subprocess.run(run.argv, cwd=run.cwd, env=env, check=False)
         if completed.returncode != 0 and run.stage in (STAGE_A, WRITERS) and completed.returncode not in PUBLISHABLE_EXITS:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
-            for line in failed_test_rows(paths.warehouse, started):
+            for line in failed_test_rows(paths.warehouse, results_since):
                 print(line, flush=True)
-            results, manifest = read_run_results(started), _read_manifest()
+            results, manifest = read_run_results(results_since), _read_manifest()
             if results is not None and run.stage == STAGE_A and not stage_a_rerun:
                 if held := one_sources_failures(results, manifest, notice_readers()):
                     for key, tables in sorted(held.items()):
@@ -1281,9 +1289,9 @@ def main(argv: list[str] | None = None) -> int:
                     continue
             return completed.returncode
         if completed.returncode == 0 and run.argv[1:2] == ("build",) and run.cwd == DBT_DIR:
-            results = read_run_results(started)
+            results = read_run_results(results_since)
             if results is not None and (holds := source_holds(results, _read_manifest())):
-                for line in failed_test_rows(paths.warehouse, started, statuses=("warn",), only=holds):
+                for line in failed_test_rows(paths.warehouse, results_since, statuses=("warn",), only=holds):
                     print(line, flush=True)
                 for test in sorted(holds):
                     print(
@@ -1308,7 +1316,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if completed.returncode != 0:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
-            for line in failed_test_rows(paths.warehouse, started):
+            for line in failed_test_rows(paths.warehouse, results_since):
                 print(line, flush=True)
             # PUBLISHABLE_EXITS mean built-and-publishable to publish-conditions.yml, so a command's own 4 is a 1.
             return 1 if completed.returncode in PUBLISHABLE_EXITS else completed.returncode

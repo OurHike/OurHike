@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import duckdb
@@ -1441,6 +1443,54 @@ def test_a_second_failure_of_stage_a_after_the_drop_stops_the_build(monkeypatch,
 
     assert code == 1
     assert len([argv for argv, _, _ in recorder.calls if _is_stage_a(argv)]) == 2, "stage A runs once more, not again"
+
+
+class _StampedBehind(_DbtRuns):
+    """_DbtRuns whose run_results.json is stamped 50 ms before the moment it was written. Linux stamps a file's mtime
+    from a coarse clock that can lag time.time() by a few milliseconds, which is how CI's pytest job on 461954c4
+    (Pipeline tests, run 37357769435) read a stage A failure's own results as an earlier run's."""
+
+    def __call__(self, argv, *, cwd, env, check):
+        completed = super().__call__(argv, cwd=cwd, env=env, check=check)
+        if self.results_path.exists():
+            behind = time.time() - 0.05
+            os.utime(self.results_path, (behind, behind))
+        return completed
+
+
+def test_a_stage_a_failure_is_held_when_the_filesystem_stamps_its_results_behind_the_process_clock(monkeypatch, tmp_path):
+    manifest, warehouse = _one_source_setup(tmp_path, monkeypatch)
+    failed = [{"unique_id": "model.ourhike.stg_a__club_x", "status": "error", "message": "Conversion Error"}]
+    recorder = _StampedBehind(tmp_path / "run_results.json", [(_is_stage_a, 1, failed, {}), (_is_stage_a, 0, [], {})])
+
+    code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)
+
+    assert code == build_marts.PARTIAL_EXIT
+    assert _raw_tables(warehouse) == ["raw_a__club_y", "raw_nynjtc__nynjtc_trail_alerts"], "club_x's table is dropped"
+    assert len([argv for argv, _, _ in recorder.calls if _is_stage_a(argv)]) == 2
+
+
+class _StageADiesBeforeWriting(_DbtRuns):
+    """_DbtRuns whose stage A exits 1 before writing run_results.json, as dbt does when it dies before running a node."""
+
+    def __call__(self, argv, *, cwd, env, check):
+        if _is_stage_a(tuple(argv)):
+            self.calls.append((tuple(argv), cwd, env))
+            return subprocess.CompletedProcess(argv, 1)
+        return super().__call__(argv, cwd=cwd, env=env, check=check)
+
+
+def test_a_dbt_run_that_writes_no_results_is_never_read_as_the_run_before_it(monkeypatch, tmp_path):
+    manifest, warehouse = _one_source_setup(tmp_path, monkeypatch)
+    seed_left = [{"unique_id": "model.ourhike.stg_a__club_x", "status": "error"}]
+    recorder = _StageADiesBeforeWriting(
+        tmp_path / "run_results.json", [(lambda argv: argv[:2] == ("dbt", "seed"), 0, seed_left, {})]
+    )
+
+    code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)
+
+    assert code == 1
+    assert len(_raw_tables(warehouse)) == 3, "the seed's results name stg_a__club_x, and nothing is dropped for them"
 
 
 def test_a_failed_test_in_stage_a_is_never_turned_into_a_hold(monkeypatch, tmp_path):

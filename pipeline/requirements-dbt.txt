@@ -63,7 +63,7 @@ deepdiff==8.6.2
     # via dbt-common
 diff-cover==10.5.1
     # via sqlfluff
-duckdb==1.5.5
+duckdb==1.5.6
     # via
     #   -r requirements-dbt.in
     #   dbt-duckdb

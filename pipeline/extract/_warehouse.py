@@ -38,7 +38,10 @@ not yet loaded), and the run log rows of those tables, with `manifest.json`
 last, holding each file's sha256 (write_served_copy()). The hourly build
 reads the newest finished copy, which no load in flight can touch, and a
 copy that will not read falls back to the one before, the notices' last good
-rows (load_served()). SERVED_KEEP copies are kept.
+rows (load_served()). SERVED_KEEP copies are kept. A copy whose run began
+more than SERVED_STALE_HOURS before the read is still read, and add-served
+says so in its exit; when that run began is handed to dbt either way
+(NOTICES_READ_AT_ENV).
 """
 
 from __future__ import annotations
@@ -53,7 +56,7 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from itertools import islice
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -81,6 +84,7 @@ from extract._run import (
     make_pipeline,
     proven_zero,
     raw_store_url,
+    run_log_bytes,
     run_log_rows,
     table_files,
     table_listing,
@@ -315,8 +319,32 @@ SERVED_MANIFEST = "manifest.json"
 SERVED_KEEP = 3
 #: add-served's exits besides 0 (the newest copy read) and 1 (none could be):
 #: an older copy was read because the newest could not be, or no copy has been
-#: written yet. Neither stops the hourly build; publish-conditions.yml says which.
+#: written yet. Neither stops the hourly build; publish-conditions.yml says
+#: which. SERVED_STALE_EXIT, below, is the third.
 SERVED_OLDER_EXIT, SERVED_NONE_EXIT = 5, 6
+#: A COPY WHOSE RUN BEGAN MORE THAN THIS MANY HOURS BEFORE add-served READ IT
+#: IS STALE. It is still added, so the hourly build still publishes, but
+#: add-served exits SERVED_STALE_EXIT and publish-conditions.yml turns the run
+#: red at the end. Before this bound a copy of any age read as the newest and
+#: the run stayed green: soak run 538 (publish-conditions.yml 37250913570,
+#: 2026-10-05) read one whose run began 3 h 01 min earlier. 8 is
+#: @unvalidated: twice extract-notices.yml's 4-hour cron, so a copy reaches
+#: it only once the notices run after it has failed or not fired, and the one after that has not yet finished (Reasoned from the
+#: cron alone). What would settle it: the gaps between consecutive copies'
+#: run ids over a few weeks of the schedule, which #1346 — Every cron in this
+#: repository fires about five times a day, whatever it declares — including
+#: the conditions bake says may be hours longer than the cron declares, plus
+#: how long a notices run takes to write its copy.
+SERVED_STALE_HOURS = 8
+SERVED_STALE_EXIT = 7
+#: What add-served appends to --env-file ($GITHUB_ENV in publish-conditions.yml),
+#: so every later step, build_marts.py's dbt commands among them, inherits it:
+#: the instant the run of the copy it read began, which is also the
+#: `checked_at` of every run log row that run wrote. It is there for
+#: pub_conditions_notices.sql to publish as `notices_read_at`, which that
+#: writer does not do yet. Never written when no copy was read, so a missing
+#: or empty value means unknown.
+NOTICES_READ_AT_ENV = "OURHIKE_NOTICES_READ_AT"
 #: How many times load_served() lists the copies and reads the newest before it
 #: falls back to an older one, and the seconds between. A copy is write-once,
 #: so what this waits out is a transient error from the store, or a copy that
@@ -344,18 +372,20 @@ def served_copies(fs, bucket_url: str) -> list[str]:
     return sorted({os.path.basename(os.path.dirname(path.rstrip("/"))) for path in found}, reverse=True)
 
 
-def _log_arrow(pipeline, tables: set[str]) -> pa.Table | None:
+def _log_arrow(pipeline, tables: set[str], cache: Path | None = None) -> pa.Table | None:
     """`_extract_runs` as dlt wrote it, every file, with its column types, less the rows of tables not in `tables`.
 
     Kept as Arrow, never as Python rows, so a column that is null on every
     row keeps the type dlt declared for it (RUNS_COLUMNS) instead of landing
-    as DuckDB's INTEGER.
+    as DuckDB's INTEGER. With `cache`, a file the extract step kept there is
+    read from it, not from the store again (extract/_run.py's run_log_bytes()).
     """
-    client = _client(pipeline)
     files = table_files(pipeline, RUNS_TABLE)
     if not files:
         return None
-    arrow = pa.concat_tables([pq.read_table(client.fs_client.open(path)) for path in files], promote_options="permissive")
+    arrow = pa.concat_tables(
+        [pq.read_table(io.BytesIO(run_log_bytes(pipeline, path, cache))) for path in files], promote_options="permissive"
+    )
     return arrow.filter(pc.is_in(arrow["table_name"], value_set=pa.array(sorted(tables), pa.string())))
 
 
@@ -378,7 +408,7 @@ class ServedWrite:
     problems: list[str] = field(default_factory=list)
 
 
-def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrite:
+def write_served_copy(pipeline, bucket_url: str, tables: set[str], run_log_cache: Path | None = None) -> ServedWrite:
     """Copy what a build reads of this leg, as of its newest run, to `<bucket-url>/served/<run_id>/`, manifest last.
 
     WRITE-ONCE, as a pin is: a copy that exists is read back, never rewritten.
@@ -392,13 +422,16 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrit
     the new ones, and its run log. That table is carried from the copy
     before, its last good rows, and named in `problems`; with no copy
     before, it is left out and named. The next run that reads it whole mends
-    the store.
+    the store. A carried table's run log rows are carried with it, from the
+    copy its rows came from, and a table left out takes none, so the hourly
+    build never dates a table's rows by a read whose rows it does not hold.
 
     Then every finished copy past the newest SERVED_KEEP is deleted, and so
-    is any unfinished one older than this.
+    is any unfinished one older than this. `run_log_cache` is the extract
+    step's --run-log-cache, so the run log is read from the store once a run.
     """
     fs = _client(pipeline).fs_client
-    log_arrow = _log_arrow(pipeline, tables)
+    log_arrow = _log_arrow(pipeline, tables, run_log_cache)
     if log_arrow is None or log_arrow.num_rows == 0:
         raise BuildRefused("the run log holds no run of this leg's tables, so there is nothing to serve")
     log = log_arrow.to_pylist()
@@ -413,6 +446,19 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrit
     previous = _previous_manifest(fs, bucket_url, run_id)
     entries: dict[str, dict] = {}
     problems: list[str] = []
+    # Tables whose run log rows this copy takes from the copy before, and tables it leaves out with no rows at all.
+    carried_logs: set[str] = set()
+    left_out: set[str] = set()
+    previous_log: list[pa.Table] = []
+
+    def log_before() -> pa.Table:
+        """The copy before's run log, verified, read once and only when a table is carried from it."""
+        if not previous_log:
+            runs = previous[1]["extract_runs"]
+            path = f"{served_root(bucket_url)}/{previous[0]}/{runs['file']}"
+            previous_log.append(pq.read_table(io.BytesIO(_verified_bytes(fs, path, runs["sha256"]))))
+        return previous_log[0]
+
     fs.makedirs(f"{root}/tables", exist_ok=True)
     for table, load_id in sorted(committed.items()):
         files = [path for path in listing.get(table, []) if os.path.basename(path).startswith(f"{load_id}.")]
@@ -427,13 +473,21 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrit
             found = "no file" if arrow is None else f"{arrow.num_rows} rows in its files"
             why = f"{table}: load {load_id} has {found}, and the run log says it landed {row.get('rows')}"
             carried = previous[1]["tables"].get(table) if previous else None
+            if carried is not None:
+                try:
+                    log_before()
+                except SERVED_READ_ERRORS as failure:
+                    why += f"; copy {previous[0]}'s run log will not read ({type(failure).__name__}: {failure})"
+                    carried = None
             if carried is None:
-                problems.append(f"{why}; no copy before this one has it, so it is left out")
+                left_out.add(table)
+                problems.append(f"{why}; no copy before this one can give it, so it is left out")
                 continue
             if carried.get("file"):
                 fs.copy(f"{served_root(bucket_url)}/{previous[0]}/{carried['file']}", f"{root}/{carried['file']}")
             entries[table] = dict(carried, carried_from=previous[0])
-            problems.append(f"{why}; carried from copy {previous[0]}, its last good rows")
+            carried_logs.add(table)
+            problems.append(f"{why}; carried from copy {previous[0]}, its last good rows and their run log rows")
             continue
         relative = f"tables/{table}.parquet"
         with fs.open(f"{root}/{relative}", "wb") as handle:
@@ -446,6 +500,13 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str]) -> ServedWrit
         }
     for table, hints in sorted(not_yet_loaded(pipeline, committed, log).items()):
         entries[table] = {"load_id": None, "rows": 0, "file": None, "column_hints": hints, "not_yet_loaded": True}
+    if carried_logs or left_out:
+        replaced = pa.array(sorted(carried_logs | left_out), pa.string())
+        log_arrow = log_arrow.filter(pc.invert(pc.is_in(log_arrow["table_name"], value_set=replaced)))
+        if carried_logs:
+            before = log_before()
+            before = before.filter(pc.is_in(before["table_name"], value_set=pa.array(sorted(carried_logs), pa.string())))
+            log_arrow = pa.concat_tables([log_arrow, before], promote_options="permissive")
     with fs.open(f"{root}/{RUNS_TABLE}.parquet", "wb") as handle:
         pq.write_table(log_arrow, handle, compression="zstd")
     manifest = {
@@ -599,7 +660,34 @@ def load_served(
     return ServedRead(run_id, newest, loaded, problems)
 
 
-def served_summary(leg: str, read: ServedRead | None, failure: BaseException | None = None) -> str:
+def served_run_at(run_id: str) -> datetime | None:
+    """The instant a copy's run began, from its run id (extract/_run.py's run_pipeline() stamps one from the other),
+    or None for a name no run gave."""
+    try:
+        return datetime.strptime(run_id, "%Y%m%dT%H%M%S.%fZ").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def served_age(run_id: str, now: datetime) -> timedelta | None:
+    """How long before `now` a copy's run began; None when its run id says no time. Never below zero."""
+    run_at = served_run_at(run_id)
+    return None if run_at is None else max(timedelta(0), now - run_at)
+
+
+def _hours_minutes(age: timedelta | None) -> str:
+    if age is None:
+        return "an unknown time"
+    minutes = int(age.total_seconds() // 60)
+    return f"{minutes // 60} h {minutes % 60:02d} min"
+
+
+def is_stale(age: timedelta | None) -> bool:
+    """Past SERVED_STALE_HOURS, or of no known age: an unknown is held to the stricter rule."""
+    return age is None or age > timedelta(hours=SERVED_STALE_HOURS)
+
+
+def served_summary(leg: str, read: ServedRead | None, failure: BaseException | None = None, now: datetime | None = None) -> str:
     """add-served's evidence, as Markdown, for `$GITHUB_STEP_SUMMARY`."""
     lines = [f"### The served copy: `{leg}`", ""]
     if read is None:
@@ -609,6 +697,12 @@ def served_summary(leg: str, read: ServedRead | None, failure: BaseException | N
     else:
         which = "the newest" if read.newest else "**an older copy**, because the newest could not be read"
         lines += [f"Copy `{read.run_id}`, {which}: {len(read.loaded)} tables, {sum(read.loaded.values())} rows.", ""]
+        age = served_age(read.run_id, now or datetime.now(UTC))
+        run_at = served_run_at(read.run_id)
+        began = f"`{run_at:%Y-%m-%dT%H:%M:%SZ}`" if run_at else "at no time its run id says"
+        lines += [f"Its run began {began}, {_hours_minutes(age)} before this read.", ""]
+        if is_stale(age):
+            lines += [f"**Older than {SERVED_STALE_HOURS} h** (SERVED_STALE_HOURS), so the run turns red at the end.", ""]
     if read is not None and read.problems:
         lines += ["**Could not be read:**", "", *[f"- {problem}" for problem in read.problems], ""]
     return "\n".join(lines) + "\n"
@@ -907,7 +1001,7 @@ def _leg_command(args) -> int:
                 handle.write(text)
 
     if args.command == "serve":
-        written = write_served_copy(pipeline, bucket_url, tables)
+        written = write_served_copy(pipeline, bucket_url, tables, args.run_log_cache)
         manifest = written.manifest
         rows = sum(entry["rows"] for entry in manifest["tables"].values())
         verb = "copied" if written.wrote else "was already copied, so it was read back and not rewritten:"
@@ -927,12 +1021,19 @@ def _leg_command(args) -> int:
     except BuildRefused as refused:
         summarise(served_summary(args.lane, None, refused))
         raise
-    summarise(served_summary(args.lane, read))
+    now = datetime.now(UTC)
+    summarise(served_summary(args.lane, read, now=now))
     if read.run_id is None:
         print(f"::warning title=No served copy yet::{args.lane} has written no copy yet, so this build has none of its tables")
         return SERVED_NONE_EXIT
+    age = served_age(read.run_id, now)
+    run_at = served_run_at(read.run_id)
+    if args.env_file is not None and run_at is not None:
+        with open(args.env_file, "a", encoding="utf-8") as handle:
+            handle.write(f"{NOTICES_READ_AT_ENV}={run_at:%Y-%m-%dT%H:%M:%S.%fZ}\n")
     print(
-        f"{len(read.loaded)} tables, {sum(read.loaded.values())} rows, from {args.lane}'s copy {read.run_id} into {args.warehouse}"
+        f"{len(read.loaded)} tables, {sum(read.loaded.values())} rows, from {args.lane}'s copy {read.run_id}, "
+        f"whose run began {_hours_minutes(age)} before this read, into {args.warehouse}"
     )
     if not read.newest:
         print(
@@ -940,6 +1041,13 @@ def _leg_command(args) -> int:
             f"its last good rows, from copy {read.run_id}: {'; '.join(read.problems)}"
         )
         return SERVED_OLDER_EXIT
+    if is_stale(age):
+        print(
+            f"::error title=The notices copy is stale::{args.lane}'s newest copy, {read.run_id}, began its run "
+            f"{_hours_minutes(age)} before this read, past SERVED_STALE_HOURS ({SERVED_STALE_HOURS} h): it is added and "
+            "published, and the run turns red at the end. extract-notices.yml has written no copy since."
+        )
+        return SERVED_STALE_EXIT
     return 0
 
 
@@ -991,9 +1099,15 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--summary", type=Path, help="append what was copied or read, as Markdown, to this file")
         return command
 
-    add_leg("serve", "after a leg's run: copy what a build reads of it under <bucket-url>/served/<run_id>/ (write-once)")
+    serve = add_leg("serve", "after a leg's run: copy what a build reads of it under <bucket-url>/served/<run_id>/ (write-once)")
+    serve.add_argument(
+        "--run-log-cache", type=Path, help="the extract step's --run-log-cache: run log files read there, not from the store"
+    )
     served = add_leg("add-served", "add a leg's newest readable served copy to --warehouse, beside what is there")
     served.add_argument("--warehouse", type=Path, required=True)
+    served.add_argument(
+        "--env-file", type=Path, help=f"append {NOTICES_READ_AT_ENV}=<when the copy's run began> here ($GITHUB_ENV)"
+    )
     args = parser.parse_args(argv)
 
     if args.command in ("serve", "add-served"):

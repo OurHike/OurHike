@@ -433,6 +433,20 @@ def test_a_sheet_whose_as_of_cell_has_gone_is_unreadable_rather_than_landed_unda
         list(gis("trailhead_sheet").rows({}))
 
 
+def test_a_sheets_as_of_label_is_in_its_definition_digest_so_a_fixed_label_reads_an_unmoved_sheet_again(registry):
+    """The label decides each row's `source_as_of`, the date a hiker reads a water or trailhead sheet by, so a
+    fix to it in sources.json must not wait for the sheet itself to change."""
+    from extract._run import definition_digest
+
+    before = definition_digest(gis("trailhead_sheet"))
+    entries = json.loads(registry.read_text())
+    next(entry for entry in entries["sources"] if entry["key"] == "trailhead_sheet")["as_of_label"] = "Updated:"
+    registry.write_text(json.dumps(entries))
+    _kinds._registry.cache_clear()
+
+    assert definition_digest(gis("trailhead_sheet")) != before
+
+
 def test_an_as_of_label_on_a_csv_whose_header_is_its_first_line_is_refused_at_import(tmp_path, monkeypatch):
     path = tmp_path / "bad.json"
     entry = {"key": "bad", "url": CSV_URL, "file_format": "csv_points", "lat_field": "LATITUDE", "lon_field": "LONGITUDE"}

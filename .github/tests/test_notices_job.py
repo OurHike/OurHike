@@ -81,6 +81,7 @@ def _base_env(tmp_path: Path) -> dict[str, str]:
         "PATH": f"{tmp_path / 'bin'}:{os.environ.get('PATH', '/usr/bin:/bin')}",
         "RUNNER_TEMP": str(tmp_path),
         "GITHUB_OUTPUT": str(tmp_path / "output"),
+        "GITHUB_ENV": str(tmp_path / "env"),
         "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
         "R2_RAW_BUCKET": "raw-bucket",
     }
@@ -138,6 +139,14 @@ def test_the_notices_job_extracts_into_its_legs_store_copies_it_and_publishes_no
     assert names.index(EXTRACT_STEP) < names.index(SERVE_STEP) and "if" not in serve, "copied only after a run that loaded"
 
 
+def test_the_copy_step_reads_the_run_log_the_extract_step_kept_rather_than_the_store_again():
+    """Each run log file is a GET on R2, one more every run, and the copy step used to read them all straight after
+    the extract step had."""
+    extract, serve = _step(NOTICES, "extract", EXTRACT_STEP), _step(NOTICES, "extract", SERVE_STEP)
+    (kept,) = re.findall(r'--run-log-cache "([^"]+)"', extract["run"])
+    assert re.findall(r'--run-log-cache "([^"]+)"', serve["run"]) == [kept] and kept.startswith("$RUNNER_TEMP/")
+
+
 @pytest.mark.parametrize(("status", "outcome", "partial"), [(0, 0, None), (3, 0, "true"), (1, 1, None)])
 @pytest.mark.parametrize("name", [EXTRACT_STEP, SERVE_STEP])
 def test_a_source_refused_on_its_own_still_lets_the_run_copy_and_then_turns_it_red(tmp_path, name, status, outcome, partial):
@@ -169,13 +178,42 @@ def test_the_hourly_job_adds_its_environments_notices_copy_after_its_own_extract
     assert '-m extract._warehouse add-served --lane "$LEG"' in add["run"] and "--warehouse data/warehouse.duckdb" in add["run"]
 
 
-@pytest.mark.parametrize(("status", "read"), [(0, "latest"), (5, "older"), (6, "none"), (1, "unread"), (2, "unread")])
+@pytest.mark.parametrize(
+    ("status", "read"), [(0, "latest"), (5, "older"), (6, "none"), (7, "latest"), (1, "unread"), (2, "unread")]
+)
 def test_the_notices_read_never_stops_the_hourly_publish_and_says_which_copy_it_read(tmp_path, status, read):
     _stand_in(tmp_path / "extract" / "bin" / "python", status)
     finished = _run(_step(CONDITIONS, "publish", ADD_STEP)["run"], {**_base_env(tmp_path), "LEG": "notices_ua"})
     assert finished.returncode == 0, finished.stdout + finished.stderr
-    assert _outputs(tmp_path) == {"read": read}
+    assert _outputs(tmp_path) == {"read": read, **({"stale": "true"} if status == 7 else {})}
     assert ("::error title=Notices not read" in finished.stdout) == (read == "unread")
+
+
+def _served_stale_hours() -> int:
+    """extract/_warehouse.py's SERVED_STALE_HOURS, read from its source: this suite installs no dlt."""
+    tree = ast.parse((WORKFLOWS.parents[1] / "pipeline" / "extract" / "_warehouse.py").read_text(encoding="utf-8"))
+    (value,) = [
+        node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign) and any(getattr(target, "id", None) == "SERVED_STALE_HOURS" for target in node.targets)
+    ]
+    return ast.literal_eval(value)
+
+
+def test_a_notices_copy_older_than_two_notices_runs_turns_the_hourly_run_red_after_the_publish():
+    """Soak run 538 read a copy 3 h 01 min old as `latest` and stayed green, when nothing bounded the age. add-served
+    exits 7 past SERVED_STALE_HOURS, twice the notices cron's step, and that is red last."""
+    (schedule,) = _load(NOTICES).get("on", _load(NOTICES).get(True))["schedule"]
+    cadence = int(schedule["cron"].split()[1].split("/")[1])
+    assert _served_stale_hours() == 2 * cadence, "the bound is twice the notices job's cadence"
+    add = _step(CONDITIONS, "publish", ADD_STEP)
+    assert '--env-file "$GITHUB_ENV"' in add["run"], "the copy's run time reaches the build's dbt commands"
+    steps = _steps(CONDITIONS, "publish")
+    names = [step.get("name") or step.get("uses") for step in steps]
+    (red,) = [step for step in steps if step.get("if") == "steps.notices.outputs.stale == 'true'"]
+    assert names.index("Publish to R2") < names.index(red["name"]) and red["run"].rstrip().endswith("exit 1")
+    later = steps[names.index(ADD_STEP) + 1 :]
+    assert all("OURHIKE_NOTICES_READ_AT" not in str(step.get("env", {})) for step in later), "nothing overrides it"
 
 
 @pytest.mark.parametrize(("read", "saves"), [("latest", True), ("older", False), ("none", False), ("unread", False), ("", False)])

@@ -18,13 +18,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import duckdb
 import pyarrow.parquet as pq
 import pytest
 
-from extract import _contract, _warehouse
+from extract import _contract, _run, _warehouse
 from extract._run import make_pipeline, run_log_rows, run_pipeline, table_files
 from extract._warehouse import (
     SERVED_KEEP,
@@ -229,6 +231,39 @@ def test_a_table_the_store_left_torn_is_carried_from_the_copy_before_and_the_res
     assert USFS.table in problem and "carried from copy" in problem
 
 
+def logged_runs(path: Path, table: str) -> list[tuple[str, str, int | None]]:
+    with duckdb.connect(str(path), read_only=True) as con:
+        return con.execute(
+            "select run_id, outcome, rows from raw._extract_runs where pipeline = ? and table_name = ? order by run_id",
+            [LEG, table],
+        ).fetchall()
+
+
+def test_a_carried_tables_run_log_rows_are_those_of_the_copy_its_rows_came_from(stores, tmp_path):
+    """A copy used to carry run 1's 2 rows while its run log still said run 2 loaded 3, so the hourly build would
+    date run 1's rows by run 2's read. Twice torn, the rows and their log still agree."""
+    first = notices_run(stores, USFS, NPS)
+    serve(stores, TABLES)
+    second = notices_run(stores, club_closures("usfs", "u1", "u2", "u3", count=3), club_closures("nps", "p1", "p2", count=2))
+    for path in table_files(notices_pipeline(stores), USFS.table):
+        os.remove(path)
+    assert serve(stores, TABLES).manifest["tables"][USFS.table]["rows"] == 2, "carried"
+
+    hourly_warehouse(stores, tmp_path / "warehouse.duckdb", TABLES)
+
+    assert logged_runs(tmp_path / "warehouse.duckdb", USFS.table) == [(first.run_id, "loaded", 2)]
+    assert logged_runs(tmp_path / "warehouse.duckdb", NPS.table) == [(first.run_id, "loaded", 1), (second.run_id, "loaded", 2)]
+
+    notices_run(stores, club_closures("usfs", "u1", "u2", "u3", "u4", count=4), NPS)
+    for path in table_files(notices_pipeline(stores), USFS.table):
+        os.remove(path)
+    assert serve(stores, TABLES).manifest["tables"][USFS.table]["rows"] == 2, "carried from a copy that carried it"
+
+    hourly_warehouse(stores, tmp_path / "again.duckdb", TABLES)
+
+    assert logged_runs(tmp_path / "again.duckdb", USFS.table) == [(first.run_id, "loaded", 2)]
+
+
 def test_a_torn_table_with_no_copy_before_is_left_out_and_named(stores):
     notices_run(stores, USFS, NPS)
     for path in table_files(notices_pipeline(stores), USFS.table):
@@ -239,6 +274,9 @@ def test_a_torn_table_with_no_copy_before_is_left_out_and_named(stores):
     assert set(written.manifest["tables"]) == {NPS.table}
     (problem,) = written.problems
     assert USFS.table in problem and "left out" in problem
+    copy = Path(served_root(stores["notices"])) / written.manifest["run_id"]
+    logged = set(pq.read_table(copy / written.manifest["extract_runs"]["file"])["table_name"].to_pylist())
+    assert logged == {NPS.table}, "no run log row says a load of the table left out is here"
 
 
 def test_each_write_keeps_the_newest_copies_and_clears_an_unfinished_one(stores):
@@ -309,9 +347,106 @@ def test_the_command_line_says_when_no_copy_exists_and_when_an_older_one_was_rea
     assert ids(tmp_path / "older.duckdb")[USFS.table] == ["u1", "u2"]
 
 
+def test_a_notices_run_and_its_serve_read_each_run_log_file_from_the_store_once_between_them(
+    stores, command, tmp_path, monkeypatch
+):
+    """Every `_extract_runs` file is a GET on R2, one file per past run, and the serve step used to read them all
+    again right after the extract step had. extract-notices.yml hands the serve the extract's read through
+    --run-log-cache, so a notices run reads its run log from the store once."""
+    import fsspec.implementations.local as local
+
+    resources = [USFS, NPS]
+    monkeypatch.setattr(_run, "discover", list)
+    monkeypatch.setattr(_run, "discover_shared", list)
+    monkeypatch.setattr(_run, "all_resources", lambda files: resources)
+    extract = ["--lane", LEG, "--bucket-url", stores["notices"], "--pipelines-dir", stores["dir"]]
+    for _ in range(5):
+        _run.main(extract)
+    cache = str(tmp_path / "run_log")
+    opened = []
+    first_open = local.LocalFileSystem._open
+
+    def counting_open(self, path, mode="rb", *rest, **options):
+        if "r" in mode and "/_extract_runs/" in str(path) and "/served/" not in str(path):
+            opened.append(os.path.basename(str(path)))
+        return first_open(self, path, mode, *rest, **options)
+
+    monkeypatch.setattr(local.LocalFileSystem, "_open", counting_open)
+
+    _run.main([*extract, "--run-log-cache", cache])
+    assert command("serve", "--run-log-cache", cache) == 0
+
+    assert len(opened) == len(set(opened)) == 6, "6 run log files after the sixth run, each read from the store once"
+    copy = (
+        Path(served_root(stores["notices"]))
+        / served_copies(_warehouse._client(notices_pipeline(stores)).fs_client, stores["notices"])[0]
+    )
+    assert pq.read_table(copy / "_extract_runs.parquet").num_rows == len(run_log_rows(notices_pipeline(stores)))
+
+
 def test_the_command_line_serve_exits_partial_when_a_table_was_not_copied_whole(stores, command):
     notices_run(stores, USFS, NPS)
     for path in table_files(notices_pipeline(stores), USFS.table):
         os.remove(path)
 
     assert command("serve") == _warehouse.PARTIAL_EXIT
+
+
+def notices_run_hours_ago(stores, monkeypatch, hours: float, *resources):
+    """A notices run whose clock read `hours` before now, so its run id and every run log row it writes are that old."""
+    then = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=hours)
+    with monkeypatch.context() as patched:
+        patched.setattr(_run, "utc_now_naive", lambda: then)
+        return notices_run(stores, *resources)
+
+
+def test_add_served_still_adds_a_notices_copy_whose_run_began_9_hours_ago_but_exits_stale(
+    stores, command, tmp_path, monkeypatch, capsys
+):
+    """A copy of any age used to read as the newest and leave the run green; soak run 538 read one 3 h 01 min old.
+    Past SERVED_STALE_HOURS the copy is still added, so the build still publishes, and the exit says it is stale,
+    so publish-conditions.yml turns the run red at the end."""
+    report = notices_run_hours_ago(stores, monkeypatch, 9, USFS, NPS)
+    assert command("serve") == 0
+    capsys.readouterr()
+
+    status = command("add-served", "--warehouse", str(tmp_path / "warehouse.duckdb"))
+
+    assert status != 0, "a copy whose run began 9 hours ago was read as the newest, and the run stayed green"
+    assert status == _warehouse.SERVED_STALE_EXIT
+    assert ids(tmp_path / "warehouse.duckdb") == {USFS.table: ["u1", "u2"], NPS.table: ["p1"]}, "still added"
+    out = capsys.readouterr().out
+    assert re.search(rf"copy {report.run_id}, whose run began 9 h \d\d min before this read", out), out
+    assert "::error title=The notices copy is stale::" in out
+
+
+def test_add_served_reads_a_notices_copy_under_8_hours_old_as_the_newest_and_says_its_age(
+    stores, command, tmp_path, monkeypatch, capsys
+):
+    report = notices_run_hours_ago(stores, monkeypatch, 7.5, USFS)
+    command("serve")
+    summary = tmp_path / "summary.md"
+    capsys.readouterr()
+
+    assert command("add-served", "--warehouse", str(tmp_path / "warehouse.duckdb"), "--summary", str(summary)) == 0
+
+    assert re.search(rf"copy {report.run_id}, whose run began 7 h \d\d min before this read", capsys.readouterr().out)
+    assert re.search(r"Its run began `\S+Z`, 7 h \d\d min before this read\.", summary.read_text())
+
+
+def test_add_served_hands_dbt_the_instant_its_copys_run_began_and_nothing_when_no_copy_was_read(stores, command, tmp_path):
+    """The copy's run time, for pub_conditions_notices to write as `notices_read_at`: the instant every run log row of
+    that run carries as `checked_at`, appended to the file publish-conditions.yml names as $GITHUB_ENV."""
+    env_file = tmp_path / "github_env"
+    report = notices_run(stores, USFS)
+    assert command("add-served", "--warehouse", str(tmp_path / "none.duckdb"), "--env-file", str(env_file)) == SERVED_NONE_EXIT
+    assert not env_file.exists(), "no copy read, so no read time: the build's notices_read_at is unknown"
+
+    command("serve")
+    assert command("add-served", "--warehouse", str(tmp_path / "warehouse.duckdb"), "--env-file", str(env_file)) == 0
+
+    (line,) = env_file.read_text().splitlines()
+    name, _, value = line.partition("=")
+    assert name == _warehouse.NOTICES_READ_AT_ENV == "OURHIKE_NOTICES_READ_AT"
+    (checked_at,) = {row["checked_at"] for row in run_log_rows(notices_pipeline(stores)) if row["run_id"] == report.run_id}
+    assert datetime.fromisoformat(value) == checked_at.replace(tzinfo=UTC), "the copy's run, as its rows' checked_at"

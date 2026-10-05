@@ -1037,9 +1037,11 @@ jobs:
       # bake. A refusal exits 3: this step records it, and the last step
       # fails the run after everything that loaded is published. A refused
       # row whose sources.json says reaches_hikers false exits 0 instead
-      # (extract/_run.py's exit_status()). A leg takes on at most 10 tables
-      # it has never loaded per run (NEW_TABLES_PER_LEG_RUN), because run
-      # 506 met 70 at once and this step's cap stopped its load.
+      # (extract/_run.py's exit_status()). This leg takes on every table it
+      # has never loaded in one run (NEW_TABLES_PER_LEG_RUN's None for the
+      # conditions job): one left waiting would be absent from the warehouse
+      # and fail the build below. The limit of 10 it had came from run 506,
+      # which met 70 new layers at once, all of them the notices job's now.
       #
       # THE BUDGET: change checks end after 45 s (extract/_run.py's
       # LEG_CHECK_SECONDS), then 150 s of reading, inside the 6-minute step
@@ -1109,6 +1111,16 @@ jobs:
       # never recorded as removed, and `older` and `unread` turn the run red
       # at the end, after everything else has published.
       #
+      # A NEWEST COPY OF ANY AGE IS STILL `latest`, AND ITS AGE IS SAID. The
+      # log line gives how long before this read the copy's run began. Past
+      # extract/_warehouse.py's SERVED_STALE_HOURS (8, twice the notices
+      # cron's 4 hours, @unvalidated there) it exits 7: still `latest`, so
+      # the build publishes and saves history as usual, and `stale=true`
+      # turns the run red at the end, as the extract's exit 3 does. Whenever
+      # a copy was read, --env-file puts OURHIKE_NOTICES_READ_AT, the instant
+      # its run began, in $GITHUB_ENV, so build_marts.py's dbt commands below
+      # inherit it.
+      #
       # Two minutes, @unvalidated: the copy is one Parquet file per notices
       # table, read 8 at a time (LEG_READERS), and soak run 508 read 92 such
       # tables, 11,999 rows, from this store in about 55 s one at a time.
@@ -1126,13 +1138,18 @@ jobs:
         run: |
           set +e
           "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse add-served --lane "$LEG" --raw-bucket "$R2_RAW_BUCKET" \
-            --pipelines-dir "$RUNNER_TEMP/dlt" --warehouse data/warehouse.duckdb --summary "$GITHUB_STEP_SUMMARY"
+            --pipelines-dir "$RUNNER_TEMP/dlt" --warehouse data/warehouse.duckdb --summary "$GITHUB_STEP_SUMMARY" \
+            --env-file "$GITHUB_ENV"
           status=$?
           set -e
           case "$status" in
             0) served=latest ;;
             5) served=older ;;
             6) served=none ;;
+            7)
+              served=latest
+              echo "stale=true" >> "$GITHUB_OUTPUT"
+              ;;
             *)
               served=unread
               echo "::error title=Notices not read::$LEG's served copy could not be added (exit $status), so this build has no club notices beyond the hourly job's own. Everything else still builds and publishes."
@@ -1328,6 +1345,17 @@ jobs:
           NOTICES_READ: ${{ steps.notices.outputs.read }}
         run: |
           echo "::error title=Notices not current::The notices legs' newest served copy was not read ($NOTICES_READ), so this hour's closures and warnings marts hold older club notices or none. Everything else was published, and no row history was saved."
+          exit 1
+
+      # Last for the same reason: the newest notices copy was read and
+      # published, and its run began more than 8 hours before this read
+      # (extract/_warehouse.py's SERVED_STALE_HOURS). Step 2b's log line and
+      # summary give its age. The row history was saved as on any newest
+      # copy: no newer one exists for a notice to be missing from.
+      - name: Fail the run if the notices legs' newest copy is over 8 hours old (dbt path)
+        if: steps.notices.outputs.stale == 'true'
+        run: |
+          echo "::error title=Notices copy stale::The notices legs' newest served copy began its run more than 8 hours before this read, so this hour's club notices are at least that old. Everything was published and the row history saved. extract-notices.yml has written no copy since; look at its runs."
           exit 1
 
       - name: Save dbt's DuckDB driver and v2's spatial extension

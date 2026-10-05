@@ -63,6 +63,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import io
 import json
 import os
 import pickle
@@ -196,16 +197,20 @@ def job_of(resource: Resource) -> str:
 # A LEG TAKES ON AT MOST THIS MANY TABLES IT HAS NEVER LOADED IN ONE RUN, after
 # every table it has (take_on_new_tables()); the rest wait, logged
 # INCOMPLETE as "not yet loaded", and come on over the next runs. One number
-# per job, because the two jobs have different budgets.
+# per job, because the two jobs have different budgets; None takes on every one.
 #
-# The conditions job's 10: soak run 506 (publish-conditions.yml 37154645937,
-# 2026-10-03) met 70 new hourly layers at once: 85 resources to read, the
-# 150 s read budget spent, and the extract step killed at its 4-minute cap
-# during dlt's load, so nothing committed and the next run would have met the
-# same 85. Run 505, an hour earlier, read 13 and loaded them inside 58 s. 10
-# is @unvalidated: it keeps a run near 505's size plus ten. Since decision 61
-# a conditions leg carries twelve tables, so the limit bites only on a new
-# store's first two runs, or when a source joins HOURLY_JOB_TABLES.
+# The conditions job's None: every one of its tables, on a new store's first
+# run. A waiting table lands no hints, so it is absent from the warehouse, and
+# a conditions table absent there fails the whole hourly build: its base
+# models read source() directly (base_ourhike__reports.sql among them). With
+# the limit of 10 this was, a new store's first run left raw_ourhike__reports
+# and raw_ourhike__work_projects waiting, and production's conditions store
+# has never been written. The limit came from soak run 506
+# (publish-conditions.yml 37154645937, 2026-10-03), which met 70 new hourly
+# layers at once and overran its step; those layers are the notices job's
+# since decision 61, and a conditions leg carries twelve tables.
+# Run 505, an hour before 506, read 13 and loaded them inside 58 s, so twelve
+# at once fit the step (Reasoned from that one run).
 #
 # The notices job's 150, Reasoned from run 506 and @unvalidated. In 506 the
 # read budget ended at 21:22:23Z and the step was killed at 21:23:42Z, and in
@@ -219,7 +224,7 @@ def job_of(resource: Resource) -> str:
 # come on in two runs, where 10 a run would take 27. What would settle it:
 # the "Seconds:" line of the first two notices runs' summaries, against the
 # tables each took on.
-NEW_TABLES_PER_LEG_RUN = {CONDITIONS_JOB: 10, NOTICES_JOB: 150}
+NEW_TABLES_PER_LEG_RUN: dict[str, int | None] = {CONDITIONS_JOB: None, NOTICES_JOB: 150}
 # A LEG'S CHANGE CHECKS END AFTER THIS MANY SECONDS, as its reads do after
 # --read-seconds (by_folder()). A check still out is refused on its own: its
 # last committed table stands and it is not read this run. One number per
@@ -497,7 +502,8 @@ def left_out_on_its_own(row: dict) -> bool:
 
 
 def stops_the_leg(resource: Resource) -> bool:
-    """Whether a refused or failed read of this resource stops the whole leg, rather than only itself.
+    """Whether a refused or failed read of this resource, or a change check that ran out of time, stops the whole
+    leg, rather than only itself.
 
     OurHike's own Postgres rows (ConditionsQuery) do, as they stop
     export_conditions.py today (extract/_shared/ourhike/closures.py): it
@@ -510,8 +516,10 @@ def stops_the_leg(resource: Resource) -> bool:
     return isinstance(resource, ConditionsQuery)
 
 
-def take_on_new_tables(report: RunReport, to_run: list[Planned], current: dict, log: list[dict], limit: int) -> list[Planned]:
-    """`to_run` less the never-loaded resources past `limit`, which go in `report.waiting`.
+def take_on_new_tables(
+    report: RunReport, to_run: list[Planned], current: dict, log: list[dict], limit: int | None
+) -> list[Planned]:
+    """`to_run` less the never-loaded resources past `limit`, which go in `report.waiting`; all of it for None.
 
     Every resource whose table has a logged, committed load (`current`) runs
     as before. Of the rest, those never tried come first, then those refused
@@ -519,7 +527,7 @@ def take_on_new_tables(report: RunReport, to_run: list[Planned], current: dict, 
     and cannot hold the others out; ties go by name.
     """
     new = [item for item in to_run if item.resource.table not in current]
-    if len(new) <= limit:
+    if limit is None or len(new) <= limit:
         return to_run
     tried: dict[str, str] = {}
     for row in log:
@@ -842,7 +850,30 @@ def definition_digest(resource: Resource) -> str:
     # turning it on changes the geometry a read lands, so the layer is read once more.
     if getattr(resource, "return_z", False):
         definition["return_z"] = True
+    # The same, for two registry fields kinds read outside `field_rules`: the
+    # row's own `person_fields` where WordpressPosts, PodcastEpisodes and
+    # NpsContent read them as a property, so a name added there stops loading
+    # on the next run rather than the club's next edit; and a sheet's
+    # `as_of_label` (extract/_gis_files.py), which decides the date its rows
+    # carry. Only when set, so no other resource's digest moves.
+    if own := sorted(_registry_field(resource, "person_fields") or ()):
+        definition["row_person_fields"] = own
+    if label := _registry_row(resource).get("as_of_label"):
+        definition["as_of_label"] = label
     return hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
+
+
+def _registry_row(resource: Resource) -> dict:
+    """The resource's sources.json row where its kind reads one (`entry`), else {}: a resource built in code has none."""
+    return _registry_field(resource, "entry") or {}
+
+
+def _registry_field(resource: Resource, name: str):
+    """getattr(), with a key no sources.json row carries (registry_entry()'s KeyError) read as no value."""
+    try:
+        return getattr(resource, name, None)
+    except KeyError:
+        return None
 
 
 def recorded_markers(pipeline) -> dict[str, dict | None]:
@@ -1190,8 +1221,42 @@ def committed(pipeline, load_id: str, rows: dict[str, int], planned: list[Planne
     return problems
 
 
-def run_log_rows(pipeline) -> list[dict]:
-    return _read_rows(pipeline, table_files(pipeline, RUNS_TABLE))
+def run_log_rows(pipeline, cache: Path | None = None) -> list[dict]:
+    """Every `_extract_runs` row, every file read; with `cache`, each file through run_log_bytes()."""
+    return _run_log_rows(pipeline, table_files(pipeline, RUNS_TABLE), cache)
+
+
+def _run_log_rows(pipeline, files: list[str], cache: Path | None) -> list[dict]:
+    rows = []
+    for path in files:
+        rows.extend(pq.read_table(io.BytesIO(run_log_bytes(pipeline, path, cache))).to_pylist())
+    return rows
+
+
+def run_log_bytes(pipeline, path: str, cache: Path | None = None) -> bytes:
+    """One `_extract_runs` file's bytes: from `cache` where an earlier step of the same job read it, else the store's.
+
+    THE RUN LOG IS READ FROM THE STORE ONCE PER RUN. Every file is a GET on
+    R2, one more each run, and extract-notices.yml's serve step used to read
+    them all again straight after its extract step had; with --run-log-cache
+    on both, it reads them from this directory. A run log file is written once, under its load and
+    file id (`<load_id>.<file_id>.parquet`), into a table only ever appended
+    to, so a cached file of that name holds the store's bytes. `cache` is one
+    store's: the name is unique within a store, not across stores. A file is
+    cached under a temporary name and renamed, so a step killed mid-write
+    leaves no torn copy.
+    """
+    local = None if cache is None else cache / os.path.basename(path)
+    if local is not None and local.exists():
+        return local.read_bytes()
+    with _client(pipeline).fs_client.open(path, "rb") as handle:
+        data = handle.read()
+    if local is not None:
+        local.parent.mkdir(parents=True, exist_ok=True)
+        partial = local.with_name(f"{local.name}.partial")
+        partial.write_bytes(data)
+        partial.replace(local)
+    return data
 
 
 def _read_rows(pipeline, files: list[str]) -> list[dict]:
@@ -1471,6 +1536,7 @@ def run_pipeline(
     as_landed: bool = False,
     cross_lane: bool = False,
     normalize_workers: int = 1,
+    run_log_cache: Path | None = None,
 ) -> RunReport:
     """One lane, or one leg, end to end. Raises ExtractRefused, after logging, when either check fails.
 
@@ -1479,6 +1545,8 @@ def run_pipeline(
     `read_seconds` is a leg's read budget (read_each()); the lanes
     ignore it. `as_landed` also writes the as-landed copy (the module
     docstring). `cross_lane` also reads ALSO_READS' resources for this lane.
+    `run_log_cache` keeps each run log file the run reads or writes, for a
+    later step of the same job (run_log_bytes()).
     """
     cadences_of(lane)
     if resources is None:
@@ -1489,7 +1557,18 @@ def run_pipeline(
     checked_at = utc_now_naive()
     report = RunReport(run_id=checked_at.strftime("%Y%m%dT%H%M%S.%fZ"), lane=lane, outcome="loaded")
     try:
-        _run(report, lane, bucket_url, plan_resources, pipelines_dir, checked_at, read_seconds, as_landed, normalize_workers)
+        _run(
+            report,
+            lane,
+            bucket_url,
+            plan_resources,
+            pipelines_dir,
+            checked_at,
+            read_seconds,
+            as_landed,
+            normalize_workers,
+            run_log_cache,
+        )
     except Exception as failure:
         if getattr(failure, "report", None) is None:
             try:
@@ -1512,6 +1591,7 @@ def _run(
     read_seconds: float | None = None,
     as_landed: bool = False,
     normalize_workers: int = 1,
+    run_log_cache: Path | None = None,
 ) -> None:
     pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
     # Drop a package a dead run left pending, then sync, so the committed
@@ -1528,7 +1608,7 @@ def _run(
         pipeline.sync_destination()
         recorded = recorded_markers(pipeline)
         # Read once: every run log file is a read of its own, and nothing writes the log before the run's end.
-        log = run_log_rows(pipeline)
+        log = run_log_rows(pipeline, run_log_cache)
         complete = committed_load_ids(pipeline)
         current = readable_tables(pipeline, log, complete)
         served = {(row["table_name"], row.get("load_id")): row for row in log}
@@ -1570,6 +1650,10 @@ def _run(
         budget = LEG_CHECK_SECONDS[LEGS[lane].job] if lane in LEGS else None
         for resource, outcome in zip(plan_resources, by_folder(plan_resources, ask, budget)):
             if isinstance(outcome, CheckTimedOut):
+                # OurHike's own rows stop the leg here too, as their failed read does in
+                # read_each(): left out, their last committed table would publish as this hour's.
+                if stops_the_leg(resource):
+                    raise CheckTimedOut(f"{resource.name}: {outcome}; OurHike's own rows stop the leg (stops_the_leg())")
                 # Refused on its own, as a read that ran out of time is (read_each()): its last
                 # committed table stands, it is not read this run, and it is logged `refused`.
                 report.isolated[resource.name] = f"change check: {outcome}"
@@ -1636,6 +1720,7 @@ def _run(
             log,
             spool,
             normalize_workers,
+            run_log_cache,
         )
         # After the run log, so a failed upload leaves a committed, logged load
         # and a red job, and the next --as-landed run reads the layer again
@@ -1663,6 +1748,7 @@ def _extract_and_load(
     log: list[dict] | None = None,
     spool: Path | None = None,
     normalize_workers: int = 1,
+    run_log_cache: Path | None = None,
 ) -> None:
     """run_pipeline's extract, checks, load and run log; ExtractRefused, after logging, when either check fails.
 
@@ -1683,7 +1769,7 @@ def _extract_and_load(
         readers = None if lane in LEGS else MONTHLY_READERS
         with timed(report, "read"):
             to_run, read = read_each(report, to_run, read_seconds, spool=spool, readers=readers)
-    log = run_log_rows(pipeline) if log is None else log
+    log = run_log_rows(pipeline, run_log_cache) if log is None else log
     previous = last_loaded_counts(log) if to_run else {}
     while to_run:
         if as_landed is not None:
@@ -1778,7 +1864,8 @@ def _extract_and_load(
             pipeline, report, planned, checked_at, unavailable, progress({item.resource.name for item in to_run})
         )
     # The log as this run left it: what it read at the start, and the file it just wrote.
-    report.run_log = log + _read_rows(pipeline, [path for load in written for path in table_files(pipeline, RUNS_TABLE, load)])
+    written_files = [path for load in written for path in table_files(pipeline, RUNS_TABLE, load)]
+    report.run_log = log + _run_log_rows(pipeline, written_files, run_log_cache)
 
 
 def report_document(report: RunReport) -> dict:
@@ -1917,6 +2004,11 @@ def main(argv: list[str] | None = None) -> RunReport:
     parser.add_argument(
         "--report-json", type=Path, help="write the run's id, outcome and counts here, refused or not (refresh-reference.yml)"
     )
+    parser.add_argument(
+        "--run-log-cache",
+        type=Path,
+        help="keep each run log file read or written here, for a later step of this job to read again (run_log_bytes())",
+    )
     args = parser.parse_args(argv)
     if args.only and args.cross_lane_inputs:
         # Otherwise cross_lane_resources() would refuse ALSO_READS' tables,
@@ -1939,6 +2031,7 @@ def main(argv: list[str] | None = None) -> RunReport:
                 as_landed=args.as_landed,
                 cross_lane=args.cross_lane_inputs,
                 normalize_workers=args.normalize_workers,
+                run_log_cache=args.run_log_cache,
             )
         except ExtractRefused as refused:
             if args.report_json:

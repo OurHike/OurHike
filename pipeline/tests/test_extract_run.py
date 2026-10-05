@@ -1320,6 +1320,51 @@ def test_a_wordpress_marker_moves_when_a_post_is_edited_or_unpublished(registry,
     assert alerts().change_check(marker)[0] is Freshness.STALE
 
 
+def add_to_rows_person_fields(registry, key: str, name: str) -> None:
+    """A privacy fix made where it is made: one more name in the sources.json row's `person_fields`."""
+    entries = json.loads(registry.read_text())
+    next(entry for entry in entries["sources"] if entry["key"] == key).setdefault("person_fields", []).append(name)
+    registry.write_text(json.dumps(entries))
+    _kinds._registry.cache_clear()
+
+
+def test_a_name_added_to_a_wordpress_rows_person_fields_is_dropped_on_the_next_run_of_a_site_that_has_not_moved(
+    registry, store, requests_mock
+):
+    """WordpressPosts reads the row's `person_fields` outside `field_rules`, so the digest in its marker used to
+    stay put, the unmoved site answered FRESH, and the column the row now leaves out kept serving until the club
+    next edited a post."""
+    post = wp_post(1)
+    post["content"] = {"rendered": "<p>Call the maintainer at 555-0100 or maint@example.org</p>"}
+    FakeWordpress(requests_mock, [post])
+    lane(store, alerts())
+    con, _ = warehouse(store)
+    assert "555-0100" in str(con.execute('select * from raw."raw_testclub__alerts"').fetchall()), "the leak"
+
+    add_to_rows_person_fields(registry, "alerts", "content")
+    second = lane(store, alerts())
+
+    assert second.verdicts == {"raw_testclub__alerts": "stale"}, "the site has not moved; the row has"
+    con, _ = warehouse(store)
+    assert "555-0100" not in str(con.execute('select * from raw."raw_testclub__alerts"').fetchall())
+    assert lane(store, alerts()).verdicts == {"raw_testclub__alerts": "fresh"}, "read again once, then fresh"
+
+
+def test_a_name_added_to_a_podcast_rows_person_fields_moves_its_definition_digest(registry):
+    """A podcast feed's conditional GET answers FRESH while the feed is unchanged, so only the digest can see it."""
+    from extract._content import PodcastEpisodes
+
+    def episodes():
+        return PodcastEpisodes(key="a_podcast", club="testclub", type="podcasts")
+
+    before = _run.definition_digest(episodes())
+
+    add_to_rows_person_fields(registry, "a_podcast", "description")
+
+    assert "description" in episodes().person_fields
+    assert _run.definition_digest(episodes()) != before
+
+
 def test_wordpress_terms_are_their_own_daily_table_and_an_empty_vocabulary_is_refused(registry, requests_mock):
     FakeWordpress(requests_mock, [], {"trail": [{"id": 11, "name": "Allis Trail", "slug": "allis-trail", "count": 1}]})
     resource = terms()

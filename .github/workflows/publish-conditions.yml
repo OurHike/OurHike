@@ -1176,15 +1176,23 @@ jobs:
       # is saved, so a notice this build lacks is never closed in the history
       # (build_marts.py's docstring).
       #
-      # Whether the restore and the save fit beside the build inside this
-      # step's 4 minutes is @unvalidated; the first soak run's log settles it.
-      # On the fixture warehouse the two snapshots saved as 12,797 and
-      # 27,034 bytes of Parquet (measured 2026-10-03), so the transfer itself
-      # should be small (Reasoned).
+      # SIX MINUTES, NOT FOUR (WF5 of the PR #1805 review, and ARCH-7's cap).
+      # Measured from the API's step times for the UA leg's seven green soak
+      # runs 529 to 539 (2026-10-04/05): this step took 83 to 182 s, and the
+      # rest of the job 132 to 179 s. Run 538's 182 s was 6.5 s restoring the
+      # row history, 9.4 s of seeds, 93 s of stage A, 12.8 s for the weather
+      # squares and what they unblock, 45.8 s of writers and 14.6 s saving the
+      # history. A step that hits its cap fails the job and skips "Publish to
+      # R2", so every hourly file misses that hour, and 4 minutes left 58 s.
+      # Six is about twice the slowest build, and a build at its full cap
+      # plus run 536's 179 s outside it is 539 s, inside the job's 600.
+      # .github/tests/test_conditions_build_budget.py holds both sums; the
+      # headroom it asks for is @unvalidated, and a few weeks of this step's
+      # summary line would show how fast the build grows.
       - name: Build the closures and warnings marts and their writers (dbt path)
         id: build
         if: env.PHONE_FILES == 'dbt'
-        timeout-minutes: 4
+        timeout-minutes: 6
         env:
           ENVIRONMENT: ${{ matrix.data_environment }}
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}

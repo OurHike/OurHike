@@ -528,6 +528,14 @@ DBT_PROJECT_EVALUATOR_SEVERITY=error dbt build -s package:dbt_project_evaluator 
 # save the cache on a miss, even when a step failed
 ```
 
+**A model that runs DuckDB out of memory beside others gets `tags=['builds_alone']`**
+in its own `config()`, with a comment naming the run that failed. `build_marts.py`
+then builds it on one thread between the rest of its stage and what it feeds
+(its docstring, "A MODEL TAGGED `builds_alone`"), and refuses after `dbt seed` a
+tag that would build out of order or sit in the hourly lane. Monthly run 20 put
+it on `int_places__resolved` and `int_trail_network__cuts`. Not `--threads 1`
+for a whole lane, and not `concurrent_batches`, which is a microbatch model's.
+
 **Telemetry off is the only switch.** `DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false`
 is the documented opt-out. Measured 2026-10-01 through a logging proxy:
 without it each 2.0.6 command tried (parse, show) opened `p.vx.dbt.com`; with

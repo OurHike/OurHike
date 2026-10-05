@@ -40,6 +40,12 @@ STEP_TABLES = tuple(step.table for step in STEPS)
 # A second step, standing in for tl-net's step_node_lines (pipeline/ELT.md,
 # "Python steps, outside dbt"), which writes derived.graph_pieces.
 SECOND = Step(name="step_second", table="graph_pieces", command=("step_second.py", "--warehouse", "{warehouse}"))
+# A manifest in which no model builds alone. Given it, plan() splits no build,
+# as main() plans again once `dbt seed` has written the manifest
+# (build_marts.py's docstring, "A MODEL TAGGED `builds_alone`"), so the tests
+# of the build's order below spell each build out once. The split has its own
+# section, further down.
+NONE_ALONE: dict = {}
 
 
 def argvs(runs):
@@ -47,7 +53,7 @@ def argvs(runs):
 
 
 def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers():
-    runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=True)
+    runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
 
     assert argvs(runs) == [
         (("dbt", "seed", "--profiles-dir", "."), DBT_DIR),
@@ -57,7 +63,7 @@ def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers():
 
 
 def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks():
-    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True)
+    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
 
     assert argvs(runs) == [
         (("dbt", "seed", "--profiles-dir", "."), DBT_DIR),
@@ -94,7 +100,7 @@ def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks(
 
 
 def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendants_for_later():
-    runs = plan([DEM_SAMPLING, SECOND], dbt="dbt", python="python", paths=PATHS, fixtures=True)
+    runs = plan([DEM_SAMPLING, SECOND], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
 
     assert [run.argv[:2] for run in runs] == [
         ("dbt", "seed"),
@@ -124,13 +130,13 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
 
 
 def test_without_fixtures_a_step_gets_no_fixture_arguments_and_reads_its_own_defaults():
-    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=False)
+    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=False, manifest=NONE_ALONE)
 
     assert runs[2].argv == ("python", "step_dem_sampling.py", "--warehouse", "/w/warehouse.duckdb")
 
 
 def test_threads_reach_every_dbt_seed_and_build_and_no_step():
-    runs = plan([DEM_SAMPLING, SECOND], dbt="dbt", python="python", paths=PATHS, fixtures=True, threads=2)
+    runs = plan([DEM_SAMPLING, SECOND], dbt="dbt", python="python", paths=PATHS, fixtures=True, threads=2, manifest=NONE_ALONE)
 
     for run in runs:
         assert ("--threads" in run.argv) == (run.argv[0] == "dbt"), run.argv
@@ -269,13 +275,14 @@ RESTORE = ("python", "row_history.py")
 
 
 def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(monkeypatch, tmp_path):
-    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES))
+    manifest = _manifest(*STEP_TABLES)
+    code, recorder = _main(monkeypatch, tmp_path, manifest)
 
     tmp_path = tmp_path.resolve()
     paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
     assert code == 0
     assert [(argv, cwd) for argv, cwd, _ in recorder.calls] == argvs(
-        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, history=_history(tmp_path))
+        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, history=_history(tmp_path), manifest=manifest)
     )
     assert recorder.calls[0][0][:3] == (*RESTORE, "restore") and recorder.calls[-1][0][:3] == (*RESTORE, "save")
     for _, _, env in recorder.calls:
@@ -394,8 +401,8 @@ def test_ci_and_test_sh_build_only_through_build_marts_apart_from_the_evaluator(
 
 
 def test_the_monthly_lane_is_the_whole_plan_with_every_hourly_or_daily_node_excluded_from_each_dbt_build():
-    runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
-    everything = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False)
+    runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly", manifest=NONE_ALONE)
+    everything = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, manifest=NONE_ALONE)
 
     assert [run.label for run in runs] == [run.label for run in everything]
     for lane_run, full_run in zip(runs, everything, strict=True):
@@ -702,7 +709,16 @@ def test_main_runs_the_monthly_lanes_plan_when_every_step_reads_monthly_nodes(mo
     paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
     assert code == 0
     assert [(argv, cwd) for argv, cwd, _ in recorder.calls] == argvs(
-        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, lane="monthly", history=_history(tmp_path))
+        plan(
+            STEPS,
+            dbt="dbt",
+            python="python",
+            paths=paths,
+            fixtures=True,
+            lane="monthly",
+            history=_history(tmp_path),
+            manifest=manifest,
+        )
     )
 
 
@@ -739,6 +755,259 @@ def test_a_step_that_says_it_reads_no_model_and_whose_exposure_lists_one_is_refu
     assert build_marts.lane_problems(manifest, [*PAIR, file_only], "hourly") == [
         "step_weather_squares says it reads no dbt node (reads_no_model), and its exposure step_weather_squares lists some"
     ]
+
+
+# --- The models that build alone (build_marts.py's docstring, "A MODEL TAGGED `builds_alone`") ---
+
+ALONE, BELOW = "tag:builds_alone", "tag:builds_alone+"
+STAGE_A_EXCLUDES = ("package:dbt_project_evaluator", "path:models/publish", "source:derived+")
+
+
+def test_stage_a_has_no_dash_s_so_its_passes_select_the_tag_itself_the_tagged_ones_on_one_thread():
+    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, threads=4)
+
+    assert [(run.label, run.argv) for run in runs[1:4]] == [
+        (
+            "stage A: everything no Python step reads back: all but the models that build alone and what they feed",
+            ("dbt", "build", "--profiles-dir", ".", "--threads", "4", "--exclude", *STAGE_A_EXCLUDES, BELOW),
+        ),
+        (
+            "stage A: everything no Python step reads back: the models that build alone, one at a time",
+            ("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", ALONE, "--exclude", *STAGE_A_EXCLUDES),
+        ),
+        (
+            "stage A: everything no Python step reads back: what the models that build alone feed",
+            ("dbt", "build", "--profiles-dir", ".", "--threads", "4", "-s", BELOW, "--exclude", *STAGE_A_EXCLUDES, ALONE),
+        ),
+    ]
+
+
+def test_what_a_monthly_steps_table_unblocks_is_split_with_each_pass_inside_the_steps_own_selection():
+    runs = plan([DEM_SAMPLING, SECOND], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
+
+    passes = [run for run in runs if run.label.startswith("what derived.dem_samples unblocks")]
+    excludes = ("path:models/publish", "source:derived.graph_pieces+", *build_marts.LANE_EXCLUDES)
+    assert [run.argv for run in passes] == [
+        ("dbt", "build", "--profiles-dir", ".", "-s", "source:derived.dem_samples+", "--exclude", *excludes, BELOW),
+        (
+            ("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "source:derived.dem_samples+,tag:builds_alone")
+            + ("--exclude", *excludes)
+        ),
+        (
+            ("dbt", "build", "--profiles-dir", ".", "-s", "source:derived.dem_samples+,tag:builds_alone+", "--exclude")
+            + (*excludes, ALONE)
+        ),
+    ]
+    assert [run.label for run in passes] == [
+        "what derived.dem_samples unblocks: all but the models that build alone and what they feed",
+        "what derived.dem_samples unblocks: the models that build alone, one at a time",
+        "what derived.dem_samples unblocks: what the models that build alone feed",
+    ]
+
+
+@pytest.mark.parametrize("state", [None, Path("/m/target")], ids=["no state", "deferred"])
+def test_the_hourly_lane_splits_no_build_because_its_six_minute_step_has_no_room(state):
+    runs = plan([*PAIR, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=state)
+
+    assert not [run.argv for run in runs if any(build_marts.BUILDS_ALONE in argument for argument in run.argv)]
+    assert [run.argv[:2] for run in runs] == [("dbt", "seed"), ("dbt", "build"), ("python", "step_weather_squares.py")] + [
+        ("dbt", "build")
+    ] * 2
+
+
+@pytest.mark.parametrize("lane", [None, "monthly", "hourly"])
+def test_the_writers_build_is_never_split_and_never_names_the_tag(lane):
+    split = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane)
+    whole = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, manifest=NONE_ALONE)
+
+    writers = [run for run in split if "writers" in run.label]
+    assert [run.argv for run in writers] == [whole[-1].argv] and split[-1] == whole[-1]
+    assert not any(build_marts.BUILDS_ALONE in argument for argument in whole[-1].argv)
+
+
+def _alone_manifest(edges: dict[str, list[str]], tagged: tuple[str, ...] = (), hourly: tuple[str, ...] = ()) -> dict:
+    """A manifest of these parent -> children edges over ids like `model.ourhike.heavy` and
+    `source.ourhike.derived.dem_samples`, every derived source STEPS writes among them: the `tagged` names carry
+    builds_alone, a pub_ model sits under models/publish, and the `hourly` sources are hourly (the others monthly)."""
+    edges = {**{f"source.ourhike.derived.{table}": [] for table in STEP_TABLES}, **edges}
+    ids = set(edges) | {child for children in edges.values() for child in children}
+    nodes, sources, parents = {}, {}, {uid: [] for uid in ids}
+    for parent, children in edges.items():
+        for child in children:
+            parents[child].append(parent)
+    for uid in ids:
+        kind, _, name = uid.split(".", 2)
+        if kind == "source":
+            source_name, table = name.split(".")
+            cadence = "hourly" if uid in hourly else "monthly"
+            sources[uid] = {"source_name": source_name, "name": table, "config": {"meta": {"cadence": cadence}}}
+            continue
+        folder = "publish" if name.startswith("pub_") else "intermediate"
+        nodes[uid] = {
+            "resource_type": kind,
+            "package_name": "ourhike",
+            "original_file_path": f"models/{folder}/{name}.sql",
+            "config": {"tags": ["builds_alone"] if name in tagged else []},
+        }
+    return {"nodes": nodes, "sources": sources, "child_map": {uid: edges.get(uid, []) for uid in ids}, "parent_map": parents}
+
+
+#: derived.dem_samples -> stg -> heavy (tagged) -> below -> pub_below, with stg -> beside and a test on heavy: what
+#: step_dem_sampling unblocks holds a model that builds alone, one beside it and one it feeds.
+HEAVY = _alone_manifest(
+    {
+        "source.ourhike.derived.dem_samples": ["model.ourhike.stg"],
+        "model.ourhike.stg": ["model.ourhike.heavy", "model.ourhike.beside"],
+        "model.ourhike.heavy": ["model.ourhike.below", "test.ourhike.unique_heavy_id"],
+        "model.ourhike.below": ["model.ourhike.pub_below"],
+    },
+    tagged=("heavy",),
+)
+
+
+def test_given_the_manifest_a_build_with_no_tagged_model_in_its_selection_is_not_split():
+    """Stage A excludes source:derived+, which holds heavy, so it runs whole; what dem_samples unblocks runs in three."""
+    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=HEAVY)
+    whole = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
+
+    assert [run.label for run in runs] == [
+        build_marts.SEED,
+        "stage A: everything no Python step reads back",
+        "step_dem_sampling",
+        "what derived.dem_samples unblocks: all but the models that build alone and what they feed",
+        "what derived.dem_samples unblocks: the models that build alone, one at a time",
+        "what derived.dem_samples unblocks: what the models that build alone feed",
+        "the pub_ writers",
+    ]
+    assert runs[1] == whole[1]
+
+
+def test_given_the_manifest_a_pass_that_selects_nothing_is_left_out():
+    """heavy feeds only its writer and its own test, so after the models that build alone there is nothing to build."""
+    leaf = _alone_manifest(
+        {
+            "source.ourhike.derived.dem_samples": ["model.ourhike.stg"],
+            "model.ourhike.stg": ["model.ourhike.heavy"],
+            "model.ourhike.heavy": ["model.ourhike.pub_heavy", "test.ourhike.unique_heavy_id"],
+        },
+        tagged=("heavy",),
+    )
+
+    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=leaf)
+
+    assert [run.label for run in runs if run.label.startswith("what")] == [
+        "what derived.dem_samples unblocks: all but the models that build alone and what they feed",
+        "what derived.dem_samples unblocks: the models that build alone, one at a time",
+    ]
+
+
+def test_selects_anything_reads_a_selector_it_does_not_know_as_everything_selected_and_nothing_excluded():
+    assert build_marts.selects_anything(HEAVY, ("heavy",), ())
+    assert build_marts.selects_anything(HEAVY, (ALONE,), ("heavy", "1+tag:builds_alone"))
+    assert not build_marts.selects_anything(HEAVY, (ALONE,), ("source:derived+",))
+    assert not build_marts.selects_anything(NONE_ALONE, (ALONE,), ())
+
+
+def test_main_runs_the_split_passes_the_manifest_leaves_in_and_says_which_models_build_alone(monkeypatch, tmp_path, capsys):
+    code, recorder = _main(monkeypatch, tmp_path, HEAVY)
+
+    tmp_path = tmp_path.resolve()
+    paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
+    assert code == 0
+    assert [(argv, cwd) for argv, cwd, _ in recorder.calls] == argvs(
+        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, history=_history(tmp_path), manifest=HEAVY)
+    )
+    alone = [argv for argv, _, _ in recorder.calls if "--threads" in argv]
+    assert [argv[argv.index("-s") + 1] for argv in alone] == ["source:derived.dem_samples+,tag:builds_alone"]
+    assert "-- build_marts: 1 model(s) build alone (heavy)" in capsys.readouterr().out
+
+
+def test_alone_problems_passes_a_tagged_model_that_reads_only_untagged_parents_or_another_tagged_one():
+    chained = _alone_manifest(
+        {
+            "model.ourhike.stg": ["model.ourhike.heavy", "model.ourhike.beside"],
+            "model.ourhike.heavy": ["model.ourhike.heavier", "model.ourhike.below"],
+            "model.ourhike.heavier": ["model.ourhike.below_heavier"],
+        },
+        tagged=("heavy", "heavier"),
+    )
+
+    assert build_marts.alone_problems(HEAVY) == []
+    assert build_marts.alone_problems(chained) == []
+
+
+def test_alone_problems_refuses_a_tagged_model_reading_what_another_tagged_model_feeds():
+    """Pass (b) would build heavier before pass (c) builds below, which heavier reads."""
+    bad = _alone_manifest(
+        {
+            "model.ourhike.heavy": ["model.ourhike.below"],
+            "model.ourhike.below": ["model.ourhike.middle"],
+            "model.ourhike.middle": ["model.ourhike.heavier"],
+        },
+        tagged=("heavy", "heavier"),
+    )
+
+    problems = build_marts.alone_problems(bad)
+
+    assert [problem.split(":")[0] for problem in problems] == [
+        "heavier builds alone (builds_alone) and reads below, which is downstream of heavy",
+        "heavier builds alone (builds_alone) and reads middle, which is downstream of heavy",
+    ]
+    assert problems[0].endswith("Tag every model between them builds_alone too, or untag one end")
+
+
+def test_alone_problems_refuses_a_test_of_a_tagged_model_that_reads_what_the_tagged_model_feeds():
+    """Eager selection runs the test in pass (b), beside heavy, before pass (c) has built below."""
+    bad = _alone_manifest(
+        {
+            "model.ourhike.heavy": ["model.ourhike.below", "test.ourhike.relationships_heavy_below"],
+            "model.ourhike.below": ["test.ourhike.relationships_heavy_below"],
+        },
+        tagged=("heavy",),
+    )
+
+    assert build_marts.alone_problems(bad) == [
+        "test.ourhike.relationships_heavy_below tests heavy, which builds alone (builds_alone), and reads below, which "
+        "is downstream of heavy: it would run before that is built"
+    ]
+
+
+def test_alone_problems_refuses_a_tagged_model_an_hourly_source_reaches_since_the_hourly_lane_never_splits():
+    """No hourly-cadence model may carry the tag: the hourly lane would build it beside the rest. Every build_marts.py
+    run checks the real project's manifest this way after `dbt seed`, CI's fixture build among them."""
+    hourly = _alone_manifest(
+        {"source.ourhike.ourhike.raw_ourhike__closures": ["model.ourhike.int_closures__unioned"]},
+        tagged=("int_closures__unioned",),
+        hourly=("source.ourhike.ourhike.raw_ourhike__closures",),
+    )
+
+    assert build_marts.alone_problems(hourly) == [
+        "int_closures__unioned builds alone (builds_alone), and an hourly or daily source reaches it: the hourly lane "
+        "never splits its builds (6 minutes leave no room), so it would build beside other models there"
+    ]
+
+
+def test_main_refuses_after_the_seeds_when_the_split_would_build_a_tagged_model_before_its_input(monkeypatch, tmp_path, capsys):
+    bad = _alone_manifest(
+        {"model.ourhike.heavy": ["model.ourhike.below"], "model.ourhike.below": ["model.ourhike.heavier"]},
+        tagged=("heavy", "heavier"),
+    )
+
+    code, recorder = _main(monkeypatch, tmp_path, bad)
+
+    assert code == 1
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed")]
+    assert "heavier builds alone (builds_alone) and reads below" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "model", ["intermediate/places/int_places__resolved.sql", "intermediate/trail_network/int_trail_network__cuts.sql"]
+)
+def test_the_two_models_monthly_run_20_ran_out_of_memory_on_carry_the_tag_in_their_own_config(model):
+    first, second = (DBT_DIR / "models" / model).read_text().splitlines()[:2]
+
+    assert re.fullmatch(r"\{\{ config\(.*tags=\['builds_alone'\].*\) \}\}", first), first
+    assert second.startswith("-- builds_alone:") and "37296900535" in second, "the comment names run 20"
 
 
 # --- The row history (build_marts.py's docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST") ---
@@ -825,15 +1094,16 @@ def test_a_failed_restore_stops_the_build_before_dbt_by_default(monkeypatch, tmp
 
 def test_a_degraded_build_runs_every_dbt_command_without_snapshots_or_history_and_saves_nothing(monkeypatch, tmp_path):
     """The conditions legs (--history-on-failure degrade): publish with null dates, save nothing, exit DEGRADED_EXIT."""
-    code, recorder = _main(
-        monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={1: 2}, extra=("--history-on-failure", "degrade")
-    )
+    manifest = _manifest(*STEP_TABLES)
+    code, recorder = _main(monkeypatch, tmp_path, manifest, codes={1: 2}, extra=("--history-on-failure", "degrade"))
 
     tmp_path = tmp_path.resolve()
     paths = Paths(tmp_path / "warehouse.duckdb", tmp_path / "processed", tmp_path / "raw")
     after_restore = [(argv, cwd) for argv, cwd, _ in recorder.calls][1:]
     assert code == build_marts.DEGRADED_EXIT
-    assert after_restore == argvs(plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, snapshots=False))
+    assert after_restore == argvs(
+        plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, snapshots=False, manifest=manifest)
+    )
     assert not [argv for argv, _, _ in recorder.calls if argv[2:3] == ("save",)], "a degraded build never saves"
     builds = [argv for argv, _, _ in recorder.calls if argv[:2] == ("dbt", "build")]
     writers = [argv for argv in builds if "-s" in argv and argv[argv.index("-s") + 1] == "path:models/publish"]
@@ -854,7 +1124,8 @@ def test_without_snapshots_every_build_but_the_writers_excludes_them():
     runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, snapshots=False)
 
     builds = [run.argv for run in runs if run.argv[:2] == ("dbt", "build")]
-    assert [build_marts.SNAPSHOTS in argv for argv in builds] == [True, True, False]
+    assert len(builds) == 7, "stage A and the step's build, each split in three, and the writers"
+    assert [build_marts.SNAPSHOTS in argv for argv in builds] == [True] * 6 + [False]
 
 
 def test_built_by_names_the_commit_and_the_workflow_run_in_characters_a_sql_literal_takes():

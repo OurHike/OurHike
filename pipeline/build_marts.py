@@ -59,6 +59,43 @@ source reaches.
 With no --lane every step and node builds, as CI's fixture warehouse, which
 holds both lanes' tables, needs.
 
+A MODEL TAGGED `builds_alone` BUILDS WITH NO OTHER MODEL BESIDE IT, so it has
+DuckDB's whole memory limit to itself. Monthly run 20 (refresh-reference.yml
+37296900535) failed at "what derived.poi_photos unblocks" with
+int_places__resolved and int_trail_network__cuts building side by side:
+"Out of Memory Error: failed to allocate data of size 16.0 MiB (12.5 GiB/12.4
+GiB used)" (its log, 2026-10-05). That each of the two fits in the limit on
+its own is @unvalidated until a monthly run passes that build: run 20's cuts
+reached the limit 23 s after resolved had already failed (the log's
+timestamps). dbt has no per-model setting that keeps two
+table models apart: `concurrent_batches` is a microbatch model's, about its
+own batches. So every dbt build here but the writers' and the hourly lane's
+is split into up to three, each keeping the build's selection and excludes:
+(a) the same command, `--exclude tag:builds_alone+` added, at --threads;
+(b) the tagged models, `-s <each -s item>,tag:builds_alone` (`-s
+    tag:builds_alone` for a build with no -s), at --threads 1;
+(c) what they feed, `-s <each -s item>,tag:builds_alone+` and `--exclude
+    tag:builds_alone` added, at --threads.
+Nothing in (a) reads a node of (b) or (c), since `+` takes every descendant,
+and (b) reads only what (a) built, unless a tagged model reads a model that
+(c) builds (an untagged descendant of another tagged one), or a test that (b)
+runs reads one: alone_problems() refuses both after `dbt seed`, naming them.
+Once `dbt seed` has written the manifest, main() plans again with it: a pass
+it shows selecting nothing is left out (selects_anything()), and a build
+whose pass (b) selects nothing runs whole, as it did before the split. That
+is because dbt 2.0.6 answers an empty selection with exit 0 and two
+warnings (dbt1092, dbt1601) only after reading the whole project: stage A's
+pass (b), which selects nothing, took 30.9 to 34.2 s three times over against
+the fixture warehouse (Measured 2026-10-05, in a 4-core sandbox), and the
+fixture build leaves 18 passes out. Over the real project with today's two
+tags, the split reaches one build, "what derived.poi_photos unblocks", in
+either lane (plan() over `dbt parse`'s manifest, 2026-10-05). The hourly lane
+never splits: publish-conditions.yml gives its build 6 minutes, and a dbt
+invocation on a runner spends about 9.4 s before its first node (run 20's
+step 13, from its start to its first result: Measured). alone_problems()
+refuses a tagged model an hourly or daily source reaches, whose tag that lane
+would ignore.
+
 NOT dbt's `selectors.yml` (ELT.md's shape): dbt documents `--selector` as not
 combinable with `-s` or `--exclude`, which every invocation here carries, so a
 selector file would need one selector per invocation per lane. A lane is one
@@ -173,6 +210,9 @@ LANE_EXCLUDES = tuple(f"config.meta.cadence:{cadence}+" for cadence in FASTER_TH
 #: --indirect-selection cautious` selected 30 models and seeds, 11 sources and
 #: the 4 pub_conditions_* writers.
 LANE_PARENTS = tuple(f"+config.meta.cadence:{cadence}" for cadence in FASTER_THAN_MONTHLY)
+#: The tag of a model that builds with no other model beside it (the module docstring, "A MODEL TAGGED
+#: `builds_alone`"), set in the model's own config().
+BUILDS_ALONE = "builds_alone"
 
 
 @dataclass(frozen=True)
@@ -412,6 +452,47 @@ class Run:
     cwd: Path
 
 
+def _builds(
+    label: str,
+    *,
+    dbt: str,
+    common: tuple[str, ...],
+    alone: tuple[str, ...],
+    select: tuple[str, ...],
+    exclude: tuple[str, ...],
+    after: tuple[str, ...],
+    split: bool,
+    manifest: dict | None,
+) -> list[Run]:
+    """One `dbt build -s <select> --exclude <exclude>`, or with `split` its three passes (the module docstring, "A MODEL
+    TAGGED `builds_alone`"), `alone` being `common` at one thread. Given the manifest, a pass that selects nothing is
+    left out, and a build whose tagged-models pass selects nothing is not split at all."""
+
+    def run(name: str, options: tuple[str, ...], chosen: tuple[str, ...], excluded: tuple[str, ...]) -> Run:
+        return Run(name, (dbt, "build", *options, *(("-s", *chosen) if chosen else ()), "--exclude", *excluded, *after), DBT_DIR)
+
+    tagged, below = f"tag:{BUILDS_ALONE}", f"tag:{BUILDS_ALONE}+"
+    # (a), (b) and (c) of the module docstring: name, options, -s items, --exclude items.
+    passes = [
+        (f"{label}: all but the models that build alone and what they feed", common, select, (*exclude, below)),
+        (
+            f"{label}: the models that build alone, one at a time",
+            alone,
+            tuple(f"{item},{tagged}" for item in select) or (tagged,),
+            exclude,
+        ),
+        (
+            f"{label}: what the models that build alone feed",
+            common,
+            tuple(f"{item},{below}" for item in select) or (below,),
+            (*exclude, tagged),
+        ),
+    ]
+    if not split or (manifest is not None and not selects_anything(manifest, *passes[1][2:])):
+        return [run(label, common, select, exclude)]
+    return [run(*each) for each in passes if manifest is None or selects_anything(manifest, *each[2:])]
+
+
 def plan(
     steps: list[Step],
     *,
@@ -427,11 +508,14 @@ def plan(
     history: History | None = None,
     snapshots: bool = True,
     save_history: bool = True,
+    manifest: dict | None = None,
 ) -> list[Run]:
     """Every command of the build, in order, for these steps, in `lane` (None: every node), less the steps `without` names,
     between the row history's restore and its save when `history` names a store (the save left out when
     `save_history` is false: --no-history-save), and with no snapshot built when `snapshots` is false (the module
-    docstring, "--history-on-failure degrade")."""
+    docstring, "--history-on-failure degrade"). Every dbt build but the writers' and the hourly lane's is split around
+    the builds_alone models, and given `manifest` (main() plans again once `dbt seed` has written it), the passes it
+    shows select nothing are left out (the module docstring, "A MODEL TAGGED `builds_alone`")."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
     if state is not None and lane != HOURLY:
@@ -439,6 +523,8 @@ def plan(
     if unknown := sorted(set(without) - {step.name for step in steps}):
         raise ValueError(f"--without-step names no entry of STEPS: {', '.join(unknown)}")
     common = ("--profiles-dir", profiles_dir, *(("--threads", str(threads)) if threads else ()))
+    alone = ("--profiles-dir", profiles_dir, "--threads", "1")
+    builds = {"dbt": dbt, "common": common, "alone": alone, "split": lane != HOURLY, "manifest": manifest}
     fields = {"warehouse": str(paths.warehouse), "raw_dir": str(paths.raw_dir)}
     running = [step for step in steps if step.name not in without and (lane is None or step.lane == lane)]
     # What a step that does not run here would have unblocked: built by no
@@ -450,7 +536,7 @@ def plan(
     if lane == MONTHLY:
         lane_exclude = LANE_EXCLUDES
     elif lane == HOURLY:
-        selection = ("-s", *LANE_EXCLUDES, *(LANE_PARENTS if state is None else ()))
+        selection = (*LANE_EXCLUDES, *(LANE_PARENTS if state is None else ()))
         after = ("--defer", "--state", str(state)) if state is not None else ("--indirect-selection", "cautious")
 
     runs = [Run(SEED, (dbt, "seed", *common), DBT_DIR)]
@@ -462,17 +548,17 @@ def plan(
     label = "stage A: everything no Python step reads back"
     if lane == HOURLY:
         label = "stage A of the hourly lane: every node an hourly or daily source reaches, no step reads back"
-    runs.append(Run(label, (dbt, "build", *common, *selection, "--exclude", *stage_a_exclude, *after), DBT_DIR))
+    runs += _builds(label, **builds, select=selection, exclude=tuple(stage_a_exclude), after=after)
     for position, step in enumerate(running):
         arguments = step.command + (step.fixture_args if fixtures else dict(step.lane_args).get(lane, ()))
         runs.append(Run(step.name, (python, *(argument.format(**fields) for argument in arguments)), PIPELINE_DIR))
         later = [f"source:{DERIVED_SOURCE}.{following.table}+" for following in running[position + 1 :]]
-        unblocks = ("-s", f"source:{DERIVED_SOURCE}.{step.table}+", "--exclude", "path:models/publish", *later, *held)
-        unblocks += no_snapshots
-        runs.append(
-            Run(
-                f"what {DERIVED_SOURCE}.{step.table} unblocks", (dbt, "build", *common, *unblocks, *lane_exclude, *after), DBT_DIR
-            )
+        runs += _builds(
+            f"what {DERIVED_SOURCE}.{step.table} unblocks",
+            **builds,
+            select=(f"source:{DERIVED_SOURCE}.{step.table}+",),
+            exclude=("path:models/publish", *later, *held, *no_snapshots, *lane_exclude),
+            after=after,
         )
     if lane == HOURLY:
         writers = ("-s", *(f"path:models/publish,{selector}" for selector in LANE_EXCLUDES))
@@ -571,6 +657,125 @@ def _is_writer(node: str) -> bool:
     """A pub_ writer's unique id, `model.<project>.pub_<file>` (models/publish/; the evaluator holds the prefix)."""
     parts = node.split(".")
     return len(parts) >= 3 and parts[0] == "model" and parts[2].startswith("pub_")
+
+
+def _resources(manifest: dict) -> dict[str, dict]:
+    """Every node, source, exposure and unit test in the manifest, by unique id."""
+    kinds = ("nodes", "sources", "exposures", "unit_tests")
+    return {uid: node for kind in kinds for uid, node in (manifest.get(kind) or {}).items()}
+
+
+def _tags(node: dict) -> set[str]:
+    return set(node.get("tags") or []) | set((node.get("config") or {}).get("tags") or [])
+
+
+def _ancestors(manifest: dict, start: str) -> set[str]:
+    """Every node above `start` in the manifest's parent_map, as dbt's leading `+` follows it, `start` left out."""
+    parents = manifest.get("parent_map") or {}
+    return _reached({"child_map": parents}, list(parents.get(start) or []))
+
+
+def _name(uid: str) -> str:
+    return uid.split(".")[2] if uid.count(".") >= 2 else uid
+
+
+def alone_problems(manifest: dict) -> list[str]:
+    """What stops a build split around the builds_alone models (the module docstring, "A MODEL TAGGED `builds_alone`"):
+    a tagged model reading, at any distance, a model the split builds only after the tagged ones (an untagged
+    descendant of another tagged model); a test the tagged models' pass runs that reads one; and a tagged model an
+    hourly or daily source reaches."""
+    resources = _resources(manifest)
+    tagged = {uid for uid, node in (manifest.get("nodes") or {}).items() if BUILDS_ALONE in _tags(node)}
+    # Each node pass (c) builds, with the tagged models above it.
+    later: dict[str, set[str]] = {}
+    for uid in sorted(tagged):
+        for node in _reached(manifest, [uid]) - tagged:
+            later.setdefault(node, set()).add(uid)
+
+    def why(node: str) -> str:
+        return f"{_name(node)}, which is downstream of {', '.join(sorted(map(_name, later[node])))}"
+
+    problems = []
+    for uid in sorted(tagged):
+        for ancestor in sorted(_ancestors(manifest, uid) & later.keys()):
+            problems.append(
+                f"{_name(uid)} builds alone ({BUILDS_ALONE}) and reads {why(ancestor)}: the split builds that only after "
+                f"the models that build alone, so {_name(uid)} would be built from a stale or missing table. Tag every "
+                f"model between them {BUILDS_ALONE} too, or untag one end"
+            )
+    parents = manifest.get("parent_map") or {}
+    for test in sorted(uid for uid, node in resources.items() if node.get("resource_type") in ("test", "unit_test")):
+        read = set(parents.get(test) or [])
+        if read & tagged and (stale := sorted(read & later.keys())):
+            problems.append(
+                f"{test} tests {', '.join(sorted(map(_name, read & tagged)))}, which builds alone ({BUILDS_ALONE}), and "
+                f"reads {'; '.join(map(why, stale))}: it would run before that is built"
+            )
+    for uid in sorted(tagged & faster_nodes(manifest)):
+        problems.append(
+            f"{_name(uid)} builds alone ({BUILDS_ALONE}), and an hourly or daily source reaches it: the hourly lane never "
+            "splits its builds (6 minutes leave no room), so it would build beside other models there"
+        )
+    return problems
+
+
+def _matching(manifest: dict, criterion: str, *, selecting: bool) -> set[str]:
+    """What one dbt selector criterion (`method:value`, its graph `+`s, no `,`) can select: exactly for the methods
+    this file's commands use, and for any other, everything when `selecting` and nothing when not, so that
+    selects_anything() errs toward running a pass."""
+    resources = _resources(manifest)
+    body = criterion.removeprefix("+").removesuffix("+")
+    method, colon, value = body.partition(":")
+    found: set[str] | None = None
+    if not colon or any(character in body for character in "*?@+ "):
+        found = None  # a bare name, a wildcard, `@` or a depth such as `2+`: not read here
+    elif method == "source" and len(parts := value.split(".")) <= 2:
+        found = {
+            uid
+            for uid, node in (manifest.get("sources") or {}).items()
+            if [node.get("source_name"), node.get("name")][: len(parts)] == parts
+        }
+    elif method == "tag":
+        found = {uid for uid, node in resources.items() if value in _tags(node)}
+    elif method == "path":
+        prefix = value.rstrip("/")
+        found = {
+            uid
+            for uid, node in resources.items()
+            if (path := node.get("original_file_path") or "") == prefix or path.startswith(prefix + "/")
+        }
+    elif method == "package":
+        found = {uid for uid, node in resources.items() if node.get("package_name") == value}
+    elif method == "resource_type":
+        found = {uid for uid, node in resources.items() if node.get("resource_type") == value}
+    elif method == "config.meta.cadence":
+        found = {uid for uid, node in resources.items() if _cadence(node) == value}
+    if found is None:
+        return set(resources) | set(manifest.get("child_map") or {}) if selecting else set()
+    below = _reached(manifest, sorted(found)) if criterion.endswith("+") else set()
+    above = _reached({"child_map": manifest.get("parent_map") or {}}, sorted(found)) if criterion.startswith("+") else set()
+    return found | below | above
+
+
+def selects_anything(manifest: dict, select: tuple[str, ...], exclude: tuple[str, ...]) -> bool:
+    """Whether `dbt build -s <select> --exclude <exclude>` can run anything in this manifest: a model, seed, snapshot or
+    test. It over-reads `select` and under-reads `exclude`, so a pass is skipped only when dbt would surely run nothing
+    in it. Tests go as dbt's default (eager) indirect selection takes them, which no split build changes: in with any
+    parent selected, out only here with every parent excluded (where eager takes out a test with any)."""
+    tests = ("test.", "unit_test.")
+    if select:
+        chosen: set[str] = set()
+        for item in select:
+            chosen |= set.intersection(*(_matching(manifest, part, selecting=True) for part in item.split(",")))
+    else:
+        chosen = set(_resources(manifest)) | set(manifest.get("child_map") or {})
+    children, parents = manifest.get("child_map") or {}, manifest.get("parent_map") or {}
+    chosen |= {child for uid in chosen for child in children.get(uid) or [] if child.startswith(tests)}
+    excluded: set[str] = set()
+    for item in exclude:
+        excluded |= set.intersection(*(_matching(manifest, part, selecting=False) for part in item.split(",")))
+    excluded |= {uid for uid in chosen if uid.startswith(tests) and parents.get(uid) and set(parents[uid]) <= excluded}
+    return any(uid.split(".")[0] in ("model", "seed", "snapshot", "test", "unit_test") for uid in chosen - excluded)
 
 
 #: How much of a failed test's answer the log shows: rows, and characters a value. Enough to name the source and the
@@ -755,7 +960,8 @@ def main(argv: list[str] | None = None) -> int:
             "state": args.state.resolve() if args.state else None,
             "without": tuple(args.without_step),
         }
-        runs = plan(STEPS, **options, history=history, save_history=not args.no_history_save)
+        planned = {**options, "history": history, "save_history": not args.no_history_save}
+        runs = plan(STEPS, **planned)
     except ValueError as refused:
         parser.error(str(refused))
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
@@ -797,7 +1003,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             degraded = True
             env["OURHIKE_ROW_HISTORY"] = "off"
-            runs = runs[:position] + plan(STEPS, **options, snapshots=False)
+            planned = {**options, "snapshots": False}
+            runs = runs[:position] + plan(STEPS, **planned)
             continue
         if completed.returncode != 0:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
@@ -807,10 +1014,22 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if completed.returncode == DEGRADED_EXIT else completed.returncode
         if run.label == SEED:
             manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-            if problems := derived_source_problems(manifest, STEPS) + lane_problems(manifest, STEPS, args.lane):
+            checked = derived_source_problems(manifest, STEPS) + lane_problems(manifest, STEPS, args.lane)
+            if problems := checked + alone_problems(manifest):
                 for problem in problems:
                     print(f"-- build_marts: {problem}", flush=True)
                 return 1
+            # Plan again with the manifest, which leaves out each split pass that selects nothing (the module
+            # docstring, "A MODEL TAGGED `builds_alone`"), and run what follows the seeds.
+            again = plan(STEPS, **planned, manifest=manifest)
+            again = again[[each.label for each in again].index(SEED) + 1 :]
+            alone = sorted(_name(uid) for uid, node in (manifest.get("nodes") or {}).items() if BUILDS_ALONE in _tags(node))
+            print(
+                f"-- build_marts: {len(alone)} model(s) build alone ({', '.join(alone) or 'none'}); "
+                f"{len(runs) - position - len(again)} split pass(es) that select nothing left out",
+                flush=True,
+            )
+            runs = runs[:position] + again
     if degraded:
         print(f"-- build_marts: built without the row history; exit {DEGRADED_EXIT}", flush=True)
         return DEGRADED_EXIT

@@ -496,8 +496,11 @@ export function useNoticesPanel({
     // silenceVersion is not read inside - it is the dependency that re-runs
     // this after a dismissal writes new watermarks. See its declaration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    () => newNoticesSince(allNotices, now, readNoticeSilence),
-    [allNotices, now, silenceVersion],
+    () =>
+      view === null
+        ? newNoticesSince(allNotices, now, readNoticeSilence)
+        : view.newSince(now, readNoticeSilence),
+    [allNotices, now, silenceVersion, view],
   )
 
   const silenceNotices = useCallback(() => {

@@ -540,3 +540,97 @@ describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)'
     await waitFor(() => expect(result.current.hazardAreas).toHaveLength(1))
   })
 })
+
+describe('the "new notices" banner with conditions/notices.json (decision 87)', () => {
+  // A notice with no `updated_at` of its own counts as new only if OurHike
+  // first saw it after its source's earliest row in the file, worded "seen".
+  // Invented rows shaped like soak run 536's: every first_seen_at between
+  // 2026-10-03T20:24Z and 2026-10-05T00:23Z, the file generated at 00:23:54Z.
+  const LATER = new Date('2026-10-05T00:30:00Z')
+  const DAY = '2026-10-05'
+
+  function hike(): DayHike {
+    return {
+      id: 'hike-1',
+      name: 'Harriman loop',
+      date: DAY,
+      segments: [
+        [
+          { coord: [-74.1, 41.25], poiId: null },
+          { coord: [-74.09, 41.25], poiId: null },
+        ],
+      ],
+      figures: {
+        miles: 5,
+        legs: [
+          {
+            name: 'Fixture Trail',
+            source: 'nynjtc_trail_alerts',
+            blaze_color: null,
+            miles: 5,
+          },
+        ],
+      },
+      looped: false,
+      recorded: 'planned',
+      note: '',
+    }
+  }
+
+  /** NYNJTC's unplaced notices touch a hike on NYNJTC's trails. */
+  function seen(id: string, firstSeenAt: string): TrailNotice {
+    return orgNotice({
+      notice_id: `nynjtc_trail_alerts:${id}`,
+      updated_at: null,
+      first_seen_at: firstSeenAt,
+      changed_at: firstSeenAt,
+    })
+  }
+
+  const INITIAL_LOAD = [
+    seen('one', '2026-10-03T20:24:05Z'),
+    seen('two', '2026-10-03T20:24:05Z'),
+  ]
+
+  function bannerPanel(clubNotices: readonly TrailNotice[]) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [],
+        orgNotices: [],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: LATER,
+        clubNotices,
+        clubNoticesGeneratedAt: new Date('2026-10-05T00:23:54Z'),
+        dayHikes: [hike()],
+      }),
+    )
+  }
+
+  it('stays dark for the notices OurHike first saw with their source, the file’s initial load', async () => {
+    const { result } = bannerPanel(INITIAL_LOAD)
+    await waitFor(() => expect(result.current.mapScreen.noticeCount).toBe(2))
+    expect(result.current.mapScreen.newNoticeCount).toBe(0)
+  })
+
+  it('counts a closure with no updated_at that OurHike first saw in a later build, worded seen, and silences it once the list is read', async () => {
+    const { result } = bannerPanel([
+      ...INITIAL_LOAD,
+      seen('closure', '2026-10-04T22:01:56Z'),
+    ])
+    await waitFor(() => expect(result.current.mapScreen.newNoticeCount).toBe(1))
+    expect(result.current.mapScreen.newNoticeLabel).toBe(
+      'New York-New Jersey Trail Conference · New notice seen',
+    )
+
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    expect(result.current.mapScreen.newNoticeCount).toBe(0)
+    expect(localStorage.getItem(`${NYNJTC_SILENCE_KEY}:seen`)).toBe(
+      '2026-10-04T22:01:56.000Z',
+    )
+    // The club's own clock is not touched by a first-seen dismissal.
+    expect(localStorage.getItem(NYNJTC_SILENCE_KEY)).toBeNull()
+  })
+})

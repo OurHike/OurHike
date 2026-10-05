@@ -437,8 +437,14 @@ export interface NewNotices {
   sourceKeys: string[]
   /** The newest edit per organization, which is what a dismissal is recorded
    *  against. One watermark per key, never one shared - see
-   *  `noticeSilenceKey`. */
+   *  `noticeSilenceKey`. A notice counted from when OurHike first saw it
+   *  (decision 87) has a watermark of its own, under a key
+   *  lib/noticeSelection.ts's `newClubNotices` names. */
   newestBySource: Map<string, Date>
+  /** True when a counted notice gave no date of its own and is counted from
+   *  when OurHike first saw it (decision 87): the banner then says "seen",
+   *  never "issued", since nobody said when it was issued. */
+  seen?: boolean
 }
 
 /**
@@ -451,6 +457,10 @@ export interface NewNotices {
  *
  * What is new is that the watermark is looked up PER ROW rather than passed as
  * one value, because two organizations' watermarks are two different facts.
+ *
+ * A notice with no `updated_at` is never counted here. With
+ * conditions/notices.json, lib/noticeSelection.ts's `newClubNotices` counts
+ * one from when OurHike first saw it (decision 87), through this function.
  */
 export function newNoticesSince(
   notices: readonly TrailNotice[],
@@ -526,11 +536,14 @@ export function newNoticeLabel(newNotices: NewNotices, stewards: Stewards): stri
   const label = orgLabelFrom(stewards)
   const names = newNotices.sourceKeys.map((key) => label(key))
   const { count } = newNotices
+  // Decision 87: "seen" when any counted notice is new only because OurHike
+  // first saw it, the weaker sentence that is true of every one counted.
+  const verb = newNotices.seen === true ? 'seen' : 'issued'
 
   if (names.length === 1) {
     return count === 1
-      ? `${names[0]} · New notice issued`
-      : `${names[0]} · ${count} new notices issued`
+      ? `${names[0]} · New notice ${verb}`
+      : `${names[0]} · ${count} new notices ${verb}`
   }
 
   const who = names.length === 2 ? names.join(' and ') : `${names.length} organizations`

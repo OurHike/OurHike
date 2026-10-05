@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { FeatureCollection } from 'geojson'
-import { hazardView } from './noticeSelection'
-import type { TrailNotice } from './notices'
+import {
+  SAME_BUILD_MS,
+  firstSeenRule,
+  hazardView,
+  newClubNotices,
+} from './noticeSelection'
+import {
+  newNoticeLabel,
+  readNoticeSilence,
+  silenceNewNotices,
+  type TrailNotice,
+} from './notices'
+import type { Stewards } from './stewards'
 import { buildTrailIndex } from './trailPosition'
 
 // What chrome/noticesPanel.tsx loads behind import() decides beyond the
@@ -71,5 +82,122 @@ describe('which file decision 67’s areas are drawn from (decision 84)', () => 
       null,
     )
     expect(view?.areas).toEqual([])
+  })
+})
+
+// Decision 87 (the maintainer, 2026-10-05): a notice with no `updated_at` of
+// its own counts as new for the banner only if OurHike first saw it after
+// its source's earliest row in the same file, worded "seen" rather than
+// "issued"; a row edit (`changed_at`) never counts.
+//
+// The rows are shaped like soak run 536's file: every `first_seen_at` there
+// fell between 2026-10-03T20:24Z and 2026-10-05T00:23Z, the build that first
+// loaded a source stamped its closures mart's rows a second before its
+// warnings mart's (22:01:55 and 22:01:56), and the file was generated at
+// 00:23:54Z.
+
+const NOW = new Date('2026-10-05T00:30:00Z')
+
+/** One file's initial load: three sources, each first loaded by one build. */
+const INITIAL_LOAD: TrailNotice[] = [
+  row('nps_grca_closures:1', '2026-10-03T20:24:05Z'),
+  row('nps_grca_closures:2', '2026-10-03T20:24:05Z'),
+  // Closures mart and warnings mart of one build, a second apart.
+  row('njdep_wma_restrictions:1', '2026-10-04T22:01:55Z', { obstructs_trail: true }),
+  row('njdep_wma_restrictions:2', '2026-10-04T22:01:56Z'),
+  // A source this very build first loaded.
+  row('usfs_r06_fire_closure_lines:1', '2026-10-05T00:23:19Z'),
+]
+
+const STEWARDS: Stewards = [
+  {
+    provider: 'NPS',
+    name: 'National Park Service',
+    trust: null,
+    licence: null,
+    attribution: null,
+    terms: null,
+    termsSource: null,
+    layers: [],
+    keys: ['nps_grca_closures'],
+    support: null,
+    store: null,
+  },
+]
+
+function count(shown: readonly TrailNotice[], file: readonly TrailNotice[] = shown) {
+  return newClubNotices(shown, firstSeenRule(file), NOW, readNoticeSilence)
+}
+
+describe('the banner and a notice with no date of its own (decision 87)', () => {
+  afterEach(() => localStorage.clear())
+
+  it('does not light for a file’s initial load, a build’s two marts a second apart among it', () => {
+    expect(count(INITIAL_LOAD)).toBeNull()
+  })
+
+  it('counts a notice its source first showed in a later build, worded seen rather than issued', () => {
+    const later = row('nps_grca_closures:3', '2026-10-04T22:01:56Z')
+    const found = count([...INITIAL_LOAD, later])
+    expect(found?.count).toBe(1)
+    expect(found?.sourceKeys).toEqual(['nps_grca_closures'])
+    expect(found?.seen).toBe(true)
+    expect(newNoticeLabel(found!, STEWARDS)).toBe(
+      'National Park Service · New notice seen',
+    )
+  })
+
+  it('measures a source’s earliest row over the whole file, not only the notices a panel shows', () => {
+    // Only the later row touches a planned hike, so only it is shown; the
+    // source's initial load is still in the file.
+    const later = row('nps_grca_closures:3', '2026-10-04T22:01:56Z')
+    expect(count([later], [...INITIAL_LOAD, later])?.count).toBe(1)
+    // With only itself to go by, a row is its source's earliest, and never new.
+    expect(count([later])).toBeNull()
+  })
+
+  it('never counts a row edit: a row first seen with its source and changed since stays quiet', () => {
+    const edited = row('nps_grca_closures:1', '2026-10-03T20:24:05Z', {
+      changed_at: '2026-10-05T00:23:19Z',
+    })
+    expect(count([edited, ...INITIAL_LOAD.slice(1)])).toBeNull()
+  })
+
+  it(`does not count a row first seen within ${SAME_BUILD_MS / 60_000} minutes of its source's first, the most one build's snapshots can spread`, () => {
+    const sameBuild = row('nps_grca_closures:3', '2026-10-03T20:33:00Z')
+    expect(count([...INITIAL_LOAD, sameBuild])).toBeNull()
+  })
+
+  it('never counts a row with no first_seen_at, as a build without the row history writes it', () => {
+    expect(count([...INITIAL_LOAD, row('nps_grca_closures:3', null)])).toBeNull()
+  })
+
+  it('keeps "issued" for a notice dated by its club, as before', () => {
+    const dated = row('nps_grca_closures:9', '2026-10-03T20:24:05Z', {
+      updated_at: '2026-10-04T12:00:00Z',
+    })
+    const found = count([...INITIAL_LOAD, dated])
+    expect(found?.count).toBe(1)
+    expect(found?.seen).toBe(false)
+    expect(newNoticeLabel(found!, STEWARDS)).toBe(
+      'National Park Service · New notice issued',
+    )
+  })
+
+  it('silences a seen notice once dismissed, on a watermark of its own that leaves the club’s dated notices to count', () => {
+    const later = row('nps_grca_closures:3', '2026-10-04T22:01:56Z')
+    const file = [...INITIAL_LOAD, later]
+    silenceNewNotices(count(file)!)
+    expect(count(file)).toBeNull()
+    expect(
+      localStorage.getItem('ourhike:notices-silenced-through:nps_grca_closures:seen'),
+    ).toBe('2026-10-04T22:01:56.000Z')
+
+    // The club dates a notice before OurHike's first-seen watermark, and
+    // OurHike reads it after the dismissal: nobody was shown it, so it counts.
+    const dated = row('nps_grca_closures:4', '2026-10-05T00:23:19Z', {
+      updated_at: '2026-10-04T20:00:00Z',
+    })
+    expect(count([...file, dated])?.count).toBe(1)
   })
 })

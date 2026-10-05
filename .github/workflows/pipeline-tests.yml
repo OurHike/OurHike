@@ -212,7 +212,9 @@ jobs:
           # parity.py and every exporter a parity line runs, with theirs; and
           # the check scripts the steps below call. Two tests hold this list
           # to those imports: tests/test_extract_layout.py (the extract and
-          # parity) and tests/test_build_marts.py (the build and its steps).
+          # parity) and tests/test_build_marts.py (the build and its steps,
+          # and every file a step names, with what each pytest run loads:
+          # tests/conftest.py, which imports publish.py, and pyproject.toml).
           paths: >-
             pipeline/dbt/
             pipeline/extract/
@@ -247,6 +249,11 @@ jobs:
             pipeline/tests/test_dbt_row_dates_builds.py
             pipeline/tests/test_dbt_notice_tables_absent_builds.py
             pipeline/tests/test_dbt_club_tables_absent_builds.py
+            pipeline/tests/conftest.py
+            pipeline/pyproject.toml
+            pipeline/requirements-dev.txt
+            pipeline/publish.py
+            pipeline/load_raw.py
             pipeline/step_node_lines.py
             pipeline/build_trail_graph.py
             pipeline/export_poi.py

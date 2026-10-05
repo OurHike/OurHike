@@ -341,10 +341,40 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dbt.txt
 
-      - name: dbt deps
+      # DBT'S PACKAGES, CACHED, for the reason the two paths above are: `dbt
+      # deps` reads packages.yml's three packages from hub.getdbt.com and
+      # their tarballs from codeload.github.com, so every run needed both
+      # hosts up (ARCH-6 of the PR #1805 review; soak run 538's log shows the
+      # hourly lane installing all three at 01:19:19 on 2026-10-05). The key
+      # hashes packages.yml and package-lock.yml, which between them pin every
+      # version, so a hit is what deps would write. A hit skips deps: measured
+      # 2026-10-05 on dbt 2.0.6 in a sandbox, `dbt parse` with dbt_packages/
+      # in place and no deps that session finished "'parse' successfully".
+      # Saved straight after a deps that succeeded, never after a failed one,
+      # whose half-written folder a later hit would build on.
+      # .github/tests/test_dbt_packages_cache.py holds this shape in every job
+      # that runs deps.
+      - name: Restore dbt's packages
+        id: dbt-packages
         if: steps.scope.outputs.run == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/dbt/dbt_packages
+          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
+
+      - name: dbt deps
+        id: deps
+        if: steps.scope.outputs.run == 'true' && steps.dbt-packages.outputs.cache-hit != 'true'
         working-directory: pipeline/dbt
         run: dbt deps --profiles-dir .
+
+      - name: Save dbt's packages
+        if: always() && steps.deps.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/dbt/dbt_packages
+          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
 
       # The jinja templater (pipeline/.sqlfluff says why not the dbt one), so
       # this needs no warehouse. It does need the packages: dbt_utils' macros
@@ -410,7 +440,15 @@ jobs:
             python check_contract_versions.py --head dbt/target/manifest.json
             exit 0
           fi
-          (cd "$base/pipeline/dbt" && dbt deps --profiles-dir . && dbt parse --profiles-dir .)
+          # The base's packages: the head's own copy when both pin files are
+          # the head's byte for byte, which is what deps would write there;
+          # dbt Hub only when they differ.
+          if cmp -s dbt/packages.yml "$base/pipeline/dbt/packages.yml" && cmp -s dbt/package-lock.yml "$base/pipeline/dbt/package-lock.yml"; then
+            cp -R dbt/dbt_packages "$base/pipeline/dbt/dbt_packages"
+          else
+            (cd "$base/pipeline/dbt" && dbt deps --profiles-dir .)
+          fi
+          (cd "$base/pipeline/dbt" && dbt parse --profiles-dir .)
           python check_contract_versions.py --head dbt/target/manifest.json --base "$base/pipeline/dbt/target/manifest.json"
 
       # FIXTURE MODE (pipeline/ELT.md, "Fixture mode"): extract/_fixtures.py

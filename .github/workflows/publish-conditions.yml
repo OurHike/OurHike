@@ -473,10 +473,22 @@ jobs:
             ~/.duckdb/extensions/v1.5.4
           key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
 
-      # Separate venvs for the extract and dbt, as CI's dbt job keeps them,
-      # then `dbt deps` from dbt Hub. Timed into the summary: whether the
-      # installs fit beside the bake in this job's ten minutes is open in
-      # pipeline/ELT.md ("The hourly lanes": "one timed run settles it").
+      # dbt's packages, so an hourly run does not need dbt Hub and
+      # codeload.github.com up at its minute (ARCH-6 of the PR #1805 review).
+      # pipeline-tests.yml's dbt job explains the key, why a hit skips deps,
+      # and why only a deps that succeeded is saved.
+      - name: Restore dbt's packages (dbt path)
+        id: dbt-packages
+        if: env.PHONE_FILES == 'dbt'
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/dbt/dbt_packages
+          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
+
+      # Separate venvs for the extract and dbt, as CI's dbt job keeps them.
+      # Timed into the summary: whether the installs fit beside the bake in
+      # this job's ten minutes is open in pipeline/ELT.md ("The hourly
+      # lanes": "one timed run settles it").
       - name: Install the extract's and dbt's own pins (dbt path)
         if: env.PHONE_FILES == 'dbt'
         timeout-minutes: 4
@@ -486,13 +498,35 @@ jobs:
           "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
           python3.12 -m venv "$RUNNER_TEMP/dbt"
           "$RUNNER_TEMP/dbt/bin/pip" install --quiet -r requirements-dbt.txt
-          (cd dbt && "$RUNNER_TEMP/dbt/bin/dbt" deps --profiles-dir .)
           {
             echo "### The dbt path, ${{ matrix.data_environment }} leg"
             echo ""
-            echo "- installing the extract's and dbt's pins, and dbt deps: $((SECONDS - started)) s"
+            echo "- installing the extract's and dbt's pins: $((SECONDS - started)) s"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # On a miss only. Soak run 538's deps took 330 ms ("Finished 'deps'
+      # successfully [330ms]", 2026-10-05), so the cap only bounds a download
+      # that hangs, and a hung deps fails the run either way, because nothing
+      # builds without the packages. Two minutes is picked, @unvalidated: the
+      # slowest miss over a few runs' summaries would settle it.
+      - name: dbt deps (dbt path)
+        id: deps
+        if: env.PHONE_FILES == 'dbt' && steps.dbt-packages.outputs.cache-hit != 'true'
+        timeout-minutes: 2
+        working-directory: pipeline/dbt
+        run: |
+          started=$SECONDS
+          "$RUNNER_TEMP/dbt/bin/dbt" deps --profiles-dir .
+          printf -- '- dbt deps, on a cache miss: %s s\n\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save dbt's packages (dbt path)
+        if: always() && env.PHONE_FILES == 'dbt' && steps.deps.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/dbt/dbt_packages
+          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
 
       # Before the database leg, and unconditionally. Writes nothing at all
       # while nobody has reviewed reference/atc_updates.json, and says so on

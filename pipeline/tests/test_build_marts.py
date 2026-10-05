@@ -228,11 +228,18 @@ class _Recorder:
 
 
 def _main(
-    monkeypatch, tmp_path, manifest: dict, codes: dict[int, int] | None = None, extra: tuple[str, ...] = ()
+    monkeypatch,
+    tmp_path,
+    manifest: dict,
+    codes: dict[int, int] | None = None,
+    extra: tuple[str, ...] = (),
+    recorder: _Recorder | None = None,
 ) -> tuple[int, _Recorder]:
-    recorder = _Recorder(codes)
+    recorder = recorder or _Recorder(codes)
     (tmp_path / "manifest.json").write_text(json.dumps(manifest))
     monkeypatch.setattr(build_marts, "MANIFEST_PATH", tmp_path / "manifest.json")
+    # So no dbt run's results but a test's own are ever read (the repository's target/ may hold a real build's).
+    monkeypatch.setattr(build_marts, "RUN_RESULTS_PATH", tmp_path / "run_results.json")
     monkeypatch.setattr(build_marts.subprocess, "run", recorder)
     # So built_by() asks git nothing: the recorder stands in for every subprocess.run.
     monkeypatch.setenv("OURHIKE_BUILT_BY", "abc123 run 7.1")
@@ -938,3 +945,176 @@ def test_an_expression_tests_failure_shows_the_models_own_failing_rows_not_its_c
     lines = build_marts.failed_test_rows(warehouse, since=0.0, results_path=results, manifest_path=manifest)
 
     assert json.loads(lines[1]) == {"source_key": "club_x", "column_name": "title"}
+
+
+# --- Decision 81: one source or one writer never stops the rest ---------------------------------------------------
+
+
+def _is_writers_run(argv: tuple[str, ...]) -> bool:
+    return "-s" in argv and argv[argv.index("-s") + 1] == "path:models/publish"
+
+
+def _is_stage_a(argv: tuple[str, ...]) -> bool:
+    return argv[:2] == ("dbt", "build") and "-s" not in argv
+
+
+class _DbtRuns(_Recorder):
+    """_Recorder whose dbt runs each leave run results, and files, as a real dbt run would before it exits. Each answer
+    is (which run, exit code, results, files to write) and answers the first call it matches, once."""
+
+    def __init__(self, results_path: Path, answers: list[tuple]):
+        super().__init__()
+        self.results_path = results_path
+        self.answers = list(answers)
+
+    def __call__(self, argv, *, cwd, env, check):
+        self.calls.append((tuple(argv), cwd, env))
+        for index, (matches, code, results, files) in enumerate(self.answers):
+            if matches(tuple(argv)):
+                del self.answers[index]
+                for path, text in files.items():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(text, encoding="utf-8")
+                _results(self.results_path, *results)
+                return subprocess.CompletedProcess(argv, code)
+        return subprocess.CompletedProcess(argv, 0)
+
+
+WRITER_LOCATIONS = {
+    "model.ourhike.pub_conditions_closures": "conditions_closures.json",
+    "model.ourhike.pub_conditions_notices": "conditions_notices.json",
+    "model.ourhike.pub_conditions_reports": "conditions_reports.json",
+}
+REPORTS_TEST = "test.ourhike.not_null_pub_conditions_reports_generated_at.1"
+NOTICES_TEST = "test.ourhike.not_null_pub_conditions_notices_generated_at.1"
+
+
+def _conditions_writers_manifest(tmp_path: Path) -> dict:
+    """Three conditions writers and a test of one, in a fixture manifest; and the warehouse failed_test_rows() asks."""
+    duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
+    manifest = _manifest(*STEP_TABLES)
+    manifest["nodes"] = {writer: {"config": {"location": location}} for writer, location in WRITER_LOCATIONS.items()}
+    for test, writer in (
+        (REPORTS_TEST, "model.ourhike.pub_conditions_reports"),
+        (NOTICES_TEST, "model.ourhike.pub_conditions_notices"),
+    ):
+        manifest["nodes"][test] = {"depends_on": {"nodes": [writer]}, "attached_node": writer}
+    return manifest
+
+
+def test_a_writer_that_fails_while_the_others_write_leaves_no_file_and_the_build_exits_partial_naming_what_wrote(
+    monkeypatch, tmp_path, capsys
+):
+    """Soak run 531 (publish-conditions.yml 37237506320): pub_conditions_notices failed on one Idaho polygon after six
+    writers had written, and nothing published. Now the failed writer's file, half-written here, is removed, and so is
+    the file of a writer whose own test failed, so neither can publish; the file that wrote stays, the log names it,
+    the row history is still saved, and the build answers PARTIAL_EXIT for the workflow to publish and then go red."""
+    processed = tmp_path / "processed"
+    files = {
+        processed / "conditions_closures.json": '{"closures": []}',
+        processed / "conditions_notices.json": '{"generated_at": "2026-10',
+        processed / "conditions_reports.json": '{"reports": [null]}',
+    }
+    results = [
+        {"unique_id": "model.ourhike.pub_conditions_closures", "status": "success"},
+        {"unique_id": "model.ourhike.pub_conditions_notices", "status": "error", "message": "TopologyException"},
+        {"unique_id": "model.ourhike.pub_conditions_reports", "status": "success"},
+        {"unique_id": REPORTS_TEST, "status": "fail", "failures": 1},
+        # Skipped because its writer failed, so it names nothing the writer's own error does not.
+        {"unique_id": NOTICES_TEST, "status": "skipped"},
+    ]
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_writers_run, 1, results, files)])
+
+    code, _ = _main(monkeypatch, tmp_path, _conditions_writers_manifest(tmp_path), recorder=recorder)
+
+    out = capsys.readouterr().out
+    assert code == build_marts.PARTIAL_EXIT
+    assert sorted(path.name for path in processed.iterdir()) == ["conditions_closures.json"]
+    assert "-- build_marts: wrote 1 file(s): conditions_closures.json" in out
+    assert "::error title=pub_conditions_notices failed::its model finished error, so conditions_notices.json is removed" in out
+    assert f"::error title=pub_conditions_reports failed::{REPORTS_TEST} finished fail" in out
+    assert recorder.calls[-1][0][:3] == (*RESTORE, "save"), "the marts passed, so the row history is saved"
+
+
+def test_a_failure_in_the_writers_run_that_is_no_writers_own_still_stops_the_build(monkeypatch, tmp_path):
+    results = [
+        {"unique_id": "model.ourhike.pub_conditions_closures", "status": "error"},
+        {"unique_id": "model.ourhike.int_closures__gate", "status": "error"},
+    ]
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_writers_run, 1, results, {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _conditions_writers_manifest(tmp_path), recorder=recorder)
+
+    assert code == 1
+    assert not [argv for argv, _, _ in recorder.calls if argv[2:3] == ("save",)]
+
+
+def test_a_test_that_holds_a_source_warned_so_the_build_names_its_rows_publishes_and_exits_partial(monkeypatch, tmp_path, capsys):
+    """Soak runs 525 to 527 and 530 failed every hourly file on the wording-leak and region tests. At warn, with
+    `holds_a_source`, the gate has held the source, the build goes on, the rows are printed as a failed test's are,
+    and the build answers PARTIAL_EXIT."""
+    warehouse = tmp_path / "warehouse.duckdb"
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema intermediate")
+        con.execute("create table intermediate.leaks as select 'club_x' as source_key, 'club_x:2' as row_id")
+    leak = "test.ourhike.dbt_utils_expression_is_true_int_warnings__wording_leaks_false.1"
+    quiet = "test.ourhike.dbt_utils_expression_is_true_int_closures__gate_passed.1"
+    manifest = _manifest(*STEP_TABLES)
+    manifest["nodes"] = {
+        leak: {
+            "config": {"meta": {build_marts.HOLDS_A_SOURCE: True}},
+            "attached_node": "model.ourhike.leaks",
+            "test_metadata": {"name": "expression_is_true", "kwargs": {"expression": "false"}},
+        },
+        quiet: {"config": {"meta": {}}},
+        "model.ourhike.leaks": {"relation_name": '"warehouse"."intermediate"."leaks"'},
+    }
+    results = [
+        {"unique_id": leak, "status": "warn", "failures": 1, "compiled_code": "select 1"},
+        {"unique_id": quiet, "status": "warn", "failures": 4, "compiled_code": "select 1"},
+    ]
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 0, results, {})])
+
+    code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)
+
+    out = capsys.readouterr().out
+    assert code == build_marts.PARTIAL_EXIT
+    assert f"::group::{leak}: 1 row(s), warn" in out and '{"source_key": "club_x", "row_id": "club_x:2"}' in out
+    assert quiet not in out, "a warning that holds no source is the gate's own, and stays a warning"
+    assert recorder.calls[-1][0][:3] == (*RESTORE, "save")
+
+
+def test_a_degraded_build_that_was_also_partial_answers_both(monkeypatch, tmp_path):
+    processed = tmp_path / "processed"
+    results = [
+        {"unique_id": "model.ourhike.pub_conditions_closures", "status": "success"},
+        {"unique_id": "model.ourhike.pub_conditions_notices", "status": "error"},
+    ]
+    recorder = _DbtRuns(
+        tmp_path / "run_results.json",
+        [
+            (lambda argv: argv[:3] == (*RESTORE, "restore"), 2, [], {}),
+            (_is_writers_run, 1, results, {processed / "conditions_closures.json": "{}"}),
+        ],
+    )
+
+    code, _ = _main(
+        monkeypatch,
+        tmp_path,
+        _conditions_writers_manifest(tmp_path),
+        recorder=recorder,
+        extra=("--history-on-failure", "degrade"),
+    )
+
+    assert code == build_marts.DEGRADED_PARTIAL_EXIT
+
+
+@pytest.mark.parametrize("exit_code", [build_marts.PARTIAL_EXIT, build_marts.DEGRADED_PARTIAL_EXIT])
+@pytest.mark.parametrize("which", [_is_stage_a, _is_writers_run])
+def test_a_dbt_run_that_answers_a_publishable_exit_itself_is_answered_as_a_plain_failure(monkeypatch, tmp_path, exit_code, which):
+    """publish-conditions.yml publishes on PARTIAL_EXIT and DEGRADED_PARTIAL_EXIT, so only build_marts.py may give them."""
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(which, exit_code, [], {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _conditions_writers_manifest(tmp_path), recorder=recorder)
+
+    assert code == 1

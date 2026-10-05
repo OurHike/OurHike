@@ -1564,6 +1564,13 @@ DBT_PROCESSED_DIR_DEFAULT = "../data/processed/dbt"
 #: ../data/warehouse.duckdb, against pipeline/dbt/.
 DBT_WAREHOUSE_ENV_VAR = "OURHIKE_WAREHOUSE"
 DBT_WAREHOUSE_DEFAULT = "../data/warehouse.duckdb"
+#: Set to "true" by publish-conditions.yml when build_marts.py exited its
+#: PARTIAL_EXIT (decision 81: "Hold that source and publish the rest"): some
+#: writers failed while the others wrote. collect_dbt_phone_files() then keeps
+#: a failed writer's key, its file never read, rather than refusing the whole
+#: publish, and the workflow turns the run red once everything else is
+#: published. Unset, a failed writer refuses the publish, as it always has.
+BUILD_PARTIAL_ENV_VAR = "OURHIKE_BUILD_PARTIAL"
 #: The model whose rows say which conditions source is held this run, and
 #: why. A writer names its row with `meta.gate`, and selects no row while the
 #: row is held (models/intermediate/closures/int_closures__gate.sql).
@@ -1673,6 +1680,8 @@ class DbtPhoneFiles:
     `held` is the kept keys whose gate row held their source, which fail the
     run once everything else is published (fail_for_held_files()).
     `owned` is every key a dbt writer's exposure names, written or kept.
+    `failed` is the kept keys whose writer failed this run, which publish
+    only under BUILD_PARTIAL_ENV_VAR (collect_dbt_phone_files()).
     """
 
     artifacts: dict[str, dict] = field(default_factory=dict)
@@ -1680,6 +1689,31 @@ class DbtPhoneFiles:
     kept: dict[str, str] = field(default_factory=dict)
     held: dict[str, str] = field(default_factory=dict)
     owned: set[str] = field(default_factory=set)
+    failed: dict[str, str] = field(default_factory=dict)
+
+
+#: A run result that is a failure, as build_marts.py's FAILED_STATUSES reads one.
+_FAILED_STATUSES = ("error", "fail", "skipped", "runtime error")
+
+
+def _failed_writer_tests(results: dict[str, dict], nodes: dict, unit_tests: dict) -> dict[str, str]:
+    """Each writer a failed test or unit test of this run tests, with that test's id and status: dbt builds a model
+    before its tests, so such a writer has written a file its own test refused."""
+    failed: dict[str, str] = {}
+    for unique_id, result in sorted((key, value) for key, value in results.items() if key):
+        if unique_id.split(".", 1)[0] not in ("test", "unit_test"):
+            continue
+        if result.get("status") not in _FAILED_STATUSES:
+            continue
+        node = nodes.get(unique_id) or unit_tests.get(unique_id) or {}
+        tested = list((node.get("depends_on") or {}).get("nodes") or [])
+        if node.get("attached_node"):
+            tested.append(node["attached_node"])
+        for writer in tested:
+            parts = writer.split(".")
+            if len(parts) >= 3 and parts[0] == "model" and parts[2].startswith("pub_"):
+                failed.setdefault(writer, f"{unique_id} finished {result.get('status')!r}")
+    return failed
 
 
 def _run_started_at(result: dict) -> float | None:
@@ -1706,6 +1740,7 @@ def collect_dbt_phone_files(
     run_results_path: Path | None = None,
     processed_dir: Path | None = None,
     gate: dict[str, GateVerdict] | None = None,
+    writers_may_fail: bool | None = None,
 ) -> DbtPhoneFiles:
     """Every phone file a dbt writer wrote in the run being published, keyed
     by the R2 key its exposure names.
@@ -1732,14 +1767,24 @@ def collect_dbt_phone_files(
     gated writer that wrote nothing while its row passed is refused, as is
     one that wrote a held source's file.
 
+    A WRITER THAT FAILED, its own model or a test of it, is refused, unless
+    `writers_may_fail` (default: BUILD_PARTIAL_ENV_VAR is "true", which
+    publish-conditions.yml sets when build_marts.py exited PARTIAL_EXIT;
+    decision 81). Then its keys are kept and `failed`, and its file is never
+    read, whatever its age: a writer that failed mid-write, or wrote a file
+    its own test refused, never publishes it. build_marts.py removes that
+    file as well.
+
     Refuses, rather than publishing less: a missing manifest or run results;
     run results naming none of the writers (the build's last dbt invocation
     was not the writers', and every dbt file would read as kept); a writer
-    whose run did not succeed; a writer that must write (`when_empty` other
-    than keep_last_file) with no file this run; a gated writer whose file
-    disagrees with its gate row, or that has no row; an empty file; and one
-    key named by two writers.
+    whose run did not succeed, or whose test failed, unless writers may fail;
+    a writer that must write (`when_empty` other than keep_last_file) with no
+    file this run; a gated writer whose file disagrees with its gate row, or
+    that has no row; an empty file; and one key named by two writers.
     """
+    if writers_may_fail is None:
+        writers_may_fail = os.environ.get(BUILD_PARTIAL_ENV_VAR, "").strip() == "true"
     manifest_path = manifest_path or DBT_MANIFEST_PATH
     run_results_path = run_results_path or DBT_RUN_RESULTS_PATH
     processed_dir = processed_dir or dbt_processed_dir()
@@ -1753,6 +1798,7 @@ def collect_dbt_phone_files(
     run_results = json.loads(run_results_path.read_text(encoding="utf-8"))
     nodes = manifest.get("nodes") or {}
     results = {entry.get("unique_id"): entry for entry in run_results.get("results") or [] if isinstance(entry, dict)}
+    failed_by_test = _failed_writer_tests(results, nodes, manifest.get("unit_tests") or {})
 
     found = DbtPhoneFiles()
     owner: dict[str, str] = {}
@@ -1784,10 +1830,19 @@ def collect_dbt_phone_files(
                     found.kept[key] = f"{writer_id} did not run in the dbt invocation being published"
                 continue
             writers_seen += 1
+            failure = failed_by_test.get(writer_id)
             if result.get("status") != "success":
-                raise RuntimeError(
-                    f"{writer_id} finished {result.get('status')!r}, so {', '.join(keys)} cannot be published from it."
-                )
+                failure = f"its model finished {result.get('status')!r}"
+            if failure is not None:
+                if not writers_may_fail:
+                    raise RuntimeError(f"{writer_id}: {failure}, so {', '.join(keys)} cannot be published from it.")
+                for key in keys:
+                    found.kept[key] = (
+                        f"{writer_id} failed this run ({failure}), so {config['location']} is never read and the "
+                        f"bucket's last copy stands ({BUILD_PARTIAL_ENV_VAR}=true)"
+                    )
+                    found.failed[key] = failure
+                continue
             started = _run_started_at(result)
             written = path.exists() and (started is None or path.stat().st_mtime >= started - WRITER_CLOCK_SLACK_S)
             gate_key = (config.get("meta") or {}).get("gate")

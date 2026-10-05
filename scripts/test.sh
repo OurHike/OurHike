@@ -504,6 +504,8 @@ if selected_has dbt; then
     step "dbt row dates builds"  env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_row_dates_builds.py
     # A conditions build with no club notice table in the warehouse (decision 61), as CI's dbt job runs it.
     step "dbt notices absent"    env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_tables_absent_builds.py
+    # A club held for its rows, the rest published (decision 81), as CI's dbt job runs it.
+    step "dbt held for its rows" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_held_for_its_rows_builds.py
     # A monthly build with no generated club layer in the warehouse (raw_or_empty()), as CI's dbt job runs it.
     step "dbt club layers absent" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_club_tables_absent_builds.py
     for family in podcasts:podcasts_episodes stewards:stewards registry:registry; do

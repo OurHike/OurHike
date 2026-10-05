@@ -52,7 +52,23 @@
 --                         source, which decision 40 allows only for exact
 --                         copies, and its exactness test warns rather than
 --                         stopping every club's build
--- and, before any of those, a source int_sources__publication does not let
+-- and EVERY SOURCE, FOR ANY ONE OF ITS ROWS (decision
+-- 81, the maintainer's poll of 2026-10-05: "Hold that source and publish the
+-- rest"; review finding ARCH-1 of PR #1805 — dlt → dbt re-platform as one
+-- go/no-go change):
+--   wording               a row that holds its source's own wording in a
+--                         published column (int_warnings__wording_leaks,
+--                         decision 55)
+--   region                a row whose geometry reaches outside the box its
+--                         source publishes in, the lon/lat swap test
+--                         (int_closures__rows_outside_region)
+-- Both read the rows before this gate, which the marts are built from, so
+-- neither can read the marts. Each test of theirs warns, so the log names
+-- the rows and build_marts.py turns the run red after everything else has
+-- published. Until decision 81 each failed the build, and five of the soak's
+-- first ten runs (525 to 527 and 530 here, 531 in a writer) published
+-- nothing for anyone over one source's rows.
+-- And, before any of those, a source int_sources__publication does not let
 -- publish, or has no row for. A non-finite number is held because
 -- write_document()'s allow_nan=False refuses it: JSON.parse on a phone
 -- rejects the whole document over one NaN (lib/strict_json.py, #658).
@@ -219,6 +235,27 @@ registry as (
 
 club_notices as (
     select * from {{ ref('int_closures__club_notices') }}
+),
+
+-- Decision 81's two per-row safety checks, by source: how many of its rows
+-- each returns and the first, for `held_because`.
+wording_leaks as (
+    select
+        source_key,
+        count(distinct row_id) as rows_leaking,
+        min(row_id) as first_row
+    from {{ ref('int_warnings__wording_leaks') }}
+    group by source_key
+),
+
+outside_region as (
+    select
+        source_key,
+        count(*) as rows_outside,
+        min(row_id) as first_row,
+        any_value(region) as region
+    from {{ ref('int_closures__rows_outside_region') }}
+    group by source_key
 ),
 
 -- Whether each source's raw tables are all in this warehouse.
@@ -446,6 +483,23 @@ judged as (
                     || ' row(s) carry a coordinate or a mile that is not a '
                     || 'finite number, and JSON.parse on a phone rejects the '
                     || 'whole document'
+            when coalesce(wording_leaks.rows_leaking, 0) > 0
+                then
+                    wording_leaks.rows_leaking || ' '
+                    || gated_sources.source_key || ' row(s) hold the '
+                    || 'source''s own wording in a published column '
+                    || '(decision 55), the first '
+                    || wording_leaks.first_row || ', so none of its rows is '
+                    || 'published (int_warnings__wording_leaks names each)'
+            when coalesce(outside_region.rows_outside, 0) > 0
+                then
+                    outside_region.rows_outside || ' '
+                    || gated_sources.source_key || ' row(s) reach outside the '
+                    || outside_region.region || ' box its source publishes '
+                    || 'in, the first ' || outside_region.first_row
+                    || ': a lon/lat swap, or a source registered without its '
+                    || 'region (macros/lands_outside_its_region.sql), so none '
+                    || 'of its rows is published'
             when
                 gated_sources.source_key = 'nws_alerts'
                 and nws_alerts.rows_total = 0
@@ -482,6 +536,10 @@ judged as (
         on gated_sources.source_key = notice_tables.source_key
     left join publication
         on gated_sources.source_key = publication.source_key
+    left join wording_leaks
+        on gated_sources.source_key = wording_leaks.source_key
+    left join outside_region
+        on gated_sources.source_key = outside_region.source_key
 )
 
 select

@@ -1188,6 +1188,21 @@ jobs:
       # below then turns the run red so the store gets fixed. Any other
       # failure stops here, as before.
       #
+      # ONE SOURCE OR ONE WRITER NEVER STOPS THE REST (decision 81, the
+      # maintainer's poll of 2026-10-05: "Hold that source and publish the
+      # rest"; review finding ARCH-1 of PR #1805 — dlt → dbt re-platform as
+      # one go/no-go change). Five of the soak's first ten runs published
+      # nothing for anyone: 525 to 527 and 530 on a test of one source's
+      # rows, and 531 on one writer after six others had written.
+      # build_marts.py now exits PARTIAL_EXIT, 5, when part of the build was
+      # held back and the rest finished: a source the gate held for its rows,
+      # or writers that failed while the others wrote, each failed one's file
+      # removed. This
+      # step records it as `partial` and carries on, "Publish to R2" keeps a
+      # failed writer's key at the bucket's last copy (OURHIKE_BUILD_PARTIAL)
+      # and publishes every file that was written, and the last step below
+      # turns the run red, as the extract's exit 3 does. 6 is both 4 and 5.
+      #
       # `--no-history-save` when step 2b did not add the newest notices copy:
       # the history is restored and the build dates rows from it, but nothing
       # is saved, so a notice this build lacks is never closed in the history
@@ -1237,6 +1252,11 @@ jobs:
           printf -- '- build_marts.py --lane hourly %s: %s s, exit %s\n\n' "${without[*]} ${history[*]}" "$((SECONDS - started))" "$status" >> "$GITHUB_STEP_SUMMARY"
           if [ "$status" -eq 4 ]; then
             echo "history_lost=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 5 ]; then
+            echo "partial=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 6 ]; then
+            echo "history_lost=true" >> "$GITHUB_OUTPUT"
+            echo "partial=true" >> "$GITHUB_OUTPUT"
           elif [ "$status" -ne 0 ]; then
             exit "$status"
           fi
@@ -1298,6 +1318,10 @@ jobs:
           # nothing is written for them, as today's bake writes nothing
           # outside conditions/.
           OURHIKE_PHONE_FILES: ${{ env.PHONE_FILES }}
+          # "true" when the build exited PARTIAL_EXIT: publish.py then keeps a
+          # failed writer's key at the bucket's last copy, its file never
+          # read, rather than refusing the whole publish (decision 81).
+          OURHIKE_BUILD_PARTIAL: ${{ steps.build.outputs.partial }}
         # publish.py collects whatever data/processed/ holds, which in this
         # job is the conditions manifest and nothing else - a fresh checkout
         # has run no other export script. The manifest merge is additive, so
@@ -1319,6 +1343,16 @@ jobs:
         if: steps.extract.outputs.partial == 'true'
         run: |
           echo "::error title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was published."
+          exit 1
+
+      # Last for the same reason: what the build held back (decision 81) did
+      # not hold back the files that were written, and the run still goes red
+      # for it. The build step's log names each held source with its rows, or
+      # each failed writer, whose key kept the bucket's last copy.
+      - name: Fail the run if the build held a source or a writer back (dbt path)
+        if: steps.build.outputs.partial == 'true'
+        run: |
+          echo "::error title=Part of the build held back::The build held back a source for its rows, or a writer that failed, and published everything else. The build step's log names each one and why; a held source carries its last good rows and a failed writer's file keeps its last published copy."
           exit 1
 
       # Last for the same reason: the closures and warnings files published

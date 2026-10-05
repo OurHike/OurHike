@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import re
 
+import pytest
 import yaml
 
 from test_conditions_production_leg_needs_main import WORKFLOW, _evaluate, _expression
+from test_notices_job import BUILD_STEP, _base_env, _outputs, _run, _stand_in
 
 PATHS = ("exporters", "dbt")
 
@@ -108,3 +110,59 @@ def test_a_failed_history_restore_still_publishes_and_then_turns_the_run_red():
     assert red["if"] == "steps.build.outputs.history_lost == 'true'" and red["run"].rstrip().endswith("exit 1")
     assert names.index(publish["name"]) < names.index(red["name"]), "the files publish before the run goes red"
     assert "if" not in publish, "the publish runs on a degraded build, whose step succeeded"
+
+
+@pytest.mark.parametrize(
+    ("status", "outcome", "outputs"),
+    [
+        (0, 0, {}),
+        (4, 0, {"history_lost": "true"}),
+        (5, 0, {"partial": "true"}),
+        (6, 0, {"history_lost": "true", "partial": "true"}),
+        (1, 1, {}),
+        (3, 3, {}),
+    ],
+)
+def test_a_build_that_held_a_source_or_a_writer_back_still_publishes_and_then_turns_the_run_red(
+    tmp_path, status, outcome, outputs
+):
+    """Decision 81 (the maintainer's poll, 2026-10-05: "Hold that source and publish the rest"): build_marts.py exits
+    PARTIAL_EXIT, 5, when the gate held a source for its rows, or some writers failed while the rest wrote; 6 is that
+    and a degraded build together. The build step records `partial`
+    and carries on, "Publish to R2" tells publish.py so (OURHIKE_BUILD_PARTIAL, which keeps a failed writer's key at the
+    bucket's last copy), and the last step turns the run red, after the publish, as the extract's exit 3 does. Every
+    other failure still stops the leg. The step's own script runs here under bash, with build_marts.py's python a
+    stand-in that answers `status`."""
+    _stand_in(tmp_path / "bin" / "python", status)
+    (build,) = [step for step in _steps() if step.get("name") == BUILD_STEP]
+    finished = _run(build["run"], {**_base_env(tmp_path), "ENVIRONMENT": "ua", "NOTICES_READ": "latest"})
+
+    assert finished.returncode == outcome, finished.stdout + finished.stderr
+    assert _outputs(tmp_path) == outputs
+
+    steps = _steps()
+    names = [step.get("name") or step.get("uses") for step in steps]
+    (publish,) = [step for step in steps if step.get("name") == "Publish to R2"]
+    (red,) = [step for step in steps if step.get("if") == "steps.build.outputs.partial == 'true'"]
+    assert publish["env"]["OURHIKE_BUILD_PARTIAL"] == "${{ steps.build.outputs.partial }}"
+    assert "if" not in publish, "the publish runs on a partial build, whose step succeeded"
+    assert names.index(publish["name"]) < names.index(red["name"]) and red["run"].rstrip().endswith("exit 1")
+
+
+def test_build_marts_exit_codes_the_workflow_reads_are_the_ones_it_defines():
+    """The step's 4, 5 and 6 are build_marts.py's DEGRADED_EXIT, PARTIAL_EXIT and DEGRADED_PARTIAL_EXIT, read from its
+    source: this suite installs no DuckDB."""
+    import ast
+
+    tree = ast.parse((WORKFLOW.parents[2] / "pipeline" / "build_marts.py").read_text(encoding="utf-8"))
+    values = {
+        target.id: node.value.value
+        for node in tree.body
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    assert (values["DEGRADED_EXIT"], values["PARTIAL_EXIT"], values["DEGRADED_PARTIAL_EXIT"]) == (4, 5, 6)
+    (build,) = [step for step in _steps() if step.get("name") == BUILD_STEP]
+    for code in (4, 5, 6):
+        assert f'"$status" -eq {code} ]' in build["run"]

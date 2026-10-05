@@ -652,7 +652,9 @@ below are for everything else.
 6. **Give it a region box.** The lon/lat swap tests read each `source_key`'s
    box from the `regions` map in `macros/lands_outside_its_region.sql`; a key
    it does not list gets `eastern`, so a western or national source fails
-   until it is given a row. The three boxes were checked against the live
+   until it is given a row. A closures or warnings source is held in
+   `int_closures__gate` instead, keeping its last good rows while the run goes
+   red after publishing (decision 81). The three boxes were checked against the live
    layers' extents on 2026-10-03, and their margins are still `@unvalidated`
    (the macro's header says what would settle them).
 7. **Run the job** ([above](#the-commands-ci-runs-today)), evaluator included:

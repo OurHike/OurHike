@@ -10,6 +10,11 @@
 -- those ids, not as one insertion: their `_changed_at` moves and their
 -- `_first_seen_at` does not (Reasoned from the two derivations; not
 -- measured on real data).
+--
+-- `feature_order`, the row's place in the file it is drawn in, is left out of
+-- the hash: a row added or removed above another moves that place and nothing
+-- else about it. row_history_refresh() keeps the current version's place
+-- current.
 {{ config(unique_key='trail_line_id') }}
-{{ row_history_snapshot('int_trail_lines__final') }}
+{{ row_history_snapshot('int_trail_lines__final', skip=['feature_order']) }}
 {% endsnapshot %}

@@ -16,6 +16,12 @@
 -- reissues still opens a version. pub_conditions_weather_alerts reads the
 -- value it publishes as `nws_updated` from base_nws__alerts, not from the
 -- mart.
+--
+-- `list_position`, an ATC update's place in the reviewed file, is left out
+-- too: a row added or removed above another moves that place and nothing else
+-- about it. row_history_refresh() keeps both current.
 {{ config(unique_key='warning_id') }}
-{{ row_history_snapshot('int_warnings__final', skip=['collection_updated']) }}
+{{ row_history_snapshot(
+    'int_warnings__final', skip=['collection_updated', 'list_position']
+) }}
 {% endsnapshot %}

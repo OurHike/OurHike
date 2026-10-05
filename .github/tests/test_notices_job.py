@@ -140,8 +140,8 @@ def test_the_notices_job_extracts_into_its_legs_store_copies_it_and_publishes_no
 
 
 def test_the_copy_step_reads_the_run_log_the_extract_step_kept_rather_than_the_store_again():
-    """EXR-5 and ARCH-10 in PR #1805's review: each run log file is a GET on R2, one more every run, and the copy
-    step read them all straight after the extract step had."""
+    """Each run log file is a GET on R2, one more every run, and the copy step used to read them all straight after
+    the extract step had."""
     extract, serve = _step(NOTICES, "extract", EXTRACT_STEP), _step(NOTICES, "extract", SERVE_STEP)
     (kept,) = re.findall(r'--run-log-cache "([^"]+)"', extract["run"])
     assert re.findall(r'--run-log-cache "([^"]+)"', serve["run"]) == [kept] and kept.startswith("$RUNNER_TEMP/")
@@ -201,8 +201,8 @@ def _served_stale_hours() -> int:
 
 
 def test_a_notices_copy_older_than_two_notices_runs_turns_the_hourly_run_red_after_the_publish():
-    """WF1 in PR #1805's review: soak run 538 read a copy 3 h 01 min old as `latest` and stayed green, and nothing
-    bounded the age. add-served exits 7 past SERVED_STALE_HOURS, twice the notices cron's step, and that is red last."""
+    """Soak run 538 read a copy 3 h 01 min old as `latest` and stayed green, when nothing bounded the age. add-served
+    exits 7 past SERVED_STALE_HOURS, twice the notices cron's step, and that is red last."""
     (schedule,) = _load(NOTICES).get("on", _load(NOTICES).get(True))["schedule"]
     cadence = int(schedule["cron"].split()[1].split("/")[1])
     assert _served_stale_hours() == 2 * cadence, "the bound is twice the notices job's cadence"

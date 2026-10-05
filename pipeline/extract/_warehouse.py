@@ -327,10 +327,9 @@ SERVED_OLDER_EXIT, SERVED_NONE_EXIT = 5, 6
 #: add-served exits SERVED_STALE_EXIT and publish-conditions.yml turns the run
 #: red at the end. Before this bound a copy of any age read as the newest and
 #: the run stayed green: soak run 538 (publish-conditions.yml 37250913570,
-#: 2026-10-05) read one whose run began 3 h 01 min earlier (WF1 in PR #1805's
-#: review). 8 is @unvalidated: twice extract-notices.yml's 4-hour cron, so a
-#: copy reaches it only once the notices run after it has failed or not
-#: fired, and the one after that has not yet finished (Reasoned from the
+#: 2026-10-05) read one whose run began 3 h 01 min earlier. 8 is
+#: @unvalidated: twice extract-notices.yml's 4-hour cron, so a copy reaches
+#: it only once the notices run after it has failed or not fired, and the one after that has not yet finished (Reasoned from the
 #: cron alone). What would settle it: the gaps between consecutive copies'
 #: run ids over a few weeks of the schedule, which #1346 — Every cron in this
 #: repository fires about five times a day, whatever it declares — including
@@ -425,8 +424,7 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str], run_log_cache
     before, it is left out and named. The next run that reads it whole mends
     the store. A carried table's run log rows are carried with it, from the
     copy its rows came from, and a table left out takes none, so the hourly
-    build never dates a table's rows by a read whose rows it does not hold
-    (WF2 in PR #1805's review).
+    build never dates a table's rows by a read whose rows it does not hold.
 
     Then every finished copy past the newest SERVED_KEEP is deleted, and so
     is any unfinished one older than this. `run_log_cache` is the extract

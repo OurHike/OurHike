@@ -205,10 +205,10 @@ def job_of(resource: Resource) -> str:
 # models read source() directly (base_ourhike__reports.sql among them). With
 # the limit of 10 this was, a new store's first run left raw_ourhike__reports
 # and raw_ourhike__work_projects waiting, and production's conditions store
-# has never been written (EXR-4 in PR #1805's review). The limit came from
-# soak run 506 (publish-conditions.yml 37154645937, 2026-10-03), which met 70
-# new hourly layers at once and overran its step; those layers are the
-# notices job's since decision 61, and a conditions leg carries twelve tables.
+# has never been written. The limit came from soak run 506
+# (publish-conditions.yml 37154645937, 2026-10-03), which met 70 new hourly
+# layers at once and overran its step; those layers are the notices job's
+# since decision 61, and a conditions leg carries twelve tables.
 # Run 505, an hour before 506, read 13 and loaded them inside 58 s, so twelve
 # at once fit the step (Reasoned from that one run).
 #
@@ -850,11 +850,11 @@ def definition_digest(resource: Resource) -> str:
     # turning it on changes the geometry a read lands, so the layer is read once more.
     if getattr(resource, "return_z", False):
         definition["return_z"] = True
-    # The same, for two registry fields kinds read outside `field_rules` (EXR-3 in
-    # PR #1805's review): the row's own `person_fields` where WordpressPosts,
-    # PodcastEpisodes and NpsContent read them as a property, so a name added
-    # there stops loading on the next run rather than the club's next edit; and a
-    # sheet's `as_of_label` (extract/_gis_files.py), which decides the date its rows
+    # The same, for two registry fields kinds read outside `field_rules`: the
+    # row's own `person_fields` where WordpressPosts, PodcastEpisodes and
+    # NpsContent read them as a property, so a name added there stops loading
+    # on the next run rather than the club's next edit; and a sheet's
+    # `as_of_label` (extract/_gis_files.py), which decides the date its rows
     # carry. Only when set, so no other resource's digest moves.
     if own := sorted(_registry_field(resource, "person_fields") or ()):
         definition["row_person_fields"] = own
@@ -1236,11 +1236,10 @@ def _run_log_rows(pipeline, files: list[str], cache: Path | None) -> list[dict]:
 def run_log_bytes(pipeline, path: str, cache: Path | None = None) -> bytes:
     """One `_extract_runs` file's bytes: from `cache` where an earlier step of the same job read it, else the store's.
 
-    THE RUN LOG IS READ FROM THE STORE ONCE PER RUN (EXR-5 and ARCH-10 in
-    PR #1805's review). Every file is a GET on R2, one more each run, and
-    extract-notices.yml's serve step used to read them all again straight
-    after its extract step had; with --run-log-cache on both, it reads them
-    from this directory. A run log file is written once, under its load and
+    THE RUN LOG IS READ FROM THE STORE ONCE PER RUN. Every file is a GET on
+    R2, one more each run, and extract-notices.yml's serve step used to read
+    them all again straight after its extract step had; with --run-log-cache
+    on both, it reads them from this directory. A run log file is written once, under its load and
     file id (`<load_id>.<file_id>.parquet`), into a table only ever appended
     to, so a cached file of that name holds the store's bytes. `cache` is one
     store's: the name is unique within a store, not across stores. A file is

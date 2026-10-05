@@ -434,8 +434,8 @@ def test_a_sheet_whose_as_of_cell_has_gone_is_unreadable_rather_than_landed_unda
 
 
 def test_a_sheets_as_of_label_is_in_its_definition_digest_so_a_fixed_label_reads_an_unmoved_sheet_again(registry):
-    """EXR-3 in PR #1805's review: the label decides each row's `source_as_of`, the date a hiker reads a water or
-    trailhead sheet by, so a fix to it in sources.json must not wait for the sheet itself to change."""
+    """The label decides each row's `source_as_of`, the date a hiker reads a water or trailhead sheet by, so a
+    fix to it in sources.json must not wait for the sheet itself to change."""
     from extract._run import definition_digest
 
     before = definition_digest(gis("trailhead_sheet"))

@@ -240,8 +240,8 @@ def logged_runs(path: Path, table: str) -> list[tuple[str, str, int | None]]:
 
 
 def test_a_carried_tables_run_log_rows_are_those_of_the_copy_its_rows_came_from(stores, tmp_path):
-    """WF2 in PR #1805's review: the copy carried run 1's 2 rows while its run log still said run 2 loaded 3, so the
-    hourly build would date run 1's rows by run 2's read. Twice torn, the rows and their log still agree."""
+    """A copy used to carry run 1's 2 rows while its run log still said run 2 loaded 3, so the hourly build would
+    date run 1's rows by run 2's read. Twice torn, the rows and their log still agree."""
     first = notices_run(stores, USFS, NPS)
     serve(stores, TABLES)
     second = notices_run(stores, club_closures("usfs", "u1", "u2", "u3", count=3), club_closures("nps", "p1", "p2", count=2))
@@ -350,9 +350,9 @@ def test_the_command_line_says_when_no_copy_exists_and_when_an_older_one_was_rea
 def test_a_notices_run_and_its_serve_read_each_run_log_file_from_the_store_once_between_them(
     stores, command, tmp_path, monkeypatch
 ):
-    """EXR-5 and ARCH-10 in PR #1805's review: every `_extract_runs` file is a GET on R2, one file per past run, and
-    the serve step read them all again right after the extract step had. extract-notices.yml hands the serve the
-    extract's read through --run-log-cache, so a notices run reads its run log from the store once."""
+    """Every `_extract_runs` file is a GET on R2, one file per past run, and the serve step used to read them all
+    again right after the extract step had. extract-notices.yml hands the serve the extract's read through
+    --run-log-cache, so a notices run reads its run log from the store once."""
     import fsspec.implementations.local as local
 
     resources = [USFS, NPS]
@@ -403,9 +403,9 @@ def notices_run_hours_ago(stores, monkeypatch, hours: float, *resources):
 def test_add_served_still_adds_a_notices_copy_whose_run_began_9_hours_ago_but_exits_stale(
     stores, command, tmp_path, monkeypatch, capsys
 ):
-    """WF1 in PR #1805's review: a copy of any age read as the newest and the run stayed green; soak run 538 read
-    one 3 h 01 min old. Past SERVED_STALE_HOURS the copy is still added, so the build still publishes, and the exit
-    says it is stale, so publish-conditions.yml turns the run red at the end."""
+    """A copy of any age used to read as the newest and leave the run green; soak run 538 read one 3 h 01 min old.
+    Past SERVED_STALE_HOURS the copy is still added, so the build still publishes, and the exit says it is stale,
+    so publish-conditions.yml turns the run red at the end."""
     report = notices_run_hours_ago(stores, monkeypatch, 9, USFS, NPS)
     assert command("serve") == 0
     capsys.readouterr()

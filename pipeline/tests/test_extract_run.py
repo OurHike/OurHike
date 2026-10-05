@@ -1331,9 +1331,9 @@ def add_to_rows_person_fields(registry, key: str, name: str) -> None:
 def test_a_name_added_to_a_wordpress_rows_person_fields_is_dropped_on_the_next_run_of_a_site_that_has_not_moved(
     registry, store, requests_mock
 ):
-    """EXR-3 in PR #1805's review: WordpressPosts reads the row's `person_fields` outside `field_rules`, so the
-    digest in its marker never moved, the unmoved site answered FRESH, and the column the row now leaves out kept
-    serving until the club next edited a post."""
+    """WordpressPosts reads the row's `person_fields` outside `field_rules`, so the digest in its marker used to
+    stay put, the unmoved site answered FRESH, and the column the row now leaves out kept serving until the club
+    next edited a post."""
     post = wp_post(1)
     post["content"] = {"rendered": "<p>Call the maintainer at 555-0100 or maint@example.org</p>"}
     FakeWordpress(requests_mock, [post])

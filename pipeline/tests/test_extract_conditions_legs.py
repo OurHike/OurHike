@@ -567,9 +567,9 @@ def every_conditions_table() -> list[Resource]:
 
 
 def test_a_new_conditions_store_takes_on_every_one_of_its_tables_on_its_first_run(store):
-    """EXR-4 in PR #1805's review: a conditions leg took on 10 of its 12 never-loaded tables, and left
-    raw_ourhike__reports and raw_ourhike__work_projects waiting with no hints, so neither was in the warehouse and
-    the hourly build failed on the base models that read them. Production's store has never been written."""
+    """A conditions leg used to take on 10 of its 12 never-loaded tables, and left raw_ourhike__reports and
+    raw_ourhike__work_projects waiting with no hints, so neither was in the warehouse and the hourly build failed
+    on the base models that read them. Production's store has never been written."""
     report = leg(store, *every_conditions_table(), name=CONDITIONS)
 
     assert report.waiting == {}, "a conditions table absent from the warehouse fails the hourly build"
@@ -711,8 +711,9 @@ class HangingOurhikeCheck(OurhikeAnswer):
 def test_ourhikes_own_change_check_that_runs_out_of_time_stops_the_whole_leg_rather_than_serving_last_hours_rows(
     store, monkeypatch
 ):
-    """EXR-2 in PR #1805's review: a slow check was refused on its own like a club's, the leg exited PARTIAL_EXIT, and
-    the hourly build published the previous hour's OurHike closures as current, which a failed read never does."""
+    """A slow check of OurHike's own rows used to be refused on its own like a club's, the leg exited
+    PARTIAL_EXIT, and the hourly build published the previous hour's OurHike closures as current, which a failed
+    read never does."""
     monkeypatch.setitem(_run.LEG_CHECK_SECONDS, _run.CONDITIONS_JOB, 1)
     leg(store, ourhike_closures("o1", count=1), nynjtc_alerts("n1", count=1), name=CONDITIONS)
     hanging = HangingOurhikeCheck(key="closures", club="ourhike", type="closures", answer=({"id": "o2"},), count=1)

@@ -31,7 +31,7 @@ import {
   type PublishedConditions,
   type PublishedReadOptions,
 } from './publishedConditions'
-import { geometryParts, partsBounds, type NoticeGeometryValue } from './noticeGeometry'
+import type { NoticeGeometryValue } from './noticeGeometry'
 import { DATA_CONFIGURED, dataUrl } from './config'
 
 /** The shapes of the states a state-wide notice names (decision 76): written
@@ -91,8 +91,13 @@ function pageUrlOrNull(value: unknown): string | null {
 
 /** A place this build can read, or `unplaced` - a notice nobody can place is
  *  still one a hiker is told about (ORG_NOTICES.md §3). A geometry with no
- *  coordinate this build can read is unplaced too: kept as a geometry, it
- *  would meet no route and, being placed, show from no club either. */
+ *  coordinate this build can read is kept as it came: lib/plannedNotices.ts's
+ *  `noticeTouches` reads it as unplaced, and lib/hazardAreas.ts draws no area
+ *  for it. The check lives there and not here because this module is its own
+ *  lazy chunk: importing lib/noticeGeometry.ts here split that module into a
+ *  chunk of its own, whose name the eager entry then carried in its preload
+ *  map, 45 bytes compressed over the launch budget (preview build of
+ *  f608fe42, 2026-10-05). */
 function validPlace(value: unknown): NoticePlace {
   if (typeof value !== 'object' || value === null) return { kind: 'unplaced' }
   const place = value as Record<string, unknown>
@@ -117,9 +122,7 @@ function validPlace(value: unknown): NoticePlace {
     place.geometry !== null &&
     typeof (place.geometry as { type?: unknown }).type === 'string'
   ) {
-    const geometry = place.geometry as NoticeGeometryValue
-    if (partsBounds(geometryParts(geometry)) !== null)
-      return { kind: 'geometry', geometry }
+    return { kind: 'geometry', geometry: place.geometry as NoticeGeometryValue }
   }
   return { kind: 'unplaced' }
 }

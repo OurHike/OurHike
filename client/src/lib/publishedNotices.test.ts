@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EMPTY_CLUB_SECTIONS } from './clubSections'
 import { plannedNotices } from './plannedNotices'
 import { validNotice } from './publishedNotices'
+import { geometryParts, partsBounds } from './noticeGeometry'
 
 // One conditions/notices.json row read defensively (lib/publishedNotices.ts's
 // `validNotice`): a field this build cannot use repairs to its honest empty
@@ -68,90 +69,81 @@ describe('a source_url', () => {
 })
 
 describe('a geometry place', () => {
-  it('with no readable coordinates is unplaced, as a polygon a source sent empty arrives', () => {
+  it.each([
     // What the writer's ST_AsGeoJSON makes of an empty polygon (the
     // reviewer's empty_geom.py, DuckDB spatial): {"type":"Polygon","coordinates":[]}.
-    const empty = validNotice(
-      row({
-        place: { kind: 'geometry', geometry: { type: 'Polygon', coordinates: [] } },
-      }),
-    )
-    expect(empty?.place).toEqual({ kind: 'unplaced' })
-    const strings = validNotice(
-      row({
-        place: { kind: 'geometry', geometry: { type: 'Point', coordinates: ['a', 'b'] } },
-      }),
-    )
-    expect(strings?.place).toEqual({ kind: 'unplaced' })
-  })
-
-  it('with no readable coordinates still reaches a planned hike on its club’s trails', () => {
-    const closure = validNotice(
-      row({
-        place: { kind: 'geometry', geometry: { type: 'Polygon', coordinates: [] } },
-      }),
-    )
-    const { hikes } = plannedNotices({
-      notices: closure === null ? [] : [closure],
-      trips: [],
-      dayHikes: [
-        {
-          id: 'hike-1',
-          name: 'Fixture loop',
-          date: '2026-10-04',
-          segments: [
-            [
-              { coord: [-76.5, 41.1], poiId: null },
-              { coord: [-76.5, 41.2], poiId: null },
+    ['an empty polygon', { type: 'Polygon', coordinates: [] }],
+    ['a point whose coordinates are strings', { type: 'Point', coordinates: ['a', 'b'] }],
+  ])(
+    'with no readable coordinates, as %s, still reaches a planned hike on its club’s trails',
+    (_, geometry) => {
+      const closure = validNotice(row({ place: { kind: 'geometry', geometry } }))
+      const { hikes } = plannedNotices({
+        notices: closure === null ? [] : [closure],
+        trips: [],
+        dayHikes: [
+          {
+            id: 'hike-1',
+            name: 'Fixture loop',
+            date: '2026-10-04',
+            segments: [
+              [
+                { coord: [-76.5, 41.1], poiId: null },
+                { coord: [-76.5, 41.2], poiId: null },
+              ],
             ],
-          ],
-          figures: {
-            miles: 7,
-            legs: [
-              {
-                name: 'Fixture Trail',
-                source: 'oprhp_trails',
-                blaze_color: null,
-                miles: 7,
-              },
-            ],
+            figures: {
+              miles: 7,
+              legs: [
+                {
+                  name: 'Fixture Trail',
+                  source: 'oprhp_trails',
+                  blaze_color: null,
+                  miles: 7,
+                },
+              ],
+            },
+            looped: false,
+            recorded: 'planned',
+            note: '',
           },
-          looped: false,
-          recorded: 'planned',
-          note: '',
-        },
-      ],
-      today: '2026-10-04',
-      trailIndex: null,
-      routeDayHike: null,
-      clubSections: EMPTY_CLUB_SECTIONS,
-      stewards: [
-        {
-          provider: 'NYS OPRHP',
-          name: 'Fixture parks office',
-          trust: null,
-          licence: null,
-          attribution: null,
-          terms: null,
-          termsSource: null,
-          layers: [],
-          keys: ['oprhp_trails', 'oprhp_trail_closures'],
-          support: null,
-          store: null,
-        },
-      ],
-    })
-    expect(hikes[0].fromClubs.map((n) => n.notice_id)).toEqual(['oprhp_trail_closures:7'])
-  })
+        ],
+        today: '2026-10-04',
+        trailIndex: null,
+        routeDayHike: null,
+        clubSections: EMPTY_CLUB_SECTIONS,
+        stewards: [
+          {
+            provider: 'NYS OPRHP',
+            name: 'Fixture parks office',
+            trust: null,
+            licence: null,
+            attribution: null,
+            terms: null,
+            termsSource: null,
+            layers: [],
+            keys: ['oprhp_trails', 'oprhp_trail_closures'],
+            support: null,
+            store: null,
+          },
+        ],
+      })
+      expect(hikes[0].fromClubs.map((n) => n.notice_id)).toEqual([
+        'oprhp_trail_closures:7',
+      ])
+    },
+  )
 
-  it('nested 20,000 GeometryCollections deep is unplaced, and the row is kept', () => {
+  it('nested 20,000 GeometryCollections deep is kept, and reads as having no parts', () => {
     let geometry: unknown = { type: 'Point', coordinates: [-74.1, 41.2] }
     for (let i = 0; i < 20_000; i += 1) {
       geometry = { type: 'GeometryCollection', geometries: [geometry] }
     }
     const deep = validNotice(row({ place: { kind: 'geometry', geometry } }))
     expect(deep?.notice_id).toBe('oprhp_trail_closures:7')
-    expect(deep?.place).toEqual({ kind: 'unplaced' })
+    expect(deep?.place.kind).toBe('geometry')
+    if (deep?.place.kind !== 'geometry') throw new Error('kept as a geometry')
+    expect(partsBounds(geometryParts(deep.place.geometry))).toBeNull()
   })
 
   it('with a readable coordinate is kept as it came', () => {

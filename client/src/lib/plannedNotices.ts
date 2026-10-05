@@ -527,7 +527,16 @@ export function noticeTouches(
 ): 'on_route' | 'from_club' | 'state_wide' | null {
   if (!overlapsInTime(notice, stretch)) return null
   const { place } = notice
-  if (place.kind === 'unplaced' || place.kind === 'org_terms') {
+  // A geometry with no coordinate this build can read (an empty polygon, as
+  // the writer's ST_AsGeoJSON prints one, or a collection nested past
+  // MAX_COLLECTION_DEPTH) places nothing, so it is read as unplaced: kept as
+  // placed it would meet no route and show from no club either.
+  const shape = place.kind === 'geometry' ? geometryParts(place.geometry) : null
+  if (
+    place.kind === 'unplaced' ||
+    place.kind === 'org_terms' ||
+    (shape !== null && partsBounds(shape) === null)
+  ) {
     const provider = noticeProvider(notice, byKey)
     const onItsTrails = provider !== undefined && stretch.providers.has(provider)
     if (notice.steward_kind === 'agency') {
@@ -541,7 +550,7 @@ export function noticeTouches(
     if (stretch.atSpans.some(([a, b]) => low <= b && high >= a)) return 'on_route'
   }
   if (stretch.lines.length === 0) return null
-  const parts = placedParts(notice, trailIndex)
+  const parts = shape ?? placedParts(notice, trailIndex)
   if (parts === null) return null
   return linesMeetParts(stretch.lines, parts, NOTICE_REACH_FEET) ? 'on_route' : null
 }

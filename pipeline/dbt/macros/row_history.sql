@@ -243,7 +243,7 @@
     that SQLFluff's jinja templater, which defines no env_var, renders the
     model with the history on.
 
-    Example: {{ when_row_history_is_off('where held.sources_held = 0') }} -#}
+    Example: {{ when_row_history_is_off('and held.sources_held = 0') }} -#}
 {% macro when_row_history_is_off(sql) -%}
     {%- if env_var is defined and env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' -%}
         {{ sql }}

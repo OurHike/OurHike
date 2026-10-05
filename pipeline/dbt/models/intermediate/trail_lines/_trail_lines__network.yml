@@ -1517,9 +1517,11 @@ unit_tests:
       write_overview()'s grouping (#1135, #1307; TL20): an open and a
       closed line of one blaze are two features, a through route's lines
       are one named feature marked `through_route`, everything else is
-      haze carrying neither, coordinates are cut to three decimals, and
-      features come in sorted()'s order of their (source, name, blaze,
-      status) tuples. Each row is a line that clears the floor and passes
+      haze carrying neither, coordinates are cut to three decimals, a
+      vertex the cut lands on the one before it is not written, nor a part
+      or a group the cut leaves as one point, and features come in
+      sorted()'s order of their (source, name, blaze, status) tuples. Each
+      row is a line that clears the floor and passes
       the seam's pass unchanged, so the expectations are write_overview()'s
       own file, which tests/test_dbt_trail_lines_network_parity.py
       rewrites from these rows.
@@ -1537,6 +1539,13 @@ unit_tests:
           - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_the_threshold_sums_every_segment_of_the_same_name[1]", "source_key": "oprhp_trails", "blaze_color": "Red", "trail_status": "open", "through_route": "Long Path", "seam_wkt": "LINESTRING (-74.4 40.8, -74.4 41.1)"}
           - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_the_threshold_sums_every_segment_of_the_same_name[2]", "source_key": "oprhp_trails", "blaze_color": "Red", "trail_status": "open", "through_route": "Long Path", "seam_wkt": "LINESTRING (-74.4 41.1, -74.4 41.3)"}
           - {"trail_line_id": "dec_hiking_trails:sql::groups_sort_as_sorted_sorts_their_tuples", "source_key": "dec_hiking_trails", "blaze_color": "Blue", "trail_status": "open", "through_route": null, "seam_wkt": "LINESTRING (-74.6 42.1, -74.56 42.14)"}
+          # What the cut leaves (_drawn_at_the_cut): a ring a few metres round,
+          # which both passes hand back as it was, cut to one grid point (not
+          # written), or across a grid line to two (written once each, in turn);
+          # and a closed ring on the Long Path, the only line of its group.
+          - {"trail_line_id": "usfs_trails:test_export_nearby_trails::test_a_sketch_line_the_three_decimal_cut_leaves_as_one_point_is_not_written", "source_key": "usfs_trails", "blaze_color": "Unknown", "trail_status": "open", "through_route": null, "seam_wkt": "MULTILINESTRING ((-74.3 41.6, -74.3 41.65), (-74.3004 41.6204, -74.30038 41.6204, -74.30038 41.62042, -74.3004 41.62042, -74.3004 41.6204))"}
+          - {"trail_line_id": "usfs_trails:test_export_nearby_trails::test_no_sketch_line_repeats_the_vertex_before_it_once_cut_to_three_decimals", "source_key": "usfs_trails", "blaze_color": "Unknown", "trail_status": "open", "through_route": null, "seam_wkt": "MULTILINESTRING ((-74.35 41.6, -74.35 41.65), (-74.3504 41.62448, -74.35038 41.62448, -74.35038 41.62452, -74.3504 41.62452, -74.3504 41.62448))"}
+          - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_a_sketch_group_whose_every_line_cuts_to_one_point_writes_no_feature", "source_key": "oprhp_trails", "blaze_color": "Red", "trail_status": "closed", "through_route": "Long Path", "seam_wkt": "LINESTRING (-74.1 40.5, -74.09998 40.5, -74.09998 40.50002, -74.1 40.50002, -74.1 40.5)"}
       # Decision 64's club lines, which write_overview() never sees.
       - input: ref('int_trail_lines__club_overview')
         rows: []
@@ -1547,3 +1556,4 @@ unit_tests:
         - {"feature_order": 2, "properties_json": "{\"source\":\"oprhp_trails\",\"blaze_color\":\"Red\",\"trail_status\":\"closed\"}", "coordinates_json": "[[[-74.0,43.1],[-73.96,43.14]]]"}
         - {"feature_order": 3, "properties_json": "{\"source\":\"oprhp_trails\",\"blaze_color\":\"Red\",\"trail_status\":\"open\"}", "coordinates_json": "[[[-74.2,41.25],[-74.16,41.29]],[[-72.0,41.2],[-71.96,41.24]],[[-74.1,41.25],[-74.06,41.29]]]"}
         - {"feature_order": 4, "properties_json": "{\"source\":\"oprhp_trails\",\"blaze_color\":\"Red\",\"trail_status\":\"open\",\"name\":\"Long Path\",\"through_route\":true}", "coordinates_json": "[[[-74.1,40.5],[-74.1,41.3]],[[-74.4,40.5],[-74.4,40.8]],[[-74.4,40.8],[-74.4,41.1]],[[-74.4,41.1],[-74.4,41.3]]]"}
+        - {"feature_order": 5, "properties_json": "{\"source\":\"usfs_trails\",\"blaze_color\":\"Unknown\",\"trail_status\":\"open\"}", "coordinates_json": "[[[-74.3,41.6],[-74.3,41.65]],[[-74.35,41.6],[-74.35,41.65]],[[-74.35,41.624],[-74.35,41.625],[-74.35,41.624]]]"}

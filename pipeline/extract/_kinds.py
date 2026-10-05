@@ -79,7 +79,15 @@ from extract._contract import (
 # Decision 53's notice readers, in a module of their own for this file's
 # length. They are builders like the rest, so a club file imports them from
 # here; extract/_notices.py's docstring says why it cannot import this file.
-from extract._notices import FeedNotices, PageNotice, feed_notices, page_notice, polite, query_refused  # noqa: F401
+from extract._notices import (  # noqa: F401
+    DEFAULT_HOST_GAP_SECONDS,
+    FeedNotices,
+    PageNotice,
+    feed_notices,
+    page_notice,
+    polite,
+    query_refused,
+)
 from fetch_atc_updates import TOLERATED_PARSE_FAILURES as ATC_TOLERATED_PARSE_FAILURES
 from fetch_club_pdfs import extract_page_texts
 from fetch_elevation import TILE_URL_TEMPLATE as DEM_TILE_URL_TEMPLATE
@@ -284,6 +292,16 @@ def session() -> requests.Session:
     named = requests.Session()
     named.headers["User-Agent"] = USER_AGENT
     return named
+
+
+def host_gated(entry: dict) -> requests.Session:
+    """session(), every request held by extract/_notices.py's per-host gate: the row's `crawl_delay`, at least DEFAULT_HOST_GAP_SECONDS.
+
+    One gate per host for the process, so two readers of one host keep the
+    gap between them as well as within each (GATC's water PDF and its peaks
+    page, both on a host asking `Crawl-delay: 10`; review finding EXD-4).
+    """
+    return polite(session(), max(float(entry.get("crawl_delay") or 0), DEFAULT_HOST_GAP_SECONDS))
 
 
 @lru_cache(maxsize=4)
@@ -692,7 +710,9 @@ class SocrataDataset(Resource):
     (lib/socrata.py). Pages come from `fetch_dataset_geojson`, ordered on
     `:id` so an offset is safe, and the read is held to the portal's own
     `count(*)` under the same `where` afterwards, the Socrata half of ELT.md's
-    "an allowed zero counts only with the upstream's own count".
+    "an allowed zero counts only with the upstream's own count". Every
+    request passes the host's gate (host_gated): NYC's portal asks
+    `Crawl-delay: 1`, and nycparks and nycdot read it from two threads.
     """
 
     @property
@@ -708,7 +728,7 @@ class SocrataDataset(Resource):
         if self.where:
             params["$where"] = self.where
         url = dataset_url(self.entry["domain"], self.entry["dataset_id"], extension="json")
-        rows = request_with_retry(url, session=session(), params=params, timeout=60).json()
+        rows = request_with_retry(url, session=host_gated(self.entry), params=params, timeout=60).json()
         return rows[0] if rows else {}
 
     def count(self) -> int | None:
@@ -743,7 +763,9 @@ class SocrataDataset(Resource):
         Read whole before the first row is yielded, as ArcgisLayer does, so a
         short read raises before dlt normalizes anything.
         """
-        collection = fetch_dataset_geojson(self.entry["domain"], self.entry["dataset_id"], where=self.where, session=session())
+        collection = fetch_dataset_geojson(
+            self.entry["domain"], self.entry["dataset_id"], where=self.where, session=host_gated(self.entry)
+        )
         features = collection["features"]
         count = self.count()
         if count is not None:
@@ -1100,7 +1122,10 @@ def guide_pages(key: str, **overrides) -> GuidePages:
 # The Hike Finder's host asks for this: robots.txt `Crawl-delay: 10`, read
 # 2026-10-01. fetch_hikefinder.py sends two a second; this layer does as the
 # host asks, so its 385 pages and 113 tracks take about 83 minutes on the
-# monthly lane (ELT.md, "The skip-unchanged check, by platform").
+# monthly lane (ELT.md, "The skip-unchanged check, by platform"). It is kept
+# by extract/_notices.py's per-host gate, end to start, on every request the
+# sign-in's POST included: the POST used to keep only fetch_hikefinder.py's
+# own 0.5 s, so the listing followed it inside the delay (review finding EXD-4).
 HIKEFINDER_THROTTLE_SECONDS = 10
 
 
@@ -1124,11 +1149,11 @@ class PublishedHikes(Resource):
         return Freshness.UNKNOWN, None
 
     def _get(self, http: requests.Session, url: str) -> str:
-        return request_with_retry(url, session=http, timeout=60, throttle_seconds=HIKEFINDER_THROTTLE_SECONDS).text
+        return request_with_retry(url, session=http, timeout=60).text
 
     def rows(self, proofs: dict[str, int]):
         base = registry_entry(self.key)["url"].rstrip("/") + "/"
-        http = session()
+        http = polite(session(), HIKEFINDER_THROTTLE_SECONDS)  # the host's gate, on the sign-in's POST too
         signed_in = hikefinder_sign_in(http, base)
         listing = self._get(http, urljoin(base, HIKEFINDER_LISTING_PATH))
         ids = hikefinder_listing_ids(listing)
@@ -1184,7 +1209,9 @@ class ClubPdf(Resource):
     """
 
     def _get(self, headers: dict | None = None) -> requests.Response:
-        return request_with_retry(registry_entry(self.key)["url"], session=session(), headers=headers or None, timeout=120)
+        """One GET of the PDF through the host's gate (host_gated), at the row's `crawl_delay`: GATC's host asks 10 s."""
+        entry = registry_entry(self.key)
+        return request_with_retry(entry["url"], session=host_gated(entry), headers=headers or None, timeout=120)
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """A conditional GET, then the body's sha256: WordPress re-serves the same bytes without a 304.

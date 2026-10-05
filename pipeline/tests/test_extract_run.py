@@ -30,7 +30,7 @@ import pytest
 import requests
 from dlt.pipeline.exceptions import PipelineStepFailed
 
-from extract import _kinds, _run
+from extract import _kinds, _notices, _run
 from extract._contract import Resource
 from extract._kinds import (
     MONTHLY_READ_BACKOFF_SECONDS,
@@ -195,7 +195,7 @@ def registry(tmp_path, monkeypatch):
                     {"key": "alerts", "url": "https://club.example.org/category/trail-alerts/", "kind": "published_notices"},
                     {"key": "nynjtc_long_path_guide", "url": GUIDE, "kind": "guide_pages"},
                     {"key": "hikes", "url": HIKES, "kind": "published_hikes"},
-                    {"key": "gatc_water_sources", "url": PDF_URL, "kind": "club_pdf"},
+                    {"key": "gatc_water_sources", "url": PDF_URL, "kind": "club_pdf", "crawl_delay": 10},
                     {
                         "key": "usgs_3dhp",
                         "url": "https://3dhp.example.gov/arcgis/rest/services/all/FeatureServer",
@@ -209,6 +209,7 @@ def registry(tmp_path, monkeypatch):
                         "domain": "data.example.gov",
                         "dataset_id": "abcd-1234",
                         "where": GREENWAY_WHERE,
+                        "crawl_delay": 1,
                     },
                 ]
             }
@@ -218,6 +219,27 @@ def registry(tmp_path, monkeypatch):
     _kinds._registry.cache_clear()
     yield path
     _kinds._registry.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def no_host_gap(monkeypatch):
+    """No host is asked anything, so extract/_notices.py's per-host gate waits nothing here, and starts each test empty."""
+    monkeypatch.setattr(_notices, "_pause", lambda seconds: None)
+    monkeypatch.setattr(_notices, "_GATES", {})
+
+
+@pytest.fixture
+def gate_clock(monkeypatch):
+    """The per-host gate on a clock that moves only when it pauses: the list of pauses it made, in order."""
+    clock, pauses = {"now": 1000.0}, []
+
+    def pause(seconds):
+        pauses.append(seconds)
+        clock["now"] += seconds
+
+    monkeypatch.setattr(_notices, "_now", lambda: clock["now"])
+    monkeypatch.setattr(_notices, "_pause", pause)
+    return pauses
 
 
 @pytest.fixture
@@ -1440,6 +1462,20 @@ def test_a_socrata_change_check_that_errors_is_unknown(registry, requests_mock):
     assert greenways().change_check(None) == (Freshness.UNKNOWN, None)
 
 
+def test_a_socrata_dataset_keeps_a_gap_between_its_requests_to_a_host_that_asks_for_one(registry, requests_mock, gate_clock):
+    """NYC's portal asks `Crawl-delay: 1`, and its check, pages and count went back to back (review finding EXD-4).
+
+    The row's `crawl_delay` is 1, under DEFAULT_HOST_GAP_SECONDS, so the gap kept is the 2 s floor every reader keeps.
+    """
+    FakeSocrata(requests_mock, [1, 2, 3])
+
+    greenways().change_check(None)
+    list(greenways().rows({}))
+
+    assert len(requests_mock.request_history) == 4, "the check, a page, the empty page after it, the count"
+    assert gate_clock == [_notices.DEFAULT_HOST_GAP_SECONDS] * 3
+
+
 def wp_post(number, modified="2026-09-01T00:00:00"):
     return {
         "id": number,
@@ -1585,6 +1621,31 @@ def test_a_hike_finder_listing_that_links_nothing_or_miscounts_raises(registry, 
         list(hikes.rows({}))
 
 
+def test_the_hike_finder_waits_its_hosts_crawl_delay_after_the_sign_in_and_only_that_long_between_pages(
+    registry, requests_mock, monkeypatch, gate_clock
+):
+    """The host asks `Crawl-delay: 10`; the sign-in's POST kept only fetch_hikefinder's 0.5 s (review finding EXD-4).
+
+    Every request now passes the host's gate, the POST included, and the gate
+    is the only wait: 10 s end to start, never the gate's 10 and a throttle's
+    10 one after the other.
+    """
+    retry_sleeps = []
+    monkeypatch.setattr(http_retry.time, "sleep", retry_sleeps.append)
+    monkeypatch.setenv("HIKEFINDER_PASSWORD", "fixture-not-a-password")
+    requests_mock.post(HIKES + "hikes.php", text="signed in")
+    requests_mock.get(HIKES + "hikes.php", text='Results (1 hikes found) <a href="hike.php?id=1">a</a>')
+    requests_mock.get(HIKES + "hike.php?id=1", text=page(gpx=True))
+    requests_mock.get(HIKES + "download_gpx.php?id=1", text=GPX)
+
+    rows = list(PublishedHikes(key="hikes", club="testclub", type="suggested_hikes").rows({}))
+
+    assert len(rows) == 1 and rows[0]["gpx"] == GPX
+    assert [r.method for r in requests_mock.request_history] == ["POST", "GET", "GET", "GET"]
+    assert gate_clock == [10, 10, 10], "the listing, the hike and its track each wait 10 s after the request before"
+    assert all(seconds < 1 for seconds in retry_sleeps), retry_sleeps
+
+
 def test_a_category_of_exactly_one_full_page_never_asks_for_the_page_past_it(registry, requests_mock):
     FakeWordpress(requests_mock, [wp_post(n) for n in range(1, 101)])
     proofs = {}
@@ -1634,6 +1695,26 @@ def test_a_club_pdf_is_fresh_on_a_304_or_the_same_bytes_and_stale_on_new_ones(re
     assert water().change_check(same_bytes)[0] is Freshness.FRESH, "WordPress re-served the same bytes"
     document["bytes"] = b"%PDF-1.7 water, revised"
     assert water().change_check(same_bytes)[0] is Freshness.STALE
+
+
+def test_a_club_pdf_waits_its_hosts_crawl_delay_behind_the_other_reader_on_that_host(registry, requests_mock, gate_clock):
+    """GATC's host asks `Crawl-delay: 10`, and its peaks page and water PDF are read one after the other.
+
+    The page reader passes the host's gate; the PDF did not, so it was asked
+    straight after the page and the page after it waited only its own 10 s
+    from the first (review finding EXD-4).
+    """
+    page = "https://club.example.org/for-hikers/peaks/"
+    requests_mock.get(page, text="<html>peaks</html>")
+    requests_mock.get(PDF_URL, content=b"%PDF-1.7 water", headers={"ETag": '"w1"'})
+    page_reader = _notices.polite(_kinds.session(), 10.0)
+
+    page_reader.get(page)
+    water().change_check(None)
+    page_reader.get(page)
+
+    assert [r.url for r in requests_mock.request_history] == [page, PDF_URL, page]
+    assert gate_clock == [10.0, 10.0], "the PDF waits 10 s after the page, and the page 10 s after the PDF"
 
 
 def test_a_club_pdf_loaded_under_an_older_manifest_is_read_again_whatever_its_bytes(registry, requests_mock):

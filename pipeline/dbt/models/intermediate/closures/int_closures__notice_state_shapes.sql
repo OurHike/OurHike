@@ -49,9 +49,21 @@
 --
 -- TIGER's states run out over their coastal water, so a beach trail is
 -- deep inside its state's shape and the margin costs it nothing.
+--
+-- ONLY WHILE TIGER MAY PUBLISH (int_sources__publication), as every other
+-- phone file's rows reach it, and as int_trail_lines__network_area_closures
+-- reads OPRHP's areas. Held back, this model has no row, and
+-- pub_conditions_notice_states then writes nothing, so the phone keeps its
+-- last file.
 with named as (
     select distinct unnest(string_split(states, ' ')) as state
     from {{ ref('notice_states') }}
+),
+
+publication as (
+    select source_key
+    from {{ ref('int_sources__publication') }}
+    where source_key = 'census_tiger_states' and may_publish
 ),
 
 states as (
@@ -62,6 +74,7 @@ states as (
         census._loaded_at
     from {{ ref('stg_census__states') }} as census
     inner join named on census.state = named.state
+    cross join publication
 ),
 
 framed as (

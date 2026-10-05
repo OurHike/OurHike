@@ -523,9 +523,37 @@ unit_tests:
               ('UT', 'Utah', '{"type":"Polygon","coordinates":[[[-114.05,37.0],[-111.55,37.0005],[-109.05,37.0],[-109.05,42.0],[-111.55,42.0],[-111.55,42.01],[-114.05,42.01],[-114.05,37.0]]]}'),
               ('CO', 'Colorado', '{"type":"Polygon","coordinates":[[[-109.05,37.0],[-102.04,37.0],[-102.04,41.0],[-109.05,41.0],[-109.05,37.0]]]}')
           ) as states (state, state_name, shape)
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: census_tiger_states, may_publish: true}
     expect:
       rows:
         - {state: UT, state_name: Utah, frame: '+proj=eqc +lat_ts=37.0 +lon_0=-111.551 +datum=NAD83 +units=m +no_defs', phone_geometry: '{"type":"Polygon","coordinates":[[[-114.05,37.0],[-109.05,37.0],[-109.05,42.0],[-111.55,42.0],[-111.55,42.01],[-114.05,42.01],[-114.05,37.0]]]}', edge_margin_m: 500.0}
+
+  - name: int_closures__notice_state_shapes_holds_every_shape_while_tiger_may_not_publish
+    model: int_closures__notice_state_shapes
+    description: >
+      TIGER's state shapes reach a phone only while int_sources__publication
+      lets census_tiger_states publish, as every other phone file's rows do.
+      Held back, the model has no row, so pub_conditions_notice_states writes
+      nothing and the phone keeps its last file (`keep_last_file`).
+    given:
+      - input: ref('notice_states')
+        rows:
+          - {source_key: blm_fire_restrictions_utah, states: UT, evidence: Fixture}
+      - input: ref('stg_census__states')
+        format: sql
+        rows: |
+          select
+              'UT' as state,
+              'Utah' as state_name,
+              st_geomfromgeojson('{"type":"Polygon","coordinates":[[[-114.05,37.0],[-109.05,37.0],[-109.05,42.0],[-114.05,42.0],[-114.05,37.0]]]}') as geom,
+              cast('2026-10-01 00:00:00+00' as timestamptz) as _loaded_at
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: census_tiger_states, may_publish: false}
+    expect:
+      rows: []
 
   - name: int_closures__atc_checked_finds_what_file_problems_finds
     description: >

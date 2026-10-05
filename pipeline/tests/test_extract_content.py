@@ -7,8 +7,8 @@ guard stays on.
 
 The cases are the ones a person, the zero and the lane turn on: a podcast feed's guest list, hosts' names and
 e-mail addresses never reach a row; a row's own `person_fields` leave its episode notes out; NPS's content lists
-read every row whatever page size the server keeps, refuse a repeated id, and are withdrawn rather than read as
-empty without NPS_API_KEY; a guide's child pages are read by their parent; a hike type's terms ride the type's
+read every row whatever page size the server keeps, refuse a repeated id, ask once more for a page cut short and
+refuse it cut twice, and are withdrawn rather than read as empty without NPS_API_KEY; a guide's child pages are read by their parent; a hike type's terms ride the type's
 monthly lane; and two templates on one wiki are two reads, not one dataset extracted twice.
 """
 
@@ -336,6 +336,69 @@ def test_an_nps_list_that_repeats_an_id_on_its_first_read_is_read_again_and_the_
     assert proofs == {"raw_nps__nps_audio": 5}
     assert [params["start"] for params in server.asked] == ["0", "2", "0", "2", "4"], "the second read starts again at 0"
     assert "reading the list again, once" in capsys.readouterr().out
+
+
+def cut_short(server: FakeList, cuts: int, declared: bool):
+    """`server`'s answers as text, the first `cuts` of them stopped at 16,384 characters' worth of their body.
+
+    Shaped like nps_multimedia_audio's refusals in monthly runs 18 and 19
+    (refresh-reference.yml 37245577210 and 37253303123): 1,966,080 and
+    163,840 bytes, each a whole multiple of 16,384, ending inside a string.
+    Here a page is cut at its own halfway mark, which ends inside a string
+    too. With `declared`, each answer's Content-Length states the whole
+    body's length, so a cut one arrives short of what its header promised.
+    """
+    answered = []
+
+    def answer(request, context):
+        body = json.dumps(server.answer(request, context))
+        context.headers["Content-Type"] = "application/json;charset=utf-8"
+        if declared:
+            context.headers["Content-Length"] = str(len(body))
+        answered.append(len(body))
+        if len(answered) <= cuts:
+            return body[: len(body) // 2]
+        return body
+
+    return answer
+
+
+def test_an_nps_page_that_arrives_cut_short_is_asked_for_once_more_and_the_whole_list_lands(registry, key, requests_mock, capsys):
+    """nps_multimedia_audio was refused in monthly runs 16 to 19 on one page whose body stopped mid-string.
+
+    The first answer to the first page is cut; asked again, through
+    _json_apis._get's per-host gap, the page arrives whole and the list
+    lands. Before the fix one cut page refused the whole list.
+    """
+    server = FakeList(requests_mock, AUDIO, [clip(n) for n in range(5)], cap=2)
+    requests_mock.get(AUDIO, text=cut_short(server, cuts=1, declared=False))
+    proofs = {}
+
+    rows = list(NpsContent(key="nps_audio", club="nps", type="podcasts").rows(proofs))
+
+    assert [row["id"] for row in rows] == [clip(n)["id"] for n in range(5)]
+    assert proofs == {"raw_nps__nps_audio": 5}
+    assert [params["start"] for params in server.asked] == ["0", "0", "2", "4"], "only the cut page is asked again"
+    assert "asking for it once more" in capsys.readouterr().out
+
+
+def test_an_nps_page_cut_short_twice_is_refused_naming_how_far_short_of_its_content_length_it_stopped(
+    registry, key, requests_mock
+):
+    """A second cut answer refuses the list, as one cut answer did before, so a list missing a page never lands."""
+    server = FakeList(requests_mock, AUDIO, [clip(n) for n in range(5)], cap=2)
+    requests_mock.get(AUDIO, text=cut_short(server, cuts=2, declared=True))
+
+    with pytest.raises(ValueError, match=r"not JSON: [\d,]+ bytes, .*bytes short of the [\d,]+ its Content-Length states"):
+        list(NpsContent(key="nps_audio", club="nps", type="podcasts").rows({}))
+    assert requests_mock.call_count == 2, "asked twice, then refused"
+
+
+def test_an_unparsed_answer_with_no_content_length_says_there_was_nothing_to_compare_it_against(requests_mock):
+    requests_mock.get(AUDIO, text='{"data": ["cut', headers={"Content-Type": "application/json"})
+
+    with pytest.raises(ValueError, match="no Content-Length to compare against"):
+        _json_apis._json(_json_apis._get(AUDIO), "nps_audio")
 
 
 def test_without_an_nps_key_a_content_list_is_unavailable_and_nothing_is_asked(registry, requests_mock, monkeypatch):

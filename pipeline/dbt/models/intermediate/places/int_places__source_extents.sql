@@ -11,4 +11,13 @@
 -- macros/generated_regions.sql gives every generated source the widest box
 -- that still catches a swap, and this model, built on the rows a live run
 -- landed, is what a narrower box for a source is read from.
-{{ vertex_extents(ref('int_places__unioned')) }}
+--
+-- THE STRAY POINTS the union cleared (its `point_outside_region`) are
+-- counted per layer, `points_outside_region`, and
+-- `loses_too_many_points_outside_region` says whether that is too many to
+-- be data-entry errors (macros/lands_outside_its_region.sql's
+-- loses_too_many_points_outside_its_region): the test that fails a point
+-- layer read lon/lat swapped, whose every point the union cleared.
+{{ vertex_extents(
+    ref('int_places__unioned'), cleared_column='point_outside_region'
+) }}

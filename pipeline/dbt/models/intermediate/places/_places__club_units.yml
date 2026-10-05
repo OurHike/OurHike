@@ -49,7 +49,9 @@ unit_tests:
       A club places layer reaches places.json only through its row's place_kind and its source's
       may_publish: a park layer's named polygon is a park, a town layer's point is a town, a layer
       whose source may not publish is not read at all, a layer with no place_kind (a map-sheet
-      index) is not a place, and a row with no name is not one either.
+      index) is not a place, and a row with no name is not one either, nor is one with no geometry:
+      a point int_places__unioned cleared as outside its source's box (k-6) never reaches
+      places.json at a wrong spot, or at any.
     given:
       - input: ref('int_places__unioned')
         format: sql
@@ -67,6 +69,7 @@ unit_tests:
               ('dcnr_state_park_boundaries', 'pasda', 'k-1', ' Laurel Ridge State Park ', null, 'POLYGON ((-79.3 40.0, -79.2 40.0, -79.2 40.1, -79.3 40.0))'),
               ('dcnr_state_park_boundaries', 'pasda', 'k-2', '  ', null, 'POLYGON ((-79.1 40.0, -79.0 40.0, -79.0 40.1, -79.1 40.0))'),
               ('azt_gateway_communities', 'ata', 'k-3', 'Patagonia', null, 'POINT (-110.75 31.54)'),
+              ('azt_gateway_communities', 'ata', 'k-6', 'Fixture Cleared Town', null, null),
               ('usgs_gnis_populated_places', 'usgs_tnm', 'k-4', 'Fixture Town', null, 'POINT (-74.0 41.0)'),
               ('fltc_map_sheet_index', 'fltc', 'k-5', 'M17', null, 'POLYGON ((-77.0 42.0, -76.9 42.0, -76.9 42.1, -77.0 42.0))')
           ) as unioned (source_key, club, place_key, name, category, geom_wkt)

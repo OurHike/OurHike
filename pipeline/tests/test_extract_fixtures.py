@@ -319,7 +319,7 @@ GIS_AND_GEO_API_ROWS = {
     "raw_mdhta__mdhta_trail_guide": 19,
     "raw_ocvt__ocvt_at_tracks": 2,
     "raw_mtsg__mtsg_map_locations": 3,
-    "raw_nps__nps_api_places": 2,
+    "raw_nps__nps_api_places": 3,
     "raw_nps__nps_api_campgrounds": 2,
 }
 

@@ -85,20 +85,71 @@ def _get(url: str, *, headers: dict | None = None, label: str | None = None) -> 
         _LAST_REQUEST_END[host] = time.monotonic()
 
 
+class NotJson(ValueError):
+    """An answer whose body does not parse as JSON (_json): a ValueError, as the refusal always was."""
+
+
 def _json(response: requests.Response, what: str):
-    """The body as JSON; ValueError naming its content type, its length and where it stopped parsing.
+    """The body as JSON; NotJson naming its content type, its length, where it stopped parsing, and its Content-Length.
 
     Monthly run 17 (refresh-reference.yml 37232256991) left nps_multimedia_audio out on
     "answered 'application/json;charset=utf-8', not JSON" and nothing else, while two items
     of the same list asked again parse (2026-10-04). Whether that body was cut short or an
     error page is not known; the length and the parser's own error say so next time.
+
+    The parser is the one `requests` picks, which in the extract job is simplejson and refuses a
+    bare NaN; it is not loosened here, so an answer carrying NaN stays refused rather than landing
+    a number nobody can read.
     """
     try:
         return response.json()
     except ValueError as error:
-        raise ValueError(
-            f"{what} answered {response.headers.get('Content-Type')!r}, not JSON: {len(response.content):,} bytes, {error}"
+        raise NotJson(
+            f"{what} answered {response.headers.get('Content-Type')!r}, not JSON: {len(response.content):,} bytes, "
+            f"{error}; {_against_content_length(response)}"
         ) from error
+
+
+def _against_content_length(response: requests.Response) -> str:
+    """The bytes that arrived beside the Content-Length header's own count, in words, for _json()'s refusal.
+
+    The header counts the bytes as sent, so an encoded body (Content-Encoding: gzip) is compared by the
+    bytes read off the connection (urllib3's tell()), not by its decoded length. urllib3 2 enforces the
+    header and raises on a short body before this is reached, which request_with_retry asks again for; so
+    a shortfall named here means a connection that did not enforce it, and "all ... arrived" means every
+    byte the header promised came and the body was already cut when it was framed (Reasoned, not seen).
+    """
+    declared = (response.headers.get("Content-Length") or "").strip()
+    if not declared.isdigit():
+        return "no Content-Length to compare against"
+    try:
+        arrived = int(response.raw.tell())
+    except (AttributeError, TypeError, ValueError, OSError):
+        arrived = len(response.content)
+    encoding = response.headers.get("Content-Encoding")
+    sent = f"{int(declared):,} its Content-Length states" + (f" ({encoding})" if encoding else "")
+    if arrived < int(declared):
+        return f"{arrived:,} bytes arrived, {int(declared) - arrived:,} bytes short of the {sent}"
+    return f"all {sent} arrived"
+
+
+def _get_json(url: str, *, what: str, headers: dict | None = None, label: str | None = None):
+    """_get() and then _json(), with an answer that will not parse asked for once more before it is refused.
+
+    nps_multimedia_audio was refused on such an answer in monthly runs 16 to 19: run 18
+    (refresh-reference.yml 37245577210) at 500 a page got 1,966,080 bytes, and run 19 (37253303123) at 100 a page
+    163,840 bytes ending inside a string ("Unterminated string starting at: line 545 column 15"). Both are whole
+    multiples of 16,384, which reads as a body cut off in transit rather than one the API wrote wrong (Reasoned
+    from the two lengths, not measured: neither body was kept). So the page is asked for once more, through
+    _get(), which waits POLITE_GAP_SECONDS after the last request to the host ended, and a second answer that will
+    not parse is refused as the first was, so a list missing a page never lands. @unvalidated: that one more ask
+    gets a whole body; the next monthly run's log says, by this warning followed by no refusal.
+    """
+    try:
+        return _json(_get(url, headers=headers, label=label), what)
+    except NotJson as first:
+        print(f"::warning title={what} answered a body that will not parse::{first}; asking for it once more")
+        return _json(_get(url, headers=headers, label=label), what)
 
 
 def _sha256(value) -> str:

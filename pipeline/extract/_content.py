@@ -167,7 +167,9 @@ def podcast_episodes(key: str, *, crawl_delay: float = 0.0, **overrides) -> Podc
 # 18 (refresh-reference.yml 37245577210) said why: a 500-item page arrived as 1,966,080 bytes ending inside a
 # string ("Unterminated string ... char 1783562"), cut short in transit (Reasoned: two items of the same list parse,
 # 2026-10-04). A page of 100 is about a fifth of that, at 52 requests for the audio list's 5,173 items.
-# @unvalidated: that 100 keeps every page whole; the next monthly run's log says.
+# Run 19 (37253303123) says 100 does not keep every page whole: a page arrived as 163,840 bytes ending inside a
+# string. So a page that will not parse is asked for once more (extract/_json_apis.py's _get_json) before the list
+# is refused; @unvalidated, still, that the second ask gets it whole.
 NPS_CONTENT_PAGE_SIZE = 100
 # @unvalidated: a ceiling, not an ending, picked above the largest list these rows read (the gallery assets for
 # the clubs' 27 park codes, 14,630 on 2026-10-04, 147 pages of 100) and below NPS's whole gallery-asset list
@@ -275,7 +277,7 @@ class NpsContent(_json_apis.NpsAlerts):
         start = 0
         for _ in range(NPS_CONTENT_MAX_PAGES):
             url = nps_content_url(base, codes, start)
-            body = _json_apis._json(_json_apis._get(url, headers=headers, label=f"{self.key} from {start}"), self.key)
+            body = _json_apis._get_json(url, what=self.key, headers=headers, label=f"{self.key} from {start}")
             if not isinstance(body, dict) or not isinstance(body.get("data"), list) or body.get("total") is None:
                 raise ValueError(f"{self.key}: the answer has no `total` and `data` list, so the API has changed shape")
             page_total = int(body["total"])

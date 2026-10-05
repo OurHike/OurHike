@@ -1084,6 +1084,107 @@ def test_a_test_that_holds_a_source_warned_so_the_build_names_its_rows_publishes
     assert recorder.calls[-1][0][:3] == (*RESTORE, "save")
 
 
+def _one_source_setup(tmp_path: Path, monkeypatch) -> tuple[dict, Path]:
+    readers = tmp_path / "notice_readers.csv"
+    readers.write_text(
+        "source_key,club,notice_type,reader,listing,raw_table,staged_by,steward_kind\n"
+        "club_x,a,closures,arcgis_layer,full,raw_a__club_x,stg_a__club_x,club\n"
+        "club_y,a,warnings,page_notice,full,raw_a__club_y,stg_a__club_y,club\n"
+        "nynjtc_trail_alerts,nynjtc,closures,wordpress_posts,full,raw_nynjtc__nynjtc_trail_alerts,hand,club\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(build_marts, "NOTICE_READERS", readers)
+    warehouse = tmp_path / "warehouse.duckdb"
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema raw")
+        for table in ("raw_a__club_x", "raw_a__club_y", "raw_nynjtc__nynjtc_trail_alerts"):
+            con.execute(f"create table raw.{table} as select 1 as objectid")
+    manifest = _manifest(*STEP_TABLES)
+    for club, table in (("a", "raw_a__club_x"), ("a", "raw_a__club_y"), ("nynjtc", "raw_nynjtc__nynjtc_trail_alerts")):
+        manifest["sources"][f"source.ourhike.{club}.{table}"] = {"name": table, "identifier": table, "source_name": club}
+    manifest["parent_map"] = {
+        "model.ourhike.base_a__club_x": ["source.ourhike.a.raw_a__club_x", "seed.ourhike.notice_status_values"],
+        "model.ourhike.stg_a__club_x": ["model.ourhike.base_a__club_x"],
+        "model.ourhike.stg_a__club_y": ["source.ourhike.a.raw_a__club_y"],
+        "model.ourhike.base_nynjtc__nynjtc_trail_alerts": ["source.ourhike.nynjtc.raw_nynjtc__nynjtc_trail_alerts"],
+        "model.ourhike.int_closures__club_notices_part_1_unioned": ["model.ourhike.stg_a__club_x", "model.ourhike.stg_a__club_y"],
+        "seed.ourhike.notice_status_values": [],
+    }
+    return manifest, warehouse
+
+
+def _raw_tables(warehouse: Path) -> list[str]:
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        return sorted(
+            name
+            for (name,) in con.execute("select table_name from information_schema.tables where table_schema = 'raw'").fetchall()
+        )
+
+
+def test_a_model_of_one_club_notice_source_failing_drops_its_raw_tables_and_runs_stage_a_once_more(monkeypatch, tmp_path, capsys):
+    """A SQL error in one source's own staging model used to skip every union, mart and writer. Its raw table is
+    dropped instead, so the second stage A holds that source as not in this warehouse (int_closures__gate), and the
+    build goes on to answer PARTIAL_EXIT."""
+    manifest, warehouse = _one_source_setup(tmp_path, monkeypatch)
+    failed = [
+        {"unique_id": "model.ourhike.stg_a__club_x", "status": "error", "message": "Conversion Error"},
+        {"unique_id": "model.ourhike.int_closures__club_notices_part_1_unioned", "status": "skipped"},
+    ]
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 1, failed, {}), (_is_stage_a, 0, [], {})])
+
+    code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)
+
+    assert code == build_marts.PARTIAL_EXIT
+    assert _raw_tables(warehouse) == ["raw_a__club_y", "raw_nynjtc__nynjtc_trail_alerts"]
+    stage_a = [argv for argv, _, _ in recorder.calls if _is_stage_a(argv)]
+    assert len(stage_a) == 2 and stage_a[0] == stage_a[1]
+    assert "::error title=club_x held for a failed model::" in capsys.readouterr().out
+    assert recorder.calls[-1][0][:3] == (*RESTORE, "save")
+
+
+@pytest.mark.parametrize(
+    ("failed_node", "why"),
+    [
+        ("model.ourhike.int_closures__club_notices_part_1_unioned", "a union of two sources"),
+        ("model.ourhike.base_nynjtc__nynjtc_trail_alerts", "a hand-staged source, whose base reads no absent table"),
+        ("model.ourhike.int_closures__gate", "a model of no one source"),
+    ],
+)
+def test_a_failed_model_that_is_not_one_generated_sources_own_still_stops_the_build(monkeypatch, tmp_path, failed_node, why):
+    manifest, warehouse = _one_source_setup(tmp_path, monkeypatch)
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 1, [{"unique_id": failed_node, "status": "error"}], {})])
+
+    code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)
+
+    assert code == 1, why
+    assert len(_raw_tables(warehouse)) == 3, "nothing is dropped"
+    assert len([argv for argv, _, _ in recorder.calls if _is_stage_a(argv)]) == 1
+
+
+def test_a_second_failure_of_stage_a_after_the_drop_stops_the_build(monkeypatch, tmp_path):
+    manifest, _ = _one_source_setup(tmp_path, monkeypatch)
+    failed = [{"unique_id": "model.ourhike.stg_a__club_x", "status": "error"}]
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 1, failed, {}), (_is_stage_a, 1, failed, {})])
+
+    code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)
+
+    assert code == 1
+    assert len([argv for argv, _, _ in recorder.calls if _is_stage_a(argv)]) == 2, "stage A runs once more, not again"
+
+
+def test_a_failed_test_in_stage_a_is_never_turned_into_a_hold(monkeypatch, tmp_path):
+    manifest, warehouse = _one_source_setup(tmp_path, monkeypatch)
+    failed = [
+        {"unique_id": "model.ourhike.stg_a__club_x", "status": "error"},
+        {"unique_id": "test.ourhike.unique_stg_a__club_y_notice_key.1", "status": "fail"},
+    ]
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 1, failed, {})])
+
+    code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)
+
+    assert code == 1 and len(_raw_tables(warehouse)) == 3
+
+
 def test_a_degraded_build_that_was_also_partial_answers_both(monkeypatch, tmp_path):
     processed = tmp_path / "processed"
     results = [

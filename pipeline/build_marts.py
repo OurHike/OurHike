@@ -125,13 +125,18 @@ poll of 2026-10-05: "Hold that source and publish the rest"; review finding
 ARCH-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change). Five of
 the hourly soak's first ten runs published nothing because of one source:
 runs 525 to 527 and 530 on a test of one source's rows, run 531 on one
-writer's SQL after six other writers had written. Two things now answer
+writer's SQL after six other writers had written. Three things now answer
 PARTIAL_EXIT instead, once everything else has run, so the workflow publishes
 what was written and then turns the run red:
 - a test whose `meta` sets `holds_a_source` warned: it names rows that
   int_closures__gate holds their source for (a club's wording in a published
   column, a row outside its region box), and its rows are printed as a failed
   test's are;
+- a model of one generated club notice source failed in stage A (a SQL error
+  on one source's rows): that source's raw tables are dropped from the
+  warehouse and stage A runs once more, so the gate holds the source as "not
+  in this warehouse" and it carries its last good rows. Any other failure in
+  stage A stops the build, as before;
 - some pub_ writers failed and every failure in that dbt run is a writer's
   own (its model, or a test or unit test of it): each failed writer's file is
   removed from the processed directory, so a half-written or untested file
@@ -153,6 +158,7 @@ warehouse.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import subprocess
@@ -375,6 +381,8 @@ PUBLISHABLE_EXITS = (DEGRADED_EXIT, PARTIAL_EXIT, DEGRADED_PARTIAL_EXIT)
 WRITER_CLOCK_SLACK_S = 2.0
 #: The `meta` key of a test whose warning means int_closures__gate held a source for the rows it returns.
 HOLDS_A_SOURCE = "holds_a_source"
+#: The readers seed: which raw tables are each club notice source's, and which of them are generated.
+NOTICE_READERS = DBT_DIR / "seeds" / "notice_readers.csv"
 
 
 @dataclass(frozen=True)
@@ -781,6 +789,84 @@ def writer_files(manifest: dict, writers: set[str] | list[str], processed_dir: P
     return files
 
 
+def notice_readers(path: Path | None = None) -> list[dict[str, str]]:
+    with (path or NOTICE_READERS).open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _ancestor_sources(manifest: dict, unique_id: str) -> set[str]:
+    """Every source node above `unique_id`, by the manifest's parent_map (else each node's depends_on)."""
+    parents = manifest.get("parent_map")
+    seen: set[str] = set()
+    sources: set[str] = set()
+    queue = [unique_id]
+    while queue:
+        node = queue.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        if node.startswith("source."):
+            sources.add(node)
+            continue
+        queue.extend((parents.get(node) or []) if parents is not None else _depends_on(manifest, node))
+    return sources
+
+
+def one_sources_failures(results: list[dict], manifest: dict, readers: list[dict[str, str]]) -> dict[str, list[str]] | None:
+    """The generated club notice sources whose own models errored in this dbt run, each with its raw tables, or None
+    unless every failure in it is that (the module docstring, "ONE SOURCE OR ONE WRITER NEVER STOPS THE REST").
+
+    A model is one source's own when the only club notice raw tables above it are that one source's, and the source
+    is generated (seeds/notice_readers.csv's `staged_by` is a model, never `hand`): its base and staging models read
+    an absent table as typed and empty (macros/notices.sql's notice_raw_table), and the gate holds the source with
+    that reason. A union of several sources, a hand-staged source's model, any failed test or unit test, and anything
+    else is not one source's own, so the build stops on it as before. Skipped nodes are what a failure left unbuilt
+    and say nothing of their own."""
+    by_table = {row["raw_table"]: row for row in readers}
+    tables_of: dict[str, list[str]] = {}
+    for row in readers:
+        tables_of.setdefault(row["source_key"], []).append(row["raw_table"])
+    hand = {row["source_key"] for row in readers if row["staged_by"] == "hand"}
+    sources = manifest.get("sources") or {}
+    held: dict[str, list[str]] = {}
+    for result in results:
+        unique_id = result.get("unique_id", "")
+        status = result.get("status")
+        if status not in FAILED_STATUSES or status == "skipped":
+            continue
+        if not unique_id.startswith("model.") or status != "error":
+            return None
+        keys = set()
+        for source in _ancestor_sources(manifest, unique_id):
+            node = sources.get(source) or {}
+            for name in (node.get("identifier"), node.get("name")):
+                if name in by_table:
+                    keys.add(by_table[name]["source_key"])
+        if len(keys) != 1 or keys & hand:
+            return None
+        (key,) = keys
+        held[key] = sorted(set(tables_of[key]))
+    return held or None
+
+
+def drop_raw_tables(warehouse: Path, tables: list[str], schema: str = "raw") -> list[str]:
+    """Drop each of `tables` the warehouse holds in `schema`, a table or a view, and return the ones it held."""
+    import duckdb
+
+    dropped = []
+    with duckdb.connect(str(warehouse)) as con:
+        for table in tables:
+            found = con.execute(
+                "select table_type from information_schema.tables where table_schema = ? and table_name = ?", [schema, table]
+            ).fetchone()
+            if found is None:
+                continue
+            kind = "view" if found[0] == "VIEW" else "table"
+            con.execute(f'drop {kind} "{schema}"."{table}"')
+            dropped.append(table)
+    return dropped
+
+
 def _read_manifest() -> dict:
     try:
         return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -951,6 +1037,7 @@ def main(argv: list[str] | None = None) -> int:
     # What this build held back and still finished, for PARTIAL_EXIT (the module docstring, "ONE SOURCE OR ONE WRITER
     # NEVER STOPS THE REST").
     partial: list[str] = []
+    stage_a_rerun = False
     position = 0
     while position < len(runs):
         run = runs[position]
@@ -958,11 +1045,26 @@ def main(argv: list[str] | None = None) -> int:
         print(f"-- build_marts {position}/{len(runs)}: {run.label}", flush=True)
         started = time.time()
         completed = subprocess.run(run.argv, cwd=run.cwd, env=env, check=False)
-        if completed.returncode != 0 and run.stage == WRITERS and completed.returncode not in PUBLISHABLE_EXITS:
+        if completed.returncode != 0 and run.stage in (STAGE_A, WRITERS) and completed.returncode not in PUBLISHABLE_EXITS:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
             for line in failed_test_rows(paths.warehouse, started):
                 print(line, flush=True)
             results, manifest = read_run_results(started), _read_manifest()
+            if results is not None and run.stage == STAGE_A and not stage_a_rerun:
+                if held := one_sources_failures(results, manifest, notice_readers()):
+                    for key, tables in sorted(held.items()):
+                        dropped = drop_raw_tables(paths.warehouse, tables)
+                        print(
+                            f"::error title={key} held for a failed model::a model of {key} alone failed in {run.label}, "
+                            f"so its raw tables ({', '.join(dropped) or 'none held'}) are dropped from this build's "
+                            "warehouse and int_closures__gate holds it as not in this warehouse: it carries its last good "
+                            "rows, every other source still publishes, and the run goes red afterwards.",
+                            flush=True,
+                        )
+                    partial.append(f"{', '.join(sorted(held))} held for a failed model")
+                    stage_a_rerun = True
+                    position -= 1  # stage A once more, with those tables gone
+                    continue
             if results is not None and run.stage == WRITERS:
                 writers, others = failed_writers(results, manifest)
                 if writers and not others:

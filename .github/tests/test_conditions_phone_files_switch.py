@@ -127,8 +127,8 @@ def test_a_build_that_held_a_source_or_a_writer_back_still_publishes_and_then_tu
     tmp_path, status, outcome, outputs
 ):
     """Decision 81 (the maintainer's poll, 2026-10-05: "Hold that source and publish the rest"): build_marts.py exits
-    PARTIAL_EXIT, 5, when the gate held a source for its rows, or some writers failed while the rest wrote; 6 is that
-    and a degraded build together. The build step records `partial`
+    PARTIAL_EXIT, 5, when the gate held a source for its rows, a per-source model's failure held its source, or some
+    writers failed while the rest wrote; 6 is that and a degraded build together. The build step records `partial`
     and carries on, "Publish to R2" tells publish.py so (OURHIKE_BUILD_PARTIAL, which keeps a failed writer's key at the
     bucket's last copy), and the last step turns the run red, after the publish, as the extract's exit 3 does. Every
     other failure still stops the leg. The step's own script runs here under bash, with build_marts.py's python a

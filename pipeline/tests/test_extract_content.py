@@ -301,10 +301,41 @@ def test_an_nps_list_takes_its_park_codes_from_the_row_it_names(registry, key, r
 
 
 def test_a_repeated_nps_id_refuses_the_read(registry, key, requests_mock):
+    """Repeated on the second read as well, so the list is refused and its last committed table stands."""
     requests_mock.get(AUDIO, json={"total": "2", "data": [clip(1), clip(1)]})
 
     with pytest.raises(RuntimeError, match="missing or repeated"):
         list(NpsContent(key="nps_audio", club="nps", type="podcasts").rows({}))
+    assert requests_mock.call_count == 2, "read twice, then refused"
+
+
+def test_an_nps_list_that_repeats_an_id_on_its_first_read_is_read_again_and_the_second_read_lands(
+    registry, key, requests_mock, capsys
+):
+    """NPS's start/limit order wobbled at a page boundary in monthly runs 17 and 18, and nps_things_to_do never landed.
+
+    The first read's second page repeats clip 1 in place of clip 2; the
+    second read is whole. Before the fix the first repeat refused the list
+    with no second read (review finding EXD-9).
+    """
+    server = FakeList(requests_mock, AUDIO, [clip(n) for n in range(5)], cap=2)
+    real_answer = server.answer
+
+    def wobbles_once(request, context):
+        answer = real_answer(request, context)
+        if len(server.asked) == 2:
+            answer["data"] = [clip(1), clip(3)]
+        return answer
+
+    requests_mock.get(AUDIO, json=wobbles_once)
+    proofs = {}
+
+    rows = list(NpsContent(key="nps_audio", club="nps", type="podcasts").rows(proofs))
+
+    assert [row["id"] for row in rows] == [clip(n)["id"] for n in range(5)]
+    assert proofs == {"raw_nps__nps_audio": 5}
+    assert [params["start"] for params in server.asked] == ["0", "2", "0", "2", "4"], "the second read starts again at 0"
+    assert "reading the list again, once" in capsys.readouterr().out
 
 
 def test_without_an_nps_key_a_content_list_is_unavailable_and_nothing_is_asked(registry, requests_mock, monkeypatch):

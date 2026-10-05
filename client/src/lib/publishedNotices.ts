@@ -48,6 +48,27 @@ function textOrNull(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+/**
+ * The source's page as an absolute http or https URL, or null.
+ *
+ * Stricter than lib/safeLink.ts's `isSafeLink`, which every row's link still
+ * passes at the sink: that one resolves a relative string against the page,
+ * so a sentence reads as a path on OurHike's own origin. Soak run 536 carried
+ * one on all 111 nysdec_hab_reports rows ("Learn how to Know it, Avoid it,
+ * Report it at https://www.dec.ny.gov/…"), and the planned-hike row linked
+ * "Read NYS DEC's notice" to OurHike itself. A URL inside the prose is not
+ * pulled out: the link is the source's own field as it came, or none.
+ */
+function pageUrlOrNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'http:' || protocol === 'https:' ? value : null
+  } catch {
+    return null
+  }
+}
+
 /** A place this build can read, or `unplaced` - a notice nobody can place is
  *  still one a hiker is told about (ORG_NOTICES.md §3). A geometry with no
  *  coordinate this build can read is unplaced too: kept as a geometry, it
@@ -157,7 +178,7 @@ export function validNotice(value: unknown): OrgNotice | null {
     place: validPlace(row.place),
     obstructs_trail: row.obstructs_trail === true,
     updated_at: textOrNull(row.updated_at),
-    source_url: textOrNull(row.source_url),
+    source_url: pageUrlOrNull(row.source_url),
     review_state: row.review_state === 'reviewed' ? 'reviewed' : 'unreviewed',
     ...(typeof row.club === 'string' ? { club: row.club } : {}),
     provider: textOrNull(row.provider),

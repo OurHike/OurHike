@@ -21,6 +21,25 @@ function row(overrides: Record<string, unknown> = {}) {
   }
 }
 
+describe('a source_url', () => {
+  it('that is a sentence is no link, though it ends in a URL', () => {
+    // The shape of the value soak run 536 carried on all 111 nysdec_hab_reports
+    // rows. lib/safeLink.ts resolves it as a path on OurHike's own page.
+    const prose =
+      'Learn how to report a fixture bloom at https://example.org/fixture.html?'
+    expect(validNotice(row({ source_url: prose }))?.source_url).toBeNull()
+  })
+
+  it('is kept only as an absolute http or https URL', () => {
+    const kept = (url: string) => validNotice(row({ source_url: url }))?.source_url
+    expect(kept('https://example.org/fixture')).toBe('https://example.org/fixture')
+    expect(kept('http://example.org/fixture')).toBe('http://example.org/fixture')
+    expect(kept('/notices')).toBeNull()
+    expect(kept('example.org/fixture')).toBeNull()
+    expect(kept('mailto:fixture@example.org')).toBeNull()
+  })
+})
+
 describe('a geometry place', () => {
   it('with no readable coordinates is unplaced, as a polygon a source sent empty arrives', () => {
     // What the writer's ST_AsGeoJSON makes of an empty polygon (the

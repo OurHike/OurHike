@@ -2190,19 +2190,20 @@ unit_tests:
       carries is not (it is read afresh); a full listing's notice that
       vanished is not (absence there is lifting); one a person marked lifted
       is not; a version the snapshot already closed is not; and nothing but
-      an organization notice is ever carried out of warnings.
+      an organization notice is ever carried out of warnings. A carried
+      row keeps the dates its saved row holds.
     model: int_closures__window_carried
     given:
       - input: ref('stg_row_history__closures')
         rows:
-          - {history_row_key: h1, dbt_scd_id: s1, closure_id: 'feed_a:item-1', club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: true, review_state: org_published, title: 'Fixture Trail closed', dbt_valid_to: null}
+          - {history_row_key: h1, dbt_scd_id: s1, closure_id: 'feed_a:item-1', club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: true, review_state: org_published, title: 'Fixture Trail closed', dbt_valid_to: null, row_json: '{"starts_on": "2026-09-21", "ends_on": null}'}
           - {history_row_key: h2, dbt_scd_id: s2, closure_id: 'feed_a:item-2', club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: true, review_state: org_published, title: 'Fixture bridge out', dbt_valid_to: null}
           - {history_row_key: h3, dbt_scd_id: s3, closure_id: 'layer_b:1', club: b, source_key: layer_b, notice_kind: club_arcgis_layer, obstructs_trail: true, review_state: org_published, title: 'Fixture area closure', dbt_valid_to: null}
           - {history_row_key: h4, dbt_scd_id: s4, closure_id: 'feed_a:item-4', club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: true, review_state: org_published, title: 'Fixture marked lifted', dbt_valid_to: null}
           - {history_row_key: h5, dbt_scd_id: s5, closure_id: 'feed_a:item-5', club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: true, review_state: org_published, title: 'Fixture closed version', dbt_valid_to: '2026-10-01 00:00:00'}
       - input: ref('stg_row_history__warnings')
         rows:
-          - {history_row_key: h6, dbt_scd_id: s6, warning_id: 'feed_a:item-6', warning_kind: org_notice, club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: null, review_state: not_reviewed, title: 'Fixture water carry', dbt_valid_to: null}
+          - {history_row_key: h6, dbt_scd_id: s6, warning_id: 'feed_a:item-6', warning_kind: org_notice, club: a, source_key: feed_a, notice_kind: club_feed_notices, obstructs_trail: null, review_state: not_reviewed, title: 'Fixture water carry', dbt_valid_to: null, row_json: '{"starts_on": "2026-09-28", "ends_on": "2026-10-12"}'}
           - {history_row_key: h7, dbt_scd_id: s7, warning_id: 'nws_alerts:x', warning_kind: nws_alert, club: nws, source_key: feed_a, notice_kind: nws_alert, obstructs_trail: false, review_state: relayed, title: null, dbt_valid_to: null}
       - input: ref('notice_readers')
         rows:
@@ -2221,8 +2222,8 @@ unit_tests:
           - {source_key: feed_a, notice_id: 'feed_a:item-4', mark: lifted, marked_on: '2026-10-02', reviewed_in: 'fixture pull request', why: 'Fixture: the club says it reopened'}
     expect:
       rows:
-        - {mart: closures, notice_id: 'feed_a:item-1', title: 'Fixture Trail closed', obstructs_trail: true}
-        - {mart: warnings, notice_id: 'feed_a:item-6', title: 'Fixture water carry', obstructs_trail: null}
+        - {mart: closures, notice_id: 'feed_a:item-1', title: 'Fixture Trail closed', obstructs_trail: true, starts_on: '2026-09-21', ends_on: null}
+        - {mart: warnings, notice_id: 'feed_a:item-6', title: 'Fixture water carry', obstructs_trail: null, starts_on: '2026-09-28', ends_on: '2026-10-12'}
 
   - name: int_closures__held_carried_keeps_the_last_good_rows_of_a_source_the_gate_holds
     description: >

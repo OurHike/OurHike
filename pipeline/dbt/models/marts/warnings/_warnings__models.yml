@@ -443,3 +443,54 @@ unit_tests:
       rows:
         - {warning_id: 'nws_alerts:urn:oid:test.1', warning_kind: nws_alert, review_state: relayed}
         - {warning_id: 'ourhike_reports:r1', warning_kind: serious_report, review_state: moderator_verified}
+
+  - name: warnings_keeps_a_feed_notices_own_start_date_when_its_window_carries_it
+    description: >
+      A feed's notice that aged out of its window is carried with the
+      content the mart last held (int_closures__window_carried), its start
+      date included: a feed item's `starts_on` is its published date, which
+      notices.json prints as "from", and a carried row that lost it would
+      also hash as changed and open a version it did not earn.
+    model: int_warnings__final
+    given:
+      - input: ref('int_closures__unioned')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows: []
+      - input: ref('int_warnings__unioned')
+        rows: []
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: feed_a, may_publish: true}
+      - input: ref('int_closures__window_carried')
+        format: sql
+        rows: |
+          select
+              mart,
+              notice_id,
+              'a' as club,
+              'feed_a' as source_key,
+              cast('2026-10-04 00:00:00+00' as timestamptz) as _loaded_at,
+              'club_feed_notices' as notice_kind,
+              obstructs_trail,
+              review_state,
+              'Fixture ' || notice_id as title,
+              cast(null as varchar) as category,
+              cast(null as varchar) as locality,
+              cast('2026-09-21' as date) as starts_on,
+              cast(null as date) as ends_on,
+              cast(null as timestamptz) as source_edited_at,
+              cast(null as varchar) as updated_at,
+              'https://fixture.invalid/?p=751' as source_url,
+              cast(null as varchar) as geom_geojson,
+              'k-' || notice_id as source_row_key
+          from (
+              values
+              ('closures', 'feed_a:item-1', true, 'org_published'),
+              ('warnings', 'feed_a:item-3', cast(null as boolean), 'not_reviewed')
+          ) as carried (mart, notice_id, obstructs_trail, review_state)
+      - input: ref('int_closures__held_carried')
+        rows: []
+    expect:
+      rows:
+        - {warning_id: 'feed_a:item-3', starts_on: '2026-09-21', ends_on: null, source_url: 'https://fixture.invalid/?p=751'}

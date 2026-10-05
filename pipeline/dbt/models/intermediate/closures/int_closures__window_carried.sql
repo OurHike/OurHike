@@ -24,13 +24,24 @@
 -- holds keeps its last good rows").
 --
 -- Only the club notices' columns are carried (stg_row_history__closures says
--- why), and a carried row is the last version's content exactly, so its
--- `_row_hash` is unchanged and the snapshot opens no version for it.
+-- why), every one of them, so a carried row is the last version's content
+-- exactly, its `_row_hash` is unchanged and the snapshot opens no version
+-- for it. The two dates are read out of the saved row (`row_json`), as
+-- int_closures__held_carried reads every column: a feed item's `starts_on`
+-- is its published date, and dropping it moved the row's `_changed_at` and
+-- took the "from" date off notices.json (reproduced on the fixtures'
+-- gatc_alerts `?p=751` in the review of PR #1805 — dlt → dbt re-platform as
+-- one go/no-go change, 2026-10-05; with both dates carried, the same item
+-- leaving the feed opened no version).
 -- Empty on a cold start, when there is no history to carry.
 with closures_history as (
     select
         'closures' as mart,
         closure_id as notice_id,
+        try_cast(json_extract_string(row_json, '$.starts_on') as date)
+            as starts_on,
+        try_cast(json_extract_string(row_json, '$.ends_on') as date)
+            as ends_on,
         * exclude (
             closure_id, history_row_key, dbt_scd_id, dbt_valid_to, row_json
         )
@@ -42,6 +53,10 @@ warnings_history as (
     select
         'warnings' as mart,
         warning_id as notice_id,
+        try_cast(json_extract_string(row_json, '$.starts_on') as date)
+            as starts_on,
+        try_cast(json_extract_string(row_json, '$.ends_on') as date)
+            as ends_on,
         * exclude (
             warning_id,
             warning_kind,

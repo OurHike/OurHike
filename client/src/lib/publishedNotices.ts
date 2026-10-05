@@ -31,7 +31,7 @@ import {
   type PublishedConditions,
   type PublishedReadOptions,
 } from './publishedConditions'
-import type { NoticeGeometryValue } from './noticeGeometry'
+import { geometryParts, partsBounds, type NoticeGeometryValue } from './noticeGeometry'
 import { DATA_CONFIGURED, dataUrl } from './config'
 
 /** The shapes of the states a state-wide notice names (decision 76): written
@@ -48,8 +48,51 @@ function textOrNull(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+/**
+ * Category values that stand for no category, compared whole after trimming
+ * and ignoring case, never as a part of a longer value.
+ *
+ * Decision 78 shows a notice's category under its title, so a source's blank
+ * spelled as a word read as a category it chose. Reviewed against soak run
+ * 536's file on 2026-10-05: Midpen's preserve-access layer sends "None" (2
+ * rows) and Santa Clara County Parks' closed areas send "na" (4 rows). "n/a"
+ * and "null" are in no row there, and are listed as the same blank spelled
+ * the other usual ways. NOT "unknown": it is one of USFS's recreation-site
+ * `openstatus` values, the Forest Service's own status for a site, as
+ * "unreachable" and "not cleared" are, and decision 78 shows it as sent.
+ */
+const NO_CATEGORY: ReadonlySet<string> = new Set(['none', 'na', 'n/a', 'null'])
+
+function categoryOrNull(value: unknown): string | null {
+  const text = textOrNull(value)
+  return text !== null && NO_CATEGORY.has(text.trim().toLowerCase()) ? null : text
+}
+
+/**
+ * The source's page as an absolute http or https URL, or null.
+ *
+ * Stricter than lib/safeLink.ts's `isSafeLink`, which every row's link still
+ * passes at the sink: that one resolves a relative string against the page,
+ * so a sentence reads as a path on OurHike's own origin. Soak run 536 carried
+ * one on all 111 nysdec_hab_reports rows ("Learn how to Know it, Avoid it,
+ * Report it at https://www.dec.ny.gov/…"), and the planned-hike row linked
+ * "Read NYS DEC's notice" to OurHike itself. A URL inside the prose is not
+ * pulled out: the link is the source's own field as it came, or none.
+ */
+function pageUrlOrNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'http:' || protocol === 'https:' ? value : null
+  } catch {
+    return null
+  }
+}
+
 /** A place this build can read, or `unplaced` - a notice nobody can place is
- *  still one a hiker is told about (ORG_NOTICES.md §3). */
+ *  still one a hiker is told about (ORG_NOTICES.md §3). A geometry with no
+ *  coordinate this build can read is unplaced too: kept as a geometry, it
+ *  would meet no route and, being placed, show from no club either. */
 function validPlace(value: unknown): NoticePlace {
   if (typeof value !== 'object' || value === null) return { kind: 'unplaced' }
   const place = value as Record<string, unknown>
@@ -74,7 +117,9 @@ function validPlace(value: unknown): NoticePlace {
     place.geometry !== null &&
     typeof (place.geometry as { type?: unknown }).type === 'string'
   ) {
-    return { kind: 'geometry', geometry: place.geometry as NoticeGeometryValue }
+    const geometry = place.geometry as NoticeGeometryValue
+    if (partsBounds(geometryParts(geometry)) !== null)
+      return { kind: 'geometry', geometry }
   }
   return { kind: 'unplaced' }
 }
@@ -148,12 +193,12 @@ export function validNotice(value: unknown): OrgNotice | null {
     notice_id: row.notice_id,
     source_key: row.source_key,
     title: typeof row.title === 'string' ? row.title : '',
-    category: textOrNull(row.category),
+    category: categoryOrNull(row.category),
     locality: typeof row.locality === 'string' ? row.locality : '',
     place: validPlace(row.place),
     obstructs_trail: row.obstructs_trail === true,
     updated_at: textOrNull(row.updated_at),
-    source_url: textOrNull(row.source_url),
+    source_url: pageUrlOrNull(row.source_url),
     review_state: row.review_state === 'reviewed' ? 'reviewed' : 'unreviewed',
     ...(typeof row.club === 'string' ? { club: row.club } : {}),
     provider: textOrNull(row.provider),

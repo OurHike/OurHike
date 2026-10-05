@@ -71,13 +71,41 @@ function rings(value: unknown): Position[][] {
     : []
 }
 
-/** A geometry's parts, or empty parts for one this module cannot read. */
+/**
+ * How many GeometryCollections deep a geometry may nest before the whole of it
+ * reads as having no parts.
+ *
+ * RFC 7946 §3.1.8 asks producers not to nest collections at all, and DuckDB's
+ * `ST_AsGeoJSON`, which writes conditions/notices.json, does not nest them
+ * (Reasoned, not measured). The bound is for a corrupted or hostile file: in
+ * the review of #1805 — dlt → dbt re-platform as one go/no-go change, a row
+ * nested 20,000 deep overflowed the stack in vitest on 2026-10-05, which on
+ * a phone is inside a hook `App` renders, so the whole app goes down, and
+ * the copy the phone kept repeats it offline.
+ *
+ * @unvalidated 8 is picked: deeper than anything a producer here writes, and
+ * nine frames of recursion at most. What would settle it: a real source that
+ * nests deeper, which none is known to.
+ */
+export const MAX_COLLECTION_DEPTH = 8
+
+/** A geometry's parts, or empty parts for one this module cannot read - or
+ *  one nested past {@link MAX_COLLECTION_DEPTH}, of which none is kept. */
 export function geometryParts(
   geometry: NoticeGeometryValue | null | undefined,
 ): GeometryParts {
   const parts: GeometryParts = { points: [], lines: [], polygons: [] }
+  return addParts(parts, geometry, 0) ? parts : { points: [], lines: [], polygons: [] }
+}
+
+/** Adds one geometry's parts to `parts`; false once it nests too deep. */
+function addParts(
+  parts: GeometryParts,
+  geometry: NoticeGeometryValue | null | undefined,
+  depth: number,
+): boolean {
   if (geometry === null || geometry === undefined || typeof geometry !== 'object')
-    return parts
+    return true
   const { coordinates } = geometry
   switch (geometry.type) {
     case 'Point':
@@ -113,19 +141,17 @@ export function geometryParts(
       }
       break
     case 'GeometryCollection':
+      if (depth >= MAX_COLLECTION_DEPTH) return false
       if (Array.isArray(geometry.geometries)) {
         for (const member of geometry.geometries as NoticeGeometryValue[]) {
-          const inner = geometryParts(member)
-          parts.points.push(...inner.points)
-          parts.lines.push(...inner.lines)
-          parts.polygons.push(...inner.polygons)
+          if (!addParts(parts, member, depth + 1)) return false
         }
       }
       break
     default:
       break
   }
-  return parts
+  return true
 }
 
 /** The box around a geometry's parts, or null when it has none. */
@@ -269,7 +295,8 @@ export function linesMeetParts(
   if (bounds === null) return false
   const box = grownBounds(bounds, reachFeet)
   const reachMetres = reachFeet / FEET_PER_METRE
-  const project = projector((bounds.minLat + bounds.maxLat) / 2)
+  const refLat = (bounds.minLat + bounds.maxLat) / 2
+  const project = projector(refLat)
 
   const pieces: Array<[Position, Position]> = []
   for (const line of lines) {
@@ -282,31 +309,82 @@ export function linesMeetParts(
   }
   if (pieces.length === 0) return false
 
+  // ONLY WHAT IS NEAR THE ROUTE IS MEASURED. A shape can be a state's worth
+  // of polygons - Utah FFSL's fire-restriction order 19 is 899 polygons and
+  // 53,358 vertices after decision 77's shaping, its box all of Utah - and
+  // measuring every piece of a hike against every edge of it took 1.5 to
+  // 1.8 s per call on the main thread (measured 2026-10-05 in vitest here,
+  // a sandbox and not a phone). So a polygon is tested for containment only
+  // where its shell's box meets the route's, and an edge is measured only
+  // where its box meets the route's box grown by the reach. The growth is in
+  // `project`'s own scale, which scales longitude and latitude separately, so
+  // an edge outside it is farther than the reach from every piece and the
+  // answer is unchanged (Reasoned).
+  const route = boxOf(pieces.flat())
+  const kx = METRES_PER_DEGREE_LON_AT_EQUATOR * Math.cos((refLat * Math.PI) / 180)
+  const near: Bounds = {
+    minLon: route.minLon - reachMetres / kx,
+    minLat: route.minLat - reachMetres / METRES_PER_DEGREE_LAT,
+    maxLon: route.maxLon + reachMetres / kx,
+    maxLat: route.maxLat + reachMetres / METRES_PER_DEGREE_LAT,
+  }
+
   for (const polygon of parts.polygons) {
+    const shell = boxOf(polygon[0])
+    if (
+      !segmentInBounds([route.minLon, route.minLat], [route.maxLon, route.maxLat], shell)
+    )
+      continue
     for (const [a, b] of pieces) {
-      if (inPolygon(a, polygon) || inPolygon(b, polygon)) return true
+      if (inBox(a, shell) && inPolygon(a, polygon)) return true
+      if (inBox(b, shell) && inPolygon(b, polygon)) return true
     }
   }
 
-  const edges: Array<[Position, Position]> = []
+  const edges: Array<[[number, number], [number, number]]> = []
+  const take = (c: Position, d: Position) => {
+    if (segmentInBounds(c, d, near)) edges.push([project(c), project(d)])
+  }
   for (const polygon of parts.polygons) {
     for (const ring of polygon) {
-      for (let i = 0; i + 1 < ring.length; i += 1) edges.push([ring[i], ring[i + 1]])
+      for (let i = 0; i + 1 < ring.length; i += 1) take(ring[i], ring[i + 1])
     }
   }
   for (const line of parts.lines) {
-    for (let i = 0; i + 1 < line.length; i += 1) edges.push([line[i], line[i + 1]])
+    for (let i = 0; i + 1 < line.length; i += 1) take(line[i], line[i + 1])
   }
-  for (const point of parts.points) edges.push([point, point])
+  for (const point of parts.points) take(point, point)
+  if (edges.length === 0) return false
 
   for (const [a, b] of pieces) {
     const pa = project(a)
     const pb = project(b)
     for (const [c, d] of edges) {
-      if (segmentSegmentMetres(pa, pb, project(c), project(d)) <= reachMetres) return true
+      if (segmentSegmentMetres(pa, pb, c, d) <= reachMetres) return true
     }
   }
   return false
+}
+
+/** The box around some positions; an empty list's box contains nothing. */
+function boxOf(positions: readonly Position[]): Bounds {
+  const box = { minLon: Infinity, minLat: Infinity, maxLon: -Infinity, maxLat: -Infinity }
+  for (const at of positions) {
+    if (at[0] < box.minLon) box.minLon = at[0]
+    if (at[0] > box.maxLon) box.maxLon = at[0]
+    if (at[1] < box.minLat) box.minLat = at[1]
+    if (at[1] > box.maxLat) box.maxLat = at[1]
+  }
+  return box
+}
+
+function inBox(at: Position, box: Bounds): boolean {
+  return (
+    at[0] >= box.minLon &&
+    at[0] <= box.maxLon &&
+    at[1] >= box.minLat &&
+    at[1] <= box.maxLat
+  )
 }
 
 /** {@link linesMeetParts} over a published geometry. */

@@ -33,6 +33,13 @@
 //  5. No far club's notice and no distant shooting site: they are in the
 //     file and touch no planned hike, so they are not in the panel.
 //
+// UNCHANGED BY THE REVIEW'S FIXES to lib/plannedNotices.ts and
+// lib/publishedNotices.ts (a hiker behind their dates, A.T. section clubs,
+// unreadable shapes, links that are not URLs, blank categories): every
+// fixture shape is readable, every link is an absolute page or none, no
+// category is a blank spelled as a word, the long hike is on its dates, and
+// neither day hike walks the A.T. The frame should match the last one.
+//
 // THE NOTICES ARE INVENTED and each title says "(example)"
 // (fixtures/plannedNotices.mjs): conditions/notices.json is written only by
 // the dbt path, so the bucket a preview reads may not hold it, and a recipe

@@ -28,7 +28,9 @@
 //    yet walked. That is the maintainer's "for a long hike get everything
 //    along the planned hike in the next 7": a thru-hike starting tomorrow is
 //    the next seven days of it, never all 2,197 miles. A short trip that
-//    falls inside the window whole is all of it, by the same rule.
+//    falls inside the window whole is all of it, by the same rule. A hiker
+//    behind their dates also has the unwalked days dated before today, which
+//    are the miles they walk next (`plannedStretches` says why).
 //
 // An UNDATED plan is not planned for any day, so it is not in the window:
 // thru-hikers plan loosely and plan.ts makes the date optional for that
@@ -106,10 +108,13 @@
 //  - a long hike walks the A.T.: the provider of the A.T. centerline's key
 //    (`centerline`), plus every club ATC's own club-sections layer
 //    (club_sections.json, lib/clubSections.ts) assigns a planned mile to,
-//    where that club's acronym is the registry's provider for it - GMC on a
-//    Vermont stretch, NYNJTC through Harriman. An acronym with no provider
-//    of that spelling publishes no notice this phone could match, and is
-//    skipped rather than fuzzily joined.
+//    by its acronym - GMC on a Vermont stretch, NYNJTC through Harriman -
+//    or, for AMC's chapters, by the reviewed `SECTION_PROVIDERS` table. An
+//    acronym no notice carries as its provider matches nothing, so no
+//    acronym is dropped and none is fuzzily joined;
+//  - a day hike with a leg on the A.T. adds the clubs whose sections hold
+//    its A.T. miles (lib/dayHikeOnTrail.ts, off the centerline index), the
+//    same way.
 //
 // A notice names its club by the `provider` notices.json carries, else by
 // its source key through the same stewards.json.
@@ -120,6 +125,7 @@
 // draws still open their own sheet when tapped.
 
 import { anyHikePlanned, type DayHike, type DayHikeLeg } from './dayHikes'
+import { dayHikeOnTrail } from './dayHikeOnTrail'
 import {
   geometryParts,
   insideByMoreThan,
@@ -259,19 +265,46 @@ function providersByKey(stewards: Stewards): Map<string, string> {
   return byKey
 }
 
+/**
+ * The registry provider of each club-section acronym that is not spelled as
+ * its provider: a reviewed table, never a name match.
+ *
+ * ATC's club-sections layer names AMC's three A.T. chapters `AMC-DV`,
+ * `AMC-CT` and `AMC-WMA` (UA's club_sections.json, release 2026-10-03-2:
+ * "Appalachian Mountain Club - Delaware Valley Chapter", "- Connecticut
+ * Chapter" and "- Western Massachusetts Chapter"), while their notices carry
+ * the provider `AMC` (amcdv_bear_safety, amc_wma_at_campsites and
+ * amc_wma_at_parking in soak run 536's notices.json). The other 27 acronyms
+ * in that file are matched as spelled. A row is added here only after
+ * somebody has read both files for it.
+ */
+const SECTION_PROVIDERS: ReadonlyMap<string, string> = new Map([
+  ['AMC-DV', 'AMC'],
+  ['AMC-CT', 'AMC'],
+  ['AMC-WMA', 'AMC'],
+])
+
+/**
+ * The A.T.'s provider and every club whose section holds one of `spans`, as
+ * the provider its notices carry.
+ *
+ * Every acronym is kept, whether or not stewards.json lists it: that file
+ * changes only with a release while notices.json changes hourly (on UA's
+ * release 2026-10-03-2, 29 of the 30 acronyms were in no steward row), and
+ * an acronym no notice carries matches nothing anyway.
+ */
 function atProviders(
   spans: Array<[number, number]>,
   clubSections: ClubSections,
   byKey: Map<string, string>,
-  known: ReadonlySet<string>,
 ): Set<string> {
   const providers = new Set<string>()
   const atProvider = byKey.get(AT_CENTERLINE_SOURCE_KEY)
   if (atProvider !== undefined) providers.add(atProvider)
   for (const run of clubTimeline(clubSections)) {
-    if (run.club === null || !known.has(run.club.acronym)) continue
+    if (run.club === null) continue
     if (spans.some(([low, high]) => run.startMile <= high && run.endMile >= low)) {
-      providers.add(run.club.acronym)
+      providers.add(SECTION_PROVIDERS.get(run.club.acronym) ?? run.club.acronym)
     }
   }
   return providers
@@ -311,22 +344,32 @@ export function plannedStretches({
   stewards: Stewards
 }): PlannedStretch[] {
   const byKey = providersByKey(stewards)
-  const known = new Set(stewards.map((steward) => steward.provider))
   const stretches: PlannedStretch[] = []
 
+  const lastDay = shiftDay(today, NOTICE_WINDOW_DAYS - 1)
   for (const trip of trips) {
     if (trip.recorded === true) continue
     const { stops, days } = trip.plan
+    const dated = days.map((day) => (day.walked === true ? undefined : day.date))
+    // A hiker BEHIND their dates has unwalked days dated before today, and
+    // those are the miles they walk next (plan.ts's `currentDayIndex`: "the
+    // calendar is a label, where the hiker is is a fact"; a plan is re-dated
+    // only on the hiker's say, lib/cascade.ts). So they are taken too, while
+    // the plan still has an unwalked day in the window - a plan with none is
+    // one nobody is walking, and shows nothing. Walked days are a prefix
+    // (plan.ts's validator), so this adds exactly the days behind. A hiker
+    // AHEAD of their dates is still read by the calendar: the days dated past
+    // the window are left out, though they may reach them this week.
+    if (!dated.some((date) => date !== undefined && inNoticeWindow(date, today))) continue
     const spans: Array<[number, number]> = []
     const dates: string[] = []
-    days.forEach((day, index) => {
-      if (day.walked === true || day.date === undefined) return
-      if (!inNoticeWindow(day.date, today)) return
+    dated.forEach((date, index) => {
+      if (date === undefined || date > lastDay) return
       const start = stops[index]
       const end = stops[index + 1]
       if (start === undefined || end === undefined) return
       spans.push([start.mile, end.mile])
-      dates.push(day.date)
+      dates.push(date < today ? today : date)
     })
     if (spans.length === 0) continue
     const atSpans = mergeSpans(spans)
@@ -335,12 +378,14 @@ export function plannedStretches({
       id: `trip:${trip.id}`,
       kind: 'long_hike',
       label: trip.name,
+      // A day behind is walked today at the earliest, so the stretch starts
+      // today and a notice that ended yesterday does not touch it.
       from: dates[0],
       to: dates[dates.length - 1],
       atSpans,
       lines: atSpans.flatMap(([low, high]) => centerlineLines(trailIndex, low, high)),
       routeResolved: trailIndex !== null,
-      providers: atProviders(atSpans, clubSections, byKey, known),
+      providers: atProviders(atSpans, clubSections, byKey),
     })
   }
 
@@ -354,11 +399,24 @@ export function plannedStretches({
       : hike.segments.map((segment) => segment.map((end) => end.coord))
     const legs = routed?.legs ?? hike.figures.legs
     const providers = new Set<string>()
+    let onTheAt = false
     for (const leg of legs) {
       for (const key of [leg.source, ...(leg.concurrent_sources ?? [])]) {
+        if (key === AT_CENTERLINE_SOURCE_KEY) onTheAt = true
         const provider = key === null ? undefined : byKey.get(key)
         if (provider !== undefined) providers.add(provider)
       }
+    }
+    // A leg on the A.T. is maintained by the club whose section it is in,
+    // which no leg's key names: the clubs come from the hike's A.T. miles,
+    // as a long hike's do. Where the centerline is not loaded yet there are
+    // no miles, and only the A.T.'s own provider is matched.
+    const atStretch =
+      onTheAt && trailIndex !== null ? dayHikeOnTrail(hike, trailIndex) : null
+    if (atStretch !== null) {
+      const span: [number, number] = [atStretch.fromMile, atStretch.toMile]
+      for (const provider of atProviders([span], clubSections, byKey))
+        providers.add(provider)
     }
     stretches.push({
       id: `day-hike:${hike.id}`,

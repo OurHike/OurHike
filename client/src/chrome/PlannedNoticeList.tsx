@@ -16,9 +16,10 @@
 // a silent blank a hiker could read as "no notices". The notices the map
 // draws still open their own sheet when tapped.
 //
-// FACTS AND A LINK (decision 55): a title, the club, the dates, where, and
-// the club's own page. The organization's name is read from the registry
-// (ORG_NOTICES.md §6) and never written here.
+// FACTS AND A LINK (decision 55): a title, the source's own category under it
+// (decision 78), the club, the dates, where, and the club's own page. The
+// organization's name is read from the registry (ORG_NOTICES.md §6) and never
+// written here.
 
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES } from '../lib/hazardAreas'
@@ -59,6 +60,46 @@ function tag(notice: TrailNotice): { text: string; warn: boolean } {
   return { text: 'Notice', warn: false }
 }
 
+/** A label as compared for a repeat: no case, and runs of spaces as one. */
+function sameWords(a: string, b: string): boolean {
+  const fold = (text: string) =>
+    text.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US')
+  return fold(a) === fold(b)
+}
+
+/**
+ * The notice's own category, for the line under its title (decision 78), or
+ * null where there is nothing to add.
+ *
+ * The source's word and never OurHike's: USFS's recreation sites send their
+ * `openstatus` as it stands ("closed", "temporarily closed", "unreachable",
+ * "not cleared", "unknown"), and other layers send "Closure Order", "No
+ * Hunting" or a fire's name. Only the first letter is raised, here at the
+ * display and never in the published file, so "closed" reads "Closed" as the
+ * approved frame (card N2, frame A) draws it and the rest stays as the source
+ * wrote it.
+ *
+ * NOT REPEATED where the row already says it: a category equal to the title
+ * the row shows, or to its tag's word, ignoring case and spacing. Equal only,
+ * never "contained in": "Little Giant Fire" under "Little Giant Fire Closure
+ * Superseding" still names the fire, and "Closure" under a Notice tag is the
+ * source calling it a closure where OurHike's tag does not, a fact the tag
+ * alone would hide. Measured 2026-10-05 on UA's file from soak run 536: 18 of
+ * 7,392 rows had a category equal to their title (USFS R06's fire closure
+ * lines), none had one equal to its own tag, and 30 had a "Closure" or
+ * "Advisory" under a Notice tag, which show.
+ */
+function categoryLine(
+  notice: TrailNotice,
+  title: string,
+  tagText: string,
+): string | null {
+  const category = notice.category?.trim() ?? ''
+  if (category === '') return null
+  if (sameWords(category, title) || sameWords(category, tagText)) return null
+  return category.charAt(0).toLocaleUpperCase('en-US') + category.slice(1)
+}
+
 /** "All of Utah", "All of Oregon and Washington": where a state-wide notice
  *  applies (decision 76), from the shapes the phone matched it by, or ''. */
 function allOf(notice: TrailNotice): string {
@@ -70,6 +111,8 @@ function allOf(notice: TrailNotice): string {
 
 function Row({ notice, org }: { notice: TrailNotice; org: string }) {
   const { text, warn } = tag(notice)
+  const title = notice.title || `${org} notice`
+  const category = categoryLine(notice, title, text)
   const updatedAt = noticeUpdatedAt(notice)
   const hazard =
     notice.hazard === null || notice.hazard === undefined
@@ -97,8 +140,9 @@ function Row({ notice, org }: { notice: TrailNotice; org: string }) {
         >
           {text}
         </span>{' '}
-        <span className="atc-notices__title">{notice.title || `${org} notice`}</span>
+        <span className="atc-notices__title">{title}</span>
       </p>
+      {category !== null && <p className="planned-notices__category">{category}</p>}
       {hazard !== null && <p className="closure-sheet__range">{hazard.heading}</p>}
       {where.length > 0 && <p className="closure-sheet__range">{where.join(' · ')}</p>}
       <p className="closure-sheet__meta">

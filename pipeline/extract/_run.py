@@ -497,7 +497,8 @@ def left_out_on_its_own(row: dict) -> bool:
 
 
 def stops_the_leg(resource: Resource) -> bool:
-    """Whether a refused or failed read of this resource stops the whole leg, rather than only itself.
+    """Whether a refused or failed read of this resource, or a change check that ran out of time, stops the whole
+    leg, rather than only itself.
 
     OurHike's own Postgres rows (ConditionsQuery) do, as they stop
     export_conditions.py today (extract/_shared/ourhike/closures.py): it
@@ -1570,6 +1571,10 @@ def _run(
         budget = LEG_CHECK_SECONDS[LEGS[lane].job] if lane in LEGS else None
         for resource, outcome in zip(plan_resources, by_folder(plan_resources, ask, budget)):
             if isinstance(outcome, CheckTimedOut):
+                # OurHike's own rows stop the leg here too, as their failed read does in
+                # read_each(): left out, their last committed table would publish as this hour's.
+                if stops_the_leg(resource):
+                    raise CheckTimedOut(f"{resource.name}: {outcome}; OurHike's own rows stop the leg (stops_the_leg())")
                 # Refused on its own, as a read that ran out of time is (read_each()): its last
                 # committed table stands, it is not read this run, and it is logged `refused`.
                 report.isolated[resource.name] = f"change check: {outcome}"

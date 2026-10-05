@@ -677,6 +677,33 @@ def test_a_change_check_that_never_answers_is_refused_on_its_own_and_the_rest_lo
     }
 
 
+@dataclass(frozen=True)
+class HangingOurhikeCheck(OurhikeAnswer):
+    """OurHike's own change check held past the leg's budget, as a database that answers slowly would hold it."""
+
+    def change_check(self, recorded):
+        time.sleep(30)
+        return Freshness.UNKNOWN, None
+
+
+def test_ourhikes_own_change_check_that_runs_out_of_time_stops_the_whole_leg_rather_than_serving_last_hours_rows(
+    store, monkeypatch
+):
+    """EXR-2 in PR #1805's review: a slow check was refused on its own like a club's, the leg exited PARTIAL_EXIT, and
+    the hourly build published the previous hour's OurHike closures as current, which a failed read never does."""
+    monkeypatch.setitem(_run.LEG_CHECK_SECONDS, _run.CONDITIONS_JOB, 1)
+    leg(store, ourhike_closures("o1", count=1), nynjtc_alerts("n1", count=1), name=CONDITIONS)
+    hanging = HangingOurhikeCheck(key="closures", club="ourhike", type="closures", answer=({"id": "o2"},), count=1)
+    started = time.monotonic()
+
+    with pytest.raises(_run.CheckTimedOut, match="raw_ourhike__closures: no answer within the leg's 1 s"):
+        leg(store, hanging, nynjtc_alerts("n1", "n2", count=2), name=CONDITIONS)
+
+    assert time.monotonic() - started < 15, "the leg still does not wait for the 30 s check"
+    runs = {row["run_id"] for row in run_log_rows(make_pipeline(CONDITIONS, store["url"], store["dir"]))}
+    assert len(runs) == 1, "nothing of the stopped run is logged, so the next run reads OurHike's rows again"
+
+
 def test_each_job_ends_its_change_checks_by_its_own_budget(store, monkeypatch):
     """The notices legs' folders hold up to 26 pages behind a 2 s Crawl-delay, or pages behind 60 s, so their
     checks get far longer than the conditions legs' (LEG_CHECK_SECONDS)."""

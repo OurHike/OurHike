@@ -1717,6 +1717,17 @@ def test_a_club_pdf_waits_its_hosts_crawl_delay_behind_the_other_reader_on_that_
     assert gate_clock == [10.0, 10.0], "the PDF waits 10 s after the page, and the page 10 s after the PDF"
 
 
+def test_a_club_pdf_that_now_redirects_to_another_host_is_unknown_and_never_read_as_the_clubs(registry, requests_mock):
+    """A moved upload served from a host nobody read robots.txt or terms for is not the club's PDF (review finding EXD-10)."""
+    elsewhere = "https://parked-domain.example.net/water.pdf"
+    requests_mock.get(PDF_URL, status_code=301, headers={"Location": elsewhere})
+    requests_mock.get(elsewhere, content=b"%PDF-1.7 not the club's", headers={"ETag": '"p1"'})
+
+    assert water().change_check(None) == (Freshness.UNKNOWN, None)
+    with pytest.raises(RuntimeError, match="another host"):
+        list(water().rows({}))
+
+
 def test_a_club_pdf_loaded_under_an_older_manifest_is_read_again_whatever_its_bytes(registry, requests_mock):
     """Rows loaded before `_document` carried the PDF's own title lack it, and unchanged bytes would keep them for
     good, so a marker without the current manifest version is STALE, asked for without validators so a 304 cannot

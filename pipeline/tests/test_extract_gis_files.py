@@ -42,6 +42,7 @@ OGC_URL = "https://ogc.example.org/collections/trails/items"
 WP_URL = "https://club.example.org/wp-json/wp/v2/cm-map-location"
 NPS_URL = "https://nps.example.gov/api/v1/places"
 VENUES_URL = "https://club.example.org/wp-json/tribe/events/v1/venues"
+MOVED_URL = "https://club.example.org/maps/trail.geojson"
 
 
 def kml(*placemarks: str, folder: str = "Fixture Folder", extra: str = "") -> str:
@@ -80,6 +81,8 @@ def registry(tmp_path, monkeypatch):
             "lon_field": "Longitude",
         },
         {"key": "staffed_map", "url": KML_URL, "file_format": "kml", "person_fields": ["Leader"]},
+        {"key": "moved_file", "url": MOVED_URL, "file_format": "geojson"},
+        {"key": "exported_file", "url": MOVED_URL, "file_format": "geojson", "redirect_hosts": ["files.example.net"]},
         {"key": "ogc_trails", "url": OGC_URL},
         {
             "key": "map_locations",
@@ -349,6 +352,44 @@ def test_a_wall_answered_where_the_file_was_raises_and_lands_nothing(registry, r
 
     with pytest.raises(Exception):
         list(gis("my_map").rows({}))
+
+
+ONE_FEATURE = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"n": 1}, "geometry": None}]}
+
+
+def test_a_gis_file_that_now_redirects_to_another_host_is_refused_and_lands_nothing(registry, requests_mock):
+    """The other host's robots.txt and terms were never read for the row, so its answer is not the club's file (review finding EXD-10)."""
+    elsewhere = "https://parked-domain.example.net/trail.geojson"
+    requests_mock.get(MOVED_URL, status_code=301, headers={"Location": elsewhere})
+    requests_mock.head(MOVED_URL, status_code=301, headers={"Location": elsewhere})
+    requests_mock.get(elsewhere, json=ONE_FEATURE)
+    requests_mock.head(elsewhere, headers={"ETag": '"x"'})
+
+    with pytest.raises(GisFileUnreadable, match="now redirects to https://parked-domain.example.net/trail.geojson, another host"):
+        list(gis("moved_file", "trail_lines").rows({}))
+    assert gis("moved_file", "trail_lines").change_check(None) == (Freshness.UNKNOWN, None)
+
+
+@pytest.mark.parametrize(
+    ("key", "served"),
+    [("moved_file", "https://www.club.example.org/maps/trail.geojson"), ("exported_file", "https://doc-1.files.example.net/x")],
+    ids=["the same site under www", "a host the row records reading"],
+)
+def test_a_gis_file_redirected_within_its_site_or_to_a_host_its_row_has_read_still_lands(registry, requests_mock, key, served):
+    requests_mock.get(MOVED_URL, status_code=301, headers={"Location": served})
+    requests_mock.get(served, json=ONE_FEATURE)
+
+    assert len(list(gis(key, "trail_lines").rows({}))) == 1
+
+
+def test_a_json_api_that_now_redirects_to_another_host_is_refused(registry, requests_mock, monkeypatch):
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+    elsewhere = "https://parked-domain.example.net/api/v1/places"
+    requests_mock.get(NPS_URL, status_code=302, headers={"Location": elsewhere})
+    requests_mock.get(elsewhere, json={"total": "1", "data": [{"id": "id-0", "latitude": "41", "longitude": "-74"}]})
+
+    with pytest.raises(RuntimeError, match="another host"):
+        list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
 
 
 # --- the change check, per file -----------------------------------------------------

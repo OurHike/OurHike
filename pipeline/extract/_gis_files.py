@@ -76,7 +76,9 @@ extract/_kinds.py's session(), and passes extract/_notices.py's per-host gate,
 POLITE_SECONDS after the last request to that host ended, or the row's
 `crawl_delay` where the host's robots.txt asks for more. robots.txt is read when
 a row is registered (decision 53, "Access is checked, never assumed"), and a
-row records what it said. A wall (extract/_notices.py's wall()) raises.
+row records what it said. A wall (extract/_notices.py's wall()) raises, and so
+does a redirect to another host the row does not name in `redirect_hosts`
+(extract/_notices.py's redirect_refused).
 """
 
 from __future__ import annotations
@@ -704,6 +706,8 @@ class GisFile(Resource):
         blocked = _notices.wall(response)
         if blocked:
             raise GisFileUnreadable(f"{self.key}: {url} answered as a wall ({blocked})")
+        if refused := _notices.redirect_refused(self.entry, url, response.url):
+            raise GisFileUnreadable(f"{self.key}: {refused}")
         return response
 
     @staticmethod

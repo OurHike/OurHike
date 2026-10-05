@@ -87,6 +87,7 @@ from extract._notices import (  # noqa: F401
     page_notice,
     polite,
     query_refused,
+    redirect_refused,
 )
 from fetch_atc_updates import TOLERATED_PARSE_FAILURES as ATC_TOLERATED_PARSE_FAILURES
 from fetch_club_pdfs import extract_page_texts
@@ -1209,9 +1210,16 @@ class ClubPdf(Resource):
     """
 
     def _get(self, headers: dict | None = None) -> requests.Response:
-        """One GET of the PDF through the host's gate (host_gated), at the row's `crawl_delay`: GATC's host asks 10 s."""
+        """One GET of the PDF through the host's gate (host_gated), at the row's `crawl_delay`: GATC's host asks 10 s.
+
+        A PDF that now redirects to another host raises RuntimeError
+        (extract/_notices.py's redirect_refused), so the change check is UNKNOWN and the read refuses.
+        """
         entry = registry_entry(self.key)
-        return request_with_retry(entry["url"], session=host_gated(entry), headers=headers or None, timeout=120)
+        response = request_with_retry(entry["url"], session=host_gated(entry), headers=headers or None, timeout=120)
+        if refused := redirect_refused(entry, entry["url"], response.url):
+            raise RuntimeError(f"{self.key}: {refused}")
+        return response
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """A conditional GET, then the body's sha256: WordPress re-serves the same bytes without a 304.
@@ -1234,7 +1242,7 @@ class ClubPdf(Resource):
                 headers["If-Modified-Since"] = recorded["last_modified"]
         try:
             response = self._get(headers)
-        except requests.RequestException as error:
+        except (requests.RequestException, RuntimeError) as error:
             print(f"  {self.key}: change check failed ({error}); fetching")
             return Freshness.UNKNOWN, None
         if response.status_code == 304:

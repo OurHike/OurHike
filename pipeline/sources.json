@@ -8425,6 +8425,8 @@
       "provider": "FMST",
       "kind": "gis_file",
       "url": "https://docs.google.com/spreadsheets/d/1RQYQ9d0uYc4tiw3kDoANY7ZgQuXDSuj4AyW44Kv7-xQ/export?format=csv",
+      "redirect_hosts": ["googleusercontent.com"],
+      "redirect_hosts_comment": "The export answers with one redirect to a doc-*-sheets.googleusercontent.com host whose first part changes per request (doc-0o-20-sheets here, read 2026-10-04T11:46:36Z; doc-04-ac-sheets for foot_trail_condition_report on 2026-10-03), and each robots.txt read answered 404, no rules. Named so extract/_notices.py's redirect_refused lets that one redirect through (PR #1805's review, finding EXD-10); a redirect anywhere else refuses the read.",
       "file_format": "csv_points",
       "header_row": 2,
       "as_of_label": "Current as of:",

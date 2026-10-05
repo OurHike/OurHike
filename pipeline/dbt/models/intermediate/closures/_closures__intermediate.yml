@@ -1886,6 +1886,45 @@ unit_tests:
         - {notice_id: 'iata_lands_hunting_regs:h15', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Hunting Parcel', locality: 'Fixture', geom_geojson: null, updated_at: null}
         - {notice_id: 'usfs_baer_assessments:b16', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'FIXTURE FIRE', locality: 'Fixture National Forest', geom_geojson: null, updated_at: null}
 
+  - name: int_closures__club_notices_keeps_a_notice_for_a_days_margin_either_side_of_its_own_dates
+    description: >
+      Rule 1's margins at their edges, on a build pinned to 2026-10-05
+      (var notices_build_date), so that a margin cut or a comparison flipped
+      goes red: a notice that ended yesterday still publishes and one that
+      ended the day before is held; one starting tomorrow publishes and one
+      starting the day after is held; an order rescinded yesterday or today
+      is held, and one rescinded tomorrow is not. Every stated time is noon
+      UTC, so each row's day is the same in every US zone.
+    model: int_closures__club_notices
+    overrides:
+      vars:
+        notices_build_date: "2026-10-05"
+    given:
+      - input: ref('int_closures__club_notices_unioned')
+        rows:
+          - {notice_key: 'ends_yesterday', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: '2026-10-04 12:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'ends_yesterday', title: 'Fixture order', status: null}
+          - {notice_key: 'ended_two_days_ago', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: '2026-10-03 12:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'ended_two_days_ago', title: 'Fixture order', status: null}
+          - {notice_key: 'starts_tomorrow', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2026-10-06 12:00:00+00', ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'starts_tomorrow', title: 'Fixture order', status: null}
+          - {notice_key: 'starts_in_two_days', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2026-10-07 12:00:00+00', ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'starts_in_two_days', title: 'Fixture order', status: null}
+          - {notice_key: 'rescinded_two_days_ago', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: '2026-10-03 12:00:00+00', source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'rescinded_two_days_ago', title: 'Fixture order', status: null}
+          - {notice_key: 'rescinded_yesterday', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: '2026-10-04 12:00:00+00', source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'rescinded_yesterday', title: 'Fixture order', status: null}
+          - {notice_key: 'rescinded_today', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: '2026-10-05 12:00:00+00', source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'rescinded_today', title: 'Fixture order', status: null}
+          - {notice_key: 'rescinded_tomorrow', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: '2026-10-06 12:00:00+00', source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'rescinded_tomorrow', title: 'Fixture order', status: null}
+      - input: ref('notice_status_values')
+        rows: []
+      - input: ref('notice_hazard_areas')
+        rows: []
+    expect:
+      rows:
+        - {notice_id: 'usfs_r03_forest_orders:ends_yesterday', held_because: null}
+        - {notice_id: 'usfs_r03_forest_orders:ended_two_days_ago', held_because: 'its own end date, 2026-10-03, has passed'}
+        - {notice_id: 'usfs_r03_forest_orders:starts_tomorrow', held_because: null}
+        - {notice_id: 'usfs_r03_forest_orders:starts_in_two_days', held_because: 'its own start date, 2026-10-07, has not come'}
+        - {notice_id: 'usfs_r03_forest_orders:rescinded_two_days_ago', held_because: 'its own order was rescinded on 2026-10-03'}
+        - {notice_id: 'usfs_r03_forest_orders:rescinded_yesterday', held_because: 'its own order was rescinded on 2026-10-04'}
+        - {notice_id: 'usfs_r03_forest_orders:rescinded_today', held_because: 'its own order was rescinded on 2026-10-05'}
+        - {notice_id: 'usfs_r03_forest_orders:rescinded_tomorrow', held_because: null}
+
   - name: int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log
     description: >
       Decision 53's phase C: every registered notice source gets a gate row

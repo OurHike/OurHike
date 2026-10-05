@@ -513,8 +513,13 @@ def _shp_record(content: bytes) -> dict | None:
     raise GisFileUnreadable(f"shape type {shape_type} is not one this reader knows")
 
 
-def _dbf_records(body: bytes, encoding: str) -> list[dict]:
-    """A dBASE III table's records as text, every value stripped, an empty one null, a deleted record skipped."""
+def _dbf_records(body: bytes, encoding: str) -> list[dict | None]:
+    """A dBASE III table's records as text, every value stripped, an empty one null, a deleted record None.
+
+    None, never skipped: the .shp keeps a deleted record's geometry, and
+    attributes are matched to geometries by position, so a skipped record
+    shifted every later name onto the wrong point (review finding EXD-11).
+    """
     count, header_length, record_length = struct.unpack_from("<IHH", body, 4)
     fields = []
     at = 32
@@ -526,7 +531,10 @@ def _dbf_records(body: bytes, encoding: str) -> list[dict]:
     for n in range(count):
         start = header_length + n * record_length
         record = body[start : start + record_length]
-        if not record or record[:1] == b"*":
+        if not record:
+            continue
+        if record[:1] == b"*":
+            records.append(None)
             continue
         values, offset = {}, 1
         for name, length in fields:
@@ -565,9 +573,13 @@ def parse_shapefile_zip(body: bytes, source: str, member: str | None = None) -> 
         (length_words,) = struct.unpack_from(">i", shp, at + 4)
         content = shp[at + 8 : at + 8 + 2 * length_words]
         at += 8 + 2 * length_words
+        record = records[index] if index < len(records) else {}
+        if record is None:  # deleted in the .dbf: its geometry goes with it, and the index keeps its .shp position
+            index += 1
+            continue
         row: dict = {"source_file": label, "feature_index": index}
         reserved = {_normal(name) for name in BASE_COLUMNS}
-        for name, value in (records[index] if index < len(records) else {}).items():
+        for name, value in record.items():
             _put(row, name, value, reserved)
         row["geometry"] = _shp_record(content)
         _check_lonlat(row["geometry"], label)

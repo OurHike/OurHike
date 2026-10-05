@@ -267,6 +267,36 @@ def shapefile_zip(prj: str | None) -> bytes:
     return buffer.getvalue()
 
 
+def springs_with_one_deleted() -> bytes:
+    """Three points, the second marked deleted (`*`) in the .dbf and still present in the .shp, as an unpacked edit leaves it."""
+    records = b""
+    for number, (x, y) in enumerate(((-75.0, 40.0), (-75.1, 40.1), (-75.2, 40.2)), start=1):
+        content = struct.pack("<i2d", 1, x, y)
+        records += struct.pack(">2i", number, len(content) // 2) + content
+    header = struct.pack(">7i", 9994, 0, 0, 0, 0, 0, (100 + len(records)) // 2) + struct.pack(
+        "<2i4d4d", 1000, 1, -75.2, 40.0, -75.0, 40.2, 0, 0, 0, 0
+    )
+    field = b"NAME".ljust(11, b"\x00") + b"C" + b"\x00" * 4 + bytes([20, 0]) + b"\x00" * 14
+    dbf = struct.pack("<BBBBIHH20x", 3, 126, 1, 1, 3, 32 + 32 + 1, 1 + 20) + field + b"\x0d"
+    dbf += b" " + b"North Spring".ljust(20) + b"*" + b"Removed Spring".ljust(20) + b" " + b"South Spring".ljust(20) + b"\x1a"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("springs.shp", header + records)
+        archive.writestr("springs.dbf", dbf)
+    return buffer.getvalue()
+
+
+def test_a_deleted_dbf_record_takes_its_geometry_with_it_rather_than_shifting_every_later_name_onto_the_wrong_point():
+    """Before the fix the deleted record was skipped in the .dbf only, so the second point was named "South Spring"
+    and the third landed with no name (review finding EXD-11)."""
+    rows = parse_shapefile_zip(springs_with_one_deleted(), SHP_URL)
+
+    assert [(row.get("NAME"), row["geometry"]["coordinates"], row["feature_index"]) for row in rows] == [
+        ("North Spring", [-75.0, 40.0], 0),
+        ("South Spring", [-75.2, 40.2], 2),
+    ]
+
+
 def test_a_zipped_shapefile_reads_its_points_and_its_dbf_columns_with_nothing_the_extract_does_not_pin():
     rows = parse_shapefile_zip(shapefile_zip('GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984"]]'), SHP_URL)
 

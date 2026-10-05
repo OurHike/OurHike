@@ -338,17 +338,22 @@ class JsonFeatures(_Paged):
 
         The key is every field of the row's `key_fields`, read from each item.
         Only values whose copies differ are named; exact copies are the staging
-        dedupe's (decision 40). A row with no key, or whose key holds the
-        geometry, answers (len(items), {}).
+        dedupe's (decision 40). An item missing a key field counts as one
+        distinct item, since it cannot be shown to repeat another. A row with
+        no key, or whose key holds the geometry, answers (len(items), {}); a
+        paged row needs one (json_features()).
         """
         fields = self.entry.get("key_fields") or []
         if not fields or "geometry" in fields:
             return len(items), {}
         groups: dict[str, list] = {}
+        keyless = 0
         for item in items:
             values = [_path(item, field) for field in fields]
             if all(value is not None for value in values):
                 groups.setdefault(" / ".join(str(value) for value in values), []).append(item)
+            else:
+                keyless += 1
         differing = {}
         for value, group in groups.items():
             if len(group) > 1:
@@ -362,7 +367,7 @@ class JsonFeatures(_Paged):
                 )
                 if names:
                     differing[value] = names
-        return len(groups), differing
+        return len(groups) + keyless, differing
 
     def _consistent_read(self) -> tuple[list, int | None]:
         """read(), and once more where a paged read holds fewer distinct keys than the API counts; RuntimeError on differing copies.
@@ -378,6 +383,15 @@ class JsonFeatures(_Paged):
         paged read with fewer distinct keys than the API's total is read once
         more, and differing copies left after that refuse the read with the
         fields that differ named, never the values.
+
+        AND SO DOES A SECOND READ STILL SHORT OF THE TOTAL. An exact copy
+        makes up the count as well as a differing one does, and a
+        start/limit read stops once it holds `total` items, so a list whose
+        order wobbles at a page boundary on every read served one item twice
+        and another never, and landed one item short with no error (review
+        finding EXD-8). Stepping by `start` cannot be made safe from this
+        side, so the honest answer is the refusal: the last committed table
+        stands.
         """
         items, total = self.read(self._session())
         distinct, differing = self._copies(items)
@@ -393,6 +407,11 @@ class JsonFeatures(_Paged):
             raise RuntimeError(
                 f"{self.key}: {len(differing)} {' / '.join(self.entry['key_fields'])} value(s) on items that differ "
                 f"(first: {value}, in {', '.join(names)}), so its key would drop a real item"
+            )
+        if self.paging != "single" and self.entry.get("key_fields") and total is not None and len(items) >= total > distinct:
+            raise RuntimeError(
+                f"{self.key}: read twice, and both reads hold {distinct} distinct {' / '.join(self.entry['key_fields'])} "
+                f"values where the API counts {total}: an item was served twice in place of another"
             )
         return items, total
 
@@ -424,6 +443,10 @@ def json_features(key: str, **overrides) -> JsonFeatures:
         raise KeyError(f"{key}: a json_features row names its lat_field and lon_field")
     if entry.get("paging") == "next_url" and not entry.get("next_url_field"):
         raise KeyError(f"{key}: a next_url row names its next_url_field")
+    key_fields = entry.get("key_fields") or []
+    if (entry.get("paging") or "single") != "single" and (not key_fields or "geometry" in key_fields):
+        # Without a key a page served twice cannot be seen, and its repeat makes up the count (review finding EXD-8).
+        raise KeyError(f"{key}: a paged json_features row names the key_fields its items are told apart by")
     if _notices.query_refused(entry["url"]):
         raise KeyError(f"{key}: {_notices.query_refused(entry['url'])}")
     return JsonFeatures(key=key, **overrides)

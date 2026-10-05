@@ -661,6 +661,61 @@ def test_a_paged_list_whose_copies_differ_on_two_reads_is_refused_with_the_field
     assert len(requests_mock.request_history) == 6, "read twice, three pages each"
 
 
+def test_a_list_that_repeats_an_item_in_place_of_another_on_both_reads_is_refused_rather_than_landed_one_short(
+    registry, requests_mock, monkeypatch
+):
+    """Page 2 repeats id-1 and never serves id-2, on every read: an unstable order at the page boundary.
+
+    The repeat makes up the API's count of 4, and the read stops there, so
+    before the fix the second read landed 4 rows holding 3 places and
+    nothing refused (review finding EXD-8).
+    """
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+
+    def page(request, context):
+        start = int(request.qs["start"][0])
+        ids = ["id-0", "id-1"] if start == 0 else ["id-1", "id-3"]
+        return {"total": "4", "data": [{"id": n, "title": n, "latitude": "41", "longitude": "-74"} for n in ids]}
+
+    requests_mock.get(NPS_URL, json=page)
+
+    with pytest.raises(
+        RuntimeError, match=r"nps_places: read twice, and both reads hold 3 distinct id values where the API counts 4"
+    ):
+        list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
+    assert len(requests_mock.request_history) == 4, "read twice, two pages each"
+
+
+def test_an_item_missing_its_key_is_not_a_repeat_and_does_not_hold_the_list(registry, requests_mock, monkeypatch):
+    """An item with no `id` cannot be shown to repeat another, so it counts as one distinct item, not as a shortfall."""
+    monkeypatch.setenv("FIXTURE_TEST_API_KEY", "fixture-key")
+
+    def page(request, context):
+        start = int(request.qs["start"][0])
+        items = [{"id": "id-0"}, {"id": "id-1"}, {"title": "no id"}][start : start + 2]
+        return {"total": "3", "data": [{**item, "latitude": "41", "longitude": "-74"} for item in items]}
+
+    requests_mock.get(NPS_URL, json=page)
+
+    rows = list(JsonFeatures(key="nps_places", club="testclub", type="places").rows({}))
+
+    assert len(rows) == 3 and len(requests_mock.request_history) == 2, "read once"
+
+
+def test_a_paged_json_row_with_no_key_is_refused_at_import_since_a_repeated_item_could_not_be_seen(tmp_path, monkeypatch):
+    path = tmp_path / "unkeyed.json"
+    row = {"key": "unkeyed", "url": NPS_URL, "paging": "start_limit", "lat_field": "lat", "lon_field": "lon"}
+    path.write_text(json.dumps({"sources": [row, {**row, "key": "keyed", "key_fields": ["id"]}]}))
+    monkeypatch.setattr(_kinds, "REGISTRY_PATH", path)
+    _kinds._registry.cache_clear()
+    try:
+        with pytest.raises(KeyError, match="key_fields"):
+            json_features("unkeyed")
+        assert json_features("keyed").key == "keyed"
+    finally:
+        _kinds._registry.cache_clear()
+
+
 def test_a_key_of_two_fields_reads_two_places_under_one_id_as_two_items(registry, requests_mock, monkeypatch):
     """Monthly run 18 (refresh-reference.yml 37245577210): nps_api_places lists two places under one `id`.
 

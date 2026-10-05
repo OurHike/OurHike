@@ -12,6 +12,11 @@ models:
       ATC's own shelters, campsites and parking areas that name the place a GATC water source
       is at, one row per gatc_water_atc_names seed row per ATC point of that Name in that layer,
       with the point. int_points_of_interest__gatc_water reads each onto the mile axis.
+    data_tests:
+      # One row per seed row per ATC point: the pair is the key.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [gatc_mile, entry_starts, atc_layer, atc_global_id]
     columns:
       - name: gatc_mile
         description: GATC's mile, as text, from the seed.

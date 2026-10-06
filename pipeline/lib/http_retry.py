@@ -190,8 +190,14 @@ def download_with_retry(
     label: str | None = None,
     sleep=None,
     response_headers: dict | None = None,
+    session: requests.Session | None = None,
 ) -> Path:
     """Stream a large file to `dest`, retrying the WHOLE transfer.
+
+    `session`, when given, sends every attempt in place of bare `requests`,
+    for the fourth caller: extract/_geofabrik.py passes extract/_kinds.py's
+    session(), which refuses an answer redirected to another host (review
+    finding SEC-5 of PR #1805). Without one nothing changes for the others.
 
     `response_headers`, when given, is filled with the headers of the one
     response whose body became `dest`, for the third caller (#1652):
@@ -250,7 +256,7 @@ def download_with_retry(
     try:
         for attempt, delay in enumerate((*backoff, None)):
             try:
-                with requests.get(url, stream=True, timeout=timeout, headers=named(headers)) as response:
+                with (session or requests).get(url, stream=True, timeout=timeout, headers=named(headers, session)) as response:
                     if response.status_code in retryable_statuses and delay is not None:
                         wait = retry_after_seconds(response) or delay
                         print(

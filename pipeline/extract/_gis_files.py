@@ -43,10 +43,10 @@ What each format's own columns are:
   `as_of_label`, `source_as_of`: the date the sheet gives itself above the
   header, verbatim.
 
-PERSON FIELDS never load (ELT.md, "Who may publish", rule 8): a property whose
-name is in extract/_kinds.py's PERSON_FIELDS or the row's `person_fields`, or
-reads as a person's by PERSON_SHAPED unless the row's `not_person_fields`
-clears it, is left out before dlt sees the row, and the read prints it. A free
+PERSON FIELDS never load (ELT.md, "Who may publish", rule 8): extract/_kinds.py's
+PersonRule leaves out a property whose name is in PERSON_FIELDS or the row's
+`person_fields`, or reads as a person's by PERSON_SHAPED unless the row's
+`not_person_fields` clears it, before dlt sees the row, and the read prints it. A free
 text column that carries a person's details is the row's `person_fields` too
 (decision 59), since rule 8 excludes in dlt and never redacts in dbt.
 
@@ -78,7 +78,7 @@ POLITE_SECONDS after the last request to that host ended, or the row's
 a row is registered (decision 53, "Access is checked, never assumed"), and a
 row records what it said. A wall (extract/_notices.py's wall()) raises, and so
 does a redirect to another host the row does not name in `redirect_hosts`
-(extract/_notices.py's redirect_refused).
+(extract/_notices.py's redirect_refused, which session() applies to every reader).
 """
 
 from __future__ import annotations
@@ -545,9 +545,12 @@ def _dbf_records(body: bytes, encoding: str) -> list[dict | None]:
     return records
 
 
-def parse_shapefile_zip(body: bytes, source: str, member: str | None = None) -> list[dict]:
-    """A zipped shapefile's records, its .dbf columns beside each geometry. A projected .prj raises (the docstring)."""
-    archive = _zip(body, source)
+def parse_shapefile_zip(body: bytes, source: str, member: str | None = None, archive: _Archive | None = None) -> list[dict]:
+    """A zipped shapefile's records, its .dbf columns beside each geometry. A projected .prj raises (the docstring).
+
+    `archive` is the file's own, when one read takes several shapefiles out of it, so MAX_ARCHIVE_BYTES counts them all.
+    """
+    archive = archive or _zip(body, source)
     shps = sorted(name for name in archive.namelist() if name.lower().endswith(".shp") and not _skipped_member(name))
     if member is not None:
         shps = [name for name in shps if name == member]
@@ -659,10 +662,60 @@ def _csv_as_of(lines: list[list[str]], label: str, source: str) -> str:
 # --- Zips -------------------------------------------------------------------------
 
 
-def _zip(body: bytes, source: str) -> zipfile.ZipFile:
+#: The most bytes one zip member may inflate to, and all the members one archive's read inflates together. Every
+#: KMZ, zip and zipped shapefile member was read whole into memory with no bound, and a 782,861-byte KMZ whose
+#: doc.kml inflated to 805,306,368 bytes grew the extract by 1,536 MiB in 1.7 s (review finding SEC-6 of PR #1805),
+#: in the one process that reads every resource of its lane. The largest member a registered row reads is
+#: census_tiger_states' .shp, about 15.6 MB, Reasoned from its row's 970,709 vertices at 16 bytes each inside a
+#: 9,956,072-byte zip; the largest measured is catamount_full_route's GPX, 1,092,570 bytes (its row's notes,
+#: 2026-10-04). @unvalidated: 200 MiB a member and 400 MiB an archive are picked, about 13 and 26 times that .shp,
+#: not measured against what the runner can hold. What would settle them is the peak RSS a monthly run prints
+#: beside census_tiger_states' member sizes, and a decision on how much of the runner one file may take. A member
+#: past either is refused, and the file with it, never read short (_Archive.read).
+MAX_MEMBER_BYTES = 200 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 400 * 1024 * 1024
+
+
+class _Archive:
+    """A zip in memory whose members are read whole only within MAX_MEMBER_BYTES each and MAX_ARCHIVE_BYTES together."""
+
+    def __init__(self, body: bytes, source: str):
+        self.source, self.inflated = source, 0
+        self._zip = zipfile.ZipFile(io.BytesIO(body))
+
+    def namelist(self) -> list[str]:
+        return self._zip.namelist()
+
+    def read(self, name: str) -> bytes:
+        """`name` inflated, after its declared size is held to both caps; zipfile never inflates past that size.
+
+        The read is bounded too, one byte past the cap, so a member that
+        inflates further than it declares is refused as well, never cut.
+        """
+        self._hold(name, self._zip.getinfo(name).file_size)
+        with self._zip.open(name) as member:
+            data = member.read(MAX_MEMBER_BYTES + 1)
+        self._hold(name, len(data))
+        self.inflated += len(data)
+        return data
+
+    def _hold(self, name: str, size: int) -> None:
+        where = f"{self.source}#{name} inflates to {size:,} bytes"
+        if size > MAX_MEMBER_BYTES:
+            raise GisFileUnreadable(
+                f"{where}, past the {MAX_MEMBER_BYTES:,} one member may; the file is refused, never read short"
+            )
+        if self.inflated + size > MAX_ARCHIVE_BYTES:
+            raise GisFileUnreadable(
+                f"{where}, which with the {self.inflated:,} already read is past the {MAX_ARCHIVE_BYTES:,} one archive's "
+                "members may inflate to together; the file is refused, never read short"
+            )
+
+
+def _zip(body: bytes, source: str) -> _Archive:
     if body[:2] != b"PK":
         raise GisFileUnreadable(f"{source}: not a zip (it starts {body[:15]!r})")
-    return zipfile.ZipFile(io.BytesIO(body))
+    return _Archive(body, source)
 
 
 def _skipped_member(name: str) -> bool:
@@ -678,7 +731,7 @@ ZIP_MEMBER_FORMATS = {".kml": "kml", ".gpx": "gpx", ".geojson": "geojson", ".jso
 
 
 @dataclass(frozen=True)
-class GisFile(Resource):
+class GisFile(_kinds.PersonRuled, Resource):
     """A GIS file, or a dataset spread over several, read whole: one row per feature (the module docstring)."""
 
     @property
@@ -703,23 +756,19 @@ class GisFile(Resource):
     def exact_proof(self) -> bool:
         return True
 
-    @property
-    def field_rules(self) -> dict[str, list[str]]:
-        """The row's person-field rules, lower-cased, kept in the marker by extract/_run.py's definition_digest()."""
-        entry = self.entry
-        return {rule: sorted(name.lower() for name in entry.get(rule) or []) for rule in ("person_fields", "not_person_fields")}
-
     def _session(self) -> requests.Session:
         delay = max(POLITE_SECONDS, float(self.entry.get("crawl_delay") or 0))
-        return _notices.polite(_kinds.session(), delay)
+        return _notices.polite(_kinds.session(self.entry), delay)
 
     def _request(self, http: requests.Session, url: str, method: str = "get") -> requests.Response:
-        response = request_with_retry(url, session=http, method=method, timeout=120, label=f"{self.key} {url}")
+        """One request; a wall, or an answer from a host the row does not name (the session's refusal), is GisFileUnreadable."""
+        try:
+            response = request_with_retry(url, session=http, method=method, timeout=120, label=f"{self.key} {url}")
+        except _notices.RedirectRefused as refused:
+            raise GisFileUnreadable(f"{self.key}: {refused}") from refused
         blocked = _notices.wall(response)
         if blocked:
             raise GisFileUnreadable(f"{self.key}: {url} answered as a wall ({blocked})")
-        if refused := _notices.redirect_refused(self.entry, url, response.url):
-            raise GisFileUnreadable(f"{self.key}: {refused}")
         return response
 
     @staticmethod
@@ -758,21 +807,12 @@ class GisFile(Resource):
         }
 
     def dropped(self, names: set[str]) -> dict[str, str]:
-        """Which of a file's property names never load, lower-cased, with the rule that drops each (the docstring)."""
-        rules = self.field_rules
-        kept = {_normal(name) for name in BASE_COLUMNS}
-        dropped = {}
-        for name in names:
-            lower = name.lower()
-            if _normal(name) in kept:
-                continue
-            if lower in _kinds.PERSON_FIELDS:
-                dropped[lower] = "PERSON_FIELDS"
-            elif lower in rules["person_fields"]:
-                dropped[lower] = "the row's person_fields"
-            elif lower not in rules["not_person_fields"] and _kinds.PERSON_SHAPED.search(_kinds._name_words(name)):
-                dropped[lower] = "a person-shaped name"
-        return dropped
+        """Which of a file's property names never load, lower-cased, with the rule that drops each (the docstring).
+
+        The row's PersonRule (extract/_kinds.py), over every name but this reader's own BASE_COLUMNS.
+        """
+        ours = {_normal(name) for name in BASE_COLUMNS}
+        return self.person_rule.left_out(name for name in names if _normal(name) not in ours)
 
     def parse(self, body: bytes, url: str) -> list[dict]:
         """One file's rows, by the row's `file_format`."""
@@ -793,7 +833,8 @@ class GisFile(Resource):
             return parse_geojson(body, url)
         if fmt == "shapefile_zip":
             members = entry.get("zip_members") or [None]
-            return [row for member in members for row in parse_shapefile_zip(body, url, member)]
+            archive = _zip(body, url)
+            return [row for member in members for row in parse_shapefile_zip(body, url, member, archive)]
         if fmt == "csv_points":
             return parse_csv_points(
                 body, url, entry["lat_field"], entry["lon_field"], entry.get("header_row") or 1, entry.get("as_of_label")
@@ -827,11 +868,7 @@ class GisFile(Resource):
             rows.extend(self.parse(response.content, url))
         names = {name for row in rows for name in row}
         dropped = self.dropped(names)
-        shaped = sorted(name for name, rule in dropped.items() if rule == "a person-shaped name")
-        if shaped:
-            print(
-                f"  {self.key}: left out {shaped}, person-shaped names its sources.json row does not clear in not_person_fields"
-            )
+        _kinds.report_shaped(self.key, dropped, names)
         proofs[self.table] = len(rows)
         print(f"  {self.key}: {len(rows)} features from {len(self.files)} file(s)")
         for row in rows:

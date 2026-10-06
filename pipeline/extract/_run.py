@@ -841,8 +841,11 @@ def definition_digest(resource: Resource) -> str:
     """A sha256 of what decides a resource's rows on our side: its own fields, the fields every read drops, its `where`.
 
     Kept in its marker, so a fix to the resource, such as a field added to
-    PERSON_FIELDS or to an ArcGIS row's `person_fields`, reads an upstream
-    that has not moved again once.
+    PERSON_FIELDS or to a row's `person_fields`, reads an upstream that has
+    not moved again once. Every kind that lands fields it did not name
+    carries the row's two person-field lists as `field_rules`
+    (extract/_kinds.py's PersonRuled), so no kind reads them anywhere this
+    digest cannot see (review findings PY-1 and SEC-4 of PR #1805).
     """
     definition = {
         "resource": repr(resource),
@@ -857,14 +860,9 @@ def definition_digest(resource: Resource) -> str:
     # turning it on changes the geometry a read lands, so the layer is read once more.
     if getattr(resource, "return_z", False):
         definition["return_z"] = True
-    # The same, for two registry fields kinds read outside `field_rules`: the
-    # row's own `person_fields` where WordpressPosts, PodcastEpisodes and
-    # NpsContent read them as a property, so a name added there stops loading
-    # on the next run rather than the club's next edit; and a sheet's
-    # `as_of_label` (extract/_gis_files.py), which decides the date its rows
-    # carry. Only when set, so no other resource's digest moves.
-    if own := sorted(_registry_field(resource, "person_fields") or ()):
-        definition["row_person_fields"] = own
+    # The same, for a registry field a kind reads outside `field_rules`: a
+    # sheet's `as_of_label` (extract/_gis_files.py), which decides the date its
+    # rows carry. Only when set, so no other resource's digest moves.
     if label := _registry_row(resource).get("as_of_label"):
         definition["as_of_label"] = label
     return hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()

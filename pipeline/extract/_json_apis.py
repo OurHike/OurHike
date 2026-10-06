@@ -71,8 +71,12 @@ POLITE_GAP_SECONDS = 2.0
 _LAST_REQUEST_END: dict[str, float] = {}
 
 
-def _get(url: str, *, headers: dict | None = None, label: str | None = None) -> requests.Response:
-    """One GET under USER_AGENT, POLITE_GAP_SECONDS after the last request to the same host ended."""
+def _get(url: str, *, headers: dict | None = None, label: str | None = None, entry: dict | None = None) -> requests.Response:
+    """One GET under USER_AGENT, POLITE_GAP_SECONDS after the last request to the same host ended.
+
+    `entry` is the reader's sources.json row, whose `redirect_hosts` the session's refusal of another host's answer
+    reads (extract/_kinds.py's session()).
+    """
     host = urlparse(url).hostname or ""
     last = _LAST_REQUEST_END.get(host)
     if last is not None:
@@ -80,7 +84,7 @@ def _get(url: str, *, headers: dict | None = None, label: str | None = None) -> 
         if pause > 0:
             time.sleep(pause)
     try:
-        return request_with_retry(url, session=_kinds.session(), headers=headers, timeout=60, label=label or url)
+        return request_with_retry(url, session=_kinds.session(entry), headers=headers, timeout=60, label=label or url)
     finally:
         _LAST_REQUEST_END[host] = time.monotonic()
 
@@ -165,7 +169,7 @@ def _against_content_length(response: requests.Response) -> str:
     return f"all {sent} arrived"
 
 
-def _get_json(url: str, *, what: str, headers: dict | None = None, label: str | None = None):
+def _get_json(url: str, *, what: str, headers: dict | None = None, label: str | None = None, entry: dict | None = None):
     """_get() and then _json(), with an answer that will not parse asked for once more before it is refused.
 
     nps_multimedia_audio was refused on such an answer in monthly runs 16 to 19: run 18
@@ -179,10 +183,10 @@ def _get_json(url: str, *, what: str, headers: dict | None = None, label: str | 
     19's did, so for that page one more ask does not help; whether it helps a page cut at random is @unvalidated.
     """
     try:
-        return _json(_get(url, headers=headers, label=label), what)
+        return _json(_get(url, headers=headers, label=label, entry=entry), what)
     except NotJson as first:
         print(f"::warning title={what} answered a body that will not parse::{first}; asking for it once more")
-        return _json(_get(url, headers=headers, label=label), what)
+        return _json(_get(url, headers=headers, label=label, entry=entry), what)
 
 
 def _sha256(value) -> str:
@@ -221,7 +225,7 @@ def nps_alerts_url(base: str, park_codes: list[str], start: int, limit: int = NP
 
 
 @dataclass(frozen=True)
-class NpsAlerts(Resource):
+class NpsAlerts(_kinds.PersonRuled, Resource):
     """NPS's alerts for every park code the sources.json entry lists, read in one paged request, one row per alert.
 
     The entry's `park_codes` maps each code to the club folders that draw on
@@ -270,7 +274,7 @@ class NpsAlerts(Resource):
         start = 0
         for _ in range(NPS_MAX_PAGES):
             url = nps_alerts_url(base, self.park_codes, start)
-            body = _json(_get(url, headers=headers, label=f"{self.key} from {start}"), self.key)
+            body = _json(_get(url, headers=headers, label=f"{self.key} from {start}", entry=self.entry), self.key)
             if not isinstance(body, dict) or not isinstance(body.get("data"), list) or body.get("total") is None:
                 raise ValueError(f"{self.key}: the answer has no `total` and `data` list, so the API has changed shape")
             page_total = int(body["total"])
@@ -292,7 +296,7 @@ class NpsAlerts(Resource):
         if len(collected) != total:
             raise RuntimeError(f"{self.key}: NPS counts {total} alerts and {len(collected)} were read")
         proofs[self.table] = total
-        yield from collected
+        yield from self.without_people(collected)
 
 
 def nps_alerts(key: str, **overrides) -> NpsAlerts:
@@ -306,7 +310,7 @@ NPS_ROAD_EVENT_JSON = ("core_details", "types_of_incident", "types_of_work", "ge
 
 
 @dataclass(frozen=True)
-class NpsRoadEvents(Resource):
+class NpsRoadEvents(_kinds.PersonRuled, Resource):
     """NPS's road events feed (WZDx 4.1), every event in it, one row per event with its geometry.
 
     The feed is national and takes no park filter. Each event's properties
@@ -349,7 +353,7 @@ class NpsRoadEvents(Resource):
 
     def rows(self, proofs: dict[str, int]):
         headers = {"X-Api-Key": nps_api_key(), "Accept": "application/json"}
-        body = _json(_get(self.entry["url"], headers=headers, label=self.key), self.key)
+        body = _json(_get(self.entry["url"], headers=headers, label=self.key, entry=self.entry), self.key)
         if not isinstance(body, dict) or body.get("type") != "FeatureCollection" or not isinstance(body.get("features"), list):
             raise ValueError(f"{self.key}: the answer is not a FeatureCollection, so the feed has changed shape")
         info = body.get("road_event_feed_info") or {}
@@ -358,8 +362,8 @@ class NpsRoadEvents(Resource):
         }
         features = body["features"]
         proofs[self.table] = len(features)
-        for feature in features:
-            row = dict(feature.get("properties") or {})
+        kept = self.without_people([feature.get("properties") or {} for feature in features])
+        for feature, row in zip(features, kept, strict=True):
             source_id = (row.get("core_details") or {}).get("data_source_id")
             row["data_source_organization"] = organizations.get(source_id)
             row["feed_update_date"] = info.get("update_date")
@@ -387,7 +391,7 @@ def advisory_key(park_id: int, message: str, occurrence: int) -> str:
 
 
 @dataclass(frozen=True)
-class DcnrParkAdvisories(Resource):
+class DcnrParkAdvisories(_kinds.PersonRuled, Resource):
     """PA DCNR's ParkAdvisory answer for each park id the entry lists, one row per advisory.
 
     Each answer is a JSON list of `{IsAlert, Message}`, Message being HTML.
@@ -431,7 +435,8 @@ class DcnrParkAdvisories(Resource):
         base = self.entry["url"].rstrip("/")
         collected = []
         for park_id in self.park_ids:
-            body = _json(_get(f"{base}?{urlencode({'id': park_id})}", label=f"{self.key} park {park_id}"), self.key)
+            asked = f"{base}?{urlencode({'id': park_id})}"
+            body = _json(_get(asked, label=f"{self.key} park {park_id}", entry=self.entry), self.key)
             if not isinstance(body, list):
                 raise ValueError(f"{self.key}: park {park_id} answered {type(body).__name__}, not a list of advisories")
             seen: Counter = Counter()
@@ -441,9 +446,11 @@ class DcnrParkAdvisories(Resource):
                     raise ValueError(f"{self.key}: park {park_id} listed an advisory with no Message text")
                 occurrence = seen[message]
                 seen[message] += 1
-                collected.append({"advisory_key": advisory_key(park_id, message, occurrence), "park_id": park_id, **item})
+                collected.append((advisory_key(park_id, message, occurrence), park_id, item))
         proofs[self.table] = len(collected)
-        yield from collected
+        kept = self.without_people([item for _, _, item in collected])
+        for (advisory, park_id, _), item in zip(collected, kept, strict=True):
+            yield {"advisory_key": advisory, "park_id": park_id, **item}
 
 
 def dcnr_park_advisories(key: str, **overrides) -> DcnrParkAdvisories:
@@ -471,7 +478,7 @@ USGS_VOLCANO_TEXT = (
 
 
 @dataclass(frozen=True)
-class UsgsElevatedVolcanoes(Resource):
+class UsgsElevatedVolcanoes(_kinds.PersonRuled, Resource):
     """Every US volcano USGS rates above normal, one row per volcano, as the Volcano Hazards Program serves it.
 
     `vnum` is the key: an observatory's daily update covers several volcanoes
@@ -500,14 +507,14 @@ class UsgsElevatedVolcanoes(Resource):
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        body = _json(_get(self.entry["url"], label=self.key), self.key)
+        body = _json(_get(self.entry["url"], label=self.key, entry=self.entry), self.key)
         if not isinstance(body, list):
             raise ValueError(f"{self.key}: answered {type(body).__name__}, not a list of volcanoes")
         numbers = Counter(item.get("vnum") for item in body)
         if None in numbers or any(n > 1 for n in numbers.values()):
             raise RuntimeError(f"{self.key}: a volcano number is missing or listed twice, so it cannot key the table")
         proofs[self.table] = len(body)
-        yield from body
+        yield from self.without_people(body)
 
 
 def usgs_elevated_volcanoes(key: str, **overrides) -> UsgsElevatedVolcanoes:
@@ -579,7 +586,7 @@ class MediawikiAnnouncements(Resource):
         }
         pages: dict[int, dict] = {}
         for _ in range(MEDIAWIKI_MAX_BATCHES):
-            body = _json(_get(mediawiki_url(self.api, params), label=self.key), self.key)
+            body = _json(_get(mediawiki_url(self.api, params), label=self.key, entry=self.entry), self.key)
             if not isinstance(body, dict) or "error" in body:
                 raise ValueError(f"{self.key}: the wiki answered an error or no object: {str(body)[:200]}")
             for page in (body.get("query") or {}).get("pages") or []:
@@ -614,7 +621,8 @@ class MediawikiAnnouncements(Resource):
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        body = _json(_get(mediawiki_url(self.api, {"action": "query", "titles": self.template}), label=self.key), self.key)
+        asked = mediawiki_url(self.api, {"action": "query", "titles": self.template})
+        body = _json(_get(asked, label=self.key, entry=self.entry), self.key)
         found = ((body or {}).get("query") or {}).get("pages") or []
         if not found or any(page.get("missing") or page.get("invalid") for page in found):
             raise RuntimeError(f"{self.key}: {self.template!r} is missing from the wiki, so an empty listing proves nothing")
@@ -748,7 +756,7 @@ class SheetCsvSegments(Resource):
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        response = _get(self.entry["url"], label=self.key)
+        response = _get(self.entry["url"], label=self.key, entry=self.entry)
         if "csv" not in (response.headers.get("Content-Type") or ""):
             raise ValueError(f"{self.key}: answered {response.headers.get('Content-Type')!r}, not CSV")
         _, segments = parse_segment_sheet(response.content.decode("utf-8-sig"))
@@ -835,7 +843,7 @@ def parse_kml_placemarks(text: str) -> list[dict]:
 
 
 @dataclass(frozen=True)
-class MyMapsPlacemarks(Resource):
+class MyMapsPlacemarks(_kinds.PersonRuled, Resource):
     """A Google My Maps map's KML export, one row per placemark: its folder, name, description, style and geometry.
 
     The entry's `url` is the export (`/maps/d/kml?mid=…&forcekml=1`), which
@@ -872,7 +880,7 @@ class MyMapsPlacemarks(Resource):
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        response = _get(self.entry["url"], label=self.key)
+        response = _get(self.entry["url"], label=self.key, entry=self.entry)
         content_type = response.headers.get("Content-Type") or ""
         if "xml" not in content_type and "kml" not in content_type:
             raise ValueError(f"{self.key}: answered {content_type!r}, not KML")
@@ -880,6 +888,11 @@ class MyMapsPlacemarks(Resource):
         if not placemarks:
             raise RuntimeError(f"{self.key}: the map's KML holds no placemark, which is a broken read, not a quiet trail")
         proofs[self.table] = len(placemarks)
+        # ExtendedData is the map maker's own fields, named as they chose, so the person rule reads its names; the
+        # placemark's other columns are KML's own and this reader's.
+        with_data = [placemark for placemark in placemarks if placemark["extended_data"] is not None]
+        for placemark, data in zip(with_data, self.without_people([p["extended_data"] for p in with_data]), strict=True):
+            placemark["extended_data"] = data
         yield from placemarks
 
 

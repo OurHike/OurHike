@@ -43,6 +43,7 @@ WP_URL = "https://club.example.org/wp-json/wp/v2/cm-map-location"
 NPS_URL = "https://nps.example.gov/api/v1/places"
 VENUES_URL = "https://club.example.org/wp-json/tribe/events/v1/venues"
 MOVED_URL = "https://club.example.org/maps/trail.geojson"
+ROUTE_ZIP_URL = "https://club.example.org/uploads/route.zip"
 
 
 def kml(*placemarks: str, folder: str = "Fixture Folder", extra: str = "") -> str:
@@ -68,6 +69,8 @@ def registry(tmp_path, monkeypatch):
     sources = [
         {"key": "my_map", "url": KML_URL, "file_format": "kml"},
         {"key": "features_kmz", "url": KMZ_URL, "file_format": "kmz"},
+        {"key": "route_zip", "url": ROUTE_ZIP_URL, "file_format": "zip", "zip_members": [".gpx"]},
+        {"key": "points_shp", "url": SHP_URL, "file_format": "shapefile_zip"},
         {"key": "waypoints", "url": GPX_URL, "file_format": "gpx"},
         {"key": "two_files", "url": "https://club.example.org/data/", "files": [GEOJSON_A, GEOJSON_B], "file_format": "geojson"},
         {"key": "access_csv", "url": CSV_URL, "file_format": "csv_points", "lat_field": "LATITUDE", "lon_field": "LONGITUDE"},
@@ -308,6 +311,84 @@ def test_a_zipped_shapefile_reads_its_points_and_its_dbf_columns_with_nothing_th
 def test_a_zipped_shapefile_whose_prj_is_projected_is_refused():
     with pytest.raises(GisFileUnreadable, match="not geographic"):
         parse_shapefile_zip(shapefile_zip('PROJCS["NAD_1983_UTM_Zone_18N",GEOGCS["GCS_North_American_1983"]]'), SHP_URL)
+
+
+# --- zip members: what one may inflate to (review finding SEC-6) ---------------
+
+
+def zipped(members: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+    return buffer.getvalue()
+
+
+def padded(text: str, size: int) -> bytes:
+    """A document that parses, padded with trailing whitespace to exactly `size` bytes, so only its size is wrong."""
+    data = text.encode()
+    assert len(data) <= size
+    return data + b" " * (size - len(data))
+
+
+def route_gpx(name: str = "Fixture Route") -> str:
+    return (
+        '<?xml version="1.0"?><gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">'
+        f'<trk><name>{name}</name><trkseg><trkpt lat="44.1" lon="-72.9"/><trkpt lat="44.2" lon="-72.8"/></trkseg></trk></gpx>'
+    )
+
+
+@pytest.fixture
+def small_caps(monkeypatch):
+    """The caps at a size a test can build: a member past them costs the test a few kilobytes rather than a runner."""
+    monkeypatch.setattr(_gis_files, "MAX_MEMBER_BYTES", 4096, raising=False)
+    monkeypatch.setattr(_gis_files, "MAX_ARCHIVE_BYTES", 8192, raising=False)
+
+
+def zipfile_members(body: bytes) -> dict[str, bytes]:
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        return {name: archive.read(name) for name in archive.namelist()}
+
+
+#: One file per format that reads a zip, each with one member just over 5,000 bytes inflated, past a cap of 4,096.
+OVERSIZED = {
+    "kmz": ("features_kmz", KMZ_URL, {"doc.kml": padded(kml(placemark("Fixture Bridge", "-74.0,41.0,0")), 5000)}),
+    "zip": ("route_zip", ROUTE_ZIP_URL, {"route/Fixture.gpx": padded(route_gpx(), 5000)}),
+    "shapefile_zip": (
+        "points_shp",
+        SHP_URL,
+        {
+            name: data + b" " * 5000 if name.endswith(".prj") else data
+            for name, data in zipfile_members(shapefile_zip('GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984"]]')).items()
+        },
+    ),
+}
+
+
+@pytest.mark.parametrize("fmt", ["kmz", "zip", "shapefile_zip"])
+def test_a_zip_member_that_inflates_past_its_cap_refuses_the_file_rather_than_reading_or_cutting_it(
+    registry, requests_mock, small_caps, fmt
+):
+    """A 782,861-byte KMZ whose doc.kml inflated to 805,306,368 bytes grew the process by 1,536 MiB in the review."""
+    key, url, members = OVERSIZED[fmt]
+    requests_mock.get(url, content=zipped(members))
+
+    with pytest.raises(GisFileUnreadable, match=r"inflates to 5,0\d\d bytes, past the 4,096 one member may"):
+        list(gis(key).rows({}))
+
+
+def test_zip_members_that_together_inflate_past_the_archives_cap_refuse_the_file(registry, requests_mock, small_caps):
+    members = {f"route/Fixture {n}.gpx": padded(route_gpx(f"Fixture {n}"), 3000) for n in range(3)}
+    requests_mock.get(ROUTE_ZIP_URL, content=zipped(members))
+
+    with pytest.raises(GisFileUnreadable, match=r"past the 8,192 one archive's members may inflate to together"):
+        list(gis("route_zip").rows({}))
+
+
+def test_a_zip_member_exactly_at_its_cap_still_reads_whole(registry, requests_mock, small_caps):
+    requests_mock.get(ROUTE_ZIP_URL, content=zipped({"route/Fixture.gpx": padded(route_gpx(), 4096)}))
+
+    assert [row["name"] for row in gis("route_zip").rows({})] == ["Fixture Route"]
 
 
 # --- the resource: reading, the proof, person fields ----------------------------

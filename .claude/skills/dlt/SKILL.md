@@ -15,7 +15,8 @@ registered layers are all ArcGIS (`nysparks/`, `usfs/`, `pcta/` and the rest),
 claiming 26 keys; `nycparks/` and `nycdot/` through the Socrata kind, 7
 more; and `nynjtc/` through the WordPress, guide-page and Hike Finder kinds,
 5 more, with the daily rule in `_run.py`; and `gatc/` through the club-PDF
-kind. 2 keys remain on `NOT_YET_EXTRACTED`, each with its blocker beside it.
+kind. 1 key remains on `NOT_YET_EXTRACTED`, `usdm_drought`, with its blocker
+beside it.
 The other 118 managing clubs have their folders too, every type a dated note,
 so all 145 exist, and `_shared/not_clubs.py` holds the 25 umbrella and
 route-only lines (`NotClub` in `_contract.py`). `_shared/` files declare a
@@ -29,12 +30,14 @@ watch through `hydrography_watch(key)`, and every active NWS alert through
 disputes through `conditions_query(key)`, the bake's queries over psycopg.
 A change check may raise `Unavailable` (`_contract.py`) for an input its
 own rule omits rather than stops on: the run leaves it out, and the
-warehouse withdraws it. Not built yet: `_shared/`'s other fetched resources
-(NBM, OSM, NDMC; EPQS and Wikimedia, which query by POI and so wait for
-stage 3's `points_of_interest`), the as-sent copy, the raw lake, fixture mode, and any run against
-R2. Every other
-source still comes from the old fetchers (`fetch_*.py`, `lib/arcgis.py`,
-`lib/socrata.py`) and `load_raw.py`; a change to one of those follows its own
+warehouse withdraws it. OSM's extracts land through `_shared/osm/geofabrik.py`,
+fixture mode is `extract/_fixtures.py`, and the monthly lane and both conditions
+jobs run against R2. Not built yet: `_shared/`'s other fetched resources
+(NBM, NDMC; EPQS and Wikimedia, which query by POI), the as-sent copy beside
+dlt's load (OSM's extracts aside, which `_geofabrik.py` mirrors as sent), and
+the raw lake. Those come only from the old fetchers (`fetch_*.py`), and the
+release build (`publish-vector-data.yml`) still reads every source through the
+old fetchers and `fetch_all.py`; a change to one of those follows its own
 docstring and tests. On `main` none of this exists until the pull request
 merges.
 

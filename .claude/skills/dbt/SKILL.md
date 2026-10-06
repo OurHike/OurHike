@@ -39,20 +39,20 @@ tests.
 ## Read this first: which project you are in
 
 `pipeline/ELT.md` is the design that issue's pull request adds, on branch
-`claude/intelligent-feynman-sw3ewm`. **Stage 1, the dbt tooling, is built on
-that branch; the rest of `pipeline/ELT.md` is the intended state.** Most of
-this file is that target, because that is what the branch is building. Check
-which project you are in before you follow anything below.
+`claude/intelligent-feynman-sw3ewm`. **Most of `pipeline/ELT.md` is built on
+that branch**, and its "Phases" and "Work in flight" sections say what is not.
+This file describes that branch. Check which project you are in before you
+follow anything below.
 
-| | `main` (read 2026-10-01 at 22e8a2be) | This branch, stage 1 built (2026-10-01) | Target (`pipeline/ELT.md`) |
+| | `main` (read 2026-10-01 at 22e8a2be) | This branch (read 2026-10-06 at fd38fe24) | Target (`pipeline/ELT.md`) |
 |---|---|---|---|
 | dbt | `dbt-core==1.12.2` and `dbt-duckdb==1.11.0`, pinned in `pipeline/requirements-dbt.txt` | **`dbt==2.0.6`**, the full distribution, one version everywhere (decision 32); `dbt-oss` 2.0.5 is the documented fallback, which ran the same project green. `dbt-duckdb` and `sqlfluff-templater-dbt` are gone | the same |
 | DuckDB | `duckdb==1.5.5`, the same pin as `requirements.in` | Python's 1.5.5 writes the fixture warehouse, and dbt reads it with its bundled 1.5.4, through an ADBC driver it downloads (measured on a runner, 2026-10-01) | the same |
 | Packages | `dbt_utils` 1.4.1, `dbt_project_evaluator` 1.3.2, `codegen` 0.14.1 (`packages.yml`) | evaluator 1.4.0 | the same |
-| Models | `staging/<org>/` for `atc`, `dec`, `mohonk`, `nynjtc`, `opentrail`, `oprhp`; `intermediate/int_pois_unioned.sql`; one mart, `marts/core/dim_pois.sql` | the same models, with v2-shaped YAML, one `_<org>__models.yml` per org folder, a measured key on every model, and the mart renamed `marts/points_of_interest/points_of_interest.sql` (the maintainer's review: *"No dim_ !"*) | `base_` → `stg_` → `int_` → eleven unprefixed marts (below) |
-| Loader | `load_raw.py` reads `data/raw/` into `data/warehouse.duckdb`'s `raw` schema | the same | dlt, under `pipeline/extract/` (see [the dlt skill](../dlt/SKILL.md)) |
-| Evaluator | its own CI step, warn-only (`pipeline/DBT.md:184`) | enforced at `error`, with an 8-row exceptions seed | `error`, two exception rows |
-| Lint | SQLFluff, `templater = dbt`, after the load and `dbt seed` | SQLFluff, `templater = jinja`, first in the job and enforced; `dbt lint` after `dbt parse` (decision 33) | the same |
+| Models | `staging/<org>/` for `atc`, `dec`, `mohonk`, `nynjtc`, `opentrail`, `oprhp`; `intermediate/int_pois_unioned.sql`; one mart, `marts/core/dim_pois.sql` | the target's layers: 132 folders under `staging/`, the eleven marts under `marts/<mart>/` with `elevation_v2`, `points_of_interest_v2` and `trail_lines_v2` beside them, and 50 `pub_` writers; `int_pois_unioned` and `dim_pois` are deleted (the maintainer's review: *"No dim_ !"*) | `base_` → `stg_` → `int_` → eleven unprefixed marts (below) |
+| Loader | `load_raw.py` reads `data/raw/` into `data/warehouse.duckdb`'s `raw` schema | dlt, under `pipeline/extract/`; CI's warehouse is the extract in fixture mode (`extract/_fixtures.py`) over `make_dbt_fixtures.py`'s files | dlt, under `pipeline/extract/` (see [the dlt skill](../dlt/SKILL.md)) |
+| Evaluator | its own CI step, warn-only (`pipeline/DBT.md:184`) | enforced at `error`, with a 57-row exceptions seed ([below](#the-evaluator)) | `error`, two exception rows |
+| Lint | SQLFluff, `templater = dbt`, after the load and `dbt seed` | SQLFluff, `templater = jinja`, enforced, last in the job on every core; `dbt lint` after `dbt parse` (decision 33) | the same |
 | `scripts/test.sh` | runs neither dbt nor SQLFluff | runs the `dbt` job's steps as its dbt suite ([below](#the-commands-ci-runs-today)) | plus the target's extra steps |
 
 On `main`, or a branch cut from it, the project is `main`'s: a change must pass
@@ -183,14 +183,15 @@ The evaluator reads a prefix as `split_part(name, '_', 1) || '_'`, so `trail_`
 covers both `trail_lines` and `trail_network`. Measured 2026-10-01 on dbt
 2.0.6 and on dbt-oss 2.0.5, against a scratch copy with one model for each of
 the eleven names under `models/marts/<name>/`: no naming or directory finding
-for any of them. Whether `pub_` needs adding to `other_prefixes` beside `rpt_`
-is `@unvalidated` until the first `pub_` model meets the evaluator.
+for any of them. `pub_` is in `other_prefixes` beside `rpt_`
+([below](#phone-files-are-written-last-and-only-locally)).
 
-**Union by name, never by position.** Today's `int_pois_unioned.sql` unions
+**Union by name, never by position.** `main`'s `int_pois_unioned.sql` unions
 positionally with `select *`. Under that union a swapped `st_x`/`st_y` in one
 staging model put every DEC lean-to in Antarctica on a green build, `PASS=145`
-(the header of `assert_pois_land_in_the_region_this_build_covers.sql`). Keep
-that region test anyway: a swap inside one base model still unions cleanly.
+(the header of `assert_pois_land_in_the_region_this_build_covers.sql`).
+`int_points_of_interest__unioned` replaced it, by name. Keep that region test
+anyway: a swap inside one base model still unions cleanly.
 
 **Materializations.** `base_` and `stg_` models are views. Unions and heavy
 intermediates are tables, and `int_<mart>__final` models are views. Marts are
@@ -243,8 +244,9 @@ a `source()` (today's `stg_`, the target's `base_`):
   and holds the model's key list equal to its source test's.
 - **Nothing else happens in that model**: renames and casts, the key, the
   dedupe. Classification literals, seed lookups and review gates are
-  intermediate work. Today's POI staging models still carry `poi_type` and
-  `confidence` literals; they move when stage 3 rebuilds staging.
+  intermediate work. `main`'s POI staging models carry `poi_type` and
+  `confidence` literals; on this branch they are the `poi_sources` seed's
+  columns, read by `int_points_of_interest__sources`.
 
 ## Row dates: one snapshot per mart
 
@@ -358,12 +360,14 @@ table before adding a column to a mart a hiker's safety turns on.
   (`fct_name, column_name, id_to_exclude, comment`), with the package's own copy
   disabled and `id_to_exclude` as a SQL `LIKE` pattern. **Every `comment`
   carries its reason and an issue number with its full title**, and a pytest
-  refuses a row without them. **Stage 1's seed holds 8 rows today**:
-  `fct_too_many_joins` on `int_%unioned` (today's `int_pois_unioned`),
-  `fct_unused_sources` on `raw_oprhp__oprhp_park_polygons`, and six
-  `fct_missing_primary_key_tests` rows for the staging models with no
-  recorded id. Each leaves with the stage that fixes it. The intended state
-  is two rows, both citing
+  refuses a row without them. **The seed holds 57 rows at fd38fe24**: 28
+  `fct_sources_without_freshness`, 11 `fct_model_fanout`, 5
+  `fct_missing_primary_key_tests`, 5 `fct_too_many_joins`, 4
+  `fct_rejoining_of_upstream_concepts`, and one each of
+  `fct_exposure_parents_materializations`,
+  `fct_exposures_dependent_on_private_models`, `fct_hard_coded_references`
+  and `fct_root_models`, each with its own reason. Stage 1's was 8. The
+  intended state is two rows, both citing
   **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
   monthly refresh, published docs, and lighter phone downloads**:
   `fct_too_many_joins` on `int_%__unioned` ("union branches, not joins": one
@@ -501,30 +505,36 @@ R2 keys, format, coordinate decimals, offline tier and size budget.
 
 The `dbt` job in `.github/workflows/pipeline-tests.yml` on this branch, on
 Python 3.12, from `pipeline/`, with the job-level
-`DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false` on every step. It ran green on
-a runner in 46 s on 2026-10-01:
+`DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false` on every step. Stage 1's job ran
+green on a runner in 46 s on 2026-10-01; at fd38fe24 the build step alone took
+205 s and SQLFluff 458 s (Pipeline tests run 37408628160):
 
 ```sh
 # restore ~/.cache/com.getdbt/adbc and ~/.duckdb/extensions/v1.5.4 (actions/cache, keyed on requirements-dbt.txt)
 pip install -r requirements-dbt.txt                    # dbt==2.0.6, sqlfluff==4.3.0, duckdb==1.5.5
-sqlfluff lint dbt/models dbt/tests                     # the enforced lint; needs no warehouse
+# restore dbt/dbt_packages (actions/cache, keyed on packages.yml and package-lock.yml)
 cd dbt
-dbt deps --profiles-dir .
+dbt deps --profiles-dir .                              # only on a cache miss, and saved after one that succeeded
 dbt parse --profiles-dir .                             # the v2 gate
 dbt lint --profiles-dir .                              # the fast first pass, not the gate
 cd ..
-pip install "duckdb-extension-spatial==$(python -c 'import duckdb; print(duckdb.__version__)')"
-python seed_spatial_extension.py                       # Python's 1.5.5 only; dbt's 1.5.4 is cached, or dbt fetches it
+python check_contract_versions.py --head dbt/target/manifest.json --base <the base commit's manifest, parsed in a git worktree>
+python -m venv "$RUNNER_TEMP/extract" && "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
 python -m venv "$RUNNER_TEMP/pipeline" && "$RUNNER_TEMP/pipeline/bin/pip" install -r requirements.txt   # the pipeline's own pins, for the steps and parity's old side
+"$RUNNER_TEMP/pipeline/bin/pip" install "duckdb-extension-spatial==<that venv's duckdb version>"
+"$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py   # Python's 1.5.5 only; dbt's 1.5.4 is cached, or dbt fetches it
 python make_dbt_fixtures.py
 "$RUNNER_TEMP/extract/bin/python" -m extract._fixtures --raw-dir data/raw --warehouse data/warehouse.duckdb
 python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"   # seed, stage A, each step and what it unblocks, the pub_ writers last
-"$RUNNER_TEMP/pipeline/bin/python" parity.py <family> --new data/processed/dbt/<file>   # one line per family
+"$RUNNER_TEMP/pipeline/bin/python" -m pytest tests/test_dbt_<...>_builds.py   # four steps, one file each: row dates, notices absent, a club held for its rows, club layers absent
+"$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity <family> --new data/processed/dbt/<file>   # one line per family
 cd dbt
 dbt source freshness --profiles-dir .
 dbt docs generate --profiles-dir . --output-dir target/docs
 python ../check_docs_site.py target/docs                     # the parts, no --vars, telemetry off, no coordinates outside the unit tests
 DBT_PROJECT_EVALUATOR_SEVERITY=error dbt build -s package:dbt_project_evaluator --profiles-dir .
+cd ..
+sqlfluff lint dbt/models dbt/tests --processes 0       # the enforced lint, last, so a failed build reports first
 # save the cache on a miss, even when a step failed
 ```
 

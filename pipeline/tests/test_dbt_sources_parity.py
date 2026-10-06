@@ -156,7 +156,7 @@ def test_build_output_names_and_refuses_what_the_unit_test_expects(unit_registry
 
 # The bases that publish nothing because nobody has settled them (pipeline/ELT.md,
 # "The eleven marts", `may_publish`): sources.json's `unresolved`, and
-# trail_orgs.json's `unstated` once that file lands.
+# trail_orgs.json's `unstated`.
 UNSETTLED_BASES = {"unresolved", "unstated"}
 
 

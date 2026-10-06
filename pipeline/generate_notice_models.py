@@ -119,10 +119,13 @@ SERVER_ROW_IDS = frozenset({"objectid", "objectid_1", "fid", "oid"})
 #: unique tests on the keys of three of them were three of hourly UA run 538's five slowest nodes: 24.44 s (BAER),
 #: 22.86 s (Utah FFSL) and 21.56 s (R04's forest orders), read from that run's log in the review of PR #1805 — dlt →
 #: dbt re-platform as one go/no-go change, 2026-10-05. NIFC's current perimeters, the fourth, held 112 rows and
-#: 134,230 vertices that day (the same review). As a table the key is computed once a build. @unvalidated as a saving on real polygons: the fixtures' rows are too
-#: small to show one (the four base and staging models and their 16 tests, one thread, summed to 2.50 to 2.94 s as
-#: views and 2.67 to 2.97 s as tables, three runs each, measured 2026-10-05), and what settles it is the same nodes'
-#: times in the next hourly run's log.
+#: 134,230 vertices that day (the same review). As a table the key is computed once a build. The fixtures' rows are too
+#: small to show a saving (the four base and staging models and their 16 tests, one thread, summed to 2.50 to 2.94 s as
+#: views and 2.67 to 2.97 s as tables, three runs each, measured 2026-10-05). On real polygons, hourly UA run 566
+#: (publish-conditions.yml 37423237517, 2026-10-06) built the three tables in 16.75, 18.66 and 17.58 s and ran their
+#: base models' unique and not_null tests in under 0.1 s each, where run 538's six took 14.88 to 24.44 s each (Measured
+#: from the two logs). @unvalidated as a saving on the build step's own time, which was 182 s in both runs: dbt runs
+#: these nodes beside others, so node time saved need not shorten the step.
 TABLE_BASES = frozenset(
     {"usfs_baer_assessments", "usfs_r04_forest_orders", "nifc_wfigs_current_perimeters", "utah_ffsl_fire_restrictions"}
 )

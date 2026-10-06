@@ -91,13 +91,13 @@ warnings (dbt1092, dbt1601) only after reading the whole project: stage A's
 pass (b), which selects nothing, took 30.9 to 34.2 s three times over against
 the fixture warehouse (Measured 2026-10-05, in a 4-core sandbox), and the
 fixture build leaves 18 passes out. Over the real project with today's two
-tags, the split reaches one build, "what derived.poi_photos unblocks", in
-either lane (plan() over `dbt parse`'s manifest, 2026-10-05). The hourly lane
-never splits: publish-conditions.yml gives its build 6 minutes, and a dbt
-invocation on a runner spends about 9.4 s before its first node (run 20's
-step 13, from its start to its first result: Measured). alone_problems()
-refuses a tagged model an hourly or daily source reaches, whose tag that lane
-would ignore.
+tags, the split reaches one build, "what derived.poi_photos unblocks", in the
+monthly lane and in a build with no lane (plan() over `dbt parse`'s manifest,
+2026-10-05). The hourly lane never splits: publish-conditions.yml gives its
+build 6 minutes, and a dbt invocation on a runner spends about 9.4 s before
+its first node (run 20's step 13, from its start to its first result:
+Measured). alone_problems() refuses a tagged model an hourly or daily source
+reaches, whose tag that lane would ignore.
 
 NOT dbt's `selectors.yml` (ELT.md's shape): dbt documents `--selector` as not
 combinable with `-s` or `--exclude`, which every invocation here carries, so a
@@ -871,9 +871,9 @@ def failed_test_rows(
     warehouse, so a failure on data only a live run holds (soak run 525, publish-conditions.yml 37216623795: three
     tests on the first real club notices) could not be read. Each failed test's compiled SQL is asked again, read-only,
     for FAILED_ROWS_SHOWN rows, every value cut at FAILED_VALUE_WIDTH characters (_rows_query(): for
-    expression_is_true, the attached model's own failing rows, since soak run 526 printed its constant). `since` is when
-    the run started:
-    run_results.json older than that is an earlier stage's, and says nothing about this failure."""
+    expression_is_true, the attached model's own failing rows, since soak run 526 printed its constant). A
+    run_results.json older than `since` is an earlier run's, and says nothing about this failure: main() passes -inf
+    after a dbt run, whose earlier file it removed before the run, and the start of a Python step, which writes none."""
     path = results_path or RUN_RESULTS_PATH
     try:
         if path.stat().st_mtime < since:
@@ -922,8 +922,8 @@ def failed_test_rows(
 
 
 def read_run_results(since: float, results_path: Path | None = None) -> list[dict] | None:
-    """The results of the dbt run that started at `since`, or None when run_results.json is missing, unreadable or an
-    earlier run's."""
+    """The results in run_results.json, or None when it is missing, unreadable or older than `since` (an earlier run's;
+    failed_test_rows() says what main() passes)."""
     path = results_path or RUN_RESULTS_PATH
     try:
         if path.stat().st_mtime < since:

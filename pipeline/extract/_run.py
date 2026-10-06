@@ -223,7 +223,11 @@ def job_of(resource: Resource) -> str:
 # decision 61 moved here and phase B's 181 page, feed and WordPress sources
 # come on in two runs, where 10 a run would take 27. What would settle it:
 # the "Seconds:" line of the first two notices runs' summaries, against the
-# tables each took on.
+# tables each took on. Those runs came on 2026-10-04: the copies notices runs
+# 1 and 2 served held 150 and then 261 tables (soak runs 527 and 530 read
+# them), and each whole extract step took 235 s and 362 s of its 50 minutes
+# (Measured 2026-10-06 from the Actions API's step times and those logs);
+# their "Seconds:" lines were not read for this.
 NEW_TABLES_PER_LEG_RUN: dict[str, int | None] = {CONDITIONS_JOB: None, NOTICES_JOB: 150}
 # A LEG'S CHANGE CHECKS END AFTER THIS MANY SECONDS, as its reads do after
 # --read-seconds (by_folder()). A check still out is refused on its own: its
@@ -311,7 +315,10 @@ ISOLATING_LANES = frozenset({"monthly"})
 #: (refresh-reference.yml 37182708502) read its layers one at a time in about
 #: 50 minutes, 484 s of it USFS's trails, and 4 is the runner's vCPU count,
 #: not a measurement of what the upstreams tolerate. The first run's "read"
-#: timing, and any rate-limit waits lib/arcgis.py logs, would settle it.
+#: timing, and any rate-limit waits lib/arcgis.py logs, would settle it. Runs 18
+#: to 22 (2026-10-04/05) took the whole extract step 105 to 127 minutes against
+#: run 13's 161.5 (the Actions API's step times, read 2026-10-06); their "read"
+#: timing and lib/arcgis.py's waits were not read for this.
 MONTHLY_READERS = 4
 
 #: dlt's normalize processes for refresh-reference.yml's monthly run, which

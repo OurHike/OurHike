@@ -312,8 +312,9 @@ def windowed(work, items: list, size: int):
 #: leg's 261 tables took 2 min 47 s in extract-notices.yml run 6 (2026-10-05T14:22Z), 4 min 15 s in
 #: run 7 (18:51Z), and passed the step's 5 minutes in run 8 (22:25Z), which served no copy, so the
 #: hourly build read run 7's until it was 8 hours old (publish-conditions.yml run 561, red): about
-#: 0.6 to 1 s a table, each several round trips to R2 for a few dozen rows. 8 is @unvalidated, as
-#: LEG_READERS is: the step's own time on the next runs settles it.
+#: 0.6 to 1 s a table, each several round trips to R2 for a few dozen rows. At 8, run 10
+#: (37423240098, 2026-10-06) copied the 261 in 39 s (Measured from its log), the one run so far. 8 is
+#: @unvalidated, as LEG_READERS is: the step's own time on the next runs settles it.
 SERVE_COPIERS = 8
 
 SERVED_PREFIX = "served"
@@ -357,7 +358,10 @@ NOTICES_READ_AT_ENV = "OURHIKE_NOTICES_READ_AT"
 #: falls back to an older one, and the seconds between. A copy is write-once,
 #: so what this waits out is a transient error from the store, or a copy that
 #: vanished under the read (a purge). 3 x 5 s is a round figure, @unvalidated:
-#: no served read has run yet, so none has failed.
+#: the 33 soak dispatches from run 527 to 566 (publish-conditions.yml,
+#: 2026-10-04 to 06) each read the newest copy and none fell back to an older
+#: one (Measured 2026-10-06 from their logs), so no failure has yet shown what
+#: this has to wait out.
 SERVED_ATTEMPTS, SERVED_WAIT_SECONDS = 3, 5.0
 
 

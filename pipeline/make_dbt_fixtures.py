@@ -5428,9 +5428,10 @@ ELEVATION_PRODUCT_FIXTURES = {
 # registered 2026-10-03. Each fixture carries what its sources.json row
 # declares as read off the live layer that day - the key (`id_field`, or
 # `id_fields` for a pair), `name_field` and `category_field` - and an
-# OBJECTID, and nothing else, because no model reads these tables yet
-# (decision 52's base models are phase C). The values are invented: no real
-# feature is copied. Two rows each, in the row's own `geometry_kind`.
+# OBJECTID, and nothing else: they were written before any model read these
+# tables, and each club's base model reads them now (base_nysdec__dec_lands
+# among them). The values are invented: no real feature is copied. Two rows
+# each, in the row's own `geometry_kind`.
 CLUB_PLACES_KEYS = (
     "fltc_map_sheet_index",
     "dec_lands",

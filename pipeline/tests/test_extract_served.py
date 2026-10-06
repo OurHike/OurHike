@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -212,6 +213,30 @@ def test_only_the_legs_jobs_tables_cross_and_a_not_yet_loaded_one_is_empty_with_
         only = load_served(con, notices_pipeline(stores), stores["notices"], {NPS.table}, sleep=lambda seconds: None)
         logged = {name for (name,) in con.execute("select distinct table_name from raw._extract_runs").fetchall()}
     assert only.loaded == {NPS.table: 0} and logged == {NPS.table}
+
+
+def test_a_copy_made_eight_tables_at_a_time_is_the_copy_made_one_at_a_time(stores, monkeypatch):
+    """extract-notices.yml run 8 (2026-10-05) passed its copy step's 5 minutes copying 261 tables one at a time, so
+    no copy was served. They are copied SERVE_COPIERS at once now, a torn one among them, and the copy is the same."""
+    clubs = [club_closures(f"club{n}", f"c{n}a", f"c{n}b", count=2) for n in range(12)]
+    notices_run(stores, *clubs)
+    before = serve(stores, [club.table for club in clubs]).manifest["run_id"]
+    notices_run(stores, *[club_closures(f"club{n}", f"c{n}a", f"c{n}b", f"c{n}c", count=3) for n in range(12)])
+    for path in table_files(notices_pipeline(stores), clubs[5].table):
+        os.remove(path)
+    monkeypatch.setattr(_warehouse, "SERVE_COPIERS", 1)
+    one = serve(stores, [club.table for club in clubs])
+    shutil.rmtree(_warehouse.fs_path(f"{served_root(stores['notices'])}/{one.manifest['run_id']}"))
+    monkeypatch.setattr(_warehouse, "SERVE_COPIERS", 8)
+
+    eight = serve(stores, [club.table for club in clubs])
+
+    assert eight.wrote and eight.problems == one.problems
+    assert {k: v for k, v in eight.manifest.items() if k != "written_at"} == {
+        k: v for k, v in one.manifest.items() if k != "written_at"
+    }
+    assert eight.manifest["tables"][clubs[5].table]["carried_from"] == before
+    assert [eight.manifest["tables"][club.table]["rows"] for club in clubs] == [3] * 5 + [2] + [3] * 6
 
 
 def test_a_table_the_store_left_torn_is_carried_from_the_copy_before_and_the_rest_still_serve(stores):

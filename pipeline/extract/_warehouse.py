@@ -308,6 +308,14 @@ def windowed(work, items: list, size: int):
 
 # --- The served copy (the module docstring, "THE SERVED COPY") ---
 
+#: Tables write_served_copy() reads, writes and reads back at once. One at a time, a notices
+#: leg's 261 tables took 2 min 47 s in extract-notices.yml run 6 (2026-10-05T14:22Z), 4 min 15 s in
+#: run 7 (18:51Z), and passed the step's 5 minutes in run 8 (22:25Z), which served no copy, so the
+#: hourly build read run 7's until it was 8 hours old (publish-conditions.yml run 561, red): about
+#: 0.6 to 1 s a table, each several round trips to R2 for a few dozen rows. 8 is @unvalidated, as
+#: LEG_READERS is: the step's own time on the next runs settles it.
+SERVE_COPIERS = 8
+
 SERVED_PREFIX = "served"
 #: Written last, as a pin's raw_inputs.json is: a copy without it did not finish, and is never read.
 SERVED_MANIFEST = "manifest.json"
@@ -460,44 +468,52 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str], run_log_cache
         return previous_log[0]
 
     fs.makedirs(f"{root}/tables", exist_ok=True)
-    for table, load_id in sorted(committed.items()):
+
+    def copy_table(item: tuple[str, str]) -> tuple[dict, pa.Table | None, dict | None]:
+        """One table's run log row, its rows as read, and its entry when it was copied whole; nothing else touched."""
+        table, load_id = item
         files = [path for path in listing.get(table, []) if os.path.basename(path).startswith(f"{load_id}.")]
         row = by_load.get((table, load_id)) or {}
         if not files and proven_zero(row):
-            entries[table] = {"load_id": load_id, "rows": 0, "file": None, "column_hints": json.loads(row["column_hints"])}
-            continue
+            return row, None, {"load_id": load_id, "rows": 0, "file": None, "column_hints": json.loads(row["column_hints"])}
         arrow = None
         if files:
             arrow = pa.concat_tables([pq.read_table(fs.open(path)) for path in files], promote_options="permissive")
         if arrow is None or arrow.num_rows != row.get("rows"):
-            found = "no file" if arrow is None else f"{arrow.num_rows} rows in its files"
-            why = f"{table}: load {load_id} has {found}, and the run log says it landed {row.get('rows')}"
-            carried = previous[1]["tables"].get(table) if previous else None
-            if carried is not None:
-                try:
-                    log_before()
-                except SERVED_READ_ERRORS as failure:
-                    why += f"; copy {previous[0]}'s run log will not read ({type(failure).__name__}: {failure})"
-                    carried = None
-            if carried is None:
-                left_out.add(table)
-                problems.append(f"{why}; no copy before this one can give it, so it is left out")
-                continue
-            if carried.get("file"):
-                fs.copy(f"{served_root(bucket_url)}/{previous[0]}/{carried['file']}", f"{root}/{carried['file']}")
-            entries[table] = dict(carried, carried_from=previous[0])
-            carried_logs.add(table)
-            problems.append(f"{why}; carried from copy {previous[0]}, its last good rows and their run log rows")
-            continue
+            return row, arrow, None
         relative = f"tables/{table}.parquet"
         with fs.open(f"{root}/{relative}", "wb") as handle:
             pq.write_table(arrow, handle, compression="zstd")
-        entries[table] = {
-            "load_id": load_id,
-            "rows": arrow.num_rows,
-            "file": relative,
-            "sha256": _sha256(fs, f"{root}/{relative}"),
-        }
+        return (
+            row,
+            arrow,
+            {"load_id": load_id, "rows": arrow.num_rows, "file": relative, "sha256": _sha256(fs, f"{root}/{relative}")},
+        )
+
+    # Each table is read, written and read back by SERVE_COPIERS at once, and taken in table order.
+    for (table, load_id), (row, arrow, copied) in windowed(copy_table, sorted(committed.items()), SERVE_COPIERS):
+        if copied is not None:
+            entries[table] = copied
+            continue
+        # Torn: carried from the copy before, or left out (the docstring).
+        found = "no file" if arrow is None else f"{arrow.num_rows} rows in its files"
+        why = f"{table}: load {load_id} has {found}, and the run log says it landed {row.get('rows')}"
+        carried = previous[1]["tables"].get(table) if previous else None
+        if carried is not None:
+            try:
+                log_before()
+            except SERVED_READ_ERRORS as failure:
+                why += f"; copy {previous[0]}'s run log will not read ({type(failure).__name__}: {failure})"
+                carried = None
+        if carried is None:
+            left_out.add(table)
+            problems.append(f"{why}; no copy before this one can give it, so it is left out")
+            continue
+        if carried.get("file"):
+            fs.copy(f"{served_root(bucket_url)}/{previous[0]}/{carried['file']}", f"{root}/{carried['file']}")
+        entries[table] = dict(carried, carried_from=previous[0])
+        carried_logs.add(table)
+        problems.append(f"{why}; carried from copy {previous[0]}, its last good rows and their run log rows")
     for table, hints in sorted(not_yet_loaded(pipeline, committed, log).items()):
         entries[table] = {"load_id": None, "rows": 0, "file": None, "column_hints": hints, "not_yet_loaded": True}
     if carried_logs or left_out:

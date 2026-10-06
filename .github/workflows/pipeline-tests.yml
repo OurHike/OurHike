@@ -165,6 +165,14 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: python -m ruff format --check .
 
+      # THE dbt GENERATORS' OUTPUT, which is not committed (pipeline/ELT.md
+      # decision 91): tests here walk the models on disk, so they are written
+      # first, on this job's Python, which carries dlt (requirements-dev.in).
+      # tests/conftest.py refuses to start without them.
+      - name: Generate the dbt models (generate_dbt.py)
+        if: steps.scope.outputs.run == 'true'
+        run: python generate_dbt.py
+
       - name: Run tests
         if: steps.scope.outputs.run == 'true'
         run: python -m pytest -v
@@ -180,8 +188,9 @@ jobs:
   # (.github/workflows/README.md).
   #
   # Cheapest failure first: `dbt parse` and `dbt lint` need no warehouse, so
-  # a YAML shape v2 refuses fails in seconds. SQLFluff, no longer cheap, runs
-  # last (its step says why).
+  # a YAML shape v2 refuses fails in seconds, once the extract's venv and the
+  # dbt generators it runs have written the generated models (decision 91).
+  # SQLFluff, no longer cheap, runs last (its step says why).
   dbt:
     runs-on: ubuntu-latest
     defaults:
@@ -283,6 +292,9 @@ jobs:
             pipeline/fetch_hikefinder.py
             pipeline/fetch_opentrail.py
             pipeline/make_dbt_fixtures.py
+            pipeline/generate_dbt.py
+            pipeline/make_dbt_staging.py
+            pipeline/generate_notice_models.py
             pipeline/sources.json
             pipeline/requirements-dbt.in
             pipeline/requirements-dbt.txt
@@ -351,8 +363,38 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dbt.txt
 
-      # DBT'S PACKAGES, CACHED, for the reason the two paths above are: `dbt
-      # deps` reads packages.yml's three packages from hub.getdbt.com and
+      # FIXTURE MODE (pipeline/ELT.md, "Fixture mode"): extract/_fixtures.py
+      # runs the real extract over make_dbt_fixtures.py's files, so every
+      # staging model reads a table dlt wrote, as in production (it used to
+      # be load_raw.py's ST_Read, whose tables no extract would write).
+      #
+      # ITS OWN VENV, because requirements-extract.txt and
+      # requirements-dbt.txt cannot share one (click 8.5.0 against 8.4.2,
+      # 2026-10-01); these are the extract jobs' own pins. No secret is in
+      # this job. No spatial seeding: the extract lands geometry as GeoJSON
+      # text, and dbt gets spatial through the cache step above.
+      #
+      # Before any dbt command, because the dbt generators run on it too (the
+      # next step): they read the extract's club folders, whose modules import
+      # dlt, which the dbt venv cannot hold.
+      - name: Install the extract's own pins
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          python -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
+
+      # THE dbt GENERATORS' OUTPUT (pipeline/ELT.md decision 91): nothing
+      # make_dbt_staging.py or generate_notice_models.py writes is committed,
+      # so they write it here, before dbt reads the project. Without it `dbt
+      # parse` fails on the first hand-written model that refs a generated one.
+      - name: Generate the dbt models (generate_dbt.py)
+        id: generate
+        if: steps.scope.outputs.run == 'true'
+        run: '"$RUNNER_TEMP/extract/bin/python" generate_dbt.py'
+
+      # DBT'S PACKAGES, CACHED, for the reason dbt's driver and spatial build
+      # are (their restore step, further up): `dbt deps` reads
+      # packages.yml's three packages from hub.getdbt.com and
       # their tarballs from codeload.github.com, so every run needed both
       # hosts up (ARCH-6 of the PR #1805 review; soak run 538's log shows the
       # hourly lane installing all three at 01:19:19 on 2026-10-05). The key
@@ -449,24 +491,13 @@ jobs:
           else
             (cd "$base/pipeline/dbt" && dbt deps --profiles-dir .)
           fi
+          # The base's own generators over the base's own registry (decision
+          # 91); a base from before it carries their output committed instead.
+          if [ -f "$base/pipeline/generate_dbt.py" ]; then
+            (cd "$base/pipeline" && "$RUNNER_TEMP/extract/bin/python" generate_dbt.py)
+          fi
           (cd "$base/pipeline/dbt" && dbt parse --profiles-dir .)
           python check_contract_versions.py --head dbt/target/manifest.json --base "$base/pipeline/dbt/target/manifest.json"
-
-      # FIXTURE MODE (pipeline/ELT.md, "Fixture mode"): extract/_fixtures.py
-      # runs the real extract over make_dbt_fixtures.py's files, so every
-      # staging model reads a table dlt wrote, as in production (it used to
-      # be load_raw.py's ST_Read, whose tables no extract would write).
-      #
-      # ITS OWN VENV, because requirements-extract.txt and
-      # requirements-dbt.txt cannot share one (click 8.5.0 against 8.4.2,
-      # 2026-10-01); these are the extract jobs' own pins. No secret is in
-      # this job. No spatial seeding: the extract lands geometry as GeoJSON
-      # text, and dbt gets spatial through the cache step above.
-      - name: Install the extract's own pins
-        if: steps.scope.outputs.run == 'true'
-        run: |
-          python -m venv "$RUNNER_TEMP/extract"
-          "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
 
       # THE PIPELINE'S OWN PINS (requirements.txt), for today's exporters in
       # the parity step and for the Python steps (ELT.md, "Python steps,
@@ -759,7 +790,7 @@ jobs:
       # .github/tests/test_sqlfluff_after_the_build.py holds the order.
       - name: sqlfluff lint
         if: >-
-          !cancelled() && steps.scope.outputs.run == 'true'
+          !cancelled() && steps.scope.outputs.run == 'true' && steps.generate.outcome == 'success'
           && (steps.dbt-packages.outputs.cache-hit == 'true' || steps.deps.outcome == 'success')
         run: sqlfluff lint dbt/models dbt/tests --processes 0
 

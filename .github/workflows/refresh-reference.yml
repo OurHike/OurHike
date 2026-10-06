@@ -310,6 +310,13 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "duckdb-extension-spatial==$("$RUNNER_TEMP/pipeline/bin/python" -c 'import duckdb; print(duckdb.__version__)')"
           "$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py
 
+      # The dbt generators' output, which is not committed (pipeline/ELT.md
+      # decision 91), written before any dbt command reads the project, on
+      # the extract's venv: the generators read its club folders, whose
+      # modules import dlt.
+      - name: Generate the dbt models (generate_dbt.py)
+        run: '"$RUNNER_TEMP/extract/bin/python" generate_dbt.py'
+
       # dbt's packages: pipeline-tests.yml's dbt job explains the key, why a
       # hit skips deps, and why only a deps that succeeded is saved (ARCH-6 of
       # the PR #1805 review).

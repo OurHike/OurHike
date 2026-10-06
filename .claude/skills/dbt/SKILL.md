@@ -388,7 +388,9 @@ dbt/macros`. `dbt/sqlfluff_libs/dbt_utils.py` renders the REAL dbt_utils from
 dbt_utils package. Dont reinvent the wheel"*): it supplies only the dbt
 built-ins the package's macros call, and on 2026-10-01 its output equalled dbt
 2.0.6's compile on all 27 staging models. It needs no warehouse but does need
-the packages, so it runs right after `dbt deps`. Never add a macro body to that
+the packages, and the generated models, which exist only once
+`python generate_dbt.py` has run (decision 91), so CI runs it last and only
+after that step succeeded. Never add a macro body to that
 file; if a new dbt_utils macro fails to render, the missing piece is a dbt
 built-in it calls.
 
@@ -419,7 +421,9 @@ Reasoned; the job's exact paths are `pipeline/ELT.md`'s, "Running it"):
 ```sh
 BASE=$(mktemp -d)        # outside the repository, never under pipeline/
 git worktree add "$BASE" "$(git merge-base origin/main HEAD)"
-# deps there too (or the clones below), then:
+# deps there too (or the clones below), and the base's own generated models
+# (decision 91: a base from after it has none committed), then:
+[ -f "$BASE/pipeline/generate_dbt.py" ] && (cd "$BASE/pipeline" && python generate_dbt.py)
 (cd "$BASE/pipeline/dbt" && dbt parse --profiles-dir .)
 
 # 1. a breaking change to a contracted mart fails
@@ -512,14 +516,15 @@ green on a runner in 46 s on 2026-10-01; at fd38fe24 the build step alone took
 ```sh
 # restore ~/.cache/com.getdbt/adbc and ~/.duckdb/extensions/v1.5.4 (actions/cache, keyed on requirements-dbt.txt)
 pip install -r requirements-dbt.txt                    # dbt==2.0.6, sqlfluff==4.3.0, duckdb==1.5.5
+python -m venv "$RUNNER_TEMP/extract" && "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
+"$RUNNER_TEMP/extract/bin/python" generate_dbt.py      # both generators' models, never committed (decision 91); they import dlt
 # restore dbt/dbt_packages (actions/cache, keyed on packages.yml and package-lock.yml)
 cd dbt
 dbt deps --profiles-dir .                              # only on a cache miss, and saved after one that succeeded
 dbt parse --profiles-dir .                             # the v2 gate
 dbt lint --profiles-dir .                              # the fast first pass, not the gate
 cd ..
-python check_contract_versions.py --head dbt/target/manifest.json --base <the base commit's manifest, parsed in a git worktree>
-python -m venv "$RUNNER_TEMP/extract" && "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
+python check_contract_versions.py --head dbt/target/manifest.json --base <the base commit's manifest, parsed in a git worktree after its own generate_dbt.py>
 python -m venv "$RUNNER_TEMP/pipeline" && "$RUNNER_TEMP/pipeline/bin/pip" install -r requirements.txt   # the pipeline's own pins, for the steps and parity's old side
 "$RUNNER_TEMP/pipeline/bin/pip" install "duckdb-extension-spatial==<that venv's duckdb version>"
 "$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py   # Python's 1.5.5 only; dbt's 1.5.4 is cached, or dbt fetches it
@@ -534,7 +539,7 @@ dbt docs generate --profiles-dir . --output-dir target/docs
 python ../check_docs_site.py target/docs                     # the parts, no --vars, telemetry off, no coordinates outside the unit tests
 DBT_PROJECT_EVALUATOR_SEVERITY=error dbt build -s package:dbt_project_evaluator --profiles-dir .
 cd ..
-sqlfluff lint dbt/models dbt/tests --processes 0       # the enforced lint, last, so a failed build reports first
+sqlfluff lint dbt/models dbt/tests --processes 0       # the enforced lint, last, so a failed build reports first; generated models included
 # save the cache on a miss, even when a step failed
 ```
 
@@ -556,7 +561,8 @@ switch, and leave alone the call 2.0.6 makes to `public.cdn.getdbt.com` once
 per command.
 
 The job runs only when its own changed-paths list matches: `pipeline/dbt/`,
-`load_raw.py`, `lib/source_registry.py`, `make_dbt_fixtures.py`,
+`generate_dbt.py` and the two generators it runs, `load_raw.py`,
+`lib/source_registry.py`, `make_dbt_fixtures.py`,
 `seed_spatial_extension.py`, `sources.json`, the two `requirements-dbt`
 files, `pipeline/.sqlfluff`, the workflow and the changed-paths action.
 
@@ -625,9 +631,14 @@ a club". The extract layout pytest then requires a `stg_<club>__<type>` for
 exactly the club's available types, `photos` included and `org` excluded.
 
 **A club ArcGIS layer of a places, elevation, points-of-interest or
-trail-lines type is generated, never hand-written**: run
-`python make_dbt_staging.py` from `pipeline/` and commit what it writes
-(decision 54). It reads the layer's key from its `sources.json` row
+trail-lines type is generated, never hand-written, and never committed**:
+`python generate_dbt.py` from `pipeline/` runs `make_dbt_staging.py` (decision
+54) and `generate_notice_models.py`, and every place that parses the project
+runs it first (decision 91, the maintainer's poll of 2026-10-06). Commit the
+registry or extract edit alone; git ignores what the generators write
+(`pipeline/dbt/.gitignore`, and the exact list `make_dbt_staging.py` writes to
+`models/.gitignore`). The pull request diff no longer shows the SQL a registry
+edit produces, so run the script and read the files it names. It reads the layer's key from its `sources.json` row
 (`key_fields`, else `id_fields`, else `id_field`; `geometry` in a list is
 the shape) and stops, naming the row, when there is none or the key holds a
 server row id. It writes the source block with its `duplicates_are_exact`
@@ -635,7 +646,10 @@ test, the base model (dates in `date_fields` cast from epoch milliseconds),
 one `stg_<club>__<type>` per folder and type, the type's
 `int_<type>__unioned`, and the region each source is held to
 (`macros/generated_regions.sql`). `pipeline/tests/test_dbt_generated_staging.py`
-fails when a committed file differs from what it would write. A rule a
+holds that both generators write the same bytes in either order and over their
+own output, that git ignores all of it, and that no committed file is theirs;
+the pipeline suite will not start without the generated tree
+(`tests/conftest.py`). A rule a
 layer needs beyond its key, such as a historic alignment that may not route
 or a road a trail layer carries, is a row of the `layer_rules` seed, read by
 the type's intermediate, never an edit to a generated file; a point's POI

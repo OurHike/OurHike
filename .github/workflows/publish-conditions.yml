@@ -8,17 +8,19 @@
 # reviewed (#460). Same bucket prefix, same daily clock, same publish step -
 # and no credential, which is why the legs are gated separately below.
 #
-# TWO PATHS, ONE SWITCH (`PHONE_FILES` below), since #1793 — Rebuild the
-# data platform as dlt → dbt: seven contracted marts, a monthly refresh,
-# published docs, and lighter phone downloads. `exporters` is the bake this
-# header describes, and what the schedule runs. `dbt` is pipeline/ELT.md's
-# hourly lane: dlt extracts each leg's closures and warnings into the
-# private raw store, dbt builds those marts and their pub_ writers, and
-# publish.py publishes the writers' files. The exporters still write the
-# files no dbt writer owns yet (drought, notes and disputes among them).
-# ELT.md decisions 30 and 46 soak the dbt path on UA for three days of
-# hourly dispatches before the merge, which is why a dispatch from any ref
-# but main runs the UA leg alone.
+# TWO PATHS, ONE SWITCH PER DATA ENVIRONMENT (`PRODUCTION_PHONE_FILES` and
+# `UA_PHONE_FILES` below), since #1793 — Rebuild the data platform as dlt →
+# dbt: seven contracted marts, a monthly refresh, published docs, and
+# lighter phone downloads. `exporters` is the bake this header describes,
+# and what the schedule runs on the production leg. `dbt` is
+# pipeline/ELT.md's hourly lane, and what the schedule runs on the UA leg:
+# dlt extracts each leg's closures and warnings into the private raw store,
+# dbt builds those marts and their pub_ writers, and publish.py publishes
+# the writers' files. The exporters still write the files no dbt writer
+# owns yet (drought, notes and disputes among them). ELT.md decisions 30
+# and 46 soaked the dbt path on UA for three days of hourly dispatches
+# before the merge, which is why a dispatch from any ref but main runs the
+# UA leg alone, and decision 92 keeps UA on it from main.
 #
 # THE dbt PATH READS TWO STORES SINCE DECISION 61 (2026-10-04). This job's
 # extract keeps the upstreams the bake published before decision 53 (NWS,
@@ -244,13 +246,15 @@ on:
         type: choice
         options: [both, ua]
         default: both
-      # Which of the header's TWO PATHS writes the phone files this run. The
-      # schedule's choice is PHONE_FILES below.
+      # Which of the header's TWO PATHS writes the phone files this run, and
+      # this run only. `scheduled` is the schedule's behaviour: each leg on
+      # its own line below (PRODUCTION_PHONE_FILES, UA_PHONE_FILES). `dbt`
+      # runs the UA leg alone (the two locks below).
       phone_files:
-        description: "Which pipeline writes the phone files: exporters (today's bake) or dbt (dlt -> dbt)"
+        description: "Which pipeline writes the phone files, this run only: scheduled (each leg's own setting, as the schedule runs), exporters (today's bake) or dbt (dlt -> dbt, UA leg alone)"
         type: choice
-        options: [exporters, dbt]
-        default: exporters
+        options: [scheduled, exporters, dbt]
+        default: scheduled
 
 permissions:
   contents: read
@@ -261,13 +265,28 @@ permissions:
 # workflow that runs 48 times a day.
 env:
   PYTHONUNBUFFERED: "1"
-  # THE CUTOVER SWITCH. The schedule runs `exporters` until the maintainer
-  # answers pipeline/ELT.md's open question 4 (when the dbt path takes over
-  # after the merge). The cutover is changing this line's `'exporters'` to
-  # `'dbt'`, and the rollback is the reverse; a dispatch picks its own with
-  # `phone_files`. publish.py reads this value as OURHIKE_PHONE_FILES and
-  # refuses anything else, so a typo here publishes nothing.
-  PHONE_FILES: ${{ inputs.phone_files || 'exporters' }}
+  # THE CUTOVER SWITCH, ONE LINE PER DATA ENVIRONMENT: which pipeline
+  # writes that leg's phone files on every scheduled run, and on a dispatch
+  # left at `phone_files: scheduled`. Decision 92 (the maintainer's poll,
+  # 2026-10-06, answering pipeline/ELT.md's open question 4): "UA on dbt,
+  # prod on exporters". So UA's leg keeps the dbt path its soak ran, now on
+  # main's code, a further probation; production's keeps today's bake until
+  # the cutover.
+  #
+  # The cutover is changing PRODUCTION_PHONE_FILES to `dbt`, and the
+  # rollback is the reverse. That line is also extract-notices.yml's switch:
+  # its production leg reads this line, by its text, and runs only while it
+  # says `dbt`, since nothing else reads production's notices store (held
+  # by .github/tests/test_notices_job.py). The dispatched-dbt lock below is
+  # not part of the cutover: it keeps a dispatch's `phone_files: dbt` on UA
+  # whatever these lines say.
+  #
+  # The job's "Choose which pipeline writes this leg's phone files" step
+  # turns its leg's line, or the dispatch's own choice, into PHONE_FILES for
+  # every later step, and refuses a value that is neither path; publish.py
+  # reads PHONE_FILES as OURHIKE_PHONE_FILES and refuses one too.
+  PRODUCTION_PHONE_FILES: exporters
+  UA_PHONE_FILES: dbt
   # Both off, in every step: dlt's telemetry is on by default and sends to
   # telemetry.scalevector.ai from a job holding R2 keys (the dlt skill, rule
   # 3), and this is dbt's documented opt-out (the dbt skill, "Telemetry off
@@ -304,10 +323,10 @@ jobs:
     # are held by .github/tests/test_conditions_production_leg_needs_main.py.
     #
     # NOR FOR A DISPATCH THAT PICKS THE dbt PATH. It has soaked on UA only
-    # (decision 30), and whether it may write production's conditions/ is
-    # pipeline/ELT.md's open question 4, the maintainer's. So `phone_files:
-    # dbt` runs the UA leg alone, by the same two locks. The schedule passes no
-    # input, so its path stays the PHONE_FILES line above.
+    # (decision 30), and decision 92 keeps production on the exporters until
+    # the cutover. So `phone_files: dbt` runs the UA leg alone, by the same
+    # two locks. The schedule passes no input, so each of its legs takes its
+    # own line above.
     strategy:
       fail-fast: false
       matrix:
@@ -335,8 +354,8 @@ jobs:
           fi
 
       # The second lock on the matrix's dbt rule, lowercased because GitHub's
-      # `!=` ignores case. It reads the dispatch's own input, never
-      # PHONE_FILES, so the cutover stays that one line.
+      # `!=` ignores case. It reads the dispatch's own input, never a leg's
+      # line, so a schedule is never refused here.
       - name: Refuse a production leg on a dispatched dbt path
         working-directory: .
         env:
@@ -345,12 +364,45 @@ jobs:
           ASKED_PHONE_FILES: ${{ inputs.phone_files }}
         run: |
           if [ "$LEG" = "production" ] && [ "${ASKED_PHONE_FILES,,}" = "dbt" ]; then
-            echo "::error title=Production leg refused::phone_files=dbt was dispatched, and the dbt path has soaked on UA only (pipeline/ELT.md, open question 4). Nothing was read or published for production."
+            echo "::error title=Production leg refused::phone_files=dbt was dispatched, and the dbt path has soaked on UA only (pipeline/ELT.md, decision 92). Nothing was read or published for production."
             exit 1
           fi
           if [ "$LEG" = "ua" ] && [ "${ASKED_PHONE_FILES,,}" = "dbt" ] && [ "$ASKED" != "ua" ]; then
             echo "::notice title=UA leg only::phone_files=dbt runs the UA leg alone, so production's conditions/ were left as they are."
           fi
+
+      # THE SWITCH, READ FOR THIS LEG (decision 92). A dispatch's
+      # `phone_files` wins for this run; `scheduled`, and a schedule, which
+      # carries no inputs, take this leg's own line at the top of this file.
+      # Written to $GITHUB_ENV as PHONE_FILES, which every later step's `if:`
+      # and publish.py read, so it runs before any step branches on it. A
+      # value that is neither path stops the leg here: otherwise every step of
+      # both paths would skip and publish.py would refuse at the end.
+      # .github/tests/test_conditions_phone_files_switch.py runs this script
+      # for each leg.
+      - name: Choose which pipeline writes this leg's phone files
+        working-directory: .
+        env:
+          LEG: ${{ matrix.data_environment }}
+          ASKED_PHONE_FILES: ${{ inputs.phone_files }}
+        run: |
+          case "$LEG" in
+            production) line=PRODUCTION_PHONE_FILES ;;
+            ua) line=UA_PHONE_FILES ;;
+            *) line="" ;;
+          esac
+          chosen="${line:+${!line}}"
+          from="$line"
+          if [ -n "$ASKED_PHONE_FILES" ] && [ "$ASKED_PHONE_FILES" != "scheduled" ]; then
+            chosen="$ASKED_PHONE_FILES"
+            from="the dispatch's phone_files"
+          fi
+          if [ "$chosen" != "exporters" ] && [ "$chosen" != "dbt" ]; then
+            echo "::error title=No phone files path::${from:-No line} names '$chosen' for the $LEG leg, which is neither exporters nor dbt. Nothing was read or published for $LEG."
+            exit 1
+          fi
+          echo "PHONE_FILES=$chosen" >> "$GITHUB_ENV"
+          echo "The $LEG leg's phone files come from $chosen ($from)."
 
       - name: Is there a database to read
         id: can
@@ -505,6 +557,20 @@ jobs:
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The dbt generators' output, which is not committed (pipeline/ELT.md
+      # decision 91), written before any dbt command reads the project, on
+      # the extract's venv: the generators read its club folders, whose
+      # modules import dlt. Measured 2026-10-06 in a sandbox: 2.7 to 3.7 s.
+      # The two-minute cap only bounds a hang, @unvalidated: this summary
+      # line over a few runs would settle it.
+      - name: Generate the dbt models (dbt path)
+        if: env.PHONE_FILES == 'dbt'
+        timeout-minutes: 2
+        run: |
+          started=$SECONDS
+          "$RUNNER_TEMP/extract/bin/python" generate_dbt.py
+          printf -- '- generate_dbt.py: %s s\n\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
       # On a miss only. Soak run 538's deps took 330 ms ("Finished 'deps'
       # successfully [330ms]", 2026-10-05), so the cap only bounds a download
       # that hangs, and a hung deps fails the run either way, because nothing
@@ -573,8 +639,10 @@ jobs:
       # conditions/nynjtc_alerts.json from the dbt writers, so running these
       # too would ask both sites twice for files nobody publishes. But these
       # steps also keep warm the `atc-updates-` cache propose-atc-updates.yml
-      # reads on main, so moving the schedule to the dbt path must first give
-      # that workflow another input.
+      # reads on main. Since decision 92 only the production leg runs them on
+      # the schedule, and its cache is the same ATC site's, so moving
+      # production to the dbt path must first give that workflow another
+      # input.
       - name: Restore ATC's trail updates
         if: env.PHONE_FILES == 'exporters'
         uses: actions/cache/restore@v6
@@ -1123,12 +1191,16 @@ jobs:
       #
       # IT NEVER STOPS THE HOURLY PUBLISH. A copy that will not read is
       # retried, then the one before is read, the notices' last good rows
-      # (`read=older`, exit 5). No copy at all yet is a warning
-      # (`read=none`, exit 6). Anything else (`read=unread`) builds without
-      # the notices store and says so. In every case but `latest` the build
-      # below saves no row history, so a notice missing from this build is
-      # never recorded as removed, and `older` and `unread` turn the run red
-      # at the end, after everything else has published.
+      # (`read=older`, exit 5). No copy at all is a warning (`read=none`,
+      # exit 6) while the leg's first committed run is under 8 hours old,
+      # and past that, or with no committed run at all, it is overdue
+      # (`read=none` and `overdue=true`, exit 8: decision 96, the
+      # maintainer's poll of 2026-10-06, "Red after 8 h, like stale").
+      # Anything else (`read=unread`) builds without the notices store and
+      # says so. In every case but `latest` the build below saves no row
+      # history, so a notice missing from this build is never recorded as
+      # removed, and `older`, `unread` and an overdue `none` turn the run
+      # red at the end, after everything else has published.
       #
       # A NEWEST COPY OF ANY AGE IS STILL `latest`, AND ITS AGE IS SAID. The
       # log line gives how long before this read the copy's run began. Past
@@ -1169,6 +1241,10 @@ jobs:
               served=latest
               echo "stale=true" >> "$GITHUB_OUTPUT"
               ;;
+            8)
+              served=none
+              echo "overdue=true" >> "$GITHUB_OUTPUT"
+              ;;
             *)
               served=unread
               echo "::error title=Notices not read::$LEG's served copy could not be added (exit $status), so this build has no club notices beyond the hourly job's own. Everything else still builds and publishes."
@@ -1195,7 +1271,8 @@ jobs:
       # per leg because each leg is its own pipeline. Both go through the
       # extract's venv, which has s3fs. The key is the raw store's own, as
       # the extract step above has it. Only the UA leg reaches this step
-      # today: the dbt path refuses a production leg (above).
+      # until the cutover: PRODUCTION_PHONE_FILES is `exporters`, and a
+      # dispatched dbt path refuses a production leg (above).
       #
       # A FAILED RESTORE DOES NOT STOP THE PUBLISH (the maintainer, by poll,
       # 2026-10-03). This includes an empty prefix once row_history_stores.toml
@@ -1391,8 +1468,7 @@ jobs:
       # without the newest notices copy, and the run goes red so the notices
       # store or its copy gets looked at. Step 2b's summary says which copy
       # was read, if any, and why the newer ones were not. A store with no
-      # copy yet only warns there: that is the notices job not having run on
-      # this branch yet, not a failure.
+      # copy is the step after this one's.
       - name: Fail the run if the notices legs' newest copy was not read (dbt path)
         if: steps.notices.outputs.read == 'older' || steps.notices.outputs.read == 'unread'
         env:
@@ -1410,6 +1486,26 @@ jobs:
         if: steps.notices.outputs.stale == 'true'
         run: |
           echo "::error title=Notices copy stale::The notices legs' newest served copy began its run more than 8 hours before this read, so this hour's club notices are at least that old. Everything was published and the row history saved. extract-notices.yml has written no copy since; look at its runs."
+          exit 1
+
+      # Last for the same reason, and decision 96's: the notices leg has no
+      # served copy and has owed one for more than 8 hours, counted from its
+      # first committed run (extract/_warehouse.py's SERVED_OVERDUE_EXIT), or
+      # has never committed one. So this hour's closures and warnings
+      # published with none of the notices job's club notices, as an `older`
+      # copy's would with its last good ones, and the row history was not
+      # saved (`--no-history-save` above). Before decision 96 that was green
+      # however long it lasted (review finding PY-3 of PR #1805 — dlt → dbt
+      # re-platform as one go/no-go change). Only a leg on the dbt path gets
+      # here: on the exporters the read above is skipped and writes no
+      # output, which is why production's leg, whose notices leg
+      # extract-notices.yml skips until the cutover, is never red for it.
+      - name: Fail the run if the notices leg has written no copy for over 8 hours (dbt path)
+        if: steps.notices.outputs.overdue == 'true'
+        env:
+          LEG: notices_${{ matrix.data_environment }}
+        run: |
+          echo "::error title=No notices copy::$LEG has written no served copy for more than 8 hours, or has never committed a run, so this hour's closures and warnings hold none of its club notices. Everything else was published, and no row history was saved. Step 2b's summary says since when; look at extract-notices.yml's runs for this environment."
           exit 1
 
       - name: Save dbt's DuckDB driver and v2's spatial extension

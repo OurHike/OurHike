@@ -40,17 +40,31 @@
 # ONE RUN PER DATA ENVIRONMENT, as publish-conditions.yml has, so that each
 # environment's hourly build reads a store only its own legs write
 # (features/DATA_ENVIRONMENTS.md). These legs read no database, so the two
-# read the same upstreams: every source is asked twice a run, conditional
-# requests where the host sends validators and every host's Crawl-delay
-# honoured (pipeline/ELT.md, "The rules this keeps"), which is the same
-# trade the conditions legs already make for the same reason.
+# read the same upstreams: once both run, every source is asked twice a
+# run, conditional requests where the host sends validators and every
+# host's Crawl-delay honoured (pipeline/ELT.md, "The rules this keeps"),
+# which is the same trade the conditions legs already make for the same
+# reason.
 #
 # THE PRODUCTION LEG EXISTS ONLY FOR A RUN FROM MAIN, by publish-conditions.yml's
 # two locks, held here by .github/tests/test_notices_production_leg_needs_main.py.
 # Nothing a hiker reads moves when it runs (it writes the private raw store
-# and the served copy, and production's hourly dbt path is refused today),
-# but production's store is the one the cutover will publish from, and only
-# reviewed, merged code may fill it.
+# and the served copy), but production's store is the one production's
+# hourly dbt path publishes from, and only reviewed, merged code may fill it.
+#
+# AND IT EXTRACTS ONLY WHILE PRODUCTION'S HOURLY LEG IS ON THE dbt PATH
+# (decision 92, the maintainer's poll of 2026-10-06: "UA on dbt, prod on
+# exporters"). Until the cutover that leg runs the exporters, which read no
+# notices store, so this leg asked every club's host and wrote a store and a
+# served copy every 4 hours for no reader: 521 s a leg run on average over
+# notices runs 1 to 10 (Measured from the Actions API), and at least 197
+# upstream requests a run (Reasoned: each resource's change check is at
+# least one request a run, extract/_run.py), both review finding ARC-2's of
+# PR #1805 — dlt → dbt re-platform as one go/no-go change. Its
+# step "Run the production leg only while production's hourly leg reads it"
+# reads publish-conditions.yml's PRODUCTION_PHONE_FILES line, so the cutover,
+# which changes that line to `dbt`, switches this leg on with it. The UA leg
+# always runs: UA's hourly leg is on the dbt path.
 
 name: Extract notices
 
@@ -165,7 +179,44 @@ jobs:
 
       - uses: actions/checkout@v7
 
+      # DECISION 92's SKIP, read off the file publish-conditions.yml's
+      # production leg chooses from, at this checkout: the one line
+      # `  PRODUCTION_PHONE_FILES: <exporters|dbt>`, exactly. `exporters`
+      # skips every step below with a notice and leaves the leg green;
+      # `dbt` runs it. Anything else, the line missing or written in another
+      # shape, stops the leg red rather than guessing either way: a guess of
+      # "skip" would leave production's store cold after a cutover, and one
+      # of "run" would spend the hour for nothing. Held by
+      # .github/tests/test_notices_job.py, which runs this script against
+      # each value of that line.
+      - name: Run the production leg only while production's hourly leg reads it
+        id: wanted
+        working-directory: .
+        env:
+          LEG: ${{ matrix.data_environment }}
+        run: |
+          if [ "$LEG" != "production" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          read_from=.github/workflows/publish-conditions.yml
+          production=$(sed -n -E 's/^  PRODUCTION_PHONE_FILES: (exporters|dbt)$/\1/p' "$read_from")
+          case "$production" in
+            dbt)
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              ;;
+            exporters)
+              echo "::notice title=Production notices leg skipped::$read_from's PRODUCTION_PHONE_FILES is exporters, and production's hourly leg reads no notices store on that path, so nothing was extracted or copied for production. Changing that line to dbt, the cutover, runs this leg from then on."
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error title=Production's phone files not read::$read_from has no single line '  PRODUCTION_PHONE_FILES: exporters' or '  PRODUCTION_PHONE_FILES: dbt', so whether production's hourly leg reads this store is not known. Nothing was extracted for production."
+              exit 1
+              ;;
+          esac
+
       - uses: actions/setup-python@v7
+        if: steps.wanted.outputs.run == 'true'
         with:
           python-version: "3.12"
           cache: pip
@@ -175,6 +226,7 @@ jobs:
       # installs it. Three minutes: publish-conditions.yml's run 510 installed
       # this and dbt's pins and ran `dbt deps` in 26 s (2026-10-04).
       - name: Install the extract's own pins
+        if: steps.wanted.outputs.run == 'true'
         timeout-minutes: 3
         run: |
           python -m venv "$RUNNER_TEMP/extract"
@@ -211,6 +263,7 @@ jobs:
       # folder's checks and reads, never a shorter Crawl-delay.
       - name: Extract every club's and agency's notices into this leg's store
         id: extract
+        if: steps.wanted.outputs.run == 'true'
         timeout-minutes: 50
         env:
           LEG: notices_${{ matrix.data_environment }}
@@ -256,6 +309,7 @@ jobs:
       # KEPT_LOG_TABLE), so how many is fixed, not one more every run.
       - name: Copy what the hourly build reads of this leg
         id: serve
+        if: steps.wanted.outputs.run == 'true'
         timeout-minutes: 5
         env:
           LEG: notices_${{ matrix.data_environment }}

@@ -1,12 +1,13 @@
 """The club notice sources' generated dbt models are what pipeline/generate_notice_models.py writes (decision 53, phase C).
 
-The generator's output is committed, so a reviewer reads the SQL that runs.
-This holds the two together: a file on disk that differs from what the
-generator writes now, a file it would write that is missing, or a file it no
-longer writes fails here, with the command that fixes it. So a closures or
-warnings resource registered in a club folder without re-running the
-generator fails the pipeline suite rather than staying unstaged, and a
-generated file edited by hand is caught.
+The generator's output is not committed (decision 91): every place that
+parses the dbt project writes it first, through generate_dbt.py, so a closures
+or warnings resource registered in a club folder is staged by the next run.
+tests/test_dbt_generated_staging.py holds, for both generators, that a run
+writes the same bytes every time and that git commits none of them. The first
+test here fails when the tree on disk, which the rest of the suite reads,
+differs from what the generator writes now: a local run on a tree written
+before the last registry edit, or a generated file edited by hand.
 
 It also holds what the generated models rest on and the generator cannot
 check by itself: every field the ArcGIS seed names is a field the layer's
@@ -37,7 +38,7 @@ def files() -> dict[Path, str]:
 
 def test_every_generated_file_is_what_the_generator_writes(files):
     problems = generator.differences(files)
-    assert not problems, "run `python generate_notice_models.py` from pipeline/:\n" + "\n".join(problems)
+    assert not problems, "run `python generate_dbt.py` from pipeline/, then the suite again:\n" + "\n".join(problems)
 
 
 def test_the_generator_stages_every_notice_source_that_has_no_hand_written_model():

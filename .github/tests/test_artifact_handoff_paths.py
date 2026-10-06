@@ -50,6 +50,11 @@ RELOCATIONS = {
     # named `app-dist`, which it then assembles into the deployed site. The
     # rename is the point; nothing downstream refers to `_site/app`.
     ("pages.yml", "app-dist"),
+    # pages.yml's docs job uploads the directory the dbt-docs-site action
+    # names, which exists on that job's runner only, and the build job
+    # extracts it to a folder of its own whose path its "Assemble the site"
+    # step reads (test_pages_publish.py holds the two to each other).
+    ("pages.yml", "data-docs"),
 }
 
 

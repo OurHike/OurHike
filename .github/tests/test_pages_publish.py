@@ -863,12 +863,30 @@ class TestTheDataDocs:
         shell, so a missing `_site/data/index.html` would be answered with the
         app rather than with a failure.
         """
-        steps = self._steps(workflow)
-        names = [step.get("name") for step in steps]
-        build = next(step for step in steps if step.get("uses") == "./.github/actions/dbt-docs-site")
-        step = next(step for step in steps if step.get("name") == assemble)
-        assert names.index(build["name"]) < names.index(assemble)
-        assert step["env"]["DOCS_DIR"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+        jobs = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))["jobs"]
+        (builder,) = [
+            job for job in jobs.values() if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        (assembler,) = [job for job in jobs.values() if any(s.get("name") == assemble for s in job["steps"])]
+        build = next(step for step in builder["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        step = next(step for step in assembler["steps"] if step.get("name") == assemble)
+        if builder is assembler:
+            names = [s.get("name") for s in builder["steps"]]
+            assert names.index(build["name"]) < names.index(assemble)
+            assert step["env"]["DOCS_DIR"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+        else:
+            # Built in a job of its own (pages.yml, SEC-8 of PR #1805's second review) and handed over as an
+            # artifact, downloaded before the assembly to the path it copies from.
+            upload = next(s for s in builder["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact@"))
+            assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+            names = [s.get("name") for s in assembler["steps"]]
+            download = next(
+                s
+                for s in assembler["steps"]
+                if str(s.get("uses", "")).startswith("actions/download-artifact@") and s["with"]["name"] == upload["with"]["name"]
+            )
+            assert names.index(download["name"]) < names.index(assemble)
+            assert step["env"]["DOCS_DIR"] == download["with"]["path"]
         assert 'cp -r "$DOCS_DIR"/. _site/data/' in step["run"]
         assert "python pipeline/check_docs_site.py _site/data" in step["run"]
         # And the checker is what refuses a site with no index.html.
@@ -918,9 +936,11 @@ class TestTheDataDocs:
 
     def test_the_deploy_job_leaves_no_write_token_on_disk_for_the_docs_build(self):
         """pages.yml's build job holds `contents: write` and replaces gh-pages,
-        and the docs step installs dbt, runs `dbt deps` and downloads a native
-        driver, none of them hash-pinned. A checkout that persists its token
-        leaves that token in .git/config for every one of them to read.
+        and runs two npm installs; until SEC-8 of PR #1805's second review it
+        ran the docs build too, which installs dbt, runs `dbt deps` and
+        downloads a native driver, none of them hash-pinned. A checkout that
+        persists its token leaves that token in .git/config for every one of
+        them to read.
 
         The publish needs no persisted token: it pushes from a fresh `git init`
         through a remote URL carrying the token it is handed, so the checkout
@@ -937,6 +957,44 @@ class TestTheDataDocs:
         script = SCRIPT.read_text(encoding="utf-8")
         assert 'git init -q "$WORK"' in script
         assert 'git -C "$WORK" remote add origin "$REMOTE_URL"' in script
+
+    def test_the_docs_build_runs_in_a_job_whose_token_can_only_read(self):
+        """SEC-8 of PR #1805's second review: a token kept out of .git/config is still in the job's secrets, which
+        every step's process can reach, and the docs build installs dbt, fetches dbt's packages by tag and a native
+        driver, none of them hash-pinned. So /data/ is built in a job of its own whose token can read and not push,
+        and the job that pushes gh-pages only downloads what that job built, installing and running nothing of dbt's.
+        """
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8"))["jobs"]
+        builders = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert len(builders) == 1, builders
+        docs = jobs[builders[0]]
+        build = next(step for step in docs["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        upload = next(step for step in docs["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact@"))
+        assert docs.get("permissions") == {"contents": "read"}
+        assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+
+        (deploy_id,) = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(step.get("uses") == "./.github/actions/publish-to-pages" for step in job["steps"])
+        ]
+        deploy = jobs[deploy_id]
+        needs = deploy.get("needs") or []
+        assert builders[0] in ([needs] if isinstance(needs, str) else needs)
+        assert not any("dbt" in str(step.get("uses", "")) for step in deploy["steps"])
+        assert "requirements-dbt" not in yaml.safe_dump(deploy["steps"]) and "dbt deps" not in yaml.safe_dump(deploy["steps"])
+        download = next(
+            step
+            for step in deploy["steps"]
+            if str(step.get("uses", "")).startswith("actions/download-artifact@")
+            and step["with"]["name"] == upload["with"]["name"]
+        )
+        assemble = next(step for step in deploy["steps"] if step.get("name") == "Assemble the site")
+        assert assemble["env"]["DOCS_DIR"] == download["with"]["path"]
 
 
 class TestTheUploadedPointer:

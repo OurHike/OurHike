@@ -188,6 +188,26 @@ def test_the_save_runs_even_when_an_earlier_step_failed(cached_paths):
     assert "always()" in str(save.get("if", ""))
 
 
+MONTHLY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "refresh-reference.yml"
+
+
+def test_the_monthly_build_caches_the_epqs_answers_and_the_dem_samples_where_the_code_reads_them():
+    """refresh-reference.yml's build job carries the two answer caches between attempts (ARC-3 of PR #1805's second
+    review), named in its job env. A path that drifted from the constant would restore beside the file the step reads,
+    and every attempt would ask EPQS again with both cache steps green."""
+    import export_elevation
+
+    workflow = yaml.safe_load(MONTHLY_WORKFLOW.read_text(encoding="utf-8"))
+    raw = workflow["jobs"]["build"]["env"]["ELEVATION_ANSWERS"]
+    cached = {line.strip() for line in raw.splitlines() if line.strip()}
+
+    expected = {
+        fetch_trail_water.ELEVATION_CACHE_PATH.relative_to(REPO_ROOT).as_posix(),
+        export_elevation.SAMPLE_CACHE_PATH.relative_to(REPO_ROOT).as_posix(),
+    }
+    assert cached == expected
+
+
 # --- The derived files also have a home in the bucket (#812) ------------------
 #
 # The cache list above answers "does this survive between runs?"; these answer

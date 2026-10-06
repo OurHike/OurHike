@@ -237,6 +237,164 @@ unit_tests:
         - {cut_key: 'crossing:oprhp_trails:1#1|oprhp_trails:3#1', cut_order: 0, cut_kind: crossing, line_part_id: 'oprhp_trails:1#1', other_part_id: 'oprhp_trails:3#1', end_side: null, end_point_wkt: null}
         - {cut_key: 'endpoint_join:nynjtc_long_path:2#1|oprhp_trails:1#1|end', cut_order: 1, cut_kind: endpoint_join, line_part_id: 'nynjtc_long_path:2#1', other_part_id: 'oprhp_trails:1#1', end_side: end, end_point_wkt: 'POINT (1805708.902606994 2236055.64823628)'}
 
+  # The piece arithmetic (int_trail_network__cuts, "ONE PIECE AT A TIME"):
+  # a part of v vertices is cut into (v - 2) // K + 1 pieces of at most K
+  # segments, K being trail_network_piece_segments. Every fixture part above
+  # and in make_dbt_fixtures.py has at most 5 vertices against the default K
+  # of 256, so these set K to 1 or 3 and put the crossing or the end where an
+  # off-by-one in the count or the slice bounds would lose it: the last
+  # segment, a vertex two pieces share, a loop's closing segment.
+
+  - name: int_trail_network__cuts_a_crossing_in_a_parts_last_segment_is_found_a_segment_at_a_time
+    description: >
+      At trail_network_piece_segments 1 the four-vertex line is three pieces,
+      and the north-south line crosses only the last of them, so a count one
+      piece short loses the `crossing`. The stub's end stops short of the
+      vertex at -74.098, which the line's second and third pieces share, and
+      is one `endpoint_join`, never two.
+    model: int_trail_network__cuts
+    # A dbt 2.0.6 unit test's vars are its overrides alone, so every var the
+    # model reads is listed.
+    overrides:
+      vars:
+        trail_network_endpoint_snap_m: 8.0
+        trail_network_piece_segments: 1
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.099 41.25, -74.098 41.25, -74.097 41.25)'}
+          - {part_id: 'oprhp_trails:3#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.0975 41.24, -74.0975 41.26)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 2, refused_because: null, geom_wkt: 'LINESTRING (-74.098 41.24, -74.098 41.24994)'}
+    expect:
+      rows:
+        - {cut_key: 'crossing:oprhp_trails:1#1|oprhp_trails:3#1', cut_order: 0, cut_kind: crossing, line_part_id: 'oprhp_trails:1#1', other_part_id: 'oprhp_trails:3#1', end_side: null, end_point_wkt: null}
+        - {cut_key: 'endpoint_join:nynjtc_long_path:2#1|oprhp_trails:1#1|end', cut_order: 1, cut_kind: endpoint_join, line_part_id: 'nynjtc_long_path:2#1', other_part_id: 'oprhp_trails:1#1', end_side: end, end_point_wkt: 'POINT (1805061.3009402521 2235903.668919551)'}
+
+  - name: int_trail_network__cuts_a_part_that_exactly_fills_one_piece_keeps_its_last_segment
+    description: >
+      The same lines at trail_network_piece_segments 3: four vertices are
+      exactly one piece of three segments, so a slice that stops a vertex
+      early loses the last segment and the `crossing` in it.
+    model: int_trail_network__cuts
+    overrides:
+      vars:
+        trail_network_endpoint_snap_m: 8.0
+        trail_network_piece_segments: 3
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.099 41.25, -74.098 41.25, -74.097 41.25)'}
+          - {part_id: 'oprhp_trails:3#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.0975 41.24, -74.0975 41.26)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 2, refused_because: null, geom_wkt: 'LINESTRING (-74.098 41.24, -74.098 41.24994)'}
+    expect:
+      rows:
+        - {cut_key: 'crossing:oprhp_trails:1#1|oprhp_trails:3#1', cut_order: 0, cut_kind: crossing, line_part_id: 'oprhp_trails:1#1', other_part_id: 'oprhp_trails:3#1', end_side: null, end_point_wkt: null}
+        - {cut_key: 'endpoint_join:nynjtc_long_path:2#1|oprhp_trails:1#1|end', cut_order: 1, cut_kind: endpoint_join, line_part_id: 'nynjtc_long_path:2#1', other_part_id: 'oprhp_trails:1#1', end_side: end, end_point_wkt: 'POINT (1805061.3009402521 2235903.668919551)'}
+
+  - name: int_trail_network__cuts_a_part_one_vertex_past_a_full_piece_is_tested_on_its_second_piece
+    description: >
+      At trail_network_piece_segments 3 a five-vertex line is two pieces, the
+      second a single segment, and the north-south line crosses only that
+      segment, so a count that rounds two pieces down to one loses the
+      `crossing`. The stub's end stops short of the vertex at -74.097, which
+      the two pieces share, and is one `endpoint_join`.
+    model: int_trail_network__cuts
+    overrides:
+      vars:
+        trail_network_endpoint_snap_m: 8.0
+        trail_network_piece_segments: 3
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.099 41.25, -74.098 41.25, -74.097 41.25, -74.096 41.25)'}
+          - {part_id: 'oprhp_trails:3#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.0965 41.24, -74.0965 41.26)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 2, refused_because: null, geom_wkt: 'LINESTRING (-74.097 41.24, -74.097 41.24994)'}
+    expect:
+      rows:
+        - {cut_key: 'crossing:oprhp_trails:1#1|oprhp_trails:3#1', cut_order: 0, cut_kind: crossing, line_part_id: 'oprhp_trails:1#1', other_part_id: 'oprhp_trails:3#1', end_side: null, end_point_wkt: null}
+        - {cut_key: 'endpoint_join:nynjtc_long_path:2#1|oprhp_trails:1#1|end', cut_order: 1, cut_kind: endpoint_join, line_part_id: 'nynjtc_long_path:2#1', other_part_id: 'oprhp_trails:1#1', end_side: end, end_point_wkt: 'POINT (1805142.2518482246 2235922.6633528)'}
+
+  - name: int_trail_network__cuts_a_loop_crossed_on_its_closing_segment_is_cut_there
+    description: >
+      A closed loop of five vertices, its last the same point as its first,
+      crossed only on the closing segment back to the start. At
+      trail_network_piece_segments 1 that segment is the last of four
+      pieces, so a vertex list that dropped the repeated closing vertex, or a
+      count one piece short, loses the `crossing`.
+    model: int_trail_network__cuts
+    overrides:
+      vars:
+        trail_network_endpoint_snap_m: 8.0
+        trail_network_piece_segments: 1
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.09 41.25, -74.09 41.26, -74.1 41.26, -74.1 41.25)'}
+          - {part_id: 'oprhp_trails:3#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.105 41.255, -74.095 41.255)'}
+    expect:
+      rows:
+        - {cut_key: 'crossing:oprhp_trails:1#1|oprhp_trails:3#1', cut_order: 0, cut_kind: crossing, line_part_id: 'oprhp_trails:1#1', other_part_id: 'oprhp_trails:3#1', end_side: null, end_point_wkt: null}
+
+  - name: int_trail_network__cuts_a_zero_length_part_on_a_line_is_joined_by_both_its_ends
+    description: >
+      A part whose two vertices are the same point, lying on the line, is
+      one piece of no length. node_lines() finds no crossing with it and
+      joins both its ends to the line, start before end, and so must this.
+    model: int_trail_network__cuts
+    overrides:
+      vars:
+        trail_network_endpoint_snap_m: 8.0
+        trail_network_piece_segments: 1
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.099 41.25, -74.098 41.25, -74.097 41.25, -74.096 41.25, -74.095 41.25)'}
+          - {part_id: 'oprhp_trails:3#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.0955 41.25, -74.0955 41.25)'}
+    expect:
+      rows:
+        - {cut_key: 'endpoint_join:oprhp_trails:3#1|oprhp_trails:1#1|start', cut_order: 0, cut_kind: endpoint_join, line_part_id: 'oprhp_trails:3#1', other_part_id: 'oprhp_trails:1#1', end_side: start, end_point_wkt: 'POINT (1805262.1432894915 2235957.6959437407)'}
+        - {cut_key: 'endpoint_join:oprhp_trails:3#1|oprhp_trails:1#1|end', cut_order: 1, cut_kind: endpoint_join, line_part_id: 'oprhp_trails:3#1', other_part_id: 'oprhp_trails:1#1', end_side: end, end_point_wkt: 'POINT (1805262.1432894915 2235957.6959437407)'}
+
+  - name: int_trail_network__cuts_a_crossing_on_a_vertex_two_pieces_share_is_one_crossing
+    description: >
+      The north-south line passes through the east-west line's vertex at
+      -74.097 at a vertex of its own, so at trail_network_piece_segments 1
+      two pieces of each line meet there: four piece pairs, one `crossing`.
+    model: int_trail_network__cuts
+    overrides:
+      vars:
+        trail_network_endpoint_snap_m: 8.0
+        trail_network_piece_segments: 1
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.099 41.25, -74.098 41.25, -74.097 41.25, -74.096 41.25, -74.095 41.25)'}
+          - {part_id: 'oprhp_trails:3#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.097 41.24, -74.097 41.25, -74.097 41.26)'}
+    expect:
+      rows:
+        - {cut_key: 'crossing:oprhp_trails:1#1|oprhp_trails:3#1', cut_order: 0, cut_kind: crossing, line_part_id: 'oprhp_trails:1#1', other_part_id: 'oprhp_trails:3#1', end_side: null, end_point_wkt: null}
+
+  - name: int_trail_network__cuts_a_line_meeting_a_looping_line_on_several_pieces_is_one_crossing
+    description: >
+      The first line loops back across itself at -74.095 and runs on south
+      along the north-south line, so at trail_network_piece_segments 1 four
+      of its pieces meet the other line: across its first segment, at its
+      third segment's end, and along its last two. One `crossing`, and no
+      end of either line is also joined.
+    model: int_trail_network__cuts
+    overrides:
+      vars:
+        trail_network_endpoint_snap_m: 8.0
+        trail_network_piece_segments: 1
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.09 41.25, -74.09 41.255, -74.095 41.255, -74.095 41.25, -74.095 41.245)'}
+          - {part_id: 'oprhp_trails:3#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.095 41.24, -74.095 41.26)'}
+    expect:
+      rows:
+        - {cut_key: 'crossing:oprhp_trails:1#1|oprhp_trails:3#1', cut_order: 0, cut_kind: crossing, line_part_id: 'oprhp_trails:1#1', other_part_id: 'oprhp_trails:3#1', end_side: null, end_point_wkt: null}
+
   # ------------------------------------------------------ the node grid
 
   - name: int_trail_network__node_lookups_a_shared_end_is_one_node

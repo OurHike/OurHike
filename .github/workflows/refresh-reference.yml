@@ -227,19 +227,34 @@ jobs:
     #     scan together;
     #   - fetch_trail_water.py --derive: ~30 min, include_trail_water's own
     #     figure (21 NHD subregions, the OSM stream scan, EPQS);
-    #   - step_osm_water_grade.py, now with points to grade: about 207 points
-    #     passed the distance gate in the 2026-08-18 census (146 reachable, 61
-    #     refused on grade; build_osm_water_reach.py), at 2 EPQS calls of
-    #     ~1.9 s each, ~13 min (Reasoned).
-    # About 64 min in all, on top of 43: 107 min before dbt's untimed share,
-    # which 180 would leave 73 min; 240 leaves 133. The step timings of the
-    # first run with the scans are what replace this arithmetic.
+    #   - step_osm_water_grade.py: Measured 21.3, 41.5 and 54.2 min on monthly
+    #     runs 20, 21 and 22 (37296900535, 37323395441, and 37370582492's
+    #     attempt 2; 2026-10-05/06), each grading the same 3,118 corridor
+    #     points, 1,056 or 1,057 reachable, with no answer carried from an
+    #     earlier attempt. Same input at 2.5x the time is EPQS's latency, not
+    #     the work (Reasoned). This line used to reason ~13 min from the 207
+    #     points of the 2026-08-18 census.
+    # About 72 to 105 min in all, on top of 43: 115 to 148 min before dbt's
+    # untimed share, which 240 leaves 92 to 125. The EPQS answers and the DEM
+    # samples are now carried between attempts (the step "Restore the EPQS
+    # answers and the DEM samples"), so a later attempt asks only what an
+    # earlier one did not get answered (Reasoned: no attempt has run with them).
     timeout-minutes: 240
     defaults:
       run:
         working-directory: pipeline
     env:
       RAW_RUN: ${{ needs.extract.outputs.raw_run }}
+      # The two answer caches publish-vector-data.yml carries in FETCH_OUTPUTS,
+      # at the paths the code reads them from (fetch_trail_water.py's
+      # ELEVATION_CACHE_PATH, export_elevation.py's SAMPLE_CACHE_PATH;
+      # pipeline/tests/test_fetch_cache_paths.py holds them). One home for the
+      # list the restore and the save below both read, as FETCH_OUTPUTS is
+      # there: actions/cache finds an entry only by the same paths it was
+      # saved with.
+      ELEVATION_ANSWERS: |
+        pipeline/data/raw/epqs_elevations.json
+        pipeline/data/raw/elevation/samples.json
     steps:
       - uses: actions/checkout@v7
 
@@ -318,6 +333,48 @@ jobs:
         with:
           path: pipeline/dbt/dbt_packages
           key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
+
+      # THE EPQS ANSWERS AND THE DEM SAMPLES, carried from one attempt to the
+      # next (ARC-3 of PR #1805's second review). Without them every attempt
+      # re-asked USGS EPQS about the same 3,118 corridor OSM water points, for
+      # 21 to 54 min (the job's budget above), and an EPQS outage would leave
+      # fewer than build_osm_water_reach.py's MIN_REACHABLE (40) points
+      # reachable, so step_osm_water_grade.py would refuse and stop the month
+      # (traced in the code, not seen: runs 20 to 22 failed later, out of
+      # memory).
+      #
+      # WHEN A CACHED ANSWER MAY BE USED is the code's, as it is for the
+      # vector build, and nothing here widens it:
+      #   - fetch_trail_water.elevation_ft() keeps only an answered elevation.
+      #     A null, or five failed tries, is never written, so the next
+      #     attempt asks again rather than reading a cached unknown.
+      #   - export_elevation.py's sample cache is thrown away whole when the
+      #     tile index's edition marker moves, and never holds a sample from
+      #     a cell whose edition the marker cannot pin (_load_sample_cache,
+      #     _sources_with_no_pinned_edition). The index is this run's, from
+      #     fetch_elevation.py or the pin, so samples taken against an index
+      #     with another marker are not read.
+      #   - No verdict is carried: step_osm_water_grade.py checkpoints into a
+      #     temporary folder and grades every point again, from the answers.
+      #
+      # Before the pin's check, unlike every step down to the pin: a rerun
+      # that builds from an existing pin still grades and samples. The key is
+      # the idiom publish-vector-data.yml's "Restore fetched data" uses (never
+      # hit exactly, take the newest entry by prefix); the save is keyed on
+      # what it saves (.github/tests/test_cache_keys_are_content_addressed.py).
+      #
+      # NOT FROM ONE MONTH TO THE NEXT. GitHub evicts an entry nobody reads
+      # for 7 days, so the 3rd's run starts cold unless an attempt ran in the
+      # week before; this carries answers between attempts and close reruns,
+      # the case runs 20 to 22 were. Carrying them across months needs the
+      # raw store, which outlives the Actions cache (the pin's extras, as the
+      # water scans are carried).
+      - name: Restore the EPQS answers and the DEM samples
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.ELEVATION_ANSWERS }}
+          key: monthly-elevation-answers-${{ github.run_id }}
+          restore-keys: monthly-elevation-answers-
 
       # THE PIN: a write-once copy of this run's raw inputs (ELT.md, "Storage
       # tiers", the raw_inputs row). A rerun builds from the first attempt's
@@ -505,6 +562,18 @@ jobs:
         run: >-
           python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
           --history-url "s3://$R2_RAW_BUCKET/history/monthly" --history-python "$RUNNER_TEMP/extract/bin/python"
+
+      # Also when build_marts.py failed: the answers an attempt paid for are
+      # what the next attempt needs, whatever a later step made of them.
+      # Keyed on the files, so an attempt that asked nothing new adds no entry,
+      # and a rerun (same run_id) can still save what it added.
+      - name: Save the EPQS answers and the DEM samples
+        if: always() && hashFiles('pipeline/data/raw/epqs_elevations.json', 'pipeline/data/raw/elevation/samples.json') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.ELEVATION_ANSWERS }}
+          key: monthly-elevation-answers-${{ hashFiles('pipeline/data/raw/epqs_elevations.json', 'pipeline/data/raw/elevation/samples.json') }}
 
       - name: Save dbt's DuckDB driver and v2's spatial extension
         if: always() && steps.dbt-runtime.outputs.cache-hit != 'true' && hashFiles('pipeline/requirements-dbt.txt') != ''

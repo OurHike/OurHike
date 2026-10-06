@@ -104,7 +104,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The dbt docs page at /data/ (pipeline/ELT.md, "Docs and charts at
+  # https://ourhike.org/data/"); the action says why an empty warehouse, and
+  # it reads no secret. A job of its own, holding a token that can read and
+  # not push (SEC-8 of PR #1805's second review): it installs dbt, fetches
+  # dbt's packages by tag and may download a native driver, none of them
+  # hash-pinned, and a step's process can reach its job's token whether or
+  # not the checkout persisted it. The build job below, which pushes
+  # gh-pages, downloads the directory and runs nothing of dbt's.
+  #
+  # Built for every run, a refused dispatch included, so that the refusal
+  # still shows as the build job's red step rather than as a skipped job.
+  #
+  # The page changes only at a tag, so a monthly data refresh moves UA's
+  # data and not these docs (Reasoned, ELT.md). Republishing a tag commits
+  # about 1.2 MB to gh-pages: measured 2026-10-03 across two builds of one
+  # commit, the 315 assets were byte-identical; index.html (its
+  # `generated_at`) and 16 of the 38 Parquet files (1,154,363 bytes)
+  # differed.
+  docs:
+    name: Build the data docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build the data docs
+        id: docs
+        uses: ./.github/actions/dbt-docs-site
+
+      # The files as dbt wrote them: an artifact keeps each file's bytes and
+      # relative path, and drops hidden files (include-hidden-files defaults
+      # to false) and empty directories. The output holds neither, nor a
+      # symlink or an executable file (checked 2026-10-06 on a build of this
+      # commit: 355 files, every one mode 644).
+      - name: Hand the docs to the deploy
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-docs
+          path: ${{ steps.docs.outputs.dir }}
+          retention-days: 1
+          if-no-files-found: error
+
   build:
+    needs: docs
     runs-on: ubuntu-latest
     # Room for a build plus a publish waiting its turn behind several previews,
     # without letting a wedged job bill all day.
@@ -165,11 +212,10 @@ jobs:
           echo "value=$value" >> "$GITHUB_OUTPUT"
           echo "Releasing: $value"
 
-      # No token left in .git/config. This job holds `contents: write`, and
-      # "Build the data docs" below installs dbt, runs `dbt deps` and fetches
-      # a native driver, none of them hash-pinned. Nothing here needs the
-      # persisted token: the publish step pushes from a fresh `git init`
-      # with the token it is handed (.github/actions/publish-to-pages).
+      # No token left in .git/config. This job holds `contents: write` and
+      # runs two npm installs, and nothing here needs the persisted token: the
+      # publish step pushes from a fresh `git init` with the token it is
+      # handed (.github/actions/publish-to-pages).
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -478,27 +524,20 @@ jobs:
             exit 1
           fi
 
-      # The dbt docs page at /data/ (pipeline/ELT.md, "Docs and charts at
-      # https://ourhike.org/data/"); the action says why an empty warehouse,
-      # and it reads no secret. Built here, not in a workflow of its own,
-      # because the publish step below replaces the whole gh-pages branch
-      # with _site, so another workflow's /data/ would be deleted by the next
-      # deploy. The page changes only at a tag, so a monthly data refresh
-      # moves UA's data and not these docs (Reasoned, ELT.md).
-      #
-      # Republishing a tag now commits about 1.2 MB to gh-pages, where it used
-      # to commit nothing. Measured 2026-10-03 across two builds of one
-      # commit: the 315 assets were byte-identical; index.html (its
-      # `generated_at`) and 16 of the 38 Parquet files (1,154,363 bytes)
-      # differed.
-      - name: Build the data docs
-        id: docs
-        uses: ./.github/actions/dbt-docs-site
+      # The dbt docs the docs job built. In this workflow, not one of its
+      # own, because the publish step below replaces the whole gh-pages
+      # branch with _site, so another workflow's /data/ would be deleted by
+      # the next deploy.
+      - name: Fetch the data docs
+        uses: actions/download-artifact@v8
+        with:
+          name: data-docs
+          path: ${{ runner.temp }}/data-docs
 
       - name: Assemble the site
         env:
           DATA_URL: ${{ steps.data.outputs.url }}
-          DOCS_DIR: ${{ steps.docs.outputs.dir }}
+          DOCS_DIR: ${{ runner.temp }}/data-docs
         run: |
           mkdir -p _site/app
           # The BUILT site, not the source tree - site/src would be shipped

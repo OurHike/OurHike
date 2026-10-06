@@ -292,3 +292,42 @@ def test_every_registered_reader_whose_row_lists_person_fields_carries_them_into
         if not listed <= carried:
             missed.append(f"{resource.name} ({type(resource).__name__}): {sorted(listed - carried)}")
     assert not missed, "rows whose person_fields no digest sees:\n" + "\n".join(missed)
+
+
+# --- WordPress's plugin fields (review finding SEC-2) ---------------------------------------------------------
+
+#: Every WordPress column a dbt model reads by name, from a grep of pipeline/dbt/models on 2026-10-06: the notices'
+#: facts (`id`, `title`, `link`, `modified_gmt`), NYNJTC's base model (`slug`, `modified` and its four place
+#: taxonomies), the wording union's prose (`content`, `excerpt`, `uagb_excerpt`), and, because the suggested-hike
+#: staging models carry every other column in `properties`, the fields WordPress's own REST API serves and the
+#: taxonomies the registered hike lists are read with (GMC's six, site_terms() in extract/gmc/suggested_hikes.py).
+WORDPRESS_COLUMNS_MODELS_READ = (
+    *("id", "date", "date_gmt", "modified", "modified_gmt", "slug", "status", "type", "link", "title"),
+    *("content", "excerpt", "uagb_excerpt", "featured_media", "sticky", "format", "categories", "tags", "acf"),
+    *("parent", "menu_order", "trail", "park", "region", "state"),
+    *("difficulty", "distance", "hike-feature", "hike-status", "hike-type", "alert-category"),
+)
+
+
+def test_a_wordpress_plugin_field_that_names_the_author_never_lands_and_every_field_a_model_reads_still_does(
+    registry, requests_mock
+):
+    """A theme's `author_info`, All in One SEO's REST block and a contact address are what a site's next plugin adds
+    after its row was read field by field; none is in the row's `person_fields`, so only the rule can stop them."""
+    requests_mock.get(f"{WP_SITE}/wp-json/wp/v2/categories", json=[{"id": 6, "slug": "trail-alerts"}])
+    post = {name: f"fixture {name}" for name in WORDPRESS_COLUMNS_MODELS_READ}
+    post.update(
+        {
+            "author_info": {"display_name": "A. Staffer", "author_link": "https://club.example.org/author/astaffer/"},
+            "aioseo_head_json": {"schema": {"@graph": [{"@type": "Person", "name": "A. Staffer"}]}},
+            "aioseo_head": '<meta name="author" content="A. Staffer">',
+            "authors": [{"display_name": "A. Staffer"}],
+            "contact_email": "a.staffer@example.org",
+        }
+    )
+    requests_mock.get(f"{WP_SITE}/wp-json/wp/v2/posts", json=[post], headers={"X-WP-Total": "1"})
+
+    (row,) = list(_kinds.WordpressPosts(key="club_alerts", club="testclub", type="closures").rows({}))
+
+    assert "A. Staffer" not in json.dumps(row) and "a.staffer@example.org" not in json.dumps(row)
+    assert set(row) == set(WORDPRESS_COLUMNS_MODELS_READ), "the name filter leaves out people and nothing else"

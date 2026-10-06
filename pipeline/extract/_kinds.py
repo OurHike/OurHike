@@ -188,9 +188,20 @@ PERSON_FIELDS = frozenset(
 # (nj_open_space_points_of_interest's LAND_MANAGER, portland_parks_trails'
 # Manager, amc_trailheads_and_parking's Tr_Manager, whose row lists 78 of its
 # 106 values). `steward`, `superintendent` and `surveyor` match none of them.
+#
+# `author` and `authors` were added for review finding SEC-2 of PR #1805: a
+# WordPress theme's or plugin's field naming a post's author, which a site can
+# add after its row was read field by field. Two registered sites already serve
+# one (ridgetrail_curated_adventures' `author_info`, gmc_trail_alerts'
+# `uagb_author_info`, both in their rows' `person_fields`), and PublishPress
+# Authors serves `authors` (Reasoned from that plugin's REST field; no
+# registered site was read for it). Measured 2026-10-06: the word matches no
+# column fixture mode lands from make_dbt_fixtures.py's files, and no reader
+# that asks this backstop lands a column a model reads by that name (the Hike
+# Finder's `author`, which publishes, is PublishedHikes', which names its own).
 PERSON_SHAPED = re.compile(
     r"(^|_)(user|user_?name|editor|edited_?by|created_?by|creator|last_?ed_?by|last_?edit(ed|or)?(_?by)?"
-    r"|owner|phone|telephone|tel|fax|email|e_?mail|contact|manager|superintendent|steward|surveyor)($|_|\d)"
+    r"|owner|phone|telephone|tel|fax|email|e_?mail|contact|manager|superintendent|steward|surveyor|authors?)($|_|\d)"
     r"|[a-z]user($|_|\d)"
 )
 
@@ -946,6 +957,21 @@ class WordpressPosts(PersonRuled, Resource):
     Every request carries a query string, so a host whose robots.txt
     disallows them (extract/_notices.py's QUERY_DISALLOWED_HOSTS:
     foothillstrail.org and newenglandtrail.org) is refused at import.
+
+    PEOPLE. A post is asked for whole and its fields judged by PersonRule:
+    PERSON_FIELDS, WP_DROPPED and the row's `person_fields` out, then any
+    name PERSON_SHAPED reads as a person's, so a theme's `author_info` or a
+    plugin's `contact_email` that a site adds after its row was read never
+    lands (review finding SEC-2 of PR #1805). A `_fields` allowlist on the
+    request was the other fix, and is not used because it would drop
+    columns models read: every suggested-hike staging model carries all of
+    a post's columns but its prose in `properties` (GMC's six hike
+    taxonomies among them), the notices' wording union reads every text
+    column of the base model, and each site's own taxonomy and plugin
+    fields would need listing per row. What the name rule cannot see is a
+    person under a name it does not know, nested or not; such a field is
+    the row's `person_fields`, as `content` is where a post carries a
+    telephone number.
     """
 
     category_slugs: tuple[str, ...] = ()
@@ -1052,7 +1078,10 @@ class WordpressPosts(PersonRuled, Resource):
 # 2026-10-01. The Green Mountain Club's `alert` posts add Spectra's
 # `uagb_author_info`, whose `display_name` is a staff member's, and
 # `spectra_custom_meta`, which carries edit locks and Yoast's meta (decision
-# 53's inventory [b5], 2026-10-03).
+# 53's inventory [b5], 2026-10-03). All in One SEO's `aioseo_head` and
+# `aioseo_head_json` are Yoast's two blocks under another plugin's name, and
+# spell the author out the same way: added for review finding SEC-2 of PR
+# #1805 on the review's word, as no registered site was read serving them.
 WP_DROPPED = frozenset(
     {
         "author",
@@ -1064,6 +1093,8 @@ WP_DROPPED = frozenset(
         "meta",
         "yoast_head",
         "yoast_head_json",
+        "aioseo_head",
+        "aioseo_head_json",
         "class_list",
         "uagb_author_info",
         "spectra_custom_meta",

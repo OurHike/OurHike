@@ -174,9 +174,10 @@ PERSON_FIELDS = frozenset(
 # new staff column: an ArcGIS field whose name reads as a person's is left out
 # unless its sources.json row clears it in `not_person_fields` (PASDA's
 # `LastEdit_1`, say, if it ever arrives as text). Matched against the name
-# split at each camelCase step and lower-cased, so `LastEdBy` is read as
-# `last_ed_by`. Dropped and printed, never a failed run: a false match costs
-# one column until somebody clears it, and a missed one ships a person.
+# split into words (_name_words), so `LastEdBy` is read as `last_ed_by` and
+# `Contact Email` as `contact_email`. Dropped and printed, never a failed
+# run: a false match costs one column until somebody clears it, and a missed
+# one ships a person.
 # @unvalidated: the word list was drafted for decision 54 on 2026-10-03 from
 # the names seen so far, not from a survey of field names. What would settle
 # it is the names a few monthly runs print, read for false matches and misses.
@@ -230,8 +231,43 @@ NEVER_PERSON_TYPES = frozenset(
 
 
 def _name_words(name: str) -> str:
-    """`LastEdBy` as `last_ed_by`: split at each lower-to-upper step, then lower-cased, so PERSON_SHAPED sees the words."""
-    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
+    """`LastEdBy` as `last_ed_by`, `Contact Email` as `contact_email`: the name split into words, so PERSON_SHAPED sees them.
+
+    Split at each lower-to-upper step and at each run of characters that are neither a letter nor a digit (a space,
+    a hyphen, a dot, an underscore, a `#`), then lower-cased. Before the second split, a name written with spaces,
+    as KML ExtendedData, a QGIS GeoJSON export or a CSV header often writes one, read as one word: `Contact Email`,
+    `E-mail` and `Phone Number` matched nothing and landed as dlt's `contact_email`, `e_mail` and `phone_number`
+    (round-2 fix worker A of PR #1805 — dlt → dbt re-platform as one go/no-go change, 2026-10-06).
+    """
+    return re.sub(r"[\W_]+", "_", re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)).lower()
+
+
+@lru_cache(maxsize=1)
+def _naming():
+    from dlt.common.normalizers.naming.sql_ci_v1 import NamingConvention
+
+    return NamingConvention()
+
+
+@lru_cache(maxsize=8192)
+def landed_name(name: str) -> str:
+    """The column dlt lands an upstream field as: sql_ci_v1, the naming .dlt/config.toml and extract/_run.py set.
+
+    `Contact Email` lands as `contact_email`, and so does `contact.email`. PersonRule compares a row's lists in
+    this form as well as lower-cased, so a `person_fields` entry written as the column a person saw in the raw
+    store matches the upstream's own spelling, and the other way round.
+    """
+    return _naming().normalize_identifier(name)
+
+
+@lru_cache(maxsize=1024)
+def _landed_names(names: frozenset[str]) -> frozenset[str]:
+    return frozenset(landed_name(name) for name in names)
+
+
+def _named_in(name: str, names: frozenset[str]) -> bool:
+    """Whether `name` is one of `names` (each lower-cased), compared lower-cased or as dlt lands both (landed_name())."""
+    return name.lower() in names or landed_name(name) in _landed_names(names)
 
 
 #: The reason PersonRule gives for a name only PERSON_SHAPED left out, which each reader prints (report_shaped()).
@@ -252,7 +288,9 @@ class PersonRule:
     row's `person_fields` kept loading; NPS content compared the row's names
     in exact case; My Maps' ExtendedData had no rule at all.
 
-    In order, every name compared lower-cased:
+    In order, every name compared lower-cased and also as the column dlt lands
+    it (landed_name()), so `Contact Email` upstream and `contact_email` in a
+    row's list are one name:
     1. PERSON_FIELDS, the row's own `person_fields` and the reader's
        `plumbing` (WordPress's WP_DROPPED) are always left out, whatever the
        row's `not_person_fields` says;
@@ -285,18 +323,17 @@ class PersonRule:
 
     def listed(self, name: str) -> str | None:
         """The list that always leaves `name` out (step 1), or None."""
-        lower = name.lower()
-        if lower in PERSON_FIELDS:
+        if _named_in(name, PERSON_FIELDS):
             return "PERSON_FIELDS"
-        if lower in self.person_fields:
+        if _named_in(name, self.person_fields):
             return "the row's person_fields"
-        if lower in self.plumbing:
+        if _named_in(name, self.plumbing):
             return "the reader's plumbing"
         return None
 
     def shaped(self, name: str) -> bool:
         """Whether PERSON_SHAPED reads `name` as a person's and the row's `not_person_fields` does not clear it (step 2)."""
-        return name.lower() not in self.not_person_fields and bool(PERSON_SHAPED.search(_name_words(name)))
+        return not _named_in(name, self.not_person_fields) and bool(PERSON_SHAPED.search(_name_words(name)))
 
     def left_out(self, names) -> dict[str, str]:
         """Every one of `names` that never loads, lower-cased, with the rule that leaves it out."""

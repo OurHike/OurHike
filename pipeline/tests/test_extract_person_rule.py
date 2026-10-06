@@ -331,3 +331,70 @@ def test_a_wordpress_plugin_field_that_names_the_author_never_lands_and_every_fi
 
     assert "A. Staffer" not in json.dumps(row) and "a.staffer@example.org" not in json.dumps(row)
     assert set(row) == set(WORDPRESS_COLUMNS_MODELS_READ), "the name filter leaves out people and nothing else"
+
+
+# --- a field name written with spaces, hyphens or dots ----------------------------------------------------------
+
+#: How KML ExtendedData, a QGIS GeoJSON export or a CSV header spells a person's field, and the name dlt's sql_ci_v1
+#: naming lands it under. Round-2 fix worker A of PR #1805 found that PERSON_SHAPED read the first spelling as one
+#: word, so `Contact Email` landed as `contact_email`.
+SPELT_APART = {
+    "Contact Email": "contact_email",
+    "E-mail": "e_mail",
+    "Phone Number": "phone_number",
+    "contact.email": "contact_email",
+    "Owner  Name": "owner_name",
+    "Phone#": "phone",
+}
+
+
+@pytest.mark.parametrize("name", SPELT_APART)
+def test_a_person_shaped_field_name_written_with_spaces_hyphens_or_dots_never_loads(name):
+    assert _kinds.PersonRule().left_out([name]) == {name.lower(): _kinds.SHAPED}
+
+
+@pytest.mark.parametrize(
+    ("listed", "upstream"),
+    [
+        ("trail_crew_lead", "Trail Crew Lead"),
+        ("Trail Crew Lead", "trail_crew_lead"),
+        ("trail_crew_lead", "Trail-Crew-Lead"),
+        ("TRAIL_CREW_LEAD", "Trail Crew Lead"),
+    ],
+)
+def test_a_rows_person_fields_match_whether_written_as_the_upstream_spells_the_name_or_as_dlt_lands_it(listed, upstream):
+    rule = _kinds.PersonRule.of({"person_fields": [listed]})
+    assert rule.left_out([upstream, "Trail Name"]) == {upstream.lower(): "the row's person_fields"}
+
+
+@pytest.mark.parametrize(
+    ("cleared", "upstream"),
+    [("land_manager", "Land Manager"), ("Land Manager", "land_manager"), ("Land Manager", "LAND_MANAGER")],
+)
+def test_a_rows_not_person_fields_clear_a_name_whether_written_as_the_upstream_spells_it_or_as_dlt_lands_it(cleared, upstream):
+    assert _kinds.PersonRule().left_out([upstream]) == {upstream.lower(): _kinds.SHAPED}, "the backstop reads it"
+    assert _kinds.PersonRule.of({"not_person_fields": [cleared]}).left_out([upstream]) == {}
+
+
+#: The readers whose upstream names may hold a space: JSON objects and KML ExtendedData. An RSS item's names are XML
+#: tags and an ArcGIS layer's come from its field list, neither of which may.
+SPACED_READERS = {kind: READERS[kind] for kind in READERS if kind not in ("PodcastFeed", "PodcastEpisodes", "ArcgisLayer")}
+
+
+@pytest.mark.parametrize("kind", SPACED_READERS)
+def test_a_field_name_written_with_spaces_never_lands_from_any_reader_whose_names_may_hold_one(
+    registry, requests_mock, monkeypatch, kind
+):
+    """`Inspector Name` is the row's `Inspector_Name` (LISTED) as a spreadsheet heads it; `Contact Email` and
+    `Phone Number` are names PERSON_SHAPED reads as a person's once split at the space."""
+    spaced = {"Facility Name": "Fixture Fountain", "Inspector Name": "A. Person", "Contact Email": "a@example.org"}
+    spaced["Phone Number"] = "555-0100"
+    monkeypatch.setitem(globals(), "upstream_fields", lambda **extra: {**spaced, **extra})
+    rows = SPACED_READERS[kind](requests_mock, monkeypatch)
+    never = {"contact email", "phone number"} | (set() if kind in ROWLESS else {"inspector name"})
+
+    assert rows, "the fixture lands a row"
+    for row in rows:
+        landed = {name.lower() for name in row}
+        assert "facility name" in landed, "a field that is nobody's still lands"
+        assert not landed & never, f"{sorted(landed & never)} landed"

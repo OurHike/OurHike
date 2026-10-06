@@ -77,8 +77,63 @@ def test_every_arcgis_field_the_seed_names_is_in_the_layers_measured_field_list(
     for key, row in rows.items():
         measured = set(make_dbt_fixtures.NOTICE_LAYERS[key][1])
         for role in generator.ROLES:
-            if row[role]:
+            if row[role] and generator._literal(row[role]) is None:
                 assert row[role] in measured, f"{key}: {role} names {row[role]!r}, which the layer's field list does not hold"
+
+
+def _fixture_layer() -> "generator.NoticeSource":
+    return generator.NoticeSource(
+        club="fixture",
+        type="warnings",
+        key="fixture_layer",
+        table="raw_fixture__fixture_layer",
+        reader_class="ArcgisLayer",
+        cadence="hourly",
+        hand_staged=False,
+        entry={"id_field": "GlobalID", "title": "Fixture layer"},
+    )
+
+
+def _fixture_fields(**roles: str) -> dict[str, dict]:
+    return {"fixture_layer": {"source_key": "fixture_layer", **{role: "" for role in generator.ROLES}, **roles}}
+
+
+def test_a_seed_value_in_single_quotes_is_staged_as_those_words_on_every_row_and_never_read_as_a_field():
+    """Decision 95 (the maintainer's poll, 2026-10-06): a layer whose only title is a code a hiker cannot read (CPW's
+    ACTIVITYCO, BBHCA or MLHCA) is titled in words the seed carries in single quotes. The staging model writes them
+    as a SQL string, so every row of the layer carries them, and neither the wording union's fact columns nor a
+    notice_field() call takes the words for a field the layer lands."""
+    source = _fixture_layer()
+    fields = _fixture_fields(title="'Fixture words'", category="'Fixture kind'", edited="EDIT_DATE")
+    model = generator.render_stg(source, fields)
+    assert "    'Fixture words' as title,\n" in model
+    assert "    'Fixture kind' as category,\n" in model
+    assert "{{ notice_instant(notice_field('edit_date')) }} as source_edited_at," in model
+    assert "notice_field('fixture" not in model and "notice_field(''" not in model
+    assert generator._fact_columns(source, fields) == ["edit_date", "globalid"]
+
+
+@pytest.mark.parametrize("role", [role for role in generator.ROLES if role not in ("title", "category")])
+def test_a_seed_value_in_single_quotes_for_a_status_a_date_a_link_or_a_place_stops_the_generator(role):
+    """Only a title or a category may be words the seed supplies: a status, a date, a link or a place a source did
+    not state would be OurHike's claim in the source's voice (miss rather than cry wolf)."""
+    with pytest.raises(SystemExit, match=f"{role}.*single quotes"):
+        generator.render_stg(_fixture_layer(), _fixture_fields(**{role: "'Fixture words'"}))
+
+
+def test_cpw_conflict_areas_are_titled_in_decision_95s_words_and_never_by_their_activityco_code(files):
+    """The maintainer's poll of 2026-10-06, option A: "Black bear conflict area" and "Mountain lion conflict area",
+    category "Wildlife conflict area". Before it, all 613 bear rows and 266 lion rows read live on 2026-10-06 (fix
+    worker B, PR #1805's round-2 review) staged their title from ACTIVITYCO, which is BBHCA or MLHCA on every row."""
+    staging = DBT / "models" / "staging" / "cotrex" / "notices"
+    for stem, title in (
+        ("cpw_bear_conflict_areas", "Black bear conflict area"),
+        ("cpw_lion_conflict_areas", "Mountain lion conflict area"),
+    ):
+        model = files[staging / f"stg_cotrex__{stem}.sql"]
+        assert f"    '{title}' as title,\n" in model, stem
+        assert "    'Wildlife conflict area' as category,\n" in model, stem
+        assert "notice_field('activityco')" not in model, stem
 
 
 def test_every_status_value_belongs_to_a_source_whose_seed_row_names_a_status_field():

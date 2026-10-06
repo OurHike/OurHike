@@ -1052,9 +1052,11 @@ jobs:
       # 2026-10-04) 169 s for 89 resources, 20 of them read. Not cut back to
       # 4 minutes: ATC's trail-updates pages carry their reads to the end of
       # whatever budget is left (run 510 spent the whole 150 s), so 45 s of
-      # checks and 150 s of reads can still take 3 m 15 s before the load,
-      # and no run of the 12-table leg has been timed yet (Reasoned). A few
-      # soak runs' step times would settle a smaller cap.
+      # checks and 150 s of reads can still take 3 m 15 s before the load
+      # (Reasoned). The 12-table leg has been timed since: the 29 soak
+      # dispatches from run 532 to 566 took this step 60 to 98 s (Measured
+      # 2026-10-06 from the Actions API's step times), the figures a smaller
+      # cap would be sized from.
       - name: Extract this leg's closures and warnings into the raw store (dbt path)
         id: extract
         if: env.PHONE_FILES == 'dbt'

@@ -344,8 +344,9 @@ jobs:
       # wheel from public.cdn.getdbt.com/fs/wheels and checks its sha256
       # (requirements-dbt.in), so a cold install needs dbt's CDN as well as
       # PyPI. pip caches the built wheel, which the setup step restores, so a
-      # warm run should skip the download (Reasoned from how pip caches
-      # wheels built from an sdist; not yet watched on a runner).
+      # warm run skips the download: Pipeline tests run 37408628160 (fd38fe24,
+      # 2026-10-06) logged "Using cached dbt-2.0.6-cp311-abi3-manylinux_2_28_
+      # x86_64.whl" and built nothing.
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dbt.txt
@@ -749,9 +750,11 @@ jobs:
       # failed build reported 20 minutes late. Now it runs after everything
       # else, and whatever the build did unless the run was cancelled, so one
       # round trip still reports both. `--processes 0` is SQLFluff's "every
-      # CPU", four on a hosted runner; that it scales near four times is
-      # Reasoned (each file lints alone) and @unvalidated until this step's
-      # first time on a runner. A step of this job, never a job of its own:
+      # CPU", four on a hosted runner. It does not scale four times: on a
+      # runner this step took 815 s on e33e3193, 438 s on de8fe591 and 458 s
+      # on fd38fe24 (Pipeline tests runs 37370567391, 37400529783 and
+      # 37408628160; Measured 2026-10-06 from the Actions API's step times).
+      # A step of this job, never a job of its own:
       # `dbt` is the required check (.github/expected-protections.yml).
       # .github/tests/test_sqlfluff_after_the_build.py holds the order.
       - name: sqlfluff lint

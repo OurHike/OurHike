@@ -203,8 +203,11 @@ jobs:
       # read 85 sources, most of them ArcGIS first reads, inside 150 s on soak
       # run 506 (publish-conditions.yml 37154645937, 2026-10-03). Both are
       # ceilings sized to the hour, not the time a run is expected to take
-      # (@unvalidated: no notices leg has run yet, and the first run's
-      # "Seconds:" summary line settles both). A slow host costs only its own
+      # (@unvalidated: notices runs 1 to 10, UA's leg from 2026-10-04 to 06,
+      # took this whole step 104 to 642 s of its 3,000, Measured from the
+      # Actions API's step times, so neither ceiling has been reached; each
+      # run's "Seconds:" summary line splits the checks from the reads, and
+      # nobody has read those lines for this). A slow host costs only its own
       # folder's checks and reads, never a shorter Crawl-delay.
       - name: Extract every club's and agency's notices into this leg's store
         id: extract
@@ -242,8 +245,10 @@ jobs:
       # one write of each of the leg's tables, SERVE_COPIERS (8) at once
       # (extract/_warehouse.py). One at a time, this leg's 261 tables took
       # 2 min 47 s and 4 min 15 s in runs 6 and 7 and passed five minutes in
-      # run 8 (2026-10-05), which served no copy; what 8 at once takes against
-      # R2 is @unvalidated, and this step's time on the next runs settles it. --run-log-cache is the extract step's:
+      # run 8 (2026-10-05), which served no copy. 8 at once copied them in 39 s
+      # in run 10 (37423240098, 2026-10-06, Measured from its log), the one
+      # run so far, so how it holds against R2 is still @unvalidated and this
+      # step's time on the next runs settles it. --run-log-cache is the extract step's:
       # the run log's files, one per past run and each a GET on R2, are read
       # from the runner's disk, so this job reads them from the store once
       # (extract/_run.py's run_log_bytes()).

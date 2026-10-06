@@ -225,6 +225,38 @@ club_town_shapes as (
     ) as club_town_geoms
 ),
 
+-- A club park that EPSG:5070 leaves invalid (polygon_shapes below says how
+-- one can) is made valid part by part, and the parts unioned. Made valid
+-- whole, ST_MakeValid reads two parts the projection made overlap by the
+-- even-odd rule, so the overlap becomes a hole: an island whose mainland's
+-- long edge bows over it in EPSG:5070 measured its 652.7 m trail as 0.0
+-- miles (review finding DBT2-4 of PR #1805, and the two
+-- places_a_club_park_island_* unit tests). A NY Parks park is still made
+-- valid whole, because tests/test_dbt_places_parity.py holds it to
+-- export_places.py: given the second unit test's shape as a NY Parks park,
+-- export_places.py also reads 0.0 miles, and on the first it raises GEOS's
+-- TopologyException (measured by round-2 fix worker C of PR #1805,
+-- 2026-10-06, through that test's own harness). Decision 54's club parks
+-- are not export_places.py's. Whether NY Parks should change with them is
+-- left to #1811 — Fast follows after PR #1805's dlt → dbt re-platform: the
+-- hiker's own download choice, the cutover, and what the port found in
+-- today's code.
+club_park_parts as (
+    select
+        place_id,
+        unnest(st_dump(g)) as part
+    from club_park_shapes
+    where not st_isvalid(g)
+),
+
+club_park_made_valid as (
+    select
+        place_id,
+        st_union_agg(st_makevalid(struct_extract(part, 'geom'))) as g
+    from club_park_parts
+    group by place_id
+),
+
 -- Every park and club park polygon, cut into pieces ("MEMORY" above): a
 -- piece of more than `piece_vertices` vertices is replaced by its two
 -- halves, until none is or it has been halved `piece_halvings` times. GEOS
@@ -251,10 +283,12 @@ polygon_shapes as (
     union all
     select
         'club_park' as shape_kind,
-        place_id,
-        case when st_isvalid(g) then g else st_makevalid(g) end as piece,
+        club_park_shapes.place_id,
+        coalesce(club_park_made_valid.g, club_park_shapes.g) as piece,
         0 as halvings
     from club_park_shapes
+    left join club_park_made_valid
+        on club_park_shapes.place_id = club_park_made_valid.place_id
 ),
 
 polygon_pieces as (

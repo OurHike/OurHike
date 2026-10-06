@@ -123,3 +123,52 @@ unit_tests:
         - {"place_id": "dec_lands:k-1", "kind": "park", "name": "Fixture State Forest", "poi_id": null, "category": "State Forest", "state": "NY", "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": "[-74.0,41.0,-73.9232,41.05788]", "trail_miles": "3.0", "trail_miles_measured": true, "source": "dec_lands"}
         - {"place_id": "azt_gateway_communities:k-3", "kind": "town", "name": "Fixture Gateway", "poi_id": null, "category": null, "within_park": null, "lon": "-73.9616", "lat": "41.02894", "bbox": null, "trail_miles": "3.0", "trail_miles_measured": true, "source": "azt_gateway_communities"}
         - {"place_id": "dec_lean_tos:th", "kind": "trailhead", "name": "Inside Trailhead", "poi_id": "dec_lean_tos:th", "category": null, "state": "NY", "within_park": null, "lon": "-73.96", "lat": "41.02", "bbox": null, "trail_miles": "3.0", "trail_miles_measured": true, "source": "dec_lean_tos"}
+  - name: places_a_club_park_island_that_the_projection_overlaps_with_the_mainland_still_measures_its_trail
+    model: int_places__resolved
+    description: >
+      Review finding DBT2-4 of PR #1805, in the reviewer's shape (its
+      places_alaska.py probe, DuckDB 1.5.5): a club park whose mainland's
+      northern edge runs along lat 56.8 from -136 to -134, with an island
+      just north of it. The parts are disjoint in lon/lat, but in EPSG:5070
+      the edge's straight chord bows north over the island, so the
+      projected park is invalid. ST_MakeValid of the whole made the overlap
+      a hole by the even-odd rule, and the 652.7 m trail on the island
+      measured 0.0 miles. Each part made valid, then unioned, measures it.
+      Here rather than in _places__unit_tests.yml because decision 54's club
+      parks are not export_places.py's, so tests/test_dbt_places_parity.py
+      has no Python answer to hold it to.
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-04 00:00:00+00", "line_kind": "network", "name": "Island Trail", "trail_name": "Island Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-135.005, 56.8023], [-134.995, 56.8023]]}"}
+      - input: ref('int_places__club_units')
+        rows:
+          - {"place_id": "dec_lands:k-island", "kind": "park", "name": "Fixture Island Forest", "category": "State Forest", "state": "AK", "geom_wkt": "MULTIPOLYGON (((-136.0 56.6, -134.0 56.6, -134.0 56.8, -136.0 56.8, -136.0 56.6)), ((-135.01 56.8018, -134.99 56.8018, -134.99 56.8118, -135.01 56.8118, -135.01 56.8018)))", "source_key": "dec_lands", "club": "nysdec", "_loaded_at": "2026-10-04 00:00:00+00"}
+    expect:
+      rows:
+        - {"place_id": "dec_lands:k-island", "kind": "park", "trail_miles": "0.4", "trail_miles_measured": true}
+  - name: places_a_club_park_island_inside_the_projected_mainland_still_measures_its_trail
+    model: int_places__resolved
+    description: >
+      The same club park with its island closer in, wholly inside the
+      bulge the projected edge makes (worker C's second case, round-2
+      review of PR #1805): ST_MakeValid of the whole read the island as a
+      hole in the mainland, and its trail as 0.0 miles.
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-04 00:00:00+00", "line_kind": "network", "name": "Island Trail", "trail_name": "Island Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-135.005, 56.801], [-134.995, 56.801]]}"}
+      - input: ref('int_places__club_units')
+        rows:
+          - {"place_id": "dec_lands:k-island", "kind": "park", "name": "Fixture Island Forest", "category": "State Forest", "state": "AK", "geom_wkt": "MULTIPOLYGON (((-136.0 56.6, -134.0 56.6, -134.0 56.8, -136.0 56.8, -136.0 56.6)), ((-135.01 56.8005, -134.99 56.8005, -134.99 56.8015, -135.01 56.8015, -135.01 56.8005)))", "source_key": "dec_lands", "club": "nysdec", "_loaded_at": "2026-10-04 00:00:00+00"}
+    expect:
+      rows:
+        - {"place_id": "dec_lands:k-island", "kind": "park", "trail_miles": "0.4", "trail_miles_measured": true}

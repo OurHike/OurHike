@@ -38,7 +38,7 @@ sources:
       (returnDistinctValues), the key phase C builds on.'
     config:
       meta:
-        cadence: monthly
+        cadence: hourly
     data_tests:
     - duplicates_are_exact:
         arguments:
@@ -54,7 +54,7 @@ sources:
       (returnDistinctValues), the key phase C builds on.'
     config:
       meta:
-        cadence: monthly
+        cadence: hourly
     data_tests:
     - duplicates_are_exact:
         arguments:

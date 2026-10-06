@@ -232,3 +232,30 @@ def test_only_the_named_polygon_sources_base_models_are_tables(files):
         if path.name.startswith("base_") and path.suffix == ".sql" and "{{ config(materialized='table') }}" in text
     }
     assert tables == {sources[key].base_model for key in generator.TABLE_BASES}
+
+
+def test_every_notice_source_that_reaches_hikers_lands_in_the_warehouse_of_the_lane_that_builds_its_readers():
+    """Review finding ARC-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change: CPW's bear and mountain lion
+    conflict areas (613 and 266 polygons, `reaches_hikers: true`) were extracted on the monthly lane, by a
+    `cadence_override="monthly"` from before decision 61 gave the notices job an hour to read. Their only readers are
+    the unions this generator writes, which also read hourly sources, so they build on the hourly lane alone
+    (build_marts.py's LANE_EXCLUDES keeps them out of the monthly build). The hourly build's warehouse holds a
+    conditions leg's tables and a notices leg's served copy, never the monthly store, so int_closures__gate held both
+    every hour as "not in this warehouse", and every run stayed green.
+
+    So every staged notice source's table must be one a leg reads: decision 61's two jobs (extract/_run.py's
+    leg_tables()). A source whose sources.json row says reaches_hikers false is let through, since the gate holds it
+    either way: USFWS's hunt units today. Its row turning true turns this red, which is when its lane is decided."""
+    from extract._contract import all_resources, discover, discover_shared
+    from extract._run import LEGS, leg_tables
+
+    resources = all_resources(discover() + discover_shared())
+    hourly = set().union(*(leg_tables(leg, resources) for leg in LEGS))
+    unread = {
+        source.key: source.cadence
+        for source in generator.notice_sources()
+        if source.table not in hourly and (source.entry or {}).get("reaches_hikers") is not False
+    }
+    assert unread == {}, f"reach hikers and land where no build that reads them looks: {unread}"
+    held = sorted(source.key for source in generator.notice_sources() if source.table not in hourly)
+    assert held == ["fws_hunt_units"], "each one let through is held by its reaches_hikers false, and named here"

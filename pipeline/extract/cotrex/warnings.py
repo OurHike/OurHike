@@ -2,12 +2,12 @@
 2026-10-03).
 
 - `cpw_bear_conflict_areas`: CPW black bear human conflict areas, `CPWSpeciesData/FeatureServer/20`.
-  Read monthly, not on the type's lane: a standing conflict-area map (lastEditDate 2026-05-07),
-  whose hundreds of polygons are too large a first read for the hourly lane's 150 s budget.
 - `cpw_lion_conflict_areas`: CPW mountain lion human conflict areas,
-  `CPWSpeciesData/FeatureServer/93`. Read monthly, not on the type's lane: a standing conflict-area
-  map (lastEditDate 2026-05-07), whose hundreds of polygons are too large a first read for the
-  hourly lane's 150 s budget.
+  `CPWSpeciesData/FeatureServer/93`.
+
+Both ride the type's lane, the notices job (decision 61). They were read monthly until review
+finding ARC-1 of PR #1805 showed that neither could reach a phone that way: only the notices job's
+models read them, and its warehouse never loads the monthly store.
 
 Each layer's row in sources.json holds its counts, dates, terms and the person fields it never
 loads. Change checks are _kinds.py's ArcgisLayer: a conditional GET of the layer document on ArcGIS

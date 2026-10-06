@@ -8325,6 +8325,8 @@
       "provider": "FoOT",
       "kind": "published_notices",
       "url": "https://docs.google.com/spreadsheets/d/1_3_u_8gtQSoiFSgzVAf3uGwPMj_nqQ25/export?format=csv&gid=866760807",
+      "redirect_hosts": ["googleusercontent.com"],
+      "redirect_hosts_comment": "The export answers with one 307 to doc-04-ac-sheets.googleusercontent.com (read 2026-10-06, PR #1805's round-2 review, finding SEC-5), whose robots.txt answered 404, no rules. Named so the extract session's cross-host refusal lets that one redirect through; a redirect anywhere else refuses the read.",
       "trust": "authoritative",
       "steward": "Friends of the Ouachita Trail",
       "steward_contact": "https://friendsoftheouachita.org/",

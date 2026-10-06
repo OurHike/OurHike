@@ -28,7 +28,7 @@ New Mexico Volunteers for the Outdoors: suggested hikes, published, and not land
 Machine-readable through REST, as HTML bodies. The CONDITIONS sections are 2020–2023 snapshots. They
 must never feed warnings or closures, and a hike card must show their date. No terms page.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "Hike New Mexico" trail guide, `https://nmvfo.org/trails/`
 (WordPress page id 2040, modified 2023-01-31). Its children come through `https://nmvfo.org/wp-

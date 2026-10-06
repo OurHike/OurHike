@@ -26,7 +26,7 @@ Neither layer has an active flag or an end date. "Current" can only be inferred 
 CMS page, which is @unvalidated. What would settle it is asking PCTA which layer its closures page
 renders.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `PCT_Fires_and_Trail_Closures_public_view/FeatureServer/0`:
 144 points, last edit 2026-09-28. Fields: `Year`, `Closure_Name`, `Type`, `Agency_Unit`,

@@ -16,7 +16,7 @@ Mount Rogers Appalachian Trail Club: suggested hikes, published, and not landed 
 
 Whether those four sections load by script is UNKNOWN (no browser was used).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://www.mratc.org/suggested-hikes` (page): 7 hikes render (2
 A.T., 3 A.T.-linked, 2 Iron Mountain). Each has distance, one-way or loop, difficulty and turn-by-turn

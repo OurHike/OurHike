@@ -17,7 +17,7 @@ c9_federal_state_rest).
 
 One district.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Omaha District
 `services5.arcgis.com/6AHfZAoqk1VUqQpS/.../GarrisonHuntingAndTrappingRestrictions20260424/FeatureServer`

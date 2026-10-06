@@ -26,7 +26,7 @@ A candidate for #1780 — Let a club publish a challenge — places on its own t
 into and tag at camp — starting with the ATC's A.T. Summer Bucket List only once they are geocoded:
 …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): API `/passportstamplocations`: 1,092 (label, type, parks). The
 first was "A.G. Gaston Motel (Temporarily Closed)".

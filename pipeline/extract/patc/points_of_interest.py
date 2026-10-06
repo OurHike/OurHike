@@ -23,7 +23,7 @@ batch c2_at_clubs_mid).
 The 14 Tuscarora shelters and the cabins are new to us (ATC's layer covers the A.T. only, Reasoned). Cabins are
 under the Council-authorization term. Per the item text, 25 of 42 rentable cabins are members-only.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `PATC_Shelters_AT_and_TT_2_view/0`: 47 (32 "Official A.T. Shelter", 14
 "T.T. Shelter", 1 other; 2024-09-25; food-storage fields, no capacity). `Cabin_Locations/0`: 49 cabins (26

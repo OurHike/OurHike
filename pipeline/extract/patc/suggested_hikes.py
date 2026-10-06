@@ -21,7 +21,7 @@ batch c2_at_clubs_mid).
 The Avenza hikes fall under the Council term and point at paid maps, the same issue as the `avenza`
 refuse row. The section guides are the club's own free prose.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `Hikes_Sort/0`: 40 hike footprints (Name, Length_mi, ElevGn_ft,
 Difficulty, Link → `link.avenza.com`, the paid maps), 2021-09-24. hikethetuscarora.org: 22 section

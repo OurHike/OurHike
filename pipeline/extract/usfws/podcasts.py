@@ -20,7 +20,7 @@ c9_federal_state_rest).
 
 National conservation programming, not trail audio. Low value to a hiker.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): fws.gov podcast pages: "The Future of Conservation" (2026
 series), Nature's Infrastructure, NCTC podcasts. Skeptic adds the exact URLs (HTTP 200 on

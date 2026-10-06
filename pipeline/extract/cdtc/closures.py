@@ -24,7 +24,7 @@ batch b7_long_trails_states).
 The best-shaped feed in this batch. `Type` plus `Active` maps straight onto decision 7's
 `obstructs_trail` split, and `Milepost` is present.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `CDT_Alerts_view/FeatureServer/1` Alert Points: 149, with
 `Active=Yes` on 12 `Closure` and 15 `Alert`. `/2` Alert Lines: 76, with `Active=Yes` on 6 `Closure`

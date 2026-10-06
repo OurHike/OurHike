@@ -21,7 +21,7 @@ batch c6_regional_3).
 A real RSS feed. The trail-report episodes double as a conditions channel (see closures). Link the
 audio, never copy it, under the copyright line.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "Dirt Magic", RSS `https://rss.buzzsprout.com/1119050.rss`.
 `itunes:author` is "Sierra Buttes Trail Stewardship", hosted by a named individual. 40 episodes,

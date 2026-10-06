@@ -20,7 +20,7 @@ Monadnock-Sunapee Greenway Trail Club: closures, published, and not landed (cove
 
 A page.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/trail-conditions/`: dated entries (April 2026, "entire 48.7
 miles … swept, cleared"), plus a relocation notice in Stoddard with a "Download Relocation Map"

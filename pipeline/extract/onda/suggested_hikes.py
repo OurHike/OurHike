@@ -18,7 +18,7 @@ Oregon Natural Desert Association: suggested hikes, published, and not landed (c
 
 Pages. The `hike` type is not exposed in `/wp/v2/`.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): The `hike` custom post type: 24 pages in `hike-sitemap.xml` (e.g.
 `/hike/big-indian-gorge/`). Posts `/oregon-desert-trail-day-hikes/` ("21 Day Hikes") and

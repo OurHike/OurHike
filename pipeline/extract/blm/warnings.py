@@ -49,7 +49,7 @@ b6_federal).
 Shooting points are areas set aside for target shooting. Whether that counts as a hiker hazard
 warning is a maintainer call. Skeptic: fire restrictions are page format, one page per state.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): The same press-release RSS (e.g. Utah "BLM to Reduce Hazardous
 Fuels around Grover, Utah"). A "Fire Restrictions" page is linked from blm.gov's navigation.

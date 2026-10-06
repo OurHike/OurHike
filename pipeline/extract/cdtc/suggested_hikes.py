@@ -19,7 +19,7 @@ The note this replaces read, whole:
 Continental Divide Trail Coalition: suggested hikes, published, and not landed (coverage audit
 2026-10-01, batch b7_long_trails_states).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Format page. `cdtcoalition.org/explore-the-trail/day-section-
 hiking/` carries 10 named day and section hikes (e.g. "East Shore Trail", "Lewis and Clark Pass via

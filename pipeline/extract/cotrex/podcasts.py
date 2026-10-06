@@ -19,7 +19,7 @@ batch b7_long_trails_states).
 
 Active.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "Colorado Outdoors – the Podcast for Colorado Parks and
 Wildlife": RSS `https://rss.art19.com/colorado-outdoors`, 54 episodes, latest 2026-10-01 (iTunes

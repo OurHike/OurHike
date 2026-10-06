@@ -36,7 +36,7 @@ c10_nst_rest).
 All page or PDF. AMC publishes no trail-closure feed for the Whites. Those closures come from WMNF
 (`usfs` folder). Skeptic spot-check: `newenglandtrail.org/closures-notices/` returns 200.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://newenglandtrail.org/closures-notices/`,
 Massachusetts: 4 notices, 3 of them parking closures in Section 16 (Erving).

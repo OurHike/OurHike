@@ -21,7 +21,7 @@ batch b7_long_trails_states).
 The layer was last built for the 2025–26 season. Whether a 2026–27 rebuild is coming is
 @unvalidated; what would settle it is CPW's schedule.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `SCs_All_COTREX_Sept2025_Final/FeatureServer/0`: 128 seasonal
 wildlife closure polygons with `Agency`, `Closure_Period`, `Start_Date`, `End_Date`,

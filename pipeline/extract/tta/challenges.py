@@ -20,7 +20,7 @@ Fits the challenges mart from #1780 — Let a club publish a challenge — place
 hikers opt into and tag at camp — starting with the ATC's A.T. Summer Bucket List, but the terms block
 it.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "a named individual Hiked 'em All": 36 hikes in TN State Parks, a
 commemorative patch plus an achievement rocker, and a qualification form

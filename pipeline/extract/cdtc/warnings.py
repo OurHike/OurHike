@@ -25,7 +25,7 @@ A National Defense Area is military ground along the New Mexico border, and ente
 offence. The CDT's southern terminus is on that border. Whether this polygon touches the trail or
 the Crazy Cook approach was not measured. It belongs in `cdtc/warnings.py` (or closures, if it …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): The same layers, rows with `Type=Alert` and `Active=Yes`.
 Example: "Black Fire… Stay alert for potentially dangerous conditions and slow travel due to

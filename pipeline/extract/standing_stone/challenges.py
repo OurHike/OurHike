@@ -19,7 +19,7 @@ The Sweet 16 is a place-based challenge, the same shape as #1780 — Let a club 
 places on its own trails that hikers opt into and tag at camp — starting with the ATC's A.T. Summer
 Bucket List.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): End 2 End Challenge (`/end-to-end-hiking-information`;
 applications "reviewed each year between November 1 and December 31"; `/end-to-end-honorees`). Sweet 16

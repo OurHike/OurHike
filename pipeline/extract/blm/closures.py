@@ -37,7 +37,7 @@ Format: RSS of mixed press releases, so it needs decision 7's classifier and a c
 filter. There is no geometry; a release names a county or area. `/alerts` was empty when the server
 sent it (skeptic, Measured). That a Drupal view would have rendered items there is Reasoned.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://www.blm.gov/alerts`: server-rendered list with region
 filter, read "No Results" today. Closures appear in the state press-release RSS feeds (13, listed at

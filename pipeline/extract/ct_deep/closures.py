@@ -47,7 +47,7 @@ because the search budget ran out. That gap belongs in the folder's dated note.;
 2026-10-01: checked, and the gap closes. DEEP State Parks runs a second site, `https://ctparks.com`
 (Drupal) …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `DEEP_Property_Access_Locations` `STATUS`: Open 384 / Closed 1
 (Kettletown State Park). `DEEP_Trails_Set/3` `TRAILSTAT` "Needs Repair": 3. The page

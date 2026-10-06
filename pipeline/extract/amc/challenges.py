@@ -20,7 +20,7 @@ A peak list, which is the #1780 shape. No machine-readable peak coordinates were
 confirmed: `amc4000footer.org/` 302s to `/the-lists-we-recognize.html`. That page links the list pages
 and `/ne-111-list-of-peaks.pdf` (PDF), and its one StoryMap link is AMC's All Out: AMC Action Plan …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): AMC Four Thousand Footer Committee,
 `https://www.amc4000footer.org/`: 4 lists (White Mountain 4000-Footers, NE 4000-Footers, NE Hundred

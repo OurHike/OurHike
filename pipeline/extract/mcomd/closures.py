@@ -28,7 +28,7 @@ c2_at_clubs_mid).
 This channel is ahead of our loaded ATC copy (finding 1). The posts carry dates and `modified`, so
 an ETag/`modified` freshness marker would work here.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://www.mcomd.org/wp-json/wp/v2/posts` (JSON; category
 216 "Club News & Announcements", 94 posts) and `/feed/` (RSS). Search hits: "closed" 6, "closure" 3,

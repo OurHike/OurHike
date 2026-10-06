@@ -33,7 +33,7 @@ Do not use it. The NET site's CT closures link straight here. Skeptic spot-check
 200 with 10 items. The newest is "Ragged Mountain Preserve, Storm Damage CLEARED" (2026-07-17), then
 …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://ctwoodlands.org/trail-notices/`: 31 notices
 (2018-07-19 to 2026-07-17). RSS `https://ctwoodlands.org/trail-notices/feed/` returns the newest 10.

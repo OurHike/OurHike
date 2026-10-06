@@ -18,7 +18,7 @@ c10_nst_rest).
 PDF. Skeptic spot-check: `/day-hike/` returns 200, and the Juniper Creek PDF returns 200
 `application/pdf`.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://floridatrail.org/day-hike/`: 16 "Grab-and-Go" hikes
 (carousel "1 of 16"), each a PDF with trailhead lat/long, key mileages and camping, e.g.

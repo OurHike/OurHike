@@ -18,7 +18,7 @@ Places on the club's own trail that a hiker visits in loops. It is the closest f
 publish a challenge — places on its own trails that hikers opt into and tag at camp — starting with the
 ATC's A.T. Summer Bucket List in this batch, though it has no opt-in or tagging. No …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "History of the Trail Scavenger Hunt",
 `https://thetrailconservancy.org/programs/scavenger-hunt/` (REST `?slug=scavenger-hunt`, modified

@@ -37,7 +37,7 @@ GATC publishes reroutes and access-road closures that ATC's reviewed file does n
 mix closures with news, so they need the human-review treatment `lib/atc_updates.py` encodes. The
 January road closures are probably stale by now (@unvalidated). Skeptic re-check: `/feed/` answers …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): News RSS `https://georgia-atclub.org/feed/` (30 posts, one
 category). Relevant posts: "Byron Herbert Reece Trail Reroute" (2026-06-05); "A. T. Access Points

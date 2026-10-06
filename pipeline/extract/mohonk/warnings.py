@@ -23,7 +23,7 @@ machine-readable). Skeptic additions (Measured 2026-10-01): the layer's fields a
 `Zone_Number`, `Zone_Name`, `Area_Acres` and `Perimeter_MIles`, so no restriction or date field
 exists despite the …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `MP_Deer_Management_with_Restrictions/FeatureServer/0`: 16
 polygons, `dataLastEditDate` 2026-08-18, fields `Zone_Number`/`Zone_Name`/`Area_Acres` (attachments

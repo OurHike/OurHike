@@ -31,7 +31,7 @@ rather than a trail, and no alert carries geometry, so it never sets `obstructs_
 The inventory also found a PDF, a web page for this club, which other phase B readers take; if one
 lands for this type it takes this file, and this note becomes a line in its docstring.
 
-The coverage audit's note, kept as it was (restated from reference/org_coverage.json, whose text is
+The coverage audit's note, kept as it was (restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is
 trimmed where it ends in '…'):
 
 PDF. Also `bmtamail.org/docs/KnowBeforeYouGo.pdf`.

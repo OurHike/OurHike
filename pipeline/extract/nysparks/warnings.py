@@ -20,7 +20,7 @@ it to DEC's statewide season calendar would be the next step. ~~The meaning of c
 @unvalidated beyond the one sample~~ (changed by skeptic: settled by the group-by this note asked
 for.) …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `NY_State_Parks_Hunting_Areas_2_view/FeatureServer/1`
 "NYSHuntingBoundaries", polygon, 223, `dataLastEditDate` 2026-09-30 (edited the day before this

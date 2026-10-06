@@ -22,7 +22,7 @@ One programme, two publishers. Recommendation: extract once, under `cmc` (fuller
 `co_publisher: tehcc` (Reasoned). TEHCC's "AT 2000 Miler" and "Smokies 900 Miler" pages are only
 rosters of members who finished other programmes.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): South Beyond 6000 (SB6K): 40 peaks above 6,000 ft, founded by
 TEHCC and co-sponsored with CMC (`https://tehcc.org/hiking/challenges/south-beyond-6000/`). Details

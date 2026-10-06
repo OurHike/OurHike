@@ -28,7 +28,7 @@ b6_federal).
 A point per hike, not a route. `geometryPoiId` joins to the POI layer. Tours include museum walks,
 so filter by activity.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): API `/thingstodo?q=hiking`: 1,644 (total 3,572 per c9). Fields
 include `duration`, `season`, `petsDescription`, `latitude`/`longitude`, `geometryPoiId`. API

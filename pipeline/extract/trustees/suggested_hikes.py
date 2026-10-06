@@ -16,7 +16,7 @@ batch c4_regional_1).
 
 A page.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/program/the-trustee-hikers-top-ten/` and "Ideas for Your Visit"
 on place pages.

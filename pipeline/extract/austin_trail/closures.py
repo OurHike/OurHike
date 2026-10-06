@@ -24,7 +24,7 @@ c6_regional_3).
 
 Each entry has a start and a duration, so a parser can carry an end date.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/visit-the-trail/detours/` via REST `?slug=detours` (modified
 2026-07-27), HTML with detour PNGs. Entries: Barton Creek short-term detour (2026-07-13, 2 days).

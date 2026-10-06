@@ -22,7 +22,7 @@ b7_long_trails_states).
 Dormant for five years. Load only if the podcasts mart accepts archives. SilviCast is live, but its
 audience is foresters, so it is a weak fit.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "Wild Wisconsin – Off the Record": RSS
 `https://feeds.transistor.fm/wild-wisconsin-off-the-record`, 59 episodes, latest release 2021-06-16

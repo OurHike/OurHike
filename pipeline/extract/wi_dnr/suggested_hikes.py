@@ -19,7 +19,7 @@ Format page. Like NC DPR's per-park trail tables, it sits closer to trail attrib
 itineraries, but each entry is a described hike with a length. How many properties carry the page was
 not counted. `findapark` is the index to walk.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): No hike product in the services. The per-property hiking pages on
 `dnr.wisconsin.gov` were not opened. Skeptic opened one (Measured):

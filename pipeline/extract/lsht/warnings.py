@@ -21,7 +21,7 @@ warnings mart. Skeptic, new and stale: web map "LSHT Survey2024"
 (`661f31eba56644f09d5908a6b21ed4b8`) layers a "Down Trees Labeled" WMS
 (`wms.qgiscloud.com/richwinters/trees`) and a public GeoJSON …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
 https://www.arcgis.com/sharing/rest/content/items/26ead23c99224bdaac4702a269306301, a GeoJSON file

@@ -27,7 +27,7 @@ These are standing conflict-area maps, not activity reports. A card must word th
 maps as a bear–human conflict area", never as "bear activity reported". Season dates live in
 brochures (pdf), not opened.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Hunting: `CPWAdminData/6` GMU Boundary (Big Game), 186
 polygons, plus `cpw.state.co.us/hunting/big-game` (page). Bears: `cpw.state.co.us/living-bears`

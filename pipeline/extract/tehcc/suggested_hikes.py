@@ -26,7 +26,7 @@ Tennessee Eastman Hiking & Canoeing Club: suggested hikes, published, and not la
 Structured through the API. Whether `Template:Trail` fields are SMW properties (and so `ask`-able)
 is untested. `Challenge Item` is.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `Template:Trail` on 148 pages (distance, round trip, hike
 time, difficulty, route description); `Template:Hike` on 52; 2 Hike Plans; `Report:` namespace with

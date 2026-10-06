@@ -30,7 +30,7 @@ b6_federal).
 
 Place-tagged audio is the hiker-relevant part. The RSS shows are programming.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): API `/multimedia/audio`: 5,173 items with `durationMs`,
 `transcript`, `latitude`/`longitude`, `geometryPoiId`. The sample is oral-history clips (Ellis

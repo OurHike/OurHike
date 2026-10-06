@@ -14,7 +14,7 @@ The note this replaces read, whole:
 Maah Daah Hey Trail Association: suggested hikes, published, and not landed (coverage audit 2026-10-01,
 batch c8_regional_5).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): 19 trail pages (`/trails/`, with distance, campgrounds, overview
 and "Ideal for").

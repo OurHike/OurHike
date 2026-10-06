@@ -17,7 +17,7 @@ Mazamas: suggested hikes, published, and not landed (coverage audit 2026-10-01, 
 
 A page, not machine-readable. The terms are unknown (see the flags above).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/hikelist/`: 161 hikes, each with miles, elevation gain, driving
 miles and a trailhead-fee flag, in an HTML list, e.g. "Angels Rest 4.6 miles 1,540 feet 42 miles, no".

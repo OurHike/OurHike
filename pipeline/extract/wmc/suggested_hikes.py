@@ -23,7 +23,7 @@ c5_regional_2).
 
 The reports are written by members and carry no licence. Faint Trails is login-gated (see above).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/trip-reports` is a public HTML listing of 551 table rows, dated
 2006-09-16 to 2026-09-27. `/hiking` lists upcoming hikes with WMC ratings. (Changed by skeptic: verdict

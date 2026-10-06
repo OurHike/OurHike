@@ -26,7 +26,7 @@ batch c6_regional_3).
 
 Section text is a 2019 Wilderness Press guidebook excerpt (see flags).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): WordPress REST `/wp-json/wp/v2/trail-section`: 86 posts, each
 with distance, from/to and land manager. Category "Curated Adventures" has 33 posts. `/trip-

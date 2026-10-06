@@ -18,7 +18,7 @@ batch c2_at_clubs_mid).
 The Blue Blazer list is the closest thing in this batch to #1780's opt-in place list. It is a PDF table,
 so extracting it is a reviewed transcription, not a fetch.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Blue Blazer Program,
 `https://home.nbatc.org/pdfs/BlueBlazeTrailHike.pdf` (2026-07-09): a patch for hiking all 20

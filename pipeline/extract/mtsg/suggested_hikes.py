@@ -23,7 +23,7 @@ Mountains to Sound Greenway Trust: suggested hikes, published, and not landed (c
 
 HTML bodies come through REST.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): WordPress REST `/wp-json/wp/v2/itinerary`: `X-WP-Total` = 28.
 9 are typed "Trails, Parks, and Recreation", e.g. "10 Scenic Middle Fork Hikes Near Seattle That

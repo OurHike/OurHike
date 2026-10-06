@@ -37,7 +37,7 @@ Weak and seasonal. These are access closures and one facility closure; none obst
 so under decision 7 they land as warnings, or as season attributes on the POI rows (Reasoned). They
 matter for getting off the trail quickly: in winter the Greylock road crossings are not exits. …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-03): via _shared/ma_dcr/ `ma_dcr_park_alerts` (decision 53 phase B,
 2026-10-03): `ma_dcr_park_alerts` reads `FACILITYCLOSURE_APPDATA/FeatureServer/0` | There are no

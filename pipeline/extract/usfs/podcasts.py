@@ -22,7 +22,7 @@ b6_federal).
 Forest Focus includes a trail-crew episode ("Trails in Transformation", search). "Forest North" is
 the Ely Tourism Bureau's show, not USFS's.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Forest Focus (USDA Forest Service, Pacific Southwest Region):
 `https://rss.libsyn.com/shows/433686/destinations/3617892.xml`, 38 episodes, newest 2024-12-21.

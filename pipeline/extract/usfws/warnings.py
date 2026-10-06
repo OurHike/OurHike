@@ -23,7 +23,7 @@ c9_federal_state_rest).
 Hunting season is in scope for warnings. The polygons carry no season dates, so they say where
 hunting happens, not when. The dates live in the alert blocks above.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `.../FWS_NWRS_HQ_PublicHuntUnits_view/FeatureServer/0`, "FWS
 National Hunt Units 2026-2027": 2,215 polygons, with `Huntable`, `Permit_Required`,

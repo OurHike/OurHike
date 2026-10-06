@@ -34,7 +34,7 @@ b7_long_trails_states).
 These are planning records (they carry a `Cost` field), but "impassable crossing" is a hazard point
 all the same.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `AKLT_Trail_Obstacles/FeatureServer/20`: 13 points, last edit
 2026-03-05: `BridgeNeeded(Impassable)` 4, `BridgeNeeded(Passable)` 7, `RiverFord` 2.

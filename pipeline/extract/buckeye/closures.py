@@ -32,7 +32,7 @@ c8_regional_5).
 Restricted. Kirby CMS pages, with no feed found. Alerts are keyed to Section "Points", so locating
 them needs BTA's point data.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Each section page's "Trail Alerts" block: 38 entries across 26
 sections, 5 of them "No Active Alerts" placeholders. Current examples: "Loveland Trail Closure PT 10

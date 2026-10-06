@@ -35,7 +35,7 @@ A page. The RSS cannot detect edits. Skeptic correction (M, 2026-10-01): the ale
 `/134-section-1`, October 12, 2025 for `/150-section-14` and `/156-section-20`, and June 06, 2024
 for …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/index.php/the-trail/section-updates`: 20 section articles
 plus spurs, e.g. `/148-section-12` with dated "Alerts" (latest seen June 16, 2023). There are region

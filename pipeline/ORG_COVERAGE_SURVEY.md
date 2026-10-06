@@ -6,12 +6,16 @@ orgs and two data types, in August), [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (where
 orgs' trail data came from) and [../features/ORG_BULK_LOAD.md](../features/ORG_BULK_LOAD.md)
 (what the catalogue's `load` verdicts mean).
 
-**The row-level data is [`reference/org_coverage.json`](reference/org_coverage.json):** one
-row per organisation × data type, 2,670 rows, each with its status, evidence, grade and note.
-This file is the narrative over it. Neither file decides anything. Phase 1 of
-**#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh,
-published docs, and lighter phone downloads** writes the `pipeline/extract/<club>/` files from
-the JSON, and the JSON is then retired so the notes in those files are the one home.
+**The row-level data was `reference/org_coverage.json`:** one row per organisation × data
+type, 2,670 rows, each with its status, evidence, grade and note. This file is the narrative over
+it. Neither file decides anything. Phase 1 of **#1793 — Rebuild the data platform as dlt → dbt:
+seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** wrote the
+`pipeline/extract/<club>/` files from the JSON. Decision 88 (`pipeline/ELT.md`, 2026-10-06) then
+retired the JSON and moved every note into one file,
+[`extract/not_available.toml`](extract/not_available.toml), which is now the one home of what
+each managing club does not publish; a club's resource files stay in its folder. git keeps the
+JSON: `git show bcc70dd0:pipeline/reference/org_coverage.json`, which is what a citation of it
+below means.
 
 Written 2026-10-01 from live probes made that day. It is kept in the tense it was written in.
 Every count is the audit's own, taken from public metadata on 2026-10-01; none was re-taken
@@ -105,7 +109,7 @@ USFS units that carry candidate trails (§8).
 | aggregator | 3 | 0 | 12 | 17 | 1 |
 | land_trust | 1 | 1 | 6 | 3 | 0 |
 
-What the matrix says, counted from `org_coverage.json`:
+What the matrix says, counted from `bcc70dd0:pipeline/reference/org_coverage.json`:
 
 - **The maintainer's guess holds.** 254 of 267 row sets have at least one AVAILABLE_NOT_LOADED
   type. Only 11 have nothing but NOT_PUBLISHED and UNKNOWN: four national umbrellas, six
@@ -156,7 +160,7 @@ Three things the AVAILABLE column is **not**, so nobody reads it as more than it
   told to *"assume it missed things"*: look harder at every NOT_PUBLISHED and UNKNOWN row,
   confirm every LOADED key exists in `sources.json`, and spot-check one URL per
   AVAILABLE_NOT_LOADED row. It edited verdicts in place, marked "(changed by skeptic: …)", and
-  its verdict wins. 136 rows in `org_coverage.json` carry that mark. The 23 skeptic sections
+  its verdict wins. 136 rows in `bcc70dd0:pipeline/reference/org_coverage.json` carry that mark. The 23 skeptic sections
   that count their verdict changes total 120; b1, b2 and b4 list theirs without a number.
 - **Four statuses**, defined in the JSON's `_statuses`. The rule the workflow repeated in every
   prompt: *"Never round UNKNOWN down to NOT_PUBLISHED: a false 'not published' stops the next
@@ -204,7 +208,7 @@ Three things the AVAILABLE column is **not**, so nobody reads it as more than it
 
 `merge_coverage.py` parsed every org table into one row per org × type, with the persistence
 verdict replacing the audit's. Two parse defects were repaired before
-`org_coverage.json` was written, and neither changed a status: cells holding an escaped `\|`
+`bcc70dd0:pipeline/reference/org_coverage.json` was written, and neither changed a status: cells holding an escaped `\|`
 had been split mid-text (15 rows, plus one with an unescaped pipe fixed by hand), and c18's two
 USFS tables (George Washington & Jefferson NF, Mount Rogers NRA) had overwritten each other and
 the national USFS elevation row. The JSON
@@ -215,7 +219,7 @@ personal ArcGIS account name and named private individual was replaced by a desc
 
 ## 2. The persistence pass (decision 21b)
 
-**Rows checked: 202. Rows flipped: 148 (73%).** In `org_coverage.json` 203 rows carry
+**Rows checked: 202. Rows flipped: 148 (73%).** In `bcc70dd0:pipeline/reference/org_coverage.json` 203 rows carry
 `persisted: true`, because q01's one USFS elevation verdict covers both USFS candidate-trail
 scopes.
 
@@ -821,7 +825,7 @@ key, not another automated pass.
 ## 12. Worth telling the organisations
 
 Security and privacy findings on third-party sites and layers. None was tested, used or copied:
-the values are not in this file or in `org_coverage.json`, only what kind of exposure it is.
+the values are not in this file or in `bcc70dd0:pipeline/reference/org_coverage.json`, only what kind of exposure it is.
 Each is for the maintainer to pass on, or not.
 
 | org | what was seen | from |

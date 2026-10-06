@@ -26,7 +26,7 @@ b7_long_trails_states).
 
 No feed was found. The city's `RoadClosures/` services are for streets.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Format page: the `duluthmn.gov/parks/` news list carries trail
 closures, e.g. "Portion of Chester Park Trail Closed Due to Washout" (2017-08-29); "Closed" appears

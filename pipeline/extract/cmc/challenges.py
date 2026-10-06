@@ -25,7 +25,7 @@ The peak and tower lists give names and elevations, not coordinates. Places woul
 (GNIS, OSM; @unvalidated). These fit the shape #1780 — Let a club publish a challenge — places on its
 own trails that hikers opt into and tag at camp — starting with the ATC's A.T. Summer Bucket List …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): 8 programmes under
 `https://carolinamountainclub.org/hiking/hiking-challenges/` (pages modified 2026-08-14 to 2026-08-30):

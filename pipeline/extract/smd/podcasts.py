@@ -24,7 +24,7 @@ The feed is not on savemountdiablo.org, so SMD's no-automation terms do not gove
 Its own "All Rights Reserved" does: link the episodes, never copy them. The producer is a named
 individual and the sponsor is MDIA, so it belongs in `_shared/` podcasts (decision 12), with SMD's …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "Audible Mount Diablo", RSS
 `https://rss.libsyn.com/shows/136346/destinations/844139.xml`. 209 episodes, 2019-02-01 →

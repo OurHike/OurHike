@@ -17,7 +17,7 @@ c6_regional_3).
 
 Terms-blocked.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/experience/field-guides/hikes-in-the-diablo-range/` lists 47
 numbered hikes by region, each linking a blog post, e.g.

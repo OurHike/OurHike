@@ -24,7 +24,7 @@ Pacific Northwest Trail Association: suggested hikes, published, and not landed 
 Page. Skeptic: `/pnta/sections-of-the-pnt/` now 301s to `/pnta/know-before-you-go/` ("Sections of
 the PNT" in `llms.txt`). Use the target URL.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/pnta/sections-of-the-pnt/`: 10 section pages. WP category
 `day-hikes`: 1 post.

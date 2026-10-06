@@ -18,7 +18,7 @@ those columns at extract. `Impact=Low` rows are candidates for warnings under de
 adds a terms finding (Measured, item `2a0f013583dc452e938aead18cbf71f3` "PR: WI Park Closures PUBLIC
 …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `WI_Park_Closures_PUBLIC_VIEW/FeatureServer/0`: 69 points, all
 `Active_Flag = Yes` (Impact High 25, Moderate 16, Low 28). Fields: `Closure_Name`, `Reason`,

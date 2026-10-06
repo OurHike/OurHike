@@ -19,7 +19,7 @@ b6_federal).
 
 Programming, not trail audio.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "On the Ground": `https://www.blm.gov/media/podcasts/otg.rss`,
 26 items with enclosures, newest 2025-09-24. Also Alaska Frontiers and Your American Lands

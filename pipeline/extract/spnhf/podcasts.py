@@ -27,7 +27,7 @@ The feed is NHPR's and looks stale against the show. This belongs in `_shared/po
 to its co-producers. Skeptic correction (M, 2026-10-01): the feed above is a dead copy. The live
 feed is the one Apple's directory lists: …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "Something Wild", which NHPR introduces as "a joint production
 of NH Audubon, The Society for the Protection of New Hampshire Forests & NHPR". RSS:

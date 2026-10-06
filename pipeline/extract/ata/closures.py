@@ -27,7 +27,7 @@ Per-passage categories give each post a location without geocoding. Skeptic spot
 returns 200 `application/rss+xml` with 10 items, the newest titled "UPDATE for Autumn 2026
 Thru-Hikers & Riders". WordPress categories confirm `closures-reroutes` (251) = 13.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Category `closures-reroutes` (id 251): 13 posts, 2023-01-15 to
 2026-08-31. They include "Arizona Trail CLOSED in Grand Canyon" (2026-08-30), "AZT Within Grand

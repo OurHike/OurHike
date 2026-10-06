@@ -26,7 +26,7 @@ batch b7_long_trails_states).
 No active flag, so every row is "not reviewed" under decision 7. Rows dated 2021 are still in the
 layer, so expiry by `Date` is @unvalidated.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `trail_alerts/FeatureServer/1`: 67 points with `Date`
 (2021-01-01 to 2026-09-11), `Location`, `desc_`, `label`. Example: "Trail Alert: Garrison Dam —

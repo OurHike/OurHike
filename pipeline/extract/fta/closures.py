@@ -85,7 +85,7 @@ to warnings. Post titles carry FTA map-sheet numbers ("Maps 39-40"), not coordin
 spot-checked `X-WP-Total: 14` for those five categories. The per-category counts add to 15, so one
 post …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): WordPress REST
 `https://floridatrail.org/wp-json/wp/v2/posts?categories=37,40,41,42,43`: categories

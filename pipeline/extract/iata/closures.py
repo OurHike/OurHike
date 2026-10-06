@@ -35,7 +35,7 @@ closed", posted 2019-09). Loading all 80 would show expired closures as live. Gu
 lines that close segments, so they `obstruct_trail` (decision 7). The NPS copy must be deduplicated
 …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `.../IAT_Trail_Conditions_Posted/FeatureServer/0`: 80 rows,
 last edit 2026-09-30. `posted`: yes 21, no 57, pending 2. Headings include Trail Closed 5, Trail

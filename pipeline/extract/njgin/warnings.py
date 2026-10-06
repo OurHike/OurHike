@@ -20,7 +20,7 @@ Fire danger plus the campfire-restriction flag is the find: machine-readable, da
 the Forest Fire Service's own. The hunting zones carry no season dates, so they say "hunting happens
 here", not "this week". The prescribed-burn layer is the right shape for "smoke ahead" when it has …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `Envr_admin_FFS_danger_public/FeatureServer/2` "NJ Wildfire
 Danger Level": 3 Forest Fire Service division polygons, with `FIRE_DANGER` (sample: Northern NJ

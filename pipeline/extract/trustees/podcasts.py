@@ -21,7 +21,7 @@ c4_regional_1).
 Coastal-programme content, not trail content, and two episodes, so `_shared/podcasts` material at
 most. Licence unstated.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "Trustees On The Coast", artist "The Trustees". Apple id
 1485305394. RSS `https://anchor.fm/s/102fa3a7c/podcast/rss`: 2 items with enclosures, both dated

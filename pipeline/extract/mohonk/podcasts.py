@@ -23,7 +23,7 @@ wants. It is Boulton's copyright, not Mohonk's. Metadata and links only. Skeptic
 Spreaker feed answers 200 with 12 `<item>`s, "Stop 1: Boulder Pile in Old Pasture" to "Stop 12: Site
 of the …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/visit/the-trapps-mountain-hamlet-path-audio-tour/` links
 Apple Podcasts `id1387239867`. The iTunes lookup gives "Walk Back in Time", feed

@@ -29,7 +29,7 @@ skeptic): ATC's trail updates are the WordPress subtype `trail-updates`, and a s
 `https://appalachiantrail.org/wp-json/wp/v2/search?search=Kennebec` returns 11 pages and posts (e.g.
 "River & …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://www.matc.org/kennebec-river-ferry-service/` (page):
 the 2026 ferry schedule (May 22–Jun 30 9–11 a.m.; Jul 1–Sep 30 9 a.m.–2 p.m.) and "Do not attempt to

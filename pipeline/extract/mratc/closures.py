@@ -21,7 +21,7 @@ batch c3_at_clubs_south).
 ATC LOADED carries the Creeper closure and detour (`obstructs_trail: true`) and the Dickey Gap
 high-water route. MRATC adds the day-hiker detail and the road and lot closures.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): The homepage block "TRAIL ALERTS" (page): the 2026 A.T. detour
 during Creeper Trail reconstruction ("Most of the 20 mile detour will follow the Iron Mountain

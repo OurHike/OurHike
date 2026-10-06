@@ -20,7 +20,7 @@ This is a DCNR-run end-to-end programme with a reward, the #1780 shape. Caveat: 
 live on geocaching.com, whose terms govern them (not read), so the extractable content is the 25 park
 names, themes, hike lengths and GC codes. The park centroids come from DCNR's own …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "DCNR GeoTrail: Celebrating America's 250th",
 `https://www.pa.gov/agencies/dcnr/recreation/what-to-do/geocaching/dcnr-geo-trail` (200, read

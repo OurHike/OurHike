@@ -31,7 +31,7 @@ c10_nst_rest).
 "High Water" and "Trail Flooded" are warnings, not drought (decision 2). Skeptic spot-check:
 `IATA_Lands_Hunting_Regulations_view/9` = 65, last edit 2026-07-13.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): The same conditions layer's non-closure headings: "Caution -
 Logging Activities" 5, "Caution - logging near trail" 3, High Water 3, Storm Damage 3, Trail Flooded

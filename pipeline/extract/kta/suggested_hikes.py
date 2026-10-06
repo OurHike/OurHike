@@ -16,7 +16,7 @@ batch c1_at_clubs_north).
 
 —
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `favorite-hikes-in-pennsylvania.html` (page; bilingual EN/ES, each
 hike with county, link and description, e.g. "Kurmes Trail … 2.2-mile loop"). Also

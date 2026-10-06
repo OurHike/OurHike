@@ -16,7 +16,7 @@ batch c4_regional_1).
 
 A page. Digital databooks are sold.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/day-hike/` (Mt. Crawford, Owls Head, …) and `/through-hike/`.
 

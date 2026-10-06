@@ -26,7 +26,7 @@ The RSS `description` is a truncated summary, so full text needs the post page. 
 filter matches "closure" inside `<enclosure>` on every item, as this audit found. ATC LOADED carries
 Rhododendron Gap bears and the Mt Rogers fire restrictions.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Weekly "MRATC Activities and Information" posts, RSS
 `https://www.mratc.org/blog-feed.xml` (20 items; newest 2026-09-27; weekly since 2025-12). For

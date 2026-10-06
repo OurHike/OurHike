@@ -20,7 +20,7 @@ batch b5_nyc_nj_ct_ma_pa).
 
 Dormant for 8 years. Low value.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "Discover DEP: the Official Podcast of the NJ Department of
 Environmental Protection", feed `https://feed.podbean.com/njdep/feed.xml` (200, 392,517 bytes). 95

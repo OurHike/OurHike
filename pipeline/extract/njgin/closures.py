@@ -21,7 +21,7 @@ on the walled advisories page, which the trail data's own terms tell hikers to c
 closures for NJ stay UNKNOWN in substance until someone with a browser reads that page, or NJDEP is
 asked …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01):
 `https://services1.arcgis.com/QWdNfRs7lkPq4g4Q/arcgis/rest/services/New_Jersey_State_Park_Service_Live_Status_Updates_(Public_View)/FeatureServer/0`:

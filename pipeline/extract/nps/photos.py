@@ -29,7 +29,7 @@ Filter on `constraintsInfo.constraint == 'Public domain'`. Licence is per asset.
 NPS-published photo is public domain. Some of NPS's Flickr photos are CC BY 2.0, so attribution has
 to travel with them.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): API `/multimedia/galleries`: 10,507 galleries. All 3 sampled
 had `constraintsInfo` "Public domain" (c9). My re-check got HTTP 429 (DEMO_KEY exhausted). NPGallery

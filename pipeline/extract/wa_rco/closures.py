@@ -24,7 +24,7 @@ Washington RCO — State Trails Database: closures, published, and not landed (c
 
 This is not a feed. Load the attribute; do not build a closure source on it.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Attribute only: Trailheads `trailhead_status` reads `closed`
 1, `construction` 6, `seasonal` 6, with no dates. `trail_condition` on the trails holds condition

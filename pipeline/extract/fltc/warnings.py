@@ -18,7 +18,7 @@ Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
 Finger Lakes Trail Conference: warnings, published, and not landed (coverage audit 2026-10-01, batch
 c4_regional_1).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): 41 active notices flagged `tn_Hunting=1`.
 `…/Hunting_Bypasses_/FeatureServer/2` holds 69 bypass lines (lastEdit 2026-07-19).

@@ -18,7 +18,7 @@ c4_regional_1).
 
 A page.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/trouble-spots/` (2026-07-13): "LOGGING. Active logging can
 pose an extreme hazard to a hiker", by location.

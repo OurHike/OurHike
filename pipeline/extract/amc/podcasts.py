@@ -24,7 +24,7 @@ Skeptic spot-check: the feed has 11 `<item>`s, the newest dated 2021-10-27. The 
 `<copyright>` is "Appalachian Mountain Club", and the iTunes author is a named individual (host), so
 it is AMC's own …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Unlikely Stories Podcast, RSS
 `https://feeds.simplecast.com/UC2QUufg`: 11 episodes, last 2021-10-27 (iTunes lookup).

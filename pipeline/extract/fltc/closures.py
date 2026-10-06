@@ -22,7 +22,7 @@ c4_regional_1).
 A structured feed. The closure label is free text (40 "CLOSED", plus "Logging", "Beaver dam has
 flooded the trail.", …), so poll 7's `obstructs_trail` mapping is needed.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01):
 `https://fingerlakestrail.org/FLTC/new_notice/noticesJSON.php?data=notices` is JSON. It needs only

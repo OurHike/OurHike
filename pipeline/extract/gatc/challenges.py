@@ -20,7 +20,7 @@ It fits #1780's shape (places a hiker opts into and tags). But several peaks are
 … Trail(s): Bushwhack"), so a challenge pin there invites a hiker off-trail. The card would have to say
 so. The completers list is personal data and must not be loaded. Skeptic additions: the …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Georgia 4000 Challenge. `/for-hikers/georgia-4000/` (`modified`
 2026-09-02): "North Georgia boasts 32 mountain peaks that are 4,000 feet or higher. Climb all 32 … and

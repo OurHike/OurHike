@@ -27,7 +27,7 @@ ATC's reviewed file has 0 VT rows, yet GMC published two A.T. bridge closures on
 and 75.5 (both since reopened). Skeptic, 2026-10-01: ATC's live page now carries "Vermont: Pomfret
 Foliage Road Closure" (`/trail-updates/vermont-pomfret-foliage-road-closure/`), the same event as …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): WP REST `https://greenmountainclub.org/wp-json/wp/v2/alert`:
 14 items, newest 2026-09-23. Its `alert-category` taxonomy: "Trail Changes and Closures" 8, "Parking

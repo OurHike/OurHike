@@ -40,7 +40,7 @@ posts are on `trailkeepersoforegon.org`, which states no terms, so the Field Gui
 notice does not cover them (Reasoned: a different site and a different notice). They are a small
 hike …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Oregon Hikers Field Guide `Category:Hikes`: 1,736 pages
 (MediaWiki API, wikitext). Siteinfo: 8,322 articles and 22,836 images. Also OCT `/day-hiking/`

@@ -13,7 +13,7 @@ The note this replaces read, whole:
 Cumberland Valley Appalachian Trail Club: suggested hikes, published, and not landed (coverage audit
 2026-10-01, batch c2_at_clubs_mid).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/some-great-fall-foliage-hikes-in-south-central-pa.html` (page):
 4 hikes (Pole Steeple 6 mi, Flat Rock 5 mi, Cumberland Valley Overlook 6 mi, Perry County Overlook 7 mi)

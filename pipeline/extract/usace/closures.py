@@ -17,7 +17,7 @@ c9_federal_state_rest).
 
 Too stale and too local to count as a feed. Recorded so nobody re-finds it and thinks it is one.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Mobile District
 `.../Closed_Recreation_Area_Public_View/FeatureServer/0`: 2 polygons, last edit 2023-03-18.

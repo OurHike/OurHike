@@ -21,7 +21,7 @@ Dormant: one post, 2023. Lehigh Gap is in `kta`'s A.T. section, not AMC-DV's, so
 to be deduplicated against KTA and ATC in dbt. ATC's own "George W. Outerbridge Shelter Yearly Bear
 Warning" covers the same area.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): WP REST post "Bear Safety",
 `https://amcdv.org/activities/bear-safety/` (2023-07-05; categories activities, conservation,

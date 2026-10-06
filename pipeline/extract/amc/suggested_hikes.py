@@ -18,7 +18,7 @@ c10_nst_rest).
 
 Page. Skeptic spot-check: `/resources/itineraries/` returns 200.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://www.outdoors.org/resources/itineraries/`: Presidential
 Traverse, Pemigewasset Loop, 4000-footers, regional day hikes, the A.T., Maine Woods and more. NET

@@ -21,7 +21,7 @@ audit 2026-10-01, batch c9_federal_state_rest).
 
 Page.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `ncparks.gov/state-parks/<park>/trails` pages;
 `trails.nc.gov/state-trails/<trail>` (15 trail pages); the `WEBLINK` field on `State_Trails`.

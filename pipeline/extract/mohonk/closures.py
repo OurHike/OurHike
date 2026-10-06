@@ -29,7 +29,7 @@ The alerts page has a real change signal (`modified`), as ALERTS_NOTICES_SURVEY.
 peregrine closures are cliff areas with no published geometry. They would be `place_text` only.
 Skeptic additions (Measured 2026-10-01): the page still reads "There are currently not closures" …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `wp-json/wp/v2/pages/13789` (`/visit/alerts/`), `modified`
 2026-09-28. It has a "Closures" section, which today reads "There are currently not closures".

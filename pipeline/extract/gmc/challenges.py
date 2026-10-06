@@ -17,7 +17,7 @@ c1_at_clubs_north).
 
 Side-to-Side is a defined trail list, which fits #1780's shape.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Long Trail End-to-Ender Certification
 (`/hike/thru-hiking/long-trail-end-to-ender-certification/`): "More than 7,000" certified, certificate

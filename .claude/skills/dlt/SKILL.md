@@ -254,7 +254,7 @@ Check the survey before writing any note: its ATC × elevation row found a
 Z-enabled centerline (`ATX_Ratings/FeatureServer/9`), so `atc/elevation.py` is
 a resource once that layer has a `sources.json` row, not a note.
 
-**A note drafted from the coverage audit restates `reference/org_coverage.json`,
+**A note drafted from the coverage audit restates `bcc70dd0:pipeline/reference/org_coverage.json` (retired by decision 88),
 never the batch files behind it.** Stage 2b's 183 notes were drafted that way:
 `checked` is the row's evidence, the docstring its note, and `where` the URLs
 the text names, with each host-less ArcGIS service name resolved to a full URL

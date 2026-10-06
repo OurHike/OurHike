@@ -74,7 +74,7 @@ Format: (a) and (b) are ArcGIS; (c) is a page. The site rejects `?_format=json` 
 formats: html"); `/jsonapi` and `/alerts/rss.xml` 404; robots.txt has no crawl-delay or alerts rule.
 (Skeptic: R02, R08 and R10 do have layers, listed in the evidence. R05 still has none found.) R06 …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): No national closure layer in EDW's 145 (Measured). Instead:
 (a) regional closure-order layers in AGOL org `gGHDlz6USftL5Pau`, all feature services:

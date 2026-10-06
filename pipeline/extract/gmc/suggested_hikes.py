@@ -28,7 +28,7 @@ c1_at_clubs_north).
 The REST content is prose with no GPX (2 of 57 mention a map or coordinates). The route may be
 recoverable from the web maps' "Featured" layer definition (@unvalidated).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): WP REST `https://greenmountainclub.org/wp-json/wp/v2/hikes`:
 57 hikes (newest 2026-09-30). Taxonomies: `difficulty`, `distance`, `hike-type`, `region`, `hike-

@@ -41,7 +41,7 @@ b6_federal).
 A BAER polygon marks a recent burn (hazard trees, debris flow). That is a hazard area, but it is not
 a notice. Reasoned, not published by USFS as a warning.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Per-forest alerts pages carry an "Alerts Key" (Critical / Fire
 Restriction / Caution / Information). Cherokee today: "Fire Restrictions Continue Along the

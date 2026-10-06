@@ -20,7 +20,7 @@ Prose and PDF. The routes run on `mohonk_trails` names, so a name-join is plausi
 additions: `/visit/trailmaps/` (`modified` 2026-09-23) adds "Maps with suggested hikes at individual
 trailheads are also available for download". Guided hikes are not in WordPress at all: …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/visit/activities/suggested-hikes/` (`modified` 2026-09-24):
 hikes by trailhead, e.g. "Undercliff-Overcliff Loop (Via East Trapps Connector Trail)" and "Millbrook

@@ -25,7 +25,7 @@ The site `/feed/` has 9 posts, newest 2022-11-22, none of them closures. (Skepti
 2026-10-01: same three entries. The 3/23 fire closure ends "(See post on Facebook)", so the club's
 Facebook …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/trail-conditions/`, a hand-edited HTML page. The newest
 entry, "Trail Update 4/13", says the entire trail is open. Below it is "Critical fire update 3/23",

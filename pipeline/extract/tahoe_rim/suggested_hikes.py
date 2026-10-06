@@ -17,7 +17,7 @@ The note this replaces read, whole:
 Tahoe Rim Trail Association: suggested hikes, published, and not landed (coverage audit 2026-10-01,
 batch b7_long_trails_states).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Format page: `tahoerimtrail.org/day-hiking/` ("Day Hike
 Itineraries": Alpine Lakes, Wildflower, Peaks & Vistas, Waterfall) and "How to break the Tahoe Rim Trail

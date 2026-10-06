@@ -25,7 +25,7 @@ These are evergreen pages, not dated notices. The hunting rule is a fixed-window
 and the authority behind it is the PA Game Commission, so `_shared` should take it from PGC itself
 (Reasoned).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `/appalachian-trail/fluorescent-orange` (page): "unlawful to
 be on state game lands from November 15 through December 15 without wearing a minimum of 250 square

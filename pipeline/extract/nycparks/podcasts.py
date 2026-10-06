@@ -20,7 +20,7 @@ b5_nyc_nj_ct_ma_pa).
 Dormant for three years and of no hiker value. Recorded so the next pass does not re-find it.
 Loading it is the maintainer's call.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "NYC Parks Covid Oral History", artist "NYC Parks", feed
 `https://nycparksoralhistory.blubrry.net/feed/podcast/`. 10 episodes, 2023-05-16 → 2023-08-08

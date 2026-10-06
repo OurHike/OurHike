@@ -30,7 +30,7 @@ Licence: USFS pages are federal works. The ANR service's copyrightText is "VTANR
 none_stated. Folder: `usfs`. The FPR channel needs a non-walled path, or the maintainer's word on
 whether to ask.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
 https://anrmaps.vermont.gov/arcgis/rest/services/map_services/MAP_ANR_ANRATLASFPR_WM_NOCACHE/MapServer/3,

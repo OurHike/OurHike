@@ -16,7 +16,7 @@ Connecticut Forest & Park Association: suggested hikes, published, and not lande
 Page. Trail descriptions rather than routed hikes. Skeptic spot-check: `/trails/appalachian-trail/`
 returns 200.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://ctwoodlands.org/trails/`: 57 trail pages with mileage,
 e.g. `/trails/appalachian-trail/` (56.6 mi).

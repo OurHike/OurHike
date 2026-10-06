@@ -22,7 +22,7 @@ Volcano alerts matter only on volcanic stretches (e.g. Cascades). Neither feed i
 are in scope for warnings. Debris flow is the more trail-relevant of the two: in a storm, a trail
 through a recent burn scar is where a hiker meets one, and the segment layer says which drainages. …
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): Volcano Hazards Notification Service:
 `https://volcanoes.usgs.gov/hans-public/api/volcano/getElevatedVolcanoes` (JSON). Today it returned

@@ -17,7 +17,7 @@ c7_regional_4).
 
 Pages.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): 14 section pages (length, difficulty, ascent, "Trail Geography"
 description). `/planner/`: a trip-planner form (activity, length, pace, route type) whose result source

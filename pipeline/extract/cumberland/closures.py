@@ -22,7 +22,7 @@ Cumberland Trail / Tennessee State Parks: closures, published, and not landed (c
 The strongest closures find in this batch. The closures arrive as segment geometry, already marked
 closed, and are edited daily. The `TSP_UID` in every source joins the alerts to parks and trails.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `.../TDEC_Trail_Closures_Public/FeatureServer/0`: 22 closed
 trail segments with geometry, `TRSTAT` in {Temporarily Closed, Closed Repairs}, `Notes` (e.g. "Trail

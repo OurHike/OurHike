@@ -15,7 +15,7 @@ b7_long_trails_states).
 
 Daily fire danger is the hourly or daily lane's, not the monthly one (decision 1).
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `FR_WIS_BURN/FR_WIS_BURN_MAP_EXT/MapServer/13` "Current Fire
 Danger": 72 county polygons with `DANGER_RATING_NAME`, `NO_BURN_FLAG`, `PERMIT_RESTRICTIONS`. Newest

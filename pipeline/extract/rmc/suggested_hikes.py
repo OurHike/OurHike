@@ -21,7 +21,7 @@ c1_at_clubs_north).
 
 PDF; route lines would need the trail network.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): `https://randolphmountainclub.org/wp-content/uploads/Recommended-Hikes-1.pdf`
 (PDF, 104,747 bytes, last-modified 2023-02-20).

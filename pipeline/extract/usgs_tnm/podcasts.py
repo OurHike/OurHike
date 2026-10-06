@@ -22,7 +22,7 @@ c9_federal_state_rest).
 
 Science programming, not trail audio.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): "Outstanding in the Field" RSS,
 `https://www.usgs.gov/podcasts/audio/141799/feed.xml`; CoreCast (former series). Skeptic: the feed

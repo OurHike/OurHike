@@ -21,7 +21,7 @@ c8_regional_5).
 
 Restricted.
 
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
+Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
 
 Its `checked` (confirmed 2026-10-01): 26 section pages ("What to expect", miles and off-road share, e.g.
 Whipple "58.2 total miles / 14.1 off-road miles (24.2%)"). `/hike/circuit-hiking`. "Hiker on the Go"

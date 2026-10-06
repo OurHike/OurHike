@@ -162,11 +162,20 @@ models:
       - name: to_node
         description: The published `to`.
         data_tests: [not_null]
+      - name: projected_length_raw_m
+        description: >
+          The piece's EPSG:5070 length, unrounded: the length the two loop
+          rules read, because the 0.5 m is the EPSG:5070 node grid's. Never
+          published.
+      - name: length_raw_m
+        description: The piece's length on the WGS84 ellipsoid (macros/geodesic_length_m.sql), unrounded.
       - name: length_m
-        description: The piece's EPSG:5070 length at 2 decimals, as published.
+        description: >
+          The piece's length on the WGS84 ellipsoid at 2 decimals, as
+          published (decision 90; EPSG:5070 metres before it).
         data_tests: [not_null]
       - name: dropped_as_a_loop
-        description: Whether compaction drops it, its two ends one node and its published length at most 0.5 m.
+        description: Whether compaction drops it, its two ends one node and its EPSG:5070 length, at 2 decimals, at most 0.5 m.
         data_tests: [not_null]
 
   - name: int_trail_network__edges
@@ -217,9 +226,10 @@ models:
         description: The published `to`, an index into trail_graph.json's `nodes`.
       - name: length_m
         description: >
-          The piece's length in EPSG:5070 metres, rounded to 2 decimals as
-          published. Measured on the 1 m navigation line the graph is noded
-          from, as build_trail_graph.py measures it today.
+          The piece's length in metres on the WGS84 ellipsoid (decision 90),
+          rounded to 2 decimals as published. Measured on the 1 m navigation
+          line the graph is noded from, as build_trail_graph.py measures it
+          today.
       - name: geom_geojson
         description: >
           The edge's vertices as a GeoJSON LineString in lon/lat (EPSG:4326),

@@ -46,7 +46,7 @@ A number in brackets is a row of [Decisions](#decisions).
 | "Simplify any geometries… a few feet off" | navigation line stays 1 m; bytes from encoding and per-zoom tiles (8) | [Making the download smaller](#making-the-download-smaller) |
 | "Don't lose any transformation work… org by org plan" | every rule with its file, line, target model and tests | [Keeping every rule we already built](#keeping-every-rule-we-already-built), [Club by club](#club-by-club) |
 | "Ask me questions… all the tables you need… a dbt skillset"; "check if dlt also has a skillset" | 40 numbered decisions, most by poll; four marts added, and what still reaches a phone from no mart; dbt and dlt repo skills (5, 11, 16) | [Decisions](#decisions), [The eleven marts](#the-eleven-marts), [Skills](#skills) |
-| "1 folder per org… the same # of files"; "data checks… each of the different file types" | 11-file club folders, dated `NOT_AVAILABLE` notes, three checks (12–14) | [Extract and load (dlt)](#extract-and-load-dlt) |
+| "1 folder per org… the same # of files"; "data checks… each of the different file types" | 11-file club folders, since decision 88 a club's resource files plus its rows of one `extract/not_available.toml`; dated `NOT_AVAILABLE` notes; three checks (12–14) | [Extract and load (dlt)](#extract-and-load-dlt) |
 | "Recheck that each org has all the potential data loaded" | `pipeline/ORG_COVERAGE_SURVEY.md` (15) | [Club by club](#club-by-club) |
 | "Load ALL the clubs… deduplication after the extract-load" | every managing club extracted, and each candidate steward once it has a reviewed catalogue row; dedup in intermediates | [Load everything, gate publication downstream](#load-everything-gate-publication-downstream), [The folder roster](#the-folder-roster), [Deduplication after the load, mart by mart](#deduplication-after-the-load-mart-by-mart) |
 | "The most recent version of dbt… v2"; "Keep the dbt versions aligned"; "see if we can use just plain dbt?" | `dbt` 2.0.6, one version everywhere (17, 19, 32) | [Version: dbt 2.0.6, one version everywhere](#version-dbt-206-one-version-everywhere) |
@@ -194,7 +194,7 @@ Session calls, not polled, stated so a reviewer can disagree: **T1** stay on dbt
 ```mermaid
 flowchart TD
   subgraph EX["pipeline/extract/ (dlt)"]
-    CLUB["{club}/ for 145 managing clubs<br/>exactly 11 files each"]
+    CLUB["{club}/ resource files, 103 of 145 managing clubs<br/>every other type a row of not_available.toml"]
     SH["_shared/<br/>NWS, NBM, USGS, OSM and Geofabrik, Wikimedia, NDMC drought,<br/>opentrail, podcasts, Greenbelly, OuterSpatial, Avenza,<br/>OurHike Postgres, not_clubs.py"]
   end
   RAWS[("private raw store, R2<br/>dlt rows and file manifest rows,<br/>file bytes (dlt from decision 4's second step)")]
@@ -271,7 +271,7 @@ Also outside: `route_disputes.py` and `propose_atc_updates.py` (they send work t
 | `pipeline/DATA_RELEASES.md`, `RELEASING.md` | UA first, production only through the release train (RELEASING.md §12, who may cut a release). What the train moves changes at stage 4 under decision 44: the `channels.json` pointer for each schema version, in place of the client's `DATA_RELEASE` |
 | `pipeline/R2_LAYOUT.md`, `pipeline/lib/r2_keys.py` | a key "cannot be renamed, only joined by a sibling" (`R2_LAYOUT.md:22-23`), so new formats are sibling keys; `ALLOWED_EXTENSIONS` (`r2_keys.py:46`) admits no `.html`, `.parquet` or `.duckdb`, so docs live on the site |
 | `features/ORG_BULK_LOAD.md`, `pipeline/reference/trail_orgs.json` | still the club catalogue; also names the folders and feeds `may_publish` |
-| `pipeline/ORG_COVERAGE_SURVEY.md`, `pipeline/reference/org_coverage.json` | the dated per-club snapshot the first `NOT_AVAILABLE` notes start from, and its 2,670 rows; [Club by club](#club-by-club) uses it and does not restate it |
+| `pipeline/ORG_COVERAGE_SURVEY.md`, `bcc70dd0:pipeline/reference/org_coverage.json` (retired by decision 88) | the dated per-club snapshot the first `NOT_AVAILABLE` notes start from, and its 2,670 rows; [Club by club](#club-by-club) uses it and does not restate it |
 | `.claude/skills/dbt/SKILL.md`, `.claude/skills/dlt/SKILL.md` | how to work on the two layers this document designs ([Skills](#skills)) |
 
 ## Extract and load (dlt)
@@ -299,23 +299,24 @@ Two terms are used throughout:
 pipeline/
   .dlt/config.toml   # committed: telemetry off, naming, file format. Never credentials
   extract/
-    _contract.py     # TYPES, NotAvailable, discover(), the cadence home, the claim map
+    _contract.py     # TYPES, FILE_TYPES, NotAvailable, discover(), the cadence home, the claim map
     _kinds.py        # one builder per source kind
     _run.py          # change checks -> extract -> normalize -> run check -> load
     _warehouse.py    # raw store -> warehouse.duckdb `raw` (load_raw.py's successor)
     _shared/         # free-form: national services, aggregators, OurHike's own data, not_clubs.py
-    atc/  nysdec/  … # 145 folders x 11 files = 1,595; no __init__.py, so the count is exact
+    not_available.toml  # every club's notes and shares, one row per club x type (decision 88)
+    atc/  nysdec/  … # 103 of the 145 clubs: resource files only, one per type published; no __init__.py
 ```
 
 **Not `pipeline/dlt/`:** scripts run from `pipeline/`, which sits first on `sys.path`, so that folder would shadow `import dlt` (decision 12).
 
 **The 145 is measured** from `reference/trail_orgs.json` at 23fca25: 173 rows, minus 12 `national_umbrella`, 13 `route_only` and 3 `aggregator` (decision 18). It grows as candidate stewards get reviewed rows, to the 215 or 221 folders [The folder roster](#the-folder-roster) counts. The 25 umbrellas and route-only trails get one dated line each in `_shared/not_clubs.py`. `osm`, `outerspatial` and `avenza` get `_shared/` folders.
 
-One of the 145 collides with decision 12: `usgs-tnm` is typed `federal`, so it is a managing row, while decision 12 put USGS in `_shared/usgs/`. Its club folder `usgs_tnm/` therefore holds eleven notes, each naming `_shared/usgs/` as where USGS data is extracted. That keeps the count and the layout test exact without moving USGS. `nps` and `nps-poi` are two rows, so they get two folders.
+One of the 145 collides with decision 12: `usgs-tnm` is typed `federal`, so it is a managing row, while decision 12 put USGS in `_shared/usgs/`. Its answers therefore name `_shared/usgs/` as where USGS data is extracted: rows of `not_available.toml`, beside the two resource files in `usgs_tnm/` (podcasts and warnings). That keeps the layout test exact without moving USGS. `nps` and `nps-poi` are two rows, so they get two folders.
 
 | file | loads | feeds · lane |
 |---|---|---|
-| `org.py` | the club's `trail_orgs.json` row + licence fields of each key it claims | `sources` · monthly |
+| `org` (no file: `discover()` makes it, decision 88) | the club's `trail_orgs.json` row + licence fields of each key it claims | `sources` · monthly |
 | `trail_lines.py` | line layers; any mile axis the club publishes (ATC's half-mile markers) | `trail_lines`, `trail_network`, `elevation` calibration · monthly |
 | `points_of_interest.py` | point layers + reviewed files about them | `points_of_interest` · monthly |
 | `elevation.py` | the club's own elevation product, or a note where it publishes none (3DEP is `_shared/usgs/`; how many clubs publish one is `ORG_COVERAGE_SURVEY.md`'s to count) | `elevation` · monthly |
@@ -331,12 +332,12 @@ The lane belongs to the type. That puts `oprhp_trail_closures` in `nysparks/clos
 
 **One upstream is one resource and one raw table, even when it feeds two types.** Decision 7 splits closures from warnings on `obstructs_trail` in dbt, with unclassified rows going to warnings as "not reviewed", so extract never splits anything.
 
-- `atc/closures.py` defines ATC's Trail Updates resource and claims `atc_trail_updates`. `atc/warnings.py` holds `SHARES = "closures"` and no `CLAIMS`, so the claim test still sees the key once.
-- NYNJTC's alerts all read `category: null` (`lib/nynjtc_alerts.py:278`) and land in warnings, so `nynjtc/warnings.py` defines the resource and `nynjtc/closures.py` holds `SHARES = "warnings"`.
+- `atc/closures.py` defines ATC's Trail Updates resource and claims `atc_trail_updates`. `not_available.toml`'s `[atc.warnings]` holds `shares = "closures"` and claims nothing, so the claim test still sees the key once.
+- NYNJTC's alerts all read `category: null` (`lib/nynjtc_alerts.py:278`) and land in warnings, and `nynjtc/closures.py` defines the resource while `not_available.toml`'s `[nynjtc.warnings]` holds `shares = "closures"` (the code had it this way round before decision 88; this line said the reverse).
 
 #### One extraction per upstream dataset
 
-**Each upstream dataset is extracted exactly once, in its steward's folder** (decision 34; the maintainer: *"Are we landing the same data, multiple times? We shouldn't."*). USFS's national trail layer is extracted by `usfs/trail_lines.py` and nowhere else. A club whose portion lives in that layer extracts nothing for it: its `trail_lines.py` is a dated note naming the resource it draws from, which is the `via` rule of [Load everything, gate publication downstream](#load-everything-gate-publication-downstream). `trail_orgs.json` has 79 `via` rows (counted 2026-10-01): 30 point at `atc`, 21 at `nps`, 11 at `usfs`, 3 at `pasda`, and 14 at twelve other folders.
+**Each upstream dataset is extracted exactly once, in its steward's folder** (decision 34; the maintainer: *"Are we landing the same data, multiple times? We shouldn't."*). USFS's national trail layer is extracted by `usfs/trail_lines.py` and nowhere else. A club whose portion lives in that layer extracts nothing for it: its `trail_lines` answer is a dated note, a row of `not_available.toml`, naming the resource it draws from, which is the `via` rule of [Load everything, gate publication downstream](#load-everything-gate-publication-downstream). `trail_orgs.json` has 79 `via` rows (counted 2026-10-01): 30 point at `atc`, 21 at `nps`, 11 at `usfs`, 3 at `pasda`, and 14 at twelve other folders.
 
 **A republished copy is not a second dataset.** When an org republishes a dataset that another resource already extracts, the copy is a `SAME_AS` note naming the original resource, and the copy is never extracted. The coverage audit's examples, each measured 2026-10-01 (a bracketed name such as (b3) is the audit batch it comes from, as in [Club by club](#club-by-club)):
 
@@ -345,7 +346,7 @@ The lane belongs to the type. That puts `oprhp_trail_closures` in `nysparks/clos
 - **CDTC's NPS POI views**: `Camping_view` (420), `NPS_Points_of_Interest_view` (742) and `2026_NPS_Campsites_view` (59) republish NPS data, which `nps` extracts (b7).
 - **CPW's three COTREX copies**: `CPWAdminData/FeatureServer/15` (83,008 lines, edited 2026-08-27), `COTREX_Spring26/0` (83,008, 2026-05-13) and `COTREX_Trails_Populated_2026/FeatureServer/54` (82,300, 2026-08-12). The newest is extracted, in place of the 2024 Boulder County snapshot `cotrex_trails` loads today (`ORG_COVERAGE_SURVEY.md` §3d), and the other two are notes (b7).
 
-A `SAME_AS` note is the whole file when a copy is all the org publishes for that type, and sits beside `CLAIMS` when the org also publishes data of its own, as CDTC does with its water caches. **It ages out and is rechecked like a `NOT_AVAILABLE` note** ([3. Note ageing](#3-note-ageing-on-the-monthly-run)), because a copy can stop being one: once its publisher edits it apart from the original, it is an independent dataset and gets a resource of its own. **The layout test fails if two resources point at the same upstream URL or item id** ([1. Layout](#1-layout-every-pull-request-pipelineteststest_extract_layoutpy)).
+A `SAME_AS` note is the whole resource file when a copy is all the org publishes for that type, and sits beside `CLAIMS` when the org also publishes data of its own, as CDTC does with its water caches. **It ages out and is rechecked like a `NOT_AVAILABLE` note** ([3. Note ageing](#3-note-ageing-on-the-monthly-run)), because a copy can stop being one: once its publisher edits it apart from the original, it is an independent dataset and gets a resource of its own. **The layout test fails if two resources point at the same upstream URL or item id** ([1. Layout](#1-layout-every-pull-request-pipelineteststest_extract_layoutpy)).
 
 **A club's portion is an assignment, not a copy.** dbt stages the steward's layer once, as `base_<steward>__<layer>` under `staging/<steward>/base/`: `base_usfs__trails` in `staging/usfs/base/`, never one per club. Which features are which club's is `int_<mart>__stewardship`, one row per (feature, club, basis, evidence), where the basis is one of three:
 
@@ -370,7 +371,7 @@ Raw tables are `raw_<folder>__<key>`. That is `load_raw.py:215`'s shape with the
 | Colorado P&W · Utah UGRC · NC State Parks · TRTA | `cpw` → `cotrex` · `utah_ugrc` → `utah_sgid` · `nc_parks` → `nc_mst` · `trta` → `tahoe_rim` |
 | NJDEP | `njdep` → `njgin`, **needs a human**: `njgin`'s `why` calls it "a different NJGIN layer" |
 
-The renames ride on the base/stg restructure the dbt section makes anyway. A `TABLE_SLUG` constant in `org.py` would avoid them, at the cost of two names for one org: the ambiguity `PROVIDER_SLUGS` existed to remove.
+The renames ride on the base/stg restructure the dbt section makes anyway. A `TABLE_SLUG` field per club would avoid them, at the cost of two names for one org: the ambiguity `PROVIDER_SLUGS` existed to remove.
 
 #### The contract, and one file of each kind
 
@@ -434,12 +435,12 @@ class SameAs:
     recheck_after_days: int = RECHECK_AFTER_DAYS
 
 
-# A type file defines exactly one of:
-#   CLAIMS + RESOURCES      the keys it owns, and a Resource for each
-#   SHARES = "<type>"       a sibling file whose resource also feeds this type; no CLAIMS of its own
-#   NOT_AVAILABLE           a NotAvailable
-#   SAME_AS                 a tuple of SameAs, when a copy is all the org publishes for this type
-# and a CLAIMS file may also carry SAME_AS for the copies it does not extract.
+# A club answers each of the ten FILE_TYPES exactly once (decision 88), with one of:
+#   <folder>/<type>.py       CLAIMS + RESOURCES, the keys it owns and a Resource for each; it may also
+#                            carry SAME_AS, or be SAME_AS alone, when a copy is all the org publishes
+#   [<folder>.<type>]        a row of extract/not_available.toml: a NotAvailable note, or a share,
+#                            shares = "<type>", a sibling type whose resource file also feeds this one
+# and discover() makes every managing club's `org` catalogue row from trail_orgs.json.
 ```
 
 ```python
@@ -466,29 +467,24 @@ RESOURCES = [arcgis_layer(key) for key in CLAIMS]  # URL, hints, marker kind: al
 
 A builder takes a **key, never a URL**. A club file therefore cannot fetch an upstream that sources.json does not register, and the build enforces CONTRIBUTING.md's "A note on data and licences": "establish its licence first and record it".
 
-```python
-# pipeline/extract/nynjtc/elevation.py
-"""NYNJTC publishes no elevation product: its trails' profiles are 3DEP (_shared/usgs/)
-along the lines nynjtc/trail_lines.py loads."""
-
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=(
-        "the 27 FeatureServers on NYNJTC's ArcGIS root: hasZ false on Long_Path_2023/0, "
-        "NYNJTC_HighlandsTrail2021sections/0 and Long_Path_Shawangunk_Ridge_Trail/0; Z only on "
-        "Points (0 rows), roundrock (a KMZ import) and 26 trailhead points",
-        "ArcGIS Online, orgid:G1WTEJ6UVRUTvh9C: 76 public items, none an Image Service, elevation or DEM item",
-        "nynjtc.org's WordPress search for 'elevation profile' and 'elevation gain': book sales and prose only",
-    ),
-    where=(
-        "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services",
-        "https://www.arcgis.com/sharing/rest/search?q=orgid:G1WTEJ6UVRUTvh9C",
-        "https://www.nynjtc.org/wp-json/wp/v2/search",
-    ),
-)
+```toml
+# pipeline/extract/not_available.toml (shape)
+[nynjtc.elevation]
+confirmed = 2026-10-01
+summary = "NYNJTC publishes no elevation product: its trails' profiles are 3DEP (_shared/usgs/) along the lines nynjtc/trail_lines.py loads."
+checked = [
+    "the 27 FeatureServers on NYNJTC's ArcGIS root: hasZ false on Long_Path_2023/0, NYNJTC_HighlandsTrail2021sections/0 and Long_Path_Shawangunk_Ridge_Trail/0; Z only on Points (0 rows), roundrock (a KMZ import) and 26 trailhead points",
+    "ArcGIS Online, orgid:G1WTEJ6UVRUTvh9C: 76 public items, none an Image Service, elevation or DEM item",
+    "nynjtc.org's WordPress search for 'elevation profile' and 'elevation gain': book sales and prose only",
+]
+where = [
+    "https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services",
+    "https://www.arcgis.com/sharing/rest/search?q=orgid:G1WTEJ6UVRUTvh9C",
+    "https://www.nynjtc.org/wp-json/wp/v2/search",
+]
 ```
 
-That note restates the coverage audit's NYNJTC × elevation row (batch b2, upheld by its skeptic pass, measured 2026-10-01). It claims only what was checked. The audit's ATC row is the counter-example: ATC's `ATX_Ratings/FeatureServer/9` centerline carries Z values, so `atc/elevation.py` is a resource once that layer has a `sources.json` row, not a note (its value is a cross-check against 3DEP, per the survey).
+That note restates the coverage audit's NYNJTC × elevation row (batch b2, upheld by its skeptic pass, measured 2026-10-01). It claims only what was checked. The audit's ATC row is the counter-example: ATC's `ATX_Ratings/FeatureServer/9` centerline carries Z values, so ATC's elevation is a resource file, `atc/elevation.py`, once that layer has a `sources.json` row, not a note (its value is a cross-check against 3DEP, per the survey).
 
 **A GIS-shaped type is not given up early** (decision 21b; the maintainer: *"Make sure for all of these orgs that you dont give up to easily. The GIS info almost always is reusable."*). A note on `trail_lines`, `points_of_interest`, `places`, `closures`, `warnings` or `elevation` lists in `checked` what was tried from one fixed checklist:
 
@@ -503,19 +499,20 @@ That note restates the coverage audit's NYNJTC × elevation row (batch b2, uphel
 `pipeline/ORG_COVERAGE_SURVEY.md` §2 has the checklist as the audit worked it, with a "Tried:" list on every row it reopened. The NYNJTC note above records items 1, 2 and 6 only, so it is committed after items 3 to 5 are worked and written in. The persistence pass did not work the checklist for 182 elevation rows of non-agency orgs (`ORG_COVERAGE_SURVEY.md` §2, "What it did not check"), so their notes wait on it the same way. The layout test checks a note's shape, never whether the searches it lists were done, so that stays a reviewer's check (Reasoned: a test cannot tell a search that happened from one that was written down).
 
 ```python
-# pipeline/extract/nysdec/org.py
-RESOURCES = [catalogue_row()]  # slug from the folder name; restates no field of trail_orgs.json
+# pipeline/extract/_contract.py's discover() (shape): one catalogue row for every managing club, no file
+ClubFile(club=folder, type="org", path=TRAIL_ORGS_PATH, resources=(replace(catalogue_row(), club=folder, type="org"),))
 ```
 
 `catalogue_row()` yields the club's `trail_orgs.json` row: `org`, `website`, `type`, `licence`, `licence_basis`, `attribution`, `load`, `via`. It adds each claimed key's sources.json `licence`, `licence_basis`, `attribution` and `reaches_hikers`. All clubs write into one table, `raw_extract__orgs`, the sources mart's input. Org resources are local reads, so all of them run every run, which is what makes a shared `replace` table safe.
 
-### One home: sources.json, trail_orgs.json, the club file
+### One home: sources.json, trail_orgs.json, the club's answers
 
 | fact | one home | other readers |
 |---|---|---|
 | per layer: `url`, `kind`, licence, `steward`, `reaches_hikers`, field names, `freshness` marker, `may_be_empty` | `pipeline/sources.json` | 15 non-test modules import `lib/source_registry.py` (counted at 23fca25), `check_freshness.py` among them; `discover_sources.py` rewrites the file; `export_sources.py` publishes `stewards.json`/`registry.json` from it |
-| per org: slug, name, website, type, licence verdict, `load`, `via` | `reference/trail_orgs.json` (**#1543 — 165 trail organizations exist and the registry knows 14, with no way to load the rest that does not cost one pull request each**) | `build_org_nominations.py`, `org.py` |
-| how to extract a layer; the dated availability note | the club file | `_run.py`, the layout test (check 1 under "The data checks") |
+| per org: slug, name, website, type, licence verdict, `load`, `via` | `reference/trail_orgs.json` (**#1543 — 165 trail organizations exist and the registry knows 14, with no way to load the rest that does not cost one pull request each**) | `build_org_nominations.py`, each club's catalogue row (`extract/_kinds.py`'s `CatalogueRow`) |
+| how to extract a layer | the club's resource file, `extract/<folder>/<type>.py` |
+| the dated availability note, or a share | the club and type's row of `extract/not_available.toml` (decision 88) | `_run.py`, the layout test (check 1 under "The data checks") |
 
 sources.json stays the registry because other tools read it, so a new upstream is a sources.json row first and a club resource second.
 
@@ -526,7 +523,7 @@ sources.json stays the registry because other tools read it, so a new upstream i
 
 ### Load everything, gate publication downstream
 
-The maintainer, round 5: *"We should just load ALL the clubs now and handle any deduplication after the extract-load."* The `load` column stops gating extraction and keeps gating publication. Licence fields reach the sources mart through `org.py`, and every mart filters on the `may_publish` derived there. Counts are over the 145 managing rows (measured from `trail_orgs.json` at 23fca25):
+The maintainer, round 5: *"We should just load ALL the clubs now and handle any deduplication after the extract-load."* The `load` column stops gating extraction and keeps gating publication. Licence fields reach the sources mart through each club's catalogue row, and every mart filters on the `may_publish` derived there. Counts are over the 145 managing rows (measured from `trail_orgs.json` at 23fca25):
 
 | `load` | rows | extracted | published |
 |---|---|---|---|
@@ -536,7 +533,7 @@ The maintainer, round 5: *"We should just load ALL the clubs now and handle any 
 | `none` · `retired` | 1 · 1 | `cdt-society`: notes. `nh-granit`: notes quoting its retirement reason (below) | no |
 | `refuse` | 2 | notes quoting the terms, until permission | no |
 
-**`may_publish` is decided per layer, never from `load` alone.** `trail_orgs.json` says of itself "THIS FILE DECIDES NOTHING ON ITS OWN - it is the reviewed input a sources.json entry is written from" (`_comment`). Its `load` column also disagrees with sources.json on a shipping safety layer. `nysparks` reads `hold`, while all four OPRHP layers, `oprhp_trail_closures` among them, are `reaches_hikers: true` and ship today (both files read 2026-10-01 at 23fca25). A `may_publish` taken from `load` would take OPRHP's temporary closures off every phone. So `org.py` carries both the club's row and each claimed key's licence fields, and the rules below decide.
+**`may_publish` is decided per layer, never from `load` alone.** `trail_orgs.json` says of itself "THIS FILE DECIDES NOTHING ON ITS OWN - it is the reviewed input a sources.json entry is written from" (`_comment`). Its `load` column also disagrees with sources.json on a shipping safety layer. `nysparks` reads `hold`, while all four OPRHP layers, `oprhp_trail_closures` among them, are `reaches_hikers: true` and ship today (both files read 2026-10-01 at 23fca25). A `may_publish` taken from `load` would take OPRHP's temporary closures off every phone. So each club's catalogue row carries both the club's row and each claimed key's licence fields, and the rules below decide.
 
 ### Who may publish
 
@@ -560,20 +557,20 @@ This is the one statement of the publication rule. [The dbt project](#the-dbt-pr
    - **Liability, accuracy and conduct lines (decisions 71, 72 and 75, the maintainer's polls of 2026-10-04).** A hold-harmless, save-harmless or indemnity clause says who answers for a misuse, not what use is allowed (decision 71: UGRC's "hold the State of Utah harmless"), and a sheet's "use the spreadsheet at your own risk", "may be out of date" and "will be updated only when" are a liability line and accuracy lines (decision 72, FMST's trailheads); `licence_restriction_phrases` cuts each out before anything else is read. A site's bar on disruptive or malicious use (IN.gov's "disruptive activities online, including excessive use of scripts … or use viruses, bots, worms, or trojan horses") is its own class, `conduct`, which decision 75 answers where a row's licence names it: one request an hour under a named agent is neither. A bar on automated access in other words is not that phrase, and stays a refusal.
 6. **Photos, audio and page prose keep their own licence rows.** The GIS presumption does not reach them (decision 21a, "Reasoned, not decided" in the maintainer's own table). Decision 69's points are facts read off a club's page, never its prose, which is why they publish and the page's text does not. Nor do decisions 20 and 22 reach DEC's web pages (the weekly closures page, day hikes, the Fire Tower Challenge, stated climbs), which DEC's Website Content Usage policy still governs, or parks.ny.gov's pages and OPRHP's Flickr (all rights reserved).
 7. **The four `refuse` orgs (`rtc`, `onda`, `avenza`, `buckeye`) never publish until their permission is recorded** (the poll: "note now, load on permission").
-8. **Person fields never load, whatever the licence.** They are excluded inside the dlt resource, never filtered in dbt, so no copy of them exists to leak. Examples: Forest Ranger Contact's `RANGER`, `PHONE_CELL`, `PHONE_ALT`, `EMAIL`, `SUPERVISOR` and `SUPERVIS_1` (field list read 2026-10-01; the territory polygon and `REGION` are kept, and the statewide line 833-NYS-RANGERS goes in `nysdec/org.py`); OPRHP's survey views with patron contact fields, the Palisades Bear Program results among them; and the Central Iowa Trail Association status API's `updateByDisplay` and `trail.stewards`. A pytest refuses any resource whose hints or requested field list name a field on the person-field denylist, and the purge for a slip is in [Purging a field that should never have loaded](#purging-a-field-that-should-never-have-loaded).
+8. **Person fields never load, whatever the licence.** They are excluded inside the dlt resource, never filtered in dbt, so no copy of them exists to leak. Examples: Forest Ranger Contact's `RANGER`, `PHONE_CELL`, `PHONE_ALT`, `EMAIL`, `SUPERVISOR` and `SUPERVIS_1` (field list read 2026-10-01; the territory polygon and `REGION` are kept, and the statewide line 833-NYS-RANGERS goes in nysdec's `trail_orgs.json` row, not added yet; the note is beside `PERSON_FIELDS` in `extract/_kinds.py`); OPRHP's survey views with patron contact fields, the Palisades Bear Program results among them; and the Central Iowa Trail Association status API's `updateByDisplay` and `trail.stewards`. A pytest refuses any resource whose hints or requested field list name a field on the person-field denylist, and the purge for a slip is in [Purging a field that should never have loaded](#purging-a-field-that-should-never-have-loaded).
 
 **A correction the implementation pull request makes in its first stage.** `trail_orgs.json`'s `nysdec` and `nysparks` rows read `licence_basis: public_domain`. No state work is public domain by default, so both become `maintainer_clearinghouse`, dated 2026-10-01 (decisions 20 and 22). In the same stage, the `sources.json` rows for DEC and OPRHP datasets that the clearinghouse lists record `maintainer_clearinghouse` beside the item text they quote. Under decision 29 there is one implementation pull request, and these corrections are part of it.
 
 **The same reading sits on 69 more rows**, counted 2026-10-01 by `type`: 21 `nht_org`, 18 `regional_nonprofit`, 11 `state_clearinghouse`, 7 `federal`, 6 `state_agency` and 6 `nst_org`. Only a federal work is public domain by statute (17 U.S.C. 105, the reading `sources.json`'s `usfs_licence` records). So `int_sources__publication` accepts `public_domain` on a `federal` row only, and the other 62 rows' bases are `@unvalidated` until each is re-read. Many of their GIS layers may qualify under rule 3 instead (Reasoned: rule 3 needs only a public, anonymous endpoint), which the first stage records row by row. The guard takes nothing off a phone today: every layer that ships is registered, rule 1 reads its own `sources.json` basis, and no `sources.json` row reads `public_domain` (counted 2026-10-01: 32 `maintainer_authorisation`, 30 `stated_by_org`, 1 `unresolved`).
 
-**`nh-granit` is not reloaded by this plan.** **#1711 — Ship only hiking trails: remove NH GRANIT, and drop USFS motorized trails nationwide** removed its sources.json row on the maintainer's judgement about the data, not its terms. A builder takes a registered key, so loading it again would mean restoring that row. Whether "load ALL the clubs" reaches a source the maintainer removed is the maintainer's call. Until then `nh_granit/trail_lines.py` is a note quoting the row's `why`.
+**`nh-granit` is not reloaded by this plan.** **#1711 — Ship only hiking trails: remove NH GRANIT, and drop USFS motorized trails nationwide** removed its sources.json row on the maintainer's judgement about the data, not its terms. A builder takes a registered key, so loading it again would mean restoring that row. Whether "load ALL the clubs" reaches a source the maintainer removed is the maintainer's call. Until then `not_available.toml`'s `[nh_granit.trail_lines]` is a note quoting the row's `why`.
 
 **Decision 18 overrides round 5 for two refusals.** Round 5 gave each refusal a club folder, but decision 18 took umbrellas and aggregators out of club folders:
 
 - `rtc`'s terms ("custom, by agreement") are quoted on its `not_clubs.py` line.
 - `avenza`'s ("commercial, per publisher") are quoted in `_shared/avenza/`.
 - `onda` and `buckeye` keep club folders.
-- `buckeye/trail_lines.py` lists the Ohio DNR copy through OuterSpatial among what it checked.
+- `not_available.toml`'s `[buckeye.trail_lines]` lists the Ohio DNR copy through OuterSpatial among what it checked.
 
 **GATC's PDF is placed from its own miles (decision 75).** `gatc/points_of_interest.py` loads `lib/club_pdfs.py`'s fused-string rows, each carrying the document's manifest (URL, ETag, `Last-Modified`, sha256, bytes, and the PDF's own title and creation date) as `_document` rather than as a separate manifest row, so one table holds both (built, stage 2b). `int_points_of_interest__gatc_water` places each A.T. source on ATC's mile axis at GATC's mile and checks it against ATC's same-named point; its header holds the 2026-10-04 measurement (GATC's miles count from Springer on ATC's marker scale; 18 of 61 matched, along the trail median 0.121 mi and worst 0.407 mi; a 0.37 mi hold bound, Tukey's fence of the 18). The text extraction needs pypdf, which `requirements-extract.in` pins and `requirements.in` still does not.
 
@@ -605,7 +602,7 @@ Decision 39, **"Allow ArcGIS copies, else ask"**, settles the fetch terms the au
 
 **Where a reviewed OurHike file loads.** In the folder of whoever published the rows a person reviewed:
 
-- `reference/atc_updates.json` was reviewed from ATC's Trail Updates page, so `atc/closures.py`, which `atc/warnings.py` shares.
+- `reference/atc_updates.json` was reviewed from ATC's Trail Updates page, so `atc/closures.py`, which `not_available.toml`'s `[atc.warnings]` shares.
 - `reference/water_distance.json` is generated by `build_water_distance.py` from ATC's Campsite Sustainability Index layer and reviewed as a diff (its `_README`), so `atc/points_of_interest.py`. That layer is fetched inside `build_water_distance.py` today and gains a sources.json row, official sites only.
 - OurHike's own editorial files go to `_shared/ourhike/`.
 
@@ -651,7 +648,7 @@ The maintainer asked *"Are we landing many rasters?"* (decision 35). None lands,
 
 ### Status layers are often stale
 
-**Agency "status" layers are often out of date, or contradict themselves.** The persistence pass over the coverage audit (decision 21b) found six, each measured 2026-10-01. **Batch** is the `batch` field on that org's rows in `pipeline/reference/org_coverage.json`, written short (p06 for `p06_persist`), as [Club by club](#club-by-club) writes it.
+**Agency "status" layers are often out of date, or contradict themselves.** The persistence pass over the coverage audit (decision 21b) found six, each measured 2026-10-01. **Batch** is the `batch` field on that org's rows in `bcc70dd0:pipeline/reference/org_coverage.json` (retired by decision 88), written short (p06 for `p06_persist`), as [Club by club](#club-by-club) writes it.
 
 | Layer | What it says | Batch |
 |---|---|---|
@@ -775,8 +772,8 @@ The maintainer: *"we should probably add data checks to make sure each of the di
 ### 1. Layout, every pull request: `pipeline/tests/test_extract_layout.py`
 
 - Club folders equal the managing slugs in `trail_orgs.json` (a subset until step 2). Every umbrella and route-only slug has one `not_clubs.py` line.
-- Each folder holds exactly the 11 `TYPES` files.
-- Each file is `CLAIMS` with a non-empty `RESOURCES`, a `SHARES` naming a sibling type that has them, a `NotAvailable`, or `SAME_AS` notes alone; a `CLAIMS` file may carry `SAME_AS` notes too. A note of either kind needs `confirmed` not in the future, non-empty `checked`, and `recheck_after_days > 0`; a `NotAvailable` needs a non-empty `where`, and a `SameAs` a non-empty `copy` and an `original` that some file claims. `org.py` is never a note.
+- Every managing club answers each of the ten `FILE_TYPES` exactly once, by a resource file in its folder or a row of `not_available.toml`, never both; a folder holds resource files only, and every managing club has one catalogue row (decision 88).
+- Each answer is `CLAIMS` with a non-empty `RESOURCES`, a share naming a sibling type whose resource file has them, a `NotAvailable`, or `SAME_AS` notes alone; a `CLAIMS` file may carry `SAME_AS` notes too. A note of either kind needs `confirmed` not in the future, non-empty `checked`, and `recheck_after_days > 0`; a `NotAvailable` needs a non-empty `where`, and a `SameAs` a non-empty `copy` and an `original` that some file claims. A catalogue row is never a note.
 - **No upstream is extracted twice** (decision 34): no two claimed keys share a `sources.json` `url` or ArcGIS item id, and no `SameAs` copy is a claimed key's `url` or item id. Whether two spellings of one layer (a trailing `/query`, `http` against `https`) slip past this comparison is `@unvalidated` until the full catalogue first runs through it.
 - A `stg_<club>__<type>` exists for exactly the available types. Photos are included; `org` is not, because it feeds `sources` through one shared model.
 - Every sources.json key is claimed once, and every claim resolves.
@@ -792,7 +789,7 @@ It has two halves. **Between normalize and load**, a failure refuses the package
 - **Non-empty:** `rows > 0`, unless the type is in `MAY_BE_EMPTY` or the layer has `may_be_empty: true`. **An allowed zero counts only with the upstream's own count, read in the same run** (the count per platform is in [A full reload that cannot empty a safety table](#a-full-reload-that-cannot-empty-a-safety-table)). Without it the zero is UNKNOWN and fails.
 - **Not short:** where the upstream gives a count, fewer rows than it fails, and more passes. That is the one-direction rule `main`'s `lib/arcgis.py` adopted for ArcGIS layers in **PR #1799 — Fail a layer fetch shorter than the server's own count** (for **#1730 — lib/arcgis.py cannot tell "no more pages" from an ArcGIS error in a 200, so a layer can be truncated mid-pagination and then skipped as unchanged on every later run**), because a layer edited between the count and the pages can move either way. A count that cannot be read is recorded and skipped, never a pass, as that check does.
 - **No collapse:** rows ≥ floor × the last loaded count. The precedent is `fetch_opentrail.py:124`, which refuses a count below `prior × (1 − MAX_FEATURE_DROP_RATIO)` with the ratio at 0.5 (`:44`), so a floor of 0.5. Every type starts at 0.5 except closures and warnings, which have no floor: a closures layer emptying is exactly what every closure being lifted looks like (Reasoned). **The per-type floors are @unvalidated**; six monthly runs of `_extract_runs` give the smallest legitimate ratio per type.
-- `org.py` produces exactly one row.
+- Each club's catalogue row produces exactly one row.
 
 **Exposed to dbt as source tests**, so a build cannot quietly consume a raw store whose latest run was refused. Freshness runs on `_extract_runs.checked_at`, with per-cadence thresholds that are all `@unvalidated` ([Every node carries its cadence](#every-node-carries-its-cadence)). The test below runs as two copies, because one test has one severity: one with `and r.type in ('closures', 'warnings')` at `error`, one with `not in` at `warn`.
 
@@ -909,7 +906,7 @@ pipeline/dbt/
 │   │   │   ├── _<club>__models.yml
 │   │   │   ├── base/  _<club>__base.yml, base_<club>__<layer>.sql    # one source() each, only in the folder that extracts the layer
 │   │   │   └── stg_<club>__<mart>.sql     # one per available file: at most nine marts, plus stg_<club>__photos
-│   │   ├── registry/                      # sources.json, trail_orgs.json, org.py rows
+│   │   ├── registry/                      # sources.json, trail_orgs.json, the clubs' catalogue rows
 │   │   ├── nws/ osm/ usgs/ opentrail/ podcasts/ ourhike/   # _shared/ sources
 │   │   └── derived/                       # tables the Python steps write
 │   ├── intermediate/<mart>/   int_<mart>__unioned.sql, int_<mart>__<verb>.sql, int_<mart>__stewardship.sql
@@ -927,7 +924,7 @@ pipeline/dbt/
 | Layer | Name | Reads | Does |
 |---|---|---|---|
 | base | `base_<steward>__<layer>`, in `staging/<steward>/base/`: the folder that extracts the layer, once per dataset (decision 34), so `base_usfs__trails` and never one per club | one `source()` | Renames and casts; `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`; aliases every column in lowercase; builds the row's key and dedupes on it ([One key per table](#one-key-per-table), decision 40). No filter, no join. One source per model is what `fct_multiple_sources_joined` requires, and one child per source keeps `fct_source_fanout` at 0 (Reasoned) |
-| staging | `stg_<club>__<mart>` | that club's base models | Conforms to the mart's shape: renames to the mart's columns and carries the base model's key. Nothing else, by decision 40, so the club's own review gate (for example ATC's reviewed file) is a filter in its `int_<mart>__` model, not here. One per available file in the 11-file contract. `org.py` lands in the shared `stg_registry__orgs`, and `photos.py` in `stg_<club>__photos`, which feeds POIs and no mart |
+| staging | `stg_<club>__<mart>` | that club's base models | Conforms to the mart's shape: renames to the mart's columns and carries the base model's key. Nothing else, by decision 40, so the club's own review gate (for example ATC's reviewed file) is a filter in its `int_<mart>__` model, not here. One per available type, that is per resource file (decision 88). The catalogue rows land in the shared `stg_registry__orgs`, and `photos.py` in `stg_<club>__photos`, which feeds POIs and no mart |
 | union | `int_<mart>__unioned` | every `stg_<club>__<mart>` | `union all by name`, no filter |
 | heavy | `int_<mart>__<verb>` | unions, intermediates, `stg_derived__*` | dedup, corridor, water distance, mile axis, graph |
 | stewardship | `int_<mart>__stewardship` | the mart's deduplicated intermediate, `stg_registry__orgs`, ATC's club sections | one row per (feature, club, basis, evidence): which clubs steward each feature, by the ATC club-section polygons, the club's trail list in `trail_orgs.json`, or a name or ID match (decision 34). It assigns a portion and never copies a feature |
@@ -1954,17 +1951,17 @@ Of the 146 S and G rules, 7 G rules are SQL attempts (TL15, TL17, TL20, TL21, EL
 
 The maintainer: *"Don't lose any transformation work that we already built. Make an org by org plan if you need to."* And in round 5: *"We should just load ALL the clubs now and handle any deduplication after the extract-load."*
 
-This section says which folders exist, the order clubs move in, what each club feeds, how overlapping publishers are deduplicated after the load, and what each tier changes for a hiker. The per-club evidence is not repeated here. It is in `pipeline/reference/org_coverage.json` (2,670 rows: 265 organisations × 10 types, plus 20 rows scoping two USFS candidate trails, measured 2026-10-01; the skeptic pass, a second reviewer rechecking each batch's weakest verdicts, changed 136 rows and the persistence pass, decision 21b, set 203) and in `pipeline/ORG_COVERAGE_SURVEY.md`.
+This section says which folders exist, the order clubs move in, what each club feeds, how overlapping publishers are deduplicated after the load, and what each tier changes for a hiker. The per-club evidence is not repeated here. It is in `bcc70dd0:pipeline/reference/org_coverage.json` (retired by decision 88; 2,670 rows: 265 organisations × 10 types, plus 20 rows scoping two USFS candidate trails, measured 2026-10-01; the skeptic pass, a second reviewer rechecking each batch's weakest verdicts, changed 136 rows and the persistence pass, decision 21b, set 203) and in `pipeline/ORG_COVERAGE_SURVEY.md`.
 
-**The coverage audit** (decision 15) worked in batches. A batch name in brackets, such as (b1) or (c10), names the batch a fact comes from: the `batch` field on that org's `org_coverage.json` rows.
+**The coverage audit** (decision 15) worked in batches. A batch name in brackets, such as (b1) or (c10), names the batch a fact comes from: the `batch` field on that org's `bcc70dd0:pipeline/reference/org_coverage.json` rows.
 
 **One pull request (decision 29).** The tiers are the order clubs move inside the build stages of one branch, reviewed at one go/no-go gate, not separate pull requests.
 
 ### The folder roster
 
-**145 club folders, one per managing org** (decision 18). That is `trail_orgs.json`'s 173 rows, minus 12 `national_umbrella`, 13 `route_only` and 3 `aggregator` (measured at 23fca25 in [Extract and load (dlt)](#extract-and-load-dlt), "Extract" from here on). Each folder holds the 11 files of decision 13.
+**145 club folders, one per managing org** (decision 18). That is `trail_orgs.json`'s 173 rows, minus 12 `national_umbrella`, 13 `route_only` and 3 `aggregator` (measured at 23fca25 in [Extract and load (dlt)](#extract-and-load-dlt), "Extract" from here on). Each answers the ten types of decision 13 by resource files in its folder or rows of `not_available.toml`; 103 have a folder (decision 88).
 
-**Up to 76 more come from the candidate stewards.** `org_coverage.json` carries 92 candidate stewards from `trail_candidates.json`. Counted 2026-10-01 from its `folds_into` field and the audit's per-org "Folder:" line, the audit recommends:
+**Up to 76 more come from the candidate stewards.** `bcc70dd0:pipeline/reference/org_coverage.json` carries 92 candidate stewards from `trail_candidates.json`. Counted 2026-10-01 from its `folds_into` field and the audit's per-org "Folder:" line, the audit recommends:
 
 | recommendation | candidates | folders |
 |---|---|---|
@@ -2075,13 +2072,13 @@ ATA's, FTA's and GAP's rows are posts, not GIS layers, so they wait on the posts
 
 #### Tier 3: new clubs with their own machine-readable lines and POIs
 
-**What moves.** Clubs and agencies publishing their own ArcGIS, GeoJSON, KML or GPX lines or points that no loaded row carries. A text match on `org_coverage.json`'s evidence finds such a row for 74 managing orgs and 78 candidates (Reasoned: the match also catches land managers' data about a club's trail). The largest gaps the audit measured: the Arizona Trail main line (layer `/3`, 831.6 mi, against today's connectors); the Florida Trail's `FNST Master` (1,568.8 mi, against about 184 mi today); NPS's Potomac Heritage Trail centerline (about 855 mi, road miles marked); the Empire State Trail's `EST_Public/FeatureServer/4` (763 mi); Michigan's Iron Belle (816 segments); CT DEEP's Trails Set (13,883 segments, CC0); the Bay Circuit Alliance (753 polylines); and NPS's 35,639 public POIs, held for a corridor clip and a type allowlist a person reads (c9).
+**What moves.** Clubs and agencies publishing their own ArcGIS, GeoJSON, KML or GPX lines or points that no loaded row carries. A text match on `bcc70dd0:pipeline/reference/org_coverage.json`'s evidence finds such a row for 74 managing orgs and 78 candidates (Reasoned: the match also catches land managers' data about a club's trail). The largest gaps the audit measured: the Arizona Trail main line (layer `/3`, 831.6 mi, against today's connectors); the Florida Trail's `FNST Master` (1,568.8 mi, against about 184 mi today); NPS's Potomac Heritage Trail centerline (about 855 mi, road miles marked); the Empire State Trail's `EST_Public/FeatureServer/4` (763 mi); Michigan's Iron Belle (816 segments); CT DEEP's Trails Set (13,883 segments, CC0); the Bay Circuit Alliance (753 polylines); and NPS's 35,639 public POIs, held for a corridor clip and a type allowlist a person reads (c9).
 
 **What it leaves true.** The 20 dual-source pairs that the steward-and-redistributor issue lists are registered on both sides, steward senior, and none ships until its overlap is measured ([below](#deduplication-after-the-load-mart-by-mart)). A pair whose redistributor turns out to be a republished copy leaves dedup as a `SAME_AS` note instead (decision 34).
 
 #### Tier 4: via clubs' own notices, hikes, challenges and podcasts
 
-**What moves.** Most `via` rows, the A.T. clubs among them, hold no geometry of their own. Their trails reach the marts as an assignment in `int_<mart>__stewardship`, by ATC's club-section polygons or the club's trail list, and are never extracted a second time (decision 34). What they publish is page-shaped: MATC's Kennebec ferry page, the Smoky Mountains Hiking Club's hazard reports, the Carolina Mountain Club's eight challenge programmes, RATC's shelter-and-water page, MRATC's weekly bulletins. Across the 145 managing orgs, `org_coverage.json` counts AVAILABLE_NOT_LOADED rows for `suggested_hikes` 117, `challenges` 91 and `podcasts` 39. Each needs a parser and a reviewed file, as the Long Path guide has. Two shapes constrain what lands:
+**What moves.** Most `via` rows, the A.T. clubs among them, hold no geometry of their own. Their trails reach the marts as an assignment in `int_<mart>__stewardship`, by ATC's club-section polygons or the club's trail list, and are never extracted a second time (decision 34). What they publish is page-shaped: MATC's Kennebec ferry page, the Smoky Mountains Hiking Club's hazard reports, the Carolina Mountain Club's eight challenge programmes, RATC's shelter-and-water page, MRATC's weekly bulletins. Across the 145 managing orgs, `bcc70dd0:pipeline/reference/org_coverage.json` counts AVAILABLE_NOT_LOADED rows for `suggested_hikes` 117, `challenges` 91 and `podcasts` 39. Each needs a parser and a reviewed file, as the Long Path guide has. Two shapes constrain what lands:
 
 - **Challenges** port only as places on the publisher's own trails (CH01–CH03); a mileage log or a children's passport stays a note.
 - **Podcasts** key on a 22-character Spotify id (PC01), so a show found only as an RSS feed needs its Spotify ids first (Reasoned from PC01).
@@ -2128,7 +2125,7 @@ The poll on the four `refuse` rows chose **"Note now, load on permission"**, and
 >
 > <maintainer's name>
 
-Each reply is quoted, with its date, in the club's `trail_orgs.json` licence fields and its sources.json licence block, which `org.py` carries into `sources`. Until then, `may_publish` stays false.
+Each reply is quoted, with its date, in the club's `trail_orgs.json` licence fields and its sources.json licence block, which the club's catalogue row carries into `sources`. Until then, `may_publish` stays false.
 
 ### Deduplication after the load, mart by mart
 
@@ -3356,7 +3353,7 @@ The hourly extract steps hold `R2_RAW_*` beside the database URLs they already r
 
 | `.claude/skills/dbt/SKILL.md` (decision 11) holds | `.claude/skills/dlt/SKILL.md` (decision 16) holds |
 |---|---|
-| **First, in one line: SQL first, then an extension, then Python** (decision 23). `dbt` 2.0.6 with telemetry off by its documented opt-out (decision 32); `dbt lint` beside the enforced SQLFluff (decision 33); the `dbt` job's step order, shared with `scripts/test.sh`; the sandbox `dbt deps` clone and `--no-dbt-deps` | The folder contract: `pipeline/extract/<club>/`, exactly 11 files, each a resource, a dated `NotAvailable`, or `SAME_AS` notes; one extraction per upstream dataset (decision 34); `_shared/` free-form; never `pipeline/dlt/` |
+| **First, in one line: SQL first, then an extension, then Python** (decision 23). `dbt` 2.0.6 with telemetry off by its documented opt-out (decision 32); `dbt lint` beside the enforced SQLFluff (decision 33); the `dbt` job's step order, shared with `scripts/test.sh`; the sandbox `dbt deps` clone and `--no-dbt-deps` | The folder contract: every managing club answers ten types once, by a resource file in `pipeline/extract/<club>/` or a row of `not_available.toml` (a dated `NotAvailable` or a share), with `SAME_AS` notes in resource files; one extraction per upstream dataset (decision 34); `_shared/` free-form; never `pipeline/dlt/` |
 | Naming: `base_<steward>__<layer>`, once per dataset → `stg_<club>__<mart>` → `int_<mart>__unioned` → `int_<mart>__<verb>` and `int_<mart>__stewardship` → the eleven names, never `dim_`/`fct_`; `marts_prefixes` | Four hazards as rules: geometry carries `{"data_type": "json"}`; an unchanged upstream is **left out, never run empty**; `RUNTIME__DLTHUB_TELEMETRY=false`; change checks stay ours, three-valued. Plus `value_step` paging and one retrying session per caller |
 | Contracts: lowercase aliases, `st_setcrs(…, 'OGC:CRS84')`; a contract misses a lon/lat swap, so the region test stays | The three checks, and what each catches that the others cannot |
 | The exceptions seed: a reason and an issue number with title on every row, enforced by a pytest | Adding a club: `trail_orgs.json` row → sources.json row per layer → folder from the template → notes → staging |
@@ -3388,7 +3385,7 @@ Get the data, we'll be careful about not burdening their servers."*
 ### Where it stands (Measured 2026-10-03)
 
 Counted from each club folder's `closures.py` and `warnings.py`, and from
-`reference/org_coverage.json`'s AVAILABLE_NOT_LOADED rows for those folders:
+`bcc70dd0:pipeline/reference/org_coverage.json`'s AVAILABLE_NOT_LOADED rows for those folders:
 
 | closures notes | count |
 |---|---:|
@@ -3898,16 +3895,16 @@ Each later save adds only the versions that changed, but every save is a full co
 | photos | 1 | 1 | 17 | **33** | 78 | 15 |
 | **all ten** | **43** | **5** | **125** | **842** | **385** | **43** |
 
-Every folder's `org.py` also loads its catalogue row (145 of 145). Seven files hold some other note, such as a terms quotation, and are not counted above. "Drawn from another folder" is the `via` rule: the club's portion of a dataset another folder extracts, such as USFS's national trail layer (decision 34). "Not published" is a note saying the search found nothing; "unclear" is a note whose search was not finished.
+Every managing club also loads its catalogue row (145 of 145; an `org.py` per folder then, made by `discover()` since decision 88). Seven files hold some other note, such as a terms quotation, and are not counted above. "Drawn from another folder" is the `via` rule: the club's portion of a dataset another folder extracts, such as USFS's national trail layer (decision 34). "Not published" is a note saying the search found nothing; "unclear" is a note whose search was not finished.
 
-**What format the 842 are in** (Reasoned, not counted file by file): `reference/org_coverage.json`'s evidence for the same clubs' AVAILABLE_NOT_LOADED rows, classified by keyword, gives about 206 ArcGIS layers, 13 GIS files (KML, GPX, GeoJSON, shapefiles), 203 feeds or APIs, 72 PDFs and 374 web pages. That file counts 868 such rows for these clubs, not 842, and the two have not been reconciled; the folder notes are the one home.
+**What format the 842 are in** (Reasoned, not counted file by file): `bcc70dd0:pipeline/reference/org_coverage.json`'s evidence for the same clubs' AVAILABLE_NOT_LOADED rows, classified by keyword, gives about 206 ArcGIS layers, 13 GIS files (KML, GPX, GeoJSON, shapefiles), 203 feeds or APIs, 72 PDFs and 374 web pages. That file counts 868 such rows for these clubs, not 842, and the two have not been reconciled; the notes, rows of `not_available.toml` since decision 88, are the one home.
 
 ### What makes the gaps
 
 1. **No registry row** (the 842). Each needs a `sources.json` row with its licence and terms recorded, then a resource. This is the whole gap for the 206 ArcGIS layers, whose reader already exists.
 2. **No reader for the format.** Readers exist for ArcGIS, Socrata, WordPress, NYNJTC's guide pages and Hike Finder, and GATC's water PDF. The 374 web pages and 72 PDFs mostly need a reader per site.
 3. **Loaded but held back.** Publication is decided in dbt (`int_sources__publication`), and 5 of the 64 registry rows have `reaches_hikers` false. The open questions in [The go/no-go gate](#the-gono-go-gate), PA DCNR's Explore PA Trails and ONDA's `ODT Tracks` among them, hold their rows too.
-4. **Organisations with no folder.** `org_coverage.json` holds 120 organisations outside the 145: the 92 candidate stewards `trail_candidates.json` names, the umbrellas and route-only trails `_shared/not_clubs.py` lists, and two USFS units. Their 1,200 rows are not extracted at all, because decision 18's folders are `trail_orgs.json`'s managing clubs.
+4. **Organisations with no folder.** `bcc70dd0:pipeline/reference/org_coverage.json` holds 120 organisations outside the 145: the 92 candidate stewards `trail_candidates.json` names, the umbrellas and route-only trails `_shared/not_clubs.py` lists, and two USFS units. Their 1,200 rows are not extracted at all, because decision 18's folders are `trail_orgs.json`'s managing clubs.
 5. **Blocked on another issue.** The drought feed on **#1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a path the Drought Monitor's robots.txt disallows for every user agent**.
 6. **Elevation has holes the DEM leaves.** 125 of 3,551,452 network edges have no elevation at all (124 NPS, 1 CDTC), measured on publish-vector-data.yml run 37114537637 (`int_elevation__edge_climbs.sql`).
 7. **The note's name hides the gap.** A published-but-unregistered dataset is written as a `NOT_AVAILABLE` note, whose name says the data does not exist. The note's `checked` text says it does, but nothing a test or a grep sees separates the 842 from the 385. A `NOT_REGISTERED` note, or a field on the note, would make the gap countable in one command. Not built.
@@ -3936,7 +3933,7 @@ Every folder's `org.py` also loads its catalogue row (145 of 145). Seven files h
 #### How the work is split so that workers do not collide
 
 - **`sources.json` is one file.** Workers never edit it. Each writes its proposed rows to a JSON file in the session scratchpad, and the lead inserts each wave's rows in one commit, sorted the way the file is.
-- **One worker per type within a wave**, each owning that type's file in every club folder (`<club>/points_of_interest.py` and so on), so no two workers touch one file.
+- **One worker per type within a wave**, each owning that type's resource files in every club folder (`<club>/points_of_interest.py` and so on), so no two workers touch one file. Notes and shares are rows of the one `extract/not_available.toml` (decision 88), so workers hand those to the lead as they hand `sources.json` rows: git refused two new rows inserted between the same two rows (measured 2026-10-06 on a two-row copy).
 - **dbt models are generated, not hand-written, wherever a layer has a measured key**: a `base_<folder>__<key>` per raw table from one template, keyed and deduped on the key the live read found, and each mart's union reading the registry for its branches, as `int_points_of_interest__unioned` does today.
 - **Fixtures**: every new resource gets a fixture row in `make_dbt_fixtures.py`, written from the live read's own field list, with no real feature copied in.
 
@@ -4032,7 +4029,7 @@ Every wave ends with `scripts/test.sh`, a fixture build, and the new-data report
 |---|---|---|---|
 | 0 | This plan; `pipeline/ORG_COVERAGE_SURVEY.md`; the draft pull request | Every decision written down; a dated per-club snapshot | nothing |
 | 1 | Foundations: `dbt` 2.0.6 (decision 32; built first on dbt-oss 2.0.5, which ran the same files green) and the YAML migration (64 parse errors → 0); evaluator at `error`, with 8 exception rows today and two in the intended state; per-club model YAML (`fct_test_directories` 55 → 0); SQLFluff jinja and `dbt lint` in CI and `test.sh`. **Those are built** (commits `2c9454af` to `d01c6cbf`, green on a runner on 2026-10-01). Still to build in this stage: the extensions profile; the publication corrections ([Who may publish](#who-may-publish)). The `extract/` skeleton, the layout test and the cadence home were built with stage 2a's first two clubs (next row). Both skills and the plugin came with this plan | CI enforces the shape everything later fits. No published byte moves | nothing |
-| 2 | dlt for the ArcGIS, Socrata and WordPress clubs, **in shadow**, into the private raw store (needs the buckets). **Stage 2a is built** (commit `0b646556`): `_contract.py`, `_kinds.py`, `_run.py` with the run check and the after-run check, `_warehouse.py`'s committed-file read, `.dlt/config.toml`, and the `atc/` and `nysdec/` folders. It runs in CI against a `file://` store under mocked ArcGIS Online servers (`tests/test_extract_run.py`), never yet against R2. **Stage 2b's first half is built**: the 21 providers whose registered layers are all ArcGIS, 26 keys, each folder's other types a dated note restated from `reference/org_coverage.json` (the dlt skill, "The `NOT_AVAILABLE` note"); then NYC Parks and NYC DOT, 7 keys, through the Socrata kind; then NYNJTC's 5, through the WordPress, guide-page and Hike Finder kinds and the daily rule (`DUE_AFTER` in `_run.py`: a daily resource rides the hourly lane when its last good check is 24 h old). Then GATC's water PDF, through the club-PDF kind; then the other 118 managing clubs, which have no registry row, so each folder is eleven dated notes (one per type) and a catalogue row, `via` notes naming the folder a type is drawn from (decision 34). That is all 145 of decision 18's folders; `_shared/not_clubs.py` holds the 25 umbrella and route-only lines, and `_shared/outerspatial/` and `_shared/avenza/` their notes. `_shared/` files declare a `TYPE`, `discover_shared()` finds them, and the four reviewed files load there: `podcasts/`, `greenbelly/`, and `ourhike/`'s highlights and work projects. `opentrail/` lands `raw_opentrail__at`, the name dbt already reads, with every user comment left out; as a non-registry input its file claims nothing and says why (`UNREGISTERED`). `_shared/usgs/hydrography_watch.py` lands the `usgs_3dhp` watch, five probe boxes' work units and no geometry. `_shared/usgs/dem_tiles.py` and `nhd_gpkg.py` land 3DEP's and NHD's bucket listings, never an object. `_shared/ourhike/`'s `closures.py`, `reports.py` and `field_notes.py` land OurHike's own conditions rows through the bake's queries, and a `field_notes` the reader cannot see is `Unavailable` rather than empty. `_shared/nws/alerts.py` lands `raw_nws__alerts`, every active alert, on the hourly lane; a quiet hour is a proven zero (the body's own feature count), and an answer that is not a FeatureCollection refuses and leaves the last alerts standing. Splitting it into its own `nws` pipeline is stage 4's job wiring. OSM's extracts land through `_shared/osm/geofabrik.py`, bytes kept and one manifest row each (**#1652 — Download OSM's Geofabrik extracts at most once a month, into a private raw bucket that outlives the 7-day Actions cache**). The one registry key still on the old fetcher waits on **#1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a path the Drought Monitor's robots.txt disallows for every user agent**, and `tests/test_extract_layout.py` lists it by name with that blocker | The raw store fills; `_extract_runs` measures each run; today's fetchers still feed exporters | nothing |
+| 2 | dlt for the ArcGIS, Socrata and WordPress clubs, **in shadow**, into the private raw store (needs the buckets). **Stage 2a is built** (commit `0b646556`): `_contract.py`, `_kinds.py`, `_run.py` with the run check and the after-run check, `_warehouse.py`'s committed-file read, `.dlt/config.toml`, and the `atc/` and `nysdec/` folders. It runs in CI against a `file://` store under mocked ArcGIS Online servers (`tests/test_extract_run.py`), never yet against R2. **Stage 2b's first half is built**: the 21 providers whose registered layers are all ArcGIS, 26 keys, each folder's other types a dated note restated from `bcc70dd0:pipeline/reference/org_coverage.json` (the dlt skill, "The `NOT_AVAILABLE` note"); then NYC Parks and NYC DOT, 7 keys, through the Socrata kind; then NYNJTC's 5, through the WordPress, guide-page and Hike Finder kinds and the daily rule (`DUE_AFTER` in `_run.py`: a daily resource rides the hourly lane when its last good check is 24 h old). Then GATC's water PDF, through the club-PDF kind; then the other 118 managing clubs, which have no registry row, so each folder was eleven dated notes (one per type) and a catalogue row (decision 88 later moved the notes and shares into `extract/not_available.toml` and made the catalogue rows in `discover()`), `via` notes naming the folder a type is drawn from (decision 34). That is all 145 of decision 18's folders; `_shared/not_clubs.py` holds the 25 umbrella and route-only lines, and `_shared/outerspatial/` and `_shared/avenza/` their notes. `_shared/` files declare a `TYPE`, `discover_shared()` finds them, and the four reviewed files load there: `podcasts/`, `greenbelly/`, and `ourhike/`'s highlights and work projects. `opentrail/` lands `raw_opentrail__at`, the name dbt already reads, with every user comment left out; as a non-registry input its file claims nothing and says why (`UNREGISTERED`). `_shared/usgs/hydrography_watch.py` lands the `usgs_3dhp` watch, five probe boxes' work units and no geometry. `_shared/usgs/dem_tiles.py` and `nhd_gpkg.py` land 3DEP's and NHD's bucket listings, never an object. `_shared/ourhike/`'s `closures.py`, `reports.py` and `field_notes.py` land OurHike's own conditions rows through the bake's queries, and a `field_notes` the reader cannot see is `Unavailable` rather than empty. `_shared/nws/alerts.py` lands `raw_nws__alerts`, every active alert, on the hourly lane; a quiet hour is a proven zero (the body's own feature count), and an answer that is not a FeatureCollection refuses and leaves the last alerts standing. Splitting it into its own `nws` pipeline is stage 4's job wiring. OSM's extracts land through `_shared/osm/geofabrik.py`, bytes kept and one manifest row each (**#1652 — Download OSM's Geofabrik extracts at most once a month, into a private raw bucket that outlives the 7-day Actions cache**). The one registry key still on the old fetcher waits on **#1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a path the Drought Monitor's robots.txt disallows for every user agent**, and `tests/test_extract_layout.py` lists it by name with that blocker | The raw store fills; `_extract_runs` measures each run; today's fetchers still feed exporters | nothing |
 | 3 | `trail_lines`, `points_of_interest`, `elevation`, `trail_network`, each through shadow-run parity, with decision 23's SQL attempts proven or sent back by their unit tests. The monthly raw lane moves to DuckLake at the first step, once its three go/no-go runs pass; decision 27 is answered before the POI marts port (it was, by decision 41). **Begun**: fixture mode builds CI's warehouse through the extract, and the 28 staging models read the dlt tables, identical row for row to the `load_raw.py` build. The other 28 registry tables have `base_<steward>__<layer>` models, keyed and deduped on ELT.md's measured keys, and the fixtures carry those key columns. The 28 older models still do base and staging work in one; they split when their marts' unions are built. **The machinery is proven on `podcasts` first**, because its input is a file in git and CI can hold parity on the real data: `int_podcasts__checked` runs `lib/podcasts.py`'s twelve rules in SQL (PC01–PC12), the contracted `podcasts` mart feeds `pub_podcasts_episodes` through `phone_file`, and `parity.py podcasts` finds no differences across the 71 episodes, in CI's `dbt` job on every run. **Then `sources`**, whose inputs are files in git too: the registry lands whole, SR01–SR07 run in SQL, and `stewards.json` and `registry.json` come out of the `sources` mart with no differences (28 stewards, 64 sources). `export_podcasts.py` and `export_sources.py` still upload until stage 4 moves the uploads | `pub_` writers read marts; each family's old transform is deleted in its own stage ([Keeping every rule we already built](#keeping-every-rule-we-already-built), step 5) | each approved difference, such as graph `length_m` on full resolution lengthening day-hike miles, at the next promotion |
 | 4 | `closures` and `warnings` on the hourly lane, NWS and OPRHP's closures included (**#1152 — Move OPRHP's temporary closures onto the conditions clock, where a safety layer belongs**); the status, water and expiry rules. The warehouse moves to DuckLake once contracts with `primary_key` and `check` work there | One closures mart for every club plus OurHike; decision 7's split, held by a partition test | **within hours of the merge**: the bake writes production |
 | 5 | `places`, `suggested_hikes`, `sources`, `podcasts`, `challenges`. `challenges` ports `export_challenges.py` as **PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at camp, starting with the ATC's Summer Bucket List** merged it (5b65fca, closing **#1780 — Let a club publish a challenge — places on its own trails that hikers opt into and tag at camp — starting with the ATC's A.T. Summer Bucket List**). That pull request's body asked not to merge until the ATC's written permission was in `sources.json`, and `sources.json` is identical at 23fca25 and 5b65fca (git diff, 2026-10-01), so the list's licence is still unrecorded and `may_publish` decides whether the mart carries it. Decision 47 (2026-10-02) has since answered it: the list publishes on the maintainer's statement as an ATC volunteer, with no written grant from the ATC in this repository | All eleven marts contracted and exposed | the next promotion; podcasts on their live key, production by dispatch |

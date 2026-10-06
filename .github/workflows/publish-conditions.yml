@@ -557,6 +557,20 @@ jobs:
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The dbt generators' output, which is not committed (pipeline/ELT.md
+      # decision 91), written before any dbt command reads the project, on
+      # the extract's venv: the generators read its club folders, whose
+      # modules import dlt. Measured 2026-10-06 in a sandbox: 2.7 to 3.7 s.
+      # The two-minute cap only bounds a hang, @unvalidated: this summary
+      # line over a few runs would settle it.
+      - name: Generate the dbt models (dbt path)
+        if: env.PHONE_FILES == 'dbt'
+        timeout-minutes: 2
+        run: |
+          started=$SECONDS
+          "$RUNNER_TEMP/extract/bin/python" generate_dbt.py
+          printf -- '- generate_dbt.py: %s s\n\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
       # On a miss only. Soak run 538's deps took 330 ms ("Finished 'deps'
       # successfully [330ms]", 2026-10-05), so the cap only bounds a download
       # that hangs, and a hung deps fails the run either way, because nothing

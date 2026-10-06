@@ -350,6 +350,19 @@ step() {
   echo "   ok ($((SECONDS - started))s)"
 }
 
+# THE dbt GENERATORS' OUTPUT, which is not committed (pipeline/ELT.md
+# decision 91), written once, before the first suite that reads it: the
+# pipeline suite walks the models on disk (pipeline/tests/conftest.py refuses
+# to start without them) and the dbt suite parses them. On the suites' own
+# Python, which carries dlt as the generators need; CI's jobs give them the
+# extract's venv, or the pytest job's own Python.
+dbt_generated=false
+generate_dbt_once() {
+  $dbt_generated && return 0
+  step "dbt generate models"   env -C pipeline "$PY" generate_dbt.py
+  dbt_generated=true
+}
+
 # Said BEFORE the first step rather than left to `python -m ruff` to discover,
 # and said with the real reason (#859): "No module named ruff" points at a
 # package when the problem is an interpreter, and the fix it suggests makes
@@ -444,6 +457,7 @@ if selected_has settings; then
   step "settings tests" "$PY" -m pytest .github/tests -q "${PYTEST_PARALLEL[@]}"
 fi
 if selected_has pipeline; then
+  generate_dbt_once
   step "pipeline tests" env -C pipeline "$PY" -m pytest -q "${PYTEST_PARALLEL[@]}" "${PYTEST_COVERAGE[@]}"
 fi
 if selected_has backend; then
@@ -481,6 +495,7 @@ if selected_has dbt; then
     dbt_cmd=(env -C pipeline/dbt DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false
              "OURHIKE_WAREHOUSE=$dbt_tmp/warehouse.duckdb"
              "OURHIKE_PROCESSED_DIR=$dbt_tmp/processed" "$DBT_DIR/dbt")
+    generate_dbt_once
     if $skip_dbt_deps; then
       echo "-- dbt deps: skipped (--no-dbt-deps), using pipeline/dbt/dbt_packages/ as it is"
       skipped+=("dbt deps (--no-dbt-deps)")

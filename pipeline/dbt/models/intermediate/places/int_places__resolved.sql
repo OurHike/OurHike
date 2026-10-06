@@ -230,18 +230,29 @@ club_town_shapes as (
 -- halves, until none is or it has been halved `piece_halvings` times. GEOS
 -- returns a half as it finds it, so a club park that is a collection keeps
 -- its lines and points, as the uncut polygon measured them.
+--
+-- A polygon is made valid again in EPSG:5070 when it is not. Both park
+-- layers are made valid in lon/lat (int_places__park_units,
+-- int_places__club_units), and a valid polygon can come out of the
+-- projection invalid: monthly run 22 (refresh-reference.yml 37370582492,
+-- 2026-10-05) failed here with GEOS's "TopologyException: side location
+-- conflict" at -135.559, 56.859, in southeast Alaska, where EPSG:5070 (an
+-- Albers projection for the lower 48) is far from true and a coastline's
+-- islands can come to overlap. Halving clips every large polygon, measured
+-- or not, so an invalid one stops the build there. A valid polygon is left
+-- exactly as it was.
 polygon_shapes as (
     select
         'park' as shape_kind,
         place_id,
-        g as piece,
+        case when st_isvalid(g) then g else st_makevalid(g) end as piece,
         0 as halvings
     from park_shapes
     union all
     select
         'club_park' as shape_kind,
         place_id,
-        g as piece,
+        case when st_isvalid(g) then g else st_makevalid(g) end as piece,
         0 as halvings
     from club_park_shapes
 ),

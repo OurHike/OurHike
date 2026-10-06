@@ -5,7 +5,9 @@
 #   build.sh <output dir> [--no-dbt-deps]
 #
 # Run from the repository root, with pipeline/requirements-dbt.txt's dbt first
-# on PATH. --no-dbt-deps (scripts/test.sh's sandbox workaround) uses
+# on PATH, after pipeline/generate_dbt.py has written the generated models
+# (decision 91; action.yml's step before this one). --no-dbt-deps
+# (scripts/test.sh's sandbox workaround) uses
 # pipeline/dbt/dbt_packages/ as it is, because a web session's proxy cannot
 # fetch the package tarballs (the dbt skill has the clone commands). The
 # caller checks the copy it ships, with pipeline/check_docs_site.py.

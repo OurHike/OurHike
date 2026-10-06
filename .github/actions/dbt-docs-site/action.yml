@@ -42,7 +42,9 @@ runs:
       with:
         python-version: "3.12"
         cache: pip
-        cache-dependency-path: pipeline/requirements-dbt.txt
+        cache-dependency-path: |
+          pipeline/requirements-dbt.txt
+          pipeline/requirements-extract.txt
 
     # The cache entry pipeline-tests.yml's dbt job saves, and says what is
     # in. Restored only, never saved here: a miss re-downloads dbt's DuckDB
@@ -59,6 +61,19 @@ runs:
     - name: Install dbt
       shell: bash
       run: pip install -r pipeline/requirements-dbt.txt
+
+    # The dbt generators' output, which is not committed (pipeline/ELT.md
+    # decision 91), written before build.sh's dbt reads the project. On a venv
+    # of the extract's pins: the generators read its club folders, whose
+    # modules import dlt, and requirements-dbt.txt cannot share a venv with
+    # them (pipeline-tests.yml's dbt job says why).
+    - name: Generate the dbt models
+      shell: bash
+      working-directory: pipeline
+      run: |
+        python -m venv "$RUNNER_TEMP/dbt-docs-extract"
+        "$RUNNER_TEMP/dbt-docs-extract/bin/pip" install --quiet -r requirements-extract.txt
+        "$RUNNER_TEMP/dbt-docs-extract/bin/python" generate_dbt.py
 
     - name: Build the docs site
       id: build

@@ -1,27 +1,123 @@
-"""pipeline/make_dbt_staging.py's output stays what it would write, and keys nothing it should not.
+"""pipeline/make_dbt_staging.py writes the same models every run, none of them committed, and keys nothing it should not.
 
 The generator writes the dbt staging layer for every club ArcGIS layer of a staged type that no
 hand-written model reads (pipeline/ELT.md, "Loading everything the clubs publish (decision 54)"): a
 base model per raw table, keyed on the registry's measured key (decision 40), a staging model per
-club and type, each type's union, and the region each source is held to. Its output is committed,
-so a registry edit that changes a key, a title or a date field, or a layer registered without its
-models, fails here until the generator is run again.
+club and type, each type's union, and the region each source is held to.
+
+Its output, and generate_notice_models.py's, is not committed (decision 91, the maintainer's poll of
+2026-10-06): every place that parses the dbt project writes it first, through generate_dbt.py. So the
+first tests here hold what that rests on, for both generators: a run writes the same bytes from an
+empty tree in either order and again over its own output; no committed file is one they write; and
+git ignores every file they write and no committed one. The pipeline suite reads the tree they wrote
+(tests/conftest.py refuses to start without it), and the next test fails when that tree is older than
+the registry it was written from.
 """
 
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+import generate_notice_models
 import make_dbt_staging
 from make_dbt_staging import KeyRefused, Table
 
 MODELS = Path(make_dbt_staging.MODELS)
+PIPELINE = Path(make_dbt_staging.PIPELINE)
+REPO = PIPELINE.parent
+#: The first line of every file each generator writes, except seeds/notice_readers.csv, a CSV with no comment syntax.
+MARKERS = (make_dbt_staging.GENERATED, generate_notice_models.MARKER)
 
 
-def test_the_committed_files_are_exactly_what_the_generator_writes():
+def _git(*args: str, stdin: str | None = None) -> str:
+    result = subprocess.run(["git", "-C", str(REPO), *args], input=stdin, capture_output=True, text=True)
+    assert result.returncode in (0, 1), f"git {' '.join(args)}: {result.stderr}"
+    return result.stdout
+
+
+def _committed() -> list[str]:
+    """Every committed path under pipeline/, relative to the repository."""
+    return [name for name in _git("ls-files", "-z", "--", "pipeline").split("\0") if name]
+
+
+@pytest.fixture(scope="module")
+def written() -> dict[Path, str]:
+    """{path: text} for every file the two generators write, as they write it from the tree as it stands."""
+    return {**make_dbt_staging.render(), **generate_notice_models.render_all()}
+
+
+def test_the_generated_tree_this_suite_reads_is_what_the_generator_writes_now():
+    """True by construction in CI, whose pytest job runs generate_dbt.py seconds before; it catches a local run reading a
+    tree written before the last registry or extract edit."""
     problems = make_dbt_staging.differences(make_dbt_staging.render())
-    assert problems == [], "run `python make_dbt_staging.py` from pipeline/ and commit what it writes:\n" + "\n".join(problems)
+    assert problems == [], "run `python generate_dbt.py` from pipeline/, then the suite again:\n" + "\n".join(problems)
+
+
+def _checkout(root: Path) -> Path:
+    """A copy under root of every file under pipeline/ that git would commit, its tests left out: what a fresh checkout
+    of this tree holds, with no generated file in it. Returns the copy's pipeline/."""
+    listed = _git("ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "pipeline").split("\0")
+    for name in dict.fromkeys(listed):
+        if not name or name.startswith("pipeline/tests/") or not (REPO / name).is_file():
+            continue
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO / name, target)
+    return root / "pipeline"
+
+
+def _run(pipeline: Path, *scripts: str) -> None:
+    for script in scripts:
+        result = subprocess.run([sys.executable, script], cwd=pipeline, capture_output=True, text=True)
+        assert result.returncode == 0, f"{script} in a fresh copy: {result.stdout}{result.stderr}"
+
+
+def _dbt_tree(pipeline: Path) -> dict[str, bytes]:
+    return {str(path.relative_to(pipeline)): path.read_bytes() for path in (pipeline / "dbt").rglob("*") if path.is_file()}
+
+
+def test_both_generators_write_the_same_bytes_from_an_empty_tree_in_either_order_and_again_over_their_own(tmp_path):
+    """Decision 91 regenerates on every run, so a model's bytes must be a function of the registry and the extract's
+    folders alone. Each generator also reads the tree it writes into (make_dbt_staging.py's hand-written raw tables,
+    generate_notice_models.py's hand-staged ones), so the order they run in, and a run over an earlier run's output,
+    must not change a byte either. Measured 2026-10-06 at 24da1f07: 1,637 files, the same in all three runs."""
+    first = _checkout(tmp_path / "first")
+    before = _dbt_tree(first)
+    _run(first, "generate_dbt.py")
+    written_once = _dbt_tree(first)
+    new = set(written_once) - set(before)
+    assert {"dbt/models/.gitignore", "dbt/seeds/notice_readers.csv", "dbt/macros/generated_regions.sql"} <= new
+    assert len(new) > 1000, f"only {len(new)} files written from an empty tree"
+    _run(first, "make_dbt_staging.py", "generate_notice_models.py")
+    assert _dbt_tree(first) == written_once, "a second run over the first one's output wrote different bytes"
+    reversed_order = _checkout(tmp_path / "reversed")
+    _run(reversed_order, "generate_notice_models.py", "make_dbt_staging.py")
+    assert _dbt_tree(reversed_order) == written_once, "the notice generator run first wrote different bytes"
+
+
+def test_no_committed_file_is_one_a_generator_writes_or_opens_with_its_generated_line(written):
+    committed = _committed()
+    assert not {REPO / name for name in committed} & set(written), "committed, though a generator writes it on every run"
+    headed = []
+    for name in committed:
+        if name.startswith("pipeline/dbt/"):
+            with (REPO / name).open(encoding="utf-8", errors="replace") as handle:
+                if any(marker in handle.readline() for marker in MARKERS):
+                    headed.append(name)
+    assert headed == [], "committed with a generator's GENERATED line: `git rm --cached` them"
+
+
+def test_git_ignores_every_file_a_generator_writes_and_no_committed_file(written):
+    """pipeline/dbt/.gitignore's patterns and the list make_dbt_staging.py writes beside its models (IGNORE_LIST). A
+    pattern that matched a hand-written file would leave it out of every `git add -A`, and so out of CI."""
+    paths = sorted(str(path.relative_to(REPO)) for path in written)
+    ignored = set(_git("check-ignore", "--no-index", "--stdin", stdin="\n".join(paths) + "\n").split("\n")) - {""}
+    assert sorted(set(paths) - ignored) == [], "written by a generator, and git would commit it"
+    assert _git("ls-files", "--cached", "--ignored", "--exclude-standard", "--", "pipeline") == "", "committed, and ignored"
 
 
 def test_every_staged_types_arcgis_layer_has_a_model_reading_its_raw_table():

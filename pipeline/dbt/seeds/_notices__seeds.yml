@@ -40,9 +40,15 @@ seeds:
         description: The layer's sources.json key.
         data_tests: [not_null, unique]
       - name: title
-        description: The field holding the notice's own headline or name.
+        description: >
+          The field holding the notice's own headline or name, or words in
+          single quotes that every row of the layer is titled with, where the
+          layer's only such field holds a code a hiker cannot read (decision
+          95: CPW's conflict areas, whose ACTIVITYCO reads BBHCA or MLHCA).
       - name: category
-        description: The source's own category or type field, as text.
+        description: >
+          The source's own category or type field, as text, or words in
+          single quotes as for `title`.
       - name: status
         description: The source's own status field, which notice_status_values reads.
       - name: starts

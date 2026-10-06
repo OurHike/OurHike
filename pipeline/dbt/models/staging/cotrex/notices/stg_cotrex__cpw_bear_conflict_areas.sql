@@ -10,6 +10,10 @@
 -- Its fields are the layer's own, named in seeds/notice_source_fields.csv
 -- from the field list the decision 53 inventory read (2026-10-03); a role
 -- the layer has no field for is null, never filled in.
+-- Its title and category are words the seed carries in single quotes, the
+-- same on every row, where the layer's own field holds only a code
+-- (LITERAL_ROLES in pipeline/generate_notice_models.py); the seed row's
+-- `why` says who chose them.
 --
 -- Only facts cross from base_: the source's id, title, category, status,
 -- dates, link, a place name and its own geometry (decision 55, and
@@ -42,8 +46,8 @@ select
     'arcgis_layer' as reader,
     'full' as listing,
     {{ notice_field('globalid') }} as source_id,
-    {{ notice_field('activityco') }} as title,
-    cast(null as varchar) as category,
+    'Black bear conflict area' as title,
+    'Wildlife conflict area' as category,
     cast(null as varchar) as status,
     cast(null as timestamptz) as starts_at,
     cast(null as timestamptz) as ends_at,

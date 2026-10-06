@@ -73,5 +73,5 @@ wi_dnr_fire_danger,COUNTY_NAME,DANGER_RATING_NAME,NO_BURN_FLAG,,,,LAST_CHANGED_D
 ct_deep_property_access_status,ACCSS_NAME,,STATUS,,,,,LINK,PROPERTY,"An access point's status, never a trail's: Open 384, Closed 1 (the row's notes)"
 wa_rco_trailhead_status,trailhead_name,,trailhead_status,,,,,information_url,county,"A trailhead's status, never a trail's: open 89, construction 6, seasonal 6, closed 1 (the row's notes)"
 cotrex_seasonal_closures,Name,Type,,Start_Date,End_Date,,,URL,Agency,"Start_Date and End_Date are DateOnly, last season's beside a recurring Closure_Period (pipeline/ELT.md, status rule 4)"
-cpw_bear_conflict_areas,ACTIVITYCO,,,,,,EDIT_DATE,,,"Worded downstream as 'an area CPW maps as a conflict area' (the row's notes)"
-cpw_lion_conflict_areas,ACTIVITYCO,,,,,,EDIT_DATE,,,"As cpw_bear_conflict_areas"
+cpw_bear_conflict_areas,'Black bear conflict area','Wildlife conflict area',,,,,EDIT_DATE,,,"Worded by decision 95 (the maintainer's poll, 2026-10-06): the layer's only title field, ACTIVITYCO, read the code BBHCA on all 613 rows read live on 2026-10-06. 'Conflict area' is CPW's own term, and neither title nor category says an animal is there now (the layer was last edited 2026-05-07)"
+cpw_lion_conflict_areas,'Mountain lion conflict area','Wildlife conflict area',,,,,EDIT_DATE,,,"As cpw_bear_conflict_areas: ACTIVITYCO read MLHCA on all 266 rows read live on 2026-10-06"

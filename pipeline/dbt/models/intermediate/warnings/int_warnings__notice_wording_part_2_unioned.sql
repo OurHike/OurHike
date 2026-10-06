@@ -231,7 +231,7 @@ with rows_as_json as (
         'cpw_bear_conflict_areas' as source_key,
         notice_key,
         to_json(base) as row_json,
-        ['activityco', 'edit_date', 'globalid'] as fact_columns
+        ['edit_date', 'globalid'] as fact_columns
     from (
         select * exclude (geom)
         from {{ ref('base_cotrex__cpw_bear_conflict_areas') }}
@@ -243,7 +243,7 @@ with rows_as_json as (
         'cpw_lion_conflict_areas' as source_key,
         notice_key,
         to_json(base) as row_json,
-        ['activityco', 'edit_date', 'globalid'] as fact_columns
+        ['edit_date', 'globalid'] as fact_columns
     from (
         select * exclude (geom)
         from {{ ref('base_cotrex__cpw_lion_conflict_areas') }}

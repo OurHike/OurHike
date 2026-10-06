@@ -30,7 +30,9 @@
 -- two posts with one slug are a problem here, where the cache keeps whichever
 -- came last, and a `title.rendered` that is not a string reads as no title,
 -- where _text_of() prints whatever it is. WordPress keeps a slug unique within
--- posts and renders every title as a string, so neither has happened.
+-- posts and renders every title as a string, so neither has happened. And a
+-- link back into the app (macros/link_into_the_app.sql, decision 94) is a
+-- problem here, which the Python reads as any other "http" link.
 with posts as (
     select * from {{ ref('base_nynjtc__nynjtc_trail_alerts') }}
 ),
@@ -262,6 +264,14 @@ checked as (
                     case
                         when not coalesce(starts_with(link, 'http'), false)
                             then 'a link that is not http'
+                    end,
+                    -- Decision 94: not back into the app, which
+                    -- parse_alert() does not check.
+                    case
+                        when coalesce(starts_with(link, 'http'), false)
+                            then
+                                'a link that '
+                                || ({{ link_into_the_app('link') }})
                     end,
                     case
                         when coalesce(title, '') = '' then 'no title once read'

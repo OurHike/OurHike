@@ -614,6 +614,12 @@ class TestTheCustomDomainAndTheBuildAgree:
         assert "://" not in self._host()
         assert "/" not in self._host()
 
+    def test_the_dbt_link_checks_refuse_links_to_the_cnames_host(self):
+        """Decision 94: pipeline/dbt/macros/link_into_the_app.sql refuses a closure link back into the app by its
+        host, read from dbt_project.yml's `app_host` var, which has to be site/CNAME's or it refuses nothing."""
+        variables = yaml.safe_load((REPO_ROOT / "pipeline" / "dbt" / "dbt_project.yml").read_text(encoding="utf-8"))["vars"]
+        assert variables["app_host"] == self._host()
+
     def test_the_app_is_built_for_a_subpath_of_the_custom_domain_root(self):
         """The apex serves the landing page; the app lives under it.
 
@@ -995,6 +1001,115 @@ class TestTheDataDocs:
         )
         assemble = next(step for step in deploy["steps"] if step.get("name") == "Assemble the site")
         assert assemble["env"]["DOCS_DIR"] == download["with"]["path"]
+
+    def test_the_preview_builds_the_docs_in_a_job_holding_no_secret_and_no_write(self):
+        """The same split for pr-preview.yml, whose deploying job holds CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, the
+        Supabase values and `pull-requests: write`: the docs are built in a job of its own that can only read and is
+        handed no secret, and the preview job downloads the directory and runs nothing of dbt's or npm's for it.
+        """
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8"))["jobs"]
+        builders = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert len(builders) == 1, builders
+        docs = jobs[builders[0]]
+        assert docs.get("permissions") == {"contents": "read"}
+        assert "secrets." not in yaml.safe_dump(docs) and "vars." not in yaml.safe_dump(docs)
+        checkout = next(s for s in docs["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        assert checkout.get("with", {}).get("persist-credentials") is False
+        build = next(step for step in docs["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        upload = next(step for step in docs["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact@"))
+        assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+
+        preview = jobs["preview"]
+        needs = preview.get("needs") or []
+        assert builders[0] in ([needs] if isinstance(needs, str) else needs)
+        assert not any(step.get("uses") == "./.github/actions/dbt-docs-site" for step in preview["steps"])
+        download = next(
+            step
+            for step in preview["steps"]
+            if str(step.get("uses", "")).startswith("actions/download-artifact@")
+            and step["with"]["name"] == upload["with"]["name"]
+        )
+        assemble = next(step for step in preview["steps"] if step.get("name") == "Assemble the preview")
+        assert assemble["env"]["DOCS_DIR"] == download["with"]["path"]
+
+    def test_the_preview_still_runs_its_teardown_when_a_pull_request_closes(self):
+        """A closed pull request builds no docs, and the preview job, which needs the docs job, must still remove the
+        previews and post its closing comment rather than be skipped behind the skipped build."""
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8"))["jobs"]
+        (docs_id,) = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert jobs[docs_id]["if"] == "github.event.action != 'closed'"
+        condition = jobs["preview"]["if"]
+        assert "!cancelled()" in condition
+        assert f"needs.{docs_id}.result == 'success'" in condition
+        assert "github.event.action == 'closed'" in condition
+
+
+class TestTheDataDocsLoadNoCodeFromAnotherOrigin:
+    """Decision 93 (pipeline/ELT.md), answering SEC-1 of PR #1805's second review.
+
+    The /data/ page runs on the app's origin, where a signed-in hiker's
+    session is kept, so DuckDB-WASM is served from our own site at
+    /data/duckdb/ (.github/actions/dbt-docs-site/duckdb-wasm/loader.js says
+    how, and what was measured) and both copies that ship are checked with
+    check_docs_site.py --served, which refuses code from another origin.
+    """
+
+    DOCS = REPO_ROOT / ".github" / "actions" / "dbt-docs-site"
+    DUCKDB = DOCS / "duckdb-wasm"
+    # Each pair of dbt and @duckdb/duckdb-wasm whose /data/ page has been
+    # loaded in a browser with nothing leaving the local server (2.0.6 and
+    # 1.32.0: Chromium, 2026-10-06, the eh and mvp bundles both). dbt's page
+    # builds DuckDB's URLs in jsDelivr's layout and calls selectBundle,
+    # AsyncDuckDB, ConsoleLogger and LogLevel, which loader.js serves; a new
+    # dbt may change either, or name a newer DuckDB-WASM.
+    CHECKED = {("2.0.6", "1.32.0")}
+
+    @pytest.mark.parametrize(("workflow", "assemble"), TestTheDataDocs.SITE_BUILDS)
+    def test_both_site_builds_check_the_docs_as_the_copy_they_serve(self, workflow, assemble):
+        steps = TestTheDataDocs._steps(workflow)
+        run = next(step for step in steps if step.get("name") == assemble)["run"]
+        assert "python pipeline/check_docs_site.py _site/data --served" in run
+
+    def test_the_docs_build_points_duckdb_wasm_at_the_copy_it_stages_under_data(self):
+        script = (self.DOCS / "build.sh").read_text(encoding="utf-8")
+        (generate,) = [line for line in script.splitlines() if line.strip().startswith("dbt docs generate")]
+        base = re.search(r'--duckdb-cdn-base "([^"]+)"', generate)
+        assert base is not None, generate
+        # stage.mjs writes loader.js as duckdb.js, in the directory build.sh copies to $out/duckdb: /data/duckdb/.
+        assert base.group(1) == "/data/duckdb/duckdb.js?"
+        assert 'cp -r "$duckdb_dir" "$out/duckdb"' in script
+        assert "join(out, 'duckdb.js')" in (self.DUCKDB / "stage.mjs").read_text(encoding="utf-8")
+
+    def test_the_pinned_duckdb_wasm_is_one_this_dbt_s_page_was_loaded_with(self):
+        requirements = (REPO_ROOT / "pipeline" / "requirements-dbt.txt").read_text(encoding="utf-8")
+        dbt = re.search(r"^dbt==(\S+)$", requirements, re.MULTILINE).group(1)
+        manifest = json.loads((self.DUCKDB / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads((self.DUCKDB / "package-lock.json").read_text(encoding="utf-8"))
+        pinned = manifest["dependencies"]["@duckdb/duckdb-wasm"]
+        assert lock["packages"]["node_modules/@duckdb/duckdb-wasm"]["version"] == pinned
+        assert lock["packages"]["node_modules/@duckdb/duckdb-wasm"]["integrity"].startswith("sha512-")
+        assert (dbt, pinned) in self.CHECKED, (
+            f"dbt {dbt} with @duckdb/duckdb-wasm {pinned} has not been loaded in a browser: open /data/ with "
+            "nothing but the local server reachable, then add the pair"
+        )
+
+    def test_the_loader_keeps_duckdb_s_extensions_on_our_own_site(self):
+        """DuckDB loads parquet from extensions.duckdb.org unless told otherwise (measured 2026-10-06, 18 requests)."""
+        loader = (self.DUCKDB / "loader.js").read_text(encoding="utf-8")
+        assert "SET custom_extension_repository = '${repository}'" in loader
+        assert "new URL('extensions', here)" in loader
+        assert "SET lock_configuration = true" in loader
+        pins = (self.DUCKDB / "extensions.sha256").read_text(encoding="utf-8").splitlines()
+        pin = re.compile(r"[0-9a-f]{64}  v\d+\.\d+\.\d+/wasm_(eh|mvp)/\w+\.duckdb_extension\.wasm")
+        assert pins and all(pin.fullmatch(line) for line in pins), pins
 
 
 class TestTheUploadedPointer:

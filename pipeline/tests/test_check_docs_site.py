@@ -295,3 +295,102 @@ def test_a_singular_tests_number_its_own_file_does_not_hold_fails(tmp_path, caps
     code, out = _run(site, project, capsys)
     assert code == 1
     assert "with 2 number(s) not in tests/singular/assert_a_made_up_area.sql" in out
+
+
+# --- --served: the copy a workflow publishes loads no code from another origin (decision 93) ---
+
+SELF_HOSTED = INDEX.replace("https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.32.0", "/data/duckdb/duckdb.js?")
+
+
+def _served(tmp_path: Path, *, index: str = SELF_HOSTED.replace("TELEMETRY", "false"), module: bool = True) -> Path:
+    site = _site(tmp_path, index=index)
+    if module:
+        (site / "duckdb").mkdir()
+        (site / "duckdb" / "duckdb.js").write_text("export const selectBundle = () => null", encoding="utf-8")
+    return site
+
+
+def _run_served(site: Path, project: Path, capsys) -> tuple[int, str]:
+    code = cds.main([str(site), "--project", str(project), "--served"])
+    return code, capsys.readouterr().out
+
+
+def test_a_served_page_that_loads_duckdb_wasm_from_jsdelivr_fails(tmp_path, capsys):
+    """dbt 2.0.6's default: the page imports DuckDB-WASM's code from cdn.jsdelivr.net, on ourhike.org's origin (SEC-1)."""
+    code, out = _run_served(_site(tmp_path), _project(tmp_path, ""), capsys)
+    assert code == 1
+    assert "index.html: the page loads DuckDB-WASM from https://cdn.jsdelivr.net, another origin" in out
+
+
+def test_the_same_page_passes_when_it_is_not_the_copy_a_workflow_serves(tmp_path, capsys):
+    """The fixture build's docs (pipeline-tests.yml, scripts/test.sh) are never served, and keep dbt's default."""
+    code, out = _run(_site(tmp_path), _project(tmp_path, ""), capsys)
+    assert code == 0, out
+
+
+def test_a_served_page_that_loads_duckdb_wasm_from_its_own_site_passes(tmp_path, capsys):
+    code, out = _run_served(_served(tmp_path), _project(tmp_path, ""), capsys)
+    assert code == 0, out
+
+
+def test_a_served_page_whose_duckdb_module_is_not_in_the_site_fails(tmp_path, capsys):
+    """On a preview the missing module would be answered with 404.html, the app shell, and the page would hold no data."""
+    code, out = _run_served(_served(tmp_path, module=False), _project(tmp_path, ""), capsys)
+    assert code == 1
+    assert "loads DuckDB-WASM from /data/duckdb/duckdb.js, which is not in the site" in out
+
+
+@pytest.mark.parametrize(
+    "base",
+    ["//cdn.example.org/duckdb", "https:/cdn.example.org/duckdb", "data:text/javascript,export%20{}", "/elsewhere/duckdb.js?"],
+)
+def test_a_served_page_whose_duckdb_base_is_not_a_path_under_data_fails(tmp_path, capsys, base):
+    index = SELF_HOSTED.replace("/data/duckdb/duckdb.js?", base).replace("TELEMETRY", "false")
+    code, out = _run_served(_served(tmp_path, index=index), _project(tmp_path, ""), capsys)
+    assert code == 1
+    assert "the page loads DuckDB-WASM from" in out
+
+
+@pytest.mark.parametrize(
+    ("tag", "origin"),
+    [
+        ('<script type="module" src="https://cdn.example.org/app.js"></script>', "https://cdn.example.org"),
+        ('<script src="//cdn.example.org/app.js"></script>', "//cdn.example.org"),
+        ('<link rel="modulepreload" crossorigin href="https://cdn.example.org/chunk.js">', "https://cdn.example.org"),
+        ('<link rel="preload" as="worker" href="https://cdn.example.org/worker.js">', "https://cdn.example.org"),
+    ],
+)
+def test_a_served_html_file_that_loads_a_script_from_another_origin_fails(tmp_path, capsys, tag, origin):
+    site = _served(tmp_path)
+    index = SELF_HOSTED.replace("TELEMETRY", "false").replace("</head>", tag + "</head>")
+    (site / "index.html").write_text(index, encoding="utf-8")
+    code, out = _run_served(site, _project(tmp_path, ""), capsys)
+    assert code == 1
+    assert f"index.html loads a script from {origin}, another origin" in out, out
+
+
+@pytest.mark.parametrize(
+    "code_text",
+    [
+        'importScripts("https://cdn.example.org/duckdb-browser-eh.worker.js")',
+        'new Worker("https://cdn.example.org/w.mjs")',
+        "WebAssembly.instantiateStreaming(fetch('https://extensions.example.org/v1.4.3/wasm_eh/parquet.duckdb_extension.wasm'))",
+        "import(`https://esm.example.org/npm/pkg@1.0.0/+esm`)",
+    ],
+)
+def test_served_code_that_names_a_script_worker_or_wasm_file_on_another_origin_fails(tmp_path, capsys, code_text):
+    site = _served(tmp_path)
+    (site / "assets" / "index.js").write_text(code_text, encoding="utf-8")
+    code, out = _run_served(site, _project(tmp_path, ""), capsys)
+    assert code == 1
+    assert "assets/index.js names a script, worker or WASM file on" in out
+
+
+def test_served_code_that_links_to_another_site_passes(tmp_path, capsys):
+    """The docs bundle links to dbt's own pages (measured 2026-10-06: docs.getdbt.com, github.com, react.dev); a link is no code."""
+    site = _served(tmp_path)
+    (site / "assets" / "index.js").write_text(
+        'const a = "https://docs.getdbt.com/docs/introduction", b = "https://github.com/dbt-labs/dbt-core";', encoding="utf-8"
+    )
+    code, out = _run_served(site, _project(tmp_path, ""), capsys)
+    assert code == 0, out

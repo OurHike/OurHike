@@ -5,8 +5,10 @@ sources:
     description: >
       The extract's own record of each run (pipeline/extract/_run.py's
       write_run_log()), which extract/_warehouse.py's load_warehouse() copies
-      whole into the warehouse beside the tables it loaded. The hourly lane's
-      copy is the conditions leg's own log.
+      into the warehouse beside the tables it loaded: the whole log on the
+      monthly lane, and on a leg its kept log (_run.py's KEPT_LOG_TABLE),
+      each table's latest committed load and every row after it. The hourly
+      lane's copy is the conditions leg's own log.
     schema: raw
     config:
       loaded_at_field: checked_at

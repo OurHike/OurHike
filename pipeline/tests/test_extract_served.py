@@ -28,7 +28,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from extract import _contract, _run, _warehouse
-from extract._run import make_pipeline, run_log_rows, run_pipeline, table_files
+from extract._run import committed_load_ids, kept_log, make_pipeline, run_log_rows, run_pipeline, table_files
 from extract._warehouse import (
     SERVED_KEEP,
     SERVED_MANIFEST,
@@ -277,7 +277,9 @@ def test_a_carried_tables_run_log_rows_are_those_of_the_copy_its_rows_came_from(
     hourly_warehouse(stores, tmp_path / "warehouse.duckdb", TABLES)
 
     assert logged_runs(tmp_path / "warehouse.duckdb", USFS.table) == [(first.run_id, "loaded", 2)]
-    assert logged_runs(tmp_path / "warehouse.duckdb", NPS.table) == [(first.run_id, "loaded", 1), (second.run_id, "loaded", 2)]
+    # NPS was not carried, so its rows are the leg's kept log's (extract/_run.py's KEPT_LOG_TABLE): its latest
+    # committed load and after, which is all a reader of the run log answers from.
+    assert logged_runs(tmp_path / "warehouse.duckdb", NPS.table) == [(second.run_id, "loaded", 2)]
 
     notices_run(stores, club_closures("usfs", "u1", "u2", "u3", "u4", count=4), NPS)
     for path in table_files(notices_pipeline(stores), USFS.table):
@@ -377,7 +379,9 @@ def test_a_notices_run_and_its_serve_read_each_run_log_file_from_the_store_once_
 ):
     """Every `_extract_runs` file is a GET on R2, one file per past run, and the serve step used to read them all
     again right after the extract step had. extract-notices.yml hands the serve the extract's read through
-    --run-log-cache, so a notices run reads its run log from the store once."""
+    --run-log-cache, so a notices run reads its run log from the store once. And a leg reads only its kept log and the
+    files after it (review finding PY-5 of PR #1805 — dlt → dbt re-platform as one go/no-go change; KEPT_LOG_TABLE), so
+    of `_extract_runs` the sixth run reads only the file it wrote, and the copy holds the kept log's rows."""
     import fsspec.implementations.local as local
 
     resources = [USFS, NPS]
@@ -401,12 +405,14 @@ def test_a_notices_run_and_its_serve_read_each_run_log_file_from_the_store_once_
     _run.main([*extract, "--run-log-cache", cache])
     assert command("serve", "--run-log-cache", cache) == 0
 
-    assert len(opened) == len(set(opened)) == 6, "6 run log files after the sixth run, each read from the store once"
+    assert len(opened) == len(set(opened)) == 1, "the run log file the sixth run wrote, read from the store once"
     copy = (
         Path(served_root(stores["notices"]))
         / served_copies(_warehouse._client(notices_pipeline(stores)).fs_client, stores["notices"])[0]
     )
-    assert pq.read_table(copy / "_extract_runs.parquet").num_rows == len(run_log_rows(notices_pipeline(stores)))
+    pipeline = notices_pipeline(stores)
+    kept = kept_log(run_log_rows(pipeline), committed_load_ids(pipeline))
+    assert pq.read_table(copy / "_extract_runs.parquet").num_rows == len(kept) < len(run_log_rows(pipeline))
 
 
 def test_the_command_line_serve_exits_partial_when_a_table_was_not_copied_whole(stores, command):

@@ -420,11 +420,15 @@ def test_only_refuses_a_table_its_lane_does_not_carry():
         _run.only_tables([ourhike_closures("u1"), club_closures("usfs")], ["raw_usfs__closures"], "conditions_ua")
 
 
-def test_a_leg_run_and_its_warehouse_read_each_run_log_file_once_and_no_dlt_loads_file(tmp_path, monkeypatch):
+def test_a_leg_run_and_its_warehouse_read_the_kept_log_and_the_run_log_file_it_wrote_and_no_dlt_loads_file(tmp_path, monkeypatch):
     """Every `_extract_runs` and `_dlt_loads` file is a GET on R2, and both grow by a run's worth every run.
 
-    Measured before the fix on this leg: run 6 opened 40 run log files and
-    90 `_dlt_loads` files (about 23 more each run), inside a 4-minute step.
+    Measured before the first fix on this leg: run 6 opened 40 run log files
+    and 90 `_dlt_loads` files (about 23 more each run), inside a 4-minute
+    step. After it, each run log file once, so 6 on run 6 (review finding
+    EXR-5 of PR #1805 — dlt → dbt re-platform as one go/no-go change). Now the
+    kept log once, and the run log file the run wrote, read back for the
+    warehouse (PY-5; KEPT_LOG_TABLE).
     """
     import fsspec.implementations.local as local
 
@@ -436,7 +440,7 @@ def test_a_leg_run_and_its_warehouse_read_each_run_log_file_once_and_no_dlt_load
     args = ["--lane", CLUBS, "--bucket-url", store, "--pipelines-dir", str(tmp_path / "dlt"), "--warehouse", warehouse]
     for _ in range(5):
         _run.main(args)
-    opened = {"_extract_runs": 0, "_dlt_loads": 0}
+    opened = {"_extract_runs": 0, "_extract_kept_log": 0, "_dlt_loads": 0}
     first_open = local.LocalFileSystem._open
 
     def counting_open(self, path, mode="rb", *rest, **options):
@@ -449,7 +453,165 @@ def test_a_leg_run_and_its_warehouse_read_each_run_log_file_once_and_no_dlt_load
 
     _run.main(args)
 
-    assert opened == {"_extract_runs": 6, "_dlt_loads": 0}, "6 run log files after the sixth run, each read once"
+    assert opened == {"_extract_runs": 1, "_extract_kept_log": 1, "_dlt_loads": 0}, "the kept log and the file it wrote"
+
+
+def test_a_leg_runs_run_log_reads_stay_the_same_however_many_runs_came_before(tmp_path, monkeypatch):
+    """Review finding PY-5 of PR #1805 — dlt → dbt re-platform as one go/no-go change: the test above read each file
+    once, and still read one more file every run (720 a month on a conditions leg, against a 6-minute step). Now a leg
+    reads its newest committed kept log and only the run log files written after it, so run 20 opens what run 2 did."""
+    import fsspec.implementations.local as local
+
+    resources = [club_closures("atc", "a1", count=1), club_closures("nynjtc", "n1", count=1)]
+    monkeypatch.setattr(_run, "discover", list)
+    monkeypatch.setattr(_run, "discover_shared", list)
+    monkeypatch.setattr(_run, "all_resources", lambda files: resources)
+    store, warehouse = (tmp_path / "store").as_uri(), str(tmp_path / "warehouse.duckdb")
+    args = ["--lane", CLUBS, "--bucket-url", store, "--pipelines-dir", str(tmp_path / "dlt"), "--warehouse", warehouse]
+    first_open = local.LocalFileSystem._open
+    opened: list[str] = []
+
+    def counting_open(self, path, mode="rb", *rest, **options):
+        if "r" in mode and str(path).rstrip("/").split("/")[-2].startswith("_extract"):
+            opened.append(str(path))
+        return first_open(self, path, mode, *rest, **options)
+
+    monkeypatch.setattr(local.LocalFileSystem, "_open", counting_open)
+    seen = {}
+    for run in range(1, 21):
+        opened.clear()
+        _run.main(args)
+        seen[run] = len(opened)
+
+    assert seen[20] == seen[10] == seen[5] == seen[2], f"run log files opened per run: {seen}"
+    assert seen[2] <= 3, "the kept log, any run log file written after it, and the file this run wrote"
+
+
+#: Every outcome write_run_log() logs, with what such a row carries: (outcome, load committed, rows, column hints).
+_LOG_OUTCOMES = (
+    ("loaded", True, 2, False),
+    ("loaded", True, 0, True),
+    ("loaded", False, 1, False),
+    ("skipped", None, None, False),
+    ("unavailable", None, None, False),
+    ("incomplete", None, None, True),
+    ("incomplete", None, None, False),
+    ("refused", None, None, True),
+    ("refused", None, None, False),
+    ("unverified", False, 1, False),
+)
+
+
+def _a_run_log(seed: int) -> tuple[list[dict], set[str]]:
+    """A leg's run log of 60 runs over seven tables, one of them written by two resources, each row an outcome drawn
+    at random (one table never loads), and the loads `_dlt_loads` records as committed."""
+    import random
+    from datetime import datetime, timedelta
+
+    pick = random.Random(seed)
+    pairs = [(f"raw_{club}__closures", f"raw_{club}__closures") for club in "abcde"]
+    pairs += [("raw_shared__orgs", "org_one"), ("raw_shared__orgs", "org_two"), ("raw_never__closures", "raw_never__closures")]
+    rows, complete = [], set()
+    for run in range(1, 61):
+        run_id, checked_at = f"20261001T{run:06d}.000000Z", datetime(2026, 10, 1) + timedelta(hours=run)
+        for table, name in pairs:
+            if pick.random() < 0.2:
+                continue  # not due this run, or not planned
+            choices = [each for each in _LOG_OUTCOMES if each[0] != "loaded"] if "never" in table else _LOG_OUTCOMES
+            outcome, committed, count, hinted = pick.choice(choices)
+            load_id = None if committed is None else f"{1000 + run}.{0 if committed else 5}"
+            if committed:
+                complete.add(load_id)
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "resource_name": name,
+                    "table_name": table,
+                    "outcome": outcome,
+                    "load_id": load_id,
+                    "rows": count,
+                    "count_proof": None if count is None else pick.choice([count, 0]),
+                    "checked_at": checked_at,
+                    "column_hints": '{"id": {"data_type": "text"}}' if hinted else None,
+                }
+            )
+    return rows, complete
+
+
+@dataclass(frozen=True)
+class _SharedTableAnswer(ClubAnswer):
+    """One of two resources landing one table, as each club folder's org resource lands raw_extract__orgs."""
+
+    label: str = ""
+
+    @property
+    def table(self) -> str:
+        return "raw_shared__orgs"
+
+    @property
+    def name(self) -> str:
+        return self.label
+
+
+def _what_readers_answer(log: list[dict], complete: set[str]) -> dict:
+    """Every answer the code reads off a run log: extract/_warehouse.py's and extract/_run.py's own, and the
+    warehouse's, by the same aggregates int_closures__gate and pub_conditions_notices take of base_extract__runs."""
+    from dataclasses import replace
+    from datetime import datetime, timedelta
+
+    from extract._warehouse import committed_tables, not_yet_loaded
+
+    committed = committed_tables(None, log=log, complete=complete)
+    resources = [club_closures(club) for club in ("a", "b", "c", "d", "e", "never")]
+    resources += [_SharedTableAnswer(key="orgs", club="shared", type="closures", label=label) for label in ("org_one", "org_two")]
+    daily = [replace(resource, cadence_override="daily", cadence_reason="a test") for resource in resources]
+    last = datetime(2026, 10, 1) + timedelta(hours=60)
+    report = _run.RunReport(run_id="20261001T000099.000000Z", lane=CLUBS, outcome="loaded")
+    new = [_run.Planned(resource, Freshness.UNKNOWN, None, None) for resource in resources]
+    taken = _run.take_on_new_tables(report, new, committed, log, 1)
+    with duckdb.connect() as con:
+        con.execute(
+            "create table runs (run_id varchar, table_name varchar, outcome varchar, rows bigint, count_proof bigint, "
+            "checked_at timestamp)"
+        )
+        con.executemany(
+            "insert into runs values (?, ?, ?, ?, ?, ?)",
+            [[row[name] for name in ("run_id", "table_name", "outcome", "rows", "count_proof", "checked_at")] for row in log],
+        )
+        warehouse = con.execute(
+            "select table_name, bool_or(outcome in ('loaded', 'skipped')), "
+            "arg_max(rows = 0 and count_proof = 0, run_id) filter (where outcome = 'loaded'), "
+            "max(checked_at) filter (where outcome in ('loaded', 'skipped')), max(checked_at) "
+            "from runs group by table_name order by table_name"
+        ).fetchall()
+    served = {
+        table: [row for row in log if (row["table_name"], row["load_id"]) == (table, load)] for table, load in committed.items()
+    }
+    return {
+        "committed_tables": committed,
+        "not_yet_loaded": not_yet_loaded(None, committed, log),
+        "last_loaded_counts": _run.last_loaded_counts(log),
+        "due": [[r.name for r in _run.due(daily, log, last + timedelta(hours=hours))] for hours in (0, 23, 25, 48)],
+        "take_on_new_tables": ([item.resource.name for item in taken], sorted(report.waiting)),
+        "served_rows": served,
+        "warehouse": warehouse,
+    }
+
+
+@pytest.mark.parametrize("seed", range(25))
+def test_every_reader_of_a_run_log_answers_the_same_over_the_kept_log_as_over_the_whole_log(seed):
+    """KEPT_LOG_TABLE's contract (review finding PY-5 of PR #1805 — dlt → dbt re-platform as one go/no-go change): a
+    leg now reads kept_log() of its run log rather than every file, so every reader must answer from it what it
+    answers from the whole log; and kept_log() of the kept log and a later run's rows must be kept_log() of all of
+    them, which is how each run rewrites it."""
+    log, complete = _a_run_log(seed)
+    kept = _run.kept_log(log, complete)
+
+    assert len(kept) < len(log)
+    assert _what_readers_answer(kept, complete) == _what_readers_answer(log, complete)
+    earlier = [row for row in log if row["run_id"] <= "20261001T000040.000000Z"]
+    later = [row for row in log if row["run_id"] > "20261001T000040.000000Z"]
+    assert _run.kept_log(_run.kept_log(earlier, complete) + later, complete) == kept
 
 
 def test_the_command_line_loads_the_registry_alone_into_the_warehouse_and_summarises_it(tmp_path):

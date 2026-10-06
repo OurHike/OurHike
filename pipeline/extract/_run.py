@@ -276,6 +276,20 @@ INCOMPLETE = "incomplete"
 # survives a run whose other tables were refused. extract/_warehouse.py loads
 # only tables `_extract_runs` names, which this never is.
 PROGRESS_TABLE = "_extract_progress"
+# A LEG READS A BOUNDED RUN LOG (review finding PY-5 of PR #1805 — dlt → dbt
+# re-platform as one go/no-go change). `_extract_runs` gains a file every
+# run, 720 a month on a conditions leg, each a GET on R2, and a leg read
+# every one of them every run, inside a 6-minute step. So every leg run also
+# writes, in its run log's own load, this table, replaced whole: the rows of
+# the whole log that its readers answer from (kept_log()). A leg then reads
+# the newest committed copy of it and only the `_extract_runs` files of later
+# loads (leg_run_log_files()), and the whole log where none has committed (a
+# store's first run since, or a load torn mid-replace), as before. Never named
+# in `_extract_runs`, so extract/_warehouse.py never loads it as a table; and
+# never named with RUNS_TABLE's prefix, so no listing of one finds the other.
+# The monthly lane, one run a month, and the pin, which asks for the log as of
+# an older run, read every file.
+KEPT_LOG_TABLE = "_extract_kept_log"
 
 #: Other lanes' resources a lane also lands in its own raw store with
 #: `cross_lane=True` (--cross-lane-inputs, refresh-reference.yml), each with
@@ -1233,13 +1247,71 @@ def _run_log_rows(pipeline, files: list[str], cache: Path | None) -> list[dict]:
     return rows
 
 
+def kept_log(rows: list[dict], complete: set[str]) -> list[dict]:
+    """The rows of a run log that every reader of it answers from (KEPT_LOG_TABLE), in their order.
+
+    Per table and resource: its latest `loaded` row whose load is in
+    `complete`, and every row after it; every row of one with no such row; and
+    its latest `refused` row, whenever that was. Every other row is older than
+    a committed load of its own table, and no reader looks past that load:
+    committed_tables() serves the latest one and withdraws it only for a later
+    `unavailable` row; not_yet_loaded() reads only tables with none, or rows
+    after a withdrawal; last_loaded_counts(), due() and the warehouse's
+    readers (int_closures__gate, pub_conditions_notices) take the latest
+    `loaded` or `skipped` row; take_on_new_tables() the latest `refused` one.
+    tests/test_extract_conditions_legs.py holds every one of them to the same
+    answer over the whole log and over this.
+    """
+    after: dict[tuple, str] = {}
+    refused: dict[tuple, str] = {}
+    for row in rows:
+        pair = (row["table_name"], row.get("resource_name"))
+        if row.get("outcome") == "loaded" and row.get("load_id") in complete:
+            after[pair] = max(after.get(pair, ""), row["run_id"])
+        elif row.get("outcome") == ISOLATED_OUTCOME:
+            refused[pair] = max(refused.get(pair, ""), row["run_id"])
+    kept = []
+    for row in rows:
+        pair = (row["table_name"], row.get("resource_name"))
+        if row["run_id"] >= after.get(pair, "") or (row.get("outcome") == ISOLATED_OUTCOME and row["run_id"] == refused[pair]):
+            kept.append(row)
+    return kept
+
+
+def _load_of(path: str) -> str:
+    """The load id in a dlt file's name, `<load_id>.<file_id>.parquet` (table_files())."""
+    return os.path.basename(path).rsplit(".", 2)[0]
+
+
+def leg_run_log_files(pipeline, complete: set[str]) -> tuple[list[str], list[str]]:
+    """What a leg reads of its run log (KEPT_LOG_TABLE): the files of the newest load in `complete` that wrote the kept
+    log, and the `_extract_runs` files of every later load; or no kept files and every run log file, where none has."""
+    kept: dict[str, list[str]] = {}
+    for path in table_files(pipeline, KEPT_LOG_TABLE):
+        if (load_id := _load_of(path)) in complete:
+            kept.setdefault(load_id, []).append(path)
+    runs = table_files(pipeline, RUNS_TABLE)
+    if not kept:
+        return [], runs
+    newest = max(kept, key=float)
+    return kept[newest], [path for path in runs if float(_load_of(path)) > float(newest)]
+
+
+def leg_run_log_rows(pipeline, complete: set[str], cache: Path | None = None) -> list[dict]:
+    """A leg's run log as its readers need it (leg_run_log_files()); with `cache`, each `_extract_runs` file through
+    run_log_bytes(). The kept log is read from the store: it is rewritten every run, so a name is no proof of bytes."""
+    kept, after = leg_run_log_files(pipeline, complete)
+    return _read_rows(pipeline, kept) + _run_log_rows(pipeline, after, cache)
+
+
 def run_log_bytes(pipeline, path: str, cache: Path | None = None) -> bytes:
     """One `_extract_runs` file's bytes: from `cache` where an earlier step of the same job read it, else the store's.
 
     THE RUN LOG IS READ FROM THE STORE ONCE PER RUN. Every file is a GET on
     R2, one more each run, and extract-notices.yml's serve step used to read
     them all again straight after its extract step had; with --run-log-cache
-    on both, it reads them from this directory. A run log file is written once, under its load and
+    on both, it reads them from this directory. A leg reads only the files
+    written after its kept log (KEPT_LOG_TABLE), which is read from the store. A run log file is written once, under its load and
     file id (`<load_id>.<file_id>.parquet`), into a table only ever appended
     to, so a cached file of that name holds the store's bytes. `cache` is one
     store's: the name is unique within a store, not across stores. A file is
@@ -1419,6 +1491,7 @@ def write_run_log(
     checked_at: datetime,
     unavailable: list[Resource] = (),
     progress: dict[str, list[dict]] | None = None,
+    kept_from: list[dict] | None = None,
 ) -> list[str]:
     """Append one `_extract_runs` row per planned resource, and per unavailable one. INCREMENTAL.md's log.json, as one append-only table.
 
@@ -1427,6 +1500,9 @@ def write_run_log(
     `progress`, where the run has a carrying resource or kept progress
     (progress_after()), replaces PROGRESS_TABLE in the same load, so what an
     incomplete read fetched commits with the run log whatever else the run did.
+    `kept_from`, a leg's run log as the run read it, replaces KEPT_LOG_TABLE
+    in the same load with kept_log() of it and this run's rows, so the two
+    commit together or not at all.
     """
     log = [
         {
@@ -1506,8 +1582,27 @@ def write_run_log(
     def runs():
         yield log
 
+    tables = [runs()]
+    if kept_from is not None:
+        # Rows as the run log holds them, less dlt's own columns, which dlt writes again; the committed loads now,
+        # this run's own load included once it has committed.
+        earlier = [{name: value for name, value in row.items() if not name.startswith("_dlt_")} for row in kept_from]
+        kept_rows = kept_log(earlier + log, committed_load_ids(pipeline))
+
+        @dlt.resource(
+            name=KEPT_LOG_TABLE,
+            table_name=KEPT_LOG_TABLE,
+            write_disposition="replace",
+            file_format="parquet",
+            columns=RUNS_COLUMNS,
+        )
+        def kept_log_rows():
+            yield kept_rows
+
+        tables.append(kept_log_rows())
+
     if progress is None:
-        return pipeline.run(runs(), schema=store_schema(pipeline)).loads_ids
+        return pipeline.run(tables, schema=store_schema(pipeline)).loads_ids
 
     @dlt.resource(
         name=PROGRESS_TABLE,
@@ -1523,7 +1618,7 @@ def write_run_log(
             for row in rows
         ]
 
-    return pipeline.run([runs(), kept()], schema=store_schema(pipeline)).loads_ids
+    return pipeline.run([*tables, kept()], schema=store_schema(pipeline)).loads_ids
 
 
 def run_pipeline(
@@ -1607,9 +1702,10 @@ def _run(
             pipeline.abort_packages()
         pipeline.sync_destination()
         recorded = recorded_markers(pipeline)
-        # Read once: every run log file is a read of its own, and nothing writes the log before the run's end.
-        log = run_log_rows(pipeline, run_log_cache)
         complete = committed_load_ids(pipeline)
+        # Read once: every run log file is a read of its own, and nothing writes the log before the run's end. A
+        # leg reads the kept log and what came after it (KEPT_LOG_TABLE).
+        log = leg_run_log_rows(pipeline, complete, run_log_cache) if lane in LEGS else run_log_rows(pipeline, run_log_cache)
         current = readable_tables(pipeline, log, complete)
         served = {(row["table_name"], row.get("load_id")): row for row in log}
         indexes: dict[str, dict] = {}
@@ -1770,6 +1866,8 @@ def _extract_and_load(
         with timed(report, "read"):
             to_run, read = read_each(report, to_run, read_seconds, spool=spool, readers=readers)
     log = run_log_rows(pipeline, run_log_cache) if log is None else log
+    # What each run log written below keeps as a leg's KEPT_LOG_TABLE.
+    kept_from = log if lane in LEGS else None
     previous = last_loaded_counts(log) if to_run else {}
     while to_run:
         if as_landed is not None:
@@ -1823,7 +1921,7 @@ def _extract_and_load(
                 pipeline.abort_packages()
                 report.outcome = "refused"
                 with timed(report, "run log"):
-                    write_run_log(pipeline, report, planned, checked_at, unavailable, progress())
+                    write_run_log(pipeline, report, planned, checked_at, unavailable, progress(), kept_from)
                 raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems), report)
             break
         refused = {}
@@ -1838,7 +1936,7 @@ def _extract_and_load(
             report.problems = [problem for _, problems in refused.values() for problem in problems]
             report.outcome = "refused"
             with timed(report, "run log"):
-                write_run_log(pipeline, report, planned, checked_at, unavailable, progress())
+                write_run_log(pipeline, report, planned, checked_at, unavailable, progress(), kept_from)
             raise ExtractRefused("Extract run check:\n  " + "\n  ".join(report.problems), report)
         for table, (items, problems) in refused.items():
             for item in items:
@@ -1857,11 +1955,11 @@ def _extract_and_load(
         if report.problems:
             report.outcome = "unverified"
             with timed(report, "run log"):
-                write_run_log(pipeline, report, planned, checked_at, unavailable, progress())
+                write_run_log(pipeline, report, planned, checked_at, unavailable, progress(), kept_from)
             raise ExtractRefused("Extract after-run check:\n  " + "\n  ".join(report.problems), report)
     with timed(report, "run log"):
         written = write_run_log(
-            pipeline, report, planned, checked_at, unavailable, progress({item.resource.name for item in to_run})
+            pipeline, report, planned, checked_at, unavailable, progress({item.resource.name for item in to_run}), kept_from
         )
     # The log as this run left it: what it read at the start, and the file it just wrote.
     written_files = [path for load in written for path in table_files(pipeline, RUNS_TABLE, load)]

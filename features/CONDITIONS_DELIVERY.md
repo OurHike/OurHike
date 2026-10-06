@@ -272,7 +272,7 @@ hourly, without that branch ever writing what hikers read.
 
 **The budget, measured on the fixtures** (2026-10-02, `make_dbt_fixtures.py`'s answers, a
 `file://` store, a 4-core sandbox shared with other jobs, load average 7–15; the runner's
-own figures come from the first soak run's job summary, which records each part):
+own figures, from the soak, are under the table):
 
 | Part | Seconds |
 |---|---:|
@@ -280,11 +280,13 @@ own figures come from the first soak run's job summary, which records each part)
 | One leg's 11 upstreams through dlt (69 rows), then the warehouse | 1.8 |
 | `build_marts.py --lane hourly`: seeds 5.8, the marts and 184 nodes 30.5, the four writers 8.8 (dbt's own figures) | 46.9 |
 
-Not measured here, and each `@unvalidated` until that summary exists: the two installs and
-`dbt deps` (dbt 2.0.6 is an sdist whose build downloads its wheel from dbt's CDN), the
-151 MB of dbt's driver and spatial extension on a cache miss, and every real upstream and
-R2 round trip. Against the job's 10 minutes, the dbt path drops today's 4-minute ATC fetch
-and adds those. On the same fixtures the four files came out with no differences from
+Not measured here: the two installs and `dbt deps` (dbt 2.0.6 is an sdist whose build
+downloads its wheel from dbt's CDN), the 151 MB of dbt's driver and spatial extension on a
+cache miss, and every real upstream and R2 round trip. Against the job's 10 minutes, the dbt
+path drops today's 4-minute ATC fetch and adds those. On the runner, the soak's 28 green UA
+dispatches from run 532 to 566 (2026-10-04 to 06) took the whole job 288 to 383 s of its
+600, the extract step 60 to 98 s and the build step 134 to 203 s (Measured 2026-10-06 from
+the Actions API's step times). On the same fixtures the four files came out with no differences from
 today's exporters (`parity.py`: 35 ATC updates, 4 NYNJTC alerts, 3 closures, 3 reports). The
 two extract steps ran twice against a local S3 stand-in at the raw store's own prefix, and
 the second run read every marker back and kept the unchanged tables.

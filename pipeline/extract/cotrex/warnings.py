@@ -23,14 +23,6 @@ from extract._kinds import arcgis_layer
 
 CLAIMS = ("cpw_bear_conflict_areas", "cpw_lion_conflict_areas")
 RESOURCES = [
-    arcgis_layer(
-        "cpw_bear_conflict_areas",
-        cadence_override="monthly",
-        cadence_reason="a standing conflict-area map (lastEditDate 2026-05-07), whose hundreds of polygons are too large a first read for the hourly lane's 150 s budget",
-    ),
-    arcgis_layer(
-        "cpw_lion_conflict_areas",
-        cadence_override="monthly",
-        cadence_reason="a standing conflict-area map (lastEditDate 2026-05-07), whose hundreds of polygons are too large a first read for the hourly lane's 150 s budget",
-    ),
+    arcgis_layer("cpw_bear_conflict_areas"),
+    arcgis_layer("cpw_lion_conflict_areas"),
 ]

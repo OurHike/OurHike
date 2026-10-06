@@ -81,6 +81,7 @@ from extract._run import (
     committed_load_ids,
     fs_path,
     left_out_on_its_own,
+    leg_run_log_files,
     make_pipeline,
     proven_zero,
     raw_store_url,
@@ -385,18 +386,24 @@ def served_copies(fs, bucket_url: str) -> list[str]:
 
 
 def _log_arrow(pipeline, tables: set[str], cache: Path | None = None) -> pa.Table | None:
-    """`_extract_runs` as dlt wrote it, every file, with its column types, less the rows of tables not in `tables`.
+    """A leg's run log as dlt wrote it, with its column types, less the rows of tables not in `tables`: the kept log
+    and the `_extract_runs` files after it, or every file where no kept log has committed (extract/_run.py's
+    leg_run_log_files(), KEPT_LOG_TABLE).
 
     Kept as Arrow, never as Python rows, so a column that is null on every
     row keeps the type dlt declared for it (RUNS_COLUMNS) instead of landing
-    as DuckDB's INTEGER. With `cache`, a file the extract step kept there is
-    read from it, not from the store again (extract/_run.py's run_log_bytes()).
+    as DuckDB's INTEGER. With `cache`, a run log file the extract step kept
+    there is read from it, not from the store again (extract/_run.py's
+    run_log_bytes()).
     """
-    files = table_files(pipeline, RUNS_TABLE)
-    if not files:
+    kept, files = leg_run_log_files(pipeline, committed_load_ids(pipeline))
+    if not kept and not files:
         return None
+    client = _client(pipeline)
     arrow = pa.concat_tables(
-        [pq.read_table(io.BytesIO(run_log_bytes(pipeline, path, cache))) for path in files], promote_options="permissive"
+        [pq.read_table(client.fs_client.open(path)) for path in kept]
+        + [pq.read_table(io.BytesIO(run_log_bytes(pipeline, path, cache))) for path in files],
+        promote_options="permissive",
     )
     return arrow.filter(pc.is_in(arrow["table_name"], value_set=pa.array(sorted(tables), pa.string())))
 

@@ -249,9 +249,11 @@ jobs:
       # in run 10 (37423240098, 2026-10-06, Measured from its log), the one
       # run so far, so how it holds against R2 is still @unvalidated and this
       # step's time on the next runs settles it. --run-log-cache is the extract step's:
-      # the run log's files, one per past run and each a GET on R2, are read
-      # from the runner's disk, so this job reads them from the store once
-      # (extract/_run.py's run_log_bytes()).
+      # the run log files it read and wrote, each a GET on R2, are read from
+      # the runner's disk, so this job reads them from the store once
+      # (extract/_run.py's run_log_bytes()). Both steps read only the leg's
+      # kept log and the run log files after it (extract/_run.py's
+      # KEPT_LOG_TABLE), so how many is fixed, not one more every run.
       - name: Copy what the hourly build reads of this leg
         id: serve
         timeout-minutes: 5

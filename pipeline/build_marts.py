@@ -165,7 +165,7 @@ poll of 2026-10-05: "Hold that source and publish the rest"; review finding
 ARCH-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change). Five of
 the hourly soak's first ten runs published nothing because of one source:
 runs 525 to 527 and 530 on a test of one source's rows, run 531 on one
-writer's SQL after six other writers had written. Three things now answer
+writer's SQL after six other writers had written. Four things now answer
 PARTIAL_EXIT instead, once everything else has run, so the workflow publishes
 what was written and then turns the run red:
 - a test whose `meta` sets `holds_a_source` warned: it names rows that
@@ -183,7 +183,15 @@ what was written and then turns the run red:
   is never there to publish, and its key keeps the bucket's last copy. The
   log says which files were written. publish.py, told so by
   OURHIKE_BUILD_PARTIAL, keeps a failed writer's key rather than refusing
-  the whole publish.
+  the whole publish;
+- a table the extract withdrew (WITHDRAWABLE: OurHike's field notes and
+  disputes, when the reader cannot see public.field_notes): it is not in the
+  warehouse, and its hand-staged base model reads source() directly, so
+  stage A used to fail on it and publish nothing, #922 — The whole
+  conditions bake has been failing hourly since field notes landed, so the
+  closures baseline is ageing, back on this path (review finding PY-2 of PR
+  #1805). Its source and everything below it are left out of every dbt
+  build; no mart reads either table.
 The row history is still saved: the marts passed their tests, and a source
 held this way carries its rows rather than losing them (Reasoned).
 
@@ -426,6 +434,14 @@ WRITER_CLOCK_SLACK_S = 2.0
 HOLDS_A_SOURCE = "holds_a_source"
 #: The readers seed: which raw tables are each club notice source's, and which of them are generated.
 NOTICE_READERS = DBT_DIR / "seeds" / "notice_readers.csv"
+#: THE HAND-STAGED RAW TABLES A CONDITIONS LEG MAY WITHDRAW, each with its dbt source: OurHike's field notes and
+#: disputes, the ConditionsQuery tables whose database table export_conditions.py's PENDING_READER_SETUP lets go
+#: missing. Their base models read source() directly, so a withdrawn one fails stage A (review finding PY-2 of PR
+#: #1805). Named here because this file imports only the standard library; tests/test_build_marts.py holds it against
+#: PENDING_READER_SETUP.
+WITHDRAWABLE = {"raw_ourhike__notes": "ourhike", "raw_ourhike__disputes": "ourhike"}
+#: extract/_run.py's RUNS_TABLE and UNAVAILABLE, as extract/_warehouse.py loads the run log into the warehouse.
+RUN_LOG_TABLE, WITHDRAWN_OUTCOME = "_extract_runs", "unavailable"
 
 
 @dataclass(frozen=True)
@@ -567,13 +583,15 @@ def plan(
     snapshots: bool = True,
     save_history: bool = True,
     manifest: dict | None = None,
+    withdrawn: tuple[str, ...] = (),
 ) -> list[Run]:
     """Every command of the build, in order, for these steps, in `lane` (None: every node), less the steps `without` names,
     between the row history's restore and its save when `history` names a store (the save left out when
     `save_history` is false: --no-history-save), and with no snapshot built when `snapshots` is false (the module
     docstring, "--history-on-failure degrade"). Every dbt build but the writers' and the hourly lane's is split around
     the builds_alone models, and given `manifest` (main() plans again once `dbt seed` has written it), the passes it
-    shows select nothing are left out (the module docstring, "A MODEL TAGGED `builds_alone`")."""
+    shows select nothing are left out (the module docstring, "A MODEL TAGGED `builds_alone`"). Each `withdrawn` raw
+    table (withdrawn_tables()) is left out of every dbt build with everything below its source."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
     if state is not None and lane != HOURLY:
@@ -585,9 +603,11 @@ def plan(
     builds = {"dbt": dbt, "common": common, "alone": alone, "split": lane != HOURLY, "manifest": manifest}
     fields = {"warehouse": str(paths.warehouse), "raw_dir": str(paths.raw_dir)}
     running = [step for step in steps if step.name not in without and (lane is None or step.lane == lane)]
-    # What a step that does not run here would have unblocked: built by no
-    # invocation of this build, so its writer keeps its last file.
+    # What a step that does not run here would have unblocked, and what a
+    # table the extract withdrew feeds: built by no invocation of this build,
+    # so a writer below either keeps its last file.
     held = tuple(f"source:{DERIVED_SOURCE}.{step.table}+" for step in steps if step not in running)
+    held += tuple(f"source:{WITHDRAWABLE[table]}.{table}+" for table in withdrawn)
     selection: tuple[str, ...] = ()
     lane_exclude: tuple[str, ...] = ()
     after: tuple[str, ...] = ()  # options every dbt build of the lane carries after its --exclude
@@ -1060,6 +1080,34 @@ def one_sources_failures(results: list[dict], manifest: dict, readers: list[dict
     return held or None
 
 
+def withdrawn_tables(warehouse: Path, schema: str = "raw") -> tuple[str, ...]:
+    """Each WITHDRAWABLE table the warehouse lacks and whose newest run log row says the extract withdrew it.
+
+    A table absent for any other reason is not answered here, so its build fails as before: a missing table is not
+    evidence that it was withdrawn (extract/_warehouse.py's BuildRefused)."""
+    if not warehouse.exists():
+        return ()
+    import duckdb
+
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        present = {
+            name
+            for (name,) in con.execute(
+                "select table_name from information_schema.tables where table_schema = ?", [schema]
+            ).fetchall()
+        }
+        if RUN_LOG_TABLE not in present:
+            return ()
+        newest = dict(
+            con.execute(
+                f'select table_name, arg_max(outcome, run_id) from "{schema}"."{RUN_LOG_TABLE}" '
+                "where table_name in (select unnest(?)) group by table_name",
+                [sorted(WITHDRAWABLE)],
+            ).fetchall()
+        )
+    return tuple(table for table in sorted(WITHDRAWABLE) if table not in present and newest.get(table) == WITHDRAWN_OUTCOME)
+
+
 def drop_raw_tables(warehouse: Path, tables: list[str], schema: str = "raw") -> list[str]:
     """Drop each of `tables` the warehouse holds in `schema`, a table or a view, and return the ones it held."""
     import duckdb
@@ -1219,6 +1267,8 @@ def main(argv: list[str] | None = None) -> int:
             "lane": args.lane,
             "state": args.state.resolve() if args.state else None,
             "without": tuple(args.without_step),
+            # Read before anything runs: the extract and the served copy have written the warehouse already.
+            "withdrawn": withdrawn_tables(paths.warehouse),
         }
         planned = {**options, "history": history, "save_history": not args.no_history_save}
         runs = plan(STEPS, **planned)
@@ -1249,6 +1299,16 @@ def main(argv: list[str] | None = None) -> int:
     # What this build held back and still finished, for PARTIAL_EXIT (the module docstring, "ONE SOURCE OR ONE WRITER
     # NEVER STOPS THE REST").
     partial: list[str] = []
+    for table in options["withdrawn"]:
+        print(
+            f"::error title={table} withdrawn::the extract found {table} unavailable (its newest {RUN_LOG_TABLE} row), "
+            f"so it is not in this warehouse, and source:{WITHDRAWABLE[table]}.{table} and everything below it are "
+            "left out of every dbt build here. No mart reads it, so every other source still builds and publishes, and "
+            "the run goes red afterwards.",
+            flush=True,
+        )
+    if options["withdrawn"]:
+        partial.append(f"{', '.join(options['withdrawn'])} withdrawn by the extract")
     stage_a_rerun = False
     position = 0
     while position < len(runs):

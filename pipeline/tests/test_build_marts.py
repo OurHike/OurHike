@@ -1445,6 +1445,103 @@ def test_a_second_failure_of_stage_a_after_the_drop_stops_the_build(monkeypatch,
     assert len([argv for argv, _, _ in recorder.calls if _is_stage_a(argv)]) == 2, "stage A runs once more, not again"
 
 
+def _withdrawn_warehouse(tmp_path: Path, notes: tuple[str, ...] = ("loaded", "unavailable"), notes_present: bool = False) -> Path:
+    """The warehouse a conditions leg leaves when the reader cannot see public.field_notes: raw_ourhike__closures
+    loaded; raw_ourhike__notes and raw_ourhike__disputes withdrawn (extract/_warehouse.py's committed_tables()), so
+    neither table is there, and `_extract_runs` holding each run's outcome for them, oldest first."""
+    warehouse = tmp_path / "warehouse.duckdb"
+    rows = [("run-1", "raw_ourhike__closures", "loaded"), ("run-2", "raw_ourhike__closures", "loaded")]
+    rows += [(f"run-{n}", "raw_ourhike__notes", outcome) for n, outcome in enumerate(notes, 1)]
+    rows += [("run-1", "raw_ourhike__disputes", "loaded"), ("run-2", "raw_ourhike__disputes", "unavailable")]
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema raw")
+        con.execute("create table raw.raw_ourhike__closures as select 'c1' as id")
+        if notes_present:
+            con.execute("create table raw.raw_ourhike__notes as select 'n1' as id")
+        con.execute("create table raw._extract_runs (run_id varchar, table_name varchar, outcome varchar)")
+        con.executemany("insert into raw._extract_runs values (?, ?, ?)", rows)
+    return warehouse
+
+
+class _DbtLackingTables(_DbtRuns):
+    """dbt as it answered PY-2's warehouse (dbt 2.0.6, 2026-10-06: "Catalog Error: Table with name raw_ourhike__notes
+    does not exist!", review finding PY-2 of PR #1805 — dlt → dbt re-platform as one go/no-go change): stage A fails on
+    each base model whose raw table the warehouse lacks, unless the build excludes that table's source and everything
+    below it."""
+
+    BASES = {"raw_ourhike__notes": "base_ourhike__notes", "raw_ourhike__disputes": "base_ourhike__disputes"}
+
+    def __init__(self, results_path: Path, warehouse: Path):
+        super().__init__(results_path, [])
+        self.missing = [table for table in self.BASES if table not in _raw_tables(warehouse)]
+
+    def __call__(self, argv, *, cwd, env, check):
+        argv = tuple(argv)
+        failing = [table for table in self.missing if f"source:ourhike.{table}+" not in argv]
+        if _is_stage_a(argv) and failing:
+            self.calls.append((argv, cwd, env))
+            errors = [{"unique_id": f"model.ourhike.{self.BASES[table]}", "status": "error"} for table in failing]
+            _results(self.results_path, *errors)
+            return subprocess.CompletedProcess(argv, 1)
+        return super().__call__(argv, cwd=cwd, env=env, check=check)
+
+
+def test_notes_and_disputes_the_extract_withdrew_are_left_out_of_every_dbt_build_and_the_rest_publishes(
+    monkeypatch, tmp_path, capsys
+):
+    """#922 — The whole conditions bake has been failing hourly since field notes landed, so the closures baseline is
+    ageing, back on the dbt path (review finding PY-2 of PR #1805): with public.field_notes unreadable, the extract
+    withdraws notes and disputes by design and closures carry on, and stage A then failed on base_ourhike__notes, so no
+    closures, warnings or notices file was written. Now each withdrawn table's source, and everything below it, is left
+    out of every dbt build, the writers run, and the build answers PARTIAL_EXIT so the workflow publishes and goes red."""
+    warehouse = _withdrawn_warehouse(tmp_path)
+    recorder = _DbtLackingTables(tmp_path / "run_results.json", warehouse)
+
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
+
+    builds = [argv for argv, _, _ in recorder.calls if argv[:2] == ("dbt", "build")]
+    assert code == build_marts.PARTIAL_EXIT
+    assert any(_is_writers_run(argv) for argv in builds), "the writers ran"
+    for argv in builds:
+        tail = argv[argv.index("--exclude") :]
+        assert "source:ourhike.raw_ourhike__notes+" in tail and "source:ourhike.raw_ourhike__disputes+" in tail, argv
+    out = capsys.readouterr().out
+    assert "::error title=raw_ourhike__notes withdrawn::" in out and "::error title=raw_ourhike__disputes withdrawn::" in out
+    assert recorder.calls[-1][0][:3] == (*RESTORE, "save"), "no mart reads either table, so the history is saved"
+
+
+@pytest.mark.parametrize(
+    ("notes", "notes_present", "why"),
+    [
+        (("loaded", "incomplete"), False, "absent without a withdrawal: a missing table is not evidence of anything"),
+        (("unavailable", "loaded"), True, "withdrawn once and loaded since, so it is in this warehouse"),
+    ],
+)
+def test_notes_the_run_log_does_not_say_are_withdrawn_now_are_never_left_out(monkeypatch, tmp_path, notes, notes_present, why):
+    warehouse = _withdrawn_warehouse(tmp_path, notes=notes, notes_present=notes_present)
+    recorder = _DbtLackingTables(tmp_path / "run_results.json", warehouse)
+
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
+
+    builds = [argv for argv, _, _ in recorder.calls if argv[:2] == ("dbt", "build")]
+    assert not [argv for argv in builds if "source:ourhike.raw_ourhike__notes+" in argv], why
+    assert all("source:ourhike.raw_ourhike__disputes+" in argv for argv in builds), "disputes' newest row withdrew it"
+    assert code == (build_marts.PARTIAL_EXIT if notes_present else 1), why
+
+
+def test_the_tables_a_build_may_leave_out_as_withdrawn_are_the_ones_the_extract_may_withdraw():
+    """build_marts.py imports only the standard library, so it names the tables itself: the ConditionsQuery tables
+    whose database table export_conditions.py's PENDING_READER_SETUP lets go missing."""
+    import export_conditions
+    from extract._kinds import CONDITIONS_QUERIES
+
+    may_withdraw = {
+        f"raw_ourhike__{key}" for key, (table, _) in CONDITIONS_QUERIES.items() if table in export_conditions.PENDING_READER_SETUP
+    }
+    assert set(build_marts.WITHDRAWABLE) == may_withdraw == {"raw_ourhike__notes", "raw_ourhike__disputes"}
+    assert set(build_marts.WITHDRAWABLE.values()) == {"ourhike"}
+
+
 class _StampedBehind(_DbtRuns):
     """_DbtRuns whose run_results.json is stamped 50 ms before the moment it was written. Linux stamps a file's mtime
     from a coarse clock that can lag time.time() by a few milliseconds, which is how CI's pytest job on 461954c4

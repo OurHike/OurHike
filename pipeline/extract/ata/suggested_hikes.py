@@ -13,24 +13,6 @@ reading, so the row is `unresolved` for the maintainer.
 
 Not read: each passage's three GPX files and PDF map (GIS files, for the lead's wave 2 list), its Water and
 Notes/Warnings prose, and the Day Hiker's Guide (89 day hikes), a download for ATA members only.
-
-The note this replaces read, whole:
-
-Arizona Trail Association: suggested hikes, published, and not landed (coverage audit 2026-10-01, batch
-c10_nst_rest).
-
-The passage pages are open. The Guide is gated. Skeptic spot-check: the passage-1 page returns 200.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): 43 passage pages, e.g.
-`/explore/passages/passage-1-huachuca-mountains/`, each with a PDF map, a history PDF and 3 GPX files.
-The Day Hiker's Guide (89 day hikes) is a members-only download.
-
-Its `where`: https://aztrail.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pages_content import content_pages

@@ -10,24 +10,6 @@ change check (no page validator decides FRESH), facts and the link only, never t
 sources.json holds the terms as found, the live read and the measured key, `link`. ONDA is one of the four `refuse`
 organizations: its Oregon Desert Trail GPX, maps and Databook sit behind a waiver and are not read, and nothing of
 this row publishes until its permission is recorded.
-
-The note this replaces read, whole:
-
-Oregon Natural Desert Association: suggested hikes, published, and not landed (coverage audit
-2026-10-01, batch c7_regional_4).
-
-Pages. The `hike` type is not exposed in `/wp/v2/`.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): The `hike` custom post type: 24 pages in `hike-sitemap.xml` (e.g.
-`/hike/big-indian-gorge/`). Posts `/oregon-desert-trail-day-hikes/` ("21 Day Hikes") and
-`/oregon-desert-trail-loop-hikes/`.
-
-Its `where`: https://onda.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pages_content import content_pages

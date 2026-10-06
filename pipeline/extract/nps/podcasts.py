@@ -22,27 +22,6 @@ and a total that moves within one read or a repeated id raises. Rows land as NPS
 lists as JSON, except the row's `person_fields`. dbt assigns each club folder its portion by each
 row's own park list matched to nps_alerts' `park_codes` map (decision 34); the folders that draw on
 these lists hold via notes naming them. The lane is the type's, monthly.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-National Park Service: podcasts, published, and not landed (coverage audit 2026-10-01, batch
-b6_federal).
-
-Place-tagged audio is the hiker-relevant part. The RSS shows are programming.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): API `/multimedia/audio`: 5,173 items with `durationMs`,
-`transcript`, `latitude`/`longitude`, `geometryPoiId`. The sample is oral-history clips (Ellis
-Island). Podcast RSS per show: `https://www.nps.gov/rss/podcasts/podcast_xml.cfm?id=6686775` (Park
-Postcards, GOGA: 9 items with enclosures, newest 2021-09-22). Listing pages are under
-`nps.gov/podcasts/` (search).
-
-Its `where`: https://www.nps.gov/rss/podcasts/podcast_xml.cfm?id=6686775 https://nps.gov/podcasts/
-https://nps.gov/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import nps_content, podcast_episodes

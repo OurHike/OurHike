@@ -13,23 +13,6 @@ the source, which restricts reuse and refuses nothing.
 
 The state trails pages the coverage audit also names (trails.nc.gov/state-trails/<trail>, 15) and the `WEBLINK`
 field on `State_Trails` are not read here.
-
-The note this replaces read, whole:
-
-NC Division of Parks & Recreation — NC Trails: suggested hikes, published, and not landed (coverage
-audit 2026-10-01, batch c9_federal_state_rest).
-
-Page.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `ncparks.gov/state-parks/<park>/trails` pages;
-`trails.nc.gov/state-trails/<trail>` (15 trail pages); the `WEBLINK` field on `State_Trails`.
-
-Its `where`: https://ncparks.gov/state-parks/ https://trails.nc.gov/state-trails/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pages_content import content_pages

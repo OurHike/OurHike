@@ -18,30 +18,6 @@ extract/_kinds.py's WordpressPosts. A page or a feed is read every run, one requ
 only when what would land hashes as the last committed load did; a conditional GET is sent only
 where the source's own validators were measured. A feed is a window of its newest items, never the
 list of what is in force. No prose and no person lands (decisions 55 and 59).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Maine Appalachian Trail Club: warnings, published, and not landed (coverage audit 2026-10-01, batch
-c1_at_clubs_north).
-
-The ferry warning is permanent and fatal-grade. `atc_trail_updates` does not carry it (settled by
-skeptic): ATC's trail updates are the WordPress subtype `trail-updates`, and a search of
-`https://appalachiantrail.org/wp-json/wp/v2/search?search=Kennebec` returns 11 pages and posts (e.g.
-"River & …
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `https://www.matc.org/kennebec-river-ferry-service/` (page):
-the 2026 ferry schedule (May 22–Jun 30 9–11 a.m.; Jul 1–Sep 30 9 a.m.–2 p.m.) and "Do not attempt to
-wade or swim across Maine's Kennebec River … Two hikers are known to have died attempting to ford
-the river." Also the WordPress category Hazard (id 157, 2 posts, both 2023-09-14) at
-`/wp-json/wp/v2/posts?categories=157`, with an RSS feed at `/category/hazard/feed/`.
-
-Its `where`: https://www.matc.org/kennebec-river-ferry-service/
-https://appalachiantrail.org/wp-json/wp/v2/search?search=Kennebec https://matc.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import page_notice, wordpress_posts

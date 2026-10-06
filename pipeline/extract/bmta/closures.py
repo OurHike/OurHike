@@ -17,39 +17,6 @@ extract/_kinds.py's WordpressPosts. A page or a feed is read every run, one requ
 only when what would land hashes as the last committed load did; a conditional GET is sent only
 where the source's own validators were measured. A feed is a window of its newest items, never the
 list of what is in force. No prose and no person lands (decisions 55 and 59).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Benton MacKaye Trail Association: closures, drawn from nps/warnings.py's NPS alerts resource
-(decision 53, phase B, 2026-10-03).
-
-NPS's alerts for park code `grsm` land once, in nps/warnings.py's `nps_alerts`, whose sources.json
-entry lists it against this folder in `park_codes` (decision 34). NPS's `Park Closure` category is
-the closures half, split from the rest in dbt; a Park Closure most often closes a facility or a road
-rather than a trail, and no alert carries geometry, so it never sets `obstructs_trail` alone.
-
-The inventory also found a PDF, a web page for this club, which other phase B readers take; if one
-lands for this type it takes this file, and this note becomes a line in its docstring.
-
-The coverage audit's note, kept as it was (restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is
-trimmed where it ends in '…'):
-
-PDF. Also `bmtamail.org/docs/KnowBeforeYouGo.pdf`.
-
-Its `checked` (confirmed 2026-10-03): NPS alerts API, `parkCode=grsm` (the decision 53 inventory,
-batch 3, 2026-10-03): 3 (Park Closure 'Park Headquarters Road is closed' 2026-06-26; Park Closure
-'Straight Fork ... Balsam Mountain Road closed' 2025-11-12; Information 'Most visitors need a
-parking tag'). Tiebreak for the GSMNP fire-ban disagreement. Landed by nps/warnings.py as
-nps_alerts. | (coverage audit, 2026-10-01) "Current Alerts & Advisories",
-`https://bmtamail.org/docs/CurrentAlertsandAdvisories.pdf`: a 1-page PDF, Last-Modified 2026-09-09,
-289,535 B. It held 0 closure items today, but it is the channel the BMTA posts to.
-
-Its `where`: https://developer.nps.gov/api/v1/alerts?parkCode=grsm
-https://bmtamail.org/docs/CurrentAlertsandAdvisories.pdf
-https://bmtamail.org/docs/KnowBeforeYouGo.pdf
-
-Its `reason`: drawn from nps/'s resources, extracted once there (decision 34); checked names the
-layer this org's data arrives in
 """
 
 from extract._kinds import page_notice

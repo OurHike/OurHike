@@ -14,25 +14,6 @@ itunes:author, which carries the guests' and hosts' names, RSS <author>, dc:crea
 itunes:owner) and the row's own `person_fields`. The lane is the type's, monthly. Episodes are
 linked, never re-hosted: an <enclosure> lands as its URL, and the audio is never fetched. A feed is
 what its host serves, so an episode's absence is never its removal.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-USGS — The National Map: podcasts, published, and not landed (coverage audit 2026-10-01, batch
-c9_federal_state_rest).
-
-Science programming, not trail audio.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): "Outstanding in the Field" RSS,
-`https://www.usgs.gov/podcasts/audio/141799/feed.xml`; CoreCast (former series). Skeptic: the feed
-answers HTTP 200 `application/rss+xml` with title "Outstanding in the Field" when sent a browser
-user agent. The 403 was a user-agent filter, not a missing feed.
-
-Its `where`: https://www.usgs.gov/podcasts/audio/141799/feed.xml
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import podcast_episodes

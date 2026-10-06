@@ -14,28 +14,6 @@ extract/_kinds.py's WordpressPosts. A page or a feed is read every run, one requ
 only when what would land hashes as the last committed load did; a conditional GET is sent only
 where the source's own validators were measured. A feed is a window of its newest items, never the
 list of what is in force. No prose and no person lands (decisions 55 and 59).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Foothills Trail Conservancy: closures, published, and not landed (coverage audit 2026-10-01, batch
-c5_regional_2).
-
-No year is printed on the 4/13 and 3/23 entries. 2025 follows from their order. There is no feed.
-The site `/feed/` has 9 posts, newest 2022-11-22, none of them closures. (Skeptic, re-read
-2026-10-01: same three entries. The 3/23 fire closure ends "(See post on Facebook)", so the club's
-Facebook …
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `/trail-conditions/`, a hand-edited HTML page. The newest
-entry, "Trail Update 4/13", says the entire trail is open. Below it is "Critical fire update 3/23",
-which closed Sassafras→Table Rock SP and Sassafras→Caesars Head SP. Then "Update Mar 12, 2025" on
-reopening after Helene.
-
-Its `where`: https://foothillstrail.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import page_notice

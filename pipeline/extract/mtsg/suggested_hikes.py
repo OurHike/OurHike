@@ -15,24 +15,6 @@ scoped (id, modified) set, one small request, because a WordPress feed's validat
 WP_DROPPED and the row's `person_fields` never load. A post's body, where it loads, stops at
 `base_`: a suggested hike publishes its facts and the link, never the club's own description
 (decision 55, the round brief's item 3). The lane is the type's, monthly.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-Mountains to Sound Greenway Trust: suggested hikes, published, and not landed (coverage audit
-2026-10-01, batch c6_regional_3).
-
-HTML bodies come through REST.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): WordPress REST `/wp-json/wp/v2/itinerary`: `X-WP-Total` = 28.
-9 are typed "Trails, Parks, and Recreation", e.g. "10 Scenic Middle Fork Hikes Near Seattle That
-Aren't Mailbox Peak or Mount Si" (2026-04-17). The others are walking tours and scenic drives.
-
-Its `where`: https://mtsgreenway.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import DEFAULT_HOST_GAP_SECONDS, site_terms

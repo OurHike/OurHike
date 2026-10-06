@@ -18,25 +18,6 @@ scoped (id, modified) set, one small request, because a WordPress feed's validat
 WP_DROPPED and the row's `person_fields` never load. A post's body, where it loads, stops at
 `base_`: a suggested hike publishes its facts and the link, never the club's own description
 (decision 55, the round brief's item 3). The lane is the type's, monthly.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-Bay Area Ridge Trail Council: suggested hikes, published, and not landed (coverage audit 2026-10-01,
-batch c6_regional_3).
-
-Section text is a 2019 Wilderness Press guidebook excerpt (see flags).
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): WordPress REST `/wp-json/wp/v2/trail-section`: 86 posts, each
-with distance, from/to and land manager. Category "Curated Adventures" has 33 posts. `/trip-
-planning-tools/` lists multi-day treks and bikepacking plans. There are 92 regional map PDFs (2019)
-on `/trail-maps/`.
-
-Its `where`: https://ridgetrail.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import DEFAULT_HOST_GAP_SECONDS

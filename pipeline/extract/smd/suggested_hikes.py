@@ -9,25 +9,6 @@ The reader is extract/_pages_content.py's ContentPages with the `smd_diablo_rang
 hashed for the change check (no page validator decides FRESH), facts and the link only, never the club's own
 wording. Its row in sources.json holds the terms as found, the live read and the measured key, the region's part and
 the hike's name.
-
-The note this replaces read, whole:
-
-Save Mount Diablo: suggested hikes, published, and not landed (coverage audit 2026-10-01, batch
-c6_regional_3).
-
-Terms-blocked.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `/experience/field-guides/hikes-in-the-diablo-range/` lists 47
-numbered hikes by region, each linking a blog post, e.g.
-`/blog/mount-diablo-state-park-five-peaks-hike/`. The "Northern Diablo Range Hiking Guide" PDF is behind
-an email form.
-
-Its `where`: https://savemountdiablo.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pages_content import content_pages

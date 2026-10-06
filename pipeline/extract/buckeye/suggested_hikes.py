@@ -13,24 +13,6 @@ took for the bta_section_* notice rows; buckeye is one of the four `refuse` orga
 publishes until its permission is recorded.
 
 The 'Hiker on the Go' maps are sold in print and are not read; /hike/circuit-hiking is prose.
-
-The note this replaces read, whole:
-
-Buckeye Trail Association: suggested hikes, published, and not landed (coverage audit 2026-10-01, batch
-c8_regional_5).
-
-Restricted.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): 26 section pages ("What to expect", miles and off-road share, e.g.
-Whipple "58.2 total miles / 14.1 off-road miles (24.2%)"). `/hike/circuit-hiking`. "Hiker on the Go"
-maps are sold in print.
-
-Its `where`: https://buckeyetrail.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pages_content import content_pages

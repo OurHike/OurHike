@@ -10,26 +10,6 @@ file's own validators, one row a place on the challenge's list, its facts and th
 never anyone who finished. Its row in sources.json holds the terms as found, the live read and the measured key,
 `name`. The terms restrict reproducing and publishing the site's content without written permission, quoted on the
 row: a restriction on reuse, not a refusal to be read.
-
-The note this replaces read, whole:
-
-Tennessee Trails Association: challenges, published, and not landed (coverage audit 2026-10-01, batch
-c5_regional_2).
-
-Fits the challenges mart from #1780 — Let a club publish a challenge — places on its own trails that
-hikers opt into and tag at camp — starting with the ATC's A.T. Summer Bucket List, but the terms block
-it.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): "a named individual Hiked 'em All": 36 hikes in TN State Parks, a
-commemorative patch plus an achievement rocker, and a qualification form
-`/wp-content/uploads/2020/08/FranWallasQualificationForm.pdf`. 2026 is its 15th year (HTML page).
-
-Its `where`: https://tennesseetrails.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pdf_content import content_pdf

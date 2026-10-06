@@ -13,29 +13,6 @@ itunes:author, which carries the guests' and hosts' names, RSS <author>, dc:crea
 itunes:owner) and the row's own `person_fields`. The lane is the type's, monthly. Episodes are
 linked, never re-hosted: an <enclosure> lands as its URL, and the audio is never fetched. A feed is
 what its host serves, so an episode's absence is never its removal.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-USDA Forest Service: podcasts, published, and not landed (coverage audit 2026-10-01, batch
-b6_federal).
-
-Forest Focus includes a trail-crew episode ("Trails in Transformation", search). "Forest North" is
-the Ely Tourism Bureau's show, not USFS's.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): Forest Focus (USDA Forest Service, Pacific Southwest Region):
-`https://rss.libsyn.com/shows/433686/destinations/3617892.xml`, 38 episodes, newest 2024-12-21.
-Forestcast (research): `https://rss.libsyn.com/shows/184682/destinations/1267985.xml`, 36 episodes,
-newest 2024-12-18. Custer Gallatin "Forest in Focus"
-(`fs.usda.gov/r01/custergallatin/multimedia/audio`, search).
-
-Its `where`: https://rss.libsyn.com/shows/433686/destinations/3617892.xml
-https://rss.libsyn.com/shows/184682/destinations/1267985.xml
-https://fs.usda.gov/r01/custergallatin/multimedia/audio
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import podcast_episodes

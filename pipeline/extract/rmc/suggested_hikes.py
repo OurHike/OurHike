@@ -13,23 +13,6 @@ dates (its /Author names a person). Its row in sources.json holds the terms as f
 measured key, the walk's group and its name. It needs pypdf, which the extract job installs and fixture mode's
 Python does not, so the table lands only from the monthly job, and its base model reads no rows in the fixture
 build (extract/_pdf_content.py's docstring).
-
-The note this replaces read, whole:
-
-Randolph Mountain Club: suggested hikes, published, and not landed (coverage audit 2026-10-01, batch
-c1_at_clubs_north).
-
-PDF; route lines would need the trail network.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `https://randolphmountainclub.org/wp-content/uploads/Recommended-Hikes-1.pdf`
-(PDF, 104,747 bytes, last-modified 2023-02-20).
-
-Its `where`: https://randolphmountainclub.org/wp-content/uploads/Recommended-Hikes-1.pdf
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pdf_content import content_pdf

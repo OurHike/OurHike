@@ -25,26 +25,6 @@ condition reports (https://dnr.alaska.gov/parks/asp/curevnts.htm, 'Last Update: 
 linking 28 per-park PDFs), a steward with no club folder, in _shared/alaska_state_parks/ as
 `alaska_state_parks_conditions`. The club's own https://www.alaska-trails.org/trail-reports is a
 list of links to those managers, not a notice.
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Alaska Trails: warnings, published, and not landed (coverage audit 2026-10-01, batch
-b7_long_trails_states).
-
-These are planning records (they carry a `Cost` field), but "impassable crossing" is a hazard point
-all the same.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `AKLT_Trail_Obstacles/FeatureServer/20`: 13 points, last edit
-2026-03-05: `BridgeNeeded(Impassable)` 4, `BridgeNeeded(Passable)` 7, `RiverFord` 2.
-`Seward_to_Eagle_River_Obstacles/2`: 7 (2023-05-17).
-
-Its `where`:
-https://services.arcgis.com/E4aLbdRuC2azR6Sw/arcgis/rest/services/AKLT_Trail_Obstacles/FeatureServer/20
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import arcgis_layer

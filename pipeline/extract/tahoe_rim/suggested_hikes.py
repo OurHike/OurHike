@@ -11,22 +11,6 @@ for the change check (no page validator decides FRESH), facts and the link only,
 highlights or descriptions. Its row in sources.json holds the terms as found, the live read and the measured key,
 `name`. The index's "How to break the Tahoe Rim Trail into 14 Day Hikes" is a PDF of instructions (73,592 bytes,
 ETag "69c66de4-11f78", 2026-03-27) and is not read here.
-
-The note this replaces read, whole:
-
-Tahoe Rim Trail Association: suggested hikes, published, and not landed (coverage audit 2026-10-01,
-batch b7_long_trails_states).
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): Format page: `tahoerimtrail.org/day-hiking/` ("Day Hike
-Itineraries": Alpine Lakes, Wildflower, Peaks & Vistas, Waterfall) and "How to break the Tahoe Rim Trail
-into 14 Day Hikes".
-
-Its `where`: https://tahoerimtrail.org/day-hiking/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pages_content import content_pages

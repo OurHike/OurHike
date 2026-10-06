@@ -17,32 +17,6 @@ server's own returnCountOnly read in the same run.
 Read and not wired (decision 53 phase B, 2026-10-03): https://cpw.state.co.us/hunting/big-game (now
 /activities/hunting/big-game) and https://cpw.state.co.us/living-bears, evergreen guidance pages
 (JSON-LD dateModified 2026-09-29 and 2026-08-14), not notices; season dates are in brochures.
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Colorado Parks & Wildlife — COTREX: warnings, published, and not landed (coverage audit 2026-10-01,
-batch b7_long_trails_states).
-
-These are standing conflict-area maps, not activity reports. A card must word them as "an area CPW
-maps as a bear–human conflict area", never as "bear activity reported". Season dates live in
-brochures (pdf), not opened.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): Hunting: `CPWAdminData/6` GMU Boundary (Big Game), 186
-polygons, plus `cpw.state.co.us/hunting/big-game` (page). Bears: `cpw.state.co.us/living-bears`
-(page). `/12` Walk In Access: 470 polygons with `CLOSEDATE`. | Skeptic adds (Measured):
-`services5.arcgis.com/ttNGmDvKQA7oeDQ3/arcgis/rest/services/CPWSpeciesData/FeatureServer/20` "Black
-Bear Human Conflict Area": 613 polygons, and `/93` "Mountain Lion Human Conflict Area": 266
-polygons, both last edited 2026-05-07. The item licence reads "This wildlife distribution map is a
-product and property of Colorado Parks and Wildlife…".
-
-Its `where`: https://cpw.state.co.us/hunting/big-game https://cpw.state.co.us/living-bears
-https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/arcgis/rest/services/CPWSpeciesData/FeatureServer/20
-https://services3.arcgis.com/0jWpHMuhmHsukKE3/arcgis/rest/services
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import arcgis_layer

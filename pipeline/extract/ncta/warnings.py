@@ -12,22 +12,6 @@ server's own returnCountOnly read in the same run.
 Other sources still to wire (decision 53 phase B, 2026-10-03; the phase A inventory has each one's
 robots.txt, terms and change check): https://northcountrytrail.org/the-trail/trail-alerts/
 (html_page).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-North Country Trail Association: warnings, published, and not landed (coverage audit 2026-10-01,
-batch b7_long_trails_states).
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): The same layer holds cautions, e.g. "Rough road – not mowed.
-Use caution while hiking." Also 18 `Ford` points in the POI layer, and
-`March_2025_Ice_Storm_Impacts/0` (1 polygon with an `alert` field, last edit 2025-08-08).
-
-Its `where`: https://services2.arcgis.com/UfGVyqUm4GHa2zrj/arcgis/rest/services
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import arcgis_layer

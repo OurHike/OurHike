@@ -12,29 +12,6 @@ itunes:author, which carries the guests' and hosts' names, RSS <author>, dc:crea
 itunes:owner) and the row's own `person_fields`. The lane is the type's, monthly. Episodes are
 linked, never re-hosted: an <enclosure> lands as its URL, and the audio is never fetched. A feed is
 what its host serves, so an episode's absence is never its removal.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-US Fish & Wildlife Service: podcasts, published, and not landed (coverage audit 2026-10-01, batch
-c9_federal_state_rest).
-
-National conservation programming, not trail audio. Low value to a hiker.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): fws.gov podcast pages: "The Future of Conservation" (2026
-series), Nature's Infrastructure, NCTC podcasts. Skeptic adds the exact URLs (HTTP 200 on
-2026-10-01): `https://www.fws.gov/page/future-conservation-podcast-series` (page; episodes link to
-Apple Podcasts show `id1789144144`) and `https://www.fws.gov/library/collections/podcasts-national-
-conservation-training-center`. Neither page links an RSS URL. The feed behind the Apple show was not
-looked up.
-
-Its `where`: https://www.fws.gov/page/future-conservation-podcast-series
-https://www.fws.gov/library/collections/podcasts-national-conservation-training-center
-https://fws.gov
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import podcast_episodes

@@ -12,32 +12,6 @@ server's own returnCountOnly read in the same run.
 The preserve's alerts and peregrine-watch pages are read in closures.py (`mohonk_alerts`,
 `mohonk_peregrine_updates`, decision 53 phase B, 2026-10-03); their notices are split into closures
 and warnings in dbt.
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Mohonk Preserve: warnings, published, and not landed (coverage audit 2026-10-01, batch
-b4_oprhp_mohonk_gatc).
-
-Zones without dates. The dates are in a PDF nobody has parsed (@unvalidated whether they are
-machine-readable). Skeptic additions (Measured 2026-10-01): the layer's fields are only
-`Zone_Number`, `Zone_Name`, `Area_Acres` and `Perimeter_MIles`, so no restriction or date field
-exists despite the …
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `MP_Deer_Management_with_Restrictions/FeatureServer/0`: 16
-polygons, `dataLastEditDate` 2026-08-18, fields `Zone_Number`/`Zone_Name`/`Area_Acres` (attachments
-enabled). The season's dates sit in `wp-content/uploads/2026/09/HuntingRegulations2026.pdf` and the
-hunt maps `2025_DeerManagement_Main/D1/D2/D3.pdf`, linked from `/…/deer-management-program/`
-(`modified` 2026-09-01). The alerts page's "Alerts" section carries a storm-hazard notice ("downed
-trees, ruts, and areas of standing water").
-
-Its `where`:
-https://services8.arcgis.com/cQ05sucxF4UWabFF/arcgis/rest/services/MP_Deer_Management_with_Restrictions/FeatureServer/0
-https://mohonkpreserve.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import arcgis_layer

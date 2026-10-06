@@ -16,26 +16,6 @@ extract/_kinds.py's WordpressPosts. A page or a feed is read every run, one requ
 only when what would land hashes as the last committed load did; a conditional GET is sent only
 where the source's own validators were measured. A feed is a window of its newest items, never the
 list of what is in force. No prose and no person lands (decisions 55 and 59).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-The Trail Foundation (Austin): closures, published, and not landed (coverage audit 2026-10-01, batch
-c6_regional_3).
-
-Each entry has a start and a duration, so a parser can carry an end date.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `/visit-the-trail/detours/` via REST `?slug=detours` (modified
-2026-07-27), HTML with detour PNGs. Entries: Barton Creek short-term detour (2026-07-13, 2 days).
-Waller Beach reroute (June 2026 to March 2027). I-35 east pedestrian crossing closed from the week
-of 2026-02-09, for about a year. Riverside Dr pedestrian ramp closed 2026-02-16 through 2029. I-35
-Capital Express Central detours to 2033.
-
-Its `where`: https://thetrailfoundation.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import page_notice

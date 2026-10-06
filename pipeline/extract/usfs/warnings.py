@@ -32,30 +32,6 @@ Chugach NF's 22 one-polygon layers of winter motorized closure areas (service La
 2024-01-11); each is its own layer, so 22 registry rows, deferred: they do not close the footpath;
 https://apps.fs.usda.gov/fsgisx02/rest/services/r04/R04_Alerts_And_Closures_01/MapServer/0, a copy
 of usfs_r04_forest_orders (the SAME_AS note below).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-USDA Forest Service: warnings, published, and not landed (coverage audit 2026-10-01, batch
-b6_federal).
-
-A BAER polygon marks a recent burn (hazard trees, debris flow). That is a hazard area, but it is not
-a notice. Reasoned, not published by USFS as a warning.
-
-Restated from bcc70dd0:pipeline/reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): Per-forest alerts pages carry an "Alerts Key" (Critical / Fire
-Restriction / Caution / Information). Cherokee today: "Fire Restrictions Continue Along the
-Appalachian Trail", "Roan Mountain Fire Restrictions".
-`.../EDW/EDW_BurnedAreaEmergencyResponse_01/MapServer/0` (BAER assessment boundaries, polygon): 246,
-ignitions 2024-03-22 → 2026-08-26, `max(etl_modified_date)` 2026-09-30, 124 since 2025-01-01.
-Regional fire-restriction layers: `fsgisx02/.../r03/r03_FireRestriction_01/0` (1 polygon),
-`PSICCRangerDistrictsFireRestrictions_2026` (R02, 2026-06-25). WFAS (`https://www.wfas.net/`, titled
-…
-
-Its `where`: https://www.wfas.net/ https://apps.fs.usda.gov/arcx/rest/services
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import arcgis_layer

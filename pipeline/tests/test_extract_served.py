@@ -481,3 +481,88 @@ def test_add_served_hands_dbt_the_instant_its_copys_run_began_and_nothing_when_n
     assert name == _warehouse.NOTICES_READ_AT_ENV == "OURHIKE_NOTICES_READ_AT"
     (checked_at,) = {row["checked_at"] for row in run_log_rows(notices_pipeline(stores)) if row["run_id"] == report.run_id}
     assert datetime.fromisoformat(value) == checked_at.replace(tzinfo=UTC), "the copy's run, as its rows' checked_at"
+
+
+class _NineHoursLater(datetime):
+    """add-served's clock, 9 hours on: everything a run wrote now reads as 9 hours old, its dlt load ids among them."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime.now(tz) + timedelta(hours=9)
+
+
+def notices_load_hours_ago(stores, monkeypatch, hours: float, *resources):
+    """A notices run whose clock, and dlt's, read `hours` before now: its run id, its run log rows and its load id."""
+    from itertools import count
+
+    from dlt.common.storages import load_package
+
+    then, ticks = datetime.now(UTC) - timedelta(hours=hours), count()
+    with monkeypatch.context() as patched:
+        patched.setattr(_run, "utc_now_naive", lambda: then.replace(tzinfo=None))
+        patched.setattr(load_package, "increasing_precise_time", lambda: then.timestamp() + next(ticks) / 1000)
+        return notices_run(stores, *resources)
+
+
+def test_add_served_turns_a_leg_with_no_copy_red_once_its_first_committed_run_is_over_8_hours_old(
+    stores, command, tmp_path, monkeypatch, capsys
+):
+    """Decision 96 (the maintainer's poll, 2026-10-06: "Red after 8 h, like stale"). A leg with no served copy read as
+    a cold start however long that lasted, so the hourly run stayed green while a copy 8 h 01 min old turned it red
+    (review finding PY-3 of PR #1805 — dlt → dbt re-platform as one go/no-go change). The leg has owed a copy since
+    its first committed run; past SERVED_STALE_HOURS of that it is overdue, and the run turns red after publishing."""
+    notices_run(stores, USFS, NPS)
+    monkeypatch.setattr(_warehouse, "datetime", _NineHoursLater)
+    env_file = tmp_path / "github_env"
+    capsys.readouterr()
+
+    status = command("add-served", "--warehouse", str(tmp_path / "warehouse.duckdb"), "--env-file", str(env_file))
+
+    assert status != SERVED_NONE_EXIT, "a leg that has owed a copy for 9 hours read as a cold start, and the run stayed green"
+    assert status == _warehouse.SERVED_OVERDUE_EXIT
+    out = capsys.readouterr().out
+    assert re.search(
+        r"::error title=No notices copy::notices_ua has written no served copy, and its first committed run "
+        r"was 9 h \d\d min before this read",
+        out,
+    ), out
+    assert ids(tmp_path / "warehouse.duckdb") == {}, "nothing of the leg is added"
+    assert not env_file.exists(), "no copy read, so no read time"
+
+
+def test_add_served_counts_a_leg_whose_copies_keep_failing_from_its_first_run_not_its_newest(
+    stores, command, tmp_path, monkeypatch
+):
+    """PY-3's first scenario: the leg keeps running every 4 hours and its copy step keeps failing, as extract-notices.yml
+    run 8's did on 2026-10-05. Its newest run is always under 8 hours old; the copy it owes is as old as its first."""
+    notices_load_hours_ago(stores, monkeypatch, 12, USFS)
+    notices_load_hours_ago(stores, monkeypatch, 8.5, USFS)
+    notices_load_hours_ago(stores, monkeypatch, 4.5, USFS)
+    notices_run(stores, USFS)
+
+    assert command("add-served", "--warehouse", str(tmp_path / "warehouse.duckdb")) == _warehouse.SERVED_OVERDUE_EXIT
+
+
+def test_add_served_counts_a_leg_that_has_never_committed_a_run_as_overdue_at_once(stores, command, tmp_path, capsys):
+    """No evidence at all, the stricter rule, as is_stale() holds a copy of unknown age to it: nothing says when the
+    copy fell due, so it is overdue now. This is production's notices store on the cutover's first hour, until the
+    notices leg's first run there commits and copies."""
+    status = command("add-served", "--warehouse", str(tmp_path / "warehouse.duckdb"))
+
+    assert status != SERVED_NONE_EXIT, "a leg that has never run read as a cold start, and the run stayed green"
+    assert status == _warehouse.SERVED_OVERDUE_EXIT
+    assert "::error title=No notices copy::notices_ua has never committed a run" in capsys.readouterr().out
+
+
+def test_add_served_only_warns_while_a_leg_with_no_copy_first_committed_under_8_hours_ago(stores, command, tmp_path, capsys):
+    """A copy step that failed once is not yet a stale copy: the next notices run, 4 hours on, copies again."""
+    notices_run(stores, USFS)
+    summary = tmp_path / "summary.md"
+    capsys.readouterr()
+
+    assert command("add-served", "--warehouse", str(tmp_path / "w.duckdb"), "--summary", str(summary)) == SERVED_NONE_EXIT
+
+    out = capsys.readouterr().out
+    assert "::warning title=No served copy yet::notices_ua has written no copy yet" in out
+    assert "turns the run red once that is over 8 h" in out
+    assert re.search(r"Its first committed run was `\S+Z`, 0 h \d\d min before this read\.", summary.read_text())

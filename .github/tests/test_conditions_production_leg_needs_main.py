@@ -27,9 +27,9 @@ TWO LOCKS, AND THIS FILE HOLDS BOTH.
 
 The same two locks keep the production leg from a dispatch that picks
 `phone_files: dbt`, from any ref: that path has soaked on UA only, and
-whether it may publish production's conditions/ is pipeline/ELT.md's open
-question 4, the maintainer's. The schedule passes no input, so it is
-untouched.
+decision 92 keeps production on the exporters until the cutover. The
+schedule passes no input, and a dispatch left at `phone_files: scheduled`
+asks for no path, so neither is touched.
 
 WHAT THIS DOES NOT COVER. A dispatch runs the named ref's copy of the
 workflow, so these locks bind only refs that carry them: a branch cut before
@@ -64,7 +64,7 @@ OTHER_REFS = ("refs/heads/claude/intelligent-feynman-sw3ewm", "refs/tags/v1.0.0"
 # which carries no inputs.
 INPUTS = ("both", "ua", None)
 # What `inputs.phone_files` holds: each choice, and None on a schedule.
-PHONE_FILES = ("exporters", "dbt", None)
+PHONE_FILES = ("scheduled", "exporters", "dbt", None)
 
 
 # --- a small evaluator of GitHub's expression language -----------------------
@@ -298,10 +298,12 @@ def test_the_schedule_and_a_main_dispatch_run_both_legs_as_today():
     assert _legs(MAIN, None, "schedule") == ["production", "ua"]
     assert _legs(MAIN, "both", "workflow_dispatch") == ["production", "ua"]
     assert _legs(MAIN, "both", "workflow_dispatch", phone_files="exporters") == ["production", "ua"]
+    assert _legs(MAIN, "both", "workflow_dispatch", phone_files="scheduled") == ["production", "ua"]
     assert _guard("production", MAIN, None).returncode == 0
     assert _guard("ua", MAIN, None).returncode == 0
     assert _dbt_guard("production", None, None).returncode == 0
     assert _dbt_guard("production", "both", "exporters").returncode == 0
+    assert _dbt_guard("production", "both", "scheduled").returncode == 0
 
 
 @pytest.mark.parametrize(("ref", "asked"), list(product((MAIN, *OTHER_REFS), INPUTS)))

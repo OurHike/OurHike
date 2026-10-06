@@ -70,8 +70,9 @@ settings:
       builds read it back; no phone reads it. Three workflows need it, and
       each stops by name when it is missing: refresh-reference.yml's jobs,
       extract-notices.yml's (decision 61's notices legs, every 4 hours), and
-      publish-conditions.yml's `phone_files: dbt` path (the schedule's default
-      path, today's bake, does not read it). REQUIRED: FALSE until the
+      publish-conditions.yml's dbt path, which its UA leg runs on the schedule
+      since decision 92 (its production leg, today's bake, does not read it
+      until the cutover). REQUIRED: FALSE until the
       maintainer has minted the key and stored the three R2_RAW_* secrets
       (ELT.md, "Secrets and buckets: a maintainer action"), so
       settings-configured.yml's weekly live check stays green until then;

@@ -221,7 +221,7 @@ def nps_alerts_url(base: str, park_codes: list[str], start: int, limit: int = NP
 
 
 @dataclass(frozen=True)
-class NpsAlerts(Resource):
+class NpsAlerts(_kinds.PersonRuled, Resource):
     """NPS's alerts for every park code the sources.json entry lists, read in one paged request, one row per alert.
 
     The entry's `park_codes` maps each code to the club folders that draw on
@@ -292,7 +292,7 @@ class NpsAlerts(Resource):
         if len(collected) != total:
             raise RuntimeError(f"{self.key}: NPS counts {total} alerts and {len(collected)} were read")
         proofs[self.table] = total
-        yield from collected
+        yield from self.without_people(collected)
 
 
 def nps_alerts(key: str, **overrides) -> NpsAlerts:
@@ -306,7 +306,7 @@ NPS_ROAD_EVENT_JSON = ("core_details", "types_of_incident", "types_of_work", "ge
 
 
 @dataclass(frozen=True)
-class NpsRoadEvents(Resource):
+class NpsRoadEvents(_kinds.PersonRuled, Resource):
     """NPS's road events feed (WZDx 4.1), every event in it, one row per event with its geometry.
 
     The feed is national and takes no park filter. Each event's properties
@@ -358,8 +358,8 @@ class NpsRoadEvents(Resource):
         }
         features = body["features"]
         proofs[self.table] = len(features)
-        for feature in features:
-            row = dict(feature.get("properties") or {})
+        kept = self.without_people([feature.get("properties") or {} for feature in features])
+        for feature, row in zip(features, kept, strict=True):
             source_id = (row.get("core_details") or {}).get("data_source_id")
             row["data_source_organization"] = organizations.get(source_id)
             row["feed_update_date"] = info.get("update_date")
@@ -387,7 +387,7 @@ def advisory_key(park_id: int, message: str, occurrence: int) -> str:
 
 
 @dataclass(frozen=True)
-class DcnrParkAdvisories(Resource):
+class DcnrParkAdvisories(_kinds.PersonRuled, Resource):
     """PA DCNR's ParkAdvisory answer for each park id the entry lists, one row per advisory.
 
     Each answer is a JSON list of `{IsAlert, Message}`, Message being HTML.
@@ -441,9 +441,11 @@ class DcnrParkAdvisories(Resource):
                     raise ValueError(f"{self.key}: park {park_id} listed an advisory with no Message text")
                 occurrence = seen[message]
                 seen[message] += 1
-                collected.append({"advisory_key": advisory_key(park_id, message, occurrence), "park_id": park_id, **item})
+                collected.append((advisory_key(park_id, message, occurrence), park_id, item))
         proofs[self.table] = len(collected)
-        yield from collected
+        kept = self.without_people([item for _, _, item in collected])
+        for (advisory, park_id, _), item in zip(collected, kept, strict=True):
+            yield {"advisory_key": advisory, "park_id": park_id, **item}
 
 
 def dcnr_park_advisories(key: str, **overrides) -> DcnrParkAdvisories:
@@ -471,7 +473,7 @@ USGS_VOLCANO_TEXT = (
 
 
 @dataclass(frozen=True)
-class UsgsElevatedVolcanoes(Resource):
+class UsgsElevatedVolcanoes(_kinds.PersonRuled, Resource):
     """Every US volcano USGS rates above normal, one row per volcano, as the Volcano Hazards Program serves it.
 
     `vnum` is the key: an observatory's daily update covers several volcanoes
@@ -507,7 +509,7 @@ class UsgsElevatedVolcanoes(Resource):
         if None in numbers or any(n > 1 for n in numbers.values()):
             raise RuntimeError(f"{self.key}: a volcano number is missing or listed twice, so it cannot key the table")
         proofs[self.table] = len(body)
-        yield from body
+        yield from self.without_people(body)
 
 
 def usgs_elevated_volcanoes(key: str, **overrides) -> UsgsElevatedVolcanoes:
@@ -835,7 +837,7 @@ def parse_kml_placemarks(text: str) -> list[dict]:
 
 
 @dataclass(frozen=True)
-class MyMapsPlacemarks(Resource):
+class MyMapsPlacemarks(_kinds.PersonRuled, Resource):
     """A Google My Maps map's KML export, one row per placemark: its folder, name, description, style and geometry.
 
     The entry's `url` is the export (`/maps/d/kml?mid=…&forcekml=1`), which
@@ -880,6 +882,11 @@ class MyMapsPlacemarks(Resource):
         if not placemarks:
             raise RuntimeError(f"{self.key}: the map's KML holds no placemark, which is a broken read, not a quiet trail")
         proofs[self.table] = len(placemarks)
+        # ExtendedData is the map maker's own fields, named as they chose, so the person rule reads its names; the
+        # placemark's other columns are KML's own and this reader's.
+        with_data = [placemark for placemark in placemarks if placemark["extended_data"] is not None]
+        for placemark, data in zip(with_data, self.without_people([p["extended_data"] for p in with_data]), strict=True):
+            placemark["extended_data"] = data
         yield from placemarks
 
 

@@ -43,10 +43,10 @@ What each format's own columns are:
   `as_of_label`, `source_as_of`: the date the sheet gives itself above the
   header, verbatim.
 
-PERSON FIELDS never load (ELT.md, "Who may publish", rule 8): a property whose
-name is in extract/_kinds.py's PERSON_FIELDS or the row's `person_fields`, or
-reads as a person's by PERSON_SHAPED unless the row's `not_person_fields`
-clears it, is left out before dlt sees the row, and the read prints it. A free
+PERSON FIELDS never load (ELT.md, "Who may publish", rule 8): extract/_kinds.py's
+PersonRule leaves out a property whose name is in PERSON_FIELDS or the row's
+`person_fields`, or reads as a person's by PERSON_SHAPED unless the row's
+`not_person_fields` clears it, before dlt sees the row, and the read prints it. A free
 text column that carries a person's details is the row's `person_fields` too
 (decision 59), since rule 8 excludes in dlt and never redacts in dbt.
 
@@ -678,7 +678,7 @@ ZIP_MEMBER_FORMATS = {".kml": "kml", ".gpx": "gpx", ".geojson": "geojson", ".jso
 
 
 @dataclass(frozen=True)
-class GisFile(Resource):
+class GisFile(_kinds.PersonRuled, Resource):
     """A GIS file, or a dataset spread over several, read whole: one row per feature (the module docstring)."""
 
     @property
@@ -702,12 +702,6 @@ class GisFile(Resource):
     @property
     def exact_proof(self) -> bool:
         return True
-
-    @property
-    def field_rules(self) -> dict[str, list[str]]:
-        """The row's person-field rules, lower-cased, kept in the marker by extract/_run.py's definition_digest()."""
-        entry = self.entry
-        return {rule: sorted(name.lower() for name in entry.get(rule) or []) for rule in ("person_fields", "not_person_fields")}
 
     def _session(self) -> requests.Session:
         delay = max(POLITE_SECONDS, float(self.entry.get("crawl_delay") or 0))
@@ -758,21 +752,12 @@ class GisFile(Resource):
         }
 
     def dropped(self, names: set[str]) -> dict[str, str]:
-        """Which of a file's property names never load, lower-cased, with the rule that drops each (the docstring)."""
-        rules = self.field_rules
-        kept = {_normal(name) for name in BASE_COLUMNS}
-        dropped = {}
-        for name in names:
-            lower = name.lower()
-            if _normal(name) in kept:
-                continue
-            if lower in _kinds.PERSON_FIELDS:
-                dropped[lower] = "PERSON_FIELDS"
-            elif lower in rules["person_fields"]:
-                dropped[lower] = "the row's person_fields"
-            elif lower not in rules["not_person_fields"] and _kinds.PERSON_SHAPED.search(_kinds._name_words(name)):
-                dropped[lower] = "a person-shaped name"
-        return dropped
+        """Which of a file's property names never load, lower-cased, with the rule that drops each (the docstring).
+
+        The row's PersonRule (extract/_kinds.py), over every name but this reader's own BASE_COLUMNS.
+        """
+        ours = {_normal(name) for name in BASE_COLUMNS}
+        return self.person_rule.left_out(name for name in names if _normal(name) not in ours)
 
     def parse(self, body: bytes, url: str) -> list[dict]:
         """One file's rows, by the row's `file_format`."""
@@ -827,11 +812,7 @@ class GisFile(Resource):
             rows.extend(self.parse(response.content, url))
         names = {name for row in rows for name in row}
         dropped = self.dropped(names)
-        shaped = sorted(name for name, rule in dropped.items() if rule == "a person-shaped name")
-        if shaped:
-            print(
-                f"  {self.key}: left out {shaped}, person-shaped names its sources.json row does not clear in not_person_fields"
-            )
+        _kinds.report_shaped(self.key, dropped, names)
         proofs[self.table] = len(rows)
         print(f"  {self.key}: {len(rows)} features from {len(self.files)} file(s)")
         for row in rows:

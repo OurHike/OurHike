@@ -26,8 +26,9 @@ names (AMC's Unlikely Stories, on 11 of 11 items; NHPR's Something Wild, its hos
 `<author>` holding an e-mail address (Unlikely Stories, 11 of 11), `dc:creator` naming a person (BLM's On the
 Ground, The Trustees' feed) and `podcast:person` naming each guest (USGS). Decision 59 and the dlt skill's
 "People never ship, and are never loaded" leave those out by an explicit list, before dlt sees the row, so
-PodcastEpisodes drops PERSON_TAGS and the registry row's own `person_fields` (an episode description that
-carries an e-mail address or a telephone number, measured per feed and listed on its row). The rest is
+PodcastEpisodes drops PERSON_TAGS, then whatever extract/_kinds.py's PersonRule leaves out: the registry row's own
+`person_fields` (an episode description that carries an e-mail address or a telephone number, measured per feed
+and listed on its row) and a column named like a person's. The rest is
 PodcastFeed's, and the lane is the type's, podcasts, which is monthly (extract/_contract.py's CADENCE_BY_TYPE):
 no reader here rides the hourly lane or a notices leg.
 
@@ -63,8 +64,8 @@ PERSON_TAGS = _kinds.PERSON_TAGS
 
 @dataclass(frozen=True)
 class PodcastEpisodes(_kinds.PodcastFeed):
-    """A podcast's RSS feed, one row per episode, as PodcastFeed lands it, with PERSON_TAGS and the row's
-    `person_fields` left out.
+    """A podcast's RSS feed, one row per episode, as PodcastFeed lands it, with PERSON_TAGS and what PersonRule
+    leaves out (the row's `person_fields` among it) gone.
 
     Three changes, each for something the live feeds carry:
 
@@ -89,10 +90,6 @@ class PodcastEpisodes(_kinds.PodcastFeed):
     @property
     def exact_proof(self) -> bool:
         return True
-
-    @property
-    def person_fields(self) -> frozenset[str]:
-        return frozenset(name.lower() for name in self.entry.get("person_fields") or ())
 
     def _session(self) -> requests.Session:
         return polite(_kinds.session(), max(self.crawl_delay, DEFAULT_HOST_GAP_SECONDS))
@@ -134,16 +131,14 @@ class PodcastEpisodes(_kinds.PodcastFeed):
             raise ValueError(f"{self.key}: the answer is not an RSS feed (no <channel>)")
         items = channel.findall("item")
         proofs[self.table] = len(items)
-        left_out = self.person_fields
         show = {"show_title": channel.findtext("title"), "show_link": channel.findtext("link"), "feed_items": len(items)}
-        for position, item in enumerate(items):
-            row = {**show, "_row": position}
+        episodes = []
+        for item in items:
+            row = {}
             for child in item:
                 if child.tag in PERSON_TAGS:
                     continue
                 column = _kinds._feed_column(child.tag)
-                if column.lower() in left_out:
-                    continue
                 if column == "enclosure":
                     row["enclosure_url"] = child.get("url")
                     row["enclosure_length"] = child.get("length")
@@ -151,7 +146,9 @@ class PodcastEpisodes(_kinds.PodcastFeed):
                     continue
                 text = (child.text or "").strip() or None
                 row[column] = text if text is not None else (child.get("href") or child.get("url"))
-            yield row
+            episodes.append(row)
+        for position, row in enumerate(self.without_people(episodes)):
+            yield {**show, "_row": position, **row}
 
 
 def podcast_episodes(key: str, *, crawl_delay: float = 0.0, **overrides) -> PodcastEpisodes:
@@ -242,8 +239,9 @@ class NpsContent(_json_apis.NpsAlerts):
 
     THE SCOPE is the registry row's: national when it names no park codes, or the codes another row lists in
     `park_codes`, named by `park_codes_from` (nps_alerts' map, the one home for which club folder draws on
-    which park, decision 34). A row is landed as NPS serves it, nested lists and objects as JSON, except its
-    `person_fields`, left out at the top level before dlt sees the row. A gallery asset's own `credit` and
+    which park, decision 34). A row is landed as NPS serves it, nested lists and objects as JSON, except the
+    top-level fields extract/_kinds.py's PersonRule leaves out before dlt sees the row: its row's `person_fields`,
+    matched in any case, and a field named like a person's. A gallery asset's own `credit` and
     `constraintsInfo` are that photo's credit line and licence and land as they are: no park's or site's
     licence is ever written onto a photo here.
     """
@@ -254,10 +252,6 @@ class NpsContent(_json_apis.NpsAlerts):
         if not source:
             return []
         return sorted(_kinds.registry_entry(source)["park_codes"])
-
-    @property
-    def person_fields(self) -> frozenset[str]:
-        return frozenset(self.entry.get("person_fields") or ())
 
     @property
     def key_fields(self) -> list[str]:
@@ -295,9 +289,7 @@ class NpsContent(_json_apis.NpsAlerts):
             print(f"::warning title={self.key} read a key twice::{repeat}; reading the list again, once")
             collected, total = self._read_list(headers)
         proofs[self.table] = total
-        left_out = self.person_fields
-        for row in collected:
-            yield {name: value for name, value in row.items() if name not in left_out}
+        yield from self.without_people(collected)
 
     def _read_list(self, headers: dict) -> tuple[list[dict], int]:
         """One whole read of the list, page by page, held to the `total` every page states."""
@@ -355,7 +347,7 @@ class WordpressChildPages(_kinds.WordpressPosts):
     parent (New Mexico Volunteers for the Outdoors' "Hike New Mexico", page 2040, 38 children on 2026-10-04) is
     neither, and reading every page of the site would land its donation and membership pages too. So the scope
     is the parent's id, and everything else is WordpressPosts': X-WP-Total as the count and the proof, the
-    (id, modified) set as the change check, WP_DROPPED and the row's `person_fields` left out.
+    (id, modified) set as the change check, and PersonRule's leaving out of WP_DROPPED and the row's `person_fields`.
     """
 
     parent: int = 0

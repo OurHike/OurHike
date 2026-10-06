@@ -53,8 +53,8 @@ The change check is a hash of the items' ids and modified dates where the row
 names `id_field` and `modified_field`, read with the same paging but asking only
 for those two fields where the API takes `_fields`; otherwise UNKNOWN.
 
-PERSON FIELDS never load: extract/_kinds.py's PERSON_FIELDS, the row's own
-`person_fields`, WordPress's plumbing that names a user (WP_DROPPED: `author`,
+PERSON FIELDS never load, by extract/_kinds.py's PersonRule: PERSON_FIELDS, the
+row's own `person_fields`, WordPress's plumbing that names a user (WP_DROPPED: `author`,
 Yoast's blocks), and a top-level field whose name reads as a person's
 (PERSON_SHAPED) unless the row's `not_person_fields` clears it. They are left
 out of the row before dlt sees it, and never redacted downstream (decision 59).
@@ -120,7 +120,7 @@ def _number(value) -> float | None:
     return number if number == number else None  # NaN is not a coordinate
 
 
-class _Paged(Resource):
+class _Paged(_kinds.PersonRuled, Resource):
     """What both readers share: the registry row, the polite session, and the person-field rule."""
 
     @property
@@ -131,11 +131,8 @@ class _Paged(Resource):
     def may_be_empty(self) -> bool:
         return super().may_be_empty or bool(self.entry.get("may_be_empty"))
 
-    @property
-    def field_rules(self) -> dict[str, list[str]]:
-        """The row's person-field rules, lower-cased, kept in the marker by extract/_run.py's definition_digest()."""
-        entry = self.entry
-        return {rule: sorted(name.lower() for name in entry.get(rule) or []) for rule in ("person_fields", "not_person_fields")}
+    #: WordPress's plumbing that names a user, for a JSON API that is a WordPress route (the module docstring).
+    plumbing = _kinds.WP_DROPPED
 
     def _session(self) -> requests.Session:
         delay = max(POLITE_SECONDS, float(self.entry.get("crawl_delay") or 0))
@@ -152,25 +149,13 @@ class _Paged(Resource):
             raise RuntimeError(f"{self.key}: {refused}")
         return response
 
-    def left_out(self, name: str) -> bool:
-        """Whether a field never loads (the module docstring's PERSON FIELDS)."""
-        lower = name.lower()
-        rules = self.field_rules
-        if lower in rules["not_person_fields"]:
-            return lower in _kinds.PERSON_FIELDS or lower in rules["person_fields"]
-        return (
-            lower in _kinds.PERSON_FIELDS
-            or lower in rules["person_fields"]
-            or lower in _kinds.WP_DROPPED
-            or bool(_kinds.PERSON_SHAPED.search(_kinds._name_words(name)))
-        )
-
     def flatten(self, fields: dict, reserved: tuple[str, ...]) -> dict:
-        """An item's fields as text columns, the person fields left out, a name that collides with ours prefixed."""
+        """An item's fields as text columns, the person fields left out (PersonRule), a name that collides with ours prefixed."""
         row = {}
         taken = {name.lower() for name in reserved}
+        dropped = self.person_rule.left_out(fields)
         for name, value in fields.items():
-            if self.left_out(name):
+            if name.lower() in dropped:
                 continue
             column = f"property_{name}" if name.lower() in taken else name
             row[column] = _text(value)

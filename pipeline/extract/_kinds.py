@@ -216,25 +216,127 @@ def _name_words(name: str) -> str:
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
 
 
-def left_out_of_row(name: str, listed: set[str], dropped: dict[str, str], rules: dict[str, list[str]]) -> bool:
+#: The reason PersonRule gives for a name only PERSON_SHAPED left out, which each reader prints (report_shaped()).
+SHAPED = "a person-shaped name"
+
+
+@dataclass(frozen=True)
+class PersonRule:
+    """Which of an upstream's own field names never load: decision 59's rule, one home for every reader kind.
+
+    ELT.md's rule 8 ("Who may publish"): a field that names or reaches a
+    person never loads, and is left out inside the resource, before dlt sees
+    the row. Every reader that lands fields it did not name asks this
+    (PersonRuled); a reader that names every column it lands needs nothing.
+    Review findings PY-1 and SEC-4 of PR #1805 (dlt → dbt re-platform as one
+    go/no-go change) found the rule in seven copies, five of them different:
+    Socrata and opentrail read PERSON_FIELDS alone, so a name in a Socrata
+    row's `person_fields` kept loading; NPS content compared the row's names
+    in exact case; My Maps' ExtendedData had no rule at all.
+
+    In order, every name compared lower-cased:
+    1. PERSON_FIELDS, the row's own `person_fields` and the reader's
+       `plumbing` (WordPress's WP_DROPPED) are always left out, whatever the
+       row's `not_person_fields` says;
+    2. PERSON_SHAPED, read against the name split into words (_name_words),
+       leaves the rest out unless `not_person_fields` clears the name.
+
+    `field_rules` is what extract/_run.py's definition_digest() keeps, so a
+    name added to either list reads the upstream again on the next run,
+    whether or not it moved.
+    """
+
+    person_fields: frozenset[str] = frozenset()
+    not_person_fields: frozenset[str] = frozenset()
+    plumbing: frozenset[str] = frozenset()
+
+    @classmethod
+    def of(cls, entry: dict | None, plumbing: frozenset[str] = frozenset()) -> PersonRule:
+        """The rule a sources.json row sets, or PERSON_FIELDS and PERSON_SHAPED alone for a reader with no row."""
+        entry = entry or {}
+        return cls(
+            person_fields=frozenset(name.lower() for name in entry.get("person_fields") or ()),
+            not_person_fields=frozenset(name.lower() for name in entry.get("not_person_fields") or ()),
+            plumbing=frozenset(name.lower() for name in plumbing),
+        )
+
+    @property
+    def field_rules(self) -> dict[str, list[str]]:
+        """The row's two lists, lower-cased and sorted: the shape definition_digest() has always kept."""
+        return {"person_fields": sorted(self.person_fields), "not_person_fields": sorted(self.not_person_fields)}
+
+    def listed(self, name: str) -> str | None:
+        """The list that always leaves `name` out (step 1), or None."""
+        lower = name.lower()
+        if lower in PERSON_FIELDS:
+            return "PERSON_FIELDS"
+        if lower in self.person_fields:
+            return "the row's person_fields"
+        if lower in self.plumbing:
+            return "the reader's plumbing"
+        return None
+
+    def shaped(self, name: str) -> bool:
+        """Whether PERSON_SHAPED reads `name` as a person's and the row's `not_person_fields` does not clear it (step 2)."""
+        return name.lower() not in self.not_person_fields and bool(PERSON_SHAPED.search(_name_words(name)))
+
+    def left_out(self, names) -> dict[str, str]:
+        """Every one of `names` that never loads, lower-cased, with the rule that leaves it out."""
+        verdicts = {name.lower(): self.listed(name) or (SHAPED if self.shaped(name) else None) for name in names}
+        return {name: reason for name, reason in verdicts.items() if reason}
+
+
+def report_shaped(key: str, dropped: dict[str, str], names=None) -> None:
+    """Print the names only PERSON_SHAPED left out, as the upstream spells them where `names` says, so a false match is
+    seen and cleared in `not_person_fields`."""
+    if shaped := sorted(name for name in (dropped if names is None else names) if dropped.get(name.lower()) == SHAPED):
+        print(f"  {key}: left out {shaped}, person-shaped names its sources.json row does not clear in not_person_fields")
+
+
+class PersonRuled:
+    """A reader that lands fields it did not name: PersonRule decides which never load, and `field_rules` is its digest's.
+
+    The rule comes from the resource's sources.json row (`entry`), or is
+    PERSON_FIELDS and PERSON_SHAPED alone for a reader with no row (opentrail,
+    NWS). `plumbing` is the kind's own always-dropped names.
+    """
+
+    plumbing: frozenset[str] = frozenset()
+
+    @property
+    def person_rule(self) -> PersonRule:
+        try:
+            entry = self.entry
+        except (AttributeError, KeyError):
+            entry = None
+        return PersonRule.of(entry, self.plumbing)
+
+    @property
+    def field_rules(self) -> dict[str, list[str]]:
+        return self.person_rule.field_rules
+
+    def without_people(self, rows: list[dict]) -> list[dict]:
+        """`rows` with every field the rule leaves out removed, the person-shaped names printed once for the read."""
+        names = {name for row in rows for name in row}
+        dropped = self.person_rule.left_out(names)
+        report_shaped(self.key, dropped, names)
+        return [{name: value for name, value in row.items() if name.lower() not in dropped} for row in rows]
+
+
+def left_out_of_row(name: str, listed: set[str], dropped: dict[str, str], rule: PersonRule) -> bool:
     """Whether an ArcGIS row's property never lands: dropped from the field list, or, if the list never named it, by name.
 
     `listed` and `dropped` are the layer metadata's field names and
-    ArcgisLayer.dropped_fields' verdicts on them, lower-cased; `rules` is the
-    row's field_rules. A property the metadata did not list is judged by the
-    name rules alone (PERSON_FIELDS, the row's `person_fields`, and
-    PERSON_SHAPED unless `not_person_fields` clears it), since without its
-    type even a date named like an editor cannot be told from one: it is left
-    out, which costs a column, never a person (review finding EXD-2).
+    ArcgisLayer.dropped_fields' verdicts on them, lower-cased. A property the
+    metadata did not list is judged by the row's PersonRule alone, since
+    without its type even a date named like an editor cannot be told from
+    one: it is left out, which costs a column, never a person (review finding
+    EXD-2).
     """
     lower = name.lower()
-    if lower in dropped or lower in PERSON_FIELDS:
+    if lower in dropped or rule.listed(name):
         return True
-    if lower in listed:
-        return False
-    return lower in rules["person_fields"] or (
-        lower not in rules["not_person_fields"] and bool(PERSON_SHAPED.search(_name_words(name)))
-    )
+    return lower not in listed and rule.shaped(name)
 
 
 # ArcGIS field types -> dlt data types. Hinting every column from the layer's
@@ -370,7 +472,7 @@ def geometry_measure_field(metadata: dict) -> str | None:
 
 
 @dataclass(frozen=True)
-class ArcgisLayer(Resource):
+class ArcgisLayer(PersonRuled, Resource):
     """An ArcGIS FeatureServer or MapServer layer, read whole through lib/arcgis.py's own loop.
 
     Pages come from `lib.arcgis.iter_layer_pages`, the loop every fetcher
@@ -513,27 +615,16 @@ class ArcgisLayer(Resource):
             return Freshness.STALE, marker
         return compare_marker(_canonical(recorded), _canonical(marker)), marker
 
-    @property
-    def field_rules(self) -> dict[str, list[str]]:
-        """The row's own person-field rules, lower-cased: `person_fields` always left out, `not_person_fields` cleared.
-
-        One home per upstream, so they sit on the sources.json row beside its
-        URL. extract/_run.py's definition_digest() keeps them in the marker,
-        so a name added to either reads a layer that has not moved again.
-        """
-        entry = self.entry
-        return {rule: sorted(name.lower() for name in entry.get(rule) or []) for rule in ("person_fields", "not_person_fields")}
-
     def dropped_fields(self, metadata: dict) -> dict[str, str]:
         """Every field of the layer that is never asked for or kept, lower-cased, with the rule that drops it.
 
-        In order: PERSON_FIELDS; the row's `person_fields`; the creator and
-        editor fields the layer's own `editFieldsInfo` names (never its
-        creation and edit dates, which load); and the PERSON_SHAPED backstop,
-        which the row's `not_person_fields` clears and which never reads an id
-        or a date as a person.
+        The row's PersonRule, with two things only a layer's metadata says:
+        the creator and editor fields its own `editFieldsInfo` names are left
+        out after the rule's lists (never its creation and edit dates, which
+        load), and the PERSON_SHAPED backstop never reads an id or a date as a
+        person (NEVER_PERSON_TYPES).
         """
-        rules = self.field_rules
+        rule = self.person_rule
         tracking = metadata.get("editFieldsInfo") or {}
         tracked = {(tracking.get(role) or "").lower() for role in ("creatorField", "editorField")} - {""}
         dropped = {}
@@ -542,18 +633,12 @@ class ArcgisLayer(Resource):
             if not name:
                 continue
             lower = name.lower()
-            if lower in PERSON_FIELDS:
-                dropped[lower] = "PERSON_FIELDS"
-            elif lower in rules["person_fields"]:
-                dropped[lower] = "the row's person_fields"
+            if reason := rule.listed(name):
+                dropped[lower] = reason
             elif lower in tracked:
                 dropped[lower] = "the layer's editFieldsInfo"
-            elif (
-                field.get("type") not in NEVER_PERSON_TYPES
-                and lower not in rules["not_person_fields"]
-                and PERSON_SHAPED.search(_name_words(name))
-            ):
-                dropped[lower] = "a person-shaped name"
+            elif field.get("type") not in NEVER_PERSON_TYPES and rule.shaped(name):
+                dropped[lower] = SHAPED
         return dropped
 
     def column_hints(self) -> dict:
@@ -593,12 +678,8 @@ class ArcgisLayer(Resource):
         dropped = self.dropped_fields(metadata)
         kept = [name for name in fields if name.lower() not in dropped]
         listed = {name.lower() for name in fields}
-        rules = self.field_rules
-        shaped = sorted(name for name in fields if dropped.get(name.lower()) == "a person-shaped name")
-        if shaped:
-            print(
-                f"  {self.key}: left out {shaped}, person-shaped names its sources.json row does not clear in not_person_fields"
-            )
+        rule = self.person_rule
+        report_shaped(self.key, dropped, fields)
         # Person fields are left out of the field list asked for, so they never
         # cross the wire; "*" only when the layer has none to leave out.
         out_fields = "*" if len(kept) == len(fields) else ",".join(kept)
@@ -629,7 +710,7 @@ class ArcgisLayer(Resource):
                 row = {
                     name: value
                     for name, value in (feature.get("properties") or {}).items()
-                    if not left_out_of_row(name, listed, dropped, rules)
+                    if not left_out_of_row(name, listed, dropped, rule)
                 }
                 row["geometry"] = feature.get("geometry")
                 yield row
@@ -702,7 +783,7 @@ def arcgis_layer(key: str, **overrides) -> ArcgisLayer:
 
 
 @dataclass(frozen=True)
-class SocrataDataset(Resource):
+class SocrataDataset(PersonRuled, Resource):
     """A Socrata dataset read as GeoJSON through lib/socrata.py's own loop, under the entry's `where`.
 
     The `where` is a SoQL predicate the portal applies, and it is the one
@@ -773,8 +854,8 @@ class SocrataDataset(Resource):
             if len(features) < count:
                 raise RuntimeError(f"{self.key}: the portal counts {count} rows and {len(features)} were read")
             proofs[self.table] = count
-        for feature in features:
-            row = {name: value for name, value in (feature.get("properties") or {}).items() if name.lower() not in PERSON_FIELDS}
+        kept = self.without_people([feature.get("properties") or {} for feature in features])
+        for feature, row in zip(features, kept, strict=True):
             row["_socrata_id"] = feature.get("id")
             row["geometry"] = feature.get("geometry")
             yield row
@@ -830,7 +911,7 @@ def wp_list(api: str, route: str, params: dict, http: requests.Session) -> tuple
 
 
 @dataclass(frozen=True)
-class WordpressPosts(Resource):
+class WordpressPosts(PersonRuled, Resource):
     """One WordPress category's posts, or one custom post type's, a row each, from the site's REST API.
 
     The registry row's `url` is the category page a person reads
@@ -941,17 +1022,18 @@ class WordpressPosts(Resource):
         return compare_marker(_canonical(recorded), _canonical(marker)), marker
 
     @property
-    def person_fields(self) -> frozenset[str]:
-        """The registry row's `person_fields`, lower-cased: a post's own fields that never load, as ArcgisLayer reads them.
+    def plumbing(self) -> frozenset[str]:
+        """WP_DROPPED, which PersonRule leaves out of every post with the row's own `person_fields`.
 
         Decision 59 leaves a free-text field that carries personal data out
         whole, never redacted. Measured in decision 53's phase B (2026-10-03):
         the Ozark Highlands Trail's alert posts carry a maintenance e-mail
         address and a telephone number in `content`, TEHCC's Appalachian
         Trail posts 14 telephone numbers and Trailkeepers of Oregon's
-        condition posts 3, so those rows list `content` and `excerpt` here.
+        condition posts 3, so those rows list `content` and `excerpt` in
+        their `person_fields`.
         """
-        return frozenset(name.lower() for name in self.entry.get("person_fields") or ())
+        return WP_DROPPED
 
     def rows(self, proofs: dict[str, int]):
         http = self._session()
@@ -960,9 +1042,7 @@ class WordpressPosts(Resource):
             if len(posts) < total:
                 raise RuntimeError(f"{self.key}: the site counts {total} posts and {len(posts)} were read")
             proofs[self.table] = total
-        left_out = PERSON_FIELDS | self.person_fields
-        for post in posts:
-            yield {name: value for name, value in post.items() if name not in WP_DROPPED and name.lower() not in left_out}
+        yield from self.without_people(posts)
 
 
 # Fields a post carries that are WordPress plumbing or name a person. `author`
@@ -1312,7 +1392,7 @@ def club_pdf(key: str, **overrides) -> ClubPdf:
 
 
 @dataclass(frozen=True)
-class OpentrailFeed(Resource):
+class OpentrailFeed(PersonRuled, Resource):
     """opentrail.org's A.T. waypoints, one row per feature, with every user comment left out.
 
     The API URL is fetch_opentrail.py's `API_URL`, its one home: opentrail is
@@ -1351,9 +1431,9 @@ class OpentrailFeed(Resource):
     def rows(self, proofs: dict[str, int]):
         response = self._get()
         response.raise_for_status()
-        collection = strip_opentrail_comments(response.json())
-        for feature in collection["features"]:
-            row = {name: value for name, value in (feature.get("properties") or {}).items() if name.lower() not in PERSON_FIELDS}
+        features = strip_opentrail_comments(response.json())["features"]
+        kept = self.without_people([feature.get("properties") or {} for feature in features])
+        for feature, row in zip(features, kept, strict=True):
             row["feature_id"] = feature.get("id")
             row["geometry"] = feature.get("geometry")
             yield row
@@ -1559,7 +1639,7 @@ NWS_JSON_PROPERTIES = ("geocode", "affectedZones", "references", "parameters", "
 
 
 @dataclass(frozen=True)
-class NwsAlerts(Resource):
+class NwsAlerts(PersonRuled, Resource):
     """Every active NWS alert in the US, one row per message, read in full every run.
 
     The endpoint is lib/nws_alerts.py's, shared with export_weather_alerts.py,
@@ -1597,8 +1677,10 @@ class NwsAlerts(Resource):
         body = request_with_retry(NWS_ALERTS_URL, session=http, timeout=60, label="NWS active alerts").json()
         features = check_nws_response(body)
         proofs[self.table] = len(features)
-        for feature in features:
-            row = {name: value for name, value in (feature.get("properties") or {}).items() if not name.startswith("@")}
+        properties = [
+            {name: value for name, value in (f.get("properties") or {}).items() if not name.startswith("@")} for f in features
+        ]
+        for feature, row in zip(features, self.without_people(properties), strict=True):
             row["feature_id"] = feature.get("id")
             row["geometry"] = feature.get("geometry")
             # The collection's own `updated`, which the bake publishes as
@@ -2006,7 +2088,7 @@ def _feed_column(tag: str) -> str:
 
 
 @dataclass(frozen=True)
-class PodcastFeed(Resource):
+class PodcastFeed(PersonRuled, Resource):
     """A podcast's RSS feed, one row per episode: its metadata, never its audio.
 
     Change check: a conditional GET with the feed's own validators; a 304 is
@@ -2053,8 +2135,9 @@ class PodcastFeed(Resource):
         items = channel.findall("item")
         proofs[self.table] = len(items)
         show = {"show_title": channel.findtext("title"), "show_link": channel.findtext("link")}
+        episodes = []
         for item in items:
-            row = dict(show)
+            row = {}
             for child in item:
                 if child.tag in PERSON_TAGS:
                     continue
@@ -2065,7 +2148,9 @@ class PodcastFeed(Resource):
                     row["enclosure_type"] = child.get("type")
                 else:
                     row[column] = (child.text or "").strip() or None
-            yield row
+            episodes.append(row)
+        for row in self.without_people(episodes):
+            yield {**show, **row}
 
 
 def podcast_feed(key: str, **overrides) -> PodcastFeed:

@@ -1558,7 +1558,7 @@ def add_to_rows_person_fields(registry, key: str, name: str) -> None:
 def test_a_name_added_to_a_wordpress_rows_person_fields_is_dropped_on_the_next_run_of_a_site_that_has_not_moved(
     registry, store, requests_mock
 ):
-    """WordpressPosts reads the row's `person_fields` outside `field_rules`, so the digest in its marker used to
+    """WordpressPosts once read the row's `person_fields` outside `field_rules`, so the digest in its marker used to
     stay put, the unmoved site answered FRESH, and the column the row now leaves out kept serving until the club
     next edited a post."""
     post = wp_post(1)
@@ -1588,7 +1588,7 @@ def test_a_name_added_to_a_podcast_rows_person_fields_moves_its_definition_diges
 
     add_to_rows_person_fields(registry, "a_podcast", "description")
 
-    assert "description" in episodes().person_fields
+    assert "description" in episodes().field_rules["person_fields"]
     assert _run.definition_digest(episodes()) != before
 
 

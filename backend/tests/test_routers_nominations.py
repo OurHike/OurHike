@@ -257,6 +257,44 @@ class TestSubmitting:
         response = client.post("/clubs/nominations", json=a_submission(contacts=[]), headers=auth_headers(hiker.id))
         assert response.status_code == 422
 
+    HOSTILE_ADDRESSES = [
+        "javascript:alert(1)",
+        "JavaScript:alert(1)",
+        "data:text/html,x",
+        "vbscript:msgbox(1)",
+        "https://example.org/\x00",
+        "https://example.org/a\nb",
+        "ftp://example.org/pub",
+    ]
+
+    @pytest.mark.parametrize("hostile", HOSTILE_ADDRESSES)
+    def test_a_website_that_is_not_a_web_address_is_refused_and_nothing_is_stored(self, client, db_session, hostile):
+        hiker = make_profile(db_session)
+        response = client.post("/clubs/nominations", json=a_submission(website=hostile), headers=auth_headers(hiker.id))
+        assert response.status_code == 422
+        assert db_session.query(Club).count() == 0
+
+    @pytest.mark.parametrize("hostile", HOSTILE_ADDRESSES)
+    def test_a_hiker_typed_source_url_that_is_not_a_web_address_is_refused(self, client, db_session, hostile):
+        hiker = make_profile(db_session)
+        source = {"label": "Their map", "url": hostile, "verdict": "found", "proposed_by": "hiker"}
+        response = client.post("/clubs/nominations", json=a_submission(sources=[source]), headers=auth_headers(hiker.id))
+        assert response.status_code == 422
+        assert db_session.query(Club).count() == 0
+
+    def test_a_website_typed_without_a_scheme_is_stored_as_https(self, client, db_session):
+        """The business-card case `app/core/urlguard.py` reads, kept readable here."""
+        hiker = make_profile(db_session)
+        response = client.post(
+            "/clubs/nominations",
+            json=a_submission(website="carolinamountainclub.org"),
+            headers=auth_headers(hiker.id),
+        )
+        assert response.status_code == 201
+        club = db_session.query(Club).filter(Club.name == "Carolina Mountain Club").one()
+        assert club.website == "https://carolinamountainclub.org"
+        assert club.domain == "carolinamountainclub.org"
+
     def test_a_club_that_said_never_again_is_not_nominated_twice(self, client, db_session):
         """Checked before a row is written and before anybody there is written to."""
         db_session.add(NominationRefusal(domain="carolinamountainclub.org"))

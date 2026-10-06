@@ -26,7 +26,7 @@ import pytest
 import yaml
 
 from test_conditions_production_leg_needs_main import MAIN, WORKFLOW, _evaluate, _expression
-from test_notices_job import BUILD_STEP, _base_env, _outputs, _run, _stand_in
+from test_notices_job import ADD_STEP, BUILD_STEP, _base_env, _outputs, _run, _stand_in
 
 PATHS = ("exporters", "dbt")
 #: The dispatch's `phone_files` choice that leaves each leg on its own line, as the schedule does.
@@ -147,6 +147,26 @@ def test_a_line_that_names_neither_path_stops_its_leg_before_either_path_runs(tm
     )
     assert _phone_files(tmp_path, "production", workflow=broken) is None
     assert _phone_files(tmp_path, "ua", workflow=broken) == "dbt", "one leg's typo is its own"
+
+
+def test_a_scheduled_production_leg_on_the_exporters_never_reads_a_notices_copy_so_no_notices_step_turns_it_red(tmp_path):
+    """extract-notices.yml skips its production leg while production is on the exporters (decision 92), so production's
+    notices store has no copy, which decision 96 counts as overdue. The production leg must not go red for a copy it
+    never reads: on the exporters path the notices read is skipped, a skipped step has no outputs, and every step that
+    reads them, the red ones among them, evaluates false."""
+    from test_conditions_production_leg_needs_main import _evaluate
+
+    phone_files = _phone_files(tmp_path, "production")
+    assert phone_files == "exporters"
+    context = {"env": {"PHONE_FILES": phone_files}, "matrix": {"data_environment": "production"}, "steps": {}}
+    (add,) = [step for step in _steps() if step.get("name") == ADD_STEP]
+    assert not _evaluate(str(add["if"]), context), "the production leg reads the notices copy on the exporters path"
+    readers = [step for step in _steps() if "steps.notices.outputs" in str(step.get("if", ""))]
+    assert len(readers) >= 3, [step["name"] for step in readers]
+    assert [step["name"] for step in readers if _evaluate(str(step["if"]), context)] == []
+    (overdue,) = [step for step in readers if "overdue" in step["if"]]
+    fired = {**context, "steps": {"notices": {"outputs": {"read": "none", "overdue": "true"}}}}
+    assert _evaluate(str(overdue["if"]), fired), "the red step would fire, had the notices read run"
 
 
 def test_publish_py_is_told_the_path_the_steps_branched_on():

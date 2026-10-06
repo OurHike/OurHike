@@ -41,7 +41,9 @@ copy that will not read falls back to the one before, the notices' last good
 rows (load_served()). SERVED_KEEP copies are kept. A copy whose run began
 more than SERVED_STALE_HOURS before the read is still read, and add-served
 says so in its exit; when that run began is handed to dbt either way
-(NOTICES_READ_AT_ENV).
+(NOTICES_READ_AT_ENV). A leg with no copy at all has owed one since its
+first committed run, and past SERVED_STALE_HOURS of that add-served says so
+in its exit too (SERVED_OVERDUE_EXIT).
 """
 
 from __future__ import annotations
@@ -329,8 +331,9 @@ SERVED_MANIFEST = "manifest.json"
 SERVED_KEEP = 3
 #: add-served's exits besides 0 (the newest copy read) and 1 (none could be):
 #: an older copy was read because the newest could not be, or no copy has been
-#: written yet. Neither stops the hourly build; publish-conditions.yml says
-#: which. SERVED_STALE_EXIT, below, is the third.
+#: written yet and none is overdue. Neither stops the hourly build;
+#: publish-conditions.yml says which. SERVED_STALE_EXIT and
+#: SERVED_OVERDUE_EXIT, below, are the third and fourth.
 SERVED_OLDER_EXIT, SERVED_NONE_EXIT = 5, 6
 #: A COPY WHOSE RUN BEGAN MORE THAN THIS MANY HOURS BEFORE add-served READ IT
 #: IS STALE. It is still added, so the hourly build still publishes, but
@@ -347,6 +350,22 @@ SERVED_OLDER_EXIT, SERVED_NONE_EXIT = 5, 6
 #: how long a notices run takes to write its copy.
 SERVED_STALE_HOURS = 8
 SERVED_STALE_EXIT = 7
+#: A LEG WITH NO SERVED COPY COUNTS AS ONE OLDER THAN SERVED_STALE_HOURS ONCE
+#: IT HAS OWED A COPY THAT LONG (decision 96, the maintainer's poll of
+#: 2026-10-06: "Red after 8 h, like stale"). Before it, `none` read as a
+#: cold start however long it lasted, so the hourly run stayed green while a
+#: copy 8 h 01 min old turned it red (review finding PY-3 of PR #1805 — dlt →
+#: dbt re-platform as one go/no-go change). A leg owes a copy from its first
+#: committed load, the instant in that load's id (copy_due_since()), not its
+#: newest: a leg whose copy step keeps failing, as extract-notices.yml run 8's
+#: did on 2026-10-05, keeps committing runs under 8 hours old, and the copy it
+#: owes is as old as its first (Reasoned). A leg that has committed no load
+#: has no instant to count from, and is overdue at once, the stricter rule
+#: is_stale() keeps for a copy of unknown age. add-served then exits this, no
+#: tables of the leg are added, the hourly build publishes the rest, and
+#: publish-conditions.yml turns the run red at the end. The 8 is
+#: SERVED_STALE_HOURS's, @unvalidated there.
+SERVED_OVERDUE_EXIT = 8
 #: What add-served appends to --env-file ($GITHUB_ENV in publish-conditions.yml),
 #: so every later step, build_marts.py's dbt commands among them, inherits it:
 #: the instant the run of the copy it read began, which is also the
@@ -714,13 +733,50 @@ def is_stale(age: timedelta | None) -> bool:
     return age is None or age > timedelta(hours=SERVED_STALE_HOURS)
 
 
-def served_summary(leg: str, read: ServedRead | None, failure: BaseException | None = None, now: datetime | None = None) -> str:
-    """add-served's evidence, as Markdown, for `$GITHUB_STEP_SUMMARY`."""
+def copy_due_since(load_ids: set[str]) -> datetime | None:
+    """When a leg with no served copy began to owe one: its first committed load, from the Unix time dlt writes as each
+    load id (dlt 1.30.0's create_load_id()); None when it has committed none, or no id says a time."""
+    instants = []
+    for load_id in load_ids:
+        try:
+            instants.append(datetime.fromtimestamp(float(load_id), UTC))
+        except (ValueError, OverflowError, OSError):
+            continue
+    return min(instants, default=None)
+
+
+def _committed_loads(pipeline) -> set[str]:
+    """committed_load_ids(), or none on a store nothing has been written to yet."""
+    try:
+        return committed_load_ids(pipeline)
+    except FileNotFoundError:
+        return set()
+
+
+def served_summary(
+    leg: str,
+    read: ServedRead | None,
+    failure: BaseException | None = None,
+    now: datetime | None = None,
+    due_since: datetime | None = None,
+) -> str:
+    """add-served's evidence, as Markdown, for `$GITHUB_STEP_SUMMARY`. `due_since` is copy_due_since()'s answer for a
+    leg with no copy."""
     lines = [f"### The served copy: `{leg}`", ""]
     if read is None:
         lines += [f"**Not read**, so this build has none of its tables: `{type(failure).__name__}: {failure}`", ""]
     elif read.run_id is None:
         lines += ["**No copy has been written yet**, so this build has none of its tables.", ""]
+        owed = None if due_since is None else max(timedelta(0), (now or datetime.now(UTC)) - due_since)
+        if due_since is None:
+            lines += ["The leg has never committed a run, so nothing says since when it has owed one.", ""]
+        else:
+            lines += [
+                f"Its first committed run was `{due_since:%Y-%m-%dT%H:%M:%SZ}`, {_hours_minutes(owed)} before this read.",
+                "",
+            ]
+        if is_stale(owed):
+            lines += [f"**Overdue past {SERVED_STALE_HOURS} h** (SERVED_STALE_HOURS), so the run turns red at the end.", ""]
     else:
         which = "the newest" if read.newest else "**an older copy**, because the newest could not be read"
         lines += [f"Copy `{read.run_id}`, {which}: {len(read.loaded)} tables, {sum(read.loaded.values())} rows.", ""]
@@ -1049,9 +1105,31 @@ def _leg_command(args) -> int:
         summarise(served_summary(args.lane, None, refused))
         raise
     now = datetime.now(UTC)
-    summarise(served_summary(args.lane, read, now=now))
+    due = copy_due_since(_committed_loads(pipeline)) if read.run_id is None else None
+    summarise(served_summary(args.lane, read, now=now, due_since=due))
     if read.run_id is None:
-        print(f"::warning title=No served copy yet::{args.lane} has written no copy yet, so this build has none of its tables")
+        owed = None if due is None else max(timedelta(0), now - due)
+        if due is None:
+            print(
+                f"::error title=No notices copy::{args.lane} has never committed a run, so it has no served copy and "
+                "nothing says since when one is owed: this build has none of its tables, everything else is published, "
+                "and the run turns red at the end. extract-notices.yml's leg for this environment has not run, or no "
+                "run of it has committed."
+            )
+            return SERVED_OVERDUE_EXIT
+        if is_stale(owed):
+            print(
+                f"::error title=No notices copy::{args.lane} has written no served copy, and its first committed run was "
+                f"{_hours_minutes(owed)} before this read, past SERVED_STALE_HOURS ({SERVED_STALE_HOURS} h): this build "
+                "has none of its tables, everything else is published, and the run turns red at the end. Look at "
+                "extract-notices.yml's copy step."
+            )
+            return SERVED_OVERDUE_EXIT
+        print(
+            f"::warning title=No served copy yet::{args.lane} has written no copy yet, so this build has none of its "
+            f"tables. Its first committed run was {_hours_minutes(owed)} before this read, and this turns the run red "
+            f"once that is over {SERVED_STALE_HOURS} h (SERVED_STALE_HOURS)."
+        )
         return SERVED_NONE_EXIT
     age = served_age(read.run_id, now)
     run_at = served_run_at(read.run_id)

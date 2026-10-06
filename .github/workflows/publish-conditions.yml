@@ -1177,12 +1177,16 @@ jobs:
       #
       # IT NEVER STOPS THE HOURLY PUBLISH. A copy that will not read is
       # retried, then the one before is read, the notices' last good rows
-      # (`read=older`, exit 5). No copy at all yet is a warning
-      # (`read=none`, exit 6). Anything else (`read=unread`) builds without
-      # the notices store and says so. In every case but `latest` the build
-      # below saves no row history, so a notice missing from this build is
-      # never recorded as removed, and `older` and `unread` turn the run red
-      # at the end, after everything else has published.
+      # (`read=older`, exit 5). No copy at all is a warning (`read=none`,
+      # exit 6) while the leg's first committed run is under 8 hours old,
+      # and past that, or with no committed run at all, it is overdue
+      # (`read=none` and `overdue=true`, exit 8: decision 96, the
+      # maintainer's poll of 2026-10-06, "Red after 8 h, like stale").
+      # Anything else (`read=unread`) builds without the notices store and
+      # says so. In every case but `latest` the build below saves no row
+      # history, so a notice missing from this build is never recorded as
+      # removed, and `older`, `unread` and an overdue `none` turn the run
+      # red at the end, after everything else has published.
       #
       # A NEWEST COPY OF ANY AGE IS STILL `latest`, AND ITS AGE IS SAID. The
       # log line gives how long before this read the copy's run began. Past
@@ -1222,6 +1226,10 @@ jobs:
             7)
               served=latest
               echo "stale=true" >> "$GITHUB_OUTPUT"
+              ;;
+            8)
+              served=none
+              echo "overdue=true" >> "$GITHUB_OUTPUT"
               ;;
             *)
               served=unread
@@ -1447,8 +1455,7 @@ jobs:
       # without the newest notices copy, and the run goes red so the notices
       # store or its copy gets looked at. Step 2b's summary says which copy
       # was read, if any, and why the newer ones were not. A store with no
-      # copy yet only warns there: that is the notices job not having run on
-      # this branch yet, not a failure.
+      # copy is the step after this one's.
       - name: Fail the run if the notices legs' newest copy was not read (dbt path)
         if: steps.notices.outputs.read == 'older' || steps.notices.outputs.read == 'unread'
         env:
@@ -1466,6 +1473,26 @@ jobs:
         if: steps.notices.outputs.stale == 'true'
         run: |
           echo "::error title=Notices copy stale::The notices legs' newest served copy began its run more than 8 hours before this read, so this hour's club notices are at least that old. Everything was published and the row history saved. extract-notices.yml has written no copy since; look at its runs."
+          exit 1
+
+      # Last for the same reason, and decision 96's: the notices leg has no
+      # served copy and has owed one for more than 8 hours, counted from its
+      # first committed run (extract/_warehouse.py's SERVED_OVERDUE_EXIT), or
+      # has never committed one. So this hour's closures and warnings
+      # published with none of the notices job's club notices, as an `older`
+      # copy's would with its last good ones, and the row history was not
+      # saved (`--no-history-save` above). Before decision 96 that was green
+      # however long it lasted (review finding PY-3 of PR #1805 — dlt → dbt
+      # re-platform as one go/no-go change). Only a leg on the dbt path gets
+      # here: on the exporters the read above is skipped and writes no
+      # output, which is why production's leg, whose notices leg
+      # extract-notices.yml skips until the cutover, is never red for it.
+      - name: Fail the run if the notices leg has written no copy for over 8 hours (dbt path)
+        if: steps.notices.outputs.overdue == 'true'
+        env:
+          LEG: notices_${{ matrix.data_environment }}
+        run: |
+          echo "::error title=No notices copy::$LEG has written no served copy for more than 8 hours, or has never committed a run, so this hour's closures and warnings hold none of its club notices. Everything else was published, and no row history was saved. Step 2b's summary says since when; look at extract-notices.yml's runs for this environment."
           exit 1
 
       - name: Save dbt's DuckDB driver and v2's spatial extension

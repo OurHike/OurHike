@@ -5,10 +5,11 @@
 
 pipeline/ELT.md, "Every club's closures and alerts (decision 53)", phase C:
 "One base and staging model per source, generated from its reader's shape,
-keyed per decision 40." This is that generator, and its output is committed:
-tests/test_generated_notice_models.py fails when a file on disk is not what it
-writes, so a source registered in extract/ without re-running it fails the
-pipeline suite rather than staying unstaged.
+keyed per decision 40." This is that generator. Its output is not committed
+(decision 91): every place that parses the dbt project runs it first, through
+generate_dbt.py, so a source registered in extract/ is staged by the next run.
+tests/test_generated_notice_models.py fails when the tree on disk is not what
+it writes.
 
 WHAT IT READS, and nothing else: the extract's own declarations
 (extract/_contract.py's discover(), every `closures` and `warnings` resource of

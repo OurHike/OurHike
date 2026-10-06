@@ -534,6 +534,19 @@ jobs:
           name: data-docs
           path: ${{ runner.temp }}/data-docs
 
+      # check_docs_site.py, below, reads the docs' Parquet files with duckdb.
+      # The docs are built in their own read-only job (round-2 finding SEC-8),
+      # so nothing in this job installs dbt or duckdb any more: it needs
+      # duckdb alone, at the pipeline's own pin, on the Python the docs action
+      # builds with. Without it the check failed on its import (PR Preview run
+      # 37489695928, 2026-10-06: "No module named 'duckdb'").
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install the docs check's duckdb
+        run: python -m pip install --quiet "$(grep -m1 '^duckdb==' pipeline/requirements.txt)"
+
       - name: Assemble the site
         env:
           DATA_URL: ${{ steps.data.outputs.url }}

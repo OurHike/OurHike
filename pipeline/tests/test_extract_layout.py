@@ -47,8 +47,8 @@ from lib.socrata import dataset_url
 REGISTRY_PATH = PIPELINE_DIR / "sources.json"
 TRAIL_ORGS_PATH = PIPELINE_DIR / "reference" / "trail_orgs.json"
 
-# sources.json keys no club folder claims yet: the providers stage 2 has not
-# reached. Remove a key when its club's folder lands; the test below fails in
+# sources.json keys no club folder claims yet, each with what it waits on.
+# Remove a key when a folder claims it; the test below fails in
 # both directions, so a key cannot be claimed and listed here at once, and a
 # new registry row must be claimed or listed.
 NOT_YET_EXTRACTED = frozenset(

@@ -545,9 +545,12 @@ def _dbf_records(body: bytes, encoding: str) -> list[dict | None]:
     return records
 
 
-def parse_shapefile_zip(body: bytes, source: str, member: str | None = None) -> list[dict]:
-    """A zipped shapefile's records, its .dbf columns beside each geometry. A projected .prj raises (the docstring)."""
-    archive = _zip(body, source)
+def parse_shapefile_zip(body: bytes, source: str, member: str | None = None, archive: _Archive | None = None) -> list[dict]:
+    """A zipped shapefile's records, its .dbf columns beside each geometry. A projected .prj raises (the docstring).
+
+    `archive` is the file's own, when one read takes several shapefiles out of it, so MAX_ARCHIVE_BYTES counts them all.
+    """
+    archive = archive or _zip(body, source)
     shps = sorted(name for name in archive.namelist() if name.lower().endswith(".shp") and not _skipped_member(name))
     if member is not None:
         shps = [name for name in shps if name == member]
@@ -659,10 +662,60 @@ def _csv_as_of(lines: list[list[str]], label: str, source: str) -> str:
 # --- Zips -------------------------------------------------------------------------
 
 
-def _zip(body: bytes, source: str) -> zipfile.ZipFile:
+#: The most bytes one zip member may inflate to, and all the members one archive's read inflates together. Every
+#: KMZ, zip and zipped shapefile member was read whole into memory with no bound, and a 782,861-byte KMZ whose
+#: doc.kml inflated to 805,306,368 bytes grew the extract by 1,536 MiB in 1.7 s (review finding SEC-6 of PR #1805),
+#: in the one process that reads every resource of its lane. The largest member a registered row reads is
+#: census_tiger_states' .shp, about 15.6 MB, Reasoned from its row's 970,709 vertices at 16 bytes each inside a
+#: 9,956,072-byte zip; the largest measured is catamount_full_route's GPX, 1,092,570 bytes (its row's notes,
+#: 2026-10-04). @unvalidated: 200 MiB a member and 400 MiB an archive are picked, about 13 and 26 times that .shp,
+#: not measured against what the runner can hold. What would settle them is the peak RSS a monthly run prints
+#: beside census_tiger_states' member sizes, and a decision on how much of the runner one file may take. A member
+#: past either is refused, and the file with it, never read short (_Archive.read).
+MAX_MEMBER_BYTES = 200 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 400 * 1024 * 1024
+
+
+class _Archive:
+    """A zip in memory whose members are read whole only within MAX_MEMBER_BYTES each and MAX_ARCHIVE_BYTES together."""
+
+    def __init__(self, body: bytes, source: str):
+        self.source, self.inflated = source, 0
+        self._zip = zipfile.ZipFile(io.BytesIO(body))
+
+    def namelist(self) -> list[str]:
+        return self._zip.namelist()
+
+    def read(self, name: str) -> bytes:
+        """`name` inflated, after its declared size is held to both caps; zipfile never inflates past that size.
+
+        The read is bounded too, one byte past the cap, so a member that
+        inflates further than it declares is refused as well, never cut.
+        """
+        self._hold(name, self._zip.getinfo(name).file_size)
+        with self._zip.open(name) as member:
+            data = member.read(MAX_MEMBER_BYTES + 1)
+        self._hold(name, len(data))
+        self.inflated += len(data)
+        return data
+
+    def _hold(self, name: str, size: int) -> None:
+        where = f"{self.source}#{name} inflates to {size:,} bytes"
+        if size > MAX_MEMBER_BYTES:
+            raise GisFileUnreadable(
+                f"{where}, past the {MAX_MEMBER_BYTES:,} one member may; the file is refused, never read short"
+            )
+        if self.inflated + size > MAX_ARCHIVE_BYTES:
+            raise GisFileUnreadable(
+                f"{where}, which with the {self.inflated:,} already read is past the {MAX_ARCHIVE_BYTES:,} one archive's "
+                "members may inflate to together; the file is refused, never read short"
+            )
+
+
+def _zip(body: bytes, source: str) -> _Archive:
     if body[:2] != b"PK":
         raise GisFileUnreadable(f"{source}: not a zip (it starts {body[:15]!r})")
-    return zipfile.ZipFile(io.BytesIO(body))
+    return _Archive(body, source)
 
 
 def _skipped_member(name: str) -> bool:
@@ -780,7 +833,8 @@ class GisFile(_kinds.PersonRuled, Resource):
             return parse_geojson(body, url)
         if fmt == "shapefile_zip":
             members = entry.get("zip_members") or [None]
-            return [row for member in members for row in parse_shapefile_zip(body, url, member)]
+            archive = _zip(body, url)
+            return [row for member in members for row in parse_shapefile_zip(body, url, member, archive)]
         if fmt == "csv_points":
             return parse_csv_points(
                 body, url, entry["lat_field"], entry["lon_field"], entry.get("header_row") or 1, entry.get("as_of_label")

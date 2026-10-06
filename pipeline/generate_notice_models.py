@@ -18,9 +18,10 @@ every club folder and _shared/ folder), each resource's sources.json row
 dbt/seeds/notice_source_fields.csv, which names an ArcGIS layer's title,
 status, date and link fields (the one reader whose fields differ per layer),
 or for a title or a category carries words in single quotes where the
-layer's field holds only a code (LITERAL_ROLES), and nothing else. Every other reader's shape is its own, fixed in READERS
-below from the module that lands it. So a new FeedNotices, PageNotice or
-WordpressPosts source is staged by re-running this, with nothing to edit.
+layer's field holds only a code (LITERAL_ROLES), and nothing else. Every
+other reader's shape is its own, fixed in READERS below from the module that
+lands it. So a new FeedNotices, PageNotice or WordpressPosts source is staged
+by re-running this, with nothing to edit.
 
 WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
 - models/staging/C/notices/base/base_C__K.sql: every column, keyed and

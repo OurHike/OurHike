@@ -11,7 +11,7 @@ never the category feed, which reports the 2025 publish dates (the coverage audi
 `content` and `excerpt` never load: they carried 3 telephone numbers that day (decision 59; the row's
 person_fields), so what lands is each post's title, dates and link.
 
-The posts carry warnings beside closures, so warnings.py shares this file and dbt splits them (decision
+The posts carry warnings beside closures, so not_available.toml [tko.warnings] shares this file and dbt splits them (decision
 7). Water outages in them belong to water-source attributes (decision 2), not warnings.
 
 Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch

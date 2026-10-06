@@ -10,7 +10,7 @@ files' validators, the measured key, the terms and what holds it back.
 
 The trail also arrives via `usfs` `usfs_trails` (MAAH DAAH HEY 011807 and 011808, 31 features, 144.98
 mi, the coverage audit); dbt deduplicates. The coverage audit counted 20 files; the page lists 19 today.
-mdhta/elevation.py SHARES this resource. Before this the file was the `via usfs` note.
+not_available.toml [mdhta.elevation] SHARES this resource. Before this the file was the `via usfs` note.
 """
 
 from extract._gis_files import gis_file

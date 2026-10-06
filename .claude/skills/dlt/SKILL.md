@@ -16,9 +16,11 @@ claiming 26 keys; `nycparks/` and `nycdot/` through the Socrata kind, 7
 more; and `nynjtc/` through the WordPress, guide-page and Hike Finder kinds,
 5 more, with the daily rule in `_run.py`; and `gatc/` through the club-PDF
 kind. 2 keys remain on `NOT_YET_EXTRACTED`, each with its blocker beside it.
-The other 118 managing clubs have their folders too, every type a dated note,
-so all 145 exist, and `_shared/not_clubs.py` holds the 25 umbrella and
-route-only lines (`NotClub` in `_contract.py`). `_shared/` files declare a
+Every one of the 145 managing clubs answers every type: decision 88 put each
+note and share in one file, `pipeline/extract/not_available.toml`, so 103
+clubs have a folder of resource files and 42 have none, and
+`_shared/not_clubs.py` holds the 25 umbrella and route-only lines (`NotClub`
+in `_contract.py`). `_shared/` files declare a
 `TYPE` and are found by `discover_shared()`; the four reviewed files load
 there (podcast episodes, shelter capacity, highlights, work projects), and
 opentrail's A.T. waypoints through `opentrail_feed()`, a non-registry input
@@ -86,7 +88,8 @@ The maintainer asked whether dlt has a skill set to add, and chose by poll
 1. **Registry rows first**: a reviewed `pipeline/reference/trail_orgs.json` row
    for the club, and a `pipeline/sources.json` row for every upstream that no
    other folder already extracts ([below](#one-extraction-per-upstream-dataset)).
-2. **The folder**: eleven files, each a resource, a share or a dated note.
+2. **The club's answers**: a resource file for each type it publishes, and a
+   row of `not_available.toml` (a share or a dated note) for every other type.
 3. **The traps**: the four hazards below, checked line by line.
 4. **The tests**, under the socket guard.
 5. **The dbt staging** for every available type ([the dbt skill](../dbt/SKILL.md)).
@@ -98,34 +101,41 @@ The maintainer asked whether dlt has a skill set to add, and chose by poll
 pipeline/
   .dlt/config.toml   # committed: telemetry off, naming, file format. Never credentials
   extract/
-    _contract.py     # TYPES, NotAvailable, discover(), the lane and claim maps
+    _contract.py     # TYPES, FILE_TYPES, NotAvailable, discover(), the lane and claim maps
     _kinds.py        # one builder per source kind
     _run.py          # change checks -> extract -> normalize -> run check -> load
     _warehouse.py    # raw store -> warehouse.duckdb `raw` (load_raw.py's successor)
     _shared/         # free-form: national services, aggregators, OurHike's own data, not_clubs.py
-    atc/  nysdec/  … # one folder per managing club, exactly 11 files each
+    not_available.toml  # every club's notes and shares, one row per club x type (decision 88)
+    atc/  nysdec/  … # a managing club's resource files, one per type it publishes
 ```
 
 **Never `pipeline/dlt/`.** Scripts run from `pipeline/`, which is first on
 `sys.path`, so a `dlt/` folder there would shadow `import dlt` (decision 12).
 
-**One folder per managing club** (decision 18): 145 from `trail_orgs.json` at
-23fca25, which is its 173 rows minus 12 `national_umbrella`, 13 `route_only`
-and 3 `aggregator`. Umbrellas and route-only trails get one dated line each in
+**Every managing club answers every type** (decisions 18 and 88): 145 clubs
+from `trail_orgs.json` at 23fca25, which is its 173 rows minus 12
+`national_umbrella`, 13 `route_only` and 3 `aggregator`. A club with no
+resource file has no folder: 103 have one (counted 2026-10-06). Umbrellas and route-only trails get one dated line each in
 `_shared/not_clubs.py`. Aggregators (`osm`, `outerspatial`, `avenza`) live in
 `_shared/`. Anything real an umbrella publishes, such as a podcast, goes in
 `_shared/` too.
 
 **The folder name is `trail_orgs.json`'s `slug` with `-` written `_`**, because
 Python cannot import a hyphen. No slug has an underscore, so the mapping
-reverses exactly (measured 2026-10-01). There is no `__init__.py`, so the file
-count is exact.
+reverses exactly (measured 2026-10-01). There is no `__init__.py`: a folder
+holds its resource files and nothing else.
 
-**Exactly these eleven files**, the same in every club folder (decision 13):
+**Each of the ten types is answered exactly once** (decision 13, as decision 88
+amends it), by `<folder>/<type>.py` or by the row `[<folder>.<type>]` of
+`not_available.toml`, and the layout test fails a type answered by neither or
+by both. The eleventh type, `org`, is the club's catalogue row:
+`discover()` makes one for every managing club from `trail_orgs.json`
+(`catalogue_row()` in `_kinds.py`), so nobody writes it.
 
-| file | feeds | lane |
+| type | feeds | lane |
 |---|---|---|
-| `org.py` | `sources` (never a note: `RESOURCES = [catalogue_row()]`) | monthly |
+| `org` (the catalogue row, made by `discover()`) | `sources` | monthly |
 | `trail_lines.py` | `trail_lines`, `trail_network`, elevation calibration | monthly |
 | `points_of_interest.py` | `points_of_interest` | monthly |
 | `elevation.py` | `elevation` (3DEP itself is `_shared/usgs/`) | monthly |
@@ -136,17 +146,26 @@ count is exact.
 | `photos.py` | photo manifest rows, never pixels | monthly |
 
 `trail_network` and `sources` have no file: dbt derives them. The lane
-belongs to the type. Each type file defines exactly one of:
+belongs to the type. Each answer is exactly one of:
 
-- **`CLAIMS` + `RESOURCES`**: the `sources.json` keys it owns, and a `Resource`
-  for each.
-- **`SHARES = "<type>"`**: a sibling file's resource also feeds this type. One
-  upstream is one resource and one raw table even when it feeds two types, so
-  `atc/warnings.py` holds `SHARES = "closures"` and no `CLAIMS`.
-- **`NOT_AVAILABLE`**: a dated note (below).
-- **`SAME_AS`**: a tuple of `SameAs` notes, when a republished copy of another
-  resource's dataset is all the org publishes for this type. A `CLAIMS` file
-  may carry `SAME_AS` notes too, for the copies it does not extract.
+- **A resource file, `CLAIMS` + `RESOURCES`**: the `sources.json` keys it owns,
+  and a `Resource` for each. It may carry `SAME_AS` notes for the copies it
+  does not extract, or be `SAME_AS` alone, when a republished copy of another
+  resource's dataset is all the org publishes for this type.
+- **A share row, `shares = "<type>"`**: a sibling type's resource file also
+  feeds this type. One upstream is one resource and one raw table even when it
+  feeds two types, so `[atc.warnings]` holds `shares = "closures"` and claims
+  nothing.
+- **A note row**: a dated note (below).
+
+**`not_available.toml` is one file for every club**, so two sessions adding
+notes for different clubs both edit it. Its rows are sorted by club, then type,
+and a blank line separates each. Measured 2026-10-06 on a two-row copy: git
+merged an edit to one row with an edit to the next, and refused two new rows
+inserted between the same two rows. So sessions that add rows in parallel
+(a wave's workers) hand them to one session to write, as `sources.json` rows
+are handed to the lead. Its header comment says how `discover()` and the layout test read it, and how
+to retire a row.
 
 **A builder takes a `sources.json` key, never a URL.** A club file therefore
 cannot fetch anything the registry does not hold, and every new upstream is a
@@ -218,57 +237,60 @@ class SameAs:  # pipeline/extract/_contract.py (shape)
 
 ## The `NOT_AVAILABLE` note
 
-```python
-# pipeline/extract/nynjtc/elevation.py
-"""NYNJTC publishes no elevation product: its trails' profiles are 3DEP (_shared/usgs/)
-along the lines nynjtc/trail_lines.py loads."""
-NOT_AVAILABLE = NotAvailable(
-    confirmed=date(2026, 10, 1),
-    checked=("the 27 FeatureServers on NYNJTC's ArcGIS root: hasZ false on Long_Path_2023/0, "
-             "NYNJTC_HighlandsTrail2021sections/0 and Long_Path_Shawangunk_Ridge_Trail/0; Z only on "
-             "Points (0 rows), roundrock (a KMZ import) and 26 trailhead points",
-             "ArcGIS Online, orgid:G1WTEJ6UVRUTvh9C: 76 public items, none an Image Service, "
-             "elevation or DEM item",
-             "nynjtc.org's WordPress search for 'elevation profile' and 'elevation gain': "
-             "book sales and prose only"),
-    where=("https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services",
-           "https://www.arcgis.com/sharing/rest/search?q=orgid:G1WTEJ6UVRUTvh9C",
-           "https://www.nynjtc.org/wp-json/wp/v2/search"),
-)
+A note is a row of `pipeline/extract/not_available.toml`, named
+`[<folder>.<type>]`. `discover()` reads each into the `NotAvailable` in
+`_contract.py`, and the layout test holds its shape:
+
+```toml
+[nynjtc.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch b2_nynjtc).
+
+USGS 3DEP (`_shared/`) covers this. …"""
+checked = [
+    "`hasZ:false` and `hasM:false` on `Long_Path_2023/0`, … The 76 AGOL items include no Image Service, …",
+]
+where = ["https://services7.arcgis.com/G1WTEJ6UVRUTvh9C/arcgis/rest/services", "https://nynjtc.org/"]
 ```
 
 | field | rule |
 |---|---|
-| `confirmed` | the day a person looked. Never in the future, and never moved without looking again |
+| `confirmed` | the day a person looked, a TOML date (`2026-10-01`, unquoted). Never in the future, and never moved without looking again |
+| `summary` | the prose a reader needs beside the fields: what the club publishes instead, why it is refused, which folder a type is drawn from |
 | `checked` | what was looked at, written so somebody else can repeat it |
-| `where` | the URLs |
-| `recheck_after_days` | default 180, `@unvalidated`: settled by how often a re-survey overturns a note that old |
+| `where` | the https URLs |
+| `recheck_after_days` | default 180, `@unvalidated`: settled by how often a re-survey overturns a note that old. Written only where it differs |
 | `terms` | the terms, **verbatim**, when the data exists and its terms refuse it |
+| `reason` | what landing waits on (a `sources.json` row, a key, a permission), or why it is refused |
+
+A field outside this list is refused where the file is read, so a misspelt
+`terms` stops the run rather than dropping a refusal's quoted words.
 
 **Claim only what you checked.** The note above restates the coverage
-audit's NYNJTC × elevation row (batch b2, upheld by its skeptic pass, measured
-2026-10-01). It records the ArcGIS root, the ArcGIS Online search and the
-site's own files from the list below, so it is committed only after the
-clearinghouse, land-manager and data.gov items are worked and written in.
+audit's NYNJTC × elevation row (batch b2). It records the ArcGIS root, the
+ArcGIS Online search and the site's own pages from the list below, so the
+clearinghouse, land-manager and data.gov items are still to work and write in.
 Check the survey before writing any note: its ATC × elevation row found a
-Z-enabled centerline (`ATX_Ratings/FeatureServer/9`), so `atc/elevation.py` is
+Z-enabled centerline (`ATX_Ratings/FeatureServer/9`), so ATC's elevation is
 a resource once that layer has a `sources.json` row, not a note.
 
-**A note drafted from the coverage audit restates `bcc70dd0:pipeline/reference/org_coverage.json` (retired by decision 88),
-never the batch files behind it.** Stage 2b's 183 notes were drafted that way:
-`checked` is the row's evidence, the docstring its note, and `where` the URLs
-the text names, with each host-less ArcGIS service name resolved to a full URL
-by a live `?f=json` read (2026-10-01). The batch files (`b1`-`b7`, `c1`-`c21`,
-`p01`-`p10`, `q01`, `r01`) were never committed and were never scrubbed: the
-JSON replaced every email address, phone number, personal ArcGIS account and
-named private individual with a description, and the files still hold them.
-Their text goes into a note only after a person has read it. The twelve
-persistence-pass rows in the 23 registry providers' folders were read and
-carry their full seven-item checklist; every other note keeps the trimmed,
-scrubbed copy, and says so in its last line. The 118 folders with no
-registry row keep it throughout: screened, their 109 persisted rows' batch
-text held personal ArcGIS account names (an email-based account, several
-individuals' handles), 146,504 characters too many to read with care.
+**Most notes were first drafted from the coverage audit's
+`bcc70dd0:pipeline/reference/org_coverage.json`** (retired by decision 88, and
+read now with `git show`), never from the batch files behind it: `checked` is
+the row's evidence, the summary its note, and `where` the URLs the text
+names, with each host-less ArcGIS service name resolved to a full URL by a
+live `?f=json` read (2026-10-01). Text that ends in '…' was trimmed in that
+file. The batch files (`b1`-`b7`, `c1`-`c21`, `p01`-`p10`, `q01`, `r01`) were
+never committed and were never scrubbed: the JSON replaced every email
+address, phone number, personal ArcGIS account and named private individual
+with a description, and the files still hold them. Their text goes into a
+note only after a person has read it. The twelve persistence-pass rows in the
+23 registry providers' folders were read and carry their full seven-item
+checklist; every other note keeps the trimmed, scrubbed copy. The 118 clubs
+with no registry row keep it throughout: screened, their 109 persisted rows'
+batch text held personal ArcGIS account names (an email-based account,
+several individuals' handles), 146,504 characters too many to read with care.
 
 **A GIS-shaped type is not given up early** (decision 21b; the maintainer:
 *"Make sure for all of these orgs that you dont give up to easily. The GIS
@@ -290,11 +312,16 @@ this list and write what you tried into `checked`:
 it. The layout test checks a note's shape, never whether its searches were
 done, so the list is a reviewer's check.
 
-**Rechecking a note**: a monthly job fails a note past `confirmed +
-recheck_after_days`. That job is not upstream of publish, so a stale podcast
-note never holds back this month's water data. To clear it, redo the search,
-then either replace the note with a resource or rewrite `confirmed` and
-`checked` with what you found this time.
+**Rechecking a note**: a monthly job is to fail a note past `confirmed +
+recheck_after_days` (decision 14's check 3, not built yet:
+`refresh-reference.yml` lists it under "NOT HERE YET"). That job is not
+upstream of publish, so a stale podcast note never holds back this month's
+water data. To clear a note, redo the search, then either rewrite `confirmed`
+and `checked` in its row with what you found this time, or retire the row: write
+the resource file `<folder>/<type>.py` and delete the row in the same commit.
+The layout test fails while both exist. Whatever the note said that the
+resource's reader still needs goes in the new file's docstring, in your own
+words; git keeps the row.
 
 ## Four measured hazards, now rules
 
@@ -486,8 +513,8 @@ finisher and member rosters the coverage audit found. The full list is in
 
 | check | when | what it holds |
 |---|---|---|
-| **1. Layout**, `pipeline/tests/test_extract_layout.py` | every pull request | club folders equal the managing slugs; exactly the 11 files; each a resource, a share naming a type that has one, a well-formed note (`confirmed` not in the future, non-empty `checked` and `where`, `recheck_after_days > 0`), or `SAME_AS` notes whose `original` is claimed; no two resources pointing at the same upstream URL or ArcGIS item id; `org.py` never a note; a `stg_<club>__<type>` for exactly the available types; every `sources.json` key claimed once and every claim resolving; no table on two lanes. **A note's shape, never its age**, so the calendar cannot turn an unrelated pull request red |
-| **2. Run check**, in `_run.py` | after every dlt run | *before the load*: each available resource loaded or recorded `FRESH`; `rows > 0` unless the type may be empty and the upstream's own count proves the zero; rows ≥ 0.5 × the last loaded count, except closures and warnings, which have no floor (the floors are `@unvalidated`; six monthly runs settle them); `org.py` produces exactly one row. A failure drops the package, so nothing loads and no marker advances. *After the load*: `committed()` checks the load is in `_dlt_loads`, the rows on disk equal the rows normalized, and every count proof holds; a failure records `unverified` and the build refuses |
+| **1. Layout**, `pipeline/tests/test_extract_layout.py` | every pull request | every managing club answers each of the ten types exactly once, by a resource file or a `not_available.toml` row, never both; club folders only for managing slugs, holding only resource files; every row a share naming a sibling with a resource file, or a well-formed note (`confirmed` not in the future, non-empty `checked` and `where`, `recheck_after_days > 0`); `SAME_AS` notes whose `original` is claimed; no two resources pointing at the same upstream URL or ArcGIS item id; one catalogue row per managing club; a `stg_<club>__<type>` for exactly the available types; every `sources.json` key claimed once and every claim resolving; no table on two lanes. **A note's shape, never its age**, so the calendar cannot turn an unrelated pull request red |
+| **2. Run check**, in `_run.py` | after every dlt run | *before the load*: each available resource loaded or recorded `FRESH`; `rows > 0` unless the type may be empty and the upstream's own count proves the zero; rows ≥ 0.5 × the last loaded count, except closures and warnings, which have no floor (the floors are `@unvalidated`; six monthly runs settle them); each club's catalogue row produces exactly one row. A failure drops the package, so nothing loads and no marker advances. *After the load*: `committed()` checks the load is in `_dlt_loads`, the rows on disk equal the rows normalized, and every count proof holds; a failure records `unverified` and the build refuses |
 | **3. Note ageing** | the monthly run, not upstream of publish | a `NOT_AVAILABLE` or `SAME_AS` note past `confirmed + recheck_after_days` fails, and a person rechecks it |
 
 Check 2 also reaches dbt as source tests on `raw._extract_runs`, so a build
@@ -504,10 +531,12 @@ and warnings, one at `warn` for the rest.
    verdicts.
 2. **A `sources.json` row per upstream**, with the licence quoted and its
    basis recorded, before any resource names it.
-3. **`pipeline/extract/<folder>/` with the eleven files.** `org.py` is
-   `RESOURCES = [catalogue_row()]`. Each other file is a resource built from
-   `_kinds.py`, a `SHARES`, a note, or `SAME_AS` notes. Never a second
-   resource for a dataset another folder already extracts. Start from the club's rows in
+3. **Its answers for the ten types.** A type it publishes is a resource file,
+   `pipeline/extract/<folder>/<type>.py`, built from `_kinds.py` (or `SAME_AS`
+   notes); every other type is a row of `not_available.toml`, a share or a
+   note. Its catalogue row needs nothing: `discover()` makes it from the
+   `trail_orgs.json` row. Never a second resource for a dataset another folder
+   already extracts. Start from the club's rows in
    `pipeline/ORG_COVERAGE_SURVEY.md`, and work the discovery list above before
    any note on a GIS-shaped type.
 4. **Exclude person fields** in every field list, and check them against the

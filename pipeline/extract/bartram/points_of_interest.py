@@ -11,7 +11,7 @@ and what holds it back.
 The Conservancy is the trail's steward; this folder is named for the Bartram Trail Conference, the umbrella
 the coverage audit found in its row (2026-10-01, c8_regional_5). Water and camping are prose on the pages
 ("Campsites and water are sparse and in gaps"), so no water point is published to load. Each page's map also
-loads a GeoJSON of the section's line, a GIS file bartram/trail_lines.py does not read yet.
+loads a GeoJSON of the section's line, a GIS file not_available.toml [bartram.trail_lines] does not read yet.
 """
 
 from extract._pages_points import page_points

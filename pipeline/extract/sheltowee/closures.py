@@ -9,7 +9,7 @@ Blue Herron Bridge closure, the Red River Suspension Bridge's high-water route) 
 Trace'. The row lands the page's title, a hash of <main> and the link; the page states no date, and
 its weak ETag is not trusted. The category RSS feeds are stale (newest 2021-03-28) and are not read.
 
-The items are closures and warnings both, split in dbt (decision 7), so warnings.py shares this file.
+The items are closures and warnings both, split in dbt (decision 7), so not_available.toml [sheltowee.warnings] shares this file.
 
 Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
 c8_regional_5): "The page is live, but the RSS is not ... Read the page, not the feed."

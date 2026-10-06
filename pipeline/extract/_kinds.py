@@ -136,9 +136,11 @@ REFERENCE_DIR = PIPELINE_DIR / "reference"
 # DEC's published number for an emergency in the backcountry, not a person's:
 # it belongs in nysdec's catalogue row, its trail_orgs.json row, rather than
 # in a layer, and adding it there is a reviewed change to that file, not made
-# yet (this note sat in nysdec/org.py's docstring until decision 88). A denylist is only as complete as the layers somebody has
-# read: a person field under another name loads until its name is added here,
-# which is why a new registry row is reviewed field by field.
+# yet (this note sat in nysdec/org.py's docstring until decision 88).
+#
+# A denylist is only as complete as the layers somebody has read: a person
+# field under another name loads until its name is added here, which is why a
+# new registry row is reviewed field by field.
 #
 # ArcGIS editor tracking's four names hold the account that created or last
 # edited each row, and an account is a person's or names one. Added

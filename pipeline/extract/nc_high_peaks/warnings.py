@@ -8,7 +8,7 @@ page's own 'Update 7/30/2025'.
 
 AN INVERSE LIST, FOURTEEN MONTHS OLD. The page names the trails that are open, not the ones that are
 closed, so a trail's absence from it is never a closure, and it is filed here, as a warning at most,
-rather than in closures.py. Its date must ride with it everywhere it shows.
+rather than in not_available.toml [nc_high_peaks.closures]. Its date must ride with it everywhere it shows.
 
 The land managers' own alerts for the Black Mountains arrive through usfs/closures.py's
 `usfs_r08_northcarolina_alerts` (no slug names the Black Mountains, the coverage audit) and nps/'s

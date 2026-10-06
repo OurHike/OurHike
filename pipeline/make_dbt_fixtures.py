@@ -8926,7 +8926,7 @@ PALMETTO_GRID = (
 
 def _palmetto_passage(n: int) -> str:
     """A passage page as its map script draws it: typed addMarker calls (one 'NULL') and the line's addSegment,
-    under the fact grid palmetto/suggested_hikes.py's rows come from (one page, both readers' parts)."""
+    under the fact grid not_available.toml [palmetto.suggested_hikes]'s rows come from (one page, both readers' parts)."""
     markers = "".join(
         f"trailPage.helper.addMarker({_point(i)['coordinates'][1]}, {_point(i)['coordinates'][0]}, '{kind}', '', []);\n"
         for i, kind in enumerate(("Parking", "Trail Head", "Water Launch", "NULL"), 4 * n)

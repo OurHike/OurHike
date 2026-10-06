@@ -18,7 +18,7 @@ the build's trails cross; each is another registry row.
 
 The inventory's other two are answered: DCNR's ParkAdvisory API for Tioga (id 8116) lands in
 pasda/warnings.py as `pa_dcnr_park_advisories`, and the `laurel-ridge-state-park-alert-cf` fragment
-is a standing pointer rather than a notice (laurel/closures.py says why it is not read).
+is a standing pointer rather than a notice (not_available.toml [laurel.closures] says why it is not read).
 
 ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
 https://maps.dcnr.pa.gov/agsprod/rest/services/BOF/HuntStateForest/MapServer, 11 layers ('Roads

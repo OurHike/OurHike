@@ -6,7 +6,7 @@ the steward's current layer (ORG_COVERAGE_SURVEY.md §3d). Not landed: DEEP's
 `DEEP_Trails_Set/FeatureServer/3`, 13,883 polylines in 124 trail systems,
 CC0, last edited 2026-09-17; a loader must drop its `TRAILSTAT` Potential and
 Committed rows and the motorized ones. This layer's `Gains` and `Losses`
-columns land with it, which is why elevation.py shares it.
+columns land with it, which is why not_available.toml [ct_deep.elevation] shares it.
 """
 
 from extract._kinds import arcgis_layer

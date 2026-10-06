@@ -146,7 +146,7 @@ Present, among others: `ST_LineLocatePoint`, `ST_LineInterpolatePoints`,
 `<club>` is the club's extract folder name: `trail_orgs.json`'s `slug` with `-`
 written `_`. That renames two of today's folders: `dec` becomes `nysdec` and
 `oprhp` becomes `nysparks`. Non-club staging lives in `staging/registry/`
-(`sources.json`, `trail_orgs.json`, every `org.py` row), `staging/derived/`,
+(`sources.json`, `trail_orgs.json`, every club's catalogue row), `staging/derived/`,
 and one folder per shared source (`nws/`, `osm/`, `usgs/`, `opentrail/`,
 `podcasts/`, `ourhike/`).
 

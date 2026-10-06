@@ -1,7 +1,7 @@
 """Appalachian Mountain Club: podcasts, 1 feed read here (decision 54 wave 3, section C, 2026-10-04).
 
 - `amc_unlikely_stories_podcast`: Unlikely Stories Podcast, on simplecast: 11 episodes, 2021-08-24
-  to 2021-10-27, its <copyright> 'Appalachian Mountain Club'. amc_at/podcasts.py draws it from here
+  to 2021-10-27, its <copyright> 'Appalachian Mountain Club'. not_available.toml [amc_at.podcasts] draws it from here
   (decision 34). Its itunes:author names each episode's guests and its RSS <author> is an e-mail
   address, so both are left out; the episode titles name the guest too ('Superhuman Hiker | …'), and
   a title is kept, being the episode's published name.

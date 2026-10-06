@@ -14,7 +14,7 @@ NOT READ, BECAUSE WALLED (decision 53's inventory, batch 2, 2026-10-03): https:/
 answered our agent with Vercel's Security Checkpoint (HTTP 429, `x-vercel-mitigated: challenge`, its
 robots.txt too), and https://www.pcta.org/discover-the-trail/trail-conditions/ with Cloudflare's
 challenge (HTTP 403, `cf-mitigated: challenge`). Neither is solved or worked round (decision 39);
-pcta/warnings.py's note quotes both, and holds until PCTA answers. So which of the two layers above
+not_available.toml [pcta.warnings]'s note quotes both, and holds until PCTA answers. So which of the two layers above
 the closures page renders cannot be checked from here.
 
 Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:

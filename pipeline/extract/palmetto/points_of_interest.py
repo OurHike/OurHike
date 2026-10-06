@@ -10,11 +10,11 @@ holds it back.
   site's sitemap lists under /trails/trail/.
 
 A WATER LAUNCH IS A BOAT LAUNCH, never drinking water, and no marker on any page is typed as water.
-palmetto/trail_lines.py SHARES this resource for its lines, and palmetto/places.py says why the passages'
+not_available.toml [palmetto.trail_lines] SHARES this resource for its lines, and not_available.toml [palmetto.places] says why the passages'
 trailheads are points rather than places.
 
 Every row also carries its page's facts, the fact grid's first-line answers and the length, read in the same fetch
-(the lead's ruling of 2026-10-04: one reader of the 33 passage pages), for palmetto/suggested_hikes.py, which SHARES
+(the lead's ruling of 2026-10-04: one reader of the 33 passage pages), for not_available.toml [palmetto.suggested_hikes], which SHARES
 this resource too. Their columns are extract/_pages_points.py's PALMETTO_FACT_COLUMNS. They change no marker row's
 shape or key.
 """

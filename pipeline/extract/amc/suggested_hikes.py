@@ -8,7 +8,7 @@
 
 The reader is extract/_pages_content.py's ContentPages with the `amc_itineraries` site parser: the rows hashed for
 the change check (no page validator decides FRESH), facts and the link only, never the club's own wording. Its row
-in sources.json holds the terms as found, the live read and the measured key, `link`. amc_at/suggested_hikes.py
+in sources.json holds the terms as found, the live read and the measured key, `link`. not_available.toml [amc_at.suggested_hikes]
 draws on this resource: the same page, extracted once here (decision 34).
 
 The note this replaces read, whole:

@@ -17,7 +17,7 @@ title, a hash of the page's region and the link, and no text:
   reaching a phone before the line does. Neither page states a date.
 
 PATC's A.T. closures arrive through atc/ (decision 34). Its warnings channels (the Tuscarora section
-guides' advisories, an anonymously editable maintenance layer) stay warnings.py's note.
+guides' advisories, an anonymously editable maintenance layer) stay not_available.toml [patc.warnings]'s note.
 
 Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
 c2_at_clubs_mid), whose `checked` named both pages and said "There is no feed for either: `/feed/rss2`

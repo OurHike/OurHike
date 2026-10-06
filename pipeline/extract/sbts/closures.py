@@ -13,7 +13,7 @@ All Rights Reserved." is a copyright line, read under decision 55: facts and a l
 row.
 
 The status words are closures and warnings both (a damaged bridge on a trail still reading CLEAR is a
-warning, decision 7), so warnings.py shares this file.
+warning, decision 7), so not_available.toml [sbts.warnings] shares this file.
 
 Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
 c6_regional_3): "A page, not machine-readable. Squarespace's `robots.txt` disallows `?format=json`, so a

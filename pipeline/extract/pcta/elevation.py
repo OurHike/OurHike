@@ -10,7 +10,7 @@ centerline vertices read against 3DEP each fell inside their stated band
 separate the range with a minus sign (U+2212), not a hyphen.
 
 `Trips` rows carry `Gain_ft` and `Loss_ft` (coverage audit 2026-10-01, batch
-b7_long_trails_states); that layer is suggested_hikes.py's to register.
+b7_long_trails_states); that layer is not_available.toml [pcta.suggested_hikes]'s to register.
 Nothing reads either table yet, and both rows' `reaches_hikers` is false.
 """
 

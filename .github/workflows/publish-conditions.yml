@@ -1064,24 +1064,26 @@ jobs:
         # to be too hard to keep fast, let's expand now". The job's 10 minutes
         # still hold: run 512 spent about 1 minute before this step and 40 s after.
         timeout-minutes: 6
+        # EACH LEG IS HANDED ITS OWN DATABASE'S URL AND NO OTHER, as
+        # CONDITIONS_DATABASE_URL, the one name the extract reads. Each secret
+        # sits behind its own leg's test, so an unset one is an empty string
+        # rather than the other leg's ("Is there a database to read" says why
+        # that is the mistake to make impossible). Picking it in the script
+        # and then `unset`-ting both names, as this step did, kept them from
+        # the extract but not from this step's shell, whose /proc/<pid>/environ
+        # the extract's python, its child, can read: production's URL was
+        # there on every UA run (review finding SEC-7 of PR #1805 — dlt → dbt
+        # re-platform as one go/no-go change).
+        # .github/tests/test_conditions_extract_sees_one_database_url.py runs
+        # this step per leg and reads every ancestor's environment.
         env:
           LEG: conditions_${{ matrix.data_environment }}
-          ENVIRONMENT: ${{ matrix.data_environment }}
-          PRODUCTION_URL: ${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}
-          UA_URL: ${{ secrets.UA_CONDITIONS_DATABASE_URL }}
+          CONDITIONS_DATABASE_URL: ${{ matrix.data_environment == 'production' && secrets.PRODUCTION_CONDITIONS_DATABASE_URL || matrix.data_environment == 'ua' && secrets.UA_CONDITIONS_DATABASE_URL || '' }}
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
         run: |
-          if [ "$ENVIRONMENT" = "production" ]; then
-            export CONDITIONS_DATABASE_URL="$PRODUCTION_URL"
-          else
-            export CONDITIONS_DATABASE_URL="$UA_URL"
-          fi
-          # dlt and the extract's other pins run below with this leg's URL
-          # only, so a UA run never carries production's.
-          unset PRODUCTION_URL UA_URL
           set +e
           "$RUNNER_TEMP/extract/bin/python" -m extract._run --lane "$LEG" --raw-bucket "$R2_RAW_BUCKET" \
             --read-seconds 150 --pipelines-dir "$RUNNER_TEMP/dlt" \

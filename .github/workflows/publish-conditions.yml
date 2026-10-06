@@ -780,7 +780,14 @@ jobs:
       # carries exactly what a real club has supplied, which today is an
       # empty list, published deliberately so the client's read path is live
       # before the first real row lands.
+      #
+      # TODAY'S BAKE ONLY. The dbt path's extract lands the same reviewed file
+      # (raw_ourhike__work_projects) and pub_conditions_work_projects writes
+      # conditions/work_projects.json, which publish.py takes from that writer
+      # and drops this script's entry for (review finding ARC-10 of PR #1805 —
+      # dlt → dbt re-platform as one go/no-go change).
       - name: Export the reviewed volunteer work projects
+        if: env.PHONE_FILES == 'exporters'
         run: python export_work_projects.py
 
       # THE DROUGHT LEG (#720), and its whole design is about being cheap
@@ -976,8 +983,16 @@ jobs:
       # `continue-on-error` so NWS not answering never holds back the
       # closures: export_weather_alerts.py then writes nothing, and publish.py
       # carries the last weather_alerts.json forward with its own fetched_at.
+      #
+      # TODAY'S BAKE ONLY. On the dbt path the extract reads NWS's active list
+      # itself (raw_nws__alerts) and pub_conditions_weather_alerts writes
+      # conditions/weather_alerts.json, which publish.py takes from that writer
+      # and drops this script's entry for, so running it there asked NWS a
+      # second time each hour for nothing (ARC-10, as above). The squares'
+      # restore above still runs on both: the dbt path's step_weather_squares
+      # reads them.
       - name: Fetch NWS's active alerts and place them on trail squares (UA leg)
-        if: matrix.data_environment == 'ua'
+        if: matrix.data_environment == 'ua' && env.PHONE_FILES == 'exporters'
         continue-on-error: true
         timeout-minutes: 1
         run: |

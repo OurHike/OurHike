@@ -166,3 +166,59 @@ def test_build_marts_exit_codes_the_workflow_reads_are_the_ones_it_defines():
     (build,) = [step for step in _steps() if step.get("name") == BUILD_STEP]
     for code in (4, 5, 6):
         assert f'"$status" -eq {code} ]' in build["run"]
+
+
+#: Today's exporters whose every file a dbt writer writes on the dbt path. There, publish.py's with_dbt_phone_files()
+#: drops each exporter entry whose key a writer owns, so running them asked NWS a second time for its whole active
+#: list, or rebuilt a reviewed file, for an entry thrown away (review finding ARC-10 of PR #1805 — dlt → dbt
+#: re-platform as one go/no-go change).
+DBT_OWNED_EXPORTERS = ("export_weather_alerts.py", "export_work_projects.py")
+#: export_conditions.py's four files (the `written` list in its main()).
+CONDITIONS_EXPORTS = ("closures", "reports", "notes", "disputes")
+
+
+def _conditions_keys_with_a_writer() -> dict[str, bool]:
+    """Each key a conditions exposure names, and whether a pub_ writer writes it (an exposure with none documents a
+    file Python still writes, as publish.py's collect_dbt_phone_files() reads it)."""
+    path = WORKFLOW.parents[2] / "pipeline" / "dbt" / "models" / "publish" / "_publish__conditions.yml"
+    keys = {}
+    for exposure in yaml.safe_load(path.read_text(encoding="utf-8"))["exposures"]:
+        written = any(str(parent).replace('"', "'").startswith("ref('pub_") for parent in exposure.get("depends_on") or [])
+        for key in exposure["config"]["meta"]["r2_keys"]:
+            keys[key] = written
+    return keys
+
+
+def _payload(script: str) -> str:
+    """A conditions exporter's PAYLOAD, the name of its file under conditions/, read from its source."""
+    import ast
+
+    tree = ast.parse((WORKFLOW.parents[2] / "pipeline" / script).read_text(encoding="utf-8"))
+    (value,) = [
+        node.value.value
+        for node in tree.body
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "PAYLOAD" for t in node.targets)
+    ]
+    return value
+
+
+def _step_running(script: str) -> dict:
+    (step,) = [step for step in _steps() if f"python {script}" in str(step.get("run", ""))]
+    return step
+
+
+@pytest.mark.parametrize("script", DBT_OWNED_EXPORTERS)
+def test_an_exporter_whose_every_file_a_dbt_writer_writes_runs_on_the_exporters_path_alone(script):
+    key = f"conditions/{_payload(script)}.json"
+    assert _conditions_keys_with_a_writer().get(key), f"{key} has no dbt writer, so the dbt path still publishes {script}'s"
+
+    step = _step_running(script)
+    assert "env.PHONE_FILES == 'exporters'" in str(step.get("if", "")), f"{step['name']} runs on the dbt path for nothing"
+
+
+def test_export_conditions_runs_on_both_paths_because_no_dbt_writer_writes_its_notes_or_disputes():
+    """Its closures and reports are thrown away on the dbt path, as ARC-10 says, and its notes and disputes are not:
+    the dbt path publishes those two from it (no mart owns field notes, WN11), so the step runs on both paths."""
+    writers = _conditions_keys_with_a_writer()
+    assert [kind for kind in CONDITIONS_EXPORTS if not writers.get(f"conditions/{kind}.json")] == ["notes", "disputes"]
+    assert "PHONE_FILES" not in str(_step_running("export_conditions.py").get("if", ""))

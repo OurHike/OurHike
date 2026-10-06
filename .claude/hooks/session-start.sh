@@ -130,6 +130,16 @@ echo "[session-start] seeding the duckdb spatial extension"
 # so a seeding that silently landed in the wrong path fails here.
 "${PY}" pipeline/seed_spatial_extension.py
 
+echo "[session-start] generating the dbt models"
+# Decision 91 (pipeline/ELT.md, 2026-10-06): the two dbt generators' output is
+# written at build time, never committed. Without it the pipeline suite's
+# conftest refuses to start and `dbt parse` fails, so a session that runs
+# pytest directly, rather than through scripts/test.sh (which generates by
+# itself), would meet that refusal first. The generators read sources.json and
+# the club folders through extract/_contract.py, which imports dlt, so they run
+# under the same interpreter as the pipeline deps above.
+(cd pipeline && "${PY}" generate_dbt.py)
+
 echo "[session-start] client deps"
 # `npm ci`, NOT `npm install`, and the difference is the whole of #1354.
 #

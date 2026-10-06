@@ -51,7 +51,10 @@
 -- the higher parts in tree order, not in this one; the order reaches the
 -- graph only where a weld creates a node of its own
 -- (int_trail_network__node_lookups says when).
-with parts as (
+-- Read where each use needs it, never held as a table: three uses read it,
+-- and DuckDB would otherwise materialize a whole copy of every geometry
+-- ("WHERE THE MEMORY GOES" below).
+with parts as not materialized (
     select
         part_id,
         part_order,
@@ -63,33 +66,53 @@ with parts as (
     where refused_because is null
 ),
 
--- The pairs whose envelopes meet, each once, the lower part first, and every
--- fact node_lines() reads off a pair, worked out in the one pass that holds
--- both geometries. WHY sign(): written `lower < higher`, DuckDB 1.5.4
--- planned the inequality as the join (PIECEWISE_MERGE_JOIN) and the envelope
--- test as a filter on all 1,181,953 pairs of 1,538 real Harriman parts,
--- 5.2 s that grows as the square of the parts, in every placement tried: in
--- the WHERE, in the ON, outside a materialized CTE. As sign() of the
--- difference it is no join condition, and the envelope test plans as a
--- SPATIAL_JOIN, 0.3 s (EXPLAIN and timings measured 2026-10-02 on DuckDB
--- 1.5.4 with spatial 28db190).
---
--- WHY ONE PASS, and why `pair_facts` keeps no geometry: monthly run 21
--- (refresh-reference.yml run 37323395441, 2026-10-05) ran out of DuckDB's
--- 12.4 GiB on this model, building alone, on 332,630 network lines. The
--- query before this one kept both parts' geometries on every pair in a CTE
--- that five others read, so DuckDB materialized it: memory that grows with
--- the touching pairs times their vertices. Here the geometries go no
--- further than the expressions that read them, and only the pairs that cut
--- anything are kept: a crossing, or an end within the tolerance. Measured
--- 2026-10-05 on DuckDB 1.5.5 against synthetic random-walk trails, 330,000
--- lines with 21.8 million vertices, each run giving the old query's rows
--- exactly (EXCEPT ALL empty both ways), peak memory old then new:
--- 5.31 then 1.95 GiB; with the pairs tripled (330 lines a cluster, not
--- 110), 10.69 then 2.34; with 40 lines of 40,000 vertices added, 5.59 then
--- 2.00. What the real network peaks at is unmeasured: no synthetic run
--- made the old query fail, so run 21's failure is explained by that growth
--- (Reasoned), and the next monthly run is what settles it.
+-- Each part's envelope, the only thing the spatial join holds.
+boxes as (
+    select
+        part_order,
+        st_envelope(geom_m) as envelope_m
+    from parts
+),
+
+-- The pairs whose envelopes meet, each once, the lower part first. WHY
+-- sign(): written `lower < higher`, DuckDB 1.5.4 planned the inequality as
+-- the join (PIECEWISE_MERGE_JOIN) and the envelope test as a filter on all
+-- 1,181,953 pairs of 1,538 real Harriman parts, 5.2 s that grows as the
+-- square of the parts, in every placement tried: in the WHERE, in the ON,
+-- outside a materialized CTE. As sign() of the difference it is no join
+-- condition, and the envelope test plans as a SPATIAL_JOIN, 0.3 s (EXPLAIN
+-- and timings measured 2026-10-02 on DuckDB 1.5.4 with spatial 28db190).
+touching_boxes as (
+    select
+        lower_box.part_order as low_order,
+        higher_box.part_order as high_order
+    from boxes as lower_box
+    inner join boxes as higher_box
+        on st_intersects(lower_box.envelope_m, higher_box.envelope_m)
+    where sign(higher_box.part_order - lower_box.part_order) = 1
+),
+
+-- WHERE THE MEMORY GOES, measured in two monthly runs on 332,630 network
+-- lines (refresh-reference.yml run 37323395441, monthly run 21, and run
+-- 37370582492, monthly run 22, 2026-10-05), each building this model alone
+-- against DuckDB's 12.4 GiB:
+-- - run 21's query held both parts' geometries on every touching pair, in a
+--   CTE five others read, so DuckDB materialized it: memory that grows with
+--   the pairs times their vertices. It ran out after 34.74 s;
+-- - run 22's (461954c4) worked every fact out inside the spatial join's own
+--   projection, so the join carried every part's whole geometry on its
+--   build side, the side it indexes in memory. It ran out after 9.31 s.
+-- Here the spatial join holds envelopes and part numbers only, as run 21's
+-- did; each pair's two geometries come in through ordinary joins on
+-- part_order, which DuckDB can spill to disk; every fact is worked out in
+-- the one projection that reads them; and only the scalar facts of the
+-- pairs that cut something are kept. Which operator ran out in each run is
+-- Reasoned from the two plans and the times, not measured: no synthetic
+-- network made either query fail (the synthetic figures are in the commit
+-- that made this change). A third failure at this model would settle that
+-- this is the wrong side of the problem; the step that cuts the lines,
+-- step_node_lines, already holds every part in shapely, which is where the
+-- cut list would move.
 pair_facts as (
     select
         low_order,
@@ -147,13 +170,11 @@ pair_facts as (
                 lower_part.geom_m as low_m,
                 higher_part.geom_m as high_m,
                 st_intersects(lower_part.geom_m, higher_part.geom_m) as crosses
-            from parts as lower_part
+            from touching_boxes
+            inner join parts as lower_part
+                on touching_boxes.low_order = lower_part.part_order
             inner join parts as higher_part
-                on st_intersects(
-                    st_envelope(lower_part.geom_m),
-                    st_envelope(higher_part.geom_m)
-                )
-            where sign(higher_part.part_order - lower_part.part_order) = 1
+                on touching_boxes.high_order = higher_part.part_order
         ) as touching
     ) as measured
     where

@@ -105,11 +105,28 @@ def _grading(elevations: Path | None):
 
 
 def grade(records: list[dict], elevations: Path | None, previous: int | None, guard: bool) -> list[dict]:
-    """apply_grade_gate() over the records, then write()'s guards and its `reachable` stamp. Raises SystemExit on a refusal."""
+    """apply_grade_gate() over the records, then write()'s guards and its `reachable` stamp. Raises SystemExit on a refusal.
+
+    Against the network, every elevation the gate will ask for is looked up
+    first, fetch_trail_water.EPQS_AT_ONCE at a time and with progress in the
+    log (prefetch_elevations()), so the gate then reads them from memory.
+    """
     with _grading(elevations) as folder:
+        if elevations is None:
+            fetch_trail_water.prefetch_elevations(_grade_points(records))
         build_osm_water_reach.apply_grade_gate(records, quiet=True)
         build_osm_water_reach.write(records, guard=guard, previous=previous, path=folder / "verdicts.json")
     return records
+
+
+def _grade_points(records: list[dict]) -> list[tuple[float, float]]:
+    """The (lat, lon) of both ends of every walk apply_grade_gate() will grade, in record order."""
+    points = []
+    for record in records:
+        if record["passes_distance"] and "passes_grade" not in record:
+            points.append((record["lat"], record["lon"]))
+            points.append((record["walk_to"]["lat"], record["walk_to"]["lon"]))
+    return points
 
 
 def previous_reachable(path: Path | None) -> int | None:

@@ -139,6 +139,7 @@ than overwrites. See those two for why each is the guard it is.
 """
 
 import argparse
+import concurrent.futures
 import json
 import math
 import sys
@@ -740,11 +741,29 @@ def elevation_ft(lat: float, lon: float) -> float | None:
     ground does not move between runs, and re-deriving with a tighter
     MAX_GRADE should cost the reading of the hydrography and not several
     hundred more round trips to a service that answers in seconds apiece.
+
+    A point prefetch_elevations() already asked this run and got no answer
+    for is declined here without asking again: it has had its TRIES.
     """
     cache = _elevation_cache()
-    key = f"{lat:.6f},{lon:.6f}"
+    key = _elevation_key(lat, lon)
     if key in cache:
         return cache[key]
+    if key in _EPQS_DECLINED:
+        return None
+    elevation = _ask_epqs(lat, lon)
+    if elevation is not None:
+        cache[key] = elevation
+        _note_elevation_added(cache)
+    return elevation
+
+
+def _elevation_key(lat: float, lon: float) -> str:
+    return f"{lat:.6f},{lon:.6f}"
+
+
+def _ask_epqs(lat: float, lon: float) -> float | None:
+    """One point's EPQS answer in feet, after up to TRIES tries, or None. Touches no cache."""
     for attempt in range(TRIES):
         try:
             response = requests.get(
@@ -755,14 +774,72 @@ def elevation_ft(lat: float, lon: float) -> float | None:
             )
             response.raise_for_status()
             value = response.json().get("value")
-            elevation = None if value is None else float(value)
-            if elevation is not None:
-                cache[key] = elevation
-                _note_elevation_added(cache)
-            return elevation
+            return None if value is None else float(value)
         except Exception:  # noqa: BLE001 - retried, then declined
             time.sleep(2**attempt)
     return None
+
+
+# How many EPQS lookups prefetch_elevations() keeps in flight at once.
+# elevation_ft() asks one point at a time, and monthly run 23
+# (refresh-reference.yml 37408053482, 2026-10-06) spent 2 h 56 min in
+# step_osm_water_grade asking that way, with nothing in the log, until the
+# job's 240 minutes ran out. One EPQS answer took 3.7 s from the sandbox that
+# day (measured 2026-10-06), against the ~1.9 s apply_grade_gate()'s docstring
+# records, and the step asks for both ends of every one of the 3,118 corridor
+# points (runs 20 to 22) that passes the distance gate. Four at once divides
+# that wait by about four (Reasoned: each lookup is independent and spends its
+# time waiting on the network). @unvalidated: 4 is picked as modest for a public
+# service that publishes no rate limit (its robots.txt answers 403, read
+# 2026-10-06), not measured against one. What would settle it is the step's
+# answered-per-minute line on a monthly run, and any 429 or 503 EPQS sends
+# back at this number.
+EPQS_AT_ONCE = 4
+
+# Points prefetch_elevations() asked this run that EPQS did not answer: kept
+# in memory only, never in the cache file, so the next run asks again (the
+# rule test_an_epqs_lookup_that_fails_or_answers_null_is_not_cached_so_the_next_attempt_asks_again
+# holds).
+_EPQS_DECLINED: set[str] = set()
+
+
+def _say(message: str) -> None:
+    print(message, flush=True)
+
+
+def prefetch_elevations(points, at_once: int = EPQS_AT_ONCE, say=_say, every: int = 250) -> int:
+    """Ask EPQS for every (lat, lon) not already cached, at_once at a time, and cache the answers.
+
+    The answers go in elevation_ft()'s own cache and in the same flush
+    batches, so a gate that then asks elevation_ft() for these points reads
+    them from memory. The lookups run in threads; the cache is written only
+    here, on the calling thread. Prints how far it has got every `every`
+    lookups, so a slow EPQS is visible in the log while it is slow. Returns how
+    many points it asked for.
+    """
+    cache = _elevation_cache()
+    wanted: dict[str, tuple[float, float]] = {}
+    for lat, lon in points:
+        key = _elevation_key(lat, lon)
+        if key not in cache and key not in _EPQS_DECLINED:
+            wanted.setdefault(key, (lat, lon))
+    if not wanted:
+        return 0
+    say(f"EPQS: {len(wanted):,} points to look up, {at_once} at a time ({len(cache):,} already cached)")
+    started = time.monotonic()
+    answered = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=at_once) as pool:
+        for done, (key, elevation) in enumerate(zip(wanted, pool.map(lambda point: _ask_epqs(*point), wanted.values())), 1):
+            if elevation is None:
+                _EPQS_DECLINED.add(key)
+            else:
+                cache[key] = elevation
+                answered += 1
+                _note_elevation_added(cache)
+            if done % every == 0 or done == len(wanted):
+                minutes = (time.monotonic() - started) / 60
+                say(f"  EPQS: {done:,}/{len(wanted):,} asked, {answered:,} answered, {minutes:.1f} min")
+    return len(wanted)
 
 
 _ELEVATION_CACHE: dict[str, float] | None = None

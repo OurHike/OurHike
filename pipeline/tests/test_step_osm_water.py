@@ -244,3 +244,22 @@ def test_the_step_refuses_to_run_before_the_distance_pass(tmp_path):
     duckdb.connect(str(tmp_path / "w.duckdb")).close()
     with pytest.raises(SystemExit, match="int_points_of_interest__osm_water_reach"):
         step_osm_water_grade.main(["--warehouse", str(tmp_path / "w.duckdb")])
+
+
+def test_the_grade_step_prefetches_both_ends_of_every_walk_the_gate_will_grade_and_no_others():
+    """step_osm_water_grade.grade() hands prefetch_elevations() exactly the points apply_grade_gate() will ask
+    elevation_ft() for: both ends of each record that passed the distance gate and has no grade verdict yet."""
+    import step_osm_water_grade
+
+    records = [
+        {"passes_distance": True, "lat": 41.0, "lon": -74.0, "walk_to": {"lat": 41.001, "lon": -74.001}},
+        {"passes_distance": False, "lat": 42.0, "lon": -74.0, "walk_to": {"lat": 42.001, "lon": -74.001}},
+        {
+            "passes_distance": True,
+            "passes_grade": True,
+            "lat": 43.0,
+            "lon": -74.0,
+            "walk_to": {"lat": 43.001, "lon": -74.001},
+        },
+    ]
+    assert step_osm_water_grade._grade_points(records) == [(41.0, -74.0), (41.001, -74.001)]

@@ -689,3 +689,91 @@ def test_an_epqs_lookup_that_fails_or_answers_null_is_not_cached_so_the_next_att
 
     assert not cache_path.exists() or json.loads(cache_path.read_text()) == {}
     assert trail_water._elevation_cache() == {}
+
+
+def test_prefetching_asks_each_uncached_point_once_never_more_than_epqs_at_once_together_and_the_gate_then_asks_nothing(
+    tmp_path, monkeypatch
+):
+    """Monthly run 23 (37408053482, 2026-10-06) spent 2 h 56 min in step_osm_water_grade asking EPQS one point at a
+    time, silently, until the job's 240 minutes ran out. prefetch_elevations() asks several at once and logs as it
+    goes; elevation_ft() then answers every prefetched point from memory."""
+    import threading
+    import time as real_time
+
+    cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
+    monkeypatch.setattr(trail_water, "_EPQS_DECLINED", set())
+    lock = threading.Lock()
+    in_flight = [0]
+    most = [0]
+    asked = []
+
+    class Answer:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"value": 1234.0}
+
+    def slow_get(_url, params, **_kwargs):
+        with lock:
+            in_flight[0] += 1
+            most[0] = max(most[0], in_flight[0])
+            asked.append((params["y"], params["x"]))
+        real_time.sleep(0.02)
+        with lock:
+            in_flight[0] -= 1
+        return Answer()
+
+    monkeypatch.setattr(trail_water.requests, "get", slow_get)
+    points = [(40.0 + i / 1000, -75.0) for i in range(40)]
+    said = []
+    assert trail_water.prefetch_elevations(points + points[:5], say=said.append, every=10) == 40
+
+    assert sorted(asked) == sorted(points)
+    assert 2 <= most[0] <= trail_water.EPQS_AT_ONCE
+    assert said[0].startswith("EPQS: 40 points to look up")
+    assert said[-1].startswith("  EPQS: 40/40 asked, 40 answered")
+
+    def no_network(*_args, **_kwargs):
+        raise AssertionError("elevation_ft asked EPQS for a point the prefetch already answered")
+
+    monkeypatch.setattr(trail_water.requests, "get", no_network)
+    assert [trail_water.elevation_ft(lat, lon) for lat, lon in points] == [1234.0] * 40
+    trail_water.flush_elevation_cache()
+    assert len(json.loads(cache_path.read_text())) == 40
+
+
+def test_a_point_the_prefetch_got_no_answer_for_is_declined_this_run_without_asking_again_and_is_never_cached(
+    tmp_path, monkeypatch
+):
+    """The prefetch spends a point's TRIES, so elevation_ft() must not spend them a second time in the same run.
+    The decline stays in memory: the cache file holds only answered elevations, so the next run asks again."""
+    cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
+    monkeypatch.setattr(trail_water, "_EPQS_DECLINED", set())
+    monkeypatch.setattr(trail_water.time, "sleep", lambda _seconds: None)
+
+    class Null:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"value": None}
+
+    calls = []
+
+    def null_or_down(_url, params, **_kwargs):
+        calls.append(params["y"])
+        if params["y"] < 41:
+            return Null()
+        raise trail_water.requests.ConnectionError("EPQS is down")
+
+    monkeypatch.setattr(trail_water.requests, "get", null_or_down)
+    trail_water.prefetch_elevations([(40.0, -75.0), (41.0, -75.0)], say=lambda _message: None)
+    assert sorted(calls) == [40.0] + [41.0] * trail_water.TRIES
+
+    calls.clear()
+    assert trail_water.elevation_ft(40.0, -75.0) is None
+    assert trail_water.elevation_ft(41.0, -75.0) is None
+    assert calls == []
+    trail_water.flush_elevation_cache()
+    assert not cache_path.exists() or json.loads(cache_path.read_text()) == {}

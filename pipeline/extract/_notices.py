@@ -191,6 +191,43 @@ def redirect_refused(entry: dict, asked: str, served: str) -> str | None:
     return f"{asked} now redirects to {served}, another host, whose robots.txt and terms nobody has read for this row"
 
 
+class RedirectRefused(NoticeUnreadable, requests.RequestException):
+    """An answer served from another host than the one asked, which the row does not name (redirect_refused()).
+
+    A RequestException, so every change check reads it as UNKNOWN, as it
+    reads a request that failed; and a NoticeUnreadable, so the notice and
+    page readers' refusals keep the one type their callers expect.
+    """
+
+    def __init__(self, message: str, response: requests.Response | None = None):
+        requests.RequestException.__init__(self, message, response=response)
+
+
+def refuse_other_hosts(http: requests.Session, entry: dict | None = None) -> requests.Session:
+    """`http`, raising RedirectRefused for any answer redirect_refused() says is not the row's: every request, every reader.
+
+    Round 1's fix for review finding EXD-10 checked `response.url` in four
+    readers only, and the ArcGIS client, which reads 381 of the registry's
+    693 rows, still loaded whatever another host answered (review finding
+    SEC-5 of PR #1805). extract/_kinds.py's session() applies this, so every
+    reader's requests pass it, each attempt lib/http_retry.py makes and each
+    page included. The other host is still asked once, as requests follows
+    the redirect before the answer is seen; its answer is never read. A
+    reader whose row may name `redirect_hosts` passes the row as `entry`.
+    """
+    send = http.request
+
+    def request(method, url, *args, **kwargs):
+        response = send(method, url, *args, **kwargs)
+        if response.url and (refused := redirect_refused(entry or {}, url, response.url)):
+            response.close()
+            raise RedirectRefused(refused, response=response)
+        return response
+
+    http.request = request
+    return http
+
+
 # --- Politeness: one gap per host, across every reader and thread ----------
 
 # The gap kept between two requests to one host when its robots.txt asks for

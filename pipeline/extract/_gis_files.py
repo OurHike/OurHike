@@ -78,7 +78,7 @@ POLITE_SECONDS after the last request to that host ended, or the row's
 a row is registered (decision 53, "Access is checked, never assumed"), and a
 row records what it said. A wall (extract/_notices.py's wall()) raises, and so
 does a redirect to another host the row does not name in `redirect_hosts`
-(extract/_notices.py's redirect_refused).
+(extract/_notices.py's redirect_refused, which session() applies to every reader).
 """
 
 from __future__ import annotations
@@ -705,15 +705,17 @@ class GisFile(_kinds.PersonRuled, Resource):
 
     def _session(self) -> requests.Session:
         delay = max(POLITE_SECONDS, float(self.entry.get("crawl_delay") or 0))
-        return _notices.polite(_kinds.session(), delay)
+        return _notices.polite(_kinds.session(self.entry), delay)
 
     def _request(self, http: requests.Session, url: str, method: str = "get") -> requests.Response:
-        response = request_with_retry(url, session=http, method=method, timeout=120, label=f"{self.key} {url}")
+        """One request; a wall, or an answer from a host the row does not name (the session's refusal), is GisFileUnreadable."""
+        try:
+            response = request_with_retry(url, session=http, method=method, timeout=120, label=f"{self.key} {url}")
+        except _notices.RedirectRefused as refused:
+            raise GisFileUnreadable(f"{self.key}: {refused}") from refused
         blocked = _notices.wall(response)
         if blocked:
             raise GisFileUnreadable(f"{self.key}: {url} answered as a wall ({blocked})")
-        if refused := _notices.redirect_refused(self.entry, url, response.url):
-            raise GisFileUnreadable(f"{self.key}: {refused}")
         return response
 
     @staticmethod

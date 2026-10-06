@@ -71,8 +71,12 @@ POLITE_GAP_SECONDS = 2.0
 _LAST_REQUEST_END: dict[str, float] = {}
 
 
-def _get(url: str, *, headers: dict | None = None, label: str | None = None) -> requests.Response:
-    """One GET under USER_AGENT, POLITE_GAP_SECONDS after the last request to the same host ended."""
+def _get(url: str, *, headers: dict | None = None, label: str | None = None, entry: dict | None = None) -> requests.Response:
+    """One GET under USER_AGENT, POLITE_GAP_SECONDS after the last request to the same host ended.
+
+    `entry` is the reader's sources.json row, whose `redirect_hosts` the session's refusal of another host's answer
+    reads (extract/_kinds.py's session()).
+    """
     host = urlparse(url).hostname or ""
     last = _LAST_REQUEST_END.get(host)
     if last is not None:
@@ -80,7 +84,7 @@ def _get(url: str, *, headers: dict | None = None, label: str | None = None) -> 
         if pause > 0:
             time.sleep(pause)
     try:
-        return request_with_retry(url, session=_kinds.session(), headers=headers, timeout=60, label=label or url)
+        return request_with_retry(url, session=_kinds.session(entry), headers=headers, timeout=60, label=label or url)
     finally:
         _LAST_REQUEST_END[host] = time.monotonic()
 
@@ -165,7 +169,7 @@ def _against_content_length(response: requests.Response) -> str:
     return f"all {sent} arrived"
 
 
-def _get_json(url: str, *, what: str, headers: dict | None = None, label: str | None = None):
+def _get_json(url: str, *, what: str, headers: dict | None = None, label: str | None = None, entry: dict | None = None):
     """_get() and then _json(), with an answer that will not parse asked for once more before it is refused.
 
     nps_multimedia_audio was refused on such an answer in monthly runs 16 to 19: run 18
@@ -179,10 +183,10 @@ def _get_json(url: str, *, what: str, headers: dict | None = None, label: str | 
     19's did, so for that page one more ask does not help; whether it helps a page cut at random is @unvalidated.
     """
     try:
-        return _json(_get(url, headers=headers, label=label), what)
+        return _json(_get(url, headers=headers, label=label, entry=entry), what)
     except NotJson as first:
         print(f"::warning title={what} answered a body that will not parse::{first}; asking for it once more")
-        return _json(_get(url, headers=headers, label=label), what)
+        return _json(_get(url, headers=headers, label=label, entry=entry), what)
 
 
 def _sha256(value) -> str:
@@ -270,7 +274,7 @@ class NpsAlerts(_kinds.PersonRuled, Resource):
         start = 0
         for _ in range(NPS_MAX_PAGES):
             url = nps_alerts_url(base, self.park_codes, start)
-            body = _json(_get(url, headers=headers, label=f"{self.key} from {start}"), self.key)
+            body = _json(_get(url, headers=headers, label=f"{self.key} from {start}", entry=self.entry), self.key)
             if not isinstance(body, dict) or not isinstance(body.get("data"), list) or body.get("total") is None:
                 raise ValueError(f"{self.key}: the answer has no `total` and `data` list, so the API has changed shape")
             page_total = int(body["total"])
@@ -349,7 +353,7 @@ class NpsRoadEvents(_kinds.PersonRuled, Resource):
 
     def rows(self, proofs: dict[str, int]):
         headers = {"X-Api-Key": nps_api_key(), "Accept": "application/json"}
-        body = _json(_get(self.entry["url"], headers=headers, label=self.key), self.key)
+        body = _json(_get(self.entry["url"], headers=headers, label=self.key, entry=self.entry), self.key)
         if not isinstance(body, dict) or body.get("type") != "FeatureCollection" or not isinstance(body.get("features"), list):
             raise ValueError(f"{self.key}: the answer is not a FeatureCollection, so the feed has changed shape")
         info = body.get("road_event_feed_info") or {}
@@ -431,7 +435,8 @@ class DcnrParkAdvisories(_kinds.PersonRuled, Resource):
         base = self.entry["url"].rstrip("/")
         collected = []
         for park_id in self.park_ids:
-            body = _json(_get(f"{base}?{urlencode({'id': park_id})}", label=f"{self.key} park {park_id}"), self.key)
+            asked = f"{base}?{urlencode({'id': park_id})}"
+            body = _json(_get(asked, label=f"{self.key} park {park_id}", entry=self.entry), self.key)
             if not isinstance(body, list):
                 raise ValueError(f"{self.key}: park {park_id} answered {type(body).__name__}, not a list of advisories")
             seen: Counter = Counter()
@@ -502,7 +507,7 @@ class UsgsElevatedVolcanoes(_kinds.PersonRuled, Resource):
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        body = _json(_get(self.entry["url"], label=self.key), self.key)
+        body = _json(_get(self.entry["url"], label=self.key, entry=self.entry), self.key)
         if not isinstance(body, list):
             raise ValueError(f"{self.key}: answered {type(body).__name__}, not a list of volcanoes")
         numbers = Counter(item.get("vnum") for item in body)
@@ -581,7 +586,7 @@ class MediawikiAnnouncements(Resource):
         }
         pages: dict[int, dict] = {}
         for _ in range(MEDIAWIKI_MAX_BATCHES):
-            body = _json(_get(mediawiki_url(self.api, params), label=self.key), self.key)
+            body = _json(_get(mediawiki_url(self.api, params), label=self.key, entry=self.entry), self.key)
             if not isinstance(body, dict) or "error" in body:
                 raise ValueError(f"{self.key}: the wiki answered an error or no object: {str(body)[:200]}")
             for page in (body.get("query") or {}).get("pages") or []:
@@ -616,7 +621,8 @@ class MediawikiAnnouncements(Resource):
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        body = _json(_get(mediawiki_url(self.api, {"action": "query", "titles": self.template}), label=self.key), self.key)
+        asked = mediawiki_url(self.api, {"action": "query", "titles": self.template})
+        body = _json(_get(asked, label=self.key, entry=self.entry), self.key)
         found = ((body or {}).get("query") or {}).get("pages") or []
         if not found or any(page.get("missing") or page.get("invalid") for page in found):
             raise RuntimeError(f"{self.key}: {self.template!r} is missing from the wiki, so an empty listing proves nothing")
@@ -750,7 +756,7 @@ class SheetCsvSegments(Resource):
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        response = _get(self.entry["url"], label=self.key)
+        response = _get(self.entry["url"], label=self.key, entry=self.entry)
         if "csv" not in (response.headers.get("Content-Type") or ""):
             raise ValueError(f"{self.key}: answered {response.headers.get('Content-Type')!r}, not CSV")
         _, segments = parse_segment_sheet(response.content.decode("utf-8-sig"))
@@ -874,7 +880,7 @@ class MyMapsPlacemarks(_kinds.PersonRuled, Resource):
         return hints
 
     def rows(self, proofs: dict[str, int]):
-        response = _get(self.entry["url"], label=self.key)
+        response = _get(self.entry["url"], label=self.key, entry=self.entry)
         content_type = response.headers.get("Content-Type") or ""
         if "xml" not in content_type and "kml" not in content_type:
             raise ValueError(f"{self.key}: answered {content_type!r}, not KML")

@@ -87,7 +87,7 @@ from extract._notices import (  # noqa: F401
     page_notice,
     polite,
     query_refused,
-    redirect_refused,
+    refuse_other_hosts,
 )
 from fetch_atc_updates import TOLERATED_PARSE_FAILURES as ATC_TOLERATED_PARSE_FAILURES
 from fetch_club_pdfs import extract_page_texts
@@ -395,17 +395,19 @@ AGOL_HOST = re.compile(r"^services\d*\.arcgis\.com$")
 MONTHLY_READ_BACKOFF_SECONDS = (5, 30, 120, 300, 600)
 
 
-def session() -> requests.Session:
-    """A session that names the project on every request, page and count included.
+def session(entry: dict | None = None) -> requests.Session:
+    """A session that names the project on every request, page and count included, and reads no other host's answer.
 
     Every request sends lib/user_agent.py's USER_AGENT, on every host, and
     never a browser's (decision 39): an operator should see who is asking from
     one line of their log, and a host that refuses our own named agent has
-    refused us.
+    refused us. An answer redirected to another host raises
+    extract/_notices.py's RedirectRefused unless `entry`, the reader's
+    sources.json row, names that host in `redirect_hosts` (refuse_other_hosts).
     """
     named = requests.Session()
     named.headers["User-Agent"] = USER_AGENT
-    return named
+    return refuse_other_hosts(named, entry)
 
 
 def host_gated(entry: dict) -> requests.Session:
@@ -415,7 +417,7 @@ def host_gated(entry: dict) -> requests.Session:
     gap between them as well as within each (GATC's water PDF and its peaks
     page, both on a host asking `Crawl-delay: 10`; review finding EXD-4).
     """
-    return polite(session(), max(float(entry.get("crawl_delay") or 0), DEFAULT_HOST_GAP_SECONDS))
+    return polite(session(entry), max(float(entry.get("crawl_delay") or 0), DEFAULT_HOST_GAP_SECONDS))
 
 
 @lru_cache(maxsize=4)
@@ -1323,14 +1325,11 @@ class ClubPdf(Resource):
     def _get(self, headers: dict | None = None) -> requests.Response:
         """One GET of the PDF through the host's gate (host_gated), at the row's `crawl_delay`: GATC's host asks 10 s.
 
-        A PDF that now redirects to another host raises RuntimeError
-        (extract/_notices.py's redirect_refused), so the change check is UNKNOWN and the read refuses.
+        A PDF that now redirects to another host raises the session's
+        RedirectRefused (extract/_notices.py's refuse_other_hosts), so the change check is UNKNOWN and the read refuses.
         """
         entry = registry_entry(self.key)
-        response = request_with_retry(entry["url"], session=host_gated(entry), headers=headers or None, timeout=120)
-        if refused := redirect_refused(entry, entry["url"], response.url):
-            raise RuntimeError(f"{self.key}: {refused}")
-        return response
+        return request_with_retry(entry["url"], session=host_gated(entry), headers=headers or None, timeout=120)
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """A conditional GET, then the body's sha256: WordPress re-serves the same bytes without a 304.

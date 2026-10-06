@@ -63,7 +63,8 @@ ACCESS: lib/user_agent.py's USER_AGENT through extract/_kinds.py's session(),
 and extract/_notices.py's per-host gate, at least POLITE_SECONDS between two
 requests to one host or the row's `crawl_delay` where its robots.txt asks for
 more (tennesseetrails.org asks 60). A redirect to another host the row does not
-name in `redirect_hosts` raises (extract/_notices.py's redirect_refused).
+name in `redirect_hosts` raises (extract/_kinds.py's session(), through
+extract/_notices.py's refuse_other_hosts).
 """
 
 from __future__ import annotations
@@ -136,7 +137,7 @@ class _Paged(_kinds.PersonRuled, Resource):
 
     def _session(self) -> requests.Session:
         delay = max(POLITE_SECONDS, float(self.entry.get("crawl_delay") or 0))
-        return _notices.polite(_kinds.session(), delay)
+        return _notices.polite(_kinds.session(self.entry), delay)
 
     def _get(
         self, http: requests.Session, url: str, params: dict | None = None, headers: dict | None = None
@@ -145,8 +146,6 @@ class _Paged(_kinds.PersonRuled, Resource):
         blocked = _notices.wall(response)
         if blocked:
             raise RuntimeError(f"{self.key}: {url} answered as a wall ({blocked})")
-        if refused := _notices.redirect_refused(self.entry, url, response.url):
-            raise RuntimeError(f"{self.key}: {refused}")
         return response
 
     def flatten(self, fields: dict, reserved: tuple[str, ...]) -> dict:

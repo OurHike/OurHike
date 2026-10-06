@@ -301,7 +301,7 @@ class NpsContent(_json_apis.NpsAlerts):
         for _ in range(NPS_CONTENT_MAX_PAGES):
             url = nps_content_url(base, codes, start)
             page = f"{self.key} from {start}"  # the page asked for, so a refusal says which one
-            body = _json_apis._get_json(url, what=page, headers=headers, label=page)
+            body = _json_apis._get_json(url, what=page, headers=headers, label=page, entry=self.entry)
             if not isinstance(body, dict) or not isinstance(body.get("data"), list) or body.get("total") is None:
                 raise ValueError(f"{self.key}: the answer has no `total` and `data` list, so the API has changed shape")
             page_total = int(body["total"])

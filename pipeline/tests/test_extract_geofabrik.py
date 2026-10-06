@@ -469,3 +469,21 @@ def test_the_index_is_never_a_key_the_mirror_holds_and_keys_cannot_leave_their_p
         with pytest.raises(ValueError, match="not a raw-store key"):
             object_path(root, key)
     assert object_path(root, "osm/georgia-latest.osm.pbf") == f"{root}/current/osm/georgia-latest.osm.pbf"
+
+
+def test_an_extract_redirected_to_another_host_keeps_the_last_copy_and_its_row_says_why(registry, store, requests_mock, naps):
+    """Review finding SEC-5 of PR #1805: the download used bare requests, outside the session that refuses another
+    host's answer, so a moved extract would have been stored from a host whose robots.txt nobody read."""
+    fs, root = store
+    old = pbf(seed=b"o")
+    keep(fs, root, "georgia", old, last_modified=NOW - timedelta(days=40))
+    keep(fs, root, "maine", pbf(seed=b"m"), last_modified=NOW - timedelta(days=3))
+    allow_all(requests_mock)
+    elsewhere = "https://mirror.example.net/georgia-latest.osm.pbf"
+    requests_mock.get(url("georgia"), status_code=302, headers={"Location": elsewhere})
+    requests_mock.get(elsewhere, content=pbf(seed=b"x"))
+
+    rows = {row["state"]: row for row in resource().rows({})}
+
+    assert stored(fs, root, "georgia") == old, "the other host's bytes never replace the copy"
+    assert rows["georgia"]["read_this_run"] is False and "another host" in rows["georgia"]["read_error"]

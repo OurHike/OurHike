@@ -436,7 +436,7 @@ class GeofabrikExtracts(Resource):
             if (wait := robots.delay - (time.monotonic() - last_request)) > 0:
                 time.sleep(wait)
             try:
-                entry = self._download(fs, root, state, url)
+                entry = self._download(fs, root, state, url, http)
             except (requests.RequestException, OSError, ValueError) as error:
                 errors[state] = f"{type(error).__name__}: {error}"
                 print(f"::warning title={self.key}: {state} kept its last copy::{errors[state]}")
@@ -449,8 +449,12 @@ class GeofabrikExtracts(Resource):
             print(f"  {self.key}: {state}, {entry['size_bytes'] / 1e6:.0f} MB, stored")
         return read, errors
 
-    def _download(self, fs, root: str, state: str, url: str) -> dict:
-        """One state's extract, streamed to a temporary file, checked, then uploaded. Returns its index entry."""
+    def _download(self, fs, root: str, state: str, url: str, http: requests.Session) -> dict:
+        """One state's extract, streamed through `http` to a temporary file, checked, then uploaded. Returns its index entry.
+
+        `http` is the session robots.txt was read through, extract/_kinds.py's session(), so an extract redirected to
+        another host raises RedirectRefused and the state keeps its last copy (review finding SEC-5 of PR #1805).
+        """
         with tempfile.TemporaryDirectory(prefix="geofabrik-") as folder:
             local = Path(folder) / extract_name(state)
             headers: dict = {}
@@ -461,6 +465,7 @@ class GeofabrikExtracts(Resource):
                 headers={"User-Agent": USER_AGENT},
                 label=f"osm/{state}",
                 response_headers=headers,
+                session=http,
             )
             size = local.stat().st_size
             stated = headers.get("Content-Length")

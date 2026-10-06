@@ -615,8 +615,8 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
         raise SystemExit(f"no fixture file in {raw_dir} matches an extract resource; run make_dbt_fixtures.py first")
     real_session = _kinds.session
 
-    def fixture_session() -> requests.Session:
-        named = real_session()
+    def fixture_session(entry: dict | None = None) -> requests.Session:
+        named = real_session(entry)
         named.mount("https://", adapter)
         named.mount("http://", adapter)
         return named

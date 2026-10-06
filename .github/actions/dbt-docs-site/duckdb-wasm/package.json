@@ -1,0 +1,13 @@
+{
+  "name": "ourhike-data-docs-duckdb-wasm",
+  "private": true,
+  "description": "DuckDB-WASM for the /data/ docs page, served from our own site (pipeline/ELT.md decision 93). build.sh installs it with npm ci and stage.mjs stages it; loader.js says why it is laid out as it is.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "1.32.0",
+    "apache-arrow": "17.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

@@ -558,7 +558,9 @@ jobs:
           # never be silently merged. Then checked as copied, because this
           # copy is what ships: check_docs_site.py fails a missing index.html,
           # assets/ or Parquet, a recorded --vars, and coordinate-shaped text
-          # (it says what it searches for, and the one place it allows it).
+          # (it says what it searches for, and the one place it allows it),
+          # and with --served a script, worker or WASM file from another
+          # origin (decision 93: the page runs on the app's origin).
           if [ -e _site/data ]; then
             echo "::error::site/dist already holds data/, which is the dbt docs' path. Move one of them."
             exit 1
@@ -567,7 +569,7 @@ jobs:
           # Never empty: `cp -r "/." _site/data/` would copy the runner's root.
           : "${DOCS_DIR:?the docs step named no directory}"
           cp -r "$DOCS_DIR"/. _site/data/
-          python pipeline/check_docs_site.py _site/data
+          python pipeline/check_docs_site.py _site/data --served
           # Pages runs Jekyll by default, which skips files beginning with an
           # underscore - Vite does not emit any today, but a build tool changing
           # its naming should not silently break the deploy.

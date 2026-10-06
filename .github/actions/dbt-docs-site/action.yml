@@ -4,7 +4,23 @@
 # ua.yml has no site and does not call it. One action rather than two
 # copies, so the Python version, the cache key and the telemetry opt-out
 # cannot drift apart. The caller copies `dir` into `_site/data/` and runs
-# pipeline/check_docs_site.py on that copy, because the copy is what ships.
+# pipeline/check_docs_site.py --served on that copy, because the copy is what
+# ships.
+#
+# WITH DuckDB-WASM OF OUR OWN at /data/duckdb/, which the page loads its
+# engine from, never a CDN (pipeline/ELT.md decision 93; build.sh and
+# duckdb-wasm/loader.js say how, and what was measured). It is most of the
+# site's size: measured 2026-10-06 on builds of 24da1f07 and of this change,
+# the site went from 355 files, 14,425,647 bytes, to 365 files, 95,913,727
+# bytes, the 10 added files being 81,489,844 bytes under duckdb/. A visitor
+# whose browser takes the eh bundle loads 38,289,185 of them; one that takes
+# mvp, 43,303,400. Before, the page fetched the same WASM, workers and
+# parquet extension from jsDelivr and extensions.duckdb.org (and jsDelivr's
+# own bundle in duckdb.js's place), and jsDelivr sent duckdb-eh.wasm brotli,
+# 7,124,338 bytes (pipeline/ELT.md, measured 2026-10-01). Whether GitHub
+# Pages and Cloudflare Pages compress our copy in transit is unmeasured;
+# gzip -9 makes the eh file 7,639,912 bytes, so the most a visitor can lose
+# to it is about 26.6 MB, once, before the browser caches it.
 #
 # AGAINST AN EMPTY WAREHOUSE, never fixtures or real data: the page is
 # public, counts only and no maps (decision 10), and a warehouse with no
@@ -29,9 +45,9 @@ description: Build the dbt docs site for /data/ against an empty warehouse, and 
 outputs:
   dir:
     description: >-
-      The directory `dbt docs generate` wrote: index.html, assets/ and the
-      Parquet under info_schema/. Under the runner's temp directory, never
-      in the checkout.
+      The directory `dbt docs generate` wrote, index.html, assets/ and the
+      Parquet under info_schema/, with DuckDB-WASM under duckdb/. Under the
+      runner's temp directory, never in the checkout.
     value: ${{ steps.build.outputs.dir }}
 
 runs:
@@ -59,6 +75,13 @@ runs:
     - name: Install dbt
       shell: bash
       run: pip install -r pipeline/requirements-dbt.txt
+
+    # For build.sh's DuckDB-WASM: npm ci of duckdb-wasm/package-lock.json, and
+    # stage.mjs. No npm cache, so each run fetches the packages from the
+    # registry and checks them against the lockfile.
+    - uses: actions/setup-node@v7
+      with:
+        node-version: '24'
 
     - name: Build the docs site
       id: build

@@ -611,7 +611,8 @@ jobs:
           # app shell, so a docs file missing from this upload would be
           # answered with the app, and a reviewer opening /data/ would see the
           # map rather than anything saying the docs are broken.
-          # check_docs_site.py refuses the missing part instead.
+          # check_docs_site.py refuses the missing part instead, and with
+          # --served a script, worker or WASM file from another origin.
           if [ -e _site/data ]; then
             echo "::error::site/dist already holds data/, which is the dbt docs' path. Move one of them."
             exit 1
@@ -620,7 +621,7 @@ jobs:
           # Never empty: `cp -r "/." _site/data/` would copy the runner's root.
           : "${DOCS_DIR:?the docs step named no directory}"
           cp -r "$DOCS_DIR"/. _site/data/
-          python pipeline/check_docs_site.py _site/data
+          python pipeline/check_docs_site.py _site/data --served
           # THE ONE PLACE THIS PREVIEW IS DELIBERATELY NOT PRODUCTION, and it
           # is one line. Cloudflare Pages reads `_redirects`; GitHub Pages
           # ignores the file entirely, so production is untouched by it.

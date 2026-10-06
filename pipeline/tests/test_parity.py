@@ -50,6 +50,52 @@ def test_ints_and_floats_print_apart():
     assert differences(_document(A), _document({**A, "at_miles": [[1, 2]]}), FAMILY) != []
 
 
+# --- a key a file holds more than once (PY-4 of PR #1805's second review) ---
+
+
+def _poi(feature_id: str, water: str) -> dict:
+    return {"type": "Feature", "properties": {"id": feature_id, "water": water}}
+
+
+def test_a_feature_the_new_file_holds_twice_one_copy_wrong_is_a_duplicate_difference_not_a_match():
+    """nearby_poi is unordered, so no order check sees the second copy: keyed into one record per key, the last copy
+    stood for both and a stale water status reached the phone with parity green."""
+    family = parity.FAMILIES["nearby_poi"]
+    assert family.ordered is False
+    old = {"type": "FeatureCollection", "features": [_poi("w1", "reliable")]}
+    new = {"type": "FeatureCollection", "features": [_poi("w1", "dry"), _poi("w1", "reliable")]}
+
+    found = differences(old, new, family)
+
+    assert [what for what, _, _ in found] == ["duplicate properties.id w1"]
+    assert [copy["properties"]["water"] for copy in json.loads(found[0][2])] == ["dry", "reliable"]
+    assert json.loads(found[0][1]) == [_poi("w1", "reliable")]
+
+
+def test_a_key_both_files_repeat_is_compared_copy_by_copy_not_by_its_last_copy():
+    """An ordered family's order check sees a count that moved, and nothing else: both files holding `a` twice, with
+    different first copies, compared equal."""
+    old = _document({**A, "title": "Old first copy"}, A)
+    new = _document({**A, "title": "New first copy"}, A)
+
+    assert [what for what, _, _ in differences(old, new, FAMILY)] == ["duplicate spotify_id a"]
+
+
+def test_a_key_both_files_repeat_identically_is_still_a_duplicate_difference():
+    """A record key names one record in a file a phone reads, so a file holding it twice is a defect whichever writer
+    made it, and parity says so rather than calling two copies a match."""
+    assert [what for what, _, _ in differences(_document(A, A), _document(A, A), FAMILY)] == ["duplicate spotify_id a"]
+
+
+def test_a_duplicate_difference_names_the_repeated_key_and_every_field_its_copies_disagree_on():
+    old = parity.canonical([_poi("w1", "reliable")])
+    new = parity.canonical([_poi("w1", "dry"), _poi("w1", "reliable")])
+
+    assert parity.changed_fields("duplicate properties.id w1", old, new) == ["properties.id", "properties.water"]
+    twice = parity.canonical([_poi("w1", "dry"), _poi("w1", "dry")])
+    assert parity.changed_fields("duplicate properties.id w1", None, twice) == ["properties.id"]
+
+
 def test_the_cli_exits_1_on_a_difference(tmp_path, monkeypatch, capsys):
     monkeypatch.setitem(parity.FAMILIES, "fake", Family(old=lambda: _document(A), records="episodes", key="spotify_id"))
     new = tmp_path / "new.json"

@@ -1874,6 +1874,11 @@ def canonical(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+#: The first word of a difference about a key one side holds more than once: `duplicate <family.key> <key>`, its two
+#: sides each the list of that side's copies (None for a side without the key).
+DUPLICATE = "duplicate"
+
+
 def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | None, str | None]]:
     """(what, old, new) for every record and top-level field that differs, by key; empty when the two agree."""
 
@@ -1893,11 +1898,25 @@ def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | N
     def shaped(record: dict) -> dict:
         return family.normalize(record) if family.normalize else record
 
-    def index(document: dict) -> dict[str, str]:
-        return {record_key(record): canonical(shaped(record)) for record in document.get(family.records) or []}
+    def index(document: dict) -> dict[str, list[dict]]:
+        copies: dict[str, list[dict]] = {}
+        for record in document.get(family.records) or []:
+            copies.setdefault(record_key(record), []).append(shaped(record))
+        return copies
 
+    # A KEY EITHER SIDE HOLDS MORE THAN ONCE is a difference of its own, carrying every copy of it on each side, even
+    # when both sides hold the same copies: a record key names one record in the file a phone reads. Keyed into one
+    # record per key, the last copy stood for the rest, so a writer that published one water point twice, one copy
+    # wrong, compared equal on an unordered family (PY-4 of PR #1805's second review).
     a, b = index(old), index(new)
-    found += [(f"{family.key} {key}", a.get(key), b.get(key)) for key in sorted(a.keys() | b.keys()) if a.get(key) != b.get(key)]
+    for key in sorted(a.keys() | b.keys()):
+        was, now = a.get(key, []), b.get(key, [])
+        if len(was) > 1 or len(now) > 1:
+            found.append((f"{DUPLICATE} {family.key} {key}", canonical(was) if was else None, canonical(now) if now else None))
+            continue
+        one, other = (canonical(was[0]) if was else None), (canonical(now[0]) if now else None)
+        if one != other:
+            found.append((f"{family.key} {key}", one, other))
     if family.ordered:
         old_order = [record_key(record) for record in old.get(family.records) or []]
         new_order = [record_key(record) for record in new.get(family.records) or []]
@@ -1961,6 +1980,13 @@ def changed_fields(what: str, old: str | None, new: str | None) -> list[str]:
     """
     if what == "order":
         return ["order"]
+    if what.startswith(f"{DUPLICATE} "):
+        # The key that repeats, and each field on which any copy, on either side, differs from the first.
+        copies = [*(json.loads(old) if old is not None else []), *(json.loads(new) if new is not None else [])]
+        repeated: set[str] = {what.split(" ", 2)[1]}
+        for copy in copies[1:]:
+            _changed_paths(copies[0], copy, "", repeated)
+        return sorted(repeated)
     prefix = what.removeprefix("field ") if what.startswith("field ") else ""
     found: set[str] = set()
     _changed_paths(_ABSENT if old is None else json.loads(old), _ABSENT if new is None else json.loads(new), prefix, found)
@@ -1985,7 +2011,9 @@ def rekeyed(found: list[tuple[str, str | None, str | None]], key: str) -> dict[s
     TL05 ids are the first). Pairing them lets changed_fields() answer `key`
     for both, rather than every field each holds, so an id that moved does
     not read as a lost trail_status."""
-    records = [(what, a, b) for what, a, b in found if what not in ("order", "file") and not what.startswith("field ")]
+    records = [
+        (what, a, b) for what, a, b in found if what not in ("order", "file") and not what.startswith(("field ", f"{DUPLICATE} "))
+    ]
     waiting: dict[str, list[str]] = {}
     for what, a, b in records:
         if a is None and b is not None:

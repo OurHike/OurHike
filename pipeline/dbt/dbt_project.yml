@@ -129,6 +129,10 @@ vars:
     - Permits
     - Relocation
     - Water
+  # The app's own host, which macros/link_into_the_app.sql refuses a link to
+  # (decision 94). site/CNAME is its one home, the hostname GitHub Pages
+  # serves the app at; .github/tests/test_pages_publish.py holds this to it.
+  app_host: ourhike.org
   # lib/work_projects.py's TRAIL_MILE_MIN and TRAIL_MILE_MAX, which
   # int_closures__work_projects_checked holds a workday's mile to (CL17),
   # held to the Python by tests/test_dbt_conditions_parity.py. That module

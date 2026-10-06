@@ -614,6 +614,12 @@ class TestTheCustomDomainAndTheBuildAgree:
         assert "://" not in self._host()
         assert "/" not in self._host()
 
+    def test_the_dbt_link_checks_refuse_links_to_the_cnames_host(self):
+        """Decision 94: pipeline/dbt/macros/link_into_the_app.sql refuses a closure link back into the app by its
+        host, read from dbt_project.yml's `app_host` var, which has to be site/CNAME's or it refuses nothing."""
+        variables = yaml.safe_load((REPO_ROOT / "pipeline" / "dbt" / "dbt_project.yml").read_text(encoding="utf-8"))["vars"]
+        assert variables["app_host"] == self._host()
+
     def test_the_app_is_built_for_a_subpath_of_the_custom_domain_root(self):
         """The apex serves the landing page; the app lives under it.
 

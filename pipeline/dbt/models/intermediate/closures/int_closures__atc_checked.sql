@@ -17,6 +17,8 @@
 --   obstructs_trail: a real boolean             CL03
 --   updated_at: a string with something in it
 --   source_url: an http or https URL            CL03
+--   source_url: not back into the app (macros/link_into_the_app.sql,
+--     decision 94), which file_problems() does not check
 -- then an atc_id an earlier row already used (CL04). A field's JSON type is
 -- checked as the Python checks a type: "476.6" is not a mile and "true" is
 -- not a boolean.
@@ -274,7 +276,22 @@ checks as (
                     'source_url '
                     || coalesce(cast(source_url_json as varchar), 'null')
                     || ' is not an http(s) URL'
-        end as bad_source_url
+        end as bad_source_url,
+        case
+            when
+                list_contains(present, 'source_url')
+                and coalesce(
+                    lower(regexp_extract(
+                        source_url, '^([A-Za-z][A-Za-z0-9+.-]*):', 1
+                    )) in ('http', 'https'),
+                    false
+                )
+                then
+                    'source_url '
+                    || cast(source_url_json as varchar)
+                    || ' '
+                    || ({{ link_into_the_app('source_url') }})
+        end as source_url_into_the_app
     from parsed
 ),
 
@@ -311,7 +328,8 @@ listed as (
                                 bad_category,
                                 bad_states,
                                 bad_start_mile, bad_end_mile, reversed_range,
-                                bad_obstructs, empty_updated_at, bad_source_url
+                                bad_obstructs, empty_updated_at, bad_source_url,
+                                source_url_into_the_app
                             ]
                         ),
                         lambda p: p is not null

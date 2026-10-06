@@ -598,10 +598,13 @@ unit_tests:
       Each expected problem is the Python's, with values rendered as JSON;
       tests/test_dbt_conditions_parity.py runs row_problems() over these same
       rows and fails where the two disagree, except row 36, a source_url with
-      a leading space, which this model refuses on purpose. Rows 0, 1, 3, 7-12
-      and 37 are fine: a real update, a point closure, the far end of the
-      trail, the six categories only page ten ever showed, and an upper-case
-      scheme.
+      a leading space, and rows 39-42, links back into the app (decision 94:
+      the app's own site, a link with no host, a sign-in token on another
+      site, and the app's host in capitals with a trailing dot), which this
+      model refuses on purpose. Rows 0, 1, 3, 7-12, 37 and 43 are fine: a real
+      update, a point closure, the far end of the trail, the six categories
+      only page ten ever showed, an upper-case scheme, and a query whose key
+      only contains the letters of `code`.
     model: int_closures__atc_checked
     given:
       - input: ref('base_atc__atc_trail_updates')
@@ -645,6 +648,11 @@ unit_tests:
           - {atc_update_row_key: k36, file_row: 36, atc_update: '{"atc_id": "a36", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": " https://appalachiantrail.org/x"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
           - {atc_update_row_key: k37, file_row: 37, atc_update: '{"atc_id": "a37", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "HTTPS://appalachiantrail.org/x"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
           - {atc_update_row_key: k38, file_row: 38, atc_update: '{"atc_id": "a38", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": null, "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k39, file_row: 39, atc_update: '{"atc_id": "a39", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://ourhike.org/app/#access_token=A&refresh_token=R"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k40, file_row: 40, atc_update: '{"atc_id": "a40", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https:#access_token=A"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k41, file_row: 41, atc_update: '{"atc_id": "a41", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://example.org/notice?code=0f9e"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k42, file_row: 42, atc_update: '{"atc_id": "a42", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://WWW.OurHike.org./for-orgs/"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
+          - {atc_update_row_key: k43, file_row: 43, atc_update: '{"atc_id": "a43", "title": "SW Virginia: VA Creeper Trail Closure/Detour", "category": "Closure", "states": ["VA"], "start_mile_marker": 476.6, "end_mile_marker": 485.8, "obstructs_trail": true, "updated_at": "2026-07-17T00:00:00Z", "source_url": "https://www.nps.gov/planyourvisit/alerts.htm?parkCode=acad"}', reviewed_file: '{"reviewed_at": "2026-08-24"}'}
     expect:
       rows:
         - {file_row: 0, problem: null}
@@ -686,6 +694,11 @@ unit_tests:
         - {file_row: 36, problem: 'a36: source_url " https://appalachiantrail.org/x" is not an http(s) URL'}
         - {file_row: 37, problem: null}
         - {file_row: 38, problem: 'a38: category null is not one ATC publishes (Alert, Animal, Closure, Conservation, Construction, Detour, Fire, Hiking Safety, Parking, Permits, Relocation, Water)'}
+        - {file_row: 39, problem: 'a39: source_url "https://ourhike.org/app/#access_token=A&refresh_token=R" is on the app''s own site, ourhike.org'}
+        - {file_row: 40, problem: 'a40: source_url "https:#access_token=A" has no host of its own, so the app would open it as one of its own pages'}
+        - {file_row: 41, problem: 'a41: source_url "https://example.org/notice?code=0f9e" carries a sign-in token (access_token, refresh_token or code)'}
+        - {file_row: 42, problem: 'a42: source_url "https://WWW.OurHike.org./for-orgs/" is on the app''s own site, ourhike.org'}
+        - {file_row: 43, problem: null}
 
   - name: int_closures__nynjtc_checked_reads_each_post_as_parse_alert_does
     description: >
@@ -701,8 +714,10 @@ unit_tests:
       the double unescape _text_of() does, and an NBSP stripped as whitespace.
       tests/test_dbt_conditions_parity.py runs the Python over these rows and
       fails where the two disagree, except n09 (a named reference this model
-      does not decode), n14 and n15 (one slug on two posts) and n16 (a title
-      that is not a string), which it lists as deliberate.
+      does not decode), n14 and n15 (one slug on two posts), n16 (a title
+      that is not a string) and n17-n19 (links back into the app, decision
+      94), which it lists as deliberate. n20's query key only contains the
+      letters of `code`, and the post reads.
     model: int_closures__nynjtc_checked
     given:
       - input: ref('base_nynjtc__nynjtc_trail_alerts')
@@ -723,6 +738,10 @@ unit_tests:
           - {trail_alert_key: n14, post_id: 114, slug: dup, link: 'https://www.nynjtc.org/trail-alerts/dup/', title_json: '{"rendered": "First"}', modified_at: '2026-01-09 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
           - {trail_alert_key: n15, post_id: 115, slug: dup, link: 'https://www.nynjtc.org/trail-alerts/dup-2/', title_json: '{"rendered": "Second"}', modified_at: '2026-01-10 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
           - {trail_alert_key: n16, post_id: 116, slug: numeric-title, link: 'https://www.nynjtc.org/trail-alerts/numeric-title/', title_json: '{"rendered": 5}', modified_at: '2026-01-11 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n17, post_id: 117, slug: app-link, link: 'https://ourhike.org/app/#access_token=A&refresh_token=R', title_json: '{"rendered": "App link"}', modified_at: '2026-01-12 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n18, post_id: 118, slug: hostless-link, link: 'https:#access_token=A', title_json: '{"rendered": "Hostless link"}', modified_at: '2026-01-13 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n19, post_id: 119, slug: token-link, link: 'https://www.nynjtc.org/trail-alerts/token-link/?code=0f9e', title_json: '{"rendered": "Token link"}', modified_at: '2026-01-14 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
+          - {trail_alert_key: n20, post_id: 120, slug: park-code, link: 'https://www.nynjtc.org/trail-alerts/park-code/?parkCode=acad', title_json: '{"rendered": "Park code"}', modified_at: '2026-01-15 00:00:00+00', trail_term_ids: '[]', park_term_ids: '[]', region_term_ids: '[]', state_term_ids: '[]'}
       - input: ref('base_nynjtc__nynjtc_trail_alerts_terms')
         rows:
           - {place_term_key: t1, taxonomy: trail, term_id: 31, term_name: Highlands Trail, slug: highlands-trail}
@@ -752,6 +771,10 @@ unit_tests:
         - {notice_id: 'nynjtc_trail_alerts:post-114', title: 'First', locality: '', updated_at: '2026-01-09T00:00:00Z', problem: 'dup: a slug another post also has'}
         - {notice_id: 'nynjtc_trail_alerts:post-115', title: 'Second', locality: '', updated_at: '2026-01-10T00:00:00Z', problem: 'dup: a slug another post also has'}
         - {notice_id: 'nynjtc_trail_alerts:numeric-title', title: '', locality: '', updated_at: '2026-01-11T00:00:00Z', problem: 'numeric-title: no title once read'}
+        - {notice_id: 'nynjtc_trail_alerts:app-link', title: 'App link', locality: '', updated_at: '2026-01-12T00:00:00Z', problem: 'app-link: a link that is on the app''s own site, ourhike.org'}
+        - {notice_id: 'nynjtc_trail_alerts:hostless-link', title: 'Hostless link', locality: '', updated_at: '2026-01-13T00:00:00Z', problem: 'hostless-link: a link that has no host of its own, so the app would open it as one of its own pages'}
+        - {notice_id: 'nynjtc_trail_alerts:token-link', title: 'Token link', locality: '', updated_at: '2026-01-14T00:00:00Z', problem: 'token-link: a link that carries a sign-in token (access_token, refresh_token or code)'}
+        - {notice_id: 'nynjtc_trail_alerts:park-code', title: 'Park code', locality: '', updated_at: '2026-01-15T00:00:00Z', problem: null}
 
   - name: int_closures__ourhike_checked_reads_status_as_closure_banner_does
     description: >

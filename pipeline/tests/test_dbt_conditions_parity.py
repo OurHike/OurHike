@@ -63,8 +63,12 @@ UNESCAPE = DBT / "macros" / "python_html_unescape.sql"
 # ATC rows the SQL refuses and file_problems() passes: row 36, a source_url
 # with a leading space. urlparse() strips it before reading the scheme, and
 # the phone would then open the link with the space still in it, so the SQL
-# reads the scheme as written, as int_podcasts__checked reads a link.
-DELIBERATE_ATC_ROWS = {36}
+# reads the scheme as written, as int_podcasts__checked reads a link. Rows
+# 39-42, a source_url back into the app (macros/link_into_the_app.sql,
+# decision 94): the app's own site, no host, a sign-in token, and the app's
+# host in capitals; lib/atc_updates.py reads only the scheme, and the client
+# refuses all four at the sink (lib/safeLink.ts).
+DELIBERATE_ATC_ROWS = {36, 39, 40, 41, 42}
 
 # NYNJTC posts the SQL reads otherwise, each on purpose:
 #   n09  `&frac34;`, a name python_html_unescape does not know, is left as
@@ -73,8 +77,10 @@ DELIBERATE_ATC_ROWS = {36}
 #        second silently replaces the first, and the SQL refuses both rather
 #        than drop one;
 #   n16  a title that is not a string: _text_of() publishes str(5), and the
-#        SQL refuses it as a payload whose shape has changed.
-DELIBERATE_NYNJTC_POSTS = {"n09", "n14", "n15", "n16"}
+#        SQL refuses it as a payload whose shape has changed;
+#   n17-n19  a link back into the app (macros/link_into_the_app.sql,
+#        decision 94), which parse_alert() reads as any link starting "http".
+DELIBERATE_NYNJTC_POSTS = {"n09", "n14", "n15", "n16", "n17", "n18", "n19"}
 
 # ATC pages the SQL refuses and auto_publish_refusal() publishes: u19, a
 # dateModified in ISO 8601's basic form (20260819T162250Z), which Python

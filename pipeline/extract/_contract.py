@@ -1,40 +1,58 @@
-"""The extract contract: what a club folder holds, and how a run finds what is in it.
+"""The extract contract: what a club answers for each type, and how a run finds it.
 
 pipeline/ELT.md, "The folder contract", is the design this implements (#1793 —
 Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly
-refresh, published docs, and lighter phone downloads). One folder per managing
-organisation in reference/trail_orgs.json, named by its slug with `-` written
-`_`, and exactly the eleven files in TYPES. Each file is one of these:
+refresh, published docs, and lighter phone downloads), as decision 88 amends
+it. Every managing organisation in reference/trail_orgs.json answers each of
+the ten FILE_TYPES exactly once, in one of two homes:
 
-    CLAIMS + RESOURCES   the keys it owns (sources.json keys, or a reviewed
-                         pipeline/reference/ path), and a Resource for each
-    SHARES = "<type>"    a sibling type file whose resource also feeds this
-                         type; it claims nothing, so a key is still claimed once
-    NOT_AVAILABLE        a dated NotAvailable: nothing this pipeline may load
-                         for the type, as of the day a person looked
-    SAME_AS              dated SameAs notes for republished copies of a dataset
-                         another resource extracts; alone, or beside CLAIMS
+    a resource file      extract/<folder>/<type>.py, the folder named by the
+                         club's slug with `-` written `_`: CLAIMS + RESOURCES,
+                         the keys it owns (sources.json keys, or a reviewed
+                         pipeline/reference/ path) and a Resource for each;
+                         it may carry SAME_AS for copies it does not extract,
+                         or be SAME_AS alone, when a copy is all the org
+                         publishes for the type
+    a row of             extract/not_available.toml, [<folder>.<type>]: a
+    not_available.toml   dated note (a NotAvailable: nothing this pipeline may
+                         load for the type, as of the day a person looked), or
+                         a share (`shares = "<type>"`: a sibling type whose
+                         resource file also feeds this type, so a key is still
+                         claimed once)
+
+and the eleventh type, `org`, with the catalogue row discover() makes for every
+managing club. So a club folder holds only its resource files, and a club with
+none has no folder.
 
 A builder takes a key, never a URL (extract/_kinds.py), so a club file cannot
 fetch an upstream sources.json does not register - CONTRIBUTING.md's "establish
 its licence first and record it", enforced by construction.
 
-`discover()` reads the files; tests/test_extract_layout.py holds the shape;
-extract/_run.py runs what they declare.
+`discover()` reads the files and the rows; tests/test_extract_layout.py holds
+the shape; extract/_run.py runs what they declare.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import json
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from types import ModuleType
 
+import tomllib
+
 from lib.freshness_state import Freshness
 
 EXTRACT_DIR = Path(__file__).parent
 PIPELINE_DIR = EXTRACT_DIR.parent
+TRAIL_ORGS_PATH = PIPELINE_DIR / "reference" / "trail_orgs.json"
+
+# Every managing club's notes and shares, one row per club and type (decision
+# 88): the 1,095 NOT_AVAILABLE note files and 44 SHARES files it replaced, at
+# bcc70dd0. Its header comment is the format.
+NOT_AVAILABLE_FILE = "not_available.toml"
 
 TYPES = (
     "org",
@@ -49,6 +67,11 @@ TYPES = (
     "challenges",
     "photos",
 )
+
+# The ten types a managing club answers, each with a resource file in its
+# folder or a row of not_available.toml. `org` is not among them: discover()
+# makes every managing club's catalogue row from trail_orgs.json (decision 88).
+FILE_TYPES = tuple(type_ for type_ in TYPES if type_ != "org")
 
 CADENCES = ("hourly", "daily", "weekly", "monthly")
 
@@ -76,14 +99,21 @@ MAY_BE_EMPTY = frozenset({"closures", "warnings"})
 RECHECK_AFTER_DAYS = 180
 
 # Not a club: national services, aggregators and OurHike's own data (ELT.md,
-# "_shared/"). Free-form, and outside the eleven-file rule.
+# "_shared/"). Free-form, and outside the rule that a club answers each type once.
 SHARED_FOLDER = "_shared"
 
-# trail_orgs.json types that get no club folder (decision 18): umbrellas,
+# trail_orgs.json types that are not managing clubs (decision 18): umbrellas,
 # route-only trails and aggregators publish through somebody else, so each
 # gets one dated line in _shared/not_clubs.py instead. Every other row is a
-# managing organisation, and its folder is the eleven files.
+# managing organisation, which answers every type: a resource file in its
+# folder, or a row of not_available.toml, and a catalogue row.
 NOT_CLUB_TYPES = frozenset({"national_umbrella", "route_only", "aggregator"})
+
+# The fields a row of not_available.toml may carry, by its kind. Anything else
+# is refused where the row is read, because a misspelt `terms` would otherwise
+# drop a refusal's quoted words without a sound.
+NOTE_FIELDS = frozenset({"confirmed", "recheck_after_days", "summary", "checked", "where", "terms", "reason"})
+SHARE_FIELDS = frozenset({"shares", "summary"})
 
 
 def folder_for_slug(slug: str) -> str:
@@ -260,9 +290,10 @@ class Incomplete(Exception):
 class Resource:
     """One upstream, landing as one raw table. Subclassed per source kind in extract/_kinds.py.
 
-    `club` and `type` are filled in by discover() from where the file sits, so
-    a club file writes only the key: the table name, the cadence and the lane
-    all follow from the folder and the type, and cannot disagree with them.
+    `club` and `type` are filled in by discover() from where the file sits (or,
+    for a catalogue row, from the club it is made for), so a club file writes
+    only the key: the table name, the cadence and the lane all follow from the
+    folder and the type, and cannot disagree with them.
     """
 
     key: str
@@ -359,7 +390,13 @@ class Resource:
 
 @dataclass
 class ClubFile:
-    """One of a club folder's eleven files, as discover() read it."""
+    """One club's answer for one type, as discover() read it.
+
+    Three homes give one: a resource file in the club's folder (`path` is the
+    file); a row of not_available.toml, a note or a share (`path` is that file,
+    and `summary` the row's prose); or the catalogue row discover() makes for
+    every managing club (`path` is reference/trail_orgs.json, its source).
+    """
 
     club: str
     type: str
@@ -372,10 +409,12 @@ class ClubFile:
     # A _shared/ input with no sources.json row says why here, and claims nothing:
     # its fetcher's own constant is its one home (ELT.md, "What moves").
     unregistered: str | None = None
+    # A not_available.toml row's prose: the docstring its file carried before decision 88.
+    summary: str | None = None
 
     @property
     def form(self) -> str:
-        """Which shape the file takes, or "invalid" when it takes none or several.
+        """Which shape the answer takes, or "invalid" when it takes none or several.
 
         SAME_AS notes may stand alone, when a copy is all the org publishes for
         the type, or ride a claiming file, for the copies it does not extract.
@@ -395,14 +434,34 @@ class ClubFile:
             return "invalid"
         return forms[0]
 
+    @property
+    def is_row(self) -> bool:
+        """Whether this answer is a row of not_available.toml rather than a file of its own."""
+        return self.path.name == NOT_AVAILABLE_FILE
+
 
 def club_folders(root: Path = EXTRACT_DIR) -> list[Path]:
-    """Every club folder under `root`: a directory not starting with `_` or `.`."""
-    return sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
+    """Every club folder under `root`: a directory not starting with `_` or `.`.
+
+    A directory holding nothing but `__pycache__` is left out: it is what a
+    deleted folder leaves on disk, which git does not hold (decision 88 left 42
+    clubs with no folder, so a working tree that predates it keeps 42 of them).
+    """
+    return sorted(
+        p
+        for p in root.iterdir()
+        if p.is_dir() and not p.name.startswith(("_", ".")) and any(child.name != "__pycache__" for child in p.iterdir())
+    )
+
+
+def managing_folders(trail_orgs: Path = TRAIL_ORGS_PATH) -> list[str]:
+    """The folder of every managing club in trail_orgs.json (decision 18): each row whose `type` is not in NOT_CLUB_TYPES."""
+    orgs = json.loads(trail_orgs.read_text(encoding="utf-8"))["orgs"]
+    return sorted(folder_for_slug(row["slug"]) for row in orgs if row.get("type") not in NOT_CLUB_TYPES)
 
 
 def _load_module(path: Path, club: str) -> ModuleType:
-    """Import one club file by path. Club folders hold no __init__.py on purpose, so the eleven-file count is exact."""
+    """Import one club file by path. Club folders hold no __init__.py on purpose, so a folder is its type files alone."""
     spec = importlib.util.spec_from_file_location(f"extract.{club}.{path.stem}", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {path}")
@@ -437,13 +496,76 @@ def read_club_file(path: Path, *, shared: bool = False) -> ClubFile:
     )
 
 
-def discover(root: Path = EXTRACT_DIR) -> list[ClubFile]:
-    """Every type file in every club folder under `root`, in a stable order."""
-    files = []
-    for folder in club_folders(root):
-        for path in sorted(folder.glob("*.py")):
-            files.append(read_club_file(path))
-    return files
+def _row_value(path: Path, club: str, type_: str, row: dict, field: str, kind: type):
+    """One field of a not_available.toml row, refused unless it is a `kind` (exactly, for a date and an int)."""
+    value = row[field]
+    # A TOML datetime is a date too, and a bool an int, so those two check the exact type.
+    if (type(value) is not kind) if kind in (date, int) else not isinstance(value, kind):
+        raise ValueError(f"{path.name} [{club}.{type_}]: `{field}` is {value!r}, which is not a {kind.__name__}")
+    return value
+
+
+def read_not_available(path: Path) -> list[ClubFile]:
+    """Every row of not_available.toml, as the ClubFile its file gave before decision 88, in the file's order.
+
+    A row holding `shares` is a share; any other row is a note. A field outside
+    its kind's NOTE_FIELDS or SHARE_FIELDS, or of the wrong type, is refused
+    here, naming the row. A note's `checked` and `where` default to empty so
+    that NotAvailable.problems() names what is missing, row by row, in the
+    layout test. A table written twice is TOML's own error: tomllib refuses it.
+    """
+    if not path.exists():
+        return []
+    rows = []
+    for club, types in tomllib.loads(path.read_text(encoding="utf-8")).items():
+        if not isinstance(types, dict) or not all(isinstance(row, dict) for row in types.values()):
+            raise ValueError(f"{path.name}: [{club}] must hold one table per type, [{club}.<type>]")
+        for type_, row in types.items():
+            fields = SHARE_FIELDS if "shares" in row else NOTE_FIELDS
+            if unknown := sorted(set(row) - fields):
+                kind = "share" if "shares" in row else "note"
+                raise ValueError(f"{path.name} [{club}.{type_}]: {unknown} is not a field of a {kind} row ({sorted(fields)})")
+            summary = _row_value(path, club, type_, row, "summary", str) if "summary" in row else None
+            if "shares" in row:
+                shares = _row_value(path, club, type_, row, "shares", str)
+                rows.append(ClubFile(club=club, type=type_, path=path, shares=shares, summary=summary))
+                continue
+            if "confirmed" not in row:
+                raise ValueError(f"{path.name} [{club}.{type_}]: a note needs `confirmed`, the day a person looked")
+            optional = {
+                field: _row_value(path, club, type_, row, field, kind)
+                for field, kind in (("recheck_after_days", int), ("terms", str), ("reason", str))
+                if field in row
+            }
+            note = NotAvailable(
+                confirmed=_row_value(path, club, type_, row, "confirmed", date),
+                checked=tuple(_row_value(path, club, type_, row, "checked", list)) if "checked" in row else (),
+                where=tuple(_row_value(path, club, type_, row, "where", list)) if "where" in row else (),
+                **optional,
+            )
+            rows.append(ClubFile(club=club, type=type_, path=path, note=note, summary=summary))
+    return rows
+
+
+def discover(root: Path = EXTRACT_DIR, trail_orgs: Path = TRAIL_ORGS_PATH) -> list[ClubFile]:
+    """Every managing club's answer for every type, ordered by club, then by `<type>.py`.
+
+    The resource files in every club folder under `root`, the rows of its
+    not_available.toml, and a catalogue row for every managing club in
+    `trail_orgs` (decision 88). Nothing is merged: a type answered twice comes
+    back twice, for the layout test to refuse.
+    """
+    from extract._kinds import catalogue_row  # extract/_kinds.py imports this module
+
+    files = [read_club_file(path) for folder in club_folders(root) for path in sorted(folder.glob("*.py"))]
+    files += read_not_available(root / NOT_AVAILABLE_FILE)
+    catalogue = catalogue_row()
+    files += [
+        ClubFile(club=folder, type="org", path=trail_orgs, resources=(replace(catalogue, club=folder, type="org"),))
+        for folder in managing_folders(trail_orgs)
+    ]
+    # Stable, so an answer given twice keeps the file before the row.
+    return sorted(files, key=lambda club_file: (club_file.club, f"{club_file.type}.py"))
 
 
 def shared_folders(root: Path = EXTRACT_DIR) -> list[Path]:
@@ -460,5 +582,5 @@ def discover_shared(root: Path = EXTRACT_DIR) -> list[ClubFile]:
 
 
 def all_resources(files: list[ClubFile]) -> list[Resource]:
-    """Every Resource the club files declare. A SHARES file adds none: its sibling's resource is the one row."""
+    """Every Resource the club files declare. A share adds none: its sibling's resource is the one row."""
     return [resource for club_file in files for resource in club_file.resources]

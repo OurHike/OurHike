@@ -315,7 +315,10 @@ ISOLATING_LANES = frozenset({"monthly"})
 #: (refresh-reference.yml 37182708502) read its layers one at a time in about
 #: 50 minutes, 484 s of it USFS's trails, and 4 is the runner's vCPU count,
 #: not a measurement of what the upstreams tolerate. The first run's "read"
-#: timing, and any rate-limit waits lib/arcgis.py logs, would settle it.
+#: timing, and any rate-limit waits lib/arcgis.py logs, would settle it. Runs 18
+#: to 22 (2026-10-04/05) took the whole extract step 105 to 127 minutes against
+#: run 13's 161.5 (the Actions API's step times, read 2026-10-06); their "read"
+#: timing and lib/arcgis.py's waits were not read for this.
 MONTHLY_READERS = 4
 
 #: dlt's normalize processes for refresh-reference.yml's monthly run, which

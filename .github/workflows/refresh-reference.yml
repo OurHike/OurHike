@@ -85,10 +85,12 @@ jobs:
     # layers took run 37182708502's extract step (run 13) to 161.5 min, about
     # 50 of it reading one layer at a time and about 103 normalizing in one
     # process (extract/_run.py's MONTHLY_NORMALIZE_WORKERS). The reads now run four
-    # folders at a time and normalize on four processes, which is unmeasured,
-    # and each request ArcGIS Online throttles may wait 450 s (lib/arcgis.py's
-    # THROTTLE_WAITS_SECONDS). 240 keeps run 13's figure with 78 minutes to
-    # spare while the first run's "Seconds:" line settles what it now takes.
+    # folders at a time and normalize on four processes, and each request ArcGIS
+    # Online throttles may wait 450 s (lib/arcgis.py's THROTTLE_WAITS_SECONDS).
+    # Monthly runs 18 to 22 (2026-10-04/05) took the extract step 105 to 127
+    # minutes (the Actions API's step times, read 2026-10-06), so 240 keeps run
+    # 13's figure with 78 minutes to spare and the slowest since with 113. Their
+    # "Seconds:" lines, which split reading from normalizing, were not read.
     #
     # OSM'S EXTRACTS ADD TO IT ONCE IN 30 DAYS (#1652, extract/_geofabrik.py):
     # 3.44 GB from Geofabrik, which build-basemap.yml fetched in under 1.5 min

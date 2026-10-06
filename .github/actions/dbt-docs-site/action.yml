@@ -16,8 +16,8 @@
 # check_docs_site.py passed it. The fixture build's docs that day had the
 # same 1,567 columns and 559 declared types (no actual type in either), plus
 # 2,012 run results of fixture tests that say nothing about OurHike's data.
-# That it works on a runner, not only in a web sandbox, is `@unvalidated`
-# until the first pull request preview builds it.
+# It works on a runner too: PR Preview run 37408628196 (fd38fe24,
+# 2026-10-06) built it in 36 s, and the run passed.
 #
 # NO SECRET. Nothing here reads one. dbt_rt.invocations publishes each
 # invocation's `args` and `vars_override`, so nothing may reach this build

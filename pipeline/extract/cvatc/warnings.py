@@ -13,23 +13,6 @@ extract/_kinds.py's WordpressPosts. A page or a feed is read every run, one requ
 only when what would land hashes as the last committed load did; a conditional GET is sent only
 where the source's own validators were measured. A feed is a window of its newest items, never the
 list of what is in force. No prose and no person lands (decisions 55 and 59).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Cumberland Valley Appalachian Trail Club: warnings, published, and not landed (coverage audit
-2026-10-01, batch c2_at_clubs_mid).
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): Same RSS: 2025-06-13 "Break-Ins at A.T. Parking Lots" (two
-cars broken into at Trindle Road). `/protect-yourself-on-the-trail.html` is evergreen tick and Lyme
-advice
-
-Its `where`: https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services
-https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services https://cvatclub.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import feed_notices

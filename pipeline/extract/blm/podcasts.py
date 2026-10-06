@@ -11,24 +11,6 @@ itunes:author, which carries the guests' and hosts' names, RSS <author>, dc:crea
 itunes:owner) and the row's own `person_fields`. The lane is the type's, monthly. Episodes are
 linked, never re-hosted: an <enclosure> lands as its URL, and the audio is never fetched. A feed is
 what its host serves, so an episode's absence is never its removal.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-Bureau of Land Management: podcasts, published, and not landed (coverage audit 2026-10-01, batch
-b6_federal).
-
-Programming, not trail audio.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): "On the Ground": `https://www.blm.gov/media/podcasts/otg.rss`,
-26 items with enclosures, newest 2025-09-24. Also Alaska Frontiers and Your American Lands
-(`blm.gov/media/podcasts/…`, search).
-
-Its `where`: https://www.blm.gov/media/podcasts/otg.rss https://blm.gov/media/podcasts/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import podcast_episodes

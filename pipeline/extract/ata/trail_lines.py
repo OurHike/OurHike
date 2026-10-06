@@ -11,7 +11,7 @@ statistics fingerprint, measured key, person fields and the item's own terms.
 Layer 3 is the trail itself, which no loaded row carried before: azgeo_arizona_trail is layer 5 of the
 same service, the connector trails, so a hiker had the connectors and not the trail they connect to
 (coverage audit, 2026-10-01). Layer 3 is Z-enabled, so its row sets `return_z` and its geometry lands
-[x, y, z]; ata/elevation.py will SHARES this resource. Not landed: `ATA_Road_Connections` (63 lines of
+[x, y, z]; not_available.toml [ata.elevation] will SHARES this resource. Not landed: `ATA_Road_Connections` (63 lines of
 road connections, by its name, last edited 2024-05-01), and the per-passage GPX on aztrailmedia's S3
 bucket, a file wave 2's reader takes. The `_view_for_OSM` service is a second view of the same hosted
 layer (SAME_AS below).

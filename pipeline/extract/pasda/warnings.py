@@ -10,7 +10,7 @@ WHY THIS FOLDER AND NOT laurel/. The API is PA DCNR's own, it answers for
 every park and forest DCNR runs, and one upstream is extracted once, in its
 steward's folder (decision 34). trail_orgs.json names this folder's org
 "PASDA / PA DCNR" and points laurel's row here (`via: pasda`), and
-laurel/trail_lines.py already draws from this folder, so laurel's closures.py
+not_available.toml [laurel.trail_lines] already draws from this folder, so laurel's closures.py
 and warnings.py are `via` notes naming this file, and another club's park is
 a new id on the same entry rather than a second resource.
 

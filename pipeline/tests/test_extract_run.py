@@ -1268,7 +1268,7 @@ def test_run_check_wants_one_org_row_per_club(registry):
         Planned(resource.__class__(key=resource.key, club=club, type="org"), Freshness.STALE, None, None) for club in ("a", "b")
     ]
     assert run_check(planned, {"raw_extract__orgs": 1}, {}, {}) == [
-        "raw_extract__orgs: 1 rows for 2 club folders; each org.py is exactly one"
+        "raw_extract__orgs: 1 rows for 2 managing clubs; each club's catalogue row is exactly one"
     ]
     assert run_check(planned, {"raw_extract__orgs": 2}, {}, {}) == []
 

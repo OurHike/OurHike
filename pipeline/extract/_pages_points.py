@@ -464,7 +464,7 @@ PALMETTO_SEGMENT = re.compile(
     r"(?s)trailPage\.helper\.addSegment\(\s*'(?P<name>(?:[^'\\]|\\.)*)'\s*,\s*(?P<points>\[\{.*?\}\])\s*,\s*\[[^\]]*\]\s*\)"
 )
 PALMETTO_CALL = re.compile(r"trailPage\.helper\.(addMarker|addSegment)\(")
-#: The same page's facts, read in the same fetch for palmetto/suggested_hikes.py, which SHARES this table (the lead's
+#: The same page's facts, read in the same fetch for not_available.toml [palmetto.suggested_hikes], which SHARES this table (the lead's
 #: ruling of 2026-10-04: one reader of the 33 passage pages). Under the title, div.Trail-meta holds
 #: span.Trail-length ('7.1 miles', with an icon before it) and span.Trail-difficulty ('Easy'); then div.Trail-detailGrid
 #: pairs each div.Trail-detailGridHeading ('Camping Allowed') with the div.Trail-detailGridData after it, whose first
@@ -535,13 +535,13 @@ def parse_palmetto_passage(page: str, url: str) -> list[dict]:
     """One Palmetto Trail passage: each marker its map plots, typed as the page types it, and the passage's line.
 
     A marker row is `kind` 'marker' with the page's own `marker_type` and a Point; a line row is `kind` 'segment'
-    with the segment's own name and a LineString, which palmetto/trail_lines.py's SHARES reads (one page, one
+    with the segment's own name and a LineString, which not_available.toml [palmetto.trail_lines]'s SHARES reads (one page, one
     resource). A 'NULL' marker type lands as the page writes it, untyped: no type is guessed for it. Every call the
     page makes must parse, so a page whose script changed shape refuses rather than landing the calls that still
     happen to match.
 
     Every row also carries the page's facts (palmetto_passage_facts()), alike on each row of one page, for
-    palmetto/suggested_hikes.py: a page always yields its line's row, so no page's facts are lost with its markers.
+    not_available.toml [palmetto.suggested_hikes]: a page always yields its line's row, so no page's facts are lost with its markers.
     """
     title = re.search(r"(?is)<h1[^>]*>(?P<title>.*?)</h1>", page)
     if title is None:

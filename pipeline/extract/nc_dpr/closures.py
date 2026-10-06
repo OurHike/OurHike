@@ -11,7 +11,7 @@ region reads as a changed page. The row lands the page's <h1>, no date (the page
 hash of <body>, whose two reads that day hashed the same. `expect_title` holds the page to Mount
 Mitchell's. The
 carousel's classes (breaking, warning, info, success) do not say closure or warning, so the two are
-split in dbt (decision 7) and warnings.py shares this file. nc.gov's terms permit non-commercial
+split in dbt (decision 7) and not_available.toml [nc_dpr.warnings] shares this file. nc.gov's terms permit non-commercial
 copying "without alteration", which is decision 55's case (sources.json's row quotes them).
 
 ONE PARK OF ABOUT 47. ncparks.gov's sitemap lists about 47 park roots, and the Mountains-to-Sea Trail

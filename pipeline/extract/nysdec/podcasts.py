@@ -11,20 +11,6 @@ itunes:author, which carries the guests' and hosts' names, RSS <author>, dc:crea
 itunes:owner) and the row's own `person_fields`. The lane is the type's, monthly. Episodes are
 linked, never re-hosted: an <enclosure> lands as its URL, and the audio is never fetched. A feed is
 what its host serves, so an episode's absence is never its removal.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-DEC's own show, 'DEC Does What?!', not landed: its feed reads 'All rights reserved', and episodes
-would be linked, not re-hosted.
-
-Its `checked` (confirmed 2026-10-01): the show's RSS feed: 39 episodes, a few about trails (Forest
-Rangers, camping, the hunting season) reference/podcast_episodes.json: no episode of it
-
-Its `where`: https://feed.podbean.com/Multimedia3/feed.xml
-
-Its `terms`: the feed's <copyright>: "Copyright 2025 All rights reserved."
-
-Its `reason`: not landed: an episode list is editorial, picked per hike in _shared/podcasts/
 """
 
 from extract._content import podcast_episodes

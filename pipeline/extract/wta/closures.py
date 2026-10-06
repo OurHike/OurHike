@@ -15,7 +15,7 @@ WTA's terms restrict its content to "internal informational purposes" (quoted on
 row), which decision 55 names and reads as facts and a link. The inventory recommended not
 registering it, because WTA relays the agencies (NPS, USFS Region 6) that nps/ and usfs/ extract
 first-hand; decision 55 publishes WTA's notices on that split, so it lands, held by reaches_hikers, and
-the agencies stay the authoritative channel. warnings.py shares this file.
+the agencies stay the authoritative channel. not_available.toml [wta.warnings] shares this file.
 
 Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
 c7_regional_4): "Page. WTA relays agency closures, so the authoritative channel is the agency

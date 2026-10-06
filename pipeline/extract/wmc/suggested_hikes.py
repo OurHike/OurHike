@@ -15,27 +15,6 @@ The spreadsheet itself (WMCHikesCopyToWeb.xlsx, Last-Modified 2023-06-15, 66,121
 venv has no spreadsheet reader, and adding one is a dependency the maintainer decides (requirements.in's note on
 pypdf). Whether its HIKES tab still matches the 2012 PDF is unchecked. The 156 GPX and 157 KMZ tracks are the
 trail_lines cell's, and /trip-reports are members' writing.
-
-The note this replaces read, whole:
-
-Wasatch Mountain Club: suggested hikes, published, and not landed (coverage audit 2026-10-01, batch
-c5_regional_2).
-
-The reports are written by members and carry no licence. Faint Trails is login-gated (see above).
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `/trip-reports` is a public HTML listing of 551 table rows, dated
-2006-09-16 to 2026-09-27. `/hiking` lists upcoming hikes with WMC ratings. (Changed by skeptic: verdict
-kept, best source changed from a page to machine-readable files. (1) 156 GPX / 157 KMZ route tracks, as
-in the trail_lines row. (2) `https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.xlsx` (66,121
-bytes, Last-Modified 2023-06-15), with the same table as a PDF, `WMCHikesCopyToWeb.pdf`. (3)
-Hike-ratings tables: `/dan-smiths-hike-ratings-table`, five sorted PDFs …
-
-Its `where`: https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.xlsx
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pdf_content import content_pdf

@@ -21,7 +21,7 @@ OTA's terms restrict reproduction ("Reproduction is prohibited other than in acc
 copyright notice"), which is decision 55's case: facts and a link, the terms quoted on each row.
 
 The blocks are closures and warnings both (a tornado closure beside stinging nettle and car break-ins),
-split in dbt (decision 7), so warnings.py shares this file.
+split in dbt (decision 7), so not_available.toml [ota.warnings] shares this file.
 
 Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
 c7_regional_4): "Pages. No feed: `posts` holds 13 items in 4 categories, none of them conditions."

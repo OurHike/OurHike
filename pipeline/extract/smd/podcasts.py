@@ -14,31 +14,6 @@ itunes:author, which carries the guests' and hosts' names, RSS <author>, dc:crea
 itunes:owner) and the row's own `person_fields`. The lane is the type's, monthly. Episodes are
 linked, never re-hosted: an <enclosure> lands as its URL, and the audio is never fetched. A feed is
 what its host serves, so an episode's absence is never its removal.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-Save Mount Diablo: podcasts, published, and not landed (coverage audit 2026-10-01, batch
-c6_regional_3).
-
-The feed is not on savemountdiablo.org, so SMD's no-automation terms do not govern it (Reasoned).
-Its own "All Rights Reserved" does: link the episodes, never copy them. The producer is a named
-individual and the sponsor is MDIA, so it belongs in `_shared/` podcasts (decision 12), with SMD's …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): "Audible Mount Diablo", RSS
-`https://rss.libsyn.com/shows/136346/destinations/844139.xml`. 209 episodes, 2019-02-01 →
-2026-08-27. `itunes:author` is "a named individual: writer, producer", and the copyright reads
-"Copyright 2019, Audible Mount Diablo - All Rights Reserved." 156 of 209 episode descriptions credit
-SMD, usually "Sponsored by Mount Diablo Interpretive Association in partnership with Save Mount
-Diablo". 5 are "presented by Save Mount Diablo" (the nine-part "Harvest of Fire" series). The
-episodes include trail audio tours, e.g. "The Falls Trail". `/experience/online-presentations/` …
-
-Its `where`: https://rss.libsyn.com/shows/136346/destinations/844139.xml https://savemountdiablo.org
-https://savemountdiablo.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import podcast_episodes

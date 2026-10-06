@@ -22,7 +22,7 @@ server's own returnCountOnly read in the same run.
   PageNotice (extract/_notices.py), read live 2026-10-03 after www.nps.gov's robots.txt (nothing
   disallowed under /natr/planyourvisit/, no Crawl-delay). It states 'No Current Trail or Campground
   Closures — Last updated: August 14, 2026', which lands as the row's date, and lists parkway road
-  closures by milepost: driving closures, not the footpath's. natr/closures.py draws on it. The
+  closures by milepost: driving closures, not the footpath's. not_available.toml [natr.closures] draws on it. The
   semo park's conditions page (nps.gov/semo/planyourvisit/conditions.htm) renders the alerts API's
   own items, which `nps_alerts` already lands, so it is not read (decision 53's inventory, batch 2).
 

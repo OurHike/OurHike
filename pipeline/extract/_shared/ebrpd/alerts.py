@@ -1,6 +1,6 @@
 """East Bay Regional Park District: alerts and closures, hourly, extracted here once for every club that draws
 on it (decision 53 phase B, 2026-10-03). EBRPD has no club folder (decision 18), so it lives in _shared/,
-and ridgetrail/closures.py carries the `via` note naming it (decision 34); 52.1 Bay Area Ridge Trail
+and not_available.toml [ridgetrail.closures] carries the `via` note naming it (decision 34); 52.1 Bay Area Ridge Trail
 miles are EBRPD's.
 
 - `ebrpd_alerts_closures`: https://www.ebparks.org/alerts-closures, one PageNotice (extract/_notices.py).

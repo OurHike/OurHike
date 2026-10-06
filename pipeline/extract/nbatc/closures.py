@@ -8,7 +8,7 @@ RFC 9309 reads as no rules. The fragment's 5 newest items are each `<h3>YYYY-MM-
 it has no title of its own, so the row carries the registry's (`registry_title`), and its date is the
 newest of the items' own ISO dates (the `date_pattern` below), 2025-09-03 on 2026-10-03. Nothing of the
 items' text lands, only a hash of it. Club news is mixed in ('Awards Presentation', 2025-02-14), and
-the closures and warnings are split in dbt (decision 7), which is why warnings.py shares this file.
+the closures and warnings are split in dbt (decision 7), which is why not_available.toml [nbatc.warnings] shares this file.
 
 NOT READ: `home.nbatc.org/cgi-bin/getNotice.cgi`, the second channel the coverage audit named, answered
 500 without parameters and nobody knows its parameters (decision 53's inventory, batch 5).

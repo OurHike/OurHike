@@ -1113,7 +1113,9 @@ def run_check(planned: list[Planned], rows: dict[str, int], proofs: dict[str, in
         landed = rows.get(table, 0)
         if table == ORGS_TABLE:
             if landed != len(items):
-                problems.append(f"{table}: {landed} rows for {len(items)} club folders; each org.py is exactly one")
+                problems.append(
+                    f"{table}: {landed} rows for {len(items)} managing clubs; each club's catalogue row is exactly one"
+                )
             continue
         proof = proofs.get(table)
         if landed == 0:

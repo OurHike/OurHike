@@ -15,27 +15,6 @@ and a total that moves within one read or a repeated id raises. Rows land as NPS
 lists as JSON, except the row's `person_fields`. dbt assigns each club folder its portion by each
 row's own park list matched to nps_alerts' `park_codes` map (decision 34); the folders that draw on
 these lists hold via notes naming them. The lane is the type's, monthly.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-National Park Service: challenges, published, and not landed (coverage audit 2026-10-01, batch
-b6_federal).
-
-The Passport booklet is America's National Parks' (a partner). The stamp locations are NPS API data.
-A candidate for #1780 — Let a club publish a challenge — places on its own trails that hikers opt
-into and tag at camp — starting with the ATC's A.T. Summer Bucket List only once they are geocoded:
-…
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): API `/passportstamplocations`: 1,092 (label, type, parks). The
-first was "A.G. Gaston Motel (Temporarily Closed)".
-
-Its `where`: https://mapservices.nps.gov/arcgis/rest/services
-https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services https://nps.gov/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import nps_content

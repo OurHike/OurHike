@@ -14,26 +14,6 @@ The decision 53 inventory's other DEC sources (2026-10-03): the Adirondack backc
 nysdec/closures.py as `nysdec_adk_backcountry`, which the warnings staging model reads too; DEC's
 GovDelivery bulletin is one bulletin per URL, not a channel; and the NYS Mesonet fire-danger API
 (https://api.nysmesonet.org/data/firewx/GetFDRA/) is disallowed by its robots.txt, so never fetched.
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-DEC's warnings: fire danger is Mesonet's under a no-redistribution policy, and the hunting and
-algal-bloom layers are not landed.
-
-Its `checked` (confirmed 2026-10-01): fire danger: NYS Mesonet's GetFDRA JSON, 12 Fire Danger Rating
-Areas with risk and validity dates, embedded in DEC's fire-danger map; no FDRA polygons were found |
-hunting seasons by Wildlife Management Unit: big_game_CopyFeatures/FeatureServer/0, 92 polygons,
-last edited 2026-09-11 | harmful algal bloom reports: Current_HAB_Reports_DIL/FeatureServer/0
-
-Its `where`: https://api.nysmesonet.org/data/firewx/GetFDRA/
-https://dec.ny.gov/environmental-protection/wildfires/fire-danger-map
-https://services6.arcgis.com/DZHaqZm9cxOD4CWM/arcgis/rest/services/Current_HAB_Reports_DIL/FeatureServer/0
-
-Its `terms`, verbatim: NYS Mesonet Data Access Policy: no redistribution "without the express prior
-written consent of RFSUNY" (the fire-danger feed; the two DEC layers carry no such text)
-
-Its `reason`: the two DEC layers are not landed: neither has a sources.json row, and whether hunting
-seasons and algal blooms are warnings at all is an open question for the maintainer
 """
 
 from extract._kinds import arcgis_layer

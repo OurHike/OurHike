@@ -11,7 +11,7 @@ lib/nynjtc_alerts.py does at fetch today (ELT.md, "Source kinds").
 lands in the private raw store, as fetch_nynjtc_alerts.py caches it today,
 and dbt's publication gate keeps it off a phone. Under decision 7 every post
 reaches warnings as not reviewed until someone classifies whether it
-obstructs the trail, which is why warnings.py shares this file.
+obstructs the trail, which is why not_available.toml [nynjtc.warnings] shares this file.
 """
 
 from extract._kinds import wordpress_posts, wordpress_terms

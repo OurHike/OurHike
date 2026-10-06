@@ -12,28 +12,6 @@ extract/_kinds.py's WordpressPosts. A page or a feed is read every run, one requ
 only when what would land hashes as the last committed load did; a conditional GET is sent only
 where the source's own validators were measured. A feed is a window of its newest items, never the
 list of what is in force. No prose and no person lands (decisions 55 and 59).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Mount Rogers Appalachian Trail Club: closures, published, and not landed (coverage audit 2026-10-01,
-batch c3_at_clubs_south).
-
-ATC LOADED carries the Creeper closure and detour (`obstructs_trail: true`) and the Dickey Gap
-high-water route. MRATC adds the day-hiker detail and the road and lot closures.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): The homepage block "TRAIL ALERTS" (page): the 2026 A.T. detour
-during Creeper Trail reconstruction ("Most of the 20 mile detour will follow the Iron Mountain
-Trail", with routing both directions), FS 89 to Whitetop closed for winter, and VDOT work on the Elk
-Garden and Fox Creek lots. `/suggested-hikes` adds: "The Upper Section of the Virginia Creeper is
-currently closed (from Whitetop Station to Damascus)".
-
-Its `where`: https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services
-https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services https://mratc.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import page_notice

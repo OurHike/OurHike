@@ -10,23 +10,6 @@ extract/_kinds.py's WordpressPosts. A page or a feed is read every run, one requ
 only when what would land hashes as the last committed load did; a conditional GET is sent only
 where the source's own validators were measured. A feed is a window of its newest items, never the
 list of what is in force. No prose and no person lands (decisions 55 and 59).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-The Cohos Trail Association: warnings, published, and not landed (coverage audit 2026-10-01, batch
-c4_regional_1).
-
-A page.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `/trouble-spots/` (2026-07-13): "LOGGING. Active logging can
-pose an extreme hazard to a hiker", by location.
-
-Its `where`: https://cohostrail.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import page_notice

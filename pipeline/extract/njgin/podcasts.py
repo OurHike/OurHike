@@ -12,25 +12,6 @@ itunes:author, which carries the guests' and hosts' names, RSS <author>, dc:crea
 itunes:owner) and the row's own `person_fields`. The lane is the type's, monthly. Episodes are
 linked, never re-hosted: an <enclosure> lands as its URL, and the audio is never fetched. A feed is
 what its host serves, so an episode's absence is never its removal.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-NJDEP / NJGIN — Statewide Trails: podcasts, published, and not landed (coverage audit 2026-10-01,
-batch b5_nyc_nj_ct_ma_pa).
-
-Dormant for 8 years. Low value.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): "Discover DEP: the Official Podcast of the NJ Department of
-Environmental Protection", feed `https://feed.podbean.com/njdep/feed.xml` (200, 392,517 bytes). 95
-episodes, 2016-04-21 → 2018-05-01. 12 titles mention trail, park, hike, bear, fire or forest (iTunes
-`id1109394162`).
-
-Its `where`: https://feed.podbean.com/njdep/feed.xml
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import podcast_episodes

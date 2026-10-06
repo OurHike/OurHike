@@ -16,7 +16,7 @@ and /wp-admin/ only, no Crawl-delay):
   person_fields). The category feed (/category/trailalerts/feed/) is a window of the same list and is
   not read.
 
-The page's sections are closures and warnings both, split in dbt (decision 7), so warnings.py shares
+The page's sections are closures and warnings both, split in dbt (decision 7), so not_available.toml [ohta.warnings] shares
 this file. The live burns for the Ozark-St Francis come from usfs/warnings.py's prescribed-burn layer.
 
 Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch

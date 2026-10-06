@@ -10,7 +10,7 @@ and general corridor information, about 50 conditions: the I-35 pedestrian bridg
 the Lakewalk closed through November 2026, McCarthy Creek's bridge out, the Spirit Mountain spur's
 winter closure. Nothing of its text lands. REST answers carry no HTTP validators (no-store).
 
-Closures and crossing hazards share one list, so warnings.py shares this file and dbt splits them
+Closures and crossing hazards share one list, so not_available.toml [shta.warnings] shares this file and dbt splits them
 (decision 7). Each `/trail-section/` page's 'Trail Alerts' block (a seasonal wasp hazard, the coverage
 audit) is a later per-page reader.
 

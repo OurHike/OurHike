@@ -10,7 +10,7 @@ permission requirement, not a refusal of automated access, and the decision
 Nothing here fetches it. The maintainer sends the request; avalanche ratings
 matter from November.
 
-Each club's own warnings.py keeps its note: their other warnings come from
+Each club's own warnings row in not_available.toml keeps its note: their other warnings come from
 usfs/ and blm/, which other readers take.
 """
 

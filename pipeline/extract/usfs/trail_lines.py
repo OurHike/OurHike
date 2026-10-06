@@ -14,7 +14,7 @@ Decision 54, wave 1: read live on 2026-10-03 (robots.txt first, lib/user_agent.p
 between requests to one host) and registered in sources.json, where each row carries the count, extent,
 statistics fingerprint, measured key, person fields and the item's own terms. USFS Region 6 publishes
 the Pacific Northwest Trail's congressional route on its own ArcGIS Online organization (owner
-USFSRegion06), extracted once here; pnta/trail_lines.py names it. Its own licenseInfo says it 'is not
+USFSRegion06), extracted once here; not_available.toml [pnta.trail_lines] names it. Its own licenseInfo says it 'is not
 intended for trip planning', which decision 38 holds against publishing.
 
 - `usfs_pacific_northwest_trail`: Pacific Northwest National Scenic Trail, congressional route as of 2016 (USFS Region 6). 456 lines, keyed on geometry.

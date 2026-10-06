@@ -2,7 +2,7 @@
 
 Its terms are per land manager, not per platform (trail_orgs.json's `why`), so
 there is no single answer to record; a manager's data is that manager's to
-publish, and lands in that manager's folder. buckeye/trail_lines.py lists the
+publish, and lands in that manager's folder. not_available.toml [buckeye.trail_lines] lists the
 Ohio DNR copy reachable this way among what it checked (ELT.md, "Decision 18
 overrides round 5 for two refusals").
 """

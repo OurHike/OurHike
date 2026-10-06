@@ -27,28 +27,6 @@ extract/_kinds.py's WordpressPosts. A page or a feed is read every run, one requ
 only when what would land hashes as the last committed load did; a conditional GET is sent only
 where the source's own validators were measured. A feed is a window of its newest items, never the
 list of what is in force. No prose and no person lands (decisions 55 and 59).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Appalachian Mountain Club: closures, published, and not landed (coverage audit 2026-10-01, batch
-c10_nst_rest).
-
-All page or PDF. AMC publishes no trail-closure feed for the Whites. Those closures come from WMNF
-(`usfs` folder). Skeptic spot-check: `newenglandtrail.org/closures-notices/` returns 200.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `https://newenglandtrail.org/closures-notices/`,
-Massachusetts: 4 notices, 3 of them parking closures in Section 16 (Erving).
-`https://www.outdoors.org/weather-trail-conditions/`: an Open/Closed `Status` per hut and lodge. The
-AMC Book Updates PDF, `cdn.outdoors.org/.../AMC_BookUpdates_10.30.24_v2.pdf`, lists trail
-relocations as of 2024-10-30.
-
-Its `where`: https://newenglandtrail.org/closures-notices/
-https://www.outdoors.org/weather-trail-conditions/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import page_notice

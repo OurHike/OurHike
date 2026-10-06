@@ -17,27 +17,6 @@ reader is extract/_content.py's MediawikiTemplatePages: extract/_json_apis.py's
 MediawikiAnnouncements, which TEHCC's notices already use on this wiki, for another template, its
 `part` telling the reads apart. The editor's name is never asked for. The wikitext stops at `base_`
 (decision 55). The lane is the type's, monthly.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-Tennessee Eastman Hiking & Canoeing Club: suggested hikes, published, and not landed (coverage audit
-2026-10-01, batch c3_at_clubs_south).
-
-Structured through the API. Whether `Template:Trail` fields are SMW properties (and so `ask`-able)
-is untested. `Challenge Item` is.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `Template:Trail` on 148 pages (distance, round trip, hike
-time, difficulty, route description); `Template:Hike` on 52; 2 Hike Plans; `Report:` namespace with
-141 trip reports (newest 2026-03-10, but 105 of 141 are from 2019–2021). WP category Hikes (id 212,
-18 posts).
-
-Its `where`: https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services
-https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services https://tehcc.org/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import mediawiki_template_pages

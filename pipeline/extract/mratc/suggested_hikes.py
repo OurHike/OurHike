@@ -8,25 +8,6 @@ wave 5, section K, 2026-10-04).
 The reader is extract/_pages_content.py's ContentPages with the `mratc_suggested_hikes` site parser: the rows hashed
 for the change check (no page validator decides FRESH), facts and the link only, never the club's own wording. Its
 row in sources.json holds the terms as found, the live read and the measured key, the kind of hike and its name.
-
-The note this replaces read, whole:
-
-Mount Rogers Appalachian Trail Club: suggested hikes, published, and not landed (coverage audit
-2026-10-01, batch c3_at_clubs_south).
-
-Whether those four sections load by script is UNKNOWN (no browser was used).
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): `https://www.mratc.org/suggested-hikes` (page): 7 hikes render (2
-A.T., 3 A.T.-linked, 2 Iron Mountain). Each has distance, one-way or loop, difficulty and turn-by-turn
-prose, with 15 coordinate pairs in the text. Four more headings (High Points, Damascus, Grayson
-Highlands, Backpacking) render no hikes. 63 scheduled events are in `event-pages-sitemap.xml`.
-
-Its `where`: https://www.mratc.org/suggested-hikes
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._pages_content import content_pages

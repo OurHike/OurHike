@@ -36,7 +36,8 @@ The kinds built so far for stage 2 (#1793 â€” Rebuild the data platform as dlt â
                             row each, never the bytes (extract/_geofabrik.py)
     feed_notices(key)       a club's RSS or Atom notices, one row per item (extract/_notices.py)
     page_notice(key)        a club's notice page or PDF, one notice per page (extract/_notices.py)
-    catalogue_row()         the club's own trail_orgs.json row, for org.py
+    catalogue_row()         the club's own trail_orgs.json row, which discover() makes for every
+                            managing club (decision 88)
     atc_trail_update_pages(key)
                             ATC's Trail Updates read off their website, one row
                             per update their trail-updates sitemap lists, as
@@ -68,6 +69,7 @@ from check_freshness import CORRIDOR_PROBES
 from extract._contract import (
     EXTRACT_DIR,
     PIPELINE_DIR,
+    TRAIL_ORGS_PATH,
     Carried,
     Incomplete,
     Resource,
@@ -120,7 +122,6 @@ from lib.source_registry import PODCAST_FEED, load_registry, source_kind
 from lib.user_agent import USER_AGENT
 
 REGISTRY_PATH = PIPELINE_DIR / "sources.json"
-TRAIL_ORGS_PATH = PIPELINE_DIR / "reference" / "trail_orgs.json"
 REFERENCE_DIR = PIPELINE_DIR / "reference"
 
 # Fields that name or reach a person, which never load, whatever the licence
@@ -131,9 +132,15 @@ REFERENCE_DIR = PIPELINE_DIR / "reference"
 # The names the coverage audit read off live layers (2026-10-01): Forest
 # Ranger Contact's RANGER, PHONE_CELL, PHONE_ALT, EMAIL, SUPERVISOR and
 # SUPERVIS_1, and the Central Iowa Trail Association status API's
-# updateByDisplay. A denylist is only as complete as the layers somebody has
-# read: a person field under another name loads until its name is added here,
-# which is why a new registry row is reviewed field by field.
+# updateByDisplay. The statewide Forest Ranger line, 833-NYS-RANGERS, is
+# DEC's published number for an emergency in the backcountry, not a person's:
+# it belongs in nysdec's catalogue row, its trail_orgs.json row, rather than
+# in a layer, and adding it there is a reviewed change to that file, not made
+# yet (this note sat in nysdec/org.py's docstring until decision 88).
+#
+# A denylist is only as complete as the layers somebody has read: a person
+# field under another name loads until its name is added here, which is why a
+# new registry row is reviewed field by field.
 #
 # ArcGIS editor tracking's four names hold the account that created or last
 # edited each row, and an account is a person's or names one. Added
@@ -1948,9 +1955,8 @@ class CatalogueRow(Resource):
         if org is None:
             raise KeyError(f"{self.club}/ has no trail_orgs.json row with slug {slug!r}")
         claims = []
+        # A club with no resource file has no folder (decision 88), and so claims nothing.
         for path in sorted((EXTRACT_DIR / self.club).glob("*.py")):
-            if path.stem == "org":
-                continue
             club_file = read_club_file(path)
             for key in club_file.claims:
                 entry = _registry(REGISTRY_PATH).get(key, {})

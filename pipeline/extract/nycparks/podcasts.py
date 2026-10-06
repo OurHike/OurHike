@@ -11,25 +11,6 @@ itunes:author, which carries the guests' and hosts' names, RSS <author>, dc:crea
 itunes:owner) and the row's own `person_fields`. The lane is the type's, monthly. Episodes are
 linked, never re-hosted: an <enclosure> lands as its URL, and the audio is never fetched. A feed is
 what its host serves, so an episode's absence is never its removal.
-
-Before decision 54's wave 3, 2026-10-04, this file was a note. It read, whole:
-
-NYC Parks: podcasts, published, and not landed (coverage audit 2026-10-01, batch
-b5_nyc_nj_ct_ma_pa).
-
-Dormant for three years and of no hiker value. Recorded so the next pass does not re-find it.
-Loading it is the maintainer's call.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): "NYC Parks Covid Oral History", artist "NYC Parks", feed
-`https://nycparksoralhistory.blubrry.net/feed/podcast/`. 10 episodes, 2023-05-16 → 2023-08-08
-(iTunes lookup `id1680243471`).
-
-Its `where`: https://nycparksoralhistory.blubrry.net/feed/podcast/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._content import podcast_episodes

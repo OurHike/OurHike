@@ -5,7 +5,7 @@ upstream, and a person reviews ATC's posts into the file
 (features/ATC_TRAIL_UPDATES.md, "the parse proposes; a human publishes"), so
 that loads. The split into closures and warnings is dbt's, on
 `obstructs_trail` (decision 7), so one resource feeds both types and
-warnings.py shares it.
+not_available.toml [atc.warnings] shares it.
 
 Each row lands whole, as the JSON its reviewer wrote (ReviewedFile's
 `verbatim`), because lib/atc_updates.py's row checks are about JSON types:

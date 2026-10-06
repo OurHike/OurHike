@@ -15,32 +15,6 @@ a page embedding the ArcGIS Instant app over the layers above (app
 1ddce45fa58b4ba39a2125c61fd394e8), so the layers are the data. Its terms page (/terms-of-service/)
 is a Termly JavaScript embed whose text is not in the server's HTML; no prohibition was read, and
 none is assumed.
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Continental Divide Trail Coalition: warnings, published, and not landed (coverage audit 2026-10-01,
-batch b7_long_trails_states).
-
-A National Defense Area is military ground along the New Mexico border, and entering it is a federal
-offence. The CDT's southern terminus is on that border. Whether this polygon touches the trail or
-the Crazy Cook approach was not measured. It belongs in `cdtc/warnings.py` (or closures, if it …
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): The same layers, rows with `Type=Alert` and `Active=Yes`.
-Example: "Black Fire… Stay alert for potentially dangerous conditions and slow travel due to
-standing dead trees, blowdown, and eroded trail." Also the static page
-`cdtcoalition.org/bears-and-the-cdt/`. | Skeptic adds: `National_Defense_Area_NM/FeatureServer/0`: 1
-polygon named "National Defense Area", last edit 2026-03-24, about 449 km² by `Shape__Area`
-(Measured). It is not one of the 149 + 76 alert features: a `LIKE '%efense%'` query on Alert Points
-returned 0 (Measured).
-
-Its `where`:
-https://services8.arcgis.com/WyuHwdftppQLa5KO/arcgis/rest/services/National_Defense_Area_NM/FeatureServer/0
-https://cdtcoalition.org/bears-and-the-cdt/ https://services.wygisc.org/HostGIS/rest/services
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import arcgis_layer

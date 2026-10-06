@@ -10,7 +10,7 @@ region is <body> (15,355 characters that day): Spooner backcountry construction 
 dispersed camping closing November 15, the bear-canister rule. Cloudflare's passive challenge-platform
 script sits on the full 200 page and is not a wall.
 
-The segments mix closures and warnings, so warnings.py shares this file. Each segment's 'Water Sources'
+The segments mix closures and warnings, so not_available.toml [tahoe_rim.warnings] shares this file. Each segment's 'Water Sources'
 line is a water condition, not a warning (decision 2), and is left for the water path. The layers
 `Camping_Prohibited/0` (12 polygons, 2016) and `Camping_Restrictions/0` (1, 2020) are standing rules,
 not notices.

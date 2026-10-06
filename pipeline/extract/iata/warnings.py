@@ -22,28 +22,6 @@ iceagetrail.org's website, the hunting-season page
 (https://iceagetrail.org/explore/plan-hike/hunting-season-iata/) among it: `User-agent: *` /
 `Disallow: /`, with `crawl-delay: 300`. The layers above live on services.arcgis.com, another host,
 and decision 39 counts a club's public layer as published.
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-Ice Age Trail Alliance: warnings, published, and not landed (coverage audit 2026-10-01, batch
-c10_nst_rest).
-
-"High Water" and "Trail Flooded" are warnings, not drought (decision 2). Skeptic spot-check:
-`IATA_Lands_Hunting_Regulations_view/9` = 65, last edit 2026-07-13.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): The same conditions layer's non-closure headings: "Caution -
-Logging Activities" 5, "Caution - logging near trail" 3, High Water 3, Storm Damage 3, Trail Flooded
-2, Confusing blazes 2, hornet nests 2, "New Wood River - dangerous ford" 1.
-`.../IATA_Lands_Hunting_Regulations_view/FeatureServer/9`: 65 polygons. `.../IAT_Dogs_Prohibited`: 7
-lines plus 6 points. Page `iceagetrail.org/explore/plan-hike/hunting-season-iata/` (blocked by
-robots.txt).
-
-Its `where`: https://iceagetrail.org/explore/plan-hike/hunting-season-iata/
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import arcgis_layer

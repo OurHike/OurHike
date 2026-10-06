@@ -8,7 +8,7 @@ files' validators, the measured key, the terms and what holds it back.
 - `bmecc_trail_section_map`: 111 placemarks (108 points, 3 lines), keyed on the geometry.
 
 A SPRING IS NOT DRINKING WATER here: the 16 springs carry no potability or reliability field, so none
-maps to water (the row's notes). bmecc/trail_lines.py and bmecc/places.py SHARE this resource.
+maps to water (the row's notes). not_available.toml [bmecc.trail_lines] and not_available.toml [bmecc.places] SHARE this resource.
 
 NOT LANDED, read live 2026-10-04 for decision 54's wave 5 (no robots.txt on www.bmecc.org: 404, no rules):
 the club's shelters page, https://www.bmecc.org/appalachian-trail/shelters, 8 A.T. shelters south to north,

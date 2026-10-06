@@ -18,25 +18,6 @@ extract/_kinds.py's WordpressPosts. A page or a feed is read every run, one requ
 only when what would land hashes as the last committed load did; a conditional GET is sent only
 where the source's own validators were measured. A feed is a window of its newest items, never the
 list of what is in force. No prose and no person lands (decisions 55 and 59).
-
-Before decision 53 phase B, 2026-10-03, this file was a note. It read, whole:
-
-City of Duluth Open Data: closures, published, and not landed (coverage audit 2026-10-01, batch
-b7_long_trails_states).
-
-No feed was found. The city's `RoadClosures/` services are for streets.
-
-Restated from reference/org_coverage.json, whose text is trimmed where it ends in '…'.
-
-Its `checked` (confirmed 2026-10-01): Format page: the `duluthmn.gov/parks/` news list carries trail
-closures, e.g. "Portion of Chester Park Trail Closed Due to Washout" (2017-08-29); "Closed" appears
-46 times on the page. `/parks/cancellations/` lists programme cancellations.
-
-Its `where`: https://duluthmn.gov/parks/ https://data-duluthmn.opendata.arcgis.com/
-https://utility.arcgis.com/usrsvcs/servers/085f4309eec943a8998e801f7849b1b8/rest/services
-
-Its `reason`: published and not landed: no sources.json row registers it, and a builder takes a
-registered key
 """
 
 from extract._kinds import page_notice

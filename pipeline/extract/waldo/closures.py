@@ -10,7 +10,7 @@ SAFETY, the day of the read: several hunting closures start on 2026-10-03. The p
 sends no Last-Modified, so the row's only date will be OurHike's first sight of it; its weak ETag is not
 trusted. The row lands the title, a hash of <main> and the link.
 
-The page's 'Hunting Seasons' section is the warnings half, so warnings.py shares this file. The
+The page's 'Hunting Seasons' section is the warnings half, so not_available.toml [waldo.warnings] shares this file. The
 /maps page carries no hunting or orange text in its HTML (the coverage audit's 'Wear orange' line may
 sit inside map images) and is not read.
 

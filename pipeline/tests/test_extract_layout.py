@@ -1,11 +1,14 @@
 """The extract layout check, on every pull request: pipeline/ELT.md, "The data checks", check 1.
 
 It holds the shape of pipeline/extract/ and nothing about the network: every
-club folder is a managing organisation, holds exactly the eleven type files,
-and each file is one of the three forms; every claim resolves to a registry
-key or a reviewed file, once; every resource is on a lane. It checks a note's
-shape and never its age, so the calendar cannot turn an unrelated pull request
-red (check 3, note ageing, is the monthly job's).
+managing organisation in trail_orgs.json answers each of the ten FILE_TYPES
+exactly once, with a resource file in its folder or a row of
+extract/not_available.toml (decision 88), and has one catalogue row; a club
+folder holds only resource files, and only a managing club has one; every row
+is a well-formed note or a share naming a sibling with resources; every claim
+resolves to a registry key or a reviewed file, once; every resource is on a
+lane. It checks a note's shape and never its age, so the calendar cannot turn
+an unrelated pull request red (check 3, note ageing, is the monthly job's).
 
 THE FOLDERS ARE A SUBSET UNTIL THE MIGRATION FINISHES. Stage 2 of #1793 —
 Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly
@@ -28,19 +31,24 @@ import pytest
 from extract._contract import (
     CADENCES,
     EXTRACT_DIR,
+    FILE_TYPES,
+    NOT_AVAILABLE_FILE,
     NOT_CLUB_TYPES,
     PIPELINE_DIR,
     TYPES,
+    ClubFile,
     NotAvailable,
+    Resource,
     all_resources,
     club_folders,
     discover,
     discover_shared,
     folder_for_slug,
     raw_table,
+    read_not_available,
     slug_for_folder,
 )
-from extract._kinds import ORGS_TABLE, ConditionsQuery, NwsAlerts, _registry, _trail_orgs
+from extract._kinds import ORGS_TABLE, CatalogueRow, ConditionsQuery, NwsAlerts, _registry, _trail_orgs
 from extract._run import CONDITIONS_JOB, HOURLY_JOB_TABLES, LANES, LEGS, NOTICES_JOB, job_of, lane_resources, leg_tables
 from lib.socrata import dataset_url
 
@@ -64,21 +72,125 @@ TODAY = date.today()
 FILES = discover()
 SHARED_FILES = discover_shared()
 EVERY_FILE = FILES + SHARED_FILES
-BY_CLUB = {folder.name: [f for f in FILES if f.club == folder.name] for folder in club_folders()}
+NOT_AVAILABLE_PATH = EXTRACT_DIR / NOT_AVAILABLE_FILE
+FOLDERS = [folder.name for folder in club_folders()]
+BY_CLUB: dict[str, list[ClubFile]] = {}
+for _answer in FILES:
+    BY_CLUB.setdefault(_answer.club, []).append(_answer)
+ROWS = [f for f in FILES if f.is_row]
+#: The answers that are files of their own: everything but the rows and the catalogue rows discover() makes.
+PY_FILES = [f for f in EVERY_FILE if f.path.suffix == ".py"]
 
 
 def managing_slugs() -> set[str]:
     return {slug for slug, row in _trail_orgs(TRAIL_ORGS_PATH).items() if row.get("type") not in NOT_CLUB_TYPES}
 
 
-def test_there_are_club_folders_to_check():
-    """A layout test over zero folders passes vacuously; this is the line that says so."""
-    assert {"atc", "nysdec"} <= set(BY_CLUB)
+def managing_clubs() -> set[str]:
+    return {folder_for_slug(slug) for slug in managing_slugs()}
+
+
+def home(answer: ClubFile) -> str:
+    """Where an answer is written, as a reader would look for it."""
+    if answer.is_row:
+        return f"{NOT_AVAILABLE_FILE} [{answer.club}.{answer.type}]"
+    if answer.path.suffix == ".py":
+        return f"{answer.club}/{answer.path.name}"
+    return f"{answer.club}'s catalogue row"
+
+
+def answer_problems(answers: list[ClubFile], managing: set[str]) -> list[str]:
+    """Why the answers are not exactly one per managing club and FILE_TYPES type, or [] when they are (decision 88).
+
+    Each club and type is answered by its resource file or its row of not_available.toml, never both and never
+    neither; an answer for a club that is not managing, or for a type outside FILE_TYPES, is a problem too.
+    """
+    homes: dict[tuple[str, str], list[str]] = {}
+    problems = []
+    for answer in answers:
+        if answer.type == "org" and not answer.is_row:
+            continue  # the catalogue rows, which test_every_managing_club_has_exactly_one_catalogue_row holds
+        if answer.type not in FILE_TYPES:
+            problems.append(f"{home(answer)}: {answer.type!r} is not one of the ten types a club answers {FILE_TYPES}")
+            continue
+        homes.setdefault((answer.club, answer.type), []).append(home(answer))
+    for club in sorted(managing):
+        for type_ in FILE_TYPES:
+            found = homes.get((club, type_), [])
+            if not found:
+                problems.append(f"{club} x {type_}: answered by neither {club}/{type_}.py nor a [{club}.{type_}] row")
+            elif len(found) > 1:
+                problems.append(f"{club} x {type_}: answered {len(found)} times, by {' and by '.join(found)}")
+    for (club, type_), found in sorted(homes.items()):
+        if club not in managing:
+            problems.append(f"{found[0]}: {club!r} is not a managing club in trail_orgs.json")
+    return problems
+
+
+def test_there_are_club_folders_and_rows_to_check():
+    """A layout test over zero folders or zero rows passes vacuously; this is the line that says so."""
+    assert {"atc", "nysdec"} <= set(FOLDERS)
+    assert len(ROWS) > 1000, f"{NOT_AVAILABLE_FILE} gave {len(ROWS)} rows"
 
 
 def test_every_folder_is_a_managing_organisation_in_trail_orgs():
-    unknown = {folder for folder in BY_CLUB if slug_for_folder(folder) not in managing_slugs()}
+    unknown = {folder for folder in FOLDERS if slug_for_folder(folder) not in managing_slugs()}
     assert not unknown, f"club folders with no managing trail_orgs.json row: {sorted(unknown)}"
+
+
+def test_every_managing_club_answers_every_type_exactly_once_by_a_resource_file_or_a_row():
+    """Decision 13's guarantee, as decision 88 keeps it: no club leaves a type unanswered, and none answers one twice."""
+    problems = answer_problems(FILES, managing_clubs())
+    assert not problems, "\n".join(problems)
+
+
+def test_no_row_names_a_type_its_club_folder_also_has_a_file_for():
+    """The case the exactly-once test also catches, named on its own: a row left behind when the resource file landed."""
+    files = {(f.club, f.type) for f in FILES if f.path.suffix == ".py"}
+    beside = sorted(
+        f"{NOT_AVAILABLE_FILE} [{f.club}.{f.type}] beside {f.club}/{f.type}.py" for f in ROWS if (f.club, f.type) in files
+    )
+    assert not beside, "retire the row when the resource file lands:\n" + "\n".join(beside)
+
+
+def test_the_rows_are_sorted_by_club_then_type():
+    """So a reader finds a row where they expect it, and two sessions adding rows for different clubs edit apart."""
+    order = [(row.club, row.type) for row in read_not_available(NOT_AVAILABLE_PATH)]
+    assert order == sorted(order), next(f"[{a[0]}.{a[1]}] before [{b[0]}.{b[1]}]" for a, b in zip(order, order[1:]) if a > b)
+
+
+def test_every_managing_club_has_exactly_one_catalogue_row():
+    catalogue = [f for f in FILES if f.type == "org"]
+    assert sorted(f.club for f in catalogue) == sorted(managing_clubs())
+    for answer in catalogue:
+        assert not answer.is_row, f"{home(answer)}: the catalogue row is made from trail_orgs.json, never a row"
+        assert [type(r) for r in answer.resources] == [CatalogueRow], home(answer)
+        assert (answer.resources[0].club, answer.resources[0].type) == (answer.club, "org")
+
+
+def test_answers_missing_given_twice_or_for_a_club_that_is_not_managing_are_each_named():
+    """answer_problems() itself, on invented answers: the checks above would pass vacuously if it found nothing."""
+    note = NotAvailable(confirmed=date(2026, 10, 1), checked=("x",), where=("https://example.org",))
+    resource = Resource(key="k", club="club_a", type="closures")
+    answers = [
+        ClubFile(
+            club="club_a", type="closures", path=EXTRACT_DIR / "club_a" / "closures.py", claims=("k",), resources=(resource,)
+        ),
+        ClubFile(club="club_a", type="closures", path=NOT_AVAILABLE_PATH, note=note),
+        ClubFile(club="not_a_club", type="photos", path=NOT_AVAILABLE_PATH, note=note),
+        ClubFile(club="club_a", type="trail_line", path=NOT_AVAILABLE_PATH, note=note),
+    ]
+    answers += [
+        ClubFile(club="club_a", type=t, path=NOT_AVAILABLE_PATH, note=note)
+        for t in FILE_TYPES
+        if t not in ("closures", "warnings")
+    ]
+    assert answer_problems(answers, {"club_a"}) == [
+        f"{NOT_AVAILABLE_FILE} [club_a.trail_line]: 'trail_line' is not one of the ten types a club answers {FILE_TYPES}",
+        f"club_a x closures: answered 2 times, by club_a/closures.py and by {NOT_AVAILABLE_FILE} [club_a.closures]",
+        "club_a x warnings: answered by neither club_a/warnings.py nor a [club_a.warnings] row",
+        f"{NOT_AVAILABLE_FILE} [not_a_club.photos]: 'not_a_club' is not a managing club in trail_orgs.json",
+    ]
 
 
 def test_folder_names_and_slugs_map_both_ways_exactly():
@@ -89,38 +201,111 @@ def test_folder_names_and_slugs_map_both_ways_exactly():
         assert slug_for_folder(folder_for_slug(slug)) == slug
 
 
-@pytest.mark.parametrize("club", sorted(BY_CLUB))
-def test_each_folder_holds_exactly_the_eleven_type_files(club):
+@pytest.mark.parametrize("club", FOLDERS)
+def test_a_club_folder_holds_only_resource_files_named_for_the_ten_types(club):
+    """Decision 88: a folder is its resource files, no __init__.py, no org.py, and no note or share, which are rows."""
     entries = sorted(p.name for p in (EXTRACT_DIR / club).iterdir() if p.name != "__pycache__")
-    assert entries == sorted(f"{type_}.py" for type_ in TYPES), (
-        "a club folder is the eleven TYPES files and nothing else, no __init__.py included, so the count is exact"
+    allowed = {f"{type_}.py" for type_ in FILE_TYPES}
+    assert entries and set(entries) <= allowed, (
+        f"{club}/ holds {sorted(set(entries) - allowed)}; a folder holds only {sorted(allowed)}"
     )
+    for answer in BY_CLUB[club]:
+        if answer.path.suffix == ".py":
+            assert answer.form in ("claims", "same_as"), (
+                f"{home(answer)} is a {answer.form}; a note or a share is a row of {NOT_AVAILABLE_FILE}, never a file"
+            )
 
 
 @pytest.mark.parametrize("club_file", FILES, ids=lambda f: f"{f.club}/{f.type}")
-def test_each_file_takes_exactly_one_form(club_file):
+def test_each_answer_takes_exactly_one_form(club_file):
     assert club_file.form != "invalid", (
-        f"{club_file.club}/{club_file.type}.py must define exactly one of CLAIMS + RESOURCES, SHARES or NOT_AVAILABLE"
+        f"{home(club_file)} must be exactly one of CLAIMS + RESOURCES, a share or a note (SAME_AS may ride CLAIMS)"
     )
     if club_file.type == "org":
-        assert club_file.form == "claims" and len(club_file.resources) == 1, "org.py is one catalogue row, never a note"
+        assert club_file.form == "claims" and len(club_file.resources) == 1, "a catalogue row is one resource, never a note"
     if club_file.form == "claims" and club_file.type != "org":
         assert club_file.claims and club_file.resources, "a claiming file needs both its claims and their resources"
+    if club_file.is_row:
+        assert club_file.form in ("note", "shares"), f"{home(club_file)} is a {club_file.form}"
 
 
 @pytest.mark.parametrize("club_file", [f for f in FILES if f.shares], ids=lambda f: f"{f.club}/{f.type}")
-def test_a_shares_file_names_a_sibling_that_has_resources(club_file):
-    sibling = next((f for f in BY_CLUB[club_file.club] if f.type == club_file.shares), None)
-    assert sibling is not None and sibling.form == "claims", (
-        f"{club_file.club}/{club_file.type}.py shares {club_file.shares!r}, which has no resources of its own"
+def test_a_share_names_a_sibling_type_whose_resource_file_has_resources(club_file):
+    sibling = next((f for f in BY_CLUB[club_file.club] if f.type == club_file.shares and not f.is_row), None)
+    assert sibling is not None and sibling.form == "claims" and sibling.resources, (
+        f"{home(club_file)} shares {club_file.shares!r}, which has no resource file of its own"
     )
     assert club_file.shares != club_file.type
 
 
 @pytest.mark.parametrize("club_file", [f for f in FILES if f.note], ids=lambda f: f"{f.club}/{f.type}")
-def test_a_note_is_well_formed(club_file):
+def test_a_note_is_well_formed_dated_no_later_than_today_and_names_what_was_checked_and_where(club_file):
+    assert club_file.is_row, f"{home(club_file)}: a note is a row of {NOT_AVAILABLE_FILE}"
     assert isinstance(club_file.note, NotAvailable)
     assert club_file.note.problems(TODAY) == []
+
+
+def _rows(tmp_path, text: str) -> list[ClubFile]:
+    path = tmp_path / NOT_AVAILABLE_FILE
+    path.write_text(text, encoding="utf-8")
+    return read_not_available(path)
+
+
+def test_a_row_reads_back_as_the_note_or_share_its_file_gave(tmp_path):
+    rows = _rows(
+        tmp_path,
+        """
+[club_a.elevation]
+confirmed = 2026-10-01
+recheck_after_days = 30
+summary = "Nothing published."
+checked = ["the ArcGIS root"]
+where = ["https://example.org/arcgis/rest/services"]
+terms = 'the "no automated access" clause'
+reason = "refused"
+
+[club_a.warnings]
+shares = "closures"
+""",
+    )
+    assert [(row.club, row.type, row.form, row.summary) for row in rows] == [
+        ("club_a", "elevation", "note", "Nothing published."),
+        ("club_a", "warnings", "shares", None),
+    ]
+    assert rows[0].note == NotAvailable(
+        confirmed=date(2026, 10, 1),
+        checked=("the ArcGIS root",),
+        where=("https://example.org/arcgis/rest/services",),
+        recheck_after_days=30,
+        terms='the "no automated access" clause',
+        reason="refused",
+    )
+    assert rows[1].shares == "closures" and all(row.is_row for row in rows)
+
+
+def test_a_row_with_a_misspelt_field_is_refused_rather_than_read_without_it(tmp_path):
+    """A `term` for `terms` would otherwise drop a refusal's quoted words without a sound."""
+    with pytest.raises(ValueError, match=r"\[club_a.closures\]: \['term'\] is not a field of a note row"):
+        _rows(tmp_path, '[club_a.closures]\nconfirmed = 2026-10-01\nchecked = ["x"]\nwhere = ["https://e.org"]\nterm = "no"\n')
+    with pytest.raises(ValueError, match=r"\['confirmed'\] is not a field of a share row"):
+        _rows(tmp_path, '[club_a.warnings]\nshares = "closures"\nconfirmed = 2026-10-01\n')
+
+
+def test_a_club_and_type_written_twice_is_refused(tmp_path):
+    import tomllib
+
+    with pytest.raises(tomllib.TOMLDecodeError, match="Cannot declare"):
+        _rows(tmp_path, '[club_a.warnings]\nshares = "closures"\n\n[club_a.warnings]\nshares = "closures"\n')
+
+
+def test_a_confirmed_date_written_as_a_string_is_refused(tmp_path):
+    with pytest.raises(ValueError, match=r"`confirmed` is '2026-10-01', which is not a date"):
+        _rows(tmp_path, '[club_a.photos]\nconfirmed = "2026-10-01"\nchecked = ["x"]\nwhere = ["https://e.org"]\n')
+
+
+def test_a_note_row_without_checked_or_where_reads_and_then_fails_the_shape_check(tmp_path):
+    (row,) = _rows(tmp_path, "[club_a.photos]\nconfirmed = 2026-10-01\n")
+    assert row.note.problems(date(2026, 10, 6)) == ["checked must list what was looked at", "where must list https URLs"]
 
 
 def test_a_note_in_the_future_is_refused():
@@ -268,8 +453,11 @@ def test_raw_table_names_keep_the_double_underscore():
 
 
 def test_a_club_file_never_names_a_url_to_fetch():
-    """Builders take keys. A URL in a club file is either a note's `where` or a mistake, so only notes may hold one."""
-    for club_file in EVERY_FILE:
+    """Builders take keys. A URL in a club file is either a note's `where`, a SAME_AS copy, its docstring or a mistake.
+
+    A club's notes are rows of not_available.toml, which no builder reads; _shared/'s three notes.py are the
+    files left holding a note."""
+    for club_file in PY_FILES:
         if club_file.note is not None:
             continue
         tree = ast.parse(club_file.path.read_text())
@@ -406,7 +594,7 @@ def test_every_module_the_extract_imports_is_pinned_in_its_own_requirements():
     """
     from importlib.metadata import packages_distributions
 
-    start = [*EXTRACT_DIR.glob("_*.py"), *(file.path for file in EVERY_FILE)]
+    start = [*EXTRACT_DIR.glob("_*.py"), *(file.path for file in PY_FILES)]
     imported = _repository_imports(start)
     providers = packages_distributions()
 
@@ -433,7 +621,9 @@ def test_the_dbt_jobs_scope_covers_every_local_module_the_extract_imports():
 
     workflow = yaml.safe_load((PIPELINE_DIR.parent / ".github" / "workflows" / "pipeline-tests.yml").read_text())
     scope = next(step for step in workflow["jobs"]["dbt"]["steps"] if step.get("id") == "scope")["with"]["paths"].split()
-    reached, _ = _import_closure([*EXTRACT_DIR.glob("_*.py"), *(file.path for file in EVERY_FILE), PIPELINE_DIR / "parity.py"])
+    reached, _ = _import_closure([*EXTRACT_DIR.glob("_*.py"), *(file.path for file in PY_FILES), PIPELINE_DIR / "parity.py"])
+    # Read by discover(), so the warehouse fixture mode builds depends on them as much as on any module.
+    reached |= {NOT_AVAILABLE_PATH, TRAIL_ORGS_PATH}
     reviewed = {
         PIPELINE_DIR / resource.path
         for resource in all_resources(discover() + discover_shared())
@@ -486,8 +676,10 @@ def test_every_aggregator_has_a_shared_folder_that_extracts_or_quotes_the_terms_
 
 
 def test_shared_folders_never_share_a_name_with_a_club_and_each_resource_names_its_type():
-    """A _shared/ folder plays the club's part in `raw_<folder>__<key>`, so a shared name equal to a club's could collide."""
-    clubs = {folder.name for folder in club_folders()}
+    """A _shared/ folder plays the club's part in `raw_<folder>__<key>`, so a shared name equal to a club's could collide.
+
+    Every managing club, folder or not: a club with no resource file today may get one, and its folder that name."""
+    clubs = managing_clubs()
     for shared in SHARED_FILES:
         assert shared.club not in clubs, f"_shared/{shared.club}/ has a club folder's name"
         if shared.resources:

@@ -223,7 +223,11 @@ def job_of(resource: Resource) -> str:
 # decision 61 moved here and phase B's 181 page, feed and WordPress sources
 # come on in two runs, where 10 a run would take 27. What would settle it:
 # the "Seconds:" line of the first two notices runs' summaries, against the
-# tables each took on.
+# tables each took on. Those runs came on 2026-10-04: the copies notices runs
+# 1 and 2 served held 150 and then 261 tables (soak runs 527 and 530 read
+# them), and each whole extract step took 235 s and 362 s of its 50 minutes
+# (Measured 2026-10-06 from the Actions API's step times and those logs);
+# their "Seconds:" lines were not read for this.
 NEW_TABLES_PER_LEG_RUN: dict[str, int | None] = {CONDITIONS_JOB: None, NOTICES_JOB: 150}
 # A LEG'S CHANGE CHECKS END AFTER THIS MANY SECONDS, as its reads do after
 # --read-seconds (by_folder()). A check still out is refused on its own: its

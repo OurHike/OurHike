@@ -1285,16 +1285,15 @@ jobs:
       - name: Export verified conditions
         id: export
         if: steps.can.outputs.go == 'true'
+        # This leg's URL alone, by the extract step's expression and for its
+        # reason: picked in the script from both, the other leg's URL sat in
+        # the environment of the shell export_conditions.py runs under (found
+        # by round-2 fix worker B of PR #1805, the extract step's SEC-7 again).
+        # .github/tests/test_conditions_extract_sees_one_database_url.py runs
+        # this step per leg too.
         env:
-          PRODUCTION_URL: ${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}
-          UA_URL: ${{ secrets.UA_CONDITIONS_DATABASE_URL }}
-        run: |
-          if [ "${{ matrix.data_environment }}" = "production" ]; then
-            export CONDITIONS_DATABASE_URL="$PRODUCTION_URL"
-          else
-            export CONDITIONS_DATABASE_URL="$UA_URL"
-          fi
-          python export_conditions.py
+          CONDITIONS_DATABASE_URL: ${{ matrix.data_environment == 'production' && secrets.PRODUCTION_CONDITIONS_DATABASE_URL || matrix.data_environment == 'ua' && secrets.UA_CONDITIONS_DATABASE_URL || '' }}
+        run: python export_conditions.py
 
       # Printed before publishing, because "it read something" and "it
       # published something" are different facts and only the first one

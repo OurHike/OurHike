@@ -48,8 +48,9 @@
 #   - the one nobody tests". This was that environment.
 #
 # The dbt docs land at `/data/` here as they do in production, built by the
-# same action (.github/actions/dbt-docs-site), so a pull request that changes
-# the dbt project shows its docs page before a tag publishes it.
+# same action (.github/actions/dbt-docs-site) in a job of its own that holds
+# no secret, so a pull request that changes the dbt project shows its docs
+# page before a tag publishes it.
 #
 # WHAT THIS DELIBERATELY DOES NOT COPY FROM pages.yml: `site/CNAME` and
 # `.nojekyll`. Both are GitHub Pages mechanisms - a custom domain, and
@@ -146,7 +147,51 @@ permissions:
   pull-requests: write
 
 jobs:
+  # The /data/ page, built by the same action as pages.yml (the action says
+  # why an empty warehouse; it reads no secret). A job of its own, holding a
+  # token that can only read and handed no secret, as pages.yml's docs job is
+  # and for the reason that job gives (SEC-8 of PR #1805's second review): it
+  # installs dbt, fetches dbt's packages by tag, may download a native driver
+  # and runs npm ci for DuckDB-WASM, and a step's process can reach whatever
+  # its job holds. The preview job below holds the Cloudflare token and
+  # account, the Supabase values and `pull-requests: write`, and only
+  # downloads what this job built.
+  #
+  # Not on a close, which builds nothing. Not continue-on-error either: a
+  # broken docs page should fail the preview, and the preview job waits for
+  # this one, so a failed build stops the deploy as the in-job step did.
+  docs:
+    name: Build the data docs
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build the data docs
+        id: docs
+        uses: ./.github/actions/dbt-docs-site
+
+      # The files as dbt and build.sh wrote them, which an artifact keeps
+      # byte for byte (pages.yml's docs job has what was checked).
+      - name: Hand the docs to the preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-docs
+          path: ${{ steps.docs.outputs.dir }}
+          retention-days: 1
+          if-no-files-found: error
+
   preview:
+    needs: docs
+    # On a close the docs job is skipped and this job still has to remove
+    # the previews and say so; otherwise it runs only on a docs build that
+    # succeeded.
+    if: ${{ !cancelled() && (needs.docs.result == 'success' || github.event.action == 'closed') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -564,15 +609,15 @@ jobs:
           node scripts/photograph-preview.mjs --dist --changed="$LIST"
           echo "taken=true" >> "$GITHUB_OUTPUT"
 
-      # The /data/ page, built by the same action as pages.yml (the action
-      # says why an empty warehouse; it reads no secret). Not
-      # continue-on-error: a broken docs page should fail the preview, and
-      # the assembly below refuses a missing part rather than letting
-      # 404.html cover for it.
-      - name: Build the data docs
-        id: docs
+      # The /data/ page the docs job built, downloaded rather than built
+      # here (that job says why). The assembly below refuses a missing part
+      # rather than letting 404.html cover for it.
+      - name: Fetch the data docs
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
-        uses: ./.github/actions/dbt-docs-site
+        uses: actions/download-artifact@v8
+        with:
+          name: data-docs
+          path: ${{ runner.temp }}/data-docs
 
       # What gets uploaded, laid out the way pages.yml lays out its own
       # `_site` - the header at the top of this file has the argument and the
@@ -594,7 +639,7 @@ jobs:
         env:
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
-          DOCS_DIR: ${{ steps.docs.outputs.dir }}
+          DOCS_DIR: ${{ runner.temp }}/data-docs
         run: |
           mkdir -p _site/app
           # The BUILT site, not the source tree - site/src would be shipped raw

@@ -996,6 +996,55 @@ class TestTheDataDocs:
         assemble = next(step for step in deploy["steps"] if step.get("name") == "Assemble the site")
         assert assemble["env"]["DOCS_DIR"] == download["with"]["path"]
 
+    def test_the_preview_builds_the_docs_in_a_job_holding_no_secret_and_no_write(self):
+        """The same split for pr-preview.yml, whose deploying job holds CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, the
+        Supabase values and `pull-requests: write`: the docs are built in a job of its own that can only read and is
+        handed no secret, and the preview job downloads the directory and runs nothing of dbt's or npm's for it.
+        """
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8"))["jobs"]
+        builders = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert len(builders) == 1, builders
+        docs = jobs[builders[0]]
+        assert docs.get("permissions") == {"contents": "read"}
+        assert "secrets." not in yaml.safe_dump(docs) and "vars." not in yaml.safe_dump(docs)
+        checkout = next(s for s in docs["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        assert checkout.get("with", {}).get("persist-credentials") is False
+        build = next(step for step in docs["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        upload = next(step for step in docs["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact@"))
+        assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+
+        preview = jobs["preview"]
+        needs = preview.get("needs") or []
+        assert builders[0] in ([needs] if isinstance(needs, str) else needs)
+        assert not any(step.get("uses") == "./.github/actions/dbt-docs-site" for step in preview["steps"])
+        download = next(
+            step
+            for step in preview["steps"]
+            if str(step.get("uses", "")).startswith("actions/download-artifact@")
+            and step["with"]["name"] == upload["with"]["name"]
+        )
+        assemble = next(step for step in preview["steps"] if step.get("name") == "Assemble the preview")
+        assert assemble["env"]["DOCS_DIR"] == download["with"]["path"]
+
+    def test_the_preview_still_runs_its_teardown_when_a_pull_request_closes(self):
+        """A closed pull request builds no docs, and the preview job, which needs the docs job, must still remove the
+        previews and post its closing comment rather than be skipped behind the skipped build."""
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8"))["jobs"]
+        (docs_id,) = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert jobs[docs_id]["if"] == "github.event.action != 'closed'"
+        condition = jobs["preview"]["if"]
+        assert "!cancelled()" in condition
+        assert f"needs.{docs_id}.result == 'success'" in condition
+        assert "github.event.action == 'closed'" in condition
+
 
 class TestTheDataDocsLoadNoCodeFromAnotherOrigin:
     """Decision 93 (pipeline/ELT.md), answering SEC-1 of PR #1805's second review.

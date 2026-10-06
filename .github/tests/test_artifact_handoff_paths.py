@@ -55,6 +55,9 @@ RELOCATIONS = {
     # extracts it to a folder of its own whose path its "Assemble the site"
     # step reads (test_pages_publish.py holds the two to each other).
     ("pages.yml", "data-docs"),
+    # pr-preview.yml's docs job does the same for the preview job, whose
+    # "Assemble the preview" step reads the folder it extracts to.
+    ("pr-preview.yml", "data-docs"),
 }
 
 

@@ -295,8 +295,9 @@ exposures:
       (#673 — Tombstones and superseded_by: an upstream removal never deletes
       a hiker's content), so an id a phone holds always resolves to
       something. Published in the release folder by publish-vector-data.yml
-      from export_retired_poi.py's file; no client build fetches it yet
-      (export_retired_poi.py's docstring says why).
+      from export_retired_poi.py's file, and fetched by the client's
+      fetchRetiredPois() (client/src/lib/trailData.ts), which reads a release
+      without it as one with no tombstones.
     depends_on:
       - ref('points_of_interest', v=1)
       - ref('pub_retired_poi')

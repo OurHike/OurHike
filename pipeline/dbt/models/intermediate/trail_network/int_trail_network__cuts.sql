@@ -65,8 +65,8 @@
 -- to any one segment), and the pair rule stays node_lines()': only parts
 -- whose envelopes meet, a crossing pair never also joined.
 --
--- WHY, measured in three monthly runs and on the published network, each
--- building this model alone against DuckDB's 12.4 GiB:
+-- WHY, measured in two monthly runs, each building this model alone against
+-- DuckDB's 12.4 GiB, and on the published network:
 -- - monthly run 21 (refresh-reference.yml 37323395441, 2026-10-05) held
 --   both parts' geometries on every pair whose envelopes meet, in a CTE five
 --   others read: out of memory after 34.74 s;
@@ -117,8 +117,8 @@ part_info as (
 -- vertex the next begins on, and a part of v vertices has
 -- (v - 2) // piece_segments + 1 pieces. Built from each part's own list of
 -- vertices. A row per vertex, ordered back into lines, held every vertex of
--- the network at once: on the synthetic network below it ran out of memory
--- at 9.3 GiB (measured 2026-10-06).
+-- the network at once: on a synthetic network it ran out of memory at 9.3
+-- GiB (measured 2026-10-06; 9195e1ef's commit message has the figures).
 pieces as (
     select
         part_order,

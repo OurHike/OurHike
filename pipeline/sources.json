@@ -5437,8 +5437,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "613 polygons at the coverage audit (2026-10-01), not recounted; lastEditDate 2026-05-07. ACTIVITYCO, INPUT_DATE, EDIT_DATE. Worded downstream as 'an area CPW maps as a conflict area', never 'activity reported' (coverage audit). Read by this step at 2026-10-03T16:12:32Z: returnCountOnly under the row's `where` answered 613, and `GlobalID` is distinct on 613 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": true,
-      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cotrex__cpw_bear_conflict_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held 2026-10-06, until its title is worded: each row's only title is the layer's ACTIVITYCO code (BBHCA for bear, MLHCA for lion), which no model rewords, so a hiker would read the code. The rows never reached a phone before fix worker B moved this layer to the notices job (PR #1805's round-2 review, finding ARC-1), so holding it changes no published file. Before the hold: True by decision 63 (2026-10-04): stg_cotrex__cpw_bear_conflict_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cpw_lion_conflict_areas",
@@ -5458,8 +5458,8 @@
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 1, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
       "notes": "266 polygons at the coverage audit (2026-10-01), not recounted; lastEditDate 2026-05-07. ACTIVITYCO, INPUT_DATE, EDIT_DATE. Worded downstream as 'an area CPW maps as a conflict area', never 'activity reported' (coverage audit). Read by this step at 2026-10-03T16:12:37Z: returnCountOnly under the row's `where` answered 266, and `GlobalID` is distinct on 266 of them (returnDistinctValues), the key phase C builds on.",
-      "reaches_hikers": true,
-      "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_cotrex__cpw_lion_conflict_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held 2026-10-06, until its title is worded: each row's only title is the layer's ACTIVITYCO code (BBHCA for bear, MLHCA for lion), which no model rewords, so a hiker would read the code. The rows never reached a phone before fix worker B moved this layer to the notices job (PR #1805's round-2 review, finding ARC-1), so holding it changes no published file. Before the hold: True by decision 63 (2026-10-04): stg_cotrex__cpw_lion_conflict_areas reads it into int_closures__club_notices, whose phase C rules are unit-tested; a warning, never a closure; it states no end, so a row stands while the source lists it; its place is its own geometry; no prose column reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "cpw_managed_properties",

@@ -164,9 +164,12 @@ unit_tests:
       same 6.76 m gap with trail_network_endpoint_snap_m at 0 is no cut at
       all, so the stub stays its own island.
     model: int_trail_network__cuts
+    # A dbt 2.0.6 unit test's vars are its overrides alone, so every var the
+    # model reads is listed.
     overrides:
       vars:
         trail_network_endpoint_snap_m: 0.0
+        trail_network_piece_segments: 256
     given:
       - input: ref('int_trail_network__routable')
         rows:
@@ -206,6 +209,33 @@ unit_tests:
           - {part_id: 'nynjtc_long_path:2#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.09 41.25024, -74.06 41.25024)'}
     expect:
       rows: []
+
+  - name: int_trail_network__cuts_lines_tested_a_segment_at_a_time_cut_as_whole_lines_do
+    description: >
+      int_trail_network__cuts' "ONE PIECE AT A TIME", with
+      trail_network_piece_segments at 1, so every segment is its own piece:
+      the five-vertex line is crossed inside its third segment, one
+      `crossing`; the stub's end stops 6.76 m short of the line's vertex at
+      -74.09, which two of its pieces share, and is one `endpoint_join`,
+      never two. The same rows as the whole lines give (test_dbt_trail_network_parity.py
+      holds them to node_lines()).
+    model: int_trail_network__cuts
+    # A dbt 2.0.6 unit test's vars are its overrides alone, so every var the
+    # model reads is listed.
+    overrides:
+      vars:
+        trail_network_endpoint_snap_m: 8.0
+        trail_network_piece_segments: 1
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.095 41.25, -74.09 41.25, -74.085 41.25, -74.08 41.25)'}
+          - {part_id: 'oprhp_trails:3#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.0875 41.24, -74.0875 41.26)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 2, refused_because: null, geom_wkt: 'LINESTRING (-74.09 41.24, -74.09 41.24994)'}
+    expect:
+      rows:
+        - {cut_key: 'crossing:oprhp_trails:1#1|oprhp_trails:3#1', cut_order: 0, cut_kind: crossing, line_part_id: 'oprhp_trails:1#1', other_part_id: 'oprhp_trails:3#1', end_side: null, end_point_wkt: null}
+        - {cut_key: 'endpoint_join:nynjtc_long_path:2#1|oprhp_trails:1#1|end', cut_order: 1, cut_kind: endpoint_join, line_part_id: 'nynjtc_long_path:2#1', other_part_id: 'oprhp_trails:1#1', end_side: end, end_point_wkt: 'POINT (1805708.902606994 2236055.64823628)'}
 
   # ------------------------------------------------------ the node grid
 

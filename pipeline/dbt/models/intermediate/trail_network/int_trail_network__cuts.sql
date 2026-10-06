@@ -1,7 +1,9 @@
 {{ config(materialized='table', tags=['builds_alone']) }}
 -- builds_alone: Out of Memory Error here in monthly run 20 (37296900535).
--- Run 21 (37323395441) built it alone and ran out again: see pair_facts.
+-- Run 21 (37323395441) built it alone and ran out again: see "ONE PIECE AT A
+-- TIME".
 {%- set snap_m = var('trail_network_endpoint_snap_m') %}
+{%- set piece_segments = var('trail_network_piece_segments') %}
 -- Where the routable lines must be cut, as node_lines() decides it
 -- (build_trail_graph.py, TN04's inputs and TN05): one row per pair of parts
 -- that cross or touch, and one per line END that stops short of another
@@ -51,9 +53,39 @@
 -- the higher parts in tree order, not in this one; the order reaches the
 -- graph only where a weld creates a node of its own
 -- (int_trail_network__node_lookups says when).
--- Read where each use needs it, never held as a table: three uses read it,
--- and DuckDB would otherwise materialize a whole copy of every geometry
--- ("WHERE THE MEMORY GOES" below).
+-- ONE PIECE AT A TIME. Each routable part is tested against the others a
+-- piece at a time: consecutive runs of at most trail_network_piece_segments
+-- segments (dbt_project.yml), each sharing its end vertex with the next, so
+-- the pieces hold exactly the part's own segments. Two parts cross when a
+-- piece of one meets a piece of the other, and an end lies within
+-- trail_network_endpoint_snap_m of a part when it lies that close to one of
+-- its pieces. Both are what testing the whole lines answers (Reasoned: a
+-- line meets another exactly where one of its segments meets one of the
+-- other's, and GEOS's distance from a point to a line is its least distance
+-- to any one segment), and the pair rule stays node_lines()': only parts
+-- whose envelopes meet, a crossing pair never also joined.
+--
+-- WHY, measured in three monthly runs and on the published network, each
+-- building this model alone against DuckDB's 12.4 GiB:
+-- - monthly run 21 (refresh-reference.yml 37323395441, 2026-10-05) held
+--   both parts' geometries on every pair whose envelopes meet, in a CTE five
+--   others read: out of memory after 34.74 s;
+-- - monthly run 22 (37370582492, 2026-10-05; 461954c4) worked each pair's
+--   facts out inside the spatial join, which then carried every part's
+--   whole geometry on each match: out of memory after 9.31 s;
+-- - holding only envelopes in the spatial join (de8fe591) fitted, but slowly:
+--   on UA's nearby_trails.geojson (read 2026-10-06; 368,544 parts, 17.2
+--   million vertices, its lines simplified for phones), 3.60 GiB and 1,678.7
+--   s on DuckDB 1.5.5 with 4 threads, and 23.2 s with the 29 parts of more
+--   than 10,000 vertices left out. Those 29 parts were nearly all the time:
+--   a part of 265,802 vertices meets the envelope of every part near any of
+--   its length, and each such pair tested the whole of it. The lines this
+--   model reads are not simplified, so they are longer still.
+-- A piece's envelope is near only what is near that piece, and no single
+-- test reads more than one piece.
+--
+-- `parts` is read where each use needs it, never held as a table: DuckDB
+-- would otherwise materialize a whole copy of every geometry.
 with parts as not materialized (
     select
         part_id,
@@ -66,209 +98,160 @@ with parts as not materialized (
     where refused_because is null
 ),
 
--- Each part's envelope, the only thing the spatial join holds.
-boxes as (
+-- What each part brings to a cut: its id, its envelope for node_lines()'
+-- pair rule, and its two ends as WKT. ST_AsText wrote a 5070 point that
+-- reads back as the same two doubles (the header), so `end_point_wkt` is
+-- the end shapely welds.
+part_info as (
     select
         part_order,
-        st_envelope(geom_m) as envelope_m
+        part_id,
+        st_envelope(geom_m) as envelope_m,
+        st_astext(st_startpoint(geom_m)) as start_wkt,
+        st_astext(st_endpoint(geom_m)) as end_wkt
     from parts
 ),
 
--- The pairs whose envelopes meet, each once, the lower part first. WHY
--- sign(): written `lower < higher`, DuckDB 1.5.4 planned the inequality as
--- the join (PIECEWISE_MERGE_JOIN) and the envelope test as a filter on all
--- 1,181,953 pairs of 1,538 real Harriman parts, 5.2 s that grows as the
--- square of the parts, in every placement tried: in the WHERE, in the ON,
--- outside a materialized CTE. As sign() of the difference it is no join
--- condition, and the envelope test plans as a SPATIAL_JOIN, 0.3 s (EXPLAIN
--- and timings measured 2026-10-02 on DuckDB 1.5.4 with spatial 28db190).
-touching_boxes as (
+-- Piece n of a part holds its vertices n * piece_segments + 1 to
+-- (n + 1) * piece_segments + 1, counted from 1, so each piece ends on the
+-- vertex the next begins on, and a part of v vertices has
+-- (v - 2) // piece_segments + 1 pieces. Built from each part's own list of
+-- vertices. A row per vertex, ordered back into lines, held every vertex of
+-- the network at once: on the synthetic network below it ran out of memory
+-- at 9.3 GiB (measured 2026-10-06).
+pieces as (
     select
-        lower_box.part_order as low_order,
-        higher_box.part_order as high_order
-    from boxes as lower_box
-    inner join boxes as higher_box
-        on st_intersects(lower_box.envelope_m, higher_box.envelope_m)
-    where sign(higher_box.part_order - lower_box.part_order) = 1
+        part_order,
+        unnest(
+            list_transform(
+                range((len(vertices) - 2) // {{ piece_segments }} + 1),
+                lambda piece_index: st_makeline(
+                    list_slice(
+                        vertices,
+                        piece_index * {{ piece_segments }} + 1,
+                        piece_index * {{ piece_segments }}
+                        + {{ piece_segments }} + 1
+                    )
+                )
+            )
+        ) as piece
+    from (
+        select
+            part_order,
+            list_transform(
+                st_dump(st_points(geom_m)),
+                lambda vertex: struct_extract(vertex, 'geom')
+            ) as vertices
+        from parts
+    ) as listed
 ),
 
--- WHERE THE MEMORY GOES, measured in two monthly runs on 332,630 network
--- lines (refresh-reference.yml run 37323395441, monthly run 21, and run
--- 37370582492, monthly run 22, 2026-10-05), each building this model alone
--- against DuckDB's 12.4 GiB:
--- - run 21's query held both parts' geometries on every touching pair, in a
---   CTE five others read, so DuckDB materialized it: memory that grows with
---   the pairs times their vertices. It ran out after 34.74 s;
--- - run 22's (461954c4) worked every fact out inside the spatial join's own
---   projection, so the join carried every part's whole geometry on its
---   build side, the side it indexes in memory. It ran out after 9.31 s.
--- Here the spatial join holds envelopes and part numbers only, as run 21's
--- did; each pair's two geometries come in through ordinary joins on
--- part_order, which DuckDB can spill to disk; every fact is worked out in
--- the one projection that reads them; and only the scalar facts of the
--- pairs that cut something are kept. Which operator ran out in each run is
--- Reasoned from the two plans and the times, not measured: no synthetic
--- network made either query fail (the synthetic figures are in the commit
--- that made this change). A third failure at this model would settle that
--- this is the wrong side of the problem; the step that cuts the lines,
--- step_node_lines, already holds every part in shapely, which is where the
--- cut list would move.
-pair_facts as (
-    select
-        low_order,
-        high_order,
-        low_part_id,
-        high_part_id,
-        crosses,
-        low_start_m,
-        low_end_m,
-        high_start_m,
-        high_end_m,
-        case
-            when low_start_m <= {{ snap_m }}
-                then st_astext(st_startpoint(low_m))
-        end as low_start_wkt,
-        case
-            when low_end_m <= {{ snap_m }}
-                then st_astext(st_endpoint(low_m))
-        end as low_end_wkt,
-        case
-            when high_start_m <= {{ snap_m }}
-                then st_astext(st_startpoint(high_m))
-        end as high_start_wkt,
-        case
-            when high_end_m <= {{ snap_m }}
-                then st_astext(st_endpoint(high_m))
-        end as high_end_wkt
-    from (
-        -- An end's distance only for a pair that does not cross: a pair
-        -- that crosses is never also joined, as the Python `continue`s.
-        select
-            *,
-            case
-                when not crosses
-                    then st_distance_geos(st_startpoint(low_m), high_m)
-            end as low_start_m,
-            case
-                when not crosses
-                    then st_distance_geos(st_endpoint(low_m), high_m)
-            end as low_end_m,
-            case
-                when not crosses
-                    then st_distance_geos(st_startpoint(high_m), low_m)
-            end as high_start_m,
-            case
-                when not crosses
-                    then st_distance_geos(st_endpoint(high_m), low_m)
-            end as high_end_m
-        from (
-            select
-                lower_part.part_order as low_order,
-                higher_part.part_order as high_order,
-                lower_part.part_id as low_part_id,
-                higher_part.part_id as high_part_id,
-                lower_part.geom_m as low_m,
-                higher_part.geom_m as high_m,
-                st_intersects(lower_part.geom_m, higher_part.geom_m) as crosses
-            from touching_boxes
-            inner join parts as lower_part
-                on touching_boxes.low_order = lower_part.part_order
-            inner join parts as higher_part
-                on touching_boxes.high_order = higher_part.part_order
-        ) as touching
-    ) as measured
-    where
-        crosses
-        or ({{ snap_m }} > 0 and low_start_m <= {{ snap_m }})
-        or ({{ snap_m }} > 0 and low_end_m <= {{ snap_m }})
-        or ({{ snap_m }} > 0 and high_start_m <= {{ snap_m }})
-        or ({{ snap_m }} > 0 and high_end_m <= {{ snap_m }})
+-- The pairs that cross: a piece of the lower part meets a piece of the
+-- higher. WHY sign(): written `lower < higher`, DuckDB 1.5.4 planned the
+-- inequality as the join (PIECEWISE_MERGE_JOIN) and the spatial test as a
+-- filter on all 1,181,953 pairs of 1,538 real Harriman parts, 5.2 s that
+-- grows as the square of the parts, in every placement tried. As sign() of
+-- the difference it is no join condition, and the spatial test plans as a
+-- SPATIAL_JOIN, 0.3 s (EXPLAIN and timings measured 2026-10-02 on DuckDB
+-- 1.5.4 with spatial 28db190). Two parts that cross have envelopes that
+-- meet, so node_lines()' pair rule needs no test here.
+crossing_pairs as (
+    select distinct
+        lower_piece.part_order as low_order,
+        higher_piece.part_order as high_order
+    from pieces as lower_piece
+    inner join pieces as higher_piece
+        on st_intersects(lower_piece.piece, higher_piece.piece)
+    where sign(higher_piece.part_order - lower_piece.part_order) = 1
 ),
 
 crossings as (
     select
-        low_order,
-        high_order,
+        crossing_pairs.low_order,
+        crossing_pairs.high_order,
         0 as direction,
         0 as end_rank,
         'crossing' as cut_kind,
-        low_part_id as line_part_id,
-        high_part_id as other_part_id,
+        low_info.part_id as line_part_id,
+        high_info.part_id as other_part_id,
         cast(null as varchar) as end_side,
         cast(null as varchar) as end_point_wkt
-    from pair_facts
-    where crosses
+    from crossing_pairs
+    inner join part_info as low_info
+        on crossing_pairs.low_order = low_info.part_order
+    inner join part_info as high_info
+        on crossing_pairs.high_order = high_info.part_order
 ),
 
--- Each non-crossing pair's four ends: the lower part's against the higher
--- part (direction 0), then the higher's against the lower (1), start first.
-ends as (
+-- Each part's two ends, start first.
+part_ends as (
     select
-        low_order,
-        high_order,
-        0 as direction,
+        part_order,
         0 as end_rank,
-        low_part_id as line_part_id,
-        high_part_id as other_part_id,
-        'start' as end_side,
-        low_start_m as end_distance_m,
-        low_start_wkt as end_point_wkt
-    from pair_facts
-    where not crosses
+        st_startpoint(geom_m) as end_m
+    from parts
     union all
     select
-        low_order,
-        high_order,
-        0 as direction,
+        part_order,
         1 as end_rank,
-        low_part_id as line_part_id,
-        high_part_id as other_part_id,
-        'end' as end_side,
-        low_end_m as end_distance_m,
-        low_end_wkt as end_point_wkt
-    from pair_facts
-    where not crosses
-    union all
-    select
-        low_order,
-        high_order,
-        1 as direction,
-        0 as end_rank,
-        high_part_id as line_part_id,
-        low_part_id as other_part_id,
-        'start' as end_side,
-        high_start_m as end_distance_m,
-        high_start_wkt as end_point_wkt
-    from pair_facts
-    where not crosses
-    union all
-    select
-        low_order,
-        high_order,
-        1 as direction,
-        1 as end_rank,
-        high_part_id as line_part_id,
-        low_part_id as other_part_id,
-        'end' as end_side,
-        high_end_m as end_distance_m,
-        high_end_wkt as end_point_wkt
-    from pair_facts
-    where not crosses
+        st_endpoint(geom_m) as end_m
+    from parts
 ),
 
+-- Each end within the tolerance of another part, by ST_Distance_GEOS to one
+-- of its pieces. ST_DWithin plans the spatial join and is DuckDB's own
+-- distance, which differed from GEOS's in the last bits (the header), so it
+-- only narrows, at a millimetre more than the tolerance; GEOS decides.
+-- "Another part" is sign() for the reason crossing_pairs gives: written
+-- `!=`, DuckDB 1.5.5 planned it as a NESTED_LOOP_JOIN, 310.9 s against
+-- 33,000 synthetic lines (measured 2026-10-06).
+near_ends as (
+    select distinct
+        part_ends.part_order as line_order,
+        part_ends.end_rank,
+        pieces.part_order as other_order
+    from part_ends
+    inner join pieces
+        on st_dwithin(part_ends.end_m, pieces.piece, {{ snap_m + 0.001 }})
+    where
+        {{ snap_m }} > 0
+        and sign(pieces.part_order - part_ends.part_order) != 0
+        and st_distance_geos(part_ends.end_m, pieces.piece) <= {{ snap_m }}
+),
+
+-- An end joins the part it lies near when their envelopes meet and the two
+-- do not cross: the lower part's ends against the higher are direction 0,
+-- the higher's against the lower direction 1.
 joins as (
     select
-        low_order,
-        high_order,
-        direction,
-        end_rank,
+        least(near_ends.line_order, near_ends.other_order) as low_order,
+        greatest(near_ends.line_order, near_ends.other_order) as high_order,
+        case
+            when near_ends.line_order < near_ends.other_order then 0 else 1
+        end as direction,
+        near_ends.end_rank,
         'endpoint_join' as cut_kind,
-        line_part_id,
-        other_part_id,
-        end_side,
-        end_point_wkt
-    from ends
-    where {{ snap_m }} > 0 and end_distance_m <= {{ snap_m }}
+        line_info.part_id as line_part_id,
+        other_info.part_id as other_part_id,
+        case near_ends.end_rank when 0 then 'start' else 'end' end as end_side,
+        case near_ends.end_rank
+            when 0 then line_info.start_wkt
+            else line_info.end_wkt
+        end as end_point_wkt
+    from near_ends
+    inner join part_info as line_info
+        on near_ends.line_order = line_info.part_order
+    inner join part_info as other_info
+        on near_ends.other_order = other_info.part_order
+    left join crossing_pairs
+        on
+            least(near_ends.line_order, near_ends.other_order)
+            = crossing_pairs.low_order
+            and greatest(near_ends.line_order, near_ends.other_order)
+            = crossing_pairs.high_order
+    where
+        crossing_pairs.low_order is null
+        and st_intersects(line_info.envelope_m, other_info.envelope_m)
 ),
 
 cuts as (

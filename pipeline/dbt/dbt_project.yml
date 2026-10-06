@@ -524,6 +524,14 @@ vars:
   # junction fails safe; build_trail_graph.py --sweep against real layers
   # (the knee where components stop falling) is what settles it.
   trail_network_endpoint_snap_m: 8.0
+  # The most segments in one piece of a routable part when
+  # int_trail_network__cuts tests which parts cross and which ends lie near
+  # another part ("ONE PIECE AT A TIME" there): a part is tested a piece at
+  # a time, its pieces sharing their end vertices, so no single test reads
+  # more than this many segments of it. @unvalidated: 256 was picked, not
+  # timed; a monthly build timed at 64, 256 and 1,024 settles it. A unit
+  # test sets it to 1, so the fixtures' short lines are cut into pieces too.
+  trail_network_piece_segments: 256
   # NODE_QUANT_M, @unvalidated: two ends this close are one node, and a
   # piece no longer than this between one node and itself is float noise.
   # The Python calls it housekeeping for float noise; nobody has measured

@@ -212,7 +212,7 @@ near_ends as (
         pieces.part_order as other_order
     from part_ends
     inner join pieces
-        on st_dwithin(part_ends.end_m, pieces.piece, {{ snap_m + 0.001 }})
+        on st_dwithin(part_ends.end_m, pieces.piece, {{ snap_m }} + 0.001)
     where
         {{ snap_m }} > 0
         and sign(pieces.part_order - part_ends.part_order) != 0

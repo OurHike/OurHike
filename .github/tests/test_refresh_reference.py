@@ -229,6 +229,40 @@ def test_every_step_down_to_the_pin_is_skipped_on_a_rerun_that_already_has_one(w
         assert "steps.pinned.outputs.pinned" in step.get("if", ""), step.get("name")
 
 
+# fetch_trail_water.ELEVATION_CACHE_PATH and export_elevation.SAMPLE_CACHE_PATH, workspace-relative: the EPQS answers
+# step_osm_water_grade.py and fetch_trail_water.py --derive ask through, and the DEM per-point cache beside the tile
+# index step_dem_sampling.py samples from. pipeline/tests/test_fetch_cache_paths.py holds them to the constants.
+ELEVATION_ANSWERS = {"pipeline/data/raw/epqs_elevations.json", "pipeline/data/raw/elevation/samples.json"}
+
+
+def _cached_paths(step: dict, env: dict) -> set[str]:
+    path = str((step.get("with") or {}).get("path", ""))
+    for name, value in env.items():
+        path = path.replace("${{ env.%s }}" % name, str(value))
+    return {line.strip() for line in path.splitlines() if line.strip()}
+
+
+def test_the_build_restores_and_saves_the_epqs_answers_and_the_dem_samples_around_every_step_that_asks(workflow):
+    """ARC-3 of PR #1805's second review: monthly runs 20, 21 and 22 each asked USGS EPQS about the same 3,118 corridor
+    OSM water points again, for 21.3, 41.5 and 54.2 min, because nothing carried an answer from one attempt to the next.
+    publish-vector-data.yml carries both files in FETCH_OUTPUTS. Restored before the first step that asks, and not
+    behind the pin's check, because a rerun that already has a pin is the attempt that needs the answers most; saved
+    after build_marts.py, and on a failed run too."""
+    job = workflow["jobs"]["build"]
+    steps, env = job["steps"], job.get("env") or {}
+    restores = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/cache/restore")]
+    saves = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/cache/save")]
+    (restore,) = [i for i in restores if _cached_paths(steps[i], env) == ELEVATION_ANSWERS]
+    (save,) = [i for i in saves if _cached_paths(steps[i], env) == ELEVATION_ANSWERS]
+
+    assert restore < _first_step(steps, "fetch_trail_water.py --derive") and restore < _first_step(steps, "build_marts.py")
+    assert "steps.pinned" not in str(steps[restore].get("if", "")), "a rerun from its pin needs the answers too"
+    assert save > _first_step(steps, "build_marts.py --lane monthly")
+    assert "always()" in str(steps[save]["if"])
+    prefix = str(steps[save]["with"]["key"]).split("${{")[0]
+    assert prefix and str(steps[restore]["with"]["restore-keys"]).strip() == prefix
+
+
 def test_the_build_keeps_the_row_history_at_history_monthly_through_the_extracts_venv(workflow):
     """pipeline/row_history.py: the snapshots go in the raw store's bucket under this lane's own prefix, and the
     restore and save need s3fs, which only the extract's venv carries."""

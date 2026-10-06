@@ -662,3 +662,30 @@ def test_main_flushes_the_cache_even_when_it_refuses(tmp_path, monkeypatch):
 
     assert trail_water.main([]) == 1
     assert len(json.loads(cache_path.read_text())) == 1
+
+
+def test_an_epqs_lookup_that_fails_or_answers_null_is_not_cached_so_the_next_attempt_asks_again(tmp_path, monkeypatch):
+    """The rule that makes carrying this file between runs safe (publish-vector-data.yml's FETCH_OUTPUTS, and
+    refresh-reference.yml's build job since ARC-3 of PR #1805's second review): only an answered elevation is kept.
+    A null value, or five failed tries, must reach the next attempt as a question, never as a cached unknown."""
+    cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
+    monkeypatch.setattr(trail_water.time, "sleep", lambda _seconds: None)
+
+    class Null:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"value": None}
+
+    def down(*_args, **_kwargs):
+        raise trail_water.requests.ConnectionError("EPQS is down")
+
+    monkeypatch.setattr(trail_water.requests, "get", lambda *a, **k: Null())
+    assert trail_water.elevation_ft(40.0, -75.0) is None
+    monkeypatch.setattr(trail_water.requests, "get", down)
+    assert trail_water.elevation_ft(41.0, -75.0) is None
+    trail_water.flush_elevation_cache()
+
+    assert not cache_path.exists() or json.loads(cache_path.read_text()) == {}
+    assert trail_water._elevation_cache() == {}

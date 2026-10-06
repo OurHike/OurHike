@@ -4,23 +4,31 @@
 -- with the node each end becomes once the welds have merged nodes, and
 -- whether compaction then drops it (build_trail_graph.py, TN06's rest):
 --
--- - A piece whose two ends found one node and whose length is at most
---   trail_network_node_quant_m (0.5 m) is a loop shorter than the grid, float
---   noise rather than a walkable circuit, and is never an edge.
+-- - A piece whose two ends found one node and whose EPSG:5070 length is at
+--   most trail_network_node_quant_m (0.5 m) is a loop shorter than the grid,
+--   float noise rather than a walkable circuit, and is never an edge.
 -- - Each weld merges the node of a joined line end with the node of its
 --   landing; a merged node is the lowest-numbered of its group, as
 --   build_graph()'s union keeps the lower id, so the answer does not depend
 --   on the order the welds arrive in.
 -- - The published nodes are numbered in the order the kept pieces first
 --   reach them, from end then to end, piece by piece, dropped ones too.
--- - A kept piece whose two ends became one node and whose published length
---   (2 decimals) is at most 0.5 m is dropped, its nodes still numbered: the
+-- - A kept piece whose two ends became one node and whose EPSG:5070 length
+--   at 2 decimals is at most 0.5 m is dropped, its nodes still numbered: the
 --   Python numbers both ends before it tests the loop.
 --
--- Lengths are EPSG:5070 metres, ST_Length of the piece, which gave shapely's
+-- `length_m` is the piece's length on the WGS84 ellipsoid
+-- (macros/geodesic_length_m.sql; decision 90, the maintainer's poll of
+-- 2026-10-06), as build_trail_graph.py measures it with pyproj's Geod, rounded
+-- to 2 decimals as Python's round() rounds it (printf, not DuckDB's round()).
+-- It was EPSG:5070 metres until then, which read a north-south kilometre as
+-- 887.7 m at Anchorage and 755.7 m in American Samoa (DBT2-2).
+--
+-- The two loop rules above stay in EPSG:5070 metres, ST_Length of the piece:
+-- the 0.5 m is the node grid's, and the grid is EPSG:5070's, so the noding,
+-- and so which pieces are edges, is what it was. ST_Length gave shapely's
 -- `length` to the bit on 20,000 of 20,000 random lines (measured 2026-10-02
--- on DuckDB 1.5.4 with spatial 28db190). `length_m` is that rounded to 2
--- decimals as Python's round() rounds it (printf, not DuckDB's round()).
+-- on DuckDB 1.5.4 with spatial 28db190).
 with recursive lookups as (
     select * from {{ ref('int_trail_network__node_lookups') }}
 ),
@@ -43,7 +51,8 @@ pieces as (
 measured as (
     select
         pieces.*,
-        st_length(graph_pieces.geom) as length_raw_m,
+        st_length(graph_pieces.geom) as projected_length_raw_m,
+        {{ geodesic_length_m('graph_pieces.geom') }} as length_raw_m,
         st_astext(graph_pieces.geom) as geom_m_wkt
     from pieces
     inner join {{ ref('stg_derived__graph_pieces') }} as graph_pieces
@@ -58,7 +67,7 @@ kept as (
         *,
         row_number() over (order by piece_rank) - 1 as edge_rank
     from measured
-    where not (from_raw = to_raw and length_raw_m <= {{ quant_m }})
+    where not (from_raw = to_raw and projected_length_raw_m <= {{ quant_m }})
 ),
 
 weld_pairs as (
@@ -145,7 +154,9 @@ published as (
         rooted.*,
         from_number.node_index as from_node,
         to_number.node_index as to_node,
-        cast(printf('%.2f', rooted.length_raw_m) as double) as length_m
+        cast(printf('%.2f', rooted.length_raw_m) as double) as length_m,
+        cast(printf('%.2f', rooted.projected_length_raw_m) as double)
+            as projected_length_m
     from rooted
     inner join numbered as from_number
         on rooted.from_root = from_number.root_raw
@@ -164,8 +175,10 @@ select
     to_root,
     from_node,
     to_node,
+    projected_length_raw_m,
     length_raw_m,
     length_m,
-    from_node = to_node and length_m <= {{ quant_m }} as dropped_as_a_loop,
+    from_node = to_node
+    and projected_length_m <= {{ quant_m }} as dropped_as_a_loop,
     geom_m_wkt
 from published

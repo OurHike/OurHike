@@ -22,11 +22,13 @@ on make_dbt_fixtures.py's lines.
 """
 
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
 import pytest
 import yaml
+from pyproj import Geod
 from shapely import wkt as shapely_wkt
 from shapely.geometry import LineString
 from shapely.ops import transform
@@ -37,6 +39,7 @@ from tests.conftest import spatial_connection
 
 DBT = Path(__file__).parent.parent / "dbt"
 UNIT_TESTS = DBT / "models" / "intermediate" / "trail_network" / "_trail_network__unit_tests.yml"
+GEODESIC_MACRO = DBT / "macros" / "geodesic_length_m.sql"
 MODELS = (
     "int_trail_network__routable",
     "int_trail_network__cuts",
@@ -236,9 +239,52 @@ def test_each_raw_edges_unit_test_is_build_graph(con, test):
     assert [(row["part_id"], row["from_node"], row["to_node"]) for row in published] == [
         (edge["trail_id"], edge["from"], edge["to"]) for edge in graph["edges"]
     ]
+    # dbt compares a double to 0.1, so the expected length is held here to the
+    # centimetre the file publishes: both sides measure the WGS84 geodesic and
+    # round it to 2 decimals (decision 90).
     for row, edge in zip(published, graph["edges"]):
         if "length_m" in row:
-            assert row["length_m"] == pytest.approx(edge["length_m"], abs=0.05), "dbt compares length_m to 0.1"
+            assert row["length_m"] == edge["length_m"], "length_m, at 2 decimals"
+
+
+def _geodesic_length_sql(geom: str) -> str:
+    """macros/geodesic_length_m.sql's macro as dbt renders it for `geom`: its one argument is all the Jinja it uses."""
+    text = re.sub(r"\{#.*?#\}", "", GEODESIC_MACRO.read_text(), flags=re.S)
+    (body,) = re.findall(r"\{%-? macro geodesic_length_m\(geom_5070\) -?%\}(.*?)\{%-? endmacro -?%\}", text, re.S)
+    body = body.replace("{{ geom_5070 }}", geom)
+    assert "{{" not in body and "{%" not in body, "geodesic_length_m uses Jinja this renderer does not"
+    return body
+
+
+# DBT2-2's places, each a kilometre on the WGS84 ellipsoid. EPSG:5070 reads the
+# first four 887.7 m, 1,126.4 m, 775.9 m and 755.7 m, and the last 992.0 m
+# (pyproj, 2026-10-06).
+GEODESIC_KILOMETRES = {
+    "north-south at Anchorage, Alaska": (-149.9, 61.2, 0),
+    "east-west at Anchorage, Alaska": (-149.9, 61.2, 90),
+    "north-south in the Brooks Range, Alaska": (-152.0, 68.0, 0),
+    "north-south in American Samoa": (-170.7, -14.3, 0),
+    "east-west at Harriman, New York": (-74.1, 41.25, 90),
+}
+
+
+@pytest.mark.parametrize(("lon", "lat", "azimuth"), GEODESIC_KILOMETRES.values(), ids=GEODESIC_KILOMETRES.keys())
+def test_geodesic_length_m_reads_an_epsg5070_line_as_pyprojs_wgs84_geodesic(con, lon, lat, azimuth):
+    """The macro int_trail_network__raw_edges measures length_m with, on a line handed to it in EPSG:5070 as the
+    graph's pieces are: it reads pyproj's Geod(ellps='WGS84') length, and build_trail_graph's, to a micrometre
+    (the two differed by at most 1e-8 m, measured 2026-10-06 on DuckDB 1.5.5). That proves the x-as-latitude trap
+    handled: ST_Length_Spheroid without ST_FlipCoordinates reads NaN at Anchorage and 1,331.6 m at Harriman."""
+    geod = Geod(ellps="WGS84")
+    end_lon, end_lat, _ = geod.fwd(lon, lat, azimuth, 1000.0)
+    to_projected, to_geographic = build_trail_graph._transformers()
+    line = transform(to_projected.transform, LineString([(lon, lat), (end_lon, end_lat)]))
+
+    (sql_m,) = con.execute(f"select {_geodesic_length_sql('st_geomfromwkb(?)')}", [line.wkb]).fetchone()
+    (python_m,) = build_trail_graph._geodesic_lengths(*build_trail_graph._geographic_coordinates([line], to_geographic))
+
+    assert sql_m == pytest.approx(geod.line_length([lon, end_lon], [lat, end_lat]), abs=1e-6)
+    assert sql_m == pytest.approx(python_m, abs=1e-6)
+    assert round(sql_m, 2) == 1000.0
 
 
 @pytest.mark.parametrize("test", _on("int_trail_network__edges"), ids=lambda test: test["name"])

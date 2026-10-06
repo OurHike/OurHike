@@ -103,7 +103,7 @@ from pathlib import Path
 
 import numpy as np
 import shapely
-from pyproj import Transformer
+from pyproj import Geod, Transformer
 from shapely.geometry import LineString, MultiLineString, Point, shape
 from shapely.ops import transform
 from shapely.strtree import STRtree
@@ -131,13 +131,22 @@ MANIFEST_NAME = "trail_graph_manifest.json"
 # and anything else stay out for #931's reasons.
 AT_GRAPH_SOURCES = ("centerline", "side_trails")
 
-# EPSG:5070 (NAD83 / Conus Albers) is equal-area and in metres, and is already
-# this pipeline's projected CRS for length work - export_elevation.py measures
-# the whole A.T. profile in it. Using the same one means a metre here and a
-# metre there are the same metre, which HIKE_PLANNING.md Finding 1 exists
-# because this codebase has got wrong before.
+# Lines are NODED in EPSG:5070 (NAD83 / Conus Albers), this pipeline's projected
+# CRS - export_elevation.py walks the whole A.T. profile in it - so the
+# crossings, ENDPOINT_SNAP_M and NODE_QUANT_M below are all its metres.
+#
+# An edge's published `length_m` is NOT measured in it. EPSG:5070 is equal-area
+# for the lower 48 only, and its metre is not the ground's: a kilometre on the
+# WGS84 ellipsoid reads 1,008.0 m north-south at Harriman, but 887.7 m at
+# Anchorage and 755.7 m in American Samoa, and east-west 1,126.4 m at Anchorage
+# (measured 2026-10-06 with pyproj, DBT2-2). The phone sums `length_m` for a
+# route's miles and its Naismith time, so a short reading is the dangerous
+# side. Since decision 90 (the maintainer's poll of 2026-10-06) `length_m` is
+# the piece's geodesic length on WGS84 instead (_geodesic_lengths), as
+# int_trail_network__raw_edges measures it in dbt.
 GEOGRAPHIC_CRS = "EPSG:4326"
 PROJECTED_CRS = "EPSG:5070"
+WGS84 = Geod(ellps="WGS84")
 
 # @unvalidated - see the header. A trail line whose END lies within this many
 # metres of another line is joined to it. Applies to endpoints only, never to
@@ -491,31 +500,60 @@ def _node_id(x: float, y: float, quant_m: float, buckets: dict, points: list) ->
     return node_id
 
 
-def _geographic_vertices(lines: list[LineString], to_geographic: Transformer) -> list[list[list[float]]]:
-    """Each line's vertices in WGS84, rounded to six decimals, from ONE
-    transform call for all of them (#1659).
+def _geographic_coordinates(lines: list[LineString], to_geographic: Transformer) -> tuple[np.ndarray, np.ndarray, list[int]]:
+    """Every vertex of every line back in WGS84, unrounded, from ONE transform
+    call for all of them (#1659), and each line's vertex count.
 
     It was one `to_geographic.transform(x, y)` per vertex: 9,579,458 calls on
     the real network, 16.5 s against 2.7 s for a single array call (measured
     2026-09-24). The array call runs the same PROJ pipeline on the same
-    coordinates, and the rounding is `lib.batch_geometry.round_like_python`,
-    which answers what Python's `round(value, 6)` answers.
+    coordinates.
     """
-    if not lines:
-        return []
     line_array = np.empty(len(lines), dtype=object)
     line_array[:] = lines
     coordinates = shapely.get_coordinates(line_array)
     lons, lats = to_geographic.transform(coordinates[:, 0], coordinates[:, 1])
-    rounded = np.column_stack(
-        (round_like_python(np.asarray(lons, dtype=float), 6), round_like_python(np.asarray(lats, dtype=float), 6))
-    ).tolist()
+    return np.asarray(lons, dtype=float), np.asarray(lats, dtype=float), shapely.get_num_coordinates(line_array).tolist()
+
+
+def _rounded_vertices(lons: np.ndarray, lats: np.ndarray, counts: list[int]) -> list[list[list[float]]]:
+    """Each line's vertices at six decimals, through `lib.batch_geometry.round_like_python`, which answers what
+    Python's `round(value, 6)` answers."""
+    rounded = np.column_stack((round_like_python(lons, 6), round_like_python(lats, 6))).tolist()
     vertices: list[list[list[float]]] = []
     cursor = 0
-    for count in shapely.get_num_coordinates(line_array).tolist():
+    for count in counts:
         vertices.append(rounded[cursor : cursor + count])
         cursor += count
     return vertices
+
+
+def _geographic_vertices(lines: list[LineString], to_geographic: Transformer) -> list[list[list[float]]]:
+    """Each line's vertices in WGS84, rounded to six decimals (_geographic_coordinates, _rounded_vertices)."""
+    return _rounded_vertices(*_geographic_coordinates(lines, to_geographic))
+
+
+def _geodesic_lengths(lons: np.ndarray, lats: np.ndarray, counts: list[int]) -> list[float]:
+    """Each line's length in metres on the WGS84 ellipsoid (decision 90), from
+    its unrounded WGS84 vertices: the sum of its segments' geodesics, which is
+    what `WGS84.line_length` sums. The `inv` runs over every pair of
+    consecutive vertices at once, so the pairs that join one line's last
+    vertex to the next line's first are measured too and left out of every sum.
+
+    int_trail_network__raw_edges measures the same length with
+    ST_Length_Spheroid; the two agreed to 1e-8 m on every kilometre
+    tests/test_dbt_trail_network_parity.py measures (2026-10-06).
+    """
+    if not counts:
+        return []
+    _, _, segments = WGS84.inv(lons[:-1], lats[:-1], lons[1:], lats[1:])
+    segments = np.asarray(segments, dtype=float)
+    lengths: list[float] = []
+    start = 0
+    for count in counts:
+        lengths.append(float(segments[start : start + count - 1].sum()))
+        start += count
+    return lengths
 
 
 def build_graph(
@@ -546,16 +584,23 @@ def build_graph(
     # The pieces' own vertices, back in WGS84 - the client draws the highlight
     # from these and projects taps onto them. Without them an edge is a straight
     # chord between its junctions, and a chord across a switchback is a picture
-    # of a trail that does not exist.
-    geometries = _geographic_vertices([piece["line"] for piece, _ in kept], to_geographic)
-    for (piece, ends), edge_geometry in zip(kept, geometries):
+    # of a trail that does not exist. The same unrounded vertices give each
+    # edge its geodesic `length_m`.
+    geographic = _geographic_coordinates([piece["line"] for piece, _ in kept], to_geographic)
+    geometries = _rounded_vertices(*geographic)
+    lengths = _geodesic_lengths(*geographic)
+    # The second loop rule, below, stays on the EPSG:5070 length, as the first
+    # one above does: NODE_QUANT_M is that grid's.
+    projected_lengths: list[float] = []
+    for (piece, ends), edge_geometry, length_m in zip(kept, geometries, lengths):
         line = piece["line"]
         properties = piece["properties"]
+        projected_lengths.append(round(line.length, 2))
         raw_edges.append(
             {
                 "from": ends[0],
                 "to": ends[1],
-                "length_m": round(line.length, 2),
+                "length_m": round(length_m, 2),
                 "trail_id": properties.get("id"),
                 "source": properties.get("source"),
                 "name": properties.get("name"),
@@ -591,7 +636,7 @@ def build_graph(
     renumbered: dict[int, int] = {}
     nodes: list[list[float]] = []
     edges: list[dict] = []
-    for edge in raw_edges:
+    for edge, projected_length_m in zip(raw_edges, projected_lengths):
         ends = []
         for side in ("from", "to"):
             root = find(edge[side])
@@ -601,7 +646,7 @@ def build_graph(
                 lon, lat = to_geographic.transform(x, y)
                 nodes.append([round(lon, 6), round(lat, 6)])
             ends.append(renumbered[root])
-        if ends[0] == ends[1] and edge["length_m"] <= quant_m:
+        if ends[0] == ends[1] and projected_length_m <= quant_m:
             continue
         edges.append({**edge, "from": ends[0], "to": ends[1]})
 

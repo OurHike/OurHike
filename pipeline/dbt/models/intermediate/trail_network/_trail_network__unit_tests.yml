@@ -14,7 +14,11 @@ unit_tests:
   # The fixtures sit at 41.25 N, -74.10, test_build_trail_graph.py's own
   # Harriman-ish ring point, and every metre figure in a description was
   # measured on the fixture with DuckDB 1.5.4 (dbt 2.0.6's engine) rather
-  # than worked out from degrees. A dbt 2.0.6 unit test compares a DOUBLE to
+  # than worked out from degrees. The raw_edges tests' pieces are written in
+  # EPSG:5070 metres near its origin (23 N, -96), where the noding's metre is
+  # not the ground's: their length_m is the geodesic on WGS84 (decision 90),
+  # so a piece 100 m long in EPSG:5070 there reads 98.13 (pyproj,
+  # 2026-10-06). A dbt 2.0.6 unit test compares a DOUBLE to
   # one decimal place only, so the points a cut lands on travel as WKT text
   # and the edge geometry as GeoJSON text, compared exactly, and the pytest
   # holds both to the Python's doubles.
@@ -541,16 +545,17 @@ unit_tests:
           select 'k3' as graph_piece_key, 'landing' as row_kind, 'main#1' as part_id, cast(null as bigint) as piece_index, cast(null as bigint) as piece_rank, 'endpoint_join:stub#1|main#1|end' as cut_key, st_geomfromtext('POINT (100 0)') as geom, cast(null as timestamp) as loaded_at
     expect:
       rows:
-        - {edge_rank: 0, part_id: 'main#1', piece_index: 0, from_node: 0, to_node: 1, length_m: 100.0, dropped_as_a_loop: false}
-        - {edge_rank: 1, part_id: 'main#1', piece_index: 1, from_node: 1, to_node: 2, length_m: 100.0, dropped_as_a_loop: false}
-        - {edge_rank: 2, part_id: 'stub#1', piece_index: 0, from_node: 3, to_node: 1, length_m: 45.0, dropped_as_a_loop: false}
+        - {edge_rank: 0, part_id: 'main#1', piece_index: 0, from_node: 0, to_node: 1, length_m: 98.13, dropped_as_a_loop: false}
+        - {edge_rank: 1, part_id: 'main#1', piece_index: 1, from_node: 1, to_node: 2, length_m: 98.13, dropped_as_a_loop: false}
+        - {edge_rank: 2, part_id: 'stub#1', piece_index: 0, from_node: 3, to_node: 1, length_m: 45.86, dropped_as_a_loop: false}
 
   - name: int_trail_network__raw_edges_a_loop_shorter_than_the_grid_is_noise
     description: >
-      build_graph()'s first loop rule: a 341.42 m loop trail whose ends are
-      one node is an edge from that node to itself, while a 0.37 m speck
-      whose ends are one node is float noise and never an edge, its node
-      never numbered.
+      build_graph()'s first loop rule, in EPSG:5070 metres: a 341.42 m loop
+      trail whose ends are one node is an edge from that node to itself
+      (length_m 341.51, on the ellipsoid), while a 0.37 m speck whose ends
+      are one node is float noise and never an edge, its node never
+      numbered.
     model: int_trail_network__raw_edges
     given:
       - input: ref('int_trail_network__node_lookups')
@@ -571,8 +576,8 @@ unit_tests:
           select 'k2' as graph_piece_key, 'piece' as row_kind, 'line#1' as part_id, 0 as piece_index, 2 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (300 0, 400 0)') as geom, cast(null as timestamp) as loaded_at
     expect:
       rows:
-        - {edge_rank: 0, part_id: 'loop#1', from_node: 0, to_node: 0, length_m: 341.4, dropped_as_a_loop: false}
-        - {edge_rank: 1, part_id: 'line#1', from_node: 1, to_node: 2, length_m: 100.0, dropped_as_a_loop: false}
+        - {edge_rank: 0, part_id: 'loop#1', from_node: 0, to_node: 0, length_m: 341.51, dropped_as_a_loop: false}
+        - {edge_rank: 1, part_id: 'line#1', from_node: 1, to_node: 2, length_m: 98.13, dropped_as_a_loop: false}
 
   - name: int_trail_network__raw_edges_a_piece_a_weld_closes_on_itself_is_dropped
     description: >
@@ -602,6 +607,36 @@ unit_tests:
       rows:
         - {edge_rank: 0, part_id: 'west#1', from_node: 0, to_node: 1, dropped_as_a_loop: false}
         - {edge_rank: 1, part_id: 'short#1', from_node: 0, to_node: 0, dropped_as_a_loop: true}
+
+  - name: int_trail_network__raw_edges_an_edges_length_is_its_wgs84_geodesic_in_alaska_and_the_lower_48
+    description: >
+      Decision 90 (the maintainer, 2026-10-06): length_m is measured on the
+      WGS84 ellipsoid, not in EPSG:5070, which is equal-area for the lower 48
+      only. Each piece is 1,000 m on the ellipsoid, placed with pyproj's
+      Geod: north from Anchorage (-149.9, 61.2), and east from Harriman
+      (-74.1, 41.25). In EPSG:5070 they read 887.73 m and 992.04 m (measured
+      2026-10-06 with pyproj), which is what length_m was before. dbt
+      compares a double to 0.1 m here, so
+      tests/test_dbt_trail_network_parity.py also holds the macro this
+      model measures with to pyproj's length, to the micrometre.
+    model: int_trail_network__raw_edges
+    given:
+      - input: ref('int_trail_network__node_lookups')
+        rows:
+          - {seq: 0, lookup_kind: piece_start, part_id: 'anchorage#1', piece_index: 0, piece_rank: 0, x: -3092123.813090596, y: 5074612.8822446335, status: makes, makes_node: true, node_raw: 0}
+          - {seq: 1, lookup_kind: piece_end, part_id: 'anchorage#1', piece_index: 0, piece_rank: 0, x: -3091646.883356627, y: 5075361.614071704, status: makes, makes_node: true, node_raw: 1}
+          - {seq: 2, lookup_kind: piece_start, part_id: 'harriman#1', piece_index: 0, piece_rank: 1, x: 1804897.8642884493, y: 2235872.222025077, status: makes, makes_node: true, node_raw: 2}
+          - {seq: 3, lookup_kind: piece_end, part_id: 'harriman#1', piece_index: 0, piece_rank: 1, x: 1805863.6823790444, y: 2236098.80899946, status: makes, makes_node: true, node_raw: 3}
+      - input: ref('stg_derived__graph_pieces')
+        format: sql
+        rows: |
+          select 'k0' as graph_piece_key, 'piece' as row_kind, 'anchorage#1' as part_id, 0 as piece_index, 0 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (-3092123.813090596 5074612.8822446335, -3091646.883356627 5075361.614071704)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k1' as graph_piece_key, 'piece' as row_kind, 'harriman#1' as part_id, 0 as piece_index, 1 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (1804897.8642884493 2235872.222025077, 1805863.6823790444 2236098.80899946)') as geom, cast(null as timestamp) as loaded_at
+    expect:
+      rows:
+        - {edge_rank: 0, part_id: 'anchorage#1', from_node: 0, to_node: 1, length_m: 1000.0, dropped_as_a_loop: false}
+        - {edge_rank: 1, part_id: 'harriman#1', from_node: 2, to_node: 3, length_m: 1000.0, dropped_as_a_loop: false}
 
   - name: int_trail_network__edges_an_edge_is_its_piece_back_in_lon_lat
     description: >

@@ -118,8 +118,12 @@ ARTIFACT_NAME = "trail_graph_elevation.json"
 MANIFEST_NAME = "trail_graph_elevation_manifest.json"
 ELEVATION_INDEX_PATH = ROOT / "data" / "raw" / "elevation" / "tile_index.json"
 
-# The same CRS pair build_trail_graph.py measures its `length_m` in, and the
-# same one export_elevation.py walks the A.T. profile in. HIKE_PLANNING.md
+# The same CRS pair build_trail_graph.py nodes the graph in, and the same one
+# export_elevation.py walks the A.T. profile in. The graph's published
+# `length_m` is not measured in it since decision 90 (2026-10-06): it is the
+# WGS84 geodesic, while these samples are still spaced in EPSG:5070 metres,
+# which outside the lower 48 are not the ground's (build_trail_graph.py's
+# PROJECTED_CRS note). HIKE_PLANNING.md
 # Finding 1 exists because this codebase has measured "a mile" two different
 # ways before; a third would be this module's own invention.
 GEOGRAPHIC_CRS = "EPSG:4326"

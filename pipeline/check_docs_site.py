@@ -1,6 +1,6 @@
 """Check the dbt docs site before ourhike.org/data/ serves it (pipeline/ELT.md decision 10).
 
-    python check_docs_site.py <site dir> [--project dbt]
+    python check_docs_site.py <site dir> [--project dbt] [--served]
 
 The page is public, counts only and no maps, so it must hold no coordinates
 (ELT.md, "Docs and charts at https://ourhike.org/data/"). dbt 2.0.6 writes it
@@ -51,6 +51,30 @@ these rows on the page at all is the maintainer's call; `dbt docs generate
 --exclude resource_type:unit_test` does not remove them (measured the same
 day: the page still held all 244).
 
+WITH --served, for the copy pages.yml and pr-preview.yml are about to publish
+at /data/, one more:
+
+5. CODE FROM ANOTHER ORIGIN (pipeline/ELT.md decision 93, SEC-1 of PR #1805's
+   second review). The page runs on the app's own origin, where a signed-in
+   hiker's session is kept, so every script, worker and WASM file it loads
+   must be a file of this site. Fails:
+   - a DuckDB-WASM base (`duckdb_cdn_base` in the page's settings) that is not
+     a path under /data/, as dbt 2.0.6's default, jsDelivr, is not; or one
+     whose module, `<base>/+esm` read the way a static host reads it (the
+     query ignored), is not in the site;
+   - a `<script src>`, `<link rel="modulepreload">` or
+     `<link rel="preload" as="script|worker">` in an HTML file whose URL has
+     a scheme or a `//` host;
+   - an absolute URL, written out whole in a JS or HTML file, to a `.js`,
+     `.mjs` or `.wasm` file or a `/+esm` module. A link to a page is not
+     code, and passes. A URL the code puts together at run time is not seen:
+     @duckdb/duckdb-wasm's own getJsDelivrBundles() builds jsDelivr's from
+     parts, and the page never calls it (measured 2026-10-06 in Chromium: no
+     request left the local server). That run, not this scan, is the
+     evidence that the page loads nothing from another origin.
+   The fixture build's docs (pipeline-tests.yml, scripts/test.sh) are never
+   served, keep dbt's default base, and are checked without it.
+
 A failure names the file, column, row and shape and never prints the matched
 text, so a coordinate is not republished in a public CI log.
 
@@ -65,7 +89,9 @@ import json
 import re
 import sys
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote, urljoin, urlsplit
 
 import duckdb
 
@@ -89,6 +115,19 @@ UNIT_TEST_ROWS = ("given", "expect")
 DATA_TESTS = "dbt.data_tests.parquet"
 SINGULAR_TEST_CODE = ("raw_code", "compiled_code")
 SINGULAR_TESTS_DIR = "tests/singular/"
+# --served (check 5). Where pages.yml and pr-preview.yml copy the site, which
+# the page's root-relative paths are written against, and where dbt 2.0.6's
+# page is when it resolves a relative base: its import() is in assets/.
+SERVED_AT = "/data/"
+PAGE_SCRIPT = "https://site.invalid/data/assets/index.js"
+# A URL with a scheme or a `//` host, rather than a path on this site.
+ANOTHER_ORIGIN = re.compile(r"^\s*(?:[A-Za-z][A-Za-z0-9+.-]*:|[/\\]{2})")
+# An absolute URL to a script, worker or WASM file, or a jsDelivr-style
+# `/+esm` module, written out whole in a JS or HTML file.
+CODE_URL = re.compile(
+    r"""(?:\bhttps?:)?//([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?::\d+)?)/[^\s"'`<>()\\]*?(?:\.m?js|\.wasm|/\+esm)(?=["'`?#\s)]|$)"""
+)
+CODE_FILES = (".js", ".mjs", ".html")
 
 
 def coordinate_shapes(text: str) -> list[str]:
@@ -123,12 +162,18 @@ def _check_parts(site: Path, report: Report) -> None:
         report.failures.append(f"no Parquet file under {site}")
 
 
-def _check_telemetry(index: Path, report: Report) -> None:
+def _build_settings(index: Path) -> dict | None:
+    """window.__DBT_DOCS__ from index.html, or None when it cannot be read."""
     match = BUILD_SETTINGS.search(index.read_text(encoding="utf-8", errors="replace"))
     try:
         settings = json.loads(match.group(1)) if match else None
     except json.JSONDecodeError:
         settings = None
+    return settings if isinstance(settings, dict) else None
+
+
+def _check_telemetry(index: Path, report: Report) -> None:
+    settings = _build_settings(index)
     if not isinstance(settings, dict):
         report.failures.append(f"{index.name}: no readable window.__DBT_DOCS__ settings, so telemetry cannot be seen to be off")
     elif (settings.get("telemetry") or {}).get("enabled") is not False:
@@ -196,9 +241,70 @@ def _check_parquet(path: Path, site: Path, project: Path, report: Report, cache:
             report.failures.append(f"{relative}: {column} of {row_id} holds {', '.join(shapes)}")
 
 
-def check(site: Path, project: Path) -> Report:
+def _origin(url: str) -> str:
+    """Where `url` points, for a failure: its scheme and host where it has a host, else the URL."""
+    parts = urlsplit(url.strip())
+    if parts.netloc:
+        return f"{parts.scheme + ':' if parts.scheme else ''}//{parts.netloc}"
+    return url
+
+
+def _check_duckdb_base(site: Path, report: Report) -> None:
+    """Check 5's first part: the page's DuckDB-WASM base is a path under /data/, and its module is in the site."""
+    index = site / "index.html"
+    settings = _build_settings(index) if index.is_file() else None
+    base = (settings or {}).get("duckdb_cdn_base")
+    if not isinstance(base, str) or not base.strip():
+        report.failures.append(
+            f"{index.name}: no DuckDB-WASM base in the page's settings, so where it loads code from cannot be seen"
+        )
+        return
+    if ANOTHER_ORIGIN.match(base):
+        report.failures.append(f"{index.name}: the page loads DuckDB-WASM from {_origin(base)}, another origin")
+        return
+    # dbt 2.0.6's page imports `${base}/+esm`; a static host ignores the query.
+    module = unquote(urlsplit(urljoin(PAGE_SCRIPT, base + "/+esm")).path)
+    if not module.startswith(SERVED_AT) or ".." in module.split("/"):
+        report.failures.append(f"{index.name}: the page loads DuckDB-WASM from {module}, which is not under {SERVED_AT}")
+    elif not (site / module.removeprefix(SERVED_AT)).is_file():
+        report.failures.append(f"{index.name}: the page loads DuckDB-WASM from {module}, which is not in the site")
+
+
+class _ScriptTags(HTMLParser):
+    """The URL of every `<script src>`, `<link rel=modulepreload>` and `<link rel=preload as=script|worker>`."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.urls: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        named = {name: value or "" for name, value in attrs}
+        rel = named.get("rel", "").lower().split()
+        if tag == "script" and named.get("src"):
+            self.urls.append(named["src"])
+        elif tag == "link" and named.get("href"):
+            if "modulepreload" in rel or ("preload" in rel and named.get("as", "").lower() in ("script", "worker")):
+                self.urls.append(named["href"])
+
+
+def _check_code(path: Path, text: str, site: Path, report: Report) -> None:
+    """Check 5's second and third parts, for one JS or HTML file of the site."""
+    relative = path.relative_to(site)
+    if path.suffix == ".html":
+        tags = _ScriptTags()
+        tags.feed(text)
+        for origin in sorted({_origin(url) for url in tags.urls if ANOTHER_ORIGIN.match(url)}):
+            report.failures.append(f"{relative} loads a script from {origin}, another origin")
+    hosts = sorted({match.group(1) for match in CODE_URL.finditer(text)})
+    if hosts:
+        report.failures.append(f"{relative} names a script, worker or WASM file on {', '.join(hosts)}, another origin")
+
+
+def check(site: Path, project: Path, *, served: bool = False) -> Report:
     report = Report()
     _check_parts(site, report)
+    if served:
+        _check_duckdb_base(site, report)
     cache: dict[str, set[str] | None] = {}
     for path in sorted(site.rglob("*")):
         if not path.is_file():
@@ -206,9 +312,12 @@ def check(site: Path, project: Path) -> Report:
         if path.suffix == ".parquet":
             _check_parquet(path, site, project, report, cache)
             continue
-        shapes = coordinate_shapes(path.read_text(encoding="utf-8", errors="replace"))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        shapes = coordinate_shapes(text)
         if shapes:
             report.failures.append(f"{path.relative_to(site)} holds {', '.join(shapes)}")
+        if served and path.suffix in CODE_FILES:
+            _check_code(path, text, site, report)
     return report
 
 
@@ -221,11 +330,16 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(__file__).resolve().parent / "dbt",
         help="the dbt project the unit tests' original_file_path is relative to (default: pipeline/dbt)",
     )
+    parser.add_argument(
+        "--served",
+        action="store_true",
+        help="the copy a workflow is about to publish at /data/: also refuse code from another origin (check 5)",
+    )
     args = parser.parse_args(argv)
     if not args.site.is_dir():
         print(f"{args.site} does not exist.", file=sys.stderr)
         return 2
-    report = check(args.site, args.project)
+    report = check(args.site, args.project, served=args.served)
     for line in report.failures:
         print(f"FAIL {line}")
     files = [path for path in args.site.rglob("*") if path.is_file()]

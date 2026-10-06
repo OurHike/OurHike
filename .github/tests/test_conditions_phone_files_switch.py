@@ -1,63 +1,152 @@
-"""publish-conditions.yml's cutover switch has one home, and today's bake is what the schedule runs.
+"""publish-conditions.yml's cutover switch is one line per data environment, and the schedule runs each leg on its own.
 
-`PHONE_FILES` chooses which pipeline writes a run's phone files: `exporters`,
+`PHONE_FILES` chooses which pipeline writes a leg's phone files: `exporters`,
 today's Python bake, or `dbt`, pipeline/ELT.md's hourly lane (dlt into the raw
-store, then the closures and warnings marts and their pub_ writers). A
-dispatch picks with `phone_files`; the schedule takes the workflow-level
-default. The cutover after the merge is ELT.md's open question 4, which only
-the maintainer answers, so the default stays `exporters`, and changing it is
-one line. These tests hold that shape: the switch is read in one place, every
-step that belongs to one path says so in its `if:`, and publish.py is told the
+store, then the closures and warnings marts and their pub_ writers). Decision
+92 (the maintainer's poll, 2026-10-06, answering ELT.md's open question 4:
+"UA on dbt, prod on exporters") made it one setting per environment, at the
+top of the workflow: `UA_PHONE_FILES: dbt`, so UA's scheduled leg keeps the
+dbt path the soak ran, and `PRODUCTION_PHONE_FILES: exporters` until the
+cutover, which is changing that one line. A dispatch's `phone_files` wins for
+that run; its default, `scheduled`, takes each leg's own line. The job's
+"Choose which pipeline writes this leg's phone files" step turns the leg's
+line into PHONE_FILES, so these tests run that step's script under bash for
+each leg, rather than read its text. They also hold that every step that
+belongs to one path says so in its `if:`, and that publish.py is told the
 same value the steps branched on.
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
+from pathlib import Path
 
 import pytest
 import yaml
 
-from test_conditions_production_leg_needs_main import WORKFLOW, _evaluate, _expression
+from test_conditions_production_leg_needs_main import MAIN, WORKFLOW, _evaluate, _expression
 from test_notices_job import BUILD_STEP, _base_env, _outputs, _run, _stand_in
 
 PATHS = ("exporters", "dbt")
+#: The dispatch's `phone_files` choice that leaves each leg on its own line, as the schedule does.
+SCHEDULED = "scheduled"
+CHOOSE_STEP = "Choose which pipeline writes this leg's phone files"
+#: Each environment's line, as decision 92 set them on 2026-10-06.
+SETTINGS = {"production": ("PRODUCTION_PHONE_FILES", "exporters"), "ua": ("UA_PHONE_FILES", "dbt")}
 
 
-def _workflow() -> dict:
-    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+def _workflow(path: Path = WORKFLOW) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 def _steps() -> list[dict]:
     return _workflow()["jobs"]["publish"]["steps"]
 
 
-def _phone_files(event: str, phone_files: str | None) -> str:
+def _phone_files(
+    tmp_path: Path, leg: str, event: str = "schedule", phone_files: str | None = None, workflow: Path = WORKFLOW
+) -> str | None:
+    """The PHONE_FILES a leg's steps branch on, for one run of `event` from main with `phone_files` as the dispatch's
+    input (None on a schedule, which carries none).
+
+    However the workflow chooses it: the workflow's and the job's `env`, each `${{ }}` evaluated, and then every step
+    before the first `if:` that reads env.PHONE_FILES which writes PHONE_FILES to $GITHUB_ENV, its script run under
+    bash with the env the step gives it. A step whose script fails is a run that stops there, so the answer is None.
+    """
+    document = _workflow(workflow)
+    job = document["jobs"]["publish"]
     inputs = {} if phone_files is None else {"phone_files": phone_files}
-    return _evaluate(_expression(_workflow()["env"]["PHONE_FILES"]), {"github": {"event_name": event}, "inputs": inputs})
+    context = {"github": {"event_name": event, "ref": MAIN}, "inputs": inputs, "matrix": {"data_environment": leg}}
+
+    def value(text) -> str:
+        text = str(text)
+        if "${{" not in text:
+            return text
+        found = _evaluate(_expression(text), context)
+        return "" if found is None else str(found)
+
+    env = {name: value(text) for name, text in {**(document.get("env") or {}), **(job.get("env") or {})}.items()}
+    for number, step in enumerate(job["steps"]):
+        if "env.PHONE_FILES" in str(step.get("if", "")):
+            break
+        script = str(step.get("run", ""))
+        if "GITHUB_ENV" not in script or "PHONE_FILES" not in script:
+            continue
+        github_env = tmp_path / f"github_env_{leg}_{number}"
+        step_env = {name: value(text) for name, text in (step.get("env") or {}).items()}
+        finished = subprocess.run(
+            ["bash", "-e", "-c", script],
+            env={**env, **step_env, "GITHUB_ENV": str(github_env), "PATH": "/usr/bin:/bin"},
+            capture_output=True,
+            text=True,
+        )
+        if finished.returncode != 0:
+            return None
+        for line in github_env.read_text().splitlines() if github_env.exists() else []:
+            name, _, written = line.partition("=")
+            env[name] = written
+    return env.get("PHONE_FILES")
 
 
-def test_the_schedule_runs_todays_bake_and_a_dispatch_chooses_either():
-    """The schedule carries no inputs, so it takes the default, which is today's bake until the maintainer answers
-    ELT.md's open question 4. A dispatch gets the path it names."""
-    assert _phone_files("schedule", None) == "exporters"
-    assert _phone_files("workflow_dispatch", "dbt") == "dbt"
-    assert _phone_files("workflow_dispatch", "exporters") == "exporters"
+def test_the_schedule_runs_uas_leg_on_the_dbt_path_and_productions_on_the_exporters(tmp_path):
+    """Decision 92: UA's scheduled leg keeps the soak's dbt path on main's code, and production's keeps today's bake
+    until the cutover. Before it, one workflow-wide `inputs.phone_files || 'exporters'` put both scheduled legs on
+    the exporters, so after the merge no schedule ran the dbt path and UA's conditions/notices.json and
+    hazard_areas.json, which only dbt writes, froze (review finding ARC-2 of PR #1805 — dlt → dbt re-platform as one
+    go/no-go change)."""
+    assert _phone_files(tmp_path, "ua") == "dbt", "UA's scheduled leg runs today's bake, so nothing rewrites its dbt files"
+    assert _phone_files(tmp_path, "production") == "exporters", "production's scheduled leg left the exporters"
+
+
+def test_a_dispatch_left_at_scheduled_runs_each_leg_on_its_own_line(tmp_path):
+    """A dispatch from the Actions tab that picks nothing runs what the schedule runs."""
     choice = _workflow()[True]["workflow_dispatch"]["inputs"]["phone_files"]
-    assert choice["type"] == "choice" and set(choice["options"]) == set(PATHS) and choice["default"] == "exporters"
+    assert choice["type"] == "choice" and set(choice["options"]) == {SCHEDULED, *PATHS}
+    assert choice["default"] == SCHEDULED, "a dispatch that picks nothing would run another path than the schedule"
+    assert _phone_files(tmp_path, "ua", "workflow_dispatch", SCHEDULED) == "dbt"
+    assert _phone_files(tmp_path, "production", "workflow_dispatch", SCHEDULED) == "exporters"
 
 
-def test_the_cutover_is_one_line_the_default_in_phone_files():
-    """`inputs.phone_files` picks the path only in the workflow-level PHONE_FILES, so the schedule's path is that
-    one expression's fallback. Its two other readers keep a dispatched dbt path off the production leg (the matrix,
-    which cannot read `env`, and its bash lock; test_conditions_production_leg_needs_main.py), and a schedule passes
-    no input."""
+@pytest.mark.parametrize("leg", ["production", "ua"])
+@pytest.mark.parametrize("asked", PATHS)
+def test_a_dispatchs_phone_files_wins_for_that_run(tmp_path, leg, asked):
+    """Whatever the leg's line says. A production leg asked for `dbt` never gets this far: the matrix leaves it out and
+    the bash lock refuses it (test_conditions_production_leg_needs_main.py)."""
+    assert _phone_files(tmp_path, leg, "workflow_dispatch", asked) == asked
+
+
+def test_each_environment_has_one_line_and_the_cutover_is_productions():
+    """One `KEY: value` line each at the top of the workflow, where its header points, and no other default anywhere:
+    the cutover is changing PRODUCTION_PHONE_FILES to `dbt`, and extract-notices.yml reads that same line
+    (test_notices_job.py). `inputs.phone_files` has three readers: the matrix and the bash lock, which keep a
+    dispatched dbt path off the production leg, and the step that chooses."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert re.search(r"^  PHONE_FILES: \$\{\{ inputs\.phone_files \|\| '(exporters|dbt)' \}\}$", text, re.M)
+    for name, value in SETTINGS.values():
+        assert re.findall(rf"^  {name}: (\S+)$", text, re.M) == [value], name
+        assert _workflow()["env"][name] == value
+    assert "PHONE_FILES" not in _workflow()["env"], "a workflow-wide PHONE_FILES would be the one value for both legs"
     readers = [line.strip() for line in text.splitlines() if "inputs.phone_files" in line]
     assert len(readers) == 3, readers
-    assert readers[1].startswith("data_environment: ${{ fromJSON(") and "inputs.phone_files != 'dbt'" in readers[1]
-    assert readers[2] == "ASKED_PHONE_FILES: ${{ inputs.phone_files }}"
+    assert readers[0].startswith("data_environment: ${{ fromJSON(") and "inputs.phone_files != 'dbt'" in readers[0]
+    assert readers[1] == readers[2] == "ASKED_PHONE_FILES: ${{ inputs.phone_files }}"
+    names = [step.get("name") for step in _steps()]
+    (first,) = [number for number, step in enumerate(_steps()) if "env.PHONE_FILES" in str(step.get("if", ""))][:1]
+    assert names.index(CHOOSE_STEP) < first, "every step that branches on PHONE_FILES comes after the choice"
+    assert "if" not in _steps()[names.index(CHOOSE_STEP)], "every leg chooses"
+
+
+@pytest.mark.parametrize("typo", ["dbtt", "Exporters", ""])
+def test_a_line_that_names_neither_path_stops_its_leg_before_either_path_runs(tmp_path, typo):
+    """A typo in a leg's line would otherwise leave PHONE_FILES naming neither path, so that every step of both paths
+    skipped and publish.py refused at the end. The choice stops the leg first, and says which line."""
+    broken = tmp_path / "publish-conditions.yml"
+    text = WORKFLOW.read_text(encoding="utf-8")
+    broken.write_text(
+        re.sub(r"^  PRODUCTION_PHONE_FILES: \S+$", f'  PRODUCTION_PHONE_FILES: "{typo}"', text, count=1, flags=re.M)
+    )
+    assert _phone_files(tmp_path, "production", workflow=broken) is None
+    assert _phone_files(tmp_path, "ua", workflow=broken) == "dbt", "one leg's typo is its own"
 
 
 def test_publish_py_is_told_the_path_the_steps_branched_on():

@@ -43,6 +43,12 @@
 -- lines, so nearby_trails.geojson writes the network first, in its own
 -- order, then the club lines by source and id.
 --
+-- BOTH LENGTHS ARE ON THE WGS84 ELLIPSOID, as the network's are
+-- (int_trail_lines__network_published's header; decision 97, the
+-- maintainer's poll of 2026-10-06): `length_m` of the line before the pass
+-- and `published_length_m` of the 1 m line, which nearby_trails.geojson's
+-- `length_miles` is rounded from, each by macros/geodesic_length_m.sql.
+--
 -- `navigation_wkt` is the 1 m line at full precision, which the overview
 -- sketch is simplified from (int_trail_lines__club_overview), as the
 -- network's sketch is from int_trail_lines__network_navigation.
@@ -202,14 +208,12 @@ select
             end
         ) as varchar
     ) as geom_geojson,
-    st_length(
-        st_transform(chosen.geom, 'EPSG:4326', 'EPSG:5070', always_xy := true)
-    ) as length_m,
-    st_length(
-        st_transform(
-            chosen.navigation_line, 'EPSG:4326', 'EPSG:5070', always_xy := true
-        )
-    ) as published_length_m,
+    {{ geodesic_length_m(
+        "st_transform(chosen.geom, 'EPSG:4326', 'EPSG:5070', always_xy := true)"
+    ) }} as length_m,
+    {{ geodesic_length_m(
+        "st_transform(chosen.navigation_line, 'EPSG:4326', 'EPSG:5070', always_xy := true)"
+    ) }} as published_length_m,
     cast(null as double[]) as vertex_miles,
     cast(null as integer) as monotonic_breaks,
     cast(null as double) as spur_length_ft,

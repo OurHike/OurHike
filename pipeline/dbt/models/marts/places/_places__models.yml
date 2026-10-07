@@ -164,11 +164,12 @@ models:
         data_type: double[]
       - name: trail_miles
         description: >
-          MEASURED miles of published trail line, to a tenth: inside a park's
-          boundary, within places_trail_radius_miles of a waypoint
-          (@unvalidated, dbt_project.yml says what would settle it), or a long
-          trail's own length. Null on every row when no line was published
-          to measure against; absent means unknown, never zero.
+          MEASURED miles of published trail line, to a tenth, on the WGS84
+          ellipsoid (decision 97): inside a park's boundary, within
+          places_trail_radius_miles of a waypoint (@unvalidated,
+          dbt_project.yml says what would settle it), or a long trail's own
+          length. Null on every row when no line was published to measure
+          against; absent means unknown, never zero.
         data_type: double
       - name: trail_miles_measured
         description: >

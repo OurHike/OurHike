@@ -19,11 +19,21 @@
 -- is the GeoJSON geometry object nearby_trails.geojson carries, as text,
 -- `type` first.
 --
--- TWO LENGTHS, both in EPSG:5070 metres: `length_m` on the line as its
--- steward published it, before any simplification (decision 8: Douglas-
--- Peucker only shortens a line, so a length taken after it under-reports a
--- day hike), and `published_length_m` on the 1 m line before the cut, which
--- is what records_to_geojson()'s `length_miles` is rounded from.
+-- TWO LENGTHS, both in metres on the WGS84 ellipsoid: `length_m` on the line
+-- as its steward published it, before any simplification (decision 8:
+-- Douglas-Peucker only shortens a line, so a length taken after it
+-- under-reports a day hike), and `published_length_m` on the 1 m line before
+-- the cut, which is what records_to_geojson()'s `length_miles` is rounded
+-- from. Each is macros/geodesic_length_m.sql's (decision 97, the
+-- maintainer's poll of 2026-10-06, as decision 90 measures the graph's
+-- edges), handed the line projected to EPSG:5070 as the macro takes it. The
+-- trip there and back changed no line's length by more than 7.3e-7 m against
+-- the lon/lat line's own (measured 2026-10-06 on UA's 329,446 routable
+-- lines, with the macro's ST_Length_Spheroid). They were EPSG:5070 metres
+-- until then, which read five miles due north as 4.44 at Anchorage and 5.04
+-- at Harriman. export_nearby_trails._geodesic_miles_all measures the same
+-- length with pyproj, and tests/test_dbt_trail_lines_network_parity.py holds
+-- the two to a micrometre.
 --
 -- `feature_order` is the line's place in nearby_trails.geojson: sources in
 -- the registry's order, as main() runs them, then by id. The Python's order
@@ -126,17 +136,12 @@ select
             end
         ) as varchar
     ) as geom_geojson,
-    st_length(
-        st_transform(
-            st_geomfromtext(full_resolution_wkt),
-            'EPSG:4326',
-            'EPSG:5070',
-            always_xy := true
-        )
-    ) as length_m,
-    st_length(
-        st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true)
-    ) as published_length_m,
+    {{ geodesic_length_m(
+        "st_transform(st_geomfromtext(full_resolution_wkt), 'EPSG:4326', 'EPSG:5070', always_xy := true)"
+    ) }} as length_m,
+    {{ geodesic_length_m(
+        "st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true)"
+    ) }} as published_length_m,
     cast(null as double[]) as vertex_miles,
     cast(null as integer) as monotonic_breaks,
     cast(null as double) as spur_length_ft,

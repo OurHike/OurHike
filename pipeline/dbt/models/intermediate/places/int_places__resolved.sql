@@ -18,16 +18,30 @@
 -- least trail_lines_network_named_trail_threshold_miles (50, TL12's
 -- NAMED_TRAIL_THRESHOLD_MILES, @unvalidated in export_nearby_trails.py's
 -- own comment, which names a run on the live registry as what settles
--- it), summed by `trail_name` so the A.T. is one trail.
+-- it), summed by `trail_name` so the A.T. is one trail. The total that
+-- clears it is still in EPSG:5070 metres (`projected_metres`), the measure
+-- the overview's through routes are summed in against the same threshold
+-- (TL12): decision 97 moved the miles printed, not which trails are listed.
+-- So outside the lower 48 a trail near the threshold can be listed at under
+-- 50 printed miles, or left out at over 50 (export_places.py's
+-- load_named_trails() works the Anchorage case).
 --
--- PL08, miles of published trail, in EPSG:5070 metres: for a park, the
--- lines inside its boundary; for a trailhead, parking area or town, the
--- lines within places_trail_radius_miles of its point (@unvalidated;
--- dbt_project.yml says what would settle it), through ST_Buffer's default
--- circle as measure() builds it; for a trail, its own length. Rounded to a
--- tenth with printf, as Python's round() rounds, never DuckDB's round(),
--- which differed from Python on 14,125 of 266,800 doubles at the half
--- (measured; int_trail_lines__network_published's header).
+-- PL08, miles of published trail, in metres on the WGS84 ellipsoid
+-- (decision 97, the maintainer's poll of 2026-10-06, as decision 90
+-- measures the graph's edges): for a park, the lines inside its boundary;
+-- for a trailhead, parking area or town, the lines within
+-- places_trail_radius_miles of its point (@unvalidated; dbt_project.yml
+-- says what would settle it), through ST_Buffer's default circle as
+-- measure() builds it; for a trail, its own length. Each line is still cut
+-- against the shape in EPSG:5070, and each piece is measured by
+-- macros/geodesic_length_m.sql. Until then a piece was measured in
+-- EPSG:5070 too, which read five miles due north as 4.4 at Anchorage
+-- (measured 2026-10-06 with pyproj). The disc is still a circle in
+-- EPSG:5070 metres, so outside the lower 48 its radius on the ground is
+-- not places_trail_radius_miles: decision 97 named the lengths, not the
+-- disc. Rounded to a tenth with printf, as Python's round() rounds, never
+-- DuckDB's round(), which differed from Python on 14,125 of 266,800 doubles
+-- at the half (measured; int_trail_lines__network_published's header).
 --
 -- PL09, `within`: the park whose boundary contains the point; where two
 -- do, the first in int_places__park_units' `unit_order`.
@@ -124,6 +138,11 @@ trail_totals as (
                     geom, 'EPSG:4326', 'EPSG:5070', always_xy := true
                 )
             )
+        ) as projected_metres,
+        sum(
+            {{ geodesic_length_m(
+                "st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true)"
+            ) }}
         ) as metres,
         st_extent_agg(geom) as extent,
         any_value(club) as club,
@@ -147,7 +166,7 @@ trail_boxes as (
     from trail_totals
     where
         nullif({{ python_strip('trail_name') }}, '') is not null
-        and metres / 1609.344 >= {{ threshold }}
+        and projected_metres / 1609.344 >= {{ threshold }}
 ),
 
 park_shapes as (
@@ -405,12 +424,16 @@ lines as (
     from published
 ),
 
+-- Cut in EPSG:5070, measured on the WGS84 ellipsoid (PL08 above).
 shape_metres as (
     select
         measured_shapes.shape_kind,
         measured_shapes.place_id,
-        sum(st_length(st_intersection(lines.g, measured_shapes.shape)))
-            as metres
+        sum(
+            {{ geodesic_length_m(
+                'st_intersection(lines.g, measured_shapes.shape)'
+            ) }}
+        ) as metres
     from measured_shapes
     inner join lines on st_intersects(lines.g, measured_shapes.shape)
     group by measured_shapes.shape_kind, measured_shapes.place_id

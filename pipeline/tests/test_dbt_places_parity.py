@@ -39,11 +39,14 @@ import duckdb
 import pytest
 import shapely.wkt
 import yaml
+from pyproj import Geod, Transformer
 from shapely.geometry import mapping
+from shapely.ops import transform as shapely_transform
 
 import export_places as exporter
 from export_nearby_trails import NAMED_TRAIL_THRESHOLD_MILES, owned_route_names, shipped_line_source_keys
 from lib.source_registry import POI_SOURCE_KEYS
+from tests.test_dbt_trail_network_parity import _geodesic_length_sql
 
 DBT = Path(__file__).parent.parent / "dbt"
 UNIT_TESTS = DBT / "models" / "intermediate" / "places" / "_places__unit_tests.yml"
@@ -497,7 +500,7 @@ def test_every_export_places_case_is_a_unit_test_or_stays_python():
     cases = set(re.findall(r"^    def (test_\w+)\(", EXPORTER_TESTS.read_text(), re.M))
     named = {test["name"].removeprefix("places_") for test in unit_tests()}
     missing = {case for case in cases - STAYS_PYTHON if case.removeprefix("test_") not in named}
-    assert len(cases) == 32, "test_export_places.py's 32 cases, as pipeline/ELT.md's places row counts them"
+    assert len(cases) == 34, "test_export_places.py's 34 cases, as pipeline/ELT.md's places row counts them"
     assert missing == set(), f"no unit test mirrors {sorted(missing)}"
 
 
@@ -647,3 +650,54 @@ def test_a_park_from_a_club_places_layer_is_explained_as_decision_31s_new_data_b
     assert reasons["id dcnr_state_park_boundaries:k-1"].startswith(parity.NEW_DATA_REASON)
     assert "dcnr_state_park_boundaries" in parity._club_places_sources()
     assert "usgs_gnis_populated_places" in parity._club_places_sources()
+
+
+# --- the measure both sides use (decision 97) ---------------------------------
+
+
+def test_export_places_measures_with_the_macro_int_places_resolved_uses():
+    """export_places._geodesic_metres writes out macros/geodesic_length_m.sql, which int_places__resolved measures a
+    piece with, as one text: the parity above then rests on the two sides running one expression."""
+
+    def spelled(sql: str) -> str:
+        return " ".join(sql.lower().replace("(", " ( ").replace(")", " ) ").replace(",", " , ").split())
+
+    assert spelled(exporter._geodesic_metres("piece")) == spelled(_geodesic_length_sql("piece"))
+
+
+# A north-south line, each end placed with pyproj's Geod fwd, and a park box
+# that holds all of it or cuts it short. EPSG:5070 reads the whole Anchorage
+# line 4.44 miles and the Harriman one 5.04 (pyproj, 2026-10-06).
+CUT_PIECES = {
+    "a line inside a park at Anchorage, Alaska": (
+        "LINESTRING (-149.9 61.2, -149.9 61.27221126419307)",
+        "POLYGON ((-150.0 61.15, -149.8 61.15, -149.8 61.35, -150.0 61.35, -150.0 61.15))",
+    ),
+    "a line the park's edge cuts at Anchorage, Alaska": (
+        "LINESTRING (-149.9 61.2, -149.9 61.27221126419307)",
+        "POLYGON ((-150.0 61.15, -149.8 61.15, -149.8 61.25, -150.0 61.25, -150.0 61.15))",
+    ),
+    "a line the park's edge cuts at Harriman, New York": (
+        "LINESTRING (-74.1 41.25, -74.1 41.32245417114151)",
+        "POLYGON ((-74.2 41.2, -74.0 41.2, -74.0 41.3, -74.2 41.3, -74.2 41.2))",
+    ),
+}
+
+
+@pytest.mark.parametrize(("line_wkt", "park_wkt"), CUT_PIECES.values(), ids=CUT_PIECES.keys())
+def test_a_piece_a_park_cuts_measures_pyprojs_geodesic_length(line_wkt, park_wkt):
+    """The piece int_places__resolved and export_places.measure() take a park's miles from: the line cut against the
+    park in EPSG:5070, then measured by the macro's expression. It reads pyproj's Geod(ellps='WGS84') length of the
+    same piece, taken back to lon/lat, to a micrometre, as decision 90's macro test holds the graph's edges."""
+    to_projected = Transformer.from_crs(exporter.GEOGRAPHIC_CRS, exporter.PROJECTED_CRS, always_xy=True).transform
+    to_geographic = Transformer.from_crs(exporter.PROJECTED_CRS, exporter.GEOGRAPHIC_CRS, always_xy=True).transform
+    projected = [shapely_transform(to_projected, shapely.wkt.loads(wkt)) for wkt in (line_wkt, park_wkt)]
+    con = spatial()
+
+    (sql_m,) = con.execute(
+        f"select {exporter._geodesic_metres('st_intersection(st_geomfromwkb(?), st_geomfromwkb(?))')}",
+        [geometry.wkb for geometry in projected],
+    ).fetchone()
+
+    piece = shapely_transform(to_geographic, projected[0].intersection(projected[1]))
+    assert sql_m == pytest.approx(Geod(ellps="WGS84").geometry_length(piece), abs=1e-6)

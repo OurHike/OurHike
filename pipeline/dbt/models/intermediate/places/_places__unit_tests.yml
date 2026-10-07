@@ -621,7 +621,7 @@ unit_tests:
           - {"place_id": "oprhp_facilities:7", "poi_id": "oprhp_facilities:7", "name": "Stub", "kind": "trailhead", "state": "NY", "source": "oprhp_facilities", "lon": -74.0, "lat": 41.0, "waypoint_order": 0, "club": "nysparks", "source_key": "oprhp_facilities", "_loaded_at": "2026-10-02 00:00:00+00"}
       - input: ref('int_places__lines')
         rows:
-          - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.99904, 41.0]]}"}
+          - {"trail_line_id": "oprhp_trails:anchor", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "trail_name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.999232, 41.0]]}"}
       # Decision 54's club parks and towns, which export_places.py never reads.
       - input: ref('int_places__club_units')
         rows: []
@@ -686,7 +686,7 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {"place_id": "trail:oprhp_trails:Long Path", "place_order": 1, "kind": "trail", "name": "Long Path", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-73.424", "lat": "41.0", "bbox": "[-74.0,41.0,-72.848,41.0]", "trail_miles": "59.7", "trail_miles_measured": true, "source": "oprhp_trails"}
+        - {"place_id": "trail:oprhp_trails:Long Path", "place_order": 1, "kind": "trail", "name": "Long Path", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-73.424", "lat": "41.0", "bbox": "[-74.0,41.0,-72.848,41.0]", "trail_miles": "60.2", "trail_miles_measured": true, "source": "oprhp_trails"}
   - name: places_the_centerline_is_one_trail_under_the_route_name_its_source_owns
     model: int_places__resolved
     description: >
@@ -706,7 +706,7 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {"place_id": "trail:centerline:Appalachian Trail", "place_order": 1, "kind": "trail", "name": "Appalachian Trail", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-73.712", "lat": "41.00724", "bbox": "[-74.0,41.0,-73.424,41.01447]", "trail_miles": "59.7", "trail_miles_measured": true, "source": "centerline"}
+        - {"place_id": "trail:centerline:Appalachian Trail", "place_order": 1, "kind": "trail", "name": "Appalachian Trail", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-73.712", "lat": "41.00724", "bbox": "[-74.0,41.0,-73.424,41.01447]", "trail_miles": "60.2", "trail_miles_measured": true, "source": "centerline"}
   - name: places_trail_miles_is_omitted_everywhere_and_the_document_says_so
     model: int_places__resolved
     description: >
@@ -780,3 +780,60 @@ unit_tests:
     expect:
       rows:
         - {"place_id": "atc_communities:c1", "place_order": 1, "kind": "town", "name": "Two Miles Off", "poi_id": "atc_communities:c1", "category": null, "state": null, "within_park": null, "lon": "-73.8848", "lat": "41.0", "bbox": null, "trail_miles": "1.0", "trail_miles_measured": true, "source": "atc_communities"}
+  - name: places_a_park_s_miles_are_its_lines_length_on_the_earth_in_alaska_and_new_york
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestParks::test_a_park_s_miles_are_its_lines_length_on_the_earth_in_alaska_and_new_york.
+      Decision 97 (the maintainer's poll of 2026-10-06): a park's miles are the
+      WGS84 geodesic length of the line pieces inside it, cut in EPSG:5070
+      and measured by macros/geodesic_length_m.sql. Five miles due north at
+      Anchorage and ten at Harriman, each placed with pyproj's
+      Geod(ellps='WGS84').fwd; in EPSG:5070 they read 4.4 and 10.1.
+    given:
+      - input: ref('int_places__park_units')
+        rows:
+          - {"place_id": "oprhp_park_polygons:g1", "name": "Alaska Park", "category": null, "state": "NY", "unit_order": 0, "polygons": 1, "park_wkt": "POLYGON ((-150.0 61.15, -149.8 61.15, -149.8 61.35, -150.0 61.35, -150.0 61.15))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+          - {"place_id": "oprhp_park_polygons:g2", "name": "New York Park", "category": null, "state": "NY", "unit_order": 1, "polygons": 1, "park_wkt": "POLYGON ((-74.2 41.2, -74.0 41.2, -74.0 41.45, -74.2 41.45, -74.2 41.2))", "club": "nysparks", "source_key": "oprhp_park_polygons", "_loaded_at": "2026-10-02 00:00:00+00"}
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Five Miles North", "trail_name": "Five Miles North", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-149.9, 61.2], [-149.9, 61.27221126419307]]}"}
+          - {"trail_line_id": "oprhp_trails:2", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Ten Miles North", "trail_name": "Ten Miles North", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.1, 41.25], [-74.1, 41.39490742715629]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
+    expect:
+      rows:
+        - {"place_id": "oprhp_park_polygons:g1", "place_order": 1, "kind": "park", "name": "Alaska Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-149.9", "lat": "61.25", "bbox": "[-150.0,61.15,-149.8,61.35]", "trail_miles": "5.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
+        - {"place_id": "oprhp_park_polygons:g2", "place_order": 2, "kind": "park", "name": "New York Park", "poi_id": null, "category": null, "state": "NY", "within_park": null, "lon": "-74.1", "lat": "41.325", "bbox": "[-74.2,41.2,-74.0,41.45]", "trail_miles": "10.0", "trail_miles_measured": true, "source": "oprhp_park_polygons"}
+  - name: places_a_long_trail_prints_its_length_on_the_earth_and_is_listed_on_its_epsg5070_length
+    model: int_places__resolved
+    description: >
+      Mirrors
+      tests/test_export_places.py::TestTrails::test_a_long_trail_prints_its_length_on_the_earth_and_is_listed_on_its_epsg5070_length.
+      Decision 97: a long trail's miles are its lines' WGS84 geodesic length,
+      sixty due north at Anchorage and at Harriman (pyproj's Geod fwd), which
+      EPSG:5070 reads 52.9 and 60.5. Whether a trail is long enough to list
+      is still decided on its EPSG:5070 length, the measure the overview's
+      through routes are summed in (TL12), so decision 97 moves no trail on
+      or off the list: 52 miles north at Anchorage reads 45.9 there, under
+      the 50, and is not listed.
+    given:
+      - input: ref('int_places__park_units')
+        rows: []
+      - input: ref('int_places__point_places')
+        rows: []
+      - input: ref('int_places__lines')
+        rows:
+          - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Alaska Long Trail", "trail_name": "Alaska Long Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-149.9, 61.2], [-149.9, 62.06648434230041]]}"}
+          - {"trail_line_id": "oprhp_trails:2", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "New York Long Trail", "trail_name": "New York Long Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.1, 41.25], [-74.1, 42.119389596553766]]}"}
+          - {"trail_line_id": "oprhp_trails:3", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Alaska 52 Mile Trail", "trail_name": "Alaska 52 Mile Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-151.0, 61.2], [-151.0, 61.95095947069976]]}"}
+      # Decision 54's club parks and towns, which export_places.py never reads.
+      - input: ref('int_places__club_units')
+        rows: []
+    expect:
+      rows:
+        - {"place_id": "trail:oprhp_trails:Alaska Long Trail", "place_order": 1, "kind": "trail", "name": "Alaska Long Trail", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-149.9", "lat": "61.63324", "bbox": "[-149.9,61.2,-149.9,62.06648]", "trail_miles": "60.0", "trail_miles_measured": true, "source": "oprhp_trails"}
+        - {"place_id": "trail:oprhp_trails:New York Long Trail", "place_order": 2, "kind": "trail", "name": "New York Long Trail", "poi_id": null, "category": null, "state": null, "within_park": null, "lon": "-74.1", "lat": "41.6847", "bbox": "[-74.1,41.25,-74.1,42.11939]", "trail_miles": "60.0", "trail_miles_measured": true, "source": "oprhp_trails"}

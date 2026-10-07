@@ -183,7 +183,7 @@ models:
       - name: bbox
         description: A park's or a trail's [west, south, east, north], as JSON text.
       - name: trail_metres
-        description: The measured metres the miles are rounded from, null when nothing was measured.
+        description: The measured metres on the WGS84 ellipsoid (decision 97) the miles are rounded from, null when nothing was measured.
       - name: trail_miles
         description: The miles of published trail to a tenth, as JSON number text; null when nothing was measured.
       - name: trail_miles_measured

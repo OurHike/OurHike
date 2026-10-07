@@ -339,21 +339,26 @@ models:
         data_tests: [not_null]
       - name: length_m
         description: >
-          The line's length in EPSG:5070 metres at full resolution, before
-          the 1 m pass, which can only shorten a line (ELT.md's safety-field
-          table); for a centerline chain, the sum of its segments'. No phone
-          file carries it today.
+          The line's length in metres at full resolution, before the 1 m
+          pass, which can only shorten a line (ELT.md's safety-field table);
+          for a centerline chain, the sum of its segments'. A network or club
+          line's is on the WGS84 ellipsoid (decision 97); an A.T. line's is
+          in EPSG:5070 metres (int_trail_lines__at_simplified,
+          int_trail_lines__at_chains). No phone file carries it today.
         data_type: double
         constraints:
           - type: not_null
       - name: published_length_m
         description: >
           The length of the line as published, after the 1 m pass and before
-          the 6-decimal cut, in EPSG:5070 metres: what nearby_trails.geojson's
-          `length_miles` is rounded from (#1516 — A tapped trail prints a
-          silently-low climb as `measured`, because lineClimb's `partial`
-          guard reads a field no exporter writes), measured from the drawn
-          geometry and never a steward's stated mileage.
+          the 6-decimal cut: what nearby_trails.geojson's `length_miles` is
+          rounded from (#1516 — A tapped trail prints a silently-low climb as
+          `measured`, because lineClimb's `partial` guard reads a field no
+          exporter writes), measured from the drawn geometry and never a
+          steward's stated mileage. A network or club line's is in metres on
+          the WGS84 ellipsoid (decision 97), as the trail graph's edges are
+          (decision 90), so lineClimb holds edges and line to one measure; an
+          A.T. line's, which no phone file carries, is in EPSG:5070 metres.
         data_type: double
         constraints:
           - type: not_null

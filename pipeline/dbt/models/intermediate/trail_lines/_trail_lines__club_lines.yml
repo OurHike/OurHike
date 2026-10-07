@@ -342,6 +342,27 @@ unit_tests:
       rows:
         - {trail_line_id: 'gmc_trail_master:k-a', line_kind: 'club', feature_order: 3, name: null, blaze_color: 'Unknown', trail_status: null, trail_status_basis: null, closure_kind: null, geom_geojson: '{"type":"MultiLineString","coordinates":[[[-72.9,44.5],[-72.9,44.6]],[[-72.8,44.6],[-72.8,44.7]]]}'}
         - {trail_line_id: 'shta_line_2025:k-b', line_kind: 'club', feature_order: 4, name: 'Superior Hiking Trail', blaze_color: 'Unknown', trail_status: null, trail_status_basis: null, closure_kind: null, geom_geojson: '{"type":"LineString","coordinates":[[-91.5,47.3],[-91.4,47.4]]}'}
+  - name: trail_lines_club_published_measures_both_lengths_on_the_wgs84_ellipsoid
+    model: int_trail_lines__club_published
+    description: >
+      Decision 97 (the maintainer's poll of 2026-10-06), as
+      int_trail_lines__network_published_measures_both_lengths_on_the_wgs84_ellipsoid
+      holds it for the network's lines: a club line's length_m and
+      published_length_m, which nearby_trails.geojson's `length_miles` is
+      rounded from, are its length on the WGS84 ellipsoid. Five miles due
+      north (8,046.72 m) at Anchorage and at Harriman, placed with pyproj's
+      Geod fwd, which EPSG:5070 read 7,140.0 m and 8,111.0 m.
+    given:
+      - input: ref('int_trail_lines__club_lines')
+        rows:
+          - {trail_segment_key: 'anchorage', source_key: 'fixture_club_lines', club: 'fixture', name: 'Five Miles North', geom_wkt: 'LINESTRING (-149.9 61.2, -149.9 61.27221126419307)', had_z: false, historic_alignment: false, may_route: true, draws_as_trail: true, season: null}
+          - {trail_segment_key: 'harriman', source_key: 'fixture_club_lines', club: 'fixture', name: 'Five Miles North', geom_wkt: 'LINESTRING (-74.1 41.25, -74.1 41.32245417114151)', had_z: false, historic_alignment: false, may_route: true, draws_as_trail: true, season: null}
+      - input: ref('int_trail_lines__network_published')
+        rows: []
+    expect:
+      rows:
+        - {trail_line_id: 'fixture_club_lines:anchorage', length_m: 8046.72, published_length_m: 8046.72}
+        - {trail_line_id: 'fixture_club_lines:harriman', length_m: 8046.72, published_length_m: 8046.72}
   - name: trail_lines_club_overview_keeps_a_long_club_line_as_haze_and_never_a_held_back_one
     model: int_trail_lines__club_overview
     description: >

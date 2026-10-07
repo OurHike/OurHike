@@ -39,7 +39,8 @@ publisher's own word or a measurement over lines this run published:
               on a point inside it
   trailMiles  MEASURED: miles of published trail line inside a park's
               boundary, or within PLACE_TRAIL_RADIUS_MILES of a point, or a
-              trail's own length. Omitted on every row when no line was
+              trail's own length, on the WGS84 ellipsoid (decision 97,
+              _geodesic_metres). Omitted on every row when no line was
               published to measure against (see below) - absent means
               unknown, never zero.
 
@@ -398,6 +399,29 @@ def _bbox(west: float, south: float, east: float, north: float) -> list[float]:
     return [round(west, 5), round(south, 5), round(east, 5), round(north, 5)]
 
 
+def _geodesic_metres(projected: str) -> str:
+    """SQL for the length in metres on the WGS84 ellipsoid of `projected`, a
+    geometry in PROJECTED_CRS: every `trailMiles` this artifact prints
+    (decision 97, the maintainer's poll of 2026-10-06, as decision 90
+    measures the graph's edges).
+
+    PROJECTED_CRS, EPSG:5070, is equal-area for the lower 48 only and its
+    metre is not the ground's: five miles due north read 4.4 at Anchorage
+    and ten read 10.1 at Harriman (measured 2026-10-06 with pyproj). The
+    lines are still cut against a park or a disc in it; each piece is then
+    taken back to lon/lat and measured there. ST_Length_Spheroid reads x as
+    latitude, so the piece is flipped first.
+
+    The same expression as dbt's macros/geodesic_length_m.sql, which
+    int_places__resolved measures with, written out here because a Python
+    exporter cannot call a dbt macro; tests/test_export_places.py holds the
+    two to one text and the result to pyproj's Geod(ellps='WGS84') length."""
+    return (
+        f"ST_Length_Spheroid(ST_FlipCoordinates("
+        f"ST_Transform({projected}, '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true)))"
+    )
+
+
 def load_lines(con: duckdb.DuckDBPyConnection, paths: list[Path], shipped: set[str]) -> tuple[int, dict[str, int]]:
     """Load the line artifacts' rows whose source reaches hikers into
     `lines(source, name, geom, g)` - the geographic geometry beside the
@@ -444,18 +468,28 @@ def load_named_trails(con: duckdb.DuckDBPyConnection, registry: dict) -> list[di
     # segment would be forty rows under the threshold rather than one over it.
     owned = next((name for name, owner in owned_route_names(registry).items() if owner == AT_SOURCE), None)
     trail = f"CASE WHEN source = '{AT_SOURCE}' THEN '{owned}' ELSE name END" if owned else "name"
+    # The threshold still reads the EPSG:5070 length (`projected_metres`),
+    # the measure export_nearby_trails._through_routes() sums against the
+    # same NAMED_TRAIL_THRESHOLD_MILES: decision 97 moved the miles printed,
+    # not which trails are listed. The miles printed are the length on the
+    # earth (_geodesic_metres), so near the threshold the two can disagree
+    # outside the lower 48. At Anchorage, where EPSG:5070 reads an east-west
+    # kilometre as 1,126.4 m and a north-south one as 887.7 m (decision 90's
+    # measured scale), a 45-mile east-west trail is listed at 45.0 and a
+    # 52-mile north-south one is not listed (Reasoned from that scale).
     rows = con.execute(f"""
-        SELECT source, trail, metres, ST_XMin(e), ST_YMin(e), ST_XMax(e), ST_YMax(e)
-        FROM (SELECT source, {trail} AS trail, sum(ST_Length(g)) AS metres, ST_Extent_Agg(geom) AS e
+        SELECT source, trail, projected_metres, metres, ST_XMin(e), ST_YMin(e), ST_XMax(e), ST_YMax(e)
+        FROM (SELECT source, {trail} AS trail, sum(ST_Length(g)) AS projected_metres,
+                     sum({_geodesic_metres("g")}) AS metres, ST_Extent_Agg(geom) AS e
               FROM lines GROUP BY source, trail)
     """).fetchall()
     trails = []
-    for source, name, metres, west, south, east, north in rows:
+    for source, name, projected_metres, metres, west, south, east, north in rows:
         if not _clean(name):
             continue
-        miles = metres / METERS_PER_MILE
-        if miles < NAMED_TRAIL_THRESHOLD_MILES:
+        if projected_metres / METERS_PER_MILE < NAMED_TRAIL_THRESHOLD_MILES:
             continue
+        miles = metres / METERS_PER_MILE
         bbox = _bbox(west, south, east, north)
         trails.append(
             {
@@ -493,8 +527,8 @@ def measure(con: duckdb.DuckDBPyConnection, parks: list[dict], points: list[dict
         FROM (SELECT u.idx, ST_Union_Agg(p.geom) AS geom FROM park_part p JOIN _park_unit u USING (part) GROUP BY u.idx)
     """)
     con.unregister("_park_unit")
-    park_metres = """
-        LEFT JOIN (SELECT p.idx, sum(ST_Length(ST_Intersection(l.g, p.g))) AS metres
+    park_metres = f"""
+        LEFT JOIN (SELECT p.idx, sum({_geodesic_metres("ST_Intersection(l.g, p.g)")}) AS metres
                    FROM park p JOIN lines l ON ST_Intersects(l.g, p.g) GROUP BY p.idx) m USING (idx)"""
     for idx, lon, lat, west, south, east, north, metres in con.execute(f"""
         SELECT idx, ST_X(c), ST_Y(c), ST_XMin(e), ST_YMin(e), ST_XMax(e), ST_YMax(e), coalesce(m.metres, 0)
@@ -516,6 +550,12 @@ def measure(con: duckdb.DuckDBPyConnection, parks: list[dict], points: list[dict
             "y": np.array([p["lat"] for p in points], dtype=np.float64),
         },
     )
+    # The disc is a circle in EPSG:5070 metres, so outside the lower 48 it is
+    # not `radius_miles` on the ground: at Anchorage about 4.4 miles east-west
+    # and 5.6 north-south (Reasoned from decision 90's measured scale: there
+    # EPSG:5070 reads a kilometre on the ground as 1,126.4 m east-west and
+    # 887.7 m north-south). Decision 97 moved the lengths measured inside it,
+    # not the disc.
     disc = f"ST_Buffer(ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true), {radius_miles * METERS_PER_MILE})"
     con.execute(f"""
         CREATE OR REPLACE TABLE pt AS
@@ -523,8 +563,8 @@ def measure(con: duckdb.DuckDBPyConnection, parks: list[dict], points: list[dict
         FROM (SELECT idx, ST_Point(x, y) AS geom FROM _pt_src)
     """)
     con.unregister("_pt_src")
-    point_metres = """
-        LEFT JOIN (SELECT t.idx, sum(ST_Length(ST_Intersection(l.g, t.disc))) AS metres
+    point_metres = f"""
+        LEFT JOIN (SELECT t.idx, sum({_geodesic_metres("ST_Intersection(l.g, t.disc)")}) AS metres
                    FROM pt t JOIN lines l ON ST_Intersects(l.g, t.disc) GROUP BY t.idx) m USING (idx)"""
     for idx, metres, park_idx in con.execute(f"""
         SELECT t.idx, coalesce(m.metres, 0), w.park

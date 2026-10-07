@@ -95,6 +95,15 @@ def point(lon: float, lat: float) -> dict:
     return {"type": "Point", "coordinates": [lon, lat]}
 
 
+def box(west: float, south: float, east: float, north: float) -> dict:
+    return {"type": "Polygon", "coordinates": [[[west, south], [east, south], [east, north], [west, north], [west, south]]]}
+
+
+def north(lon: float, south: float, north: float) -> dict:
+    """A straight line due north along one meridian, from `south` to `north`."""
+    return {"type": "LineString", "coordinates": [[lon, south], [lon, north]]}
+
+
 def park(west: float, south: float, miles: float, global_id: str, name: str, **properties) -> dict:
     return feature(square(west, south, miles), {"GlobalID": global_id, "Name": name, **properties})
 
@@ -178,6 +187,30 @@ class TestParks:
         assert output["trailMilesMeasured"] is True
         assert report["parks_held_back"] is None
         assert report["sources"][exporter.PARKS_KEY]["reaches_hikers"] is True
+
+    def test_a_park_s_miles_are_its_lines_length_on_the_earth_in_alaska_and_new_york(self, sandbox):
+        """Decision 97 (the maintainer, 2026-10-06): a park's `trailMiles` is the length on the WGS84 ellipsoid of
+        the line pieces inside it, as decision 90 measures the graph's edges. EPSG:5070 is equal-area for the lower
+        48 only and its metre is not the ground's: five miles due north at Anchorage and ten at Harriman, placed with
+        pyproj's Geod fwd, read 4.4 and 10.1 there (measured 2026-10-06), and the place list prints the figure as
+        "N mi of trail"."""
+        write(
+            sandbox["parks"],
+            feature(box(-150.0, 61.15, -149.8, 61.35), {"GlobalID": "g1", "Name": "Alaska Park"}),
+            feature(box(-74.2, 41.2, -74.0, 41.45), {"GlobalID": "g2", "Name": "New York Park"}),
+        )
+        write(
+            sandbox["lines"][0],
+            feature(north(-149.9, 61.2, 61.27221126419307), {"source": "oprhp_trails", "name": "Five Miles North"}),
+            feature(north(-74.1, 41.25, 41.39490742715629), {"source": "oprhp_trails", "name": "Ten Miles North"}),
+        )
+
+        output, _ = build(sandbox)
+
+        assert {row["name"]: row["trailMiles"] for row in by_kind(output, "park")} == {
+            "Alaska Park": 5.0,
+            "New York Park": 10.0,
+        }
 
     def test_a_park_centres_on_its_centroid_and_carries_its_bbox(self, sandbox):
         write(sandbox["parks"], park(LON, LAT, 2, "g1", "Square Park"))
@@ -393,10 +426,12 @@ class TestPointPlaces:
         assert report["dropped_far_from_any_line"] == {"usfs_rec_sites/trailhead": 1}
 
     def test_a_trailhead_with_a_short_line_near_it_is_kept_though_it_prints_zero(self, sandbox):
-        # Eighty metres of trail rounds to 0.0 mi on the row; the drop rule
-        # reads the metres, not the figure.
+        # Sixty-five metres of trail rounds to 0.0 mi on the row; the drop
+        # rule reads the metres, not the figure. It was 0.05 mi of fixture
+        # degrees until decision 97, which reads 80.8 m on the ellipsoid and
+        # rounds up to 0.1 (80.1 m in EPSG:5070, 0.0).
         write(sandbox["nearby"], poi("oprhp_facilities:7", "trailhead", "oprhp_facilities", "Stub", LON, LAT))
-        anchor_line(sandbox, miles=0.05)
+        anchor_line(sandbox, miles=0.04)
 
         output, report = build(sandbox)
 
@@ -502,6 +537,26 @@ class TestTrails:
         [row] = by_kind(output, "trail")
         assert row["name"] == "Appalachian Trail"
         assert row["trailMiles"] == pytest.approx(2 * half, abs=0.5)
+
+    def test_a_long_trail_prints_its_length_on_the_earth_and_is_listed_on_its_epsg5070_length(self, sandbox):
+        """Decision 97 (the maintainer, 2026-10-06): a long trail's `trailMiles` is its lines' length on the WGS84
+        ellipsoid. Sixty miles due north at Anchorage and at Harriman, placed with pyproj's Geod fwd, which EPSG:5070
+        reads 52.9 and 60.5 (measured 2026-10-06). Whether a trail is long enough to list is still decided on its
+        EPSG:5070 length, the measure export_nearby_trails._through_routes() sums for the overview, so decision 97
+        moves no trail on or off the list: 52 miles north at Anchorage reads 45.9 there and is not listed."""
+        write(
+            sandbox["lines"][0],
+            feature(north(-149.9, 61.2, 62.06648434230041), {"source": "oprhp_trails", "name": "Alaska Long Trail"}),
+            feature(north(-74.1, 41.25, 42.119389596553766), {"source": "oprhp_trails", "name": "New York Long Trail"}),
+            feature(north(-151.0, 61.2, 61.95095947069976), {"source": "oprhp_trails", "name": "Alaska 52 Mile Trail"}),
+        )
+
+        output, _ = build(sandbox)
+
+        assert {row["name"]: row["trailMiles"] for row in by_kind(output, "trail")} == {
+            "Alaska Long Trail": 60.0,
+            "New York Long Trail": 60.0,
+        }
 
 
 class TestNoLinesAtAll:

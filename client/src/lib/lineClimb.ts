@@ -78,10 +78,11 @@ const METRES_PER_MILE = 1609.344
  * fall before the answer is `partial` rather than a total.
  *
  * @unvalidated 8% is picked, not found. It has to absorb two disagreements
- * that are both real and neither measured here: the graph's `length_m` is
- * EPSG:5070 projected metres over vertices rounded to six decimals, while
- * `lengthMiles` is whatever the publishing organization measured and however
- * they measured it; and an edge is filed whole into every cell its bounding
+ * that are both real and neither measured here: the graph's `length_m` and
+ * `lengthMiles` are both the pipeline's WGS84 geodesic length (decisions 90
+ * and 97, #1805), but of differently drawn lines - the edges' pieces over
+ * vertices rounded to six decimals, the line as export_nearby_trails.py
+ * simplifies it; and an edge is filed whole into every cell its bounding
  * box touches, so a held cell can carry slightly MORE of a line than the
  * square it names.
  *

@@ -99,6 +99,23 @@ its first node (run 20's step 13, from its start to its first result:
 Measured). alone_problems() refuses a tagged model an hourly or daily source
 reaches, whose tag that lane would ignore.
 
+THE PUB_ WRITERS BUILD ONE AT A TIME (--threads 1) in every lane but the
+hourly one. Monthly run 25 (refresh-reference.yml 37614075245) built every
+stage and then failed at "the pub_ writers" with pub_nearby_trails,
+pub_trail_graph, pub_trail_graph_geometry and pub_trail_graph_profile
+building side by side, each 9.4 to 9.9 s in: "Out of Memory Error: failed to
+allocate data of size 256.0 MiB (12.4 GiB/12.4 GiB used)" (its log,
+2026-10-07). Each of the four is one row holding a whole network-wide file
+as one string (nearby_trails.geojson was published at 228,820,578 bytes,
+artifactBudget.ts), which DuckDB holds in memory rather than spilling. That
+each fits the limit alone is @unvalidated: settled by the writers step of
+the next monthly run. One thread for every writer, rather than a
+builds_alone tag on the four: the other 38 writers' own times in run 25 sum
+to 48.3 s, against a monthly run of four hours or more, and a heavy
+writer added later is covered without anybody tagging it. The hourly lane
+keeps --threads: it writes only the files an hourly or daily source reaches,
+none of the four, inside publish-conditions.yml's 6 minutes.
+
 NOT dbt's `selectors.yml` (ELT.md's shape): dbt documents `--selector` as not
 combinable with `-s` or `--exclude`, which every invocation here carries, so a
 selector file would need one selector per invocation per lane. A lane is one
@@ -589,7 +606,7 @@ def plan(
     between the row history's restore and its save when `history` names a store (the save left out when
     `save_history` is false: --no-history-save), and with no snapshot built when `snapshots` is false (the module
     docstring, "--history-on-failure degrade"). Every dbt build but the writers' and the hourly lane's is split around
-    the builds_alone models, and given `manifest` (main() plans again once `dbt seed` has written it), the passes it
+    the builds_alone models, the writers' runs at one thread but in the hourly lane, and given `manifest` (main() plans again once `dbt seed` has written it), the passes it
     shows select nothing are left out (the module docstring, "A MODEL TAGGED `builds_alone`"). Each `withdrawn` raw
     table (withdrawn_tables()) is left out of every dbt build with everything below its source."""
     if lane not in (None, *LANES):
@@ -646,7 +663,9 @@ def plan(
         label = "the pub_ writers"
     if held or lane_exclude:
         writers += ("--exclude", *lane_exclude, *held)
-    runs.append(Run(label, (dbt, "build", *common, *writers, *after), DBT_DIR, WRITERS))
+    # One writer at a time but in the hourly lane (the module docstring, "THE PUB_ WRITERS BUILD ONE AT A TIME").
+    options = common if lane == HOURLY else alone
+    runs.append(Run(label, (dbt, "build", *options, *writers, *after), DBT_DIR, WRITERS))
     if history is not None:
         store = ("--url", history.url, "--warehouse", str(paths.warehouse))
         restore = (history.python, "row_history.py", "restore", *store, *(("--cold-start",) if history.cold_start else ()))

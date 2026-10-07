@@ -11,5 +11,5 @@
 # Read with tomllib, so build_marts.py stays standard-library only.
 
 [started]
-# monthly = "2026-11-03, refresh-reference.yml run <id>"
+monthly = "2026-10-07, refresh-reference.yml run 37614075245 (monthly run 25), which saved 9 snapshot tables, 26,016,290 rows"
 conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 505), which saved 2 snapshot tables, 457 rows"

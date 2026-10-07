@@ -60,7 +60,7 @@ def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers():
     assert argvs(runs) == [
         (("dbt", "seed", "--profiles-dir", "."), DBT_DIR),
         (("dbt", "build", "--profiles-dir", ".", "--exclude", "package:dbt_project_evaluator", "path:models/publish"), DBT_DIR),
-        (("dbt", "build", "--profiles-dir", ".", "-s", "path:models/publish"), DBT_DIR),
+        (("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish"), DBT_DIR),
     ]
 
 
@@ -97,7 +97,7 @@ def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks(
             ("dbt", "build", "--profiles-dir", ".", "-s", "source:derived.dem_samples+", "--exclude", "path:models/publish"),
             DBT_DIR,
         ),
-        (("dbt", "build", "--profiles-dir", ".", "-s", "path:models/publish"), DBT_DIR),
+        (("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish"), DBT_DIR),
     ]
 
 
@@ -128,7 +128,7 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         "path:models/publish",
     )
     assert runs[4].argv == ("python", "step_second.py", "--warehouse", "/w/warehouse.duckdb")
-    assert runs[-1].argv == ("dbt", "build", "--profiles-dir", ".", "-s", "path:models/publish")
+    assert runs[-1].argv == ("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish")
 
 
 def test_without_fixtures_a_step_gets_no_fixture_arguments_and_reads_its_own_defaults():
@@ -137,13 +137,33 @@ def test_without_fixtures_a_step_gets_no_fixture_arguments_and_reads_its_own_def
     assert runs[2].argv == ("python", "step_dem_sampling.py", "--warehouse", "/w/warehouse.duckdb")
 
 
-def test_threads_reach_every_dbt_seed_and_build_and_no_step():
+def test_threads_reach_every_dbt_seed_and_build_and_no_step_and_the_writers_build_at_one():
     runs = plan([DEM_SAMPLING, SECOND], dbt="dbt", python="python", paths=PATHS, fixtures=True, threads=2, manifest=NONE_ALONE)
 
     for run in runs:
         assert ("--threads" in run.argv) == (run.argv[0] == "dbt"), run.argv
         if run.argv[0] == "dbt":
-            assert run.argv[run.argv.index("--threads") + 1] == "2"
+            expected = "1" if run.stage == build_marts.WRITERS else "2"
+            assert run.argv[run.argv.index("--threads") + 1] == expected, run.argv
+
+
+@pytest.mark.parametrize("lane", [None, "monthly"])
+def test_the_writers_build_one_at_a_time_outside_the_hourly_lane(lane):
+    """Monthly run 25 (refresh-reference.yml 37614075245) ran four network-wide writers side by side out of DuckDB's
+    12.4 GiB (build_marts.py's docstring, "THE PUB_ WRITERS BUILD ONE AT A TIME"), so --threads 4 does not reach them."""
+    writers = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, threads=4)[-1]
+
+    assert writers.stage == build_marts.WRITERS
+    assert writers.argv[writers.argv.index("--threads") :][:2] == ("--threads", "1")
+    assert writers.argv.count("--threads") == 1
+
+
+def test_the_hourly_lanes_writers_keep_the_builds_threads():
+    """Its writers are the files an hourly or daily source reaches, inside publish-conditions.yml's 6 minutes."""
+    writers = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", threads=4)[-1]
+
+    assert writers.stage == build_marts.WRITERS
+    assert writers.argv[writers.argv.index("--threads") :][:2] == ("--threads", "4")
 
 
 def test_the_dbt_and_python_named_are_the_ones_run():
@@ -431,6 +451,8 @@ def test_the_monthly_lanes_writers_leave_the_hourly_writers_unrun():
         "build",
         "--profiles-dir",
         ".",
+        "--threads",
+        "1",
         "-s",
         "path:models/publish",
         "--exclude",
@@ -927,7 +949,10 @@ def test_main_runs_the_split_passes_the_manifest_leaves_in_and_says_which_models
         plan(STEPS, dbt="dbt", python="python", paths=paths, fixtures=True, history=_history(tmp_path), manifest=HEAVY)
     )
     alone = [argv for argv, _, _ in recorder.calls if "--threads" in argv]
-    assert [argv[argv.index("-s") + 1] for argv in alone] == ["source:derived.dem_samples+,tag:builds_alone"]
+    assert [argv[argv.index("-s") + 1] for argv in alone] == [
+        "source:derived.dem_samples+,tag:builds_alone",
+        "path:models/publish",  # the writers, one at a time too
+    ]
     assert "-- build_marts: 1 model(s) build alone (heavy)" in capsys.readouterr().out
 
 

@@ -12,18 +12,23 @@ sources:
       landed by nynjtc/closures.py, which warnings.py shares.
     schema: raw
     config:
-      loaded_at_field: _loaded_at
+      # How long since the extract last read the posts or confirmed them
+      # unchanged, from its run log (macros/last_read_or_confirmed_at.sql).
+      # `_loaded_at` moves only when NYNJTC's (id, modified) set does
+      # (WordpressPosts' change check), so a quiet week read as stale on it.
+      # A refusal is a warning on the hourly run since decision 100 (the
+      # maintainer's poll of 2026-10-07), and red here once NYNJTC has gone
+      # unread for 24 hours. The thresholds are generate_notice_models.py's
+      # FRESHNESS_HOURS, graded there; tests/test_notice_source_freshness.py
+      # holds these to them. publish-conditions.yml's freshness step selects
+      # `conditions_job`.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      tags: [conditions_job]
       meta:
         cadence: hourly
       freshness:
-        # How recently the extract loaded the posts, which moves only when
-        # NYNJTC's (id, modified) set does (WordpressPosts' change check), so
-        # a quiet week reads as stale. @unvalidated: 7 days is the atc
-        # source's inherited threshold, and what settles it is stage 5 of
-        # #1793 — Rebuild the data platform as dlt → dbt: seven contracted
-        # marts, a monthly refresh, published docs, and lighter phone
-        # downloads reading _extract_runs.checked_at instead.
-        warn_after: {count: 7, period: day}
+        warn_after: {count: 12, period: hour}
+        error_after: {count: 24, period: hour}
     tables:
       - name: raw_nynjtc__nynjtc_trail_alerts
         data_tests:
@@ -56,6 +61,12 @@ sources:
             # Read once a day on the hourly lane: a renamed term moves no
             # post's `modified` (extract/_kinds.py's TERMS_CADENCE_REASON).
             cadence: daily
+          # A daily resource goes unread for up to a day by design
+          # (extract/_run.py's due()), so its thresholds are the hourly ones
+          # plus that day (FRESHNESS_HOURS' daily row).
+          freshness:
+            warn_after: {count: 36, period: hour}
+            error_after: {count: 48, period: hour}
         description: >
           The four place taxonomies a post is tagged from (lib/nynjtc_alerts.py's
           PLACE_TAXONOMIES: trail, park, region, state), one row per term with

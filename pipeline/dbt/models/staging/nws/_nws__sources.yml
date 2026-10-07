@@ -10,19 +10,22 @@ sources:
       Weather Service" (export_weather_alerts.py's CREDIT).
     schema: raw
     config:
-      loaded_at_field: _loaded_at
+      # How long since the extract last read the alerts, from its run log
+      # (macros/last_read_or_confirmed_at.sql), not `_loaded_at`: a run whose
+      # read NWS refused moves neither, and an answer with no alerts lands no
+      # row to carry a `_loaded_at`. A refusal is a warning on the hourly run
+      # since decision 100 (the maintainer's poll of 2026-10-07), and red here
+      # once NWS has gone unread for 24 hours, the notices' rule. The hourly
+      # thresholds are generate_notice_models.py's FRESHNESS_HOURS, graded
+      # there; tests/test_notice_source_freshness.py holds these to them.
+      # publish-conditions.yml's freshness step selects `conditions_job`.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      tags: [conditions_job]
       meta:
         cadence: hourly
       freshness:
-        # The extract reads /alerts/active on every run, with no change check
-        # (NwsAlerts' docstring: NWS ignores If-None-Match), so `_loaded_at`
-        # moves every run and this measures whether the lane ran.
-        # @unvalidated: 7 hours is pipeline/ELT.md's hourly row ("Every node
-        # carries its cadence"), the worst measured gap between two
-        # publish-conditions.yml runs (6.3 h) rounded up, not a threshold
-        # anyone has tested against this source. What settles it is the 99th
-        # percentile of _extract_runs.checked_at gaps over 30 days.
-        warn_after: {count: 7, period: hour}
+        warn_after: {count: 12, period: hour}
+        error_after: {count: 24, period: hour}
     tables:
       - name: raw_nws__alerts
         data_tests:

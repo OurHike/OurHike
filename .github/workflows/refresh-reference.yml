@@ -944,9 +944,13 @@ jobs:
           if-no-files-found: warn
 
   # Last, so a layer refused on its own has not held back the ones that
-  # loaded, and the run still goes red for it, as publish-conditions.yml's
-  # legs do: decision 30's gate counts "no failed check", and a refusal is
-  # one. The extract job's summary names each layer and why.
+  # loaded, and the run still goes red for it: decision 30's gate counts "no
+  # failed check", and a refusal is one. The hourly legs only warn since
+  # decisions 100 and 101, because publish-conditions.yml's dbt source
+  # freshness turns a source red within a day; this lane runs no freshness
+  # check on live data, so a red there would come a month or more late
+  # (Reasoned), and this job keeps its red. The extract job's summary names
+  # each layer and why.
   refused:
     name: Fail the run if a layer was refused on its own
     needs: [extract, build, publish, confirm, parity]

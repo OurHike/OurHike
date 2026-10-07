@@ -419,7 +419,9 @@ third run answered 53 resources FRESH whose rows no build could read
   (`lib/http_retry.py`; **#536 — One transient 504 from USGS throws away an
   entire publish**).
 - `_loaded_at` (naive UTC) is stamped in the map step **only when a resource
-  runs**, so a `FRESH` table keeps its old stamp.
+  runs**, so a `FRESH` table keeps its old stamp. So dbt's freshness on a
+  source whose check can answer `FRESH` reads the run log, never
+  `_loaded_at` (the dbt skill's trap table, decision 100).
 - **One dlt schema per store**: every `pipeline.extract()` and `pipeline.run()`
   passes `schema=store_schema(pipeline)`. dlt puts its own state in the
   default schema's package, so a second schema means a second package and
@@ -523,6 +525,20 @@ finisher and member rosters the coverage audit found. The full list is in
 Check 2 also reaches dbt as source tests on `raw._extract_runs`, so a build
 cannot quietly consume a run that was refused: one copy at `error` for closures
 and warnings, one at `warn` for the rest.
+
+**A resource a leg refuses on its own warns, and turns red in dbt's source
+freshness** (decision 100, the maintainer's poll of 2026-10-07: "Red after
+24h. But this should be Red in the data source freshness feature of dbt. Not
+blocking a datasource pipeline"). The leg leaves it out, its last committed
+table stands, its run log row says `refused`, and the run exits 3, which
+extract-notices.yml and publish-conditions.yml's dbt path record and warn on,
+the summary naming the source and why. publish-conditions.yml then runs `dbt
+source freshness` after it has published, and a notice source turns red once
+it has gone 24 hours (48 for a daily one) without a `loaded` or `skipped`
+row: `macros/last_read_or_confirmed_at.sql`, the same two outcomes `due()`
+counts as a check. OurHike's own Postgres rows still stop the whole leg, red
+at once (`stops_the_leg()`). The monthly lane's `refused` job in
+refresh-reference.yml still fails its run: decision 100 named the notices.
 
 ## Adding a club
 

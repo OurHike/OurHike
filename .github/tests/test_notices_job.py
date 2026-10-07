@@ -152,16 +152,44 @@ def test_the_copy_step_reads_the_run_log_the_extract_step_kept_rather_than_the_s
 
 @pytest.mark.parametrize(("status", "outcome", "partial"), [(0, 0, None), (3, 0, "true"), (1, 1, None)])
 @pytest.mark.parametrize("name", [EXTRACT_STEP, SERVE_STEP])
-def test_a_source_refused_on_its_own_still_lets_the_run_copy_and_then_turns_it_red(tmp_path, name, status, outcome, partial):
-    """Exit 3 is extract/_run.py's PARTIAL_EXIT and _warehouse.py serve's: recorded, and red only at the end."""
+def test_a_partial_extract_or_copy_is_recorded_and_never_stops_the_run_before_the_copy(tmp_path, name, status, outcome, partial):
+    """Exit 3 is extract/_run.py's PARTIAL_EXIT and _warehouse.py serve's: recorded as `partial`, never a stop, so the
+    copy the hourly build reads is still written after a source was refused."""
     record = _stand_in(tmp_path / "extract" / "bin" / "python", status)
     step = _step(NOTICES, "extract", name)
     finished = _run(step["run"], {**_base_env(tmp_path), "LEG": "notices_ua"})
     assert finished.returncode == outcome
     assert _outputs(tmp_path).get("partial") == partial
     assert "--lane notices_ua --raw-bucket raw-bucket" in record.read_text()
-    (red,) = [other for other in _steps(NOTICES, "extract") if other.get("if") == f"steps.{step['id']}.outputs.partial == 'true'"]
-    assert red["run"].rstrip().endswith("exit 1")
+    assert '--summary "$GITHUB_STEP_SUMMARY"' in step["run"], "the run summary names each refused source and why"
+
+
+def _after_partial(path: Path, job: str, step_id: str) -> dict:
+    (step,) = [step for step in _steps(path, job) if step.get("if") == f"steps.{step_id}.outputs.partial == 'true'"]
+    return step
+
+
+def test_a_source_the_notices_job_refused_on_its_own_is_a_warning_and_never_turns_the_run_red(tmp_path):
+    """Decision 100 (the maintainer's poll of 2026-10-07, on round-2 finding ARC-5: "Red after 24h. But this should
+    be Red in the data source freshness feature of dbt. Not blocking a datasource pipeline"). Notices runs 6, 7, 9
+    and 14 went red this way, run 14 on mass.gov answering 403 to GitHub's runners for ma_dcr_blue_hills_alerts. The
+    source's last committed table stands, the run summary names it, and publish-conditions.yml's freshness step is
+    where it turns red, once it has gone 24 hours unread."""
+    step = _after_partial(NOTICES, "extract", "extract")
+    finished = _run(step["run"], _base_env(tmp_path))
+    assert finished.returncode == 0, finished.stdout + finished.stderr
+    assert "::warning title=" in finished.stdout and "::error" not in finished.stdout
+    assert "freshness" in finished.stdout, "the warning says where the red went"
+
+
+def test_a_table_the_notices_job_could_not_copy_whole_still_turns_the_run_red_after_the_copy(tmp_path):
+    """Decision 100 moved a refused source's red, not this one: the copy carries a torn table's last good rows or
+    leaves it out, which is the store's fault, not an upstream's."""
+    names = [step.get("name") for step in _steps(NOTICES, "extract")]
+    step = _after_partial(NOTICES, "extract", "serve")
+    assert names.index(SERVE_STEP) < names.index(step["name"])
+    finished = _run(step["run"], _base_env(tmp_path))
+    assert finished.returncode == 1 and "::error title=" in finished.stdout
 
 
 def _production_phone_files_line(text: str) -> list[str]:
@@ -268,6 +296,33 @@ def test_the_notices_job_reads_the_production_line_publish_conditions_chooses_fr
 def test_the_hourly_extract_holds_no_notices_key_now_that_nps_is_a_notices_source():
     extract = _step(CONDITIONS, "publish", "Extract this leg's closures and warnings into the raw store (dbt path)")
     assert "NPS_API_KEY" not in extract["env"]
+
+
+HOURLY_EXTRACT_STEP = "Extract this leg's closures and warnings into the raw store (dbt path)"
+
+
+@pytest.mark.parametrize(("status", "outcome", "partial"), [(0, 0, None), (3, 0, "true"), (1, 1, None)])
+def test_the_hourly_extract_records_a_source_refused_on_its_own_and_carries_on_to_publish(tmp_path, status, outcome, partial):
+    record = _stand_in(tmp_path / "extract" / "bin" / "python", status)
+    step = _step(CONDITIONS, "publish", HOURLY_EXTRACT_STEP)
+    finished = _run(step["run"], {**_base_env(tmp_path), "LEG": "conditions_ua"})
+    assert finished.returncode == outcome
+    assert _outputs(tmp_path).get("partial") == partial
+    assert "--lane conditions_ua --raw-bucket raw-bucket" in record.read_text()
+    assert '--summary "$GITHUB_STEP_SUMMARY"' in step["run"], "the run summary names each refused source and why"
+
+
+def test_a_source_the_hourly_extract_refused_on_its_own_is_a_warning_and_never_turns_the_run_red(tmp_path):
+    """Decision 100, as for the notices job: NWS's alerts, ATC's, NYNJTC's and OPRHP's notices and the reviewed files
+    a conditions leg can refuse on its own keep their last committed tables and warn here; each turns red in the
+    freshness step once it has gone 24 hours unread (pipeline/tests/test_notice_source_freshness.py tags them)."""
+    names = [step.get("name") or step.get("uses") for step in _steps(CONDITIONS, "publish")]
+    step = _after_partial(CONDITIONS, "publish", "extract")
+    assert names.index("Publish to R2") < names.index(step["name"])
+    finished = _run(step["run"], _base_env(tmp_path))
+    assert finished.returncode == 0, finished.stdout + finished.stderr
+    assert "::warning title=" in finished.stdout and "::error" not in finished.stdout
+    assert "freshness" in finished.stdout, "the warning says where the red went"
 
 
 def test_the_hourly_job_adds_its_environments_notices_copy_after_its_own_extract_and_before_the_build():

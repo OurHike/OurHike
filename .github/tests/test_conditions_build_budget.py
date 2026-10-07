@@ -54,6 +54,6 @@ def test_a_build_and_the_freshness_step_each_at_its_cap_still_end_inside_the_job
     """The freshness step (decision 100) runs after "Publish to R2", so it can never cost a publish, but a check that
     ran into the job's cap would end the run cancelled rather than with its own answer. The rest of the job was
     measured before the step existed, so its cap is added on top."""
-    (freshness,) = [step for step in _job()["steps"] if "source freshness" in str(step.get("run", ""))]
+    (freshness,) = [step for step in _job()["steps"] if 'dbt/bin/dbt" source freshness' in str(step.get("run", ""))]
     job_cap = _job()["timeout-minutes"] * 60
     assert _build_step()["timeout-minutes"] * 60 + freshness["timeout-minutes"] * 60 + SLOWEST_REST_OF_JOB_SECONDS <= job_cap

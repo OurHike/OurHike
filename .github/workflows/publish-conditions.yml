@@ -1117,10 +1117,11 @@ jobs:
       # "incomplete" without failing the run, so a first run on an empty raw
       # store completes over about 8 hours. OurHike's own rows are the
       # exception and stop the leg, as export_conditions.py stops today's
-      # bake. A refusal exits 3: this step records it, and the last step
-      # fails the run after everything that loaded is published. A refused
-      # row whose sources.json says reaches_hikers false exits 0 instead
-      # (extract/_run.py's exit_status()). This leg takes on every table it
+      # bake. A refusal exits 3: this step records it, and a step after the
+      # publish warns, never red since decision 100; the freshness step at
+      # the end turns red once a refused source has gone 24 hours unread. A
+      # refused row whose sources.json says reaches_hikers false exits 0
+      # instead (extract/_run.py's exit_status()). This leg takes on every table it
       # has never loaded in one run (NEW_TABLES_PER_LEG_RUN's None for the
       # conditions job): one left waiting would be absent from the warehouse
       # and fail the build below. The limit of 10 it had came from run 506,
@@ -1432,15 +1433,22 @@ jobs:
           python publish.py
           printf -- '- publish.py (OURHIKE_PHONE_FILES=%s): %s s\n\n' "$OURHIKE_PHONE_FILES" "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
-      # Last, so a source refused on its own has not held back the ones that
-      # loaded, and the run still goes red for it: decision 30's soak counts
-      # "no failed check", and a refusal is one. The extract step's summary
-      # names the source and why.
-      - name: Fail the run if a source was refused on its own (dbt path)
+      # A WARNING, NEVER RED: decision 100 (the maintainer's poll of
+      # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
+      # re-platform as one go/no-go change: "Red after 24h. But this should be
+      # Red in the data source freshness feature of dbt. Not blocking a
+      # datasource pipeline"). Until it this step turned the run red for one
+      # refused source, decision 30's soak counting "no failed check". The
+      # source's last committed table stands, the extract step's summary names
+      # it and why, and the step "Check the notice sources' freshness, red
+      # after 24 hours unread (dbt path)" turns red once it has gone 24 hours
+      # without a read or a confirmation that it is unchanged: NWS's alerts,
+      # ATC's, NYNJTC's and OPRHP's notices and the reviewed files, each tagged
+      # `conditions_job`. OurHike's own rows still stop the leg, red at once.
+      - name: Warn when a source was refused on its own (dbt path)
         if: steps.extract.outputs.partial == 'true'
         run: |
-          echo "::error title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was published."
-          exit 1
+          echo "::warning title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was published. Its dbt source freshness, the last step, turns red once it has gone 24 hours unread."
 
       # Last for the same reason: what the build held back (decision 81) did
       # not hold back the files that were written, and the run still goes red

@@ -326,6 +326,7 @@ and each feature appears once, its stewards attached from
 |---|---|---|
 | `geometry('OGC:CRS84')` refuses only a *different, known* CRS. It accepts a geometry with no CRS, and a `.duckdb` file never keeps one | measured 2026-10-01 on 2.0.5: a mart holding EPSG:5070 metres built green | every geometry mart carries a bounds test (lon in [-180, 180], lat in [-90, 90], plus the club's own box from `trail_orgs.json`'s `states`) beside the lon/lat swap test |
 | column names are compared case-sensitively | measured on 1.12.2: ATC's `Name` failed until aliased | alias every column in lowercase in the base model |
+| **Freshness on `_loaded_at` reads a quiet, healthy source as stale**: the extract stamps it only when a resource runs, so a FRESH change check leaves it at the last load | measured 2026-10-07: at c202d399, which measured notice sources on `_loaded_at`, tests/test_dbt_notice_source_freshness_runs.py's source confirmed unchanged an hour ago, with a `_loaded_at` a week old, warned. dbt 2.0.6 supports `loaded_at_query` on a source or a table, with Jinja, `{{ this }}` and a project macro; refuses it beside `loaded_at_field` on the same level (dbt9002); reads a null max as 1970-01-01, so stale, and a naive TIMESTAMP as UTC; a warning exits 0, an error 1 (all measured 2026-10-07 in a scratch project) | on any source whose check can answer FRESH, `loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"` (macros/last_read_or_confirmed_at.sql: the newest `loaded` or `skipped` row in `_extract_runs`). Every notice source has it, erroring after 24 h unread, 48 h for a daily one (decision 100, generate_notice_models.py's FRESHNESS_HOURS), tagged `notices_job` or `conditions_job` for publish-conditions.yml's freshness step |
 | `_loaded_at` is `TIMESTAMPTZ` on every dlt raw table, though `extract/_run.py` stamps naive UTC | measured 2026-10-01, dlt 1.30.0 filesystem destination: 63 of 64 fixture-mode tables, and `_warehouse.py`'s proven-empty table was the 64th until it was made the same. `TIMESTAMP` was `load_raw.py`'s, measured on 1.12.2 | declare `timestamptz` |
 | no `foreign_key` constraint | Reasoned: DuckDB refuses to drop a table a foreign key references, and every rebuild drops it | a relationships test instead |
 | `primary_key` and `check` fail any build into DuckLake | measured 2026-10-01 on 2.0.5 | why the warehouse moves to DuckLake only at phase 4 |
@@ -532,6 +533,7 @@ python make_dbt_fixtures.py
 "$RUNNER_TEMP/extract/bin/python" -m extract._fixtures --raw-dir data/raw --warehouse data/warehouse.duckdb
 python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"   # seed, stage A, each step and what it unblocks, the pub_ writers last
 "$RUNNER_TEMP/pipeline/bin/python" -m pytest tests/test_dbt_<...>_builds.py   # four steps, one file each: row dates, notices absent, a club held for its rows, club layers absent
+"$RUNNER_TEMP/pipeline/bin/python" -m pytest tests/test_dbt_notice_source_freshness_runs.py   # decision 100's freshness, on a warehouse holding only a run log
 "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity <family> --new data/processed/dbt/<file>   # one line per family
 cd dbt
 dbt source freshness --profiles-dir .
@@ -661,8 +663,11 @@ below are for everything else.
 1. **`staging/<club>/_<club>__sources.yml`** declares every raw table dlt
    writes for the club (`raw_<club>__<key>`), each with a description, v2's
    `config:` block holding `loaded_at_field: _loaded_at` and `freshness`,
-   `meta.cadence`, and an explicit `database:`. An unstaged declaration fails
-   `fct_unused_sources`.
+   `meta.cadence`, and an explicit `database:`. A closures or warnings
+   source measures from the run log instead, `loaded_at_query: "{{
+   last_read_or_confirmed_at(this) }}"`, with its job's tag (decision 100,
+   [the trap above](#contracts-and-the-traps-in-them)). An unstaged
+   declaration fails `fct_unused_sources`.
 2. **One `base/base_<club>__<layer>.sql` per raw table the club extracts**,
    documented in `base/_<club>__base.yml`. A layer another folder extracts
    gets no base model here: the club's portion of it is rows in

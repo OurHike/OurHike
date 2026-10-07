@@ -512,6 +512,72 @@ unit_tests:
         - {seq: 6, lookup_kind: weld_end, makes_node: false, node_raw: 4}
         - {seq: 7, lookup_kind: weld_landing, makes_node: false, node_raw: 1}
 
+  - name: int_trail_network__node_lookups_a_long_row_of_ends_settles
+    description: >
+      Twelve pieces start 0.3 m apart in a row, so each start is near only
+      the one before it: they make a node, find it, make the next, and so
+      on, and the k-th start settles only in the grid's k-th round. A fixed
+      8 rounds left the last three unsettled, the failure monthly run 24
+      met on 373 real points (refresh-reference.yml 37459433469); the rounds
+      now run until none is left. Each piece ends 10 m from the next, so the
+      ends make nodes of their own.
+    model: int_trail_network__node_lookups
+    given:
+      - input: ref('stg_derived__graph_pieces')
+        format: sql
+        rows: |
+          select 'k0' as graph_piece_key, 'piece' as row_kind, 'p0#1' as part_id, 0 as piece_index, 0 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0.0 0, 0 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k1' as graph_piece_key, 'piece' as row_kind, 'p1#1' as part_id, 0 as piece_index, 1 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0.3 0, 10 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k2' as graph_piece_key, 'piece' as row_kind, 'p2#1' as part_id, 0 as piece_index, 2 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0.6 0, 20 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k3' as graph_piece_key, 'piece' as row_kind, 'p3#1' as part_id, 0 as piece_index, 3 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (0.9 0, 30 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k4' as graph_piece_key, 'piece' as row_kind, 'p4#1' as part_id, 0 as piece_index, 4 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (1.2 0, 40 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k5' as graph_piece_key, 'piece' as row_kind, 'p5#1' as part_id, 0 as piece_index, 5 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (1.5 0, 50 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k6' as graph_piece_key, 'piece' as row_kind, 'p6#1' as part_id, 0 as piece_index, 6 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (1.8 0, 60 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k7' as graph_piece_key, 'piece' as row_kind, 'p7#1' as part_id, 0 as piece_index, 7 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (2.1 0, 70 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k8' as graph_piece_key, 'piece' as row_kind, 'p8#1' as part_id, 0 as piece_index, 8 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (2.4 0, 80 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k9' as graph_piece_key, 'piece' as row_kind, 'p9#1' as part_id, 0 as piece_index, 9 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (2.7 0, 90 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k10' as graph_piece_key, 'piece' as row_kind, 'p10#1' as part_id, 0 as piece_index, 10 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (3.0 0, 100 100)') as geom, cast(null as timestamp) as loaded_at
+          union all
+          select 'k11' as graph_piece_key, 'piece' as row_kind, 'p11#1' as part_id, 0 as piece_index, 11 as piece_rank, cast(null as varchar) as cut_key, st_geomfromtext('LINESTRING (3.3 0, 110 100)') as geom, cast(null as timestamp) as loaded_at
+      - input: ref('int_trail_network__cuts')
+        rows: []
+    expect:
+      rows:
+        - {seq: 0, makes_node: true, node_raw: 0}
+        - {seq: 1, makes_node: true, node_raw: 1}
+        - {seq: 2, makes_node: false, node_raw: 0}
+        - {seq: 3, makes_node: true, node_raw: 2}
+        - {seq: 4, makes_node: true, node_raw: 3}
+        - {seq: 5, makes_node: true, node_raw: 4}
+        - {seq: 6, makes_node: false, node_raw: 3}
+        - {seq: 7, makes_node: true, node_raw: 5}
+        - {seq: 8, makes_node: true, node_raw: 6}
+        - {seq: 9, makes_node: true, node_raw: 7}
+        - {seq: 10, makes_node: false, node_raw: 6}
+        - {seq: 11, makes_node: true, node_raw: 8}
+        - {seq: 12, makes_node: true, node_raw: 9}
+        - {seq: 13, makes_node: true, node_raw: 10}
+        - {seq: 14, makes_node: false, node_raw: 9}
+        - {seq: 15, makes_node: true, node_raw: 11}
+        - {seq: 16, makes_node: true, node_raw: 12}
+        - {seq: 17, makes_node: true, node_raw: 13}
+        - {seq: 18, makes_node: false, node_raw: 12}
+        - {seq: 19, makes_node: true, node_raw: 14}
+        - {seq: 20, makes_node: true, node_raw: 15}
+        - {seq: 21, makes_node: true, node_raw: 16}
+        - {seq: 22, makes_node: false, node_raw: 15}
+        - {seq: 23, makes_node: true, node_raw: 17}
+
   # ---------------------------------------------------------- the edges
 
   - name: int_trail_network__raw_edges_a_weld_makes_the_stub_end_the_junction

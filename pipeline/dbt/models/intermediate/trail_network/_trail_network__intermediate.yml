@@ -132,15 +132,16 @@ models:
       - name: status
         description: >
           'makes' where the point makes a node, 'finds' where it finds one.
-          Null only if trail_network_node_rounds rounds did not settle it,
-          which fails the build through node_raw.
+          The grid's rounds run until every point is settled, so it is never
+          null; node_raw's not_null would fail the build if one were.
       - name: makes_node
         description: Whether this point made its node.
       - name: node_raw
         description: >
           The node's number in build_graph()'s `points`, before the welds
-          merge any; null only where the rounds did not settle the point,
-          which is refused.
+          merge any. Never null; the not_null stays as the guard that
+          stopped monthly run 24 when a fixed 8 rounds left 373 points
+          unsettled.
         data_tests: [not_null]
 
   - name: int_trail_network__raw_edges

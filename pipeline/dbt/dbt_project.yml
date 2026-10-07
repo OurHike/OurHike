@@ -542,10 +542,11 @@ vars:
   # the largest gap between two ends of one junction on real layers, which
   # is what would settle it.
   trail_network_node_quant_m: 0.5
-  # Not a rule: how many rounds int_trail_network__node_lookups gives the
-  # first-come node grid to settle, each a chain of ends closer than
-  # NODE_QUANT_M one step longer. An end still unsettled after the last
-  # round fails the build rather than guessing a node.
+  # Not a rule: how many of the node grid's rounds int_trail_network__node_lookups
+  # runs over the whole network before the rest run over only the points
+  # still unsettled (that model says why). Any value gives the same nodes;
+  # it trades one full-network join per round against a longer tail. 8 is
+  # what monthly run 24 ran, which left 373 of the network's points.
   trail_network_node_rounds: 8
 
   dbt_project_evaluator:

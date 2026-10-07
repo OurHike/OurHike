@@ -1,7 +1,5 @@
 {{ config(materialized='table') }}
 {%- set quant_m = var('trail_network_node_quant_m') %}
-{#- `| int` and the floor of 1 let SQLFluff, whose var() answers a name,
-    render one round; dbt reads the number. -#}
 {%- set rounds = [var('trail_network_node_rounds') | int, 1] | max %}
 -- Every question build_graph() asks its node grid, in the order it asks
 -- them, and the node each answer is (build_trail_graph.py's _node_id(), TN06
@@ -21,16 +19,42 @@
 -- so the scan misses none (Reasoned: |dx| <= 0.5 puts x / 0.5 within one
 -- of the point's, so floor() within one cell).
 --
--- WHY ROUNDS. Whether a point makes a node depends on whether an earlier
--- point near it made one, so the grid is sequential: three ends 0.4 m apart
--- in a row make two nodes, not one, because the third is 0.8 m from the
--- first. Each round settles every point whose earlier neighbours are all
--- settled: one that has a node-making neighbour finds a node, one whose
--- neighbours all found theirs makes its own. A cluster of ends at one
--- junction settles in two rounds; trail_network_node_rounds bounds the
--- longest chain, and a point still unsettled after the last fails the
--- build (the `not_null` on `node_raw`) rather than guessing a node. Which
--- node a point finds is decided only once all its neighbours are settled.
+-- WHY IT SETTLES IN ROUNDS. Whether a point makes a node depends on
+-- whether an earlier point near it made one, so the grid is sequential:
+-- three ends 0.4 m apart in a row make two nodes, not one, because the
+-- third is 0.8 m from the first. Each round settles every point whose
+-- earlier neighbours are all settled: one that has a node-making neighbour
+-- finds a node, one whose neighbours all found theirs makes its own. Which
+-- node a point finds is decided only once every point is settled.
+--
+-- The rounds run in two parts. The first trail_network_node_rounds (8)
+-- run over every point, each a join of the whole network. The rest run
+-- over only the points those left unsettled, and their neighbours, until
+-- a round settles none, as DuckDB's `with recursive ... using key`
+-- (macros/using_key.sql, which also says why the clause is a macro): one
+-- row per point, each round reading every status through
+-- `recurring.settled_tail` and asking only the unsettled points next to
+-- one the round before settled. They always finish: the lowest unsettled
+-- point's earlier neighbours are all settled, and the round after its last
+-- one settled asks it.
+--
+-- The rest used not to exist. Monthly run 24 (refresh-reference.yml
+-- 37459433469, 2026-10-06) built 3,556,603 pieces, 373 of whose points
+-- were still unsettled after the eighth round, and the `not_null` on
+-- `node_raw` stopped the build. The k-th of a row of ends 0.3 m apart
+-- settles in round k (unit test
+-- int_trail_network__node_lookups_a_long_row_of_ends_settles), so no fixed
+-- count is safe. Which points were left the run did not say; two
+-- near-coincident lines crossing every few decimetres would make such a
+-- row (Reasoned, not traced). `node_raw` keeps its `not_null` as a guard.
+--
+-- Why not every round as the recursion: each of its rounds reads the
+-- whole table, so on a synthetic network of the real one's size (3,718,000
+-- pieces, 300 rows of 60 ends 0.3 m apart; DuckDB 1.5.5, 4 threads,
+-- measured 2026-10-07 in the sandbox) it ran past 5 minutes and was
+-- stopped, where 8 rounds over everything took 33.6 s and left 15,300
+-- points. The two parts took 54.9 s, settled every point, and gave
+-- build_trail_graph._node_id()'s answer on all 7,436,000.
 --
 -- `node_raw` is the node's number in _node_id()'s `points`, before the
 -- welds merge any (int_trail_network__raw_edges). A weld's point that makes
@@ -40,7 +64,7 @@
 --
 -- Squares are pow(x, 2), the C library's pow(), which Python's `** 2` on a
 -- float also calls.
-with pieces as (
+with recursive pieces as (
     select
         part_id,
         piece_index,
@@ -195,8 +219,59 @@ status_{{ round }} as materialized (
     group by own.seq
 ),
 {% endfor %}
+-- The points the first rounds left unsettled, each with its neighbours.
+tail_neighbours as materialized (
+    select
+        neighbours.seq,
+        neighbours.near_seq
+    from neighbours
+    inner join status_{{ rounds }} as own on neighbours.seq = own.seq
+    where own.status is null
+),
+
+tail_points as materialized (
+    select seq from tail_neighbours
+    union
+    select near_seq as seq from tail_neighbours
+),
+
+-- The rest of the rounds, on those points alone, until a round settles
+-- none.
+settled_tail (seq, status){{ using_key('seq') }} as (
+    select
+        after_rounds.seq,
+        after_rounds.status
+    from status_{{ rounds }} as after_rounds
+    inner join tail_points on after_rounds.seq = tail_points.seq
+    union
+    select
+        asked.seq,
+        case
+            when bool_or(near.status = 'makes') then 'finds'
+            else 'makes'
+        end as status
+    from (
+        select distinct reached.seq
+        from settled_tail as last_round
+        inner join tail_neighbours as reached
+            on last_round.seq = reached.near_seq
+        where last_round.status is not null
+    ) as asked
+    inner join recurring.settled_tail as own
+        on asked.seq = own.seq and own.status is null
+    inner join tail_neighbours on asked.seq = tail_neighbours.seq
+    inner join recurring.settled_tail as near
+        on tail_neighbours.near_seq = near.seq
+    group by asked.seq
+    having bool_or(near.status = 'makes') or bool_and(near.status is not null)
+),
+
 settled as (
-    select * from status_{{ rounds }}
+    select
+        after_rounds.seq,
+        coalesce(after_rounds.status, settled_tail.status) as status
+    from status_{{ rounds }} as after_rounds
+    left join settled_tail on after_rounds.seq = settled_tail.seq
 ),
 
 makers as (

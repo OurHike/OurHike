@@ -1117,10 +1117,10 @@ jobs:
       # "incomplete" without failing the run, so a first run on an empty raw
       # store completes over about 8 hours. OurHike's own rows are the
       # exception and stop the leg, as export_conditions.py stops today's
-      # bake. A refusal exits 3: this step records it, and the step after the
-      # publish fails the run, at once: decision 100 moved a refused notice
-      # source's red to dbt's freshness, and this leg's closures and alerts
-      # keep theirs (that step says why). A
+      # bake. A refusal exits 3: this step records it, and a step after the
+      # publish warns, never red since decisions 100 and 101; the freshness
+      # step at the end turns red once a refused source has gone 24 hours
+      # unread, NWS's alerts 2 hours. A
       # refused row whose sources.json says reaches_hikers false exits 0
       # instead (extract/_run.py's exit_status()). This leg takes on every table it
       # has never loaded in one run (NEW_TABLES_PER_LEG_RUN's None for the
@@ -1434,22 +1434,25 @@ jobs:
           python publish.py
           printf -- '- publish.py (OURHIKE_PHONE_FILES=%s): %s s\n\n' "$OURHIKE_PHONE_FILES" "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
-      # Last, so a source refused on its own has not held back the ones that
-      # loaded, and the run still goes red for it, the hour it happens.
-      # Decision 100 (the maintainer's poll of 2026-10-07, on round-2 finding
-      # ARC-5 of PR #1805 — dlt → dbt re-platform as one go/no-go change) made
-      # a refused NOTICE source a warning, red in dbt's source freshness after
-      # 24 hours unread; its question named the notices job. This leg reads
-      # NWS's alerts and ATC's, NYNJTC's and OPRHP's closures, where a severe
-      # thunderstorm warning mostly lasts under 4 hours (Reasoned), so its
-      # refusals keep this red until the maintainer extends that decision
-      # here. The freshness step at the end measures these tables too
-      # (`tag:conditions_job`). The extract step's summary names the source and why.
-      - name: Fail the run if a source was refused on its own (dbt path)
+      # A WARNING, NEVER RED: decision 100 (the maintainer's poll of
+      # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
+      # re-platform as one go/no-go change: "Red after 24h. But this should be
+      # Red in the data source freshness feature of dbt. Not blocking a
+      # datasource pipeline"), which named the notices job, and decision 101
+      # (the maintainer's poll of 2026-10-07: "Both, NWS red after 2 h"),
+      # which brought this leg under it. Until them this step turned the run
+      # red for one refused source, decision 30's soak counting "no failed
+      # check". The source's last committed table stands, the extract step's
+      # summary names it and why, and the step "Check the notice sources'
+      # freshness, red after 24 hours unread (dbt path)" turns red once it has
+      # gone 24 hours without a read or a confirmation that it is unchanged
+      # (ATC's, NYNJTC's and OPRHP's notices and the reviewed files), or 2
+      # hours for NWS's alerts, each tagged `conditions_job`. OurHike's own
+      # rows still stop the leg, red at once.
+      - name: Warn when a source was refused on its own (dbt path)
         if: steps.extract.outputs.partial == 'true'
         run: |
-          echo "::error title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was published."
-          exit 1
+          echo "::warning title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was published. Its dbt source freshness, the last step, turns red once it has gone 24 hours unread, 2 hours for NWS's alerts."
 
       # Last for the same reason: what the build held back (decision 81) did
       # not hold back the files that were written, and the run still goes red
@@ -1551,9 +1554,7 @@ jobs:
       # warehouse holds none of their run log, every one would read as never
       # read, and that state is step 2b's to report (decision 96's 8 hours,
       # and the `unread` step above). `tag:conditions_job`, this leg's own
-      # upstreams that it can refuse on its own, is measured every run, on top
-      # of the red their refusal gives this run the hour it happens ("Fail the
-      # run if a source was refused on its own (dbt path)" says why).
+      # upstreams that it can refuse on its own, is measured every run.
       #
       # ONE MINUTE: 11 s for the 267 tagged sources on the fixture warehouse,
       # three runs alike (Measured 2026-10-07 in a sandbox), most of it dbt

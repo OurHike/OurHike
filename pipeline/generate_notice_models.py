@@ -163,6 +163,10 @@ TABLE_BASES = frozenset(
 #: refusal from failing the extract run, and nothing a hiker sees waits on it. tests/test_notice_source_freshness.py
 #: holds the daily row to the hourly one plus DUE_AFTER, and the conditions job's hand-written sources to these.
 FRESHNESS_HOURS = {"hourly": (12, 24), "daily": (36, 48)}
+#: NWS's active alerts, which the hourly conditions leg reads (nws/_nws__sources.yml, hand-written): red after 2 hours
+#: unread, the maintainer's poll of 2026-10-07 (decision 101, "Both, NWS red after 2 h"), and a warning at half that,
+#: as FRESHNESS_HOURS grades its own. A severe thunderstorm warning mostly lasts under 4 hours (Reasoned).
+NWS_FRESHNESS_HOURS = (1, 2)
 #: The one notice source on the monthly lane, USFWS's hunt units, which reaches_hikers false keeps off every phone
 #: (tests/test_generated_notice_models.py's ARC-1 test holds it the only one): a warning at 7 days, as before decision
 #: 100 and @unvalidated as then, the threshold _atc__sources.yml's comment says nobody derived. No run on live data

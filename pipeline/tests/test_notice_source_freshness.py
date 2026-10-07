@@ -75,6 +75,12 @@ def test_a_daily_sources_thresholds_are_the_hourly_ones_plus_the_day_it_waits_to
     assert generator.FRESHNESS_HOURS["hourly"][1] == 24, "decision 100's 24 hours"
 
 
+def test_nws_alerts_are_red_after_2_hours_unread_and_warn_after_1():
+    """Decision 101 (the maintainer's poll of 2026-10-07: "Both, NWS red after 2 h"): with the hourly runs an hour
+    apart, one refused read warns and two in a row are red; the warning is half the error, as FRESHNESS_HOURS has it."""
+    assert generator.NWS_FRESHNESS_HOURS == (1, 2)
+
+
 def test_every_generated_notice_source_measures_from_the_run_log_by_its_cadence(tables):
     problems = []
     for source in generator.notice_sources():
@@ -107,10 +113,13 @@ def test_only_the_notices_jobs_tables_are_tagged_for_its_run_log(tables, resourc
     assert tagged == generated & notices, sorted(tagged ^ (generated & notices))
 
 
-def test_every_conditions_job_upstream_a_leg_can_refuse_on_its_own_errors_after_24_hours_unread(tables, resources):
-    """The hourly run's extract refusal is a warning since decision 100, for these as for the notices job's sources,
-    so each carries the same red in freshness. OurHike's own Postgres rows are not among them: a failed read of those
-    stops the whole leg (extract/_run.py's stops_the_leg()), which is red at once."""
+def test_every_conditions_job_upstream_a_leg_can_refuse_on_its_own_errors_after_24_hours_unread_and_nws_after_2(
+    tables, resources
+):
+    """The hourly run's extract refusal is a warning since decision 101 (the maintainer's poll of 2026-10-07: "Both,
+    NWS red after 2 h"), for these as for the notices job's sources under decision 100, so each carries the red in
+    freshness: 24 hours unread, NWS's alerts 2 (NWS_FRESHNESS_HOURS). OurHike's own Postgres rows are not among them:
+    a failed read of those stops the whole leg (extract/_run.py's stops_the_leg()), which is red at once."""
     by_table = {resource.table: resource for resource in resources}
     refusable = {table for table in HOURLY_JOB_TABLES if not stops_the_leg(by_table[table])}
     assert len(refusable) == 8, sorted(refusable)
@@ -122,6 +131,8 @@ def test_every_conditions_job_upstream_a_leg_can_refuse_on_its_own_errors_after_
         if config.get("loaded_at_query") != MEASURE:
             problems.append(f"{table}: measured by {config.get('loaded_at_query') or config.get('loaded_at_field')}")
         expected = generator.FRESHNESS_HOURS[by_table[table].cadence]
+        if table == "raw_nws__alerts":
+            expected = generator.NWS_FRESHNESS_HOURS
         if _thresholds(config) != expected:
             problems.append(f"{table}: warns and errors at {_thresholds(config)} h, not {expected}")
     assert problems == []

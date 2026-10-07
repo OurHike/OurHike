@@ -14,18 +14,23 @@ sources:
       # (macros/last_read_or_confirmed_at.sql), not `_loaded_at`: a run whose
       # read NWS refused moves neither, and an answer with no alerts lands no
       # row to carry a `_loaded_at`. A refusal is a warning on the hourly run
-      # since decision 100 (the maintainer's poll of 2026-10-07), and red here
-      # once NWS has gone unread for 24 hours, the notices' rule. The hourly
-      # thresholds are generate_notice_models.py's FRESHNESS_HOURS, graded
-      # there; tests/test_notice_source_freshness.py holds these to them.
-      # publish-conditions.yml's freshness step selects `conditions_job`.
+      # (decision 101, the maintainer's poll of 2026-10-07: "Both, NWS red
+      # after 2 h"), and red here once NWS has gone unread for 2 hours, where
+      # every other source this leg reads waits 24: a severe thunderstorm
+      # warning mostly lasts under 4 hours (Reasoned), so a day-old copy of
+      # these is no copy. With the runs an hour apart, one refused read
+      # warns and two in a row are red. The thresholds are
+      # generate_notice_models.py's NWS_FRESHNESS_HOURS, the warning half
+      # the error as for the notices; tests/test_notice_source_freshness.py
+      # holds these to it. publish-conditions.yml's freshness step selects
+      # `conditions_job`.
       loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       tags: [conditions_job]
       meta:
         cadence: hourly
       freshness:
-        warn_after: {count: 12, period: hour}
-        error_after: {count: 24, period: hour}
+        warn_after: {count: 1, period: hour}
+        error_after: {count: 2, period: hour}
     tables:
       - name: raw_nws__alerts
         data_tests:

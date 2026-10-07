@@ -100,12 +100,13 @@ def _cases() -> dict[str, tuple[str, str, datetime, list[tuple[str, datetime]]]]
         "reaching no hiker, refused for 30 hours": (quiet, _ago(30), [("loaded", _ago(30)), ("refused", _ago(2))]),
     }
     built = {name: (*source, loaded_at, rows) for name, (source, loaded_at, rows) in cases.items()}
-    # The conditions job's own upstream, hand-staged: NWS's alerts, refused hourly for 30 hours.
-    built["NWS's alerts, refused for 30 hours"] = (
+    # The conditions job's own upstream, hand-staged: NWS's alerts, refused on the last three hourly reads, which
+    # decision 101's 2 hours turn red where every other source this leg reads would still pass.
+    built["NWS's alerts, refused for 3 hours"] = (
         "nws",
         "raw_nws__alerts",
-        _ago(30),
-        [("loaded", _ago(30)), *(("refused", _ago(h)) for h in range(29, 0, -1))],
+        _ago(3),
+        [("loaded", _ago(3)), *(("refused", _ago(h)) for h in range(2, 0, -1))],
     )
     return built
 
@@ -219,6 +220,8 @@ def test_a_refused_source_that_reaches_no_hiker_only_warns(freshness):
     assert freshness["reaching no hiker, refused for 30 hours"] == "warn"
 
 
-def test_nws_alerts_refused_for_over_24_hours_are_stale(freshness):
-    """The conditions job's own upstreams, refused on their own, warn on the hourly run as the notices job's do."""
-    assert freshness["NWS's alerts, refused for 30 hours"] == "error"
+def test_nws_alerts_refused_for_3_hours_are_stale(freshness):
+    """The conditions job's own upstreams, refused on their own, warn on the hourly run as the notices job's do
+    (decision 101), and NWS's alerts are red here after 2 hours unread, not 24 (the maintainer's poll of 2026-10-07:
+    "Both, NWS red after 2 h")."""
+    assert freshness["NWS's alerts, refused for 3 hours"] == "error"

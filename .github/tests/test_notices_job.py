@@ -312,17 +312,15 @@ def test_the_hourly_extract_records_a_source_refused_on_its_own_and_carries_on_t
     assert '--summary "$GITHUB_STEP_SUMMARY"' in step["run"], "the run summary names each refused source and why"
 
 
-def test_a_source_the_hourly_extract_refused_on_its_own_is_a_warning_and_never_turns_the_run_red(tmp_path):
-    """Decision 100, as for the notices job: NWS's alerts, ATC's, NYNJTC's and OPRHP's notices and the reviewed files
-    a conditions leg can refuse on its own keep their last committed tables and warn here; each turns red in the
-    freshness step once it has gone 24 hours unread (pipeline/tests/test_notice_source_freshness.py tags them)."""
+def test_a_source_the_hourly_extract_refused_on_its_own_still_turns_the_run_red_after_the_publish(tmp_path):
+    """Decision 100 moved a refused NOTICE source's red to dbt's freshness. This leg's own tables (NWS's alerts, ATC's,
+    NYNJTC's and OPRHP's closures, the reviewed files) keep a red the hour they are refused, after the publish, until
+    the maintainer extends that decision here; the freshness step measures them as well."""
     names = [step.get("name") or step.get("uses") for step in _steps(CONDITIONS, "publish")]
     step = _after_partial(CONDITIONS, "publish", "extract")
     assert names.index("Publish to R2") < names.index(step["name"])
     finished = _run(step["run"], _base_env(tmp_path))
-    assert finished.returncode == 0, finished.stdout + finished.stderr
-    assert "::warning title=" in finished.stdout and "::error" not in finished.stdout
-    assert "freshness" in finished.stdout, "the warning says where the red went"
+    assert finished.returncode == 1 and "::error title=" in finished.stdout
 
 
 def test_the_hourly_job_adds_its_environments_notices_copy_after_its_own_extract_and_before_the_build():

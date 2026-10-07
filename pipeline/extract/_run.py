@@ -37,9 +37,10 @@ A leg, and the monthly lane (ISOLATING_LANES), isolates each upstream
 (_extract_and_load()): one that fails or is refused is left out while the
 rest load, and the run exits PARTIAL_EXIT (3), unless every one refused has a
 sources.json row saying reaches_hikers false (exit_status()). The monthly
-lane's job turns that red; a leg's job only warns on it (decision 100), and
-dbt's source freshness turns a refused notice source red once it has gone 24
-hours without a `loaded` or `skipped` row in this log
+lane's job and the conditions legs' turn that red; the notices job only warns
+on it (decision 100), and dbt's source freshness turns a refused notice
+source red once it has gone 24 hours without a `loaded` or `skipped` row in
+this log
 (dbt/macros/last_read_or_confirmed_at.sql, run by publish-conditions.yml
 after it has published). OurHike's own Postgres rows still stop the whole leg
 (stops_the_leg()). A leg takes on at most NEW_TABLES_PER_LEG_RUN tables it

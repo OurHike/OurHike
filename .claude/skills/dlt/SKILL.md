@@ -531,8 +531,10 @@ freshness** (decision 100, the maintainer's poll of 2026-10-07: "Red after
 24h. But this should be Red in the data source freshness feature of dbt. Not
 blocking a datasource pipeline"). The leg leaves it out, its last committed
 table stands, its run log row says `refused`, and the run exits 3, which
-extract-notices.yml and publish-conditions.yml's dbt path record and warn on,
-the summary naming the source and why. publish-conditions.yml then runs `dbt
+extract-notices.yml records and warns on, the summary naming the source and
+why. publish-conditions.yml's own leg (NWS's alerts and the clubs' closures)
+still fails its run the hour a source is refused: the decision named the
+notices job. publish-conditions.yml then runs `dbt
 source freshness` after it has published, and a notice source turns red once
 it has gone 24 hours (48 for a daily one) without a `loaded` or `skipped`
 row: `macros/last_read_or_confirmed_at.sql`, the same two outcomes `due()`

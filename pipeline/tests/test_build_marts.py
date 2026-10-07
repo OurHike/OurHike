@@ -388,13 +388,36 @@ def test_a_failed_python_step_or_seed_is_never_retried(monkeypatch, tmp_path):
         assert code != 0 and recorder.retries == [], codes
 
 
-def test_the_hourly_lane_never_retries_a_failed_build(monkeypatch, tmp_path):
-    """Its build has publish-conditions.yml's 6 minutes, and one source's own failure there is held instead."""
+def test_the_hourly_lane_retries_a_failed_build_three_times_with_the_builds_indirect_selection(monkeypatch, tmp_path):
+    """The maintainer, 2026-10-07: "The hourly lane should get the same retry logic", and then, of a deadline inside
+    publish-conditions.yml's 6 minutes, "do up to 3 retries. period". Without --state the hourly build takes its
+    lane's parents with `--indirect-selection cautious`, and a retry that dropped it would test them all eagerly."""
     recorder = _Recorder({3: 1})
+    # So the build reaches stage A: _manifest() holds no step_<name> exposure for lane_problems() to read.
+    monkeypatch.setattr(build_marts, "lane_problems", lambda manifest, steps, lane: [])
     code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), extra=("--lane", "hourly"), recorder=recorder)
 
     assert code == 1
-    assert recorder.retries == []
+    build = recorder.calls[2][0]
+    assert build[:2] == ("dbt", "build") and build[-2:] == ("--indirect-selection", "cautious")
+    retry = ("dbt", "retry", "--profiles-dir", ".", "--threads", "1", "--indirect-selection", "cautious")
+    assert recorder.retries == [retry] * build_marts.DBT_RETRIES
+
+
+def test_a_deferred_build_is_retried_without_its_state():
+    """Given `--state`, dbt 2.0.6's retry read that directory's run_results.json and found nothing to retry; without
+    it, a retry after a `--defer --state` build re-ran the failed model and the nodes it skipped (measured
+    2026-10-07)."""
+    build = ("dbt", "build", "--profiles-dir", "p", "--threads", "4", "-s", "x+", "--defer", "--state", "monthly/target")
+
+    assert build_marts.retry_argv(build_marts.Run("stage A", build, build_marts.DBT_DIR, build_marts.STAGE_A)) == (
+        "dbt",
+        "retry",
+        "--profiles-dir",
+        "p",
+        "--threads",
+        "1",
+    )
 
 
 def test_after_a_retry_run_results_hold_every_node_the_build_ran_with_its_last_result(monkeypatch, tmp_path):

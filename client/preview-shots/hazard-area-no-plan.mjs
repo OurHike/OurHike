@@ -22,12 +22,15 @@
 //  2. The area's sheet, opened by a tap inside it: "Hunting allowed", the
 //     Advisory tag, the invented title, and the sentence that the trail
 //     stays open. Never barrier tape and never a closure. The sheet names
-//     the layer by its registry key, "oprhp_hunting_areas", because UA's
-//     stewards.json names none of the hazard sources' keys (read
-//     2026-10-05: not oprhp_hunting_areas, iata_lands_hunting_regs,
+//     the layer "New York State Office of Parks, Recreation and Historic
+//     Preservation's layer" (the preview of 6fca5e91). UA's stewards.json
+//     still names none of the hazard sources' keys (release 2026-10-03-2,
+//     read 2026-10-07: not oprhp_hunting_areas, iata_lands_hunting_regs,
 //     usace_garrison_hunting_restrictions, blm_shooting_points or
-//     usfs_baer_assessments). That is a gap of its own, left in the frame
-//     rather than routed around.
+//     usfs_baer_assessments), so the name is the steward it lists for the
+//     row's provider, "NYS OPRHP" - lib/notices.ts's noticeOrgLabel, since
+//     09c4da87. Before that commit the sheet printed the raw key,
+//     "oprhp_hunting_areas", which is what this line used to say.
 //
 // THE AREA IS INVENTED, and its title says "(example)": a box around Bear
 // Mountain's summit, which the A.T. crosses (long-term-closures.mjs, at the
@@ -35,6 +38,13 @@
 // photographed: a shot on every future pull request must never draw a real
 // area where its layer did not, nor put words in an agency's mouth. Both
 // files are answered on the wire before the app loads (`before`).
+//
+// NOTHING IS DOWNLOADED OR PLANNED TO MAKE THE AREA DRAW. lib/hazardAreas.ts
+// draws an area only where a trail on the phone runs through it, and the
+// A.T. is on every phone with signal without a tap: lib/useTrailData.ts
+// fetches the trail lines at launch and builds lib/trailPosition.ts's index
+// from them. The A.T.'s centerline runs through BOX (measured below), so that
+// index is enough.
 //
 // Nothing here reaches an account, a hiker's own report, a dispersed campsite
 // or a real location fix (.claude/skills/pr-screenshot/SKILL.md): no hike or
@@ -45,6 +55,67 @@
 /** Bear Mountain's summit, on the A.T., and the box the invented area is. */
 const BOX = { west: -74.02, east: -73.995, south: 41.3, north: 41.318 }
 const CAMERA = { center: [-74.0075, 41.306], zoom: 13 }
+
+/**
+ * Where the drive taps: inside BOX, on ground with no trail line and no
+ * waypoint near it. map/hazardAreaTaps.ts puts an area LAST IN LINE, so a
+ * warning pin, a waypoint pin, closure tape, an ATC band or a trail line
+ * within a thumb of the tap takes it first, and the area's sheet never opens.
+ *
+ * Measured 2026-10-07 against UA's release 2026-10-03-2, the one
+ * lib/dataRelease.ts pins: at z13 this point is 71 px from the nearest trail
+ * line (the A.T. and its side trails in trails.geojson, and every line in
+ * nearby_trails.pmtiles's z13 tiles over the park) and 70 px from the
+ * nearest waypoint (nearby_poi.geojson and the poi_*.geojson files). A line
+ * takes a tap within map/lineTaps.ts's LINE_TAP_SLOP_PX (19.75 px) of it,
+ * plus half its width.
+ *
+ * WHY THE FIRST VERSION PHOTOGRAPHED ON ONE PREVIEW IN THREE. It tapped
+ * (-74.0, 41.309), which the same measurement puts 8.5 px from the A.T.'s
+ * own centerline, and no other line within 45 px. Once the A.T. is drawn,
+ * every tap there opens the A.T.'s "Trail line" sheet. The area's own sheet
+ * opened only for a tap that landed after the area was drawn and before the
+ * A.T. was. Which of the two is drawn first after the reload varies. Run
+ * locally against UA's data on 2026-10-07 (dev server), the unchanged
+ * recipe failed once (taps 2 to 20 all opened "Trail line") and passed once
+ * (tap 2 opened "Hunting allowed"). On previews it failed on 4d4493d2 and
+ * 484b0210 and passed on 6fca5e91. Why the order varies is reasoned, not
+ * traced: after the reload the A.T.'s index comes back from
+ * lib/trailIndexBuild.ts's per-release cache, while MapLibre has to tile
+ * trails.geojson again before the line is drawn. More taps or a longer
+ * wait would not have helped: once the A.T. is drawn, no tap there reaches
+ * the area.
+ * Ground a tap can reach the area through is scarce here: sampled every
+ * 4 px, about 28% of BOX at z13 is clear of every line's tap box and every
+ * waypoint.
+ *
+ * A later release can put a trail or a waypoint on this spot. If the drive
+ * fails saying another sheet opened, measure again against the release the
+ * build pins.
+ */
+const TAP = [-74.0174, 41.3099]
+
+/**
+ * How long the drive keeps tapping before it gives up. A ceiling, not the
+ * fix: the first version tapped for about 20 s and then waited 30 s more,
+ * and this is a little under the two together. Locally the drive reached
+ * the sheet 4 to 8 s after it began, reload included, on four runs (dev
+ * server with UA's data, 2026-10-07); nobody has timed it on a preview.
+ */
+const TAP_FOR_MS = 45_000
+
+/** A lon/lat as a point on the map canvas, at CAMERA. MapLibre's world is
+ *  512 px a tile, so at z13 a degree of longitude is 512 * 2^13 / 360 px,
+ *  and with no map padding the camera's centre is the canvas's centre. */
+function canvasPoint([lon, lat], box) {
+  const pxPerDegree = (512 * 2 ** CAMERA.zoom) / 360
+  const mercator = (degrees) =>
+    (Math.log(Math.tan(Math.PI / 4 + (degrees * Math.PI) / 360)) * 180) / Math.PI
+  return {
+    x: box.width / 2 + (lon - CAMERA.center[0]) * pxPerDegree,
+    y: box.height / 2 - (mercator(lat) - mercator(CAMERA.center[1])) * pxPerDegree,
+  }
+}
 
 /** conditions/hazard_areas.json, in the shape pub_conditions_hazard_areas
  *  writes: notices.json's own rows, the hazard ones only. */
@@ -125,31 +196,66 @@ export default async function drive(page) {
   await page.reload({ waitUntil: 'load' })
 
   await page.getByRole('tab', { name: 'Map' }).click()
-  const map = page.getByRole('region', { name: /trail map/i })
-  await map.waitFor()
 
-  // Tap inside the area, east of the summit, until its sheet opens: the
-  // area draws only once the hazard file, the rule behind import() and the
-  // trail it crosses are all on the phone, so the first taps may land
-  // before it is there. The sheet's own name is what proves it drew.
+  // The canvas, not the region around it: a click on the canvas locator is
+  // refused if any chrome covers the point, so a tap under a button fails
+  // here by name instead of reading as a missing sheet. On the 390x844 phone
+  // the canvas is 390x772 and TAP lands near (80, 326), clear of the header
+  // plate and the map buttons (dev server, 2026-10-07).
+  const canvas = page.locator('canvas.maplibregl-canvas').first()
+  await canvas.waitFor()
+  const box = await canvas.boundingBox()
+  if (box === null) throw new Error('the map canvas has no box to tap')
+  const position = canvasPoint(TAP, box)
+
+  // Tap until the area's sheet opens. The area draws only once the hazard
+  // file, the A.T.'s index and the two chunks behind import()
+  // (lib/noticeSelection.ts, map/hazardAreaTaps.ts) are all on the phone,
+  // and nothing on screen says when that is; the sheet's own name is the
+  // first proof the app gives. A tap on TAP before then opens nothing,
+  // because nothing else is drawn there (measured locally, 2026-10-07: 29
+  // taps over 45 s on a build with no data opened no sheet), so tapping
+  // early costs nothing and the drive does not depend on which part of the
+  // map draws first.
   const sheet = page.getByRole('dialog', { name: 'Hunting allowed' })
-  const box = await map.boundingBox()
-  if (box === null) throw new Error('the map region has no box to tap')
-  // MapLibre's world is 512 px a tile, so at z13 a degree of longitude is
-  // 512 * 2^13 / 360 px; the camera's centre is the region's centre.
-  const pxPerDegree = (512 * 2 ** CAMERA.zoom) / 360
-  const lat = (BOX.south + BOX.north) / 2
-  const mercator = (degrees) =>
-    Math.log(Math.tan(Math.PI / 4 + (degrees * Math.PI) / 360))
-  const x = box.x + box.width / 2 + (-74.0 - CAMERA.center[0]) * pxPerDegree
-  const y =
-    box.y +
-    box.height / 2 -
-    ((mercator(lat) - mercator(CAMERA.center[1])) * pxPerDegree * 180) / Math.PI
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    await page.mouse.click(x, y)
-    if (await sheet.isVisible()) break
-    await page.waitForTimeout(1000)
+  // Every sheet a map tap opens is a dialog (the A.T.'s is "Trail line",
+  // chrome/LineSheet.tsx). One that was not open before the taps means
+  // something now sits within a thumb of TAP, and more taps will not help.
+  const openDialogs = () =>
+    page
+      .getByRole('dialog')
+      .evaluateAll((found) =>
+        found.map(
+          (dialog) =>
+            dialog.getAttribute('aria-label') ?? (dialog.textContent ?? '').slice(0, 60),
+        ),
+      )
+  const openBefore = new Set(await openDialogs())
+  const deadline = Date.now() + TAP_FOR_MS
+  while (!(await sheet.isVisible())) {
+    const opened = (await openDialogs()).filter(
+      (name) => !openBefore.has(name) && name !== 'Hunting allowed',
+    )
+    if (opened.length > 0) {
+      throw new Error(
+        `a tap at ${TAP.join(', ')} opened "${opened.join('", "')}" and not the ` +
+          'hunting area: something is drawn there now, so measure TAP again',
+      )
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        `no "Hunting allowed" sheet after ${TAP_FOR_MS / 1000} s of taps at ` +
+          `${TAP.join(', ')}: the area did not draw, or nothing reaches it`,
+      )
+    }
+    try {
+      await canvas.click({ position, timeout: 5000 })
+    } catch (error) {
+      // The sheet opening over the point mid-click is the one refusal that
+      // means the drive has worked.
+      if (await sheet.isVisible()) break
+      throw error
+    }
+    await sheet.waitFor({ timeout: 1500 }).catch(() => undefined)
   }
-  await sheet.waitFor()
 }

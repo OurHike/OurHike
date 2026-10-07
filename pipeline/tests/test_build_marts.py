@@ -255,6 +255,26 @@ class _Recorder:
         return subprocess.CompletedProcess(argv, self.codes.get(len(self.calls), 0))
 
 
+def _answer_retries(recorder, retry_codes: list[int] | None = None):
+    """subprocess.run as `recorder` answers it, with every `dbt retry` (build_marts.py's docstring, "A FAILED dbt
+    BUILD IS RETRIED") answered apart: from `retry_codes` in turn, else as the build before it ended, leaving its
+    run_results.json as it was, which is a failure that is not chance. The retries are kept in `recorder.retries`, so
+    `recorder.calls` stays the commands the plan holds."""
+    recorder.retries = []
+    codes = list(retry_codes or [])
+    last = {"code": 0}
+
+    def answer(argv, *, cwd, env, check):
+        if tuple(argv[1:2]) == ("retry",):
+            recorder.retries.append(tuple(argv))
+            return subprocess.CompletedProcess(argv, codes.pop(0) if codes else last["code"])
+        completed = recorder(argv, cwd=cwd, env=env, check=check)
+        last["code"] = completed.returncode
+        return completed
+
+    return answer
+
+
 def _main(
     monkeypatch,
     tmp_path,
@@ -268,7 +288,7 @@ def _main(
     monkeypatch.setattr(build_marts, "MANIFEST_PATH", tmp_path / "manifest.json")
     # So no dbt run's results but a test's own are ever read (the repository's target/ may hold a real build's).
     monkeypatch.setattr(build_marts, "RUN_RESULTS_PATH", tmp_path / "run_results.json")
-    monkeypatch.setattr(build_marts.subprocess, "run", recorder)
+    monkeypatch.setattr(build_marts.subprocess, "run", _answer_retries(recorder))
     # So built_by() asks git nothing: the recorder stands in for every subprocess.run.
     monkeypatch.setenv("OURHIKE_BUILT_BY", "abc123 run 7.1")
     code = build_marts.main(
@@ -327,6 +347,100 @@ def test_main_stops_at_the_first_command_that_fails_and_answers_with_its_exit_co
     assert code == 2
     assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed"), ("dbt", "build")]
     assert not [argv for argv, _, _ in recorder.calls if argv[2:3] == ("save",)], "a failed build never saves"
+
+
+# --- A failed dbt build is retried (build_marts.py's docstring, "A FAILED dbt BUILD IS RETRIED") ---
+
+
+def _retrying_main(monkeypatch, tmp_path, retry_codes, extra=()):
+    """_main() with stage A's build (the third command) failing, and its `dbt retry`s answered from `retry_codes`."""
+    recorder = _Recorder({3: 1})
+    original = _answer_retries
+    monkeypatch.setattr(sys.modules[__name__], "_answer_retries", lambda each: original(each, retry_codes))
+    return _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), extra=extra, recorder=recorder)
+
+
+def test_a_failed_dbt_build_is_retried_at_one_thread_and_the_build_carries_on_once_a_retry_passes(monkeypatch, tmp_path, capsys):
+    """Monthly run 26 (refresh-reference.yml 37649648453) failed on a node run 25 had built, twice: the maintainer's
+    answer was dbt's own `retry`, up to 3 times."""
+    code, recorder = _retrying_main(monkeypatch, tmp_path, [1, 0])
+
+    assert code == 0
+    assert recorder.retries == [("dbt", "retry", "--profiles-dir", ".", "--threads", "1")] * 2
+    assert [argv[:2] for argv, _, _ in recorder.calls][2] == ("dbt", "build")
+    assert any(argv[2:3] == ("save",) for argv, _, _ in recorder.calls), "the build went on to the writers and the save"
+    out = capsys.readouterr().out
+    assert "dbt retry 1/3" in out and "dbt retry 2/3" in out and "passed on retry 2" in out
+
+
+def test_a_dbt_build_still_failing_after_three_retries_stops_the_build(monkeypatch, tmp_path):
+    code, recorder = _retrying_main(monkeypatch, tmp_path, [1, 1, 1, 0])
+
+    assert code == 1
+    assert len(recorder.retries) == build_marts.DBT_RETRIES == 3
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed"), ("dbt", "build")]
+
+
+def test_a_failed_python_step_or_seed_is_never_retried(monkeypatch, tmp_path):
+    for codes in ({1: 1}, {2: 1}):
+        recorder = _Recorder(codes)
+        code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
+        assert code != 0 and recorder.retries == [], codes
+
+
+def test_the_hourly_lane_never_retries_a_failed_build(monkeypatch, tmp_path):
+    """Its build has publish-conditions.yml's 6 minutes, and one source's own failure there is held instead."""
+    recorder = _Recorder({3: 1})
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), extra=("--lane", "hourly"), recorder=recorder)
+
+    assert code == 1
+    assert recorder.retries == []
+
+
+def test_after_a_retry_run_results_hold_every_node_the_build_ran_with_its_last_result(monkeypatch, tmp_path):
+    """A retry's own run_results.json holds only the nodes it retried, so a test that warned and holds a source in
+    the first attempt would otherwise be lost once a retry passed."""
+    results = tmp_path / "run_results.json"
+    results.write_text(
+        json.dumps(
+            {
+                "metadata": {"invocation_id": "first"},
+                "results": [
+                    {"unique_id": "model.ourhike.a", "status": "success"},
+                    {"unique_id": "test.ourhike.holds", "status": "warn"},
+                    {"unique_id": "model.ourhike.oom", "status": "error"},
+                    {"unique_id": "model.ourhike.below", "status": "skipped"},
+                ],
+            }
+        )
+    )
+
+    def retry(argv, *, cwd, env, check):
+        results.write_text(
+            json.dumps(
+                {
+                    "metadata": {"invocation_id": "retry"},
+                    "results": [
+                        {"unique_id": "model.ourhike.oom", "status": "success"},
+                        {"unique_id": "model.ourhike.below", "status": "success"},
+                    ],
+                }
+            )
+        )
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(build_marts.subprocess, "run", retry)
+    run = build_marts.Run("stage A", ("dbt", "build", "--profiles-dir", "."), build_marts.DBT_DIR)
+    completed = build_marts.retry_failed_build(run, {}, subprocess.CompletedProcess(run.argv, 1), results)
+
+    assert completed.returncode == 0
+    merged = json.loads(results.read_text())
+    assert {each["unique_id"]: each["status"] for each in merged["results"]} == {
+        "model.ourhike.a": "success",
+        "test.ourhike.holds": "warn",
+        "model.ourhike.oom": "success",
+        "model.ourhike.below": "success",
+    }
 
 
 def test_main_refuses_after_the_seeds_when_a_derived_source_has_no_step(monkeypatch, tmp_path, capsys):

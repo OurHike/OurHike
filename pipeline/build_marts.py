@@ -116,6 +116,32 @@ writer added later is covered without anybody tagging it. The hourly lane
 keeps --threads: it writes only the files an hourly or daily source reaches,
 none of the four, inside publish-conditions.yml's 6 minutes.
 
+A FAILED dbt BUILD IS RETRIED, up to DBT_RETRIES (3) times, in every lane but
+the hourly one: `dbt retry --threads 1` after the build, then after each retry
+that fails, until one exits 0 (the maintainer, 2026-10-07, on monthly run 26:
+"I would expect the run to execute that if there is a failure up to 3 times",
+pointing at dbt's `retry` command). Run 26's build job failed twice on nodes
+that run 25 had built: attempt 1 on int_places__resolved ("Invalid unicode
+(byte sequence mismatch) detected in segment statistics update"), which built
+in 3 m 18 s on attempt 2; attempt 2 out of DuckDB's 12.4 GiB with
+assert_every_elevation_sample_was_read_at_its_own_point,
+int_elevation__edge_samples and int_elevation__profile building side by side,
+as run 25 had built all three (refresh-reference.yml 37649648453 and
+37614075245, their logs, 2026-10-07). Measured on dbt 2.0.6 in a scratch
+project the same day: a retry builds only the nodes that failed and the ones
+they skipped, keeps the build's `-s` and `--exclude` (an excluded model stayed
+unbuilt), exits 1 while one still fails and 0 once all pass, and exits 1 when
+there is nothing left to retry, so a retry never follows a pass. One thread,
+because both of run 26's failures were one node beside others. Each retry
+leaves run_results.json holding only its own nodes, so retry_failed_build()
+writes back every node the build ran with its last attempt's result: a test
+that warned and holds a source in the first attempt still holds it after a
+retry passes. A failure that is not chance, a SQL error, costs three more runs
+of its failed nodes and what they skipped, at one thread; what that costs a
+monthly run is @unvalidated, settled by the step times of the first run that
+retries one. Not the hourly lane: its build has publish-conditions.yml's 6
+minutes, and a source's own failure there is held instead (below).
+
 NOT dbt's `selectors.yml` (ELT.md's shape): dbt documents `--selector` as not
 combinable with `-s` or `--exclude`, which every invocation here carries, so a
 selector file would need one selector per invocation per lane. A lane is one
@@ -268,6 +294,9 @@ LANE_EXCLUDES = tuple(f"config.meta.cadence:{cadence}+" for cadence in FASTER_TH
 #: --indirect-selection cautious` selected 30 models and seeds, 11 sources and
 #: the 4 pub_conditions_* writers.
 LANE_PARENTS = tuple(f"+config.meta.cadence:{cadence}" for cadence in FASTER_THAN_MONTHLY)
+#: How many times a failed `dbt build` outside the hourly lane is retried with `dbt retry` (the module docstring, "A
+#: FAILED dbt BUILD IS RETRIED"): the maintainer's 3.
+DBT_RETRIES = 3
 #: The tag of a model that builds with no other model beside it (the module docstring, "A MODEL TAGGED
 #: `builds_alone`"), set in the model's own config().
 BUILDS_ALONE = "builds_alone"
@@ -960,6 +989,50 @@ def failed_test_rows(
     return lines
 
 
+def _run_results_document(path: Path) -> dict | None:
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return document if isinstance(document, dict) and isinstance(document.get("results"), list) else None
+
+
+def retry_argv(run: Run) -> tuple[str, ...]:
+    """`dbt retry` for the failed `dbt build` `run`: its failed nodes and the ones they skipped, at one thread, with the
+    build's own profiles (the module docstring, "A FAILED dbt BUILD IS RETRIED")."""
+    profiles = run.argv[run.argv.index("--profiles-dir") + 1] if "--profiles-dir" in run.argv else "."
+    return (run.argv[0], "retry", "--profiles-dir", profiles, "--threads", "1")
+
+
+def retry_failed_build(
+    run: Run, env: dict, completed: subprocess.CompletedProcess, results_path: Path | None = None
+) -> subprocess.CompletedProcess:
+    """`dbt retry` after the failed `dbt build` `run`, up to DBT_RETRIES times, until one exits 0; the last attempt's
+    process. Then run_results.json holds every node the build ran, each with its last attempt's result, because a
+    retry's own file holds only the nodes it retried."""
+    path = results_path or RUN_RESULTS_PATH
+    first = _run_results_document(path)
+    attempts = []
+    for attempt in range(1, DBT_RETRIES + 1):
+        print(
+            f"-- build_marts: {run.label} failed (exit {completed.returncode}); dbt retry {attempt}/{DBT_RETRIES} at one "
+            "thread, of the nodes that failed and the ones they skipped",
+            flush=True,
+        )
+        completed = subprocess.run(retry_argv(run), cwd=run.cwd, env=env, check=False)
+        if (retried := _run_results_document(path)) is not None:
+            attempts.append(retried)
+        if completed.returncode == 0:
+            print(f"-- build_marts: {run.label} passed on retry {attempt}", flush=True)
+            break
+    if first is not None and attempts:
+        latest = {result.get("unique_id"): result for result in first["results"]}
+        for retried in attempts:
+            latest.update({result.get("unique_id"): result for result in retried["results"]})
+        path.write_text(json.dumps({**first, "results": list(latest.values())}), encoding="utf-8")
+    return completed
+
+
 def read_run_results(since: float, results_path: Path | None = None) -> list[dict] | None:
     """The results in run_results.json, or None when it is missing, unreadable or older than `since` (an earlier run's;
     failed_test_rows() says what main() passes)."""
@@ -1344,6 +1417,8 @@ def main(argv: list[str] | None = None) -> int:
         started = time.time()
         results_since = float("-inf") if run.cwd == DBT_DIR else started
         completed = subprocess.run(run.argv, cwd=run.cwd, env=env, check=False)
+        if completed.returncode != 0 and run.argv[1:2] == ("build",) and run.cwd == DBT_DIR and args.lane != HOURLY:
+            completed = retry_failed_build(run, env, completed)
         if completed.returncode != 0 and run.stage in (STAGE_A, WRITERS) and completed.returncode not in PUBLISHABLE_EXITS:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
             for line in failed_test_rows(paths.warehouse, results_since):

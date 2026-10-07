@@ -39,15 +39,18 @@ import pytest
 import shapely
 import yaml
 from dlt.common.normalizers.naming.sql_ci_v1 import NamingConvention
+from pyproj import Geod
 
 import export_nearby_trails
 import export_trails
 import parity
 from lib import blaze
-from lib.batch_geometry import reproject
+from lib.batch_geometry import from_wkt_all, reproject
 from lib.completeness import count_problems
 from lib.duplicates import DUPLICATE_MIN_SHARE, DUPLICATE_TOLERANCE_M
 from lib.feature_id import resolve_feature_id
+from tests.conftest import spatial_connection
+from tests.test_dbt_trail_network_parity import _geodesic_length_sql
 
 DBT = Path(__file__).parent.parent / "dbt"
 NETWORK_YML = DBT / "models" / "intermediate" / "trail_lines" / "_trail_lines__network.yml"
@@ -578,6 +581,47 @@ def test_the_six_decimal_cut_is_rounded_geometry_and_the_order_is_registry_then_
         cut = export_nearby_trails._rounded_geometry(shapely.from_wkt(row["geom_wkt"]))
         assert want["geom_geojson"] == json.dumps(cut, separators=(",", ":")), row["trail_line_id"]
         assert want["feature_order"] == order[row["trail_line_id"]], row["trail_line_id"]
+
+
+GEODESIC = "int_trail_lines__network_published_measures_both_lengths_on_the_wgs84_ellipsoid"
+
+
+def test_length_miles_and_published_length_m_are_both_pyprojs_wgs84_geodesic():
+    """Decision 97: on that unit test's rows, records_to_geojson()'s `length_miles` is the expected
+    published_length_m in miles at 2 decimals, as pub_nearby_trails rounds it, and the expected metres are pyproj's
+    Geod(ellps='WGS84') length, records_to_geojson()'s and macros/geodesic_length_m.sql's, each to a micrometre.
+    dbt holds the model to the expected metres only to 0.05 m (a 2.0.6 unit test compares a double at one decimal);
+    the macro here is applied as the model applies it, to the lon/lat line projected to EPSG:5070."""
+    test = _unit_test(GEODESIC)
+    rows = _rows(test, "int_trail_lines__network_navigation")
+    expected = {row["trail_line_id"]: row for row in test["expect"]["rows"]}
+    records = [
+        {
+            "id": row["trail_line_id"],
+            "source": row["source_key"],
+            "name": row["name"],
+            "blaze_color": row["blaze_color"],
+            "wkt": row["geom_wkt"],
+        }
+        for row in rows
+    ]
+    features = export_nearby_trails.records_to_geojson(records)["features"]
+    for row, feature in zip(rows, features, strict=True):
+        want = expected[row["trail_line_id"]]
+        assert want["published_length_m"] == want["length_m"], "the line is not simplified, so the two lengths agree"
+        miles = round(want["published_length_m"] / export_nearby_trails.METERS_PER_MILE, 2)
+        assert feature["properties"]["length_miles"] == miles, row["trail_segment_key"]
+
+    geod = Geod(ellps="WGS84")
+    con = spatial_connection()
+    measured = _geodesic_length_sql("st_transform(st_geomfromtext(?), 'EPSG:4326', 'EPSG:5070', always_xy := true)")
+    python_miles = export_nearby_trails._geodesic_miles_all(from_wkt_all([row["geom_wkt"] for row in rows]))
+    for row, miles in zip(rows, python_miles, strict=True):
+        pyproj_m = geod.geometry_length(shapely.from_wkt(row["geom_wkt"]))
+        (sql_m,) = con.execute(f"select {measured}", [row["geom_wkt"]]).fetchone()
+        assert expected[row["trail_line_id"]]["published_length_m"] == pytest.approx(pyproj_m, abs=1e-6)
+        assert sql_m == pytest.approx(pyproj_m, abs=1e-6), row["trail_segment_key"]
+        assert miles * export_nearby_trails.METERS_PER_MILE == pytest.approx(pyproj_m, abs=1e-6), row["trail_segment_key"]
 
 
 # --- the overview sketch (TL12, TL20, TL21) ------------------------------------------

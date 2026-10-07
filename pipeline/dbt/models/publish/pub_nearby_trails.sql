@@ -15,9 +15,10 @@
 -- THE PROPERTIES, records_to_geojson()'s:
 -- - `id`, `source`, `name` (null where nothing names the line, never left
 --   out), `blaze_color`, `trail_status`;
--- - `length_miles`, the 1 m line's own length in EPSG:5070 miles
---   (`published_length_m`), rounded to 2 decimals as Python's round() does
---   (the printf cast, which the published model's header measures);
+-- - `length_miles`, the 1 m line's own length in miles on the WGS84
+--   ellipsoid (`published_length_m`, decision 97), rounded to 2 decimals as
+--   Python's round() does (the printf cast, which the published model's
+--   header measures);
 -- - `closure_kind` only on a closed line; `closure_reason` and
 --   `closure_source` only on a section inside one of NYS Parks' closed areas
 --   (int_trail_lines__network_area_closures: the area's reason verbatim, and

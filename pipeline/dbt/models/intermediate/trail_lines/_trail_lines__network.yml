@@ -553,12 +553,12 @@ models:
         constraints:
           - type: not_null
       - name: length_m
-        description: The line's length in EPSG:5070 metres as its steward published it, before the 1 m pass (decision 8).
+        description: The line's length in metres on the WGS84 ellipsoid (decision 97) as its steward published it, before the 1 m pass (decision 8).
         data_type: double
         constraints:
           - type: not_null
       - name: published_length_m
-        description: The 1 m line's length in EPSG:5070 metres, before the six-decimal cut; `length_miles` is rounded from it.
+        description: The 1 m line's length in metres on the WGS84 ellipsoid (decision 97), before the six-decimal cut; `length_miles` is rounded from it.
         data_type: double
         constraints:
           - type: not_null
@@ -1306,6 +1306,32 @@ unit_tests:
         - {"trail_line_id": "oprhp_trails:8", "line_kind": "network", "feature_order": 8, "geom_geojson": "{\"type\":\"LineString\",\"coordinates\":[[-74.007812,41.015625],[-74.0,41.0]]}"}
         - {"trail_line_id": "dec_hiking_trails:9", "line_kind": "network", "feature_order": 0, "geom_geojson": "{\"type\":\"LineString\",\"coordinates\":[[-74.5,42.0],[-74.4,42.1]]}"}
         - {"trail_line_id": "nynjtc_long_path:generated-0", "line_kind": "network", "feature_order": 9, "geom_geojson": "{\"type\":\"LineString\",\"coordinates\":[[-74.6,42.0],[-74.5,42.1]]}"}
+  - name: int_trail_lines__network_published_measures_both_lengths_on_the_wgs84_ellipsoid
+    description: >
+      Decision 97 (the maintainer's poll of 2026-10-06): a network line's
+      length_m and published_length_m, which nearby_trails.geojson's
+      `length_miles` is rounded from, are its length on the WGS84 ellipsoid
+      (macros/geodesic_length_m.sql), as decision 90 measures the graph's
+      edges. One row per case of
+      tests/test_export_nearby_trails.py's
+      test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length:
+      five miles due north (8,046.72 m) at Anchorage, at Harriman, and in two
+      parts at Anchorage, which EPSG:5070 read 7,140.0 m, 8,111.0 m and
+      7,140.0 m. dbt compares a double to one decimal, so
+      tests/test_dbt_trail_lines_network_parity.py holds the expected metres
+      to pyproj's and to records_to_geojson()'s within a micrometre.
+    model: int_trail_lines__network_published
+    given:
+      - input: ref('int_trail_lines__network_navigation')
+        rows:
+          - {"trail_segment_key": "test_export_nearby_trails::test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length[at Anchorage, Alaska]", "source_key": "oprhp_trails", "club": "fixture", "file_row": 3, "trail_line_id": "oprhp_trails:1", "name": null, "trail_status": "open", "trail_status_basis": "default_without_status_column", "blaze_color": "Unknown", "full_resolution_wkt": "LINESTRING (-149.9 61.2, -149.9 61.27221126419307)", "geom_wkt": "LINESTRING (-149.9 61.2, -149.9 61.27221126419307)", "kept_full_resolution": false}
+          - {"trail_segment_key": "test_export_nearby_trails::test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length[at Harriman, New York]", "source_key": "oprhp_trails", "club": "fixture", "file_row": 3, "trail_line_id": "oprhp_trails:2", "name": null, "trail_status": "open", "trail_status_basis": "default_without_status_column", "blaze_color": "Unknown", "full_resolution_wkt": "LINESTRING (-74.1 41.25, -74.1 41.32245417114151)", "geom_wkt": "LINESTRING (-74.1 41.25, -74.1 41.32245417114151)", "kept_full_resolution": false}
+          - {"trail_segment_key": "test_export_nearby_trails::test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length[in two parts at Anchorage, Alaska]", "source_key": "oprhp_trails", "club": "fixture", "file_row": 3, "trail_line_id": "oprhp_trails:3", "name": null, "trail_status": "open", "trail_status_basis": "default_without_status_column", "blaze_color": "Unknown", "full_resolution_wkt": "MULTILINESTRING ((-149.9 61.2, -149.9 61.23610572896938), (-148.9 61.23610572896938, -148.9 61.27221126419307))", "geom_wkt": "MULTILINESTRING ((-149.9 61.2, -149.9 61.23610572896938), (-148.9 61.23610572896938, -148.9 61.27221126419307))", "kept_full_resolution": false}
+    expect:
+      rows:
+        - {"trail_line_id": "oprhp_trails:1", "length_m": 8046.72, "published_length_m": 8046.72}
+        - {"trail_line_id": "oprhp_trails:2", "length_m": 8046.72, "published_length_m": 8046.72}
+        - {"trail_line_id": "oprhp_trails:3", "length_m": 8046.72, "published_length_m": 8046.72}
   - name: int_trail_lines__network_overview_routes_answers_what_through_routes_answers
     description: >
       One run of rows per pytest case of the through-route rule (#1307,

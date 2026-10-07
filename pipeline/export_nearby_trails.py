@@ -220,6 +220,7 @@ from shapely.geometry import MultiLineString, shape
 from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
 
+from build_trail_graph import _geodesic_lengths
 from export_trails import (
     _TO_METRIC,
     OVERVIEW_SIMPLIFY_TOLERANCE_M,
@@ -501,6 +502,40 @@ def _miles_all(geoms: np.ndarray) -> list[float]:
     return (shapely.length(reproject(geoms, _TO_METRIC)) / METERS_PER_MILE).tolist()
 
 
+def _geodesic_miles_all(geoms: np.ndarray) -> list[float]:
+    """Each parsed lon/lat geometry's length in miles on the WGS84 ellipsoid:
+    the `length_miles` a published line carries (decision 97, the
+    maintainer's poll of 2026-10-06, as decision 90 measures the graph's
+    edges).
+
+    Not `_miles_all`, whose EPSG:5070 is equal-area for the lower 48 only and
+    whose metre is not the ground's: five miles due north read 4.44 miles at
+    Anchorage and 5.04 at Harriman (measured 2026-10-06 with pyproj). The
+    through-route threshold and the merges above still read `_miles_all`, so
+    which lines are named does not move with this.
+
+    build_trail_graph._geodesic_lengths sums pyproj's segment geodesics, one
+    array call for every part at once; a MultiLineString's parts are summed
+    and the jump between two parts is no part of the trail. A part of fewer
+    than two vertices has no length, and is left out before that call, which
+    reads each part's vertex count less one as its segments.
+    int_trail_lines__network_published measures the same length with
+    macros/geodesic_length_m.sql; tests/test_dbt_trail_lines_network_parity.py
+    holds the two, and pyproj's own Geod.geometry_length, to a micrometre.
+
+    What it costs over `_miles_all`, measured 2026-10-07 on UA's published
+    nearby_trails.geojson (329,446 lines, 17,228,035 vertices), one process
+    each in a shared 4-core sandbox: 10.9 s and a peak 1,149 MiB above its
+    input, against 6.7 s and 871 MiB."""
+    parts, owner = shapely.get_parts(geoms, return_index=True)
+    counts = shapely.get_num_coordinates(parts)
+    measured = counts >= 2
+    parts, owner, counts = parts[measured], owner[measured], counts[measured]
+    coordinates = shapely.get_coordinates(parts)
+    lengths = _geodesic_lengths(coordinates[:, 0], coordinates[:, 1], counts.tolist())
+    return (np.bincount(owner, weights=lengths, minlength=len(geoms)) / METERS_PER_MILE).tolist()
+
+
 # How close two rows must come to count as the same tread, in EPSG:5070
 # metres like every other distance here.
 #
@@ -701,10 +736,12 @@ def _above_the_seam_floor(records: list[dict]) -> list[dict]:
     answer this - `_through_routes` decides it and leaves the answer on each
     record under `_THROUGH_ROUTE_KEY`.
 
-    In EPSG:5070 metres, like every other distance this export takes, which is
-    equal-area rather than conformal - so a "pixel" here is a few percent off
-    a screen pixel across CONUS. Consistency with `simplify_records`' own
-    tolerance is worth more than that, since the two are compared.
+    In EPSG:5070 metres, like every other distance this export decides on
+    (only the published `length_miles` is measured on the WGS84 ellipsoid,
+    decision 97), which is equal-area rather than conformal - so a "pixel"
+    here is a few percent off a screen pixel across CONUS. Consistency with
+    `simplify_records`' own tolerance is worth more than that, since the two
+    are compared.
     """
     if not records:
         return []
@@ -1462,7 +1499,7 @@ def records_to_geojson(records: list[dict]) -> dict:
     at the precision NEARBY_COORDINATE_DECIMALS caps."""
     geoms = from_wkt_all([record["wkt"] for record in records])
     features = []
-    for record, length_miles, geometry in zip(records, _miles_all(geoms), _rounded_geometries(geoms)):
+    for record, length_miles, geometry in zip(records, _geodesic_miles_all(geoms), _rounded_geometries(geoms)):
         features.append(
             {
                 "type": "Feature",
@@ -1492,11 +1529,21 @@ def records_to_geojson(records: list[dict]) -> dict:
                     # NOT the steward's claim, so nothing downstream may
                     # present it as one.
                     #
-                    # `_miles` is export_trails.py's EPSG:5070 transform, the
-                    # one this file already names a trail and merges a
-                    # duplicate on either side of - one way of measuring
-                    # distance, not a second. `_miles_all` is it for every
-                    # record at once.
+                    # MEASURED ON THE WGS84 ELLIPSOID (_geodesic_miles_all;
+                    # decision 97, the maintainer's poll of 2026-10-06), as the
+                    # graph's edges are since decision 90, so the edges
+                    # lineClimb sums and the line they are held against are
+                    # one measure. It was export_trails.py's EPSG:5070 length
+                    # (`_miles`) until then, which read five miles due north
+                    # as 4.44 at Anchorage (measured 2026-10-06 with pyproj)
+                    # where the edges read 5.00. Against lineClimb's 8%
+                    # COVERAGE_TOLERANCE, a phone there holding nine tenths of
+                    # a north-south trail would print its climb as the whole
+                    # trail's, and one holding all of an east-west trail,
+                    # whose kilometre EPSG:5070 reads as 1,126.4 m there
+                    # (decision 90's measured scale), would be told it holds
+                    # part (Reasoned from those figures). A trail is still
+                    # named and merged on `_miles`.
                     "length_miles": round(length_miles, 2),
                     # Every record this export builds carries a status. A
                     # shared-ground pair's A.T. half (#1384) carries none,

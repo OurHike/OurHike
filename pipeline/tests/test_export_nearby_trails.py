@@ -192,9 +192,11 @@ def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None, centerli
 def test_publishes_the_six_properties_the_client_draws_from(tmp_path, monkeypatch):
     """`length_miles` is the sixth, added by #1516 so a phone can tell a whole
     trail from part of one. It is asserted separately from the exact-equality
-    check below because its value is EPSG:5070's rather than this writer's, and
-    pinning the literal would turn a test of what gets published into a test of
-    the projection."""
+    check below because its value is the WGS84 ellipsoid's rather than this
+    writer's (decision 97), and pinning the literal would turn a test of what
+    gets published into a test of the geodesic.
+    test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length pins
+    the measure."""
     _, body = _run(
         tmp_path,
         monkeypatch,
@@ -1803,8 +1805,8 @@ def test_every_feature_carries_its_own_length_so_a_phone_can_tell_partial_from_w
     from a steward's stated mileage, which is both why it is the right number
     for a coverage check - it describes the same clipped line the phone holds
     edges of - and why nothing may present it as the steward's claim."""
-    # A degenerate one-point line alongside a real one: `_miles` returns 0.0
-    # for it, and 0 is the value lineClimb treats as "nothing to compare
+    # A degenerate one-point line alongside a real one: it measures 0.0,
+    # and 0 is the value lineClimb treats as "nothing to compare
     # against" rather than as a zero-length trail.
     geojson = ex.records_to_geojson(
         [
@@ -1834,14 +1836,46 @@ def test_every_feature_carries_its_own_length_so_a_phone_can_tell_partial_from_w
     assert "length_miles" in degenerate
 
     # 0.1 degree of latitude is about 6.9 miles. Asserted as a range rather
-    # than a literal because the exact figure is EPSG:5070's, and pinning it
-    # would make this a test of the projection rather than of the writer.
+    # than a literal because the exact figure is the WGS84 geodesic's, which
+    # test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length
+    # pins, and pinning it here would make this a test of the measure rather
+    # than of the writer.
     assert 6.5 < real["length_miles"] < 7.5
     assert degenerate["length_miles"] == 0.0
 
     # Two decimals, matching what the client reads and never more precision
     # than the clipped geometry earns.
     assert real["length_miles"] == round(real["length_miles"], 2)
+
+
+# Five miles due north on the WGS84 ellipsoid, each end placed with pyproj's
+# Geod(ellps="WGS84").fwd at azimuth 0, which leaves the longitude unchanged.
+# EPSG:5070 reads the Anchorage line 4.44 miles and the Harriman one 5.04
+# (measured 2026-10-06 with pyproj). The two-part line is the Anchorage one in
+# two halves of 2.5 miles, the second moved a degree east: the jump between
+# the parts is no part of the trail.
+FIVE_MILES_NORTH = {
+    "at Anchorage, Alaska": ("LINESTRING (-149.9 61.2, -149.9 61.27221126419307)", 4.44),
+    "at Harriman, New York": ("LINESTRING (-74.1 41.25, -74.1 41.32245417114151)", 5.04),
+    "in two parts at Anchorage, Alaska": (
+        "MULTILINESTRING ((-149.9 61.2, -149.9 61.23610572896938), (-148.9 61.23610572896938, -148.9 61.27221126419307))",
+        4.44,
+    ),
+}
+
+
+@pytest.mark.parametrize(("wkt", "conus_albers_miles"), FIVE_MILES_NORTH.values(), ids=FIVE_MILES_NORTH.keys())
+def test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length(wkt, conus_albers_miles):
+    """Decision 97 (the maintainer, 2026-10-06): `length_miles` is measured on the WGS84 ellipsoid, as decision 90
+    measures the graph's edges. EPSG:5070 is equal-area for the lower 48 only and its metre is not the ground's, so
+    `length_miles` read `conus_albers_miles` here before. The line sheet prints it, and lineClimb compares it with
+    the graph edges' geodesic metres to tell a whole trail from part of one."""
+    geojson = ex.records_to_geojson(
+        [{"id": "north", "source": "oprhp_trails", "name": "Five miles north", "blaze_color": "Red", "wkt": wkt}]
+    )
+
+    (feature,) = geojson["features"]
+    assert feature["properties"]["length_miles"] == 5.0, f"EPSG:5070 reads {conus_albers_miles}"
 
 
 # --- The boundary a reviewed list is about (#1533) -------------------------

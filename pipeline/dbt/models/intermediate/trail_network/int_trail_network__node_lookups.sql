@@ -29,14 +29,12 @@
 --
 -- The rounds run in two parts. The first trail_network_node_rounds (8)
 -- run over every point, each a join of the whole network. The rest run
--- over only the points those left unsettled, and their neighbours, until
--- a round settles none, as DuckDB's `with recursive ... using key`
--- (macros/using_key.sql, which also says why the clause is a macro): one
--- row per point, each round reading every status through
--- `recurring.settled_tail` and asking only the unsettled points next to
--- one the round before settled. They always finish: the lowest unsettled
--- point's earlier neighbours are all settled, and the round after its last
--- one settled asks it.
+-- over only the points those left unsettled and their neighbours,
+-- `tail_rounds`, a recursive CTE whose every round carries that small set's
+-- whole state and how many of it are still open; the round after the first
+-- with none open is empty, which ends it. It always ends: the lowest
+-- unsettled point's earlier neighbours are all settled, so every round
+-- settles at least that one.
 --
 -- The rest used not to exist. Monthly run 24 (refresh-reference.yml
 -- 37459433469, 2026-10-06) built 3,556,603 pieces, 373 of whose points
@@ -48,13 +46,17 @@
 -- near-coincident lines crossing every few decimetres would make such a
 -- row (Reasoned, not traced). `node_raw` keeps its `not_null` as a guard.
 --
--- Why not every round as the recursion: each of its rounds reads the
--- whole table, so on a synthetic network of the real one's size (3,718,000
--- pieces, 300 rows of 60 ends 0.3 m apart; DuckDB 1.5.5, 4 threads,
--- measured 2026-10-07 in the sandbox) it ran past 5 minutes and was
--- stopped, where 8 rounds over everything took 33.6 s and left 15,300
--- points. The two parts took 54.9 s, settled every point, and gave
--- build_trail_graph._node_id()'s answer on all 7,436,000.
+-- Why not every round as a recursion over the whole network: DuckDB's
+-- `with recursive ... using key` can keep one row per point, but each of
+-- its rounds then reads the whole table, and on a synthetic network of the
+-- real one's size (3,718,000 pieces, 300 rows of 60 ends 0.3 m apart;
+-- DuckDB 1.5.5, 4 threads, measured 2026-10-07 in the sandbox) it ran past
+-- 5 minutes and was stopped, where 8 rounds over everything took 33.6 s and
+-- left 15,300 points. `using key` is also a clause dbt 2.0.6's `dbt lint`
+-- refuses as a syntax error, and SQLFluff 4.3.0 cannot parse it, so the
+-- tail is plain `with recursive`. On the same synthetic network the two
+-- parts took 41.0 s and settled every one of the 7,436,000 points, each
+-- with build_trail_graph._node_id()'s answer.
 --
 -- `node_raw` is the node's number in _node_id()'s `points`, before the
 -- welds merge any (int_trail_network__raw_edges). A weld's point that makes
@@ -229,41 +231,85 @@ tail_neighbours as materialized (
     where own.status is null
 ),
 
-tail_points as materialized (
-    select seq from tail_neighbours
-    union
-    select near_seq as seq from tail_neighbours
+-- Which rows of a round each tail point reads: its own, and each
+-- neighbour's.
+tail_reads as materialized (
+    select distinct
+        tail_point.seq,
+        tail_point.seq as read_seq,
+        true as is_own
+    from (
+        select seq from tail_neighbours
+        union distinct
+        select near_seq as seq from tail_neighbours
+    ) as tail_point
+    union all
+    select
+        tail_neighbours.seq,
+        tail_neighbours.near_seq as read_seq,
+        false as is_own
+    from tail_neighbours
 ),
 
--- The rest of the rounds, on those points alone, until a round settles
--- none.
-settled_tail (seq, status){{ using_key('seq') }} as (
+-- The rest of the rounds, on those points alone. Each round is every tail
+-- point's status, with how many are still open; the round after the first
+-- with none open is empty, which ends the recursion.
+tail_rounds as (
     select
+        0 as tail_round,
         after_rounds.seq,
-        after_rounds.status
+        after_rounds.status,
+        sum(case when after_rounds.status is null then 1 else 0 end) over ()
+            as still_open
     from status_{{ rounds }} as after_rounds
-    inner join tail_points on after_rounds.seq = tail_points.seq
-    union
+    where after_rounds.seq in (select tail_reads.seq from tail_reads)
+    union all
     select
-        asked.seq,
-        case
-            when bool_or(near.status = 'makes') then 'finds'
-            else 'makes'
-        end as status
+        next_round.tail_round,
+        next_round.seq,
+        next_round.status,
+        sum(case when next_round.status is null then 1 else 0 end) over ()
+            as still_open
     from (
-        select distinct reached.seq
-        from settled_tail as last_round
-        inner join tail_neighbours as reached
-            on last_round.seq = reached.near_seq
-        where last_round.status is not null
-    ) as asked
-    inner join recurring.settled_tail as own
-        on asked.seq = own.seq and own.status is null
-    inner join tail_neighbours on asked.seq = tail_neighbours.seq
-    inner join recurring.settled_tail as near
-        on tail_neighbours.near_seq = near.seq
-    group by asked.seq
-    having bool_or(near.status = 'makes') or bool_and(near.status is not null)
+        select
+            tail_reads.seq,
+            max(last_round.tail_round) + 1 as tail_round,
+            coalesce(
+                max(case when tail_reads.is_own then last_round.status end),
+                case
+                    when
+                        bool_or(
+                            case
+                                when not tail_reads.is_own
+                                    then last_round.status = 'makes'
+                            end
+                        )
+                        then 'finds'
+                    when
+                        bool_and(
+                            case
+                                when not tail_reads.is_own
+                                    then last_round.status is not null
+                            end
+                        )
+                        then 'makes'
+                end
+            ) as status
+        from tail_rounds as last_round
+        inner join tail_reads on last_round.seq = tail_reads.read_seq
+        where last_round.still_open > 0
+        group by tail_reads.seq
+    ) as next_round
+),
+
+settled_tail as (
+    select
+        tail_rounds.seq,
+        tail_rounds.status
+    from tail_rounds
+    where
+        tail_rounds.tail_round
+        = (select max(every_round.tail_round) from tail_rounds as every_round)
 ),
 
 settled as (

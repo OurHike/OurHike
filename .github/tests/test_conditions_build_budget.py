@@ -48,3 +48,12 @@ def test_a_build_that_runs_to_its_cap_still_ends_inside_the_jobs_cap():
     """Otherwise a build that finished just under its own cap would meet the job's 10 minutes before the publish."""
     job_cap = _job()["timeout-minutes"] * 60
     assert _build_step()["timeout-minutes"] * 60 + SLOWEST_REST_OF_JOB_SECONDS <= job_cap
+
+
+def test_a_build_and_the_freshness_step_each_at_its_cap_still_end_inside_the_jobs_cap():
+    """The freshness step (decision 100) runs after "Publish to R2", so it can never cost a publish, but a check that
+    ran into the job's cap would end the run cancelled rather than with its own answer. The rest of the job was
+    measured before the step existed, so its cap is added on top."""
+    (freshness,) = [step for step in _job()["steps"] if "source freshness" in str(step.get("run", ""))]
+    job_cap = _job()["timeout-minutes"] * 60
+    assert _build_step()["timeout-minutes"] * 60 + freshness["timeout-minutes"] * 60 + SLOWEST_REST_OF_JOB_SECONDS <= job_cap

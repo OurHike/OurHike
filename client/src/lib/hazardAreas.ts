@@ -47,14 +47,21 @@ export interface HazardArea {
   bounds: Bounds
 }
 
-/** What a hiker reads about one kind of area, in the card and on the
- *  stretch. Plain words (.claude/skills/plain-language/SKILL.md): what is
- *  there, what to do, and that the trail is open. */
+/** What a hiker reads about one kind of area, on a tapped stretch and on the
+ *  area's own card. Plain words (.claude/skills/plain-language/SKILL.md):
+ *  what is there, what to do, and that the trail is open. */
 export interface HazardAdvisory {
-  /** The card's heading. */
+  /** The heading, on the card and on the stretch. */
   heading: string
-  /** One or two sentences, OurHike's own words - never the layer's. */
+  /** On a tapped stretch inside the area (chrome/LineSheet.tsx): one or two
+   *  sentences, OurHike's own words - never the layer's. */
   body: string
+  /** On the area's own card (chrome/HazardAreaSheet.tsx), which the hiker
+   *  opened by tapping the area, not a trail: the same advice about the area.
+   *  Decision 99 (poll, 2026-10-07, option A of hazard_card_wording.html):
+   *  the card used to print `body`, "This stretch crosses…", about a stretch
+   *  nobody tapped. */
+  areaBody: string
 }
 
 /** One advisory on a tapped stretch, as chrome/LineSheet.tsx prints it: an
@@ -67,14 +74,20 @@ export const HAZARD_ADVISORIES: Readonly<Record<NoticeHazard, HazardAdvisory>> =
   hunting: {
     heading: 'Hunting allowed',
     body: 'This stretch crosses land where hunting is allowed. Wear blaze orange in season. The trail stays open.',
+    areaBody:
+      'Hunting is allowed in this area. Wear blaze orange in season. Trails through it stay open.',
   },
   shooting: {
     heading: 'Shooting site nearby',
     body: 'This stretch passes a recreational shooting site, so you may hear gunfire. Stay on the trail. The trail stays open.',
+    areaBody:
+      'A recreational shooting site is here, so you may hear gunfire nearby. Stay on the trail. Trails near it stay open.',
   },
   burned_area: {
     heading: 'Burned area',
     body: 'This stretch crosses ground burned in a recent fire. Watch for falling trees, and for flash floods after rain. The trail stays open.',
+    areaBody:
+      'This ground burned in a recent fire. Watch for falling trees, and for flash floods after rain. Trails through it stay open.',
   },
 }
 

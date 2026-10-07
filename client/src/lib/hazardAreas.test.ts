@@ -116,9 +116,19 @@ describe('the advisory on a tapped stretch', () => {
   it('says the trail stays open, every kind, and never that it is closed', () => {
     for (const advisory of Object.values(HAZARD_ADVISORIES)) {
       expect(advisory.body).toContain('The trail stays open.')
-      expect(`${advisory.heading} ${advisory.body}`.toLowerCase()).not.toMatch(
-        /\bclosed?\b/,
-      )
+      expect(advisory.areaBody).toMatch(/Trails (through|near) it stay open\.$/)
+      expect(
+        `${advisory.heading} ${advisory.body} ${advisory.areaBody}`.toLowerCase(),
+      ).not.toMatch(/\bclosed?\b/)
+    }
+  })
+
+  // Decision 99 (poll, 2026-10-07): a tapped stretch's sheet keeps "This
+  // stretch…"; the area's own card, opened by tapping the area, never says it.
+  it('words the stretch and the area each for what was tapped, every kind', () => {
+    for (const advisory of Object.values(HAZARD_ADVISORIES)) {
+      expect(advisory.body).toMatch(/^This stretch /)
+      expect(advisory.areaBody).not.toMatch(/stretch/i)
     }
   })
 })

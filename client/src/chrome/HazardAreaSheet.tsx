@@ -3,7 +3,9 @@
 //
 // The mock the maintainer chose (decisions-64-67-mock.html §4, option A):
 // the kind of area as the heading, an Advisory tag, one or two sentences of
-// what to do, and that the trail stays open. Then whose layer it is, its own
+// what to do, and that the trail stays open - about the area, the thing the
+// hiker tapped (`areaBody`, decision 99), where a tapped stretch's sheet says
+// "This stretch…" (`body`). Then whose layer it is, its own
 // dates where it gives them, and its page. Never "closed": an area a hiker
 // walks into is not a closure, and lib/hazardAreas.ts says why that line is
 // held in both the pipeline and here.
@@ -44,7 +46,7 @@ export function HazardAreaSheet({ notice, stewards, onClose }: HazardAreaSheetPr
         </button>
       </div>
 
-      <p className="closure-sheet__status">{advisory.body}</p>
+      <p className="closure-sheet__status">{advisory.areaBody}</p>
 
       <p className="closure-sheet__range">
         {[notice.title, notice.category, notice.locality]

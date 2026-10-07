@@ -40,14 +40,25 @@ const HUNTING: TrailNotice = {
 afterEach(cleanup)
 
 describe('HazardAreaSheet', () => {
-  it('is an advisory that says the trail stays open, in OurHike’s words', () => {
+  it('is an advisory that says the trails through it stay open, in OurHike’s words', () => {
     render(
       <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
     )
     const sheet = screen.getByRole('dialog', { name: 'Hunting allowed' })
     expect(sheet.textContent).toContain('Advisory')
-    expect(sheet.textContent).toContain('The trail stays open.')
+    expect(sheet.textContent).toContain('Trails through it stay open.')
     expect(sheet.textContent).not.toMatch(/\bclosed\b/i)
+  })
+
+  // Decision 99 (poll, 2026-10-07): the hiker tapped the area, not a stretch,
+  // so its card talks about the area; "This stretch…" is the tapped line's.
+  it('talks about the area the hiker tapped, never a stretch of trail', () => {
+    render(
+      <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
+    )
+    const sheet = screen.getByRole('dialog', { name: 'Hunting allowed' })
+    expect(sheet.textContent).toContain('Hunting is allowed in this area.')
+    expect(sheet.textContent).not.toMatch(/this stretch/i)
   })
 
   it('names whose layer it is from the registry, and its facts', () => {

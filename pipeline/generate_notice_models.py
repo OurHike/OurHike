@@ -38,7 +38,15 @@ WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
   the link, a place name and the source's own geometry. Prose stays in base
   (decision 55), and int_warnings__notice_wording_unioned collects it so a
   test can tell if any of it reaches a mart.
-- the three YAML files beside them, and per club its sources block.
+- the three YAML files beside them, and per club its sources block. Each
+  source's freshness reads the extract's run log
+  (macros/last_read_or_confirmed_at.sql: when the extract last read it or
+  confirmed it unchanged, never `_loaded_at`, which a FRESH check leaves at
+  the last load) and errors after FRESHNESS_HOURS for its cadence, 24 hours
+  for an hourly source (decision 100); one that reaches no hiker only warns,
+  and a PDF notice has none (is_pdf_notice()). Each the notices legs read is
+  tagged NOTICES_JOB_TAG, which publish-conditions.yml's freshness step
+  selects after it has published.
 And once: dbt/seeds/notice_readers.csv (every closures and warnings resource,
 hand-staged ones included: its key, club, type, reader, listing and raw
 table), and the two unions, int_closures__club_notices_unioned and
@@ -138,6 +146,33 @@ SERVER_ROW_IDS = frozenset({"objectid", "objectid_1", "fid", "oid"})
 TABLE_BASES = frozenset(
     {"usfs_baer_assessments", "usfs_r04_forest_orders", "nifc_wfigs_current_perimeters", "utah_ffsl_fire_restrictions"}
 )
+#: HOW LONG A NOTICE SOURCE MAY GO UNREAD BEFORE dbt's SOURCE FRESHNESS WARNS, AND THEN ERRORS, in hours, by cadence:
+#: decision 100, the maintainer's poll of 2026-10-07, "Red after 24h. But this should be Red in the data source
+#: freshness feature of dbt. Not blocking a datasource pipeline". Unread means neither read nor confirmed unchanged,
+#: which macros/last_read_or_confirmed_at.sql measures from the extract's run log, because a FRESH check leaves
+#: `_loaded_at` at the last load.
+#: - hourly: 24 to error is the maintainer's number. 12 to warn is half of it, @unvalidated as a useful early signal:
+#:   at the notices job's declared 4 hours (extract-notices.yml's cron) it is about three runs in a row that neither
+#:   read nor confirmed the source, past the one or two the extract's own warning already names. But #1346 — Every
+#:   cron in this repository fires about five times a day, whatever it declares, so how often a healthy source
+#:   passes 12 hours is what a few weeks of publish-conditions.yml's freshness step would show.
+#: - daily: each is 24 more, Reasoned. extract/_run.py's due() leaves a daily resource out until its last good check
+#:   is DUE_AFTER["daily"] (24 h) old, and a run that leaves it out writes no row, so a healthy daily source is up to
+#:   a day and a notices run past its last row by design; its 24 hours unread then count from when it fell due.
+#: A source whose sources.json row says reaches_hikers false only warns: extract/_run.py's quiet_refusals() keeps its
+#: refusal from failing the extract run, and nothing a hiker sees waits on it. tests/test_notice_source_freshness.py
+#: holds the daily row to the hourly one plus DUE_AFTER, and the conditions job's hand-written sources to these.
+FRESHNESS_HOURS = {"hourly": (12, 24), "daily": (36, 48)}
+#: The one notice source on the monthly lane, USFWS's hunt units, which reaches_hikers false keeps off every phone
+#: (tests/test_generated_notice_models.py's ARC-1 test holds it the only one): a warning at 7 days, as before decision
+#: 100 and @unvalidated as then, the threshold _atc__sources.yml's comment says nobody derived. No run on live data
+#: measures it: the monthly lane runs no `dbt source freshness`.
+MONTHLY_WARN_DAYS = 7
+#: The tag publish-conditions.yml's freshness step selects the notices job's sources by: every generated source the
+#: notices legs read (extract/_run.py's job_of()), whose run log reaches the hourly warehouse only with a served copy.
+NOTICES_JOB_TAG = "notices_job"
+#: Every generated source's `loaded_at_query`, as dbt renders it.
+LOADED_AT_QUERY = "{{ last_read_or_confirmed_at(this) }}"
 
 
 @dataclass(frozen=True)
@@ -709,12 +744,27 @@ def is_pdf_notice(source: NoticeSource) -> bool:
     PageNotice reads a PDF through pypdf, which the pipeline and dbt jobs do not
     install, so fixture mode leaves these out (make_dbt_fixtures.py's note on the
     four PDFs) and CI's `dbt source freshness` would fail on a table that is not
-    there. Each has a fct_sources_without_freshness row in
+    there; measured from the run log, as every other notice source is
+    (notice_freshness()), it would read null, which dbt reads as stale. Each has
+    a fct_sources_without_freshness row in
     seeds/dbt_project_evaluator_exceptions.csv, which
     tests/test_generated_notice_models.py holds to this list. The gate still
     holds an absent one (int_closures__notice_tables).
     """
     return source.reader_class == "PageNotice" and str((source.entry or {}).get("url", "")).lower().endswith(".pdf")
+
+
+def notice_freshness(source: NoticeSource) -> dict | None:
+    """A notice source's dbt freshness by its cadence (FRESHNESS_HOURS, MONTHLY_WARN_DAYS); None for a PDF notice."""
+    if is_pdf_notice(source):
+        return None
+    if source.cadence == "monthly":
+        return {"warn_after": {"count": MONTHLY_WARN_DAYS, "period": "day"}}
+    warn, error = FRESHNESS_HOURS[source.cadence]
+    freshness = {"warn_after": {"count": warn, "period": "hour"}}
+    if (source.entry or {}).get("reaches_hikers") is not False:
+        freshness["error_after"] = {"count": error, "period": "hour"}
+    return freshness
 
 
 def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
@@ -726,7 +776,13 @@ def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
                 f"{_title(source)} (sources.json `{source.key}`), landed by extract/{source.club}/{source.type}.py's "
                 f"{source.reader_class}. Key: {', '.join(_key_columns(source))}. {_measured(source)}"
             ),
-            "config": {"meta": {"cadence": source.cadence}, **({"freshness": None} if is_pdf_notice(source) else {})},
+            "config": {
+                "meta": {"cadence": source.cadence},
+                # The hourly lane's two cadences are the notices job's (extract/_run.py's job_of()): no generated
+                # source is one of the conditions job's HOURLY_JOB_TABLES, which are all hand-staged.
+                **({"tags": [NOTICES_JOB_TAG]} if source.cadence in FRESHNESS_HOURS else {}),
+                "freshness": notice_freshness(source),
+            },
             "data_tests": [
                 {
                     "duplicates_are_exact": {
@@ -747,13 +803,9 @@ def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
                     "and staged once each by a generated base model here (decision 53, phase C)."
                 ),
                 "schema": "raw",
-                "config": {
-                    "loaded_at_field": "_loaded_at",
-                    "meta": {"cadence": "hourly"},
-                    # @unvalidated, the threshold _nynjtc_alerts__sources.yml inherited: a change check
-                    # that answers FRESH reloads nothing, so a quiet week reads as stale.
-                    "freshness": {"warn_after": {"count": 7, "period": "day"}},
-                },
+                # Each table's freshness is its own (notice_freshness()), measured from the run log
+                # (macros/last_read_or_confirmed_at.sql), never from `_loaded_at`.
+                "config": {"loaded_at_query": LOADED_AT_QUERY, "meta": {"cadence": "hourly"}},
                 "tables": tables,
             }
         ],

@@ -236,10 +236,13 @@ jobs:
       # thread per club folder, within --read-seconds; one that fails, times
       # out or is refused by the run check is left out with its last committed
       # table standing, and the rest load. A refusal exits 3, recorded here so
-      # the copy below still runs and the last step turns the run red; a
-      # refused source whose sources.json row says reaches_hikers false exits
-      # 0 (exit_status()). A run takes on at most 150 tables it has never
-      # loaded (NEW_TABLES_PER_LEG_RUN, which says what that rests on).
+      # the copy below still runs and a step after it warns; a refused source
+      # whose sources.json row says reaches_hikers false exits 0
+      # (exit_status()). Since decision 100 a refusal never turns this run
+      # red: dbt's source freshness does, in publish-conditions.yml, once the
+      # source has gone 24 hours unread. A run takes on at most 150 tables it
+      # has never loaded (NEW_TABLES_PER_LEG_RUN, which says what that rests
+      # on).
       #
       # THE BUDGET, inside a 50-minute step: up to 600 s of change checks
       # (extract/_run.py's LEG_CHECK_SECONDS for the notices job), then 1800 s
@@ -330,14 +333,26 @@ jobs:
             exit "$status"
           fi
 
-      # Last, so a source refused on its own has not held back the ones that
-      # loaded or their copy, and the run still goes red for it. The extract
-      # step's summary names the source and why.
-      - name: Fail the run if a source was refused on its own
+      # A WARNING, NEVER RED: decision 100 (the maintainer's poll of
+      # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
+      # re-platform as one go/no-go change: "Red after 24h. But this should be
+      # Red in the data source freshness feature of dbt. Not blocking a
+      # datasource pipeline"). Until it, this step turned the run red for any
+      # one refused source: notices runs 6, 7, 9 and 14 went red that way
+      # (pipeline/ELT.md's decision 100 row), run 14 on mass.gov answering
+      # 403 to GitHub's runners for ma_dcr_blue_hills_alerts on both attempts
+      # (37636022925, 2026-10-07).
+      # The source's last committed table stands, the extract step's summary
+      # names it and why, and publish-conditions.yml's step "Check the notice
+      # sources' freshness, red after 24 hours unread (dbt path)" turns red
+      # once it has gone 24 hours without a read or a confirmation that it is
+      # unchanged. Every other alarm here stays red: a table the copy step
+      # could not copy whole (below), a missing secret, an unreadable
+      # production line, an extract that stopped.
+      - name: Warn when a source was refused on its own
         if: steps.extract.outputs.partial == 'true'
         run: |
-          echo "::error title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was copied for the hourly build."
-          exit 1
+          echo "::warning title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was copied for the hourly build. Its dbt source freshness in publish-conditions.yml turns red once it has gone 24 hours unread."
 
       - name: Fail the run if a table was not copied whole
         if: steps.serve.outputs.partial == 'true'

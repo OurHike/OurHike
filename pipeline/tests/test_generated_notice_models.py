@@ -213,17 +213,17 @@ def test_only_a_pdf_notice_goes_without_freshness_and_each_has_its_evaluator_exc
     """CI's `dbt source freshness` fails on a table the fixture warehouse never holds, and fixture mode lands no PDF.
 
     So a PDF page notice's table carries `freshness: null`, every other generated
-    table keeps its source's, and each PDF one has its fct_sources_without_freshness
-    row in seeds/dbt_project_evaluator_exceptions.csv, so the evaluator's rule still
-    holds for the rest.
+    table carries its own (generator.notice_freshness(), which
+    tests/test_notice_source_freshness.py holds), and each PDF one has its
+    fct_sources_without_freshness row in seeds/dbt_project_evaluator_exceptions.csv,
+    so the evaluator's rule still holds for the rest.
     """
     without = set()
     for path, text in files.items():
         if path.name.endswith("__sources.yml"):
             for source in yaml.safe_load(text)["sources"]:
                 for table in source["tables"]:
-                    if "freshness" in (table.get("config") or {}):
-                        assert table["config"]["freshness"] is None, table["name"]
+                    if (table.get("config") or {}).get("freshness") is None:
                         without.add(f"{source['name']}.{table['name']}")
     pdfs = {f"{s.club}.{s.table}" for s in generator.notice_sources() if not s.hand_staged and generator.is_pdf_notice(s)}
     assert without == pdfs

@@ -229,10 +229,22 @@ sources:
                 key_columns: ["'reference/atc_updates.json'", "_row"]
         config:
           # Read on the hourly conditions lane, as every closures type is
-          # (extract/_contract.py's CADENCE_BY_TYPE). No freshness, as for every
-          # reviewed file: its change marker is the file's sha256, so its
-          # `_loaded_at` moves only when somebody edits the file.
-          freshness: null
+          # (extract/_contract.py's CADENCE_BY_TYPE). Its change marker is the
+          # file's sha256, so its `_loaded_at` moves only when somebody edits
+          # the file, and freshness reads the run log instead
+          # (macros/last_read_or_confirmed_at.sql), where every run that finds
+          # the file unchanged writes `skipped`. A read the leg refuses on its
+          # own (a file that will not parse) is a warning on the hourly run
+          # since decision 100 (the maintainer's poll of 2026-10-07), and red
+          # here after 24 hours unread: the thresholds are
+          # generate_notice_models.py's FRESHNESS_HOURS, graded there, and
+          # tests/test_notice_source_freshness.py holds these to them.
+          # publish-conditions.yml's freshness step selects `conditions_job`.
+          loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+          tags: [conditions_job]
+          freshness:
+            warn_after: {count: 12, period: hour}
+            error_after: {count: 24, period: hour}
           meta:
             cadence: hourly
         description: >
@@ -261,9 +273,13 @@ sources:
               arguments:
                 key_columns: ["'reference/atc_updates.json'", "_path"]
         config:
-          # The same file as raw_atc__atc_trail_updates, on the same lane, with
-          # no freshness for the same reason.
-          freshness: null
+          # The same file as raw_atc__atc_trail_updates, on the same lane,
+          # measured from the run log for the same reason.
+          loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+          tags: [conditions_job]
+          freshness:
+            warn_after: {count: 12, period: hour}
+            error_after: {count: 24, period: hour}
           meta:
             cadence: hourly
         description: >
@@ -285,17 +301,24 @@ sources:
               arguments:
                 key_columns: ["'atc_trail_updates'", "slug"]
         config:
-          # Read on the hourly conditions lane, as every closures type is, and
-          # warned on at the source's 7 days, as NYNJTC's alerts are. How
-          # recently the extract loaded the pages, which is every run that
-          # lands them: AtcTrailUpdatePages' change check is never FRESH, since
-          # each run re-reads a share of its pages, so `_loaded_at` stands
-          # still only while the read is refused, or incomplete with too many
-          # pages moved to fit one run's budget. @unvalidated: 7 days is the
-          # atc source's inherited threshold, and what settles it is stage 5
-          # of #1793 — Rebuild the data platform as dlt → dbt: seven
-          # contracted marts, a monthly refresh, published docs, and lighter
-          # phone downloads reading _extract_runs.checked_at instead.
+          # Read on the hourly conditions lane, as every closures type is. How
+          # recently the extract loaded the pages, from its run log
+          # (macros/last_read_or_confirmed_at.sql): AtcTrailUpdatePages' change
+          # check is never FRESH, since each run re-reads a share of its pages,
+          # so the newest `loaded` row stands still only while the read is
+          # refused, or incomplete with too many pages moved to fit one run's
+          # budget. A refusal is a warning on the hourly run since decision 100
+          # (the maintainer's poll of 2026-10-07), and red here after 24 hours
+          # without a read: the thresholds are generate_notice_models.py's
+          # FRESHNESS_HOURS, graded there, and
+          # tests/test_notice_source_freshness.py holds these to them. Before
+          # it, this warned at the atc source's 7 days on `_loaded_at`.
+          # publish-conditions.yml's freshness step selects `conditions_job`.
+          loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+          tags: [conditions_job]
+          freshness:
+            warn_after: {count: 12, period: hour}
+            error_after: {count: 24, period: hour}
           meta:
             cadence: hourly
         description: >

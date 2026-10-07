@@ -1117,10 +1117,11 @@ jobs:
       # "incomplete" without failing the run, so a first run on an empty raw
       # store completes over about 8 hours. OurHike's own rows are the
       # exception and stop the leg, as export_conditions.py stops today's
-      # bake. A refusal exits 3: this step records it, and the last step
-      # fails the run after everything that loaded is published. A refused
-      # row whose sources.json says reaches_hikers false exits 0 instead
-      # (extract/_run.py's exit_status()). This leg takes on every table it
+      # bake. A refusal exits 3: this step records it, and a step after the
+      # publish warns, never red since decision 100; the freshness step at
+      # the end turns red once a refused source has gone 24 hours unread. A
+      # refused row whose sources.json says reaches_hikers false exits 0
+      # instead (extract/_run.py's exit_status()). This leg takes on every table it
       # has never loaded in one run (NEW_TABLES_PER_LEG_RUN's None for the
       # conditions job): one left waiting would be absent from the warehouse
       # and fail the build below. The limit of 10 it had came from run 506,
@@ -1432,15 +1433,22 @@ jobs:
           python publish.py
           printf -- '- publish.py (OURHIKE_PHONE_FILES=%s): %s s\n\n' "$OURHIKE_PHONE_FILES" "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
-      # Last, so a source refused on its own has not held back the ones that
-      # loaded, and the run still goes red for it: decision 30's soak counts
-      # "no failed check", and a refusal is one. The extract step's summary
-      # names the source and why.
-      - name: Fail the run if a source was refused on its own (dbt path)
+      # A WARNING, NEVER RED: decision 100 (the maintainer's poll of
+      # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
+      # re-platform as one go/no-go change: "Red after 24h. But this should be
+      # Red in the data source freshness feature of dbt. Not blocking a
+      # datasource pipeline"). Until it this step turned the run red for one
+      # refused source, decision 30's soak counting "no failed check". The
+      # source's last committed table stands, the extract step's summary names
+      # it and why, and the step "Check the notice sources' freshness, red
+      # after 24 hours unread (dbt path)" turns red once it has gone 24 hours
+      # without a read or a confirmation that it is unchanged: NWS's alerts,
+      # ATC's, NYNJTC's and OPRHP's notices and the reviewed files, each tagged
+      # `conditions_job`. OurHike's own rows still stop the leg, red at once.
+      - name: Warn when a source was refused on its own (dbt path)
         if: steps.extract.outputs.partial == 'true'
         run: |
-          echo "::error title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was published."
-          exit 1
+          echo "::warning title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was published. Its dbt source freshness, the last step, turns red once it has gone 24 hours unread."
 
       # Last for the same reason: what the build held back (decision 81) did
       # not hold back the files that were written, and the run still goes red
@@ -1507,6 +1515,92 @@ jobs:
         run: |
           echo "::error title=No notices copy::$LEG has written no served copy for more than 8 hours, or has never committed a run, so this hour's closures and warnings hold none of its club notices. Everything else was published, and no row history was saved. Step 2b's summary says since when; look at extract-notices.yml's runs for this environment."
           exit 1
+
+      # DECISION 100's RED, IN dbt's SOURCE FRESHNESS (the maintainer's poll of
+      # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
+      # re-platform as one go/no-go change: "Red after 24h. But this should be
+      # Red in the data source freshness feature of dbt. Not blocking a
+      # datasource pipeline"). A notice source the extract could not read is a
+      # warning on its extract run, its last committed table standing; this
+      # turns the run red once one has gone 24 hours without being read or
+      # confirmed unchanged (48 for a source read once a day). Each source is
+      # measured from the run log in this build's warehouse
+      # (macros/last_read_or_confirmed_at.sql), never from `_loaded_at`, which
+      # a FRESH check leaves at the last load; the thresholds are
+      # generate_notice_models.py's FRESHNESS_HOURS.
+      #
+      # LAST, AND NEVER IN THE WAY. After "Publish to R2", and after the build,
+      # which saved the row history, so nothing this finds holds back a file or
+      # a save; and after every other red step, because each of those is
+      # skipped once a step before it fails, so `!cancelled()` lets this one
+      # report whatever went red before it. It reads the warehouse alone.
+      #
+      # HERE, NOT IN extract-notices.yml. This is the one job that holds the
+      # warehouse the phone files were written from, with this leg's run log
+      # and the notices copy's side by side (extract/_warehouse.py's
+      # add_served()), so it measures what hikers were sent this hour, through
+      # whichever copy was read. The notices job installs the extract's pins
+      # alone and builds no warehouse; and a notices job that stops running,
+      # or stops serving copies, cannot report its own silence, while this
+      # run then reads the last copy and turns red once its reads are 24
+      # hours old.
+      #
+      # THE NOTICES JOB'S SOURCES ONLY WITH A COPY. `tag:notices_job` is
+      # measured when step 2b read one (`latest` or `older`): without one this
+      # warehouse holds none of their run log, every one would read as never
+      # read, and that state is step 2b's to report (decision 96's 8 hours,
+      # and the `unread` step above). `tag:conditions_job`, this leg's own
+      # upstreams that it can refuse on its own, is measured every run.
+      #
+      # ONE MINUTE: 11 s for the 267 tagged sources on the fixture warehouse,
+      # three runs alike (Measured 2026-10-07 in a sandbox), most of it dbt
+      # parsing the project. @unvalidated on a runner, whose step time
+      # settles it. .github/tests/test_conditions_build_budget.py holds it
+      # inside the job's 10 minutes beside the build's cap, and
+      # .github/tests/test_conditions_notice_freshness.py holds the rest.
+      - name: Check the notice sources' freshness, red after 24 hours unread (dbt path)
+        if: ${{ !cancelled() && env.PHONE_FILES == 'dbt' && steps.build.outcome == 'success' }}
+        timeout-minutes: 1
+        working-directory: pipeline/dbt
+        env:
+          NOTICES_READ: ${{ steps.notices.outputs.read }}
+        run: |
+          selection=(tag:conditions_job)
+          case "$NOTICES_READ" in
+            latest | older)
+              selection+=(tag:notices_job)
+              ;;
+            *)
+              echo "::notice title=Notices job's sources not measured::This build read no notices copy ($NOTICES_READ), so its run log holds none of their reads, and step 2b's own steps report that. Only this leg's own upstreams were measured."
+              ;;
+          esac
+          set +e
+          "$RUNNER_TEMP/dbt/bin/dbt" source freshness --profiles-dir . --select "${selection[@]}"
+          status=$?
+          set -e
+          if [ -f target/sources.json ]; then
+            python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY" || true
+          import json
+          results = json.load(open("target/sources.json"))["results"]
+          late = sorted(
+              (str(result.get("status", "")).lower(), result["unique_id"].removeprefix("source.ourhike."), result.get("max_loaded_at_time_ago_in_s"))
+              for result in results
+              if str(result.get("status", "")).lower() != "pass"
+          )
+          print("### Notice source freshness\n")
+          print(f"{len(results)} sources measured: {sum(state != 'warn' for state, _, _ in late)} red, {sum(state == 'warn' for state, _, _ in late)} warned.\n")
+          for state, name, seconds in late:
+              if seconds is None:
+                  print(f"- `{name}`: {state}, not measured")
+              else:
+                  print(f"- `{name}`: {state}, last read or confirmed unchanged {seconds / 3600:.1f} h ago")
+          print()
+          PY
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "::error title=A notice source has gone unread too long::At least one notice source has gone 24 hours (48 for a daily one) without the extract reading it or confirming it unchanged, or its freshness could not be measured. Everything was published and the row history saved; the run summary names each one, and its extract run's summary says why it was refused."
+          fi
+          exit "$status"
 
       - name: Save dbt's DuckDB driver and v2's spatial extension
         if: always() && env.PHONE_FILES == 'dbt' && steps.dbt-runtime.outputs.cache-hit != 'true' && hashFiles('pipeline/requirements-dbt.txt') != ''

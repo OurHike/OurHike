@@ -260,6 +260,7 @@ jobs:
             pipeline/tests/test_dbt_notice_tables_absent_builds.py
             pipeline/tests/test_dbt_notice_source_held_for_its_rows_builds.py
             pipeline/tests/test_dbt_club_tables_absent_builds.py
+            pipeline/tests/test_dbt_notice_source_freshness_runs.py
             pipeline/tests/conftest.py
             pipeline/pyproject.toml
             pipeline/requirements-dev.txt
@@ -595,6 +596,21 @@ jobs:
         run: |
           # The fixture load imports dlt, which only the extract venv holds.
           OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_club_tables_absent_builds.py
+
+      # Decision 100's freshness (the maintainer's poll of 2026-10-07): a
+      # notice source turns red once it has gone 24 hours without being read
+      # or confirmed unchanged, measured from the extract's run log because a
+      # FRESH check leaves `_loaded_at` at its last load
+      # (macros/last_read_or_confirmed_at.sql). The test writes a warehouse
+      # holding only a run log and runs `dbt source freshness` on the real
+      # project over nine cases: refused 30 hours, confirmed an hour ago with
+      # a week-old `_loaded_at`, read an hour ago, and the rest in its
+      # docstring. It reads the generated YAML, not the generator, so this
+      # venv needs no dlt. Measured 2026-10-07 in a sandbox: 9 passed in 11
+      # to 13 s.
+      - name: Notice source freshness (tests/test_dbt_notice_source_freshness_runs.py)
+        if: steps.scope.outputs.run == 'true'
+        run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_freshness_runs.py
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by

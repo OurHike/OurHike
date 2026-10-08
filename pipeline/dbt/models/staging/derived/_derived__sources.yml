@@ -119,6 +119,14 @@ sources:
               On a piece, its place among every piece, from 0: the parts in
               part_order and each part's pieces along it, the order
               build_graph() walks them in. Null on a landing.
+          - name: weld_rank
+            description: >
+              On a landing, its weld's place among every weld, from 0, in the
+              order node_lines() makes them and build_graph() asks the node
+              grid about them: the lower part, then the higher parts in the
+              order STRtree.query hands them over, then the ends
+              (step_node_lines.weld_ranks()). Not cut_order, which takes the
+              higher parts in part order. Null on a piece.
           - name: cut_key
             description: On a landing, the int_trail_network__cuts row that joined the end; null on a piece.
           - name: geometry

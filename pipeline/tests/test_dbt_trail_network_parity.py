@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from pyproj import Geod
+from pyproj import Geod, Transformer
 from shapely import wkt as shapely_wkt
 from shapely.geometry import LineString
 from shapely.ops import transform
@@ -171,23 +171,25 @@ def test_each_cuts_unit_test_is_node_lines(test):
 def _pieces(con, test: dict) -> list[dict]:
     """The test's graph_pieces rows, its `format: sql` run in DuckDB as dbt runs it, geometry as WKT."""
     sql = _given(test, "stg_derived__graph_pieces")["rows"]
-    relation = con.sql(f"select row_kind, part_id, piece_index, piece_rank, cut_key, st_astext(geom) as geom_wkt from ({sql})")
+    relation = con.sql(
+        f"select row_kind, part_id, piece_index, piece_rank, weld_rank, cut_key, st_astext(geom) as geom_wkt from ({sql})"
+    )
     return [dict(zip(relation.columns, row)) for row in relation.fetchall()]
 
 
 def _grid_points(con, test: dict) -> list[tuple[float, float]]:
     """Every point build_graph() asks _node_id() about, in its order: each piece's two ends, then each weld's
-    end and landing in cut order."""
+    end and landing in the order node_lines() made the welds, which is each landing's weld_rank."""
     pieces = sorted((row for row in _pieces(con, test) if row["row_kind"] == "piece"), key=lambda row: row["piece_rank"])
-    landings = {row["cut_key"]: shapely_wkt.loads(row["geom_wkt"]) for row in _pieces(con, test) if row["row_kind"] == "landing"}
+    landings = {row["cut_key"]: row for row in _pieces(con, test) if row["row_kind"] == "landing"}
     points = []
     for row in pieces:
         line = shapely_wkt.loads(row["geom_wkt"])
         points += [line.coords[0], line.coords[-1]]
-    cuts = sorted(_given(test, "int_trail_network__cuts")["rows"], key=lambda row: row["cut_order"])
-    for cut in cuts:
-        if cut["cut_kind"] == "endpoint_join":
-            points += [shapely_wkt.loads(cut["end_point_wkt"]).coords[0], landings[cut["cut_key"]].coords[0]]
+    joins = [cut for cut in _given(test, "int_trail_network__cuts")["rows"] if cut["cut_kind"] == "endpoint_join"]
+    for cut in sorted(joins, key=lambda cut: landings[cut["cut_key"]]["weld_rank"]):
+        landing = shapely_wkt.loads(landings[cut["cut_key"]]["geom_wkt"])
+        points += [shapely_wkt.loads(cut["end_point_wkt"]).coords[0], landing.coords[0]]
     return points
 
 
@@ -208,6 +210,47 @@ def test_each_node_lookups_unit_test_is_node_id(con, test):
     expected = sorted(test["expect"]["rows"], key=lambda row: row["seq"])
     assert [row["seq"] for row in expected] == list(range(len(answers)))
     assert [(row["node_raw"], row["makes_node"]) for row in expected] == answers
+
+
+def test_the_weld_order_unit_test_answers_otherwise_in_cut_order(con):
+    """The unit test that holds the welds to weld_rank holds something: asked in cut_order instead, the east stub's
+    landing finds the main line's piece end, and the west stub's makes a node no other point finds."""
+    (test,) = [test for test in _on("int_trail_network__node_lookups") if "weld_rank_order_not_cut_order" in test["name"]]
+    pieces = sorted((row for row in _pieces(con, test) if row["row_kind"] == "piece"), key=lambda row: row["piece_rank"])
+    landings = {row["cut_key"]: shapely_wkt.loads(row["geom_wkt"]) for row in _pieces(con, test) if row["row_kind"] == "landing"}
+    points = [
+        end
+        for row in pieces
+        for end in (shapely_wkt.loads(row["geom_wkt"]).coords[0], shapely_wkt.loads(row["geom_wkt"]).coords[-1])
+    ]
+    for cut in sorted(_given(test, "int_trail_network__cuts")["rows"], key=lambda cut: cut["cut_order"]):
+        points += [shapely_wkt.loads(cut["end_point_wkt"]).coords[0], landings[cut["cut_key"]].coords[0]]
+    in_cut_order = _node_answers(points)
+    assert in_cut_order[8:] == [(5, False), (2, False), (7, False), (8, True)]
+    assert in_cut_order != _node_answers(_grid_points(con, test))
+
+
+def test_build_graph_numbers_and_places_nodes_by_the_order_of_its_welds():
+    """The same pieces and welds as that unit test, through build_graph() itself, in each order. West first, the two
+    stubs' ends are one node, at the east stub's end (11.5, 7), and neither reaches the main line; east first, the
+    east stub's end is the main line's node at (12, 0) and the west stub's is a node alone. So the welds' order moves
+    a node, and every number after it, which is what monthly run 30's renumbering was."""
+    pieces = [
+        {"properties": {"id": part_id}, "line": LineString(coords)}
+        for part_id, coords in (
+            ("main#1", [(0, 0), (10, 0)]),
+            ("main#1", [(12, 0), (100, 0)]),
+            ("east#1", [(11.5, 30), (11.5, 7)]),
+            ("west#1", [(11, -30), (11, -7)]),
+        )
+    ]
+    west, east = ((11.0, -7.0), (11.0, 0.0)), ((11.5, 7.0), (11.5, 0.0))
+    identity = Transformer.from_crs("EPSG:4326", "EPSG:4326", always_xy=True)
+    in_tree_order = build_trail_graph.build_graph(pieces, [west, east], identity)
+    in_cut_order = build_trail_graph.build_graph(pieces, [east, west], identity)
+    assert [(edge["from"], edge["to"]) for edge in in_tree_order["edges"]] == [(0, 1), (2, 3), (4, 5), (6, 5)]
+    assert [(edge["from"], edge["to"]) for edge in in_cut_order["edges"]] == [(0, 1), (2, 3), (4, 2), (5, 6)]
+    assert (in_tree_order["nodes"][5], in_cut_order["nodes"][2]) == ([11.5, 7.0], [12.0, 0.0])
 
 
 # ------------------------------------------------------------------- edges
@@ -306,7 +349,7 @@ def test_each_edges_unit_test_is_geographic_vertices(test):
 # ------------------------------------------------------- step_node_lines
 
 # One crossing and one join at test_build_trail_graph.py's ring point: the
-# stub's north end stops 6.8 m short of the main line, the cross runs through it.
+# stub's north end stops 6.7 m short of the main line, the cross runs through it.
 STEP_LINES = {
     "main#1": LineString([(-74.1, 41.25), (-74.08, 41.25)]),
     "cross#1": LineString([(-74.09, 41.24), (-74.09, 41.26)]),
@@ -348,7 +391,60 @@ def test_step_node_lines_cuts_as_node_lines_cuts():
     assert [list(piece.coords) for part in step_pieces for piece in part] == [list(piece["line"].coords) for piece in pieces]
     assert crossings == stats["crossings"]
     stub_end = transform(to_projected.transform, STEP_LINES["stub#1"]).coords[-1]
-    assert [(stub_end, landing.coords[0]) for _key, landing in landings] == welds
+    assert [(stub_end, landing.coords[0]) for _key, landing, _rank in landings] == welds
+    assert [rank for _key, _landing, rank in landings] == [0]
+
+
+# The main line again and two stubs stopping 6.7 m short of it: `east#1` is the second part and lies east of
+# `west#1`, the third. node_lines() takes a part's partners in STRtree's order, west first; cut_order takes them in
+# part order, east first.
+WELD_ORDER_LINES = {
+    "main#1": LineString([(-74.1, 41.25), (-74.08, 41.25)]),
+    "east#1": LineString([(-74.083, 41.24), (-74.083, 41.24994)]),
+    "west#1": LineString([(-74.097, 41.24), (-74.097, 41.24994)]),
+}
+WELD_ORDER_CUTS = [
+    {
+        "cut_key": f"endpoint_join:{stub}|main#1|end",
+        "cut_kind": "endpoint_join",
+        "line_part_id": stub,
+        "other_part_id": "main#1",
+        "end_side": "end",
+    }
+    for stub in ("east#1", "west#1")
+]
+
+
+def test_step_node_lines_ranks_the_welds_in_the_order_node_lines_makes_them_not_cut_order():
+    """weld_rank is node_lines()' own order of welds, from the same STRtree: here the west stub's, the third part,
+    before the east stub's, the second, where cut_order has the east stub's first."""
+    to_projected, _ = build_trail_graph._transformers()
+    projected = [
+        {"properties": {"id": part_id}, "line": transform(to_projected.transform, line)}
+        for part_id, line in WELD_ORDER_LINES.items()
+    ]
+    _, stats, welds = build_trail_graph.node_lines(projected, build_trail_graph.ENDPOINT_SNAP_M)
+    parts = [
+        {"part_id": part_id, "part_order": order, "line": line} for order, (part_id, line) in enumerate(WELD_ORDER_LINES.items())
+    ]
+
+    _, landings, _ = step_node_lines.cut_lines(parts, WELD_ORDER_CUTS, build_trail_graph.ENDPOINT_SNAP_M)
+
+    assert stats["endpoint_joins"] == 2, "both stubs join, or this compares nothing"
+    ranked = sorted(landings, key=lambda landing: landing[2])
+    assert [key for key, _landing, _rank in ranked] == ["endpoint_join:west#1|main#1|end", "endpoint_join:east#1|main#1|end"]
+    assert [landing.coords[0] for _key, landing, _rank in ranked] == [landing for _end, landing in welds]
+
+
+def test_step_node_lines_refuses_a_join_whose_parts_strtree_does_not_hand_each_other():
+    """A join of two parts whose envelopes do not meet is one node_lines() never makes."""
+    far = {**WELD_ORDER_LINES, "far#1": LineString([(-74.0, 41.0), (-73.99, 41.001)])}
+    parts = [{"part_id": part_id, "part_order": order, "line": line} for order, (part_id, line) in enumerate(far.items())]
+    lines = [transform(build_trail_graph._transformers()[0].transform, part["line"]) for part in parts]
+    index = {part["part_id"]: part["part_order"] for part in parts}
+    cut = {**WELD_ORDER_CUTS[0], "cut_key": "endpoint_join:far#1|main#1|end", "line_part_id": "far#1"}
+    with pytest.raises(SystemExit, match="STRtree.query does not hand node_lines"):
+        step_node_lines.weld_ranks(lines, [cut], index)
 
 
 @pytest.mark.parametrize(

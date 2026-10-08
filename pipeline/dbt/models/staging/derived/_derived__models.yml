@@ -101,6 +101,11 @@ models:
         description: On a piece, its place along the part, from 1.
       - name: piece_rank
         description: On a piece, its place among every piece, from 0, the order build_graph() walks them in.
+      - name: weld_rank
+        description: >
+          On a landing, its weld's place among every weld, from 0, in the
+          order build_graph() asks the node grid about them (STRtree's, not
+          cut_order's; the source column says why).
       - name: cut_key
         description: On a landing, the int_trail_network__cuts row that joined the end.
       - name: geom

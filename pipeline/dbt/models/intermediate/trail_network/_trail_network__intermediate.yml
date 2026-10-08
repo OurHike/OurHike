@@ -77,8 +77,9 @@ models:
       - name: cut_order
         description: >
           node_lines()' loop order where SQL can follow it: the lower part,
-          the higher, then the four ends, start first. The welds are made in
-          it.
+          the higher, then the four ends, start first. Not the order the
+          welds are asked of the node grid in, which is STRtree's
+          (step_node_lines' `weld_rank` on each landing).
         data_tests: [not_null, unique]
       - name: cut_kind
         description: "'crossing' or 'endpoint_join'."
@@ -107,17 +108,6 @@ models:
       and the node it is (TN06): the first node within
       trail_network_node_quant_m (0.5 m, @unvalidated) in the grid's scan
       order, or a new one.
-    data_tests:
-      # A weld's point that makes a node of its own is the one place the
-      # cut order, which is not STRtree's, reaches the graph
-      # (int_trail_network__cuts): a node no piece reaches can then differ
-      # from build_trail_graph.py's. Warn and name it.
-      - dbt_utils.expression_is_true:
-          name: int_trail_network__node_lookups_no_weld_point_makes_a_node
-          arguments:
-            expression: "not (makes_node and lookup_kind in ('weld_end', 'weld_landing'))"
-          config:
-            severity: warn
     columns:
       - name: seq
         description: The question's place in build_graph()'s order, from 0.

@@ -26,6 +26,7 @@ renamed as (
         part_id,
         piece_index,
         piece_rank,
+        weld_rank,
         cut_key,
         geom,
         _loaded_at as loaded_at

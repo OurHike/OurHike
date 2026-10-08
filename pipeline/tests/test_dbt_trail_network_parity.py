@@ -34,6 +34,7 @@ from shapely.geometry import LineString
 from shapely.ops import transform
 
 import build_trail_graph
+import parity
 import step_node_lines
 from tests.conftest import spatial_connection
 
@@ -362,3 +363,99 @@ def test_step_node_lines_cuts_as_node_lines_cuts():
 def test_step_node_lines_refuses_a_cut_shapely_would_not_make(cut, refusal):
     with pytest.raises(SystemExit, match=refusal):
         step_node_lines.cut_lines(_step_parts(), [cut], build_trail_graph.ENDPOINT_SNAP_M)
+
+
+# --- parity.py's trail_graph family: each end compared in place --------------------------------------------------
+
+# Three places, and two edges along them. A node's number is only its place in its file's `nodes`.
+WEST, MIDDLE, EAST = [-74.1, 41.1], [-74.0, 41.0], [-73.9, 40.9]
+ATTRIBUTION = {"trail_id": "t", "source": "s", "name": "Long Path", "blaze_color": "Aqua"}
+
+
+def _graph(nodes: list, ends: list[tuple[int, int]]) -> dict:
+    return {"nodes": nodes, "edges": [{"from": a, "to": b, "length_m": 10.0, **ATTRIBUTION} for a, b in ends]}
+
+
+def _compare(old: dict, new: dict) -> tuple[list, dict]:
+    family = parity.FAMILIES["trail_graph"]
+    old, new = parity._indexed_edges(old), family.new_shape(new, Path("trail_graph.json"))
+    found = parity.differences(old, new, family)
+    return found, family.kinds(old, new, found)
+
+
+def test_the_same_graph_under_the_same_numbers_has_no_difference():
+    graph = _graph([WEST, MIDDLE, EAST], [(0, 1), (1, 2)])
+    assert _compare(graph, json.loads(json.dumps(graph))) == ([], {})
+
+
+def test_a_renumbered_graph_is_renumbered_on_every_difference_and_still_differs():
+    """The same two edges along the same three places, with the nodes listed in another order: every edge's ends are
+    in the same place, so each difference is `renumbered`, `nodes` too, and none is explained or `moved`."""
+    found, kinds = _compare(_graph([WEST, MIDDLE, EAST], [(0, 1), (1, 2)]), _graph([MIDDLE, EAST, WEST], [(2, 0), (0, 1)]))
+    assert [what for what, _, _ in found] == ["field nodes", "edge_index 0", "edge_index 1"]
+    assert kinds == {"field nodes": "renumbered", "edge_index 0": "renumbered", "edge_index 1": "renumbered"}
+    assert parity.FAMILIES["trail_graph"].explained is None
+
+
+def test_a_moved_end_is_moved_never_renumbered():
+    """The new side's second edge ends somewhere else: that edge is `moved`, the first is still only renumbered, and
+    `nodes` holds another place, so it is of no kind."""
+    elsewhere = [-73.8, 40.8]
+    found, kinds = _compare(_graph([WEST, MIDDLE, EAST], [(0, 1), (1, 2)]), _graph([MIDDLE, elsewhere, WEST], [(2, 0), (0, 1)]))
+    assert kinds == {"edge_index 0": "renumbered", "edge_index 1": "moved"}
+    assert "field nodes" in [what for what, _, _ in found]
+
+
+def test_an_end_that_moved_under_its_old_number_is_moved():
+    """Both edges keep their numbers and the middle node moves: compared by number they would agree, and only `nodes`
+    would differ. Compared in place, both edges are `moved`."""
+    found, kinds = _compare(
+        _graph([WEST, MIDDLE, EAST], [(0, 1), (1, 2)]), _graph([WEST, [-74.0, 41.01], EAST], [(0, 1), (1, 2)])
+    )
+    assert kinds == {"edge_index 0": "moved", "edge_index 1": "moved"}
+    assert [what for what, _, _ in found] == ["field nodes", "edge_index 0", "edge_index 1"]
+
+
+def test_a_renumbered_edge_whose_length_changed_is_of_no_kind():
+    old = _graph([WEST, MIDDLE, EAST], [(0, 1), (1, 2)])
+    new = _graph([MIDDLE, EAST, WEST], [(2, 0), (0, 1)])
+    new["edges"][1]["length_m"] = 11.0
+    _, kinds = _compare(old, new)
+    assert "edge_index 1" not in kinds and kinds["edge_index 0"] == "renumbered"
+
+
+def test_an_end_the_file_has_no_node_for_is_of_no_kind():
+    _, kinds = _compare(_graph([WEST, MIDDLE, EAST], [(0, 1), (1, 2)]), _graph([WEST, MIDDLE], [(0, 1), (1, 2)]))
+    assert "edge_index 1" not in kinds
+
+
+def test_the_cli_prints_each_kind_under_its_heading_and_still_exits_1(tmp_path, monkeypatch, capsys):
+    """A renumbered graph still fails the line: its kind is written beside each difference, never as a reason."""
+    old = _graph([WEST, MIDDLE, EAST], [(0, 1), (1, 2)])
+    monkeypatch.setitem(
+        parity.FAMILIES,
+        "fake_graph",
+        parity.Family(
+            old=lambda: parity._indexed_edges(old),
+            records="edges",
+            key="edge_index",
+            ordered=True,
+            new_shape=parity._indexed_edges,
+            kinds=parity._trail_graph_kinds,
+            kind_meanings=parity.TRAIL_GRAPH_KINDS,
+        ),
+    )
+    new = tmp_path / "trail_graph.json"
+    new.write_text(json.dumps(_graph([MIDDLE, EAST, WEST], [(2, 0), (0, 1)])))
+    argv = ["fake_graph", "--new", str(new), "--json-dir", str(tmp_path / "results"), "--keys-only"]
+    assert parity.main(argv) == 1
+    printed = capsys.readouterr().out
+    assert "  renumbered, 3: both ends in the same place" in printed
+    assert "moved," not in printed and "of no kind above" not in printed
+    result = json.loads((tmp_path / "results" / "fake_graph.json").read_text())
+    assert (result["outcome"], result["explained"], result["kinds"]) == ("differences", [], {"renumbered": 3})
+    assert {entry["what"]: entry["kind"] for entry in result["differences"]} == {
+        "field nodes": "renumbered",
+        "edge_index 0": "renumbered",
+        "edge_index 1": "renumbered",
+    }

@@ -75,6 +75,7 @@ import hashlib
 import json
 import re
 import sys
+from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -116,6 +117,14 @@ class Family:
     # this name beside --new, whose path `old` takes: the v1 writer's own
     # parity line holds v1 to today's exporter, and this holds v2 to v1.
     v1_beside: str | None = None
+    # Sorts the differences `explained` leaves into kinds, and excuses none of
+    # them: each kind is printed under its own heading with its meaning (from
+    # `kind_meanings`, in that order), each difference carries its kind in the
+    # result file, and every one still exits 1. Returns {difference: kind}
+    # for the ones it can sort. The junction graph's renumbered edges are the
+    # first (_trail_graph_kinds).
+    kinds: Callable[[dict, dict, list], dict[str, str]] | None = None
+    kind_meanings: tuple[tuple[str, str], ...] = ()
 
 
 def _podcasts_old() -> dict:
@@ -1728,9 +1737,84 @@ def _trail_graph_built(new_dir: Path) -> tuple[list, list, list]:
     return graph["nodes"], graph["edges"], geometry
 
 
+def _place(nodes: list, number) -> list | None:
+    """Node `number` of `nodes` as its [lon, lat], or None where the file holds no such node."""
+    if isinstance(number, int) and not isinstance(number, bool) and 0 <= number < len(nodes):
+        return nodes[number]
+    return None
+
+
 def _indexed_edges(document: dict, path: Path | None = None) -> dict:
-    """trail_graph.json with each edge's place in `edges` written onto it, its only identity."""
-    return {**document, "edges": [{"edge_index": index, **edge} for index, edge in enumerate(document.get("edges") or [])]}
+    """trail_graph.json with each edge's place in `edges` written onto it, its only identity, and where its two ends
+    are: `from_coordinates` and `to_coordinates`, its `from` and `to` read through the same file's `nodes` as
+    [lon, lat] (None for a number the file has no node for).
+
+    A node's number is only its place in one file's `nodes`, so two files can number the same nodes differently;
+    the coordinates are what says whether an end is in the same place (_trail_graph_kinds)."""
+    nodes = document.get("nodes") or []
+    return {
+        **document,
+        "edges": [
+            {
+                "edge_index": index,
+                **edge,
+                "from_coordinates": _place(nodes, edge.get("from")),
+                "to_coordinates": _place(nodes, edge.get("to")),
+            }
+            for index, edge in enumerate(document.get("edges") or [])
+        ],
+    }
+
+
+# WHY A RENUMBERED EDGE IS NOT EXPLAINED, for whoever decides whether it should be. Within one release a renumbering
+# reaches nothing: cut_trail_graph.py cuts every cell's four halves from one graph, and no other file a phone reads
+# carries a node or edge number (client/src/lib/dayHikes.ts refuses to keep an edgeIndex; a suggested hike's ends are
+# rebuilt from coordinates). Across releases it does: client/src/lib/trailGraphData.ts's mergeGraphShard() joins
+# cells by their whole-graph `node_ids` and `edge_ids` and checks nothing about which release each came from, and a
+# phone merges cells its store kept from different releases when it is offline, or a kept cell with a fetched one when
+# a fetch fails (loadGraphShard()'s two store fallbacks; trailGraphStore.ts records each cell's version and says it
+# is "recorded rather than acted on"). There one release's number for a place meets the other's for another place as
+# one node. That is so for any two releases numbered differently, which build_trail_graph.py's are whenever the lines
+# change. The first release from the dbt writer is one more such pair, at the cutover #1811 — Fast follows after PR
+# #1805's dlt → dbt re-platform: the hiker's own download choice, the cutover, and what the port found in today's
+# code — holds. So it is not this writer's alone, and whether it is acceptable is the maintainer's to say.
+#: The kinds _trail_graph_kinds() sorts the junction graph's differences into, in the order they print. Neither is
+#: explained (above).
+TRAIL_GRAPH_KINDS = (
+    ("moved", "an end of the edge is in another place: its `from_coordinates` or `to_coordinates` differs"),
+    (
+        "renumbered",
+        "both ends in the same place on both sides, under other node numbers: only `from` or `to` differs (on `field "
+        "nodes`: the same places in another order)",
+    ),
+)
+
+
+def _trail_graph_kinds(old: dict, new: dict, found: list) -> dict[str, str]:
+    """Each junction-graph difference's kind (TRAIL_GRAPH_KINDS), where it has one.
+
+    An edge both sides hold is `moved` when an end's coordinates differ, and `renumbered` when they agree and only
+    `from` or `to` does. `field nodes` is `renumbered` when the two lists hold the same places. A record one side
+    lacks, an end the file has no node for, a changed length or name, and the order are of no kind."""
+    kinds: dict[str, str] = {}
+    for what, before_text, after_text in found:
+        if before_text is None or after_text is None:
+            continue
+        if what == "field nodes":
+            if sorted(json.loads(before_text)) == sorted(json.loads(after_text)):
+                kinds[what] = "renumbered"
+            continue
+        if not what.startswith("edge_index "):
+            continue
+        before, after = json.loads(before_text), json.loads(after_text)
+        ends = ("from_coordinates", "to_coordinates")
+        if any(record.get(end) is None for record in (before, after) for end in ends):
+            continue
+        if any(before[end] != after[end] for end in ends):
+            kinds[what] = "moved"
+        elif {name for name in before.keys() | after.keys() if before.get(name) != after.get(name)} <= {"from", "to"}:
+            kinds[what] = "renumbered"
+    return kinds
 
 
 def _indexed_geometry(document: list, path: Path | None = None) -> dict:
@@ -1757,6 +1841,8 @@ FAMILIES.update(
             ordered=True,
             new_shape=_indexed_edges,
             reads_new_dir=True,
+            kinds=_trail_graph_kinds,
+            kind_meanings=TRAIL_GRAPH_KINDS,
         ),
         "trail_graph_geometry": Family(
             old=_trail_graph_geometry_old,
@@ -2108,6 +2194,7 @@ def result_document(
     found: list[tuple[str, str | None, str | None]] = (),
     reasons: dict[str, str] | None = None,
     message: str | None = None,
+    kinds: dict[str, str] | None = None,
 ) -> dict:
     """One family's comparison as RESULT_FORMAT: everything the console said, in fields.
 
@@ -2118,15 +2205,19 @@ def result_document(
     with its reason, and `differences` every other one; both carry the
     changed field paths, which gate_report.py ranks safety fields first by.
     A record that only changed its key (rekeyed()) changes `family.key`
-    alone, and names its partner in `same_record_as`.
+    alone, and names its partner in `same_record_as`. A difference
+    `family.kinds` sorted carries its `kind`, and `kinds` counts each.
     """
     reasons = reasons or {}
+    kinds = kinds or {}
     partners = rekeyed(list(found), family.key)
 
     def entry(what: str, a: str | None, b: str | None) -> dict:
         if what in partners:
-            return {"what": what, "old": a, "new": b, "fields": [family.key], "same_record_as": partners[what]}
-        return {"what": what, "old": a, "new": b, "fields": changed_fields(what, a, b)}
+            found_entry = {"what": what, "old": a, "new": b, "fields": [family.key], "same_record_as": partners[what]}
+        else:
+            found_entry = {"what": what, "old": a, "new": b, "fields": changed_fields(what, a, b)}
+        return {**found_entry, "kind": kinds[what]} if what in kinds else found_entry
 
     old_sources, old_unnamed = record_sources(old, family.records)
     new_sources, new_unnamed = record_sources(new, family.records)
@@ -2146,6 +2237,7 @@ def result_document(
         "new_records": None if new is None else len(new.get(family.records) or []),
         "explained": [{**entry(what, a, b), "reason": reasons[what]} for what, a, b in found if what in reasons],
         "differences": [entry(what, a, b) for what, a, b in found if what not in reasons],
+        "kinds": dict(Counter(kinds.values())),
         "old_sources": old_sources,
         "old_records_naming_no_source": old_unnamed,
         "new_sources": new_sources,
@@ -2265,10 +2357,25 @@ def main(argv: list[str] | None = None) -> int:
         beyond = f" beyond the {len(explained)} explained above" if explained else ""
         print(f"{args.family}: no differences{beyond} across {count} {family.records}, keyed by {family.key}")
         return finish(0, "no_differences", old=old, new=new, found=found, reasons=reasons)
+    kinds = family.kinds(old, new, unexplained) if family.kinds else {}
+
+    def show(what: str, a: str | None, b: str | None, indent: str) -> None:
+        print(f"{indent}{what}" if args.keys_only else f"{indent}{what}\n{indent}  old: {a}\n{indent}  new: {b}")
+
     print(f"{args.family}: {len(unexplained)} difference(s):")
-    for what, a, b in unexplained:
-        print(f"  {what}" if args.keys_only else f"  {what}\n    old: {a}\n    new: {b}")
-    return finish(1, "differences", old=old, new=new, found=found, reasons=reasons)
+    for kind, meaning in family.kind_meanings:
+        named = [difference for difference in unexplained if kinds.get(difference[0]) == kind]
+        if named:
+            print(f"  {kind}, {len(named)}: {meaning}")
+            for what, a, b in named:
+                show(what, a, b, "    ")
+    listed_kinds = {kind for kind, _meaning in family.kind_meanings}
+    rest = [difference for difference in unexplained if kinds.get(difference[0]) not in listed_kinds]
+    if kinds and rest:
+        print(f"  of no kind above, {len(rest)}:")
+    for what, a, b in rest:
+        show(what, a, b, "    " if kinds else "  ")
+    return finish(1, "differences", old=old, new=new, found=found, reasons=reasons, kinds=kinds)
 
 
 if __name__ == "__main__":

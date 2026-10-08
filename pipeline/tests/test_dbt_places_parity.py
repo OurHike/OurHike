@@ -652,6 +652,45 @@ def test_a_park_from_a_club_places_layer_is_explained_as_decision_31s_new_data_b
     assert "usgs_gnis_populated_places" in parity._club_places_sources()
 
 
+def test_a_long_trail_whose_copied_line_today_measures_twice_is_explained_by_decision_40_and_nothing_else(tmp_path, monkeypatch):
+    """Monthly run 30's trail:alaska_trails:Haessler-Norris Sled Dog: today's network file draws one of the trail's
+    lines twice, and today's trailMiles counts it twice. Only a `trail:` place that differs in trailMiles alone, today's
+    figure the miles over every line and the dbt writer's the miles over each geometry once, is explained."""
+    import parity
+
+    name = "Haessler-Norris Sled Dog"
+    copied, other = [[-149.9, 61.2], [-149.9, 61.21]], [[-149.8, 61.2], [-149.8, 61.3]]
+
+    def line(line_id: str, coordinates: list) -> dict:
+        return {
+            "type": "Feature",
+            "properties": {"id": line_id, "source": "alaska_trails", "name": name},
+            "geometry": {"type": "LineString", "coordinates": coordinates},
+        }
+
+    network = tmp_path / "nearby_trails.geojson"
+    lines = [line("alaska_trails:1", copied), line("alaska_trails:2", copied), line("alaska_trails:3", other)]
+    network.write_text(json.dumps({"type": "FeatureCollection", "features": lines}))
+    monkeypatch.setattr(parity, "_published_network", lambda: network)
+    geod = Geod(ellps="WGS84")
+    copied_miles, other_miles = (geod.line_length(*zip(*coordinates)) / 1609.344 for coordinates in (copied, other))
+    every, once = round(2 * copied_miles + other_miles, 1), round(copied_miles + other_miles, 1)
+    assert every != once
+
+    def place(trail_miles: float, **changed) -> dict:
+        record = {"id": f"trail:alaska_trails:{name}", "name": name, "kind": "trail", "source": "alaska_trails"}
+        return {**record, "trailMiles": trail_miles, **changed}
+
+    today = {"places": [place(every)]}
+
+    assert parity._places_reasons(today, {"places": [place(once)]}) == {
+        f"id trail:alaska_trails:{name}": parity.PLACES_COPY_REASON
+    }
+    # A figure the copy does not account for, or another field changed beside it, is still a difference.
+    assert parity._places_reasons(today, {"places": [place(round(once - 0.5, 1))]}) == {}
+    assert parity._places_reasons(today, {"places": [place(once, lat=61.25)]}) == {}
+
+
 # --- the measure both sides use (decision 97) ---------------------------------
 
 

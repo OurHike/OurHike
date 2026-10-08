@@ -692,7 +692,75 @@ def _places_reasons(old: dict, new: dict) -> dict[str, str]:
     kept = [record["id"] for record in new.get("places") or [] if f"id {record['id']}" not in reasons]
     if reasons and kept == old_ids:
         reasons["order"] = PLACES_REASONS["new_source"]
+    return {**reasons, **_copied_trail_miles_reasons(old, new)}
+
+
+#: Why a long trail's `trailMiles` can be shorter in the dbt writer's places.json than in today's.
+#: tests/test_dbt_places_parity.py holds it to a network file with a copy in it.
+PLACES_COPY_REASON = (
+    "expected by decision 40: staging keeps one of a layer's exact copies, where today's network file draws every "
+    "copy, and export_places.load_named_trails() sums a long trail's miles over every line drawn under its name. "
+    "Explained only for a `trail:` place in both files that differs in `trailMiles` alone, where today's network file "
+    "draws a line of that source and name more than once with one geometry, and export_places' own measure of those "
+    "lines gives today's miles with every line counted and the dbt writer's with each geometry counted once, both to "
+    "the tenth. Monthly run 30's one, measured 2026-10-08 with pyproj on UA's run 30 files: "
+    "trail:alaska_trails:Haessler-Norris Sled Dog, 85.3 miles over its 58 lines in the dbt writer's file, two of "
+    "which (alaska_trails:448, 0.52 mi, and alaska_trails:97, 0.27 mi) today's draws twice, so 86.1 with the copies "
+    "(today's own figure is withheld by --keys-only)"
+)
+
+
+def _copied_trail_miles_reasons(old: dict, new: dict) -> dict[str, str]:
+    """PLACES_COPY_REASON for each `trail:` place both files hold whose `trailMiles` alone differs, where today's
+    network file, measured as export_places measures it, gives today's figure counting every line and the dbt
+    writer's counting each of that trail's geometries once."""
+    old_by_id = {record["id"]: record for record in old.get("places") or []}
+    changed: dict[tuple[str, str], tuple[str, float, float]] = {}
+    for record in new.get("places") or []:
+        before = old_by_id.get(record["id"])
+        if before is None or not str(record["id"]).startswith("trail:"):
+            continue
+        if {name for name in before.keys() | record.keys() if before.get(name) != record.get(name)} != {"trailMiles"}:
+            continue
+        changed[(record.get("source"), record.get("name"))] = (record["id"], before["trailMiles"], record["trailMiles"])
+    if not changed:
+        return {}
+    miles = _trail_miles_counting_copies(set(changed))
+    reasons: dict[str, str] = {}
+    for key, (place_id, was, now) in changed.items():
+        every, once = miles.get(key, (None, None))
+        if every is not None and every != once and round(every, 1) == was and round(once, 1) == now:
+            reasons[f"id {place_id}"] = PLACES_COPY_REASON
     return reasons
+
+
+def _trail_miles_counting_copies(keys: set[tuple[str, str]]) -> dict[tuple[str, str], tuple[float, float]]:
+    """{(source, name): (miles over every line, miles over each geometry once)} for those trails, over today's
+    network file (_published_network()), loaded and measured as export_places.load_lines() and
+    load_named_trails() load and measure a long trail."""
+    import duckdb
+
+    import export_places
+    from lib.corridor import METERS_PER_MILE
+    from lib.source_registry import load_registry
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    shipped = export_places.shipped_line_source_keys(load_registry(export_places.SOURCES_PATH))
+    export_places.load_lines(con, [_published_network()], shipped)
+    con.execute("CREATE TEMP TABLE wanted (source VARCHAR, name VARCHAR)")
+    con.executemany("INSERT INTO wanted VALUES (?, ?)", sorted(keys))
+    rows = con.execute(f"""
+        SELECT source, name, sum(metres), sum(metres) FILTER (WHERE copy = 1)
+        FROM (
+            SELECT lines.source, lines.name, {export_places._geodesic_metres("lines.g")} AS metres,
+                   row_number() OVER (PARTITION BY lines.source, lines.name, ST_AsWKB(lines.geom)) AS copy
+            FROM lines INNER JOIN wanted ON lines.source = wanted.source AND lines.name = wanted.name
+        )
+        GROUP BY source, name
+    """).fetchall()
+    con.close()
+    return {(source, name): (every / METERS_PER_MILE, once / METERS_PER_MILE) for source, name, every, once in rows}
 
 
 def _places_old() -> dict:

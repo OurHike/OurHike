@@ -13,7 +13,7 @@
 -- and `dbt test`), so the log says that anchors were held, not which.
 -- store_failures keeps the rows in the warehouse, as
 -- dbt_test__audit.assert_no_synthesized_water_is_held_on_a_retired_id,
--- which refresh-reference.yml stores in the step cache with its manifest.
+-- which build-reference.yml stores in the step cache with its manifest.
 --
 -- Measured 2026-10-02 on ATC's live layers against the committed ledger: 21
 -- (assert_no_live_poi_reuses_a_retired_id.sql's header).

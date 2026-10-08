@@ -4,7 +4,7 @@
 private raw bucket that outlives the 7-day Actions cache. Two halves:
 
     geofabrik_extracts(key)   the monthly lane's resource (_shared/osm/geofabrik.py)
-    python -m extract._geofabrik pull ...    refresh-reference.yml's build job
+    python -m extract._geofabrik pull ...    refresh-reference.yml's pin job
     python -m extract._geofabrik landed ...  the same job, after its water scans
 
 THE BYTES NEVER REACH dlt. A .pbf is a file to keep, not rows (decision 4,
@@ -27,8 +27,9 @@ dlt's `raw/` dataset and the as-landed copy (`as_landed/`), so each state's
 extract is `current/osm/<state>-latest.osm.pbf`, the path export_basemap.py's
 OSM_RAW_DIR keeps it at, and `current/index.json` holds `{sha256,
 size_bytes, pushed_at}` per file plus where it came from. Under the lane's
-own prefix because each lane is the only writer of its prefix
-(refresh-reference.yml's `raw-lake-monthly` group), and the index is read,
+own prefix because each lane is the only writer of its prefix (the
+`raw-lake-monthly` group refresh-reference.yml shares with
+build-reference.yml), and the index is read,
 changed and written back. Every key passes lib/raw_keys.py, INCREMENTAL.md's
 own validator for the private store. No `snapshots/` copy is kept: at 3.44
 GB a month it would be the store's largest cost, and nothing reads an old
@@ -64,7 +65,9 @@ or ids (from its download pages as known before this work, not re-read from
 here), and nothing here or in the scans reads any metadata but tags and
 coordinates.
 
-THE BUILD SIDE (`pull`, `landed`). refresh-reference.yml's build job pulls
+THE BUILD SIDE (`pull`, `landed`), in refresh-reference.yml's pin job since
+the maintainer's choice B (2026-10-08), so before build-reference.yml's
+build. The pin job pulls
 each copy the index names into data/raw/osm/, holding it to the index's
 sha256 and size, and places the last landed water scans (the newest earlier
 pin's `derived/osm_water.geojson` and `derived/trail_water.json`) at the

@@ -42,8 +42,9 @@ THREE WAYS TO RUN, one rule:
   false; "~5.7 GB of USGS subregions / ~30 min"), and the file rides
   FETCH_OUTPUTS from the run that last derived it. No file is no site water,
   as it is for load_trail_water(). The monthly lane names the file
-  refresh-reference.yml's build job derived with fetch_trail_water.py
-  --derive over the Geofabrik extracts the raw store keeps, pinned as
+  refresh-reference.yml's pin job derived with fetch_trail_water.py
+  --derive over the Geofabrik extracts the raw store keeps and pinned,
+  which build-reference.yml's build reads back from the pin as
   data/raw/derived/trail_water.json, or the last landed one (#1652 —
   Download OSM's Geofabrik extracts at most once a month, into a private raw
   bucket that outlives the 7-day Actions cache; build_marts.py's lane_args);

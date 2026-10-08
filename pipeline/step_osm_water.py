@@ -12,17 +12,18 @@ bucket that outlives the 7-day Actions cache). The fourteen state extracts
 are fetched data, and fetched data is the extract's to land (decision 4):
 extract/_shared/osm/geofabrik.py keeps them in the raw store, monthly, with
 one manifest row each, and never hands their bytes to dlt. They are files, so
-the water in them is read in refresh-reference.yml's build job:
+the water in them is read in refresh-reference.yml's pin job:
 extract/_geofabrik.py's `pull` puts the copies in data/raw/osm/,
 fetch_osm_water.py scans them for point sources, unchanged, and the file it
-writes is pinned with the build's raw inputs as `derived/osm_water.geojson`.
+writes is pinned with the run's raw inputs as `derived/osm_water.geojson`,
+which build-reference.yml's build reads back from the pin.
 This step lands that file, in one of three ways:
 
 - `--landed` (build_marts.py --lane monthly): the pinned scan, under
-  data/raw/derived/. A build whose extracts were missing or unreadable
+  data/raw/derived/. A run whose extracts were missing or unreadable
   pinned the last landed scan in its place, so the points are last month's
   rather than none. A file that is absent means no scan has ever landed (a
-  build before the extract's first complete set): the step warns and lands
+  pin before the extract's first complete set): the step warns and lands
   an empty table, a build with no OSM water, as before #1652;
 - `--points` (build_marts.py --fixtures): make_dbt_fixtures.py's points, so
   the reach, the gate and the dedupe run in CI on rows in exactly the shape

@@ -1,9 +1,9 @@
 """The monthly lane's freeze: extract/_run.py's as-landed copy and cross-lane inputs, extract/_warehouse.py's pin.
 
-refresh-reference.yml extracts with --as-landed and --cross-lane-inputs,
-pins the run's raw inputs to `<steps>/raw_inputs/<raw_run>/`, builds the
-warehouse from the pin alone, and the parity job hands today's exporters the
-pin's as-landed files at today's fetchers' paths. Each test runs real dlt
+refresh-reference.yml extracts with --as-landed and --cross-lane-inputs and
+pins the run's raw inputs to `<steps>/raw_inputs/<raw_run>/`; build-reference.yml
+builds the warehouse from the pin alone, and its parity job hands today's
+exporters the pin's as-landed files at today's fetchers' paths. Each test runs real dlt
 into a `file://` raw store under tmp_path, with the ArcGIS layers
 tests/test_extract_run.py mocks; conftest.py's socket guard stays on.
 

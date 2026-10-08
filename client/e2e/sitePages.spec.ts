@@ -504,7 +504,7 @@ for (const variant of VARIANTS) {
       page,
     }) => {
       await open(page, variant, 'light')
-      const { scroll, width, crowded } = await page.evaluate((min) => {
+      const { scroll, width, crowded, wide } = await page.evaluate((min) => {
         const vw = document.documentElement.clientWidth
         const scrolls = (el: Element) => {
           for (let a: Element | null = el; a; a = a.parentElement) {
@@ -533,9 +533,30 @@ for (const variant of VARIANTS) {
             )
           }
         }
-        return { scroll: document.documentElement.scrollWidth, width: vw, crowded }
+        // What sticks out, so a failure names it: the outermost elements
+        // past the right edge that no scroll container holds. A failure seen
+        // only in phone-webkit (flow run 37799207718) said nothing but 564.
+        const wide: string[] = []
+        for (const el of document.body.querySelectorAll('*')) {
+          const r = el.getBoundingClientRect()
+          if (r.width < 1 || r.right <= vw + 0.5 || scrolls(el.parentElement ?? el))
+            continue
+          const parent = el.parentElement?.getBoundingClientRect()
+          if (parent && parent.right > vw + 0.5) continue
+          const cls =
+            typeof el.className === 'string' && el.className
+              ? `.${el.className.trim().split(/\s+/).join('.')}`
+              : ''
+          wide.push(
+            `${el.tagName.toLowerCase()}${cls} ${Math.round(r.left)}..${Math.round(r.right)}`,
+          )
+          if (wide.length === 5) break
+        }
+        return { scroll: document.documentElement.scrollWidth, width: vw, crowded, wide }
       }, MIN_EDGE_PX)
-      expect(scroll, 'the page scrolls sideways').toBeLessThanOrEqual(width)
+      expect(scroll, `the page scrolls sideways: ${wide.join('; ')}`).toBeLessThanOrEqual(
+        width,
+      )
       expect(crowded, `text closer than ${MIN_EDGE_PX}px to the phone's edge`).toEqual([])
     })
 

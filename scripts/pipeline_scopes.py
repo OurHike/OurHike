@@ -14,8 +14,11 @@ HOW A SCOPE IS DERIVED, never hand-kept (the same one-home argument as
 scripts/suite_scopes.py - a hand copy is exactly the half that goes stale):
 
 1. A workflow is a *publishing path* iff one of its steps' `run:` scripts
-   invokes `publish.py` with a Python interpreter. Today that is six files
-   (publish-weather.yml was the sixth, 2026-09-25), and the next joins this
+   invokes `publish.py` with a Python interpreter, or dispatches a workflow
+   that does (below). Eight files on 2026-10-08: publish-weather.yml was the
+   sixth (2026-09-25), refresh-reference.yml the seventh, and since the
+   maintainer's choice B split the monthly lane (2026-10-08) it publishes
+   through build-reference.yml, the eighth. The next joins this
    report by existing rather than by being remembered.
    Only the invocation counts, not a mention (#1552): matching the file's
    whole text counted `nynjtc-archive-recovery.yml` and
@@ -62,6 +65,21 @@ types' files are still unclaimed by publishing paths, since
 publish-conditions.yml's legs read them and are not modelled here yet
 (pipeline/ELT.md, "scripts/pipelines.sh must learn the new layout").
 
+A WORKFLOW THAT DISPATCHES A PUBLISHING PATH IS ONE TOO. Since the
+maintainer's choice B (2026-10-08) refresh-reference.yml extracts and pins,
+and its dispatch job starts build-reference.yml, which publishes, with
+`gh workflow run build-reference.yml`. So a run script's `gh workflow run
+<file>` (dispatched()) makes its workflow a publishing path when <file> is
+one, and its scope is its own plus the dispatched workflow's, because a run
+of it reruns that one. The dispatched workflow's scope stays its own: a
+dispatch of build-reference.yml rebuilds from a pin that exists, so it
+carries no change to the extract or to the fetchers the pin ran. Its rerun
+note names the scheduled workflow that dispatches it and the inputs a sooner
+dispatch needs, read from its workflow_dispatch block, never a
+`data_environment` it does not have: advice for inputs a workflow lacks is
+what #1552 - A comment naming publish.py makes a workflow count as a
+publishing path - found being handed out.
+
 THE CONSERVATIVE DIRECTION IS "STALE". A false STALE costs somebody a
 minute deciding not to dispatch; a false fresh is the #1123 failure - a
 bucket that disagrees with `main` and nothing saying so. But unlike
@@ -83,6 +101,7 @@ hand", never as "nothing is stale".
 """
 
 import ast
+import functools
 import re
 import sys
 from pathlib import Path
@@ -128,6 +147,9 @@ INVOKES_EXTRACT_RE = re.compile(r"python3?\"?\s+-m\s+extract\._run\b")
 #: backslash continuations joined (runs_whole_monthly_lane()), so a run that names `--only` tables, such as
 #: publish-conditions.yml's read of the registry alone, is not taken for the lane.
 INVOKES_MONTHLY_EXTRACT_RE = re.compile(r"python3?\"?\s+-m\s+extract\._run\b[^\n]*--lane\s+monthly\b")
+#: `gh workflow run <file>.yml`: another workflow dispatched by file name, as refresh-reference.yml's dispatch job
+#: starts build-reference.yml.
+DISPATCHES_RE = re.compile(r"(?<![\w.-])gh\s+workflow\s+run\s+[\"']?([\w.-]+\.ya?ml)\b")
 #: A _shared/ extract file's type, as it declares it.
 SHARED_TYPE_RE = re.compile(r'^TYPE = "([a-z_]+)"', re.M)
 #: An extract path's scope beyond its modules' import closure (see extract_scope_for()).
@@ -160,10 +182,19 @@ def lib_imports(text: str) -> set[str]:
     return {f"lib/{name}.py" for name in names}
 
 
+@functools.lru_cache(maxsize=None)
+def _parse(text: str) -> dict:
+    """A workflow file's YAML, parsed once per distinct text. The dispatch rule reads every workflow's run scripts for
+    every publishing path's note, and parsing each time took one `--changed` verdict from 4.1 s to 12.5 s; kept, it
+    took 1.3 to 1.6 s against 2.1 to 2.5 s for the script before the rule (measured back to back, 2026-10-08, in a
+    web sandbox). Keyed on the text, not the path, so a file rewritten in place is parsed again. Never mutated."""
+    return yaml.safe_load(text) or {}
+
+
 def run_scripts(workflow: Path) -> str:
     """Every step's `run:` script in the workflow, shell comment lines
     removed. What the runner would actually execute, give or take an echo."""
-    parsed = yaml.safe_load(workflow.read_text()) or {}
+    parsed = _parse(workflow.read_text())
     lines = []
     for job in (parsed.get("jobs") or {}).values():
         for step in job.get("steps") or []:
@@ -173,18 +204,34 @@ def run_scripts(workflow: Path) -> str:
     return "\n".join(lines)
 
 
+def _triggers(workflow: Path) -> dict:
+    """The workflow's `on:` block. YAML 1.1 reads a bare `on:` key as boolean True."""
+    parsed = _parse(workflow.read_text())
+    return parsed.get("on", parsed.get(True)) or {}
+
+
+def dispatched(workflow: Path) -> list[Path]:
+    """The workflows in this directory that this one's run scripts dispatch by file name (`gh workflow run`)."""
+    names = set(DISPATCHES_RE.findall(run_scripts(workflow)))
+    return [WORKFLOWS / name for name in sorted(names) if (WORKFLOWS / name).is_file() and name != workflow.name]
+
+
 def publishing_workflows() -> list[Path]:
-    return [p for p in sorted(WORKFLOWS.glob("*.yml")) if INVOKES_PUBLISH_RE.search(run_scripts(p))]
+    """Every workflow that runs publish.py, and every one that dispatches such a workflow (the module docstring)."""
+    workflows = sorted(WORKFLOWS.glob("*.yml"))
+    direct = {path for path in workflows if INVOKES_PUBLISH_RE.search(run_scripts(path))}
+    return [path for path in workflows if path in direct or direct.intersection(dispatched(path))]
 
 
 def extract_paths() -> list[Path]:
-    """Workflows that run the extract and publish nothing: a publishing path reads what they land."""
-    found = []
-    for workflow in sorted(WORKFLOWS.glob("*.yml")):
-        scripts = run_scripts(workflow)
-        if INVOKES_EXTRACT_RE.search(scripts) and not INVOKES_PUBLISH_RE.search(scripts):
-            found.append(workflow)
-    return found
+    """Workflows that run the extract and publish nothing, themselves or through a dispatch: a publishing path reads
+    what they land."""
+    publishing = set(publishing_workflows())
+    return [
+        workflow
+        for workflow in sorted(WORKFLOWS.glob("*.yml"))
+        if INVOKES_EXTRACT_RE.search(run_scripts(workflow)) and workflow not in publishing
+    ]
 
 
 def hourly_types() -> set[str]:
@@ -245,9 +292,9 @@ def import_closure(scripts: set[str]) -> set[str]:
     return seen
 
 
-def scope_for(workflow: Path) -> set[str]:
-    """Repo-relative paths whose change stales this workflow's output.
-    SHARED_ROOTS is global and deliberately not repeated per scope."""
+def scope_for(workflow: Path, _seen: frozenset[Path] = frozenset()) -> set[str]:
+    """Repo-relative paths whose change stales this workflow's output, the scopes of the workflows it dispatches
+    included, since a run of it reruns them. SHARED_ROOTS is global and deliberately not repeated per scope."""
     direct = {n for n in SCRIPT_MENTION_RE.findall(workflow.read_text()) if (PIPELINE / n).is_file()}
     if BUILD_MARTS in direct:
         direct |= build_marts_steps()
@@ -255,6 +302,9 @@ def scope_for(workflow: Path) -> set[str]:
     files.add(f".github/workflows/{workflow.name}")
     if runs_whole_monthly_lane(workflow):
         files |= monthly_extract_scope()
+    for callee in dispatched(workflow):
+        if callee not in _seen:
+            files |= scope_for(callee, _seen | {workflow})
     return files
 
 
@@ -289,15 +339,26 @@ def rerun_note(workflow: Path) -> str:
     sheet's artifacts at all. Read from the workflow rather than keyed on
     build-dem's name, for the reason everything else here is: a second
     variant-taking workflow gets the right answer without editing this file.
+
+    A workflow with no schedule that a scheduled one dispatches (choice B's
+    build-reference.yml, which refresh-reference.yml starts after each pin)
+    is rerun by that schedule, and can be dispatched sooner with its own
+    required inputs, which the note names from its workflow_dispatch block
+    rather than assuming publish and data_environment.
     """
-    parsed = yaml.safe_load(workflow.read_text())
-    # YAML 1.1 reads a bare `on:` key as boolean True.
-    triggers = parsed.get("on", parsed.get(True, {}))
+    triggers = _triggers(workflow)
     if "schedule" in triggers:
         return "nothing to dispatch: its own schedule reruns it from main after the merge"
-    inputs = (triggers.get("workflow_dispatch") or {}).get("inputs", {})
+    inputs = (triggers.get("workflow_dispatch") or {}).get("inputs") or {}
     if "run_despite_withdrawal" in inputs:
         return "withdrawn (#855) - a rerun is a deliberate revival, not a routine dispatch"
+    callers = [path for path in sorted(WORKFLOWS.glob("*.yml")) if workflow in dispatched(path) and "schedule" in _triggers(path)]
+    if callers:
+        required = " ".join(f"-f {name}=<{name}>" for name, spec in inputs.items() if (spec or {}).get("required"))
+        return (
+            f"{callers[0].name}'s schedule dispatches it from main after the merge; to rerun it sooner on its own: "
+            f"gh workflow run {workflow.name} --ref main {required}".rstrip()
+        )
     note = "after the merge: dispatch it with publish=true, data_environment=ua - production is the release train's promotion"
     variants = (inputs.get("variant") or {}).get("options") or []
     if len(variants) > 1:

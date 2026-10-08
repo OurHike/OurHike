@@ -45,9 +45,14 @@ PUBLISHING_PATHS = {
     # exact (#1552). Under "at least these five" it had joined the roster on
     # main without anyone writing it down here.
     "publish-weather.yml",
-    # The seventh, from #1793's monthly lane (pipeline/ELT.md, "Workflows"):
-    # its `publish` job runs `python publish.py` with OURHIKE_PHONE_FILES=dbt.
+    # The seventh, from #1793's monthly lane (pipeline/ELT.md, "Workflows").
+    # Since the maintainer's choice B (2026-10-08) it extracts and pins, and
+    # publishes through the eighth, which its dispatch job starts with
+    # `gh workflow run build-reference.yml` (the derivation's dispatch rule).
     "refresh-reference.yml",
+    # The eighth: the monthly lane's build from a pin, whose `publish` job runs
+    # `python publish.py` with OURHIKE_PHONE_FILES=dbt.
+    "build-reference.yml",
 }
 
 #: The extract paths: workflows that run `python -m extract._run` and no
@@ -128,9 +133,9 @@ def test_a_shared_folders_file_of_an_hourly_type_stales_the_extract_path_and_a_m
 
 
 def test_a_monthly_types_extract_file_stales_the_publishing_path_that_runs_the_monthly_lane():
-    """refresh-reference.yml runs `-m extract._run --lane monthly` and publishes what dbt builds from it, so the files
-    of the types that lane carries are its scope, OSM's Geofabrik extracts (#1652) among them, while an hourly type's
-    file stays outside it."""
+    """refresh-reference.yml runs `-m extract._run --lane monthly` and publishes, through build-reference.yml, what dbt
+    builds from it, so the files of the types that lane carries are its scope, OSM's Geofabrik extracts (#1652) among
+    them, while an hourly type's file stays outside it."""
     for changed in (
         "pipeline/extract/_shared/osm/geofabrik.py",
         "pipeline/extract/_geofabrik.py",
@@ -148,11 +153,47 @@ def test_a_monthly_types_extract_file_stales_the_publishing_path_that_runs_the_m
 
 def test_a_step_build_marts_runs_stales_every_path_that_runs_build_marts():
     """build_marts.py starts each step as a subprocess by its STEPS entry's script name, which no import reaches, so
-    step_osm_water.py was unclaimed though the monthly build lands OSM water through it (#1652)."""
+    step_osm_water.py was unclaimed though the monthly build lands OSM water through it (#1652). The monthly build is
+    build-reference.yml's since choice B, and refresh-reference.yml reruns it through the dispatch."""
     verdict = _verdict(["pipeline/step_osm_water.py"])
-    assert "STALE  refresh-reference.yml" in verdict and "STALE  publish-conditions.yml" in verdict
+    assert "STALE  build-reference.yml" in verdict and "STALE  publish-conditions.yml" in verdict
+    assert "STALE  refresh-reference.yml" in verdict
     assert "unclaimed  pipeline/step_osm_water.py" not in verdict
     assert "fresh  build-dem.yml" in verdict
+
+
+def test_a_workflow_that_dispatches_a_publishing_path_is_one_and_its_scope_holds_the_dispatched_ones():
+    """Choice B (2026-10-08): refresh-reference.yml publishes nothing itself, and starts build-reference.yml with
+    `gh workflow run`. Derived from the run scripts, so it stays a publishing path rather than turning into an
+    extract path, and a run of it reruns everything the build reads."""
+    scopes = _load_scopes_module()
+    refresh = scopes.WORKFLOWS / "refresh-reference.yml"
+    build = scopes.WORKFLOWS / "build-reference.yml"
+
+    assert scopes.dispatched(refresh) == [build] and scopes.dispatched(build) == []
+    assert not scopes.INVOKES_PUBLISH_RE.search(scopes.run_scripts(refresh)), "the publish is build-reference.yml's"
+    assert refresh in scopes.publishing_workflows() and refresh not in scopes.extract_paths()
+    assert scopes.scope_for(build) <= scopes.scope_for(refresh)
+
+
+def test_a_change_to_what_the_pin_holds_stales_the_extract_and_pin_and_not_a_rebuild_from_an_old_pin():
+    """build-reference.yml builds from a pin that exists, so a change to a scanner only the pin job runs, or to a
+    monthly extract file, reaches hikers only through a new pin: refresh-reference.yml's path, not a dispatch of the
+    build. (A script both halves read, such as fetch_trail_water.py, stales both, the conservative direction.)"""
+    for changed in ("pipeline/fetch_osm_water.py", "pipeline/extract/_shared/osm/geofabrik.py"):
+        verdict = _verdict([changed])
+        assert "STALE  refresh-reference.yml" in verdict and "fresh  build-reference.yml" in verdict, changed
+
+
+def test_the_dispatched_build_s_note_names_its_scheduled_caller_and_its_own_input_never_a_data_environment():
+    """#1552 - A comment naming publish.py makes a workflow count as a publishing path - ended in dispatch advice for
+    inputs a workflow does not have. build-reference.yml's only input is `raw_run`, read from its workflow_dispatch
+    block, and refresh-reference.yml's schedule is what reruns it."""
+    note = _note_after(_verdict(["pipeline/lib/data_env.py"]), "build-reference.yml")
+
+    assert "refresh-reference.yml's schedule" in note
+    assert "gh workflow run build-reference.yml --ref main -f raw_run=<raw_run>" in note
+    assert "data_environment" not in note and "publish=true" not in note
 
 
 def test_workflows_that_only_mention_the_publisher_are_not_publishing_paths():

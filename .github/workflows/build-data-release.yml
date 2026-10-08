@@ -35,9 +35,10 @@
 #     is the question a maintainer currently answers by guessing.
 #
 # ITS MONDAY RUN GIVES WAY TO THE MONTHLY LANE (pipeline/ELT.md, "Workflows",
-# decision 28a). refresh-reference.yml builds and stages a release on UA every
-# month, which is the build this planner could only recommend. So once one
-# run of that workflow on main has refreshed UA, a scheduled run of this one
+# decision 28a). Every month refresh-reference.yml extracts and pins, and the
+# build-reference.yml run it dispatches builds and stages a release on UA,
+# which is the build this planner could only recommend. So once one run of
+# build-reference.yml on main has refreshed UA, a scheduled run of this one
 # says so and plans nothing; until then, and on every dispatch, it plans as
 # before. The schedule line itself goes in the change after that first run,
 # which is then a deletion with evidence behind it rather than a guess.
@@ -81,7 +82,7 @@ on:
 # is built on the same property and says so for the same reason.
 permissions:
   contents: read
-  # refresh-reference.yml's run list, for the give-way job below. Read-only:
+  # build-reference.yml's run list, for the give-way job below. Read-only:
   # a workflow cannot be dispatched, cancelled or re-run with it.
   actions: read
 
@@ -108,15 +109,15 @@ jobs:
       plan: ${{ steps.decide.outputs.plan }}
     steps:
       # A dispatch always plans. A scheduled run plans unless a run of
-      # refresh-reference.yml on main has refreshed UA: its job "Confirm UA
+      # build-reference.yml on main has refreshed UA: its job "Confirm UA
       # serves what the build wrote" passed, whatever the run concluded,
-      # because a monthly run that leaves one layer out refreshes UA and is
-      # then failed on purpose (decision 49; WF3 of the PR #1805 review).
-      # check-upstream-freshness.yml's 35-day alarm asks the same question the
+      # because a run can refresh UA and still be failed by a later job
+      # (decision 49 did that to monthly runs 16 and 17; WF3 of the PR #1805
+      # review). check-upstream-freshness.yml's 35-day alarm counts a run the
       # same way. An API answer this cannot read plans too: this workflow
       # writes nothing, so planning when unsure costs a report and never a
       # publish.
-      - name: Has refresh-reference.yml run
+      - name: Has the monthly lane refreshed UA (build-reference.yml)
         id: decide
         env:
           EVENT: ${{ github.event_name }}
@@ -143,17 +144,17 @@ jobs:
 
           plan, why = True, "a dispatch always plans"
           if os.environ["EVENT"] == "schedule":
-              url = f"{os.environ['API_URL']}/repos/{os.environ['REPOSITORY']}/actions/workflows/refresh-reference.yml/runs?branch=main&status=completed&per_page=30"
+              url = f"{os.environ['API_URL']}/repos/{os.environ['REPOSITORY']}/actions/workflows/build-reference.yml/runs?branch=main&status=completed&per_page=30"
               try:
                   runs = get(url).get("workflow_runs") or []
                   last = next((run for run in runs if refreshed_ua(run)), None)
               except (urllib.error.URLError, TimeoutError, ValueError) as error:
-                  plan, why = True, f"refresh-reference.yml's runs could not be read ({error}), so this plans as before"
+                  plan, why = True, f"build-reference.yml's runs could not be read ({error}), so this plans as before"
               else:
                   if last:
-                      plan, why = False, f"refresh-reference.yml last refreshed UA from main at {last['run_started_at']} ({last['html_url']}), and it builds monthly what this would plan"
+                      plan, why = False, f"build-reference.yml last refreshed UA from main at {last['run_started_at']} ({last['html_url']}), and the monthly lane builds what this would plan"
                   else:
-                      why = f"none of refresh-reference.yml's last {len(runs)} completed runs on main refreshed UA, so this plans as before"
+                      why = f"none of build-reference.yml's last {len(runs)} completed runs on main refreshed UA, so this plans as before"
           print(why)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write(f"plan={'true' if plan else 'false'}\n")

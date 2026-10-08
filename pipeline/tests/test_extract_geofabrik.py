@@ -439,7 +439,8 @@ def test_landed_says_which_scan_the_build_lands_and_warns_when_a_complete_set_ke
 
 
 def test_the_pin_paths_the_build_writes_are_the_ones_build_marts_lands_and_the_scanners_write():
-    """One list, three readers: refresh-reference.yml's pin step, build_marts.py's monthly lane and the two scanners."""
+    """One list, three readers: refresh-reference.yml's pin step (its pin job's, since choice B moved the build to
+    build-reference.yml), build_marts.py's monthly lane and the two scanners."""
     import yaml
 
     import build_marts
@@ -455,7 +456,7 @@ def test_the_pin_paths_the_build_writes_are_the_ones_build_marts_lands_and_the_s
     assert set(_geofabrik.SCANS.values()) == {fetch_osm_water.OUT_PATH.name, fetch_trail_water.OUT_PATH.name}
     assert fetch_osm_water.OUT_PATH.parent == fetch_trail_water.OUT_PATH.parent == fetch_trail_water.RAW_DIR
     workflow = Path(build_marts.__file__).parent.parent / ".github" / "workflows" / "refresh-reference.yml"
-    steps = yaml.safe_load(workflow.read_text())["jobs"]["build"]["steps"]
+    steps = yaml.safe_load(workflow.read_text())["jobs"]["pin"]["steps"]
     (pin,) = [step for step in steps if "extract._warehouse pin " in (step.get("run") or "")]
     for pinned, local in _geofabrik.SCANS.items():
         assert f"--extra {pinned}=data/raw/{local}" in pin["run"]

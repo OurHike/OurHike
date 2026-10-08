@@ -153,7 +153,7 @@ def test_test_sh_list_names_every_ci_dbt_parity_family_and_step_its_dbt_suite_le
     runs, and not its contract-versions step, while its comment said it followed that job "step for step". A change
     that broke one of the other 41 passed test.sh and failed CI. `--list` now names every one it leaves out, from
     CI's own step (scripts/dbt_ci_parity.py), and the array test.sh compares with is the families it runs."""
-    from test_refresh_reference import _ci_families
+    from test_build_reference import _ci_families
 
     test_sh = (REPO_ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
     runs = _test_sh_parity_families(test_sh)

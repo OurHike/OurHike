@@ -188,17 +188,20 @@ def test_the_save_runs_even_when_an_earlier_step_failed(cached_paths):
     assert "always()" in str(save.get("if", ""))
 
 
-MONTHLY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "refresh-reference.yml"
+#: The monthly lane's two workflows: refresh-reference.yml's pin job saves the answers its water scans got, and
+#: build-reference.yml's build and parity jobs restore them (the maintainer's choice B, 2026-10-08).
+MONTHLY_WORKFLOWS = [REPO_ROOT / ".github" / "workflows" / name for name in ("refresh-reference.yml", "build-reference.yml")]
 
 
-def test_the_monthly_build_caches_the_epqs_answers_and_the_dem_samples_where_the_code_reads_them():
-    """refresh-reference.yml's build job carries the two answer caches between attempts (ARC-3 of PR #1805's second
-    review), and its parity job reads them, both through the workflow env's one list. A path that drifted from the
-    constant would restore beside the file the step reads, and every attempt would ask EPQS again with both cache steps
-    green."""
+@pytest.mark.parametrize("monthly_workflow", MONTHLY_WORKFLOWS, ids=lambda path: path.name)
+def test_the_monthly_build_caches_the_epqs_answers_and_the_dem_samples_where_the_code_reads_them(monthly_workflow):
+    """build-reference.yml's build job carries the two answer caches between attempts (ARC-3 of PR #1805's second
+    review), refresh-reference.yml's pin job hands it what fetch_trail_water.py --derive was answered, and the parity
+    job reads them, each through its workflow env's list. A path that drifted from the constant would restore beside
+    the file the step reads, and every attempt would ask EPQS again with every cache step green."""
     import export_elevation
 
-    workflow = yaml.safe_load(MONTHLY_WORKFLOW.read_text(encoding="utf-8"))
+    workflow = yaml.safe_load(monthly_workflow.read_text(encoding="utf-8"))
     raw = workflow["env"]["ELEVATION_ANSWERS"]
     cached = {line.strip() for line in raw.splitlines() if line.strip()}
 

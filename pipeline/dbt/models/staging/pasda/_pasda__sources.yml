@@ -20,6 +20,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'pasda_dcnr_trails'", "trailid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           Pennsylvania DCNR land trails (PASDA) (sources.json
           `pasda_dcnr_trails`). Key: TRAILID unique on 684 of 684 live rows.

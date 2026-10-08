@@ -167,6 +167,36 @@ def test_a_table_read_off_a_pdf_has_no_freshness_and_its_evaluator_exception_and
     assert pdfs <= excepted, sorted(pdfs - excepted)
 
 
+def test_every_generated_raw_table_carries_elementarys_checks_for_its_folders_cadence(written):
+    """Decision 102: the generator writes raw_table_checks() on every raw table it declares, so one edit of that list
+    reaches every generated layer, a PDF's included (build_marts.py leaves a check out where the warehouse lacks the
+    table). tests/test_elementary_checks.py holds the hand-written raw tables to the same list."""
+    import yaml
+
+    tables = 0
+    for path, text in written.items():
+        if not path.name.endswith("__generated__sources.yml"):
+            continue
+        for source in yaml.safe_load(text)["sources"]:
+            expected = make_dbt_staging.raw_table_checks(source["config"]["meta"]["cadence"])
+            for table in source["tables"]:
+                tables += 1
+                checks = [test for test in table["data_tests"] if next(iter(test)).startswith("elementary.")]
+                assert checks == expected, table["name"]
+    assert tables == len(make_dbt_staging.tables()) - sum(1 for table in make_dbt_staging.tables() if table.shared_from)
+
+
+@pytest.mark.parametrize("cadence", ["monthly", "daily", "hourly", None])
+def test_the_checks_the_generator_writes_as_text_are_the_list_it_names(cadence):
+    """sources_yaml() writes its YAML line by line, so raw_table_checks_yaml() is held to raw_table_checks()."""
+    import yaml
+
+    lines = make_dbt_staging.raw_table_checks_yaml(cadence, 2)
+
+    assert yaml.safe_load("checks:\n" + "\n".join(lines))["checks"] == make_dbt_staging.raw_table_checks(cadence)
+    assert ("elementary.freshness_anomalies:" in "\n".join(lines)) == (cadence in ("hourly", "daily"))
+
+
 def test_there_are_layers_to_stage():
     """Decision 54's wave 1 on this branch: 83 places, 6 elevation, 98 trail-line and 69 point layers at least."""
     by_type = {}

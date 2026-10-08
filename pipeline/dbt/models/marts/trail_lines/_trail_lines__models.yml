@@ -57,7 +57,66 @@ models:
           - dbt_utils.equal_rowcount:
               arguments:
                 compare_model: ref('trail_lines', v=1)
+          # Elementary's checks, as v1 carries them (below), and the columns
+          # trail_miles.json's v2 reads, its exposure's referenced_columns: one
+          # phone file reads v2, which is what lets Elementary 0.26.0 check them
+          # on dbt 2.0.6 (v1's comment says why).
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.dimension_anomalies:
+              arguments:
+                dimensions: [club, source_key]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.all_columns_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+                exclude_regexp: "^(geom_geojson|vertex_milli_miles)$"
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.exposure_schema_validity:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: the rows at each build; the rows per club and source, so one
+      # club's layer vanishing cannot hide inside the national total; and each
+      # column's null rate, the geometry and its per-vertex miles left out.
+      # The trail status's own check is on its column. No
+      # exposure_schema_validity on v1: six phone files read it, and with more
+      # than one Elementary 0.26.0 checks a column only through
+      # context["render"], which dbt 2.0.6 does not have (the test errored,
+      # measured 2026-10-08), so it could check nothing here.
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(geom_geojson|vertex_miles)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # ELT.md, "Geometry rules every mart obeys": GeoJSON text cannot carry
       # metres any more than a geometry contract could refuse them, so the
       # range is tested, on what the phone parses.
@@ -275,6 +334,16 @@ models:
           - accepted_values:
               arguments:
                 values: [open, closed]
+          # A safety column (decision 102): its null rate against the builds
+          # before, at warn. Elementary's minimum and maximum are numeric
+          # monitors only (0.26.0's get_available_monitors()).
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - name: trail_status_basis
         description: >
           What trail_status rests on: 'stated', the layer's own status column,

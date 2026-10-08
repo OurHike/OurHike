@@ -53,3 +53,30 @@ exposures:
         # The reviewed files and the POI miles under them both move on the
         # monthly lane; publish-vector-data.yml ships them today on dispatch.
         cadence: monthly
+        # The mart columns this file's writer reads, in Elementary's type words, which
+        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # the one phone file reading that mart: with more, Elementary 0.26.0 needs
+        # context["render"], which dbt 2.0.6 lacks.
+        referenced_columns:
+          - {column_name: challenge_id, data_type: string}
+          - {column_name: org, data_type: string}
+          - {column_name: org_name, data_type: string}
+          - {column_name: org_short, data_type: string}
+          - {column_name: org_domain, data_type: string}
+          - {column_name: trail, data_type: string}
+          - {column_name: name, data_type: string}
+          - {column_name: status, data_type: string}
+          - {column_name: challenge_summary, data_type: string}
+          - {column_name: window_opens, data_type: string}
+          - {column_name: window_closes, data_type: string}
+          - {column_name: finish_count, data_type: numeric}
+          - {column_name: finish_label, data_type: string}
+          - {column_name: reward_kind, data_type: string}
+          - {column_name: reward_rules_url, data_type: string}
+          - {column_name: reward_art, data_type: string}
+          - {column_name: takes_entries, data_type: boolean}
+          - {column_name: photo, data_type: string}
+          - {column_name: reviewed, data_type: string}
+          - {column_name: sections, data_type: other}
+          - {column_name: items, data_type: other}
+          - {column_name: list_position, data_type: numeric}

@@ -15,6 +15,38 @@ models:
       contract:
         enforced: true
     data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: the rows at each build; the rows per club and source, so one
+      # club's places vanishing cannot hide inside the total; each column's
+      # null rate (no geometry text and no long text here); and the columns
+      # places.json reads, its exposure's referenced_columns, which Elementary
+      # 0.26.0 can check on dbt 2.0.6 because one phone file reads this mart
+      # (points_of_interest's comment says why more could not be).
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.exposure_schema_validity:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # PL11: miles exactly where something was measured. An unmeasured
       # place must never read as one holding no trail, so a measured run
       # gives every row a figure (0.0 included) and an unmeasured one none.

@@ -31,6 +31,38 @@ models:
       - v: 1
         defined_in: warnings
     data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: in CI's fixture build, and in the hourly lane once it runs
+      # checks (build_marts.py's HOURLY_LANE_CHECKS). The rows at each build;
+      # the rows per club and source, so one club's notices vanishing cannot
+      # hide inside the total; and each column's null rate, the geometry and
+      # the long text (NWS's headline, description, instruction and area, a
+      # reporter's note and its follow-ups) left out. No
+      # exposure_schema_validity: six phone files read this mart, and with
+      # more than one Elementary 0.26.0 checks a column only through
+      # context["render"], which dbt 2.0.6 does not have (the test errored,
+      # measured 2026-10-08), so it could check nothing here.
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(geom_geojson|headline|alert_description|instruction|area_desc|note|follow_up)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # Never a block: false, or null where nobody has classified it (decision 7).
       - dbt_utils.expression_is_true:
           name: warnings_never_obstruct_the_trail

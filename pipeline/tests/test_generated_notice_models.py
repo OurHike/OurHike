@@ -26,6 +26,7 @@ import yaml
 
 import generate_notice_models as generator
 import make_dbt_fixtures
+import make_dbt_staging
 
 PIPELINE = Path(__file__).resolve().parent.parent
 DBT = PIPELINE / "dbt"
@@ -174,7 +175,7 @@ def test_a_conflicting_key_holds_its_source_and_never_stops_the_build(files):
         if path.name.endswith("__sources.yml"):
             for source in yaml.safe_load(text)["sources"]:
                 for table in source["tables"]:
-                    (test,) = [t["duplicates_are_exact"] for t in table["data_tests"]]
+                    (test,) = [t["duplicates_are_exact"] for t in table["data_tests"] if "duplicates_are_exact" in t]
                     assert test["config"]["severity"] == "warn", table["name"]
         elif path.name.startswith("base_"):
             version = re.search(r"notice_row_version\(\s*source\(\s*'[a-z0-9_]+',\s*'([a-z0-9_]+)'\s*\)\s*\)", text)
@@ -233,6 +234,32 @@ def test_only_a_pdf_notice_goes_without_freshness_and_each_has_its_evaluator_exc
         if row["fct_name"] == "fct_sources_without_freshness"
     }
     assert pdfs <= excepted, sorted(pdfs - excepted)
+
+
+def test_every_notice_raw_table_carries_elementarys_checks_and_each_dated_source_its_event_freshness(files):
+    """Decision 102, through the generator so one edit reaches every source: each raw table carries
+    make_dbt_staging.py's raw_table_checks() for its own cadence (freshness on the hourly and daily ones), and each
+    staging model whose source states when it edited a notice carries event_freshness_check() on that date, the gap
+    from the newest notice's own date to the build. A source with no such field gets none: its metric would be the
+    same empty answer at every build."""
+    sources = {s.table: s for s in generator.notice_sources() if not s.hand_staged}
+    fields = generator._fields_seed()
+    dated = {s.stg_model for s in sources.values() if generator.dates_its_notices(s, fields)}
+    tables = models = 0
+    for path, text in files.items():
+        if path.name.endswith("_notices__sources.yml"):
+            for source in yaml.safe_load(text)["sources"]:
+                for table in source["tables"]:
+                    tables += 1
+                    checks = [test for test in table["data_tests"] if next(iter(test)).startswith("elementary.")]
+                    assert checks == make_dbt_staging.raw_table_checks(sources[table["name"]].cadence), table["name"]
+        if path.name.endswith("_notices__models.yml"):
+            for model in yaml.safe_load(text)["models"]:
+                models += 1
+                expected = [generator.event_freshness_check()] if model["name"] in dated else []
+                assert [test for test in model.get("data_tests") or []] == expected, model["name"]
+    assert tables == models == len(sources)
+    assert len(dated) >= 219, "157 hourly and 62 daily sources at d5e97f8c"
 
 
 @pytest.mark.parametrize(("reader_class", "columns"), [("FeedNotices", "FEED_COLUMNS"), ("PageNotice", "PAGE_COLUMNS")])

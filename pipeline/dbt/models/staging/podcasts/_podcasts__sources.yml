@@ -21,6 +21,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/podcast_episodes.json'", "_row"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           reference/podcast_episodes.json's `episodes`, one row per row of
           the file, each landed whole in `row_json` as the JSON its reviewer

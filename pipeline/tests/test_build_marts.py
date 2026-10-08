@@ -58,9 +58,13 @@ def argvs(runs):
 #: arguments as the recorded calls list them.
 ELEMENTARY_RUN = (("dbt", "run", "--profiles-dir", ".", "--select", "package:elementary"), DBT_DIR)
 ELEMENTARY = ("dbt", "run")
+#: What every dbt build leaves out, Elementary's checks, and the pass after the writers that runs them, as a build with
+#: no lane plans it (build_marts.py's docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS").
+NO_CHECKS = "tag:elementary_check"
+CHECKS_RUN = (("dbt", "test", "--profiles-dir", ".", "--threads", "1", "-s", NO_CHECKS), DBT_DIR)
 
 
-def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers():
+def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers_then_elementarys_checks():
     runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
 
     assert argvs(runs) == [
@@ -76,10 +80,15 @@ def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers():
                 "package:dbt_project_evaluator",
                 "package:elementary",
                 "path:models/publish",
+                NO_CHECKS,
             ),
             DBT_DIR,
         ),
-        (("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish"), DBT_DIR),
+        (
+            ("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish", "--exclude", NO_CHECKS),
+            DBT_DIR,
+        ),
+        CHECKS_RUN,
     ]
 
 
@@ -99,6 +108,7 @@ def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks(
                 "package:dbt_project_evaluator",
                 "package:elementary",
                 "path:models/publish",
+                NO_CHECKS,
                 "source:derived+",
             ),
             DBT_DIR,
@@ -115,10 +125,24 @@ def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks(
             PIPELINE_DIR,
         ),
         (
-            ("dbt", "build", "--profiles-dir", ".", "-s", "source:derived.dem_samples+", "--exclude", "path:models/publish"),
+            (
+                "dbt",
+                "build",
+                "--profiles-dir",
+                ".",
+                "-s",
+                "source:derived.dem_samples+",
+                "--exclude",
+                "path:models/publish",
+                NO_CHECKS,
+            ),
             DBT_DIR,
         ),
-        (("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish"), DBT_DIR),
+        (
+            ("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish", "--exclude", NO_CHECKS),
+            DBT_DIR,
+        ),
+        CHECKS_RUN,
     ]
 
 
@@ -134,6 +158,7 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         ("python", "step_second.py"),
         ("dbt", "build"),
         ("dbt", "build"),
+        ("dbt", "test"),
     ]
     after_first, after_second = runs[4].argv, runs[6].argv
     assert after_first[after_first.index("-s") :] == (
@@ -141,6 +166,7 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         "source:derived.dem_samples+",
         "--exclude",
         "path:models/publish",
+        NO_CHECKS,
         "source:derived.graph_pieces+",
     )
     assert after_second[after_second.index("-s") :] == (
@@ -148,9 +174,22 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         "source:derived.graph_pieces+",
         "--exclude",
         "path:models/publish",
+        NO_CHECKS,
     )
     assert runs[5].argv == ("python", "step_second.py", "--warehouse", "/w/warehouse.duckdb")
-    assert runs[-1].argv == ("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish")
+    assert runs[-2].argv == (
+        "dbt",
+        "build",
+        "--profiles-dir",
+        ".",
+        "--threads",
+        "1",
+        "-s",
+        "path:models/publish",
+        "--exclude",
+        NO_CHECKS,
+    )
+    assert (runs[-1].argv, runs[-1].cwd) == CHECKS_RUN
 
 
 def test_elementary_s_own_tables_build_before_the_seeds_and_stage_a_leaves_the_package_out():
@@ -171,21 +210,26 @@ def test_without_fixtures_a_step_gets_no_fixture_arguments_and_reads_its_own_def
     assert runs[3].argv == ("python", "step_dem_sampling.py", "--warehouse", "/w/warehouse.duckdb")
 
 
-def test_threads_reach_every_dbt_seed_and_build_and_no_step_and_the_writers_build_at_one():
+def test_threads_reach_every_dbt_seed_and_build_and_no_step_and_the_writers_and_checks_run_at_one():
     runs = plan([DEM_SAMPLING, SECOND], dbt="dbt", python="python", paths=PATHS, fixtures=True, threads=2, manifest=NONE_ALONE)
 
     for run in runs:
         assert ("--threads" in run.argv) == (run.argv[0] == "dbt"), run.argv
         if run.argv[0] == "dbt":
-            expected = "1" if run.stage == build_marts.WRITERS else "2"
+            expected = "1" if run.stage in (build_marts.WRITERS, build_marts.CHECKS) else "2"
             assert run.argv[run.argv.index("--threads") + 1] == expected, run.argv
+
+
+def _writers(runs: list[build_marts.Run]) -> build_marts.Run:
+    (writers,) = [run for run in runs if run.stage == build_marts.WRITERS]
+    return writers
 
 
 @pytest.mark.parametrize("lane", [None, "monthly"])
 def test_the_writers_build_one_at_a_time_outside_the_hourly_lane(lane):
     """Monthly run 25 (refresh-reference.yml 37614075245) ran four network-wide writers side by side out of DuckDB's
     12.4 GiB (build_marts.py's docstring, "THE PUB_ WRITERS BUILD ONE AT A TIME"), so --threads 4 does not reach them."""
-    writers = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, threads=4)[-1]
+    writers = _writers(plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, threads=4))
 
     assert writers.stage == build_marts.WRITERS
     assert writers.argv[writers.argv.index("--threads") :][:2] == ("--threads", "1")
@@ -194,7 +238,7 @@ def test_the_writers_build_one_at_a_time_outside_the_hourly_lane(lane):
 
 def test_the_hourly_lanes_writers_keep_the_builds_threads():
     """Its writers are the files an hourly or daily source reaches, inside publish-conditions.yml's step cap."""
-    writers = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", threads=4)[-1]
+    writers = _writers(plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", threads=4))
 
     assert writers.stage == build_marts.WRITERS
     assert writers.argv[writers.argv.index("--threads") :][:2] == ("--threads", "4")
@@ -613,16 +657,23 @@ def test_the_monthly_lane_is_the_whole_plan_with_every_hourly_or_daily_node_excl
 
     assert [run.label for run in runs] == [run.label for run in everything]
     for lane_run, full_run in zip(runs, everything, strict=True):
-        if full_run.argv[:2] != ("dbt", "build"):
+        if full_run.stage == build_marts.CHECKS:
+            # The monthly lane's training window rides on its checks pass alone (build_marts.MONTHLY_TRAINING_DAYS).
+            assert lane_run.argv == full_run.argv + (
+                "--exclude",
+                *build_marts.LANE_EXCLUDES,
+                "--vars",
+                json.dumps({"days_back": build_marts.MONTHLY_TRAINING_DAYS}),
+            )
+        elif full_run.argv[:2] != ("dbt", "build"):
             assert lane_run.argv == full_run.argv, "the seeds and the Python steps are the same in every lane"
-        elif "--exclude" in full_run.argv:
-            assert lane_run.argv == full_run.argv + build_marts.LANE_EXCLUDES
         else:
-            assert lane_run.argv == full_run.argv + ("--exclude", *build_marts.LANE_EXCLUDES)
+            assert "--exclude" in full_run.argv, "every build leaves Elementary's checks out"
+            assert lane_run.argv == full_run.argv + build_marts.LANE_EXCLUDES
 
 
 def test_the_monthly_lanes_writers_leave_the_hourly_writers_unrun():
-    writers = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")[-1]
+    writers = _writers(plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly"))
 
     assert writers.argv == (
         "dbt",
@@ -634,6 +685,7 @@ def test_the_monthly_lanes_writers_leave_the_hourly_writers_unrun():
         "-s",
         "path:models/publish",
         "--exclude",
+        NO_CHECKS,
         "config.meta.cadence:hourly+",
         "config.meta.cadence:daily+",
     )
@@ -670,6 +722,7 @@ def test_the_hourly_lane_with_nothing_to_defer_to_builds_its_nodes_and_their_par
                 "package:dbt_project_evaluator",
                 "package:elementary",
                 "path:models/publish",
+                NO_CHECKS,
                 "source:derived.dem_samples+",
                 "source:derived.formed_routes+",
                 "--indirect-selection",
@@ -687,6 +740,7 @@ def test_the_hourly_lane_with_nothing_to_defer_to_builds_its_nodes_and_their_par
                 "path:models/publish,config.meta.cadence:hourly+",
                 "path:models/publish,config.meta.cadence:daily+",
                 "--exclude",
+                NO_CHECKS,
                 "source:derived.dem_samples+",
                 "source:derived.formed_routes+",
                 "--indirect-selection",
@@ -694,6 +748,7 @@ def test_the_hourly_lane_with_nothing_to_defer_to_builds_its_nodes_and_their_par
             ),
             DBT_DIR,
         ),
+        # No checks pass: build_marts.py's docstring, "THE HOURLY LANE RUNS NO CHECKS YET".
     ]
 
 
@@ -721,6 +776,7 @@ def test_an_hourly_step_runs_in_the_hourly_lane_and_no_monthly_step_does():
         "source:derived.weather_squares+",
         "--exclude",
         "path:models/publish",
+        NO_CHECKS,
         "source:derived.dem_samples+",
         "source:derived.formed_routes+",
         "--indirect-selection",
@@ -749,9 +805,10 @@ def test_without_step_leaves_the_step_out_and_its_writers_unrun_so_publish_keeps
     )
 
     assert not [run for run in runs if run.argv[0] == "python"]
-    writers = runs[-1].argv
-    assert writers[writers.index("--exclude") :][:4] == (
+    writers = _writers(runs).argv
+    assert writers[writers.index("--exclude") :][:5] == (
         "--exclude",
+        NO_CHECKS,
         "source:derived.dem_samples+",
         "source:derived.formed_routes+",
         "source:derived.weather_squares+",
@@ -971,7 +1028,13 @@ def test_a_step_that_says_it_reads_no_model_and_whose_exposure_lists_one_is_refu
 # --- The models that build alone (build_marts.py's docstring, "A MODEL TAGGED `builds_alone`") ---
 
 ALONE, BELOW = "tag:builds_alone", "tag:builds_alone+"
-STAGE_A_EXCLUDES = ("package:dbt_project_evaluator", "package:elementary", "path:models/publish", "source:derived+")
+STAGE_A_EXCLUDES = (
+    "package:dbt_project_evaluator",
+    "package:elementary",
+    "path:models/publish",
+    NO_CHECKS,
+    "source:derived+",
+)
 
 
 def test_stage_a_has_no_dash_s_so_its_passes_select_the_tag_itself_the_tagged_ones_on_one_thread():
@@ -997,7 +1060,7 @@ def test_what_a_monthly_steps_table_unblocks_is_split_with_each_pass_inside_the_
     runs = plan([DEM_SAMPLING, SECOND], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
 
     passes = [run for run in runs if run.label.startswith("what derived.dem_samples unblocks")]
-    excludes = ("path:models/publish", "source:derived.graph_pieces+", *build_marts.LANE_EXCLUDES)
+    excludes = ("path:models/publish", NO_CHECKS, "source:derived.graph_pieces+", *build_marts.LANE_EXCLUDES)
     assert [run.argv for run in passes] == [
         ("dbt", "build", "--profiles-dir", ".", "-s", "source:derived.dem_samples+", "--exclude", *excludes, BELOW),
         (
@@ -1035,8 +1098,8 @@ def test_the_writers_build_is_never_split_and_never_names_the_tag(lane):
     whole = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, manifest=NONE_ALONE)
 
     writers = [run for run in split if "writers" in run.label]
-    assert [run.argv for run in writers] == [whole[-1].argv] and split[-1] == whole[-1]
-    assert not any(build_marts.BUILDS_ALONE in argument for argument in whole[-1].argv)
+    assert [run.argv for run in writers] == [_writers(whole).argv] and _writers(split) == _writers(whole)
+    assert not any(build_marts.BUILDS_ALONE in argument for argument in _writers(whole).argv)
 
 
 def _alone_manifest(edges: dict[str, list[str]], tagged: tuple[str, ...] = (), hourly: tuple[str, ...] = ()) -> dict:
@@ -1093,6 +1156,7 @@ def test_given_the_manifest_a_build_with_no_tagged_model_in_its_selection_is_not
         "what derived.dem_samples unblocks: the models that build alone, one at a time",
         "what derived.dem_samples unblocks: what the models that build alone feed",
         "the pub_ writers",
+        build_marts.ELEMENTARY_CHECKS,
     ]
     assert runs[2] == whole[2]
 
@@ -1136,6 +1200,7 @@ def test_main_runs_the_split_passes_the_manifest_leaves_in_and_says_which_models
     assert [argv[argv.index("-s") + 1] for argv in alone] == [
         "source:derived.dem_samples+,tag:builds_alone",
         "path:models/publish",  # the writers, one at a time too
+        NO_CHECKS,  # and Elementary's checks
     ]
     assert "-- build_marts: 1 model(s) build alone (heavy)" in capsys.readouterr().out
 
@@ -1232,7 +1297,7 @@ def test_the_two_models_monthly_run_20_ran_out_of_memory_on_carry_the_tag_in_the
 # --- The row history (build_marts.py's docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST") ---
 
 
-def test_plan_with_a_history_store_restores_before_the_seeds_and_saves_after_the_writers():
+def test_plan_with_a_history_store_restores_before_the_seeds_and_saves_after_the_writers_and_the_checks():
     history = History("s3://bucket/history/monthly", False, "/venv/extract/bin/python")
     runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, history=history)
 
@@ -1240,7 +1305,8 @@ def test_plan_with_a_history_store_restores_before_the_seeds_and_saves_after_the
     assert runs[0].argv == ("/venv/extract/bin/python", "row_history.py", "restore", *store)
     assert (runs[1].argv, runs[1].cwd) == ELEMENTARY_RUN and runs[2].argv[:2] == ("dbt", "seed")
     assert runs[-1].argv == ("/venv/extract/bin/python", "row_history.py", "save", *store)
-    assert runs[-2].argv[-2:] == ("-s", "path:models/publish"), "the save waits for the writers"
+    assert runs[-2].stage == build_marts.CHECKS, "the save comes after Elementary's checks"
+    assert runs[-3].stage == build_marts.WRITERS, "and the checks after the writers"
 
 
 def test_no_history_save_restores_and_builds_with_the_history_and_saves_nothing(monkeypatch, tmp_path, capsys):
@@ -1847,3 +1913,332 @@ def test_a_dbt_run_that_answers_a_publishable_exit_itself_is_answered_as_a_plain
     code, _ = _main(monkeypatch, tmp_path, _conditions_writers_manifest(tmp_path), recorder=recorder)
 
     assert code == 1
+
+
+# --- Elementary's checks (build_marts.py's docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS") -----------------
+
+
+def _is_checks_run(argv: tuple[str, ...]) -> bool:
+    return argv[:2] == ("dbt", "test")
+
+
+def _checks(runs: list[build_marts.Run]) -> build_marts.Run:
+    (checks,) = [run for run in runs if run.stage == build_marts.CHECKS]
+    return checks
+
+
+def test_the_checks_tag_here_is_the_one_both_generators_write():
+    import make_dbt_staging
+
+    assert build_marts.ELEMENTARY_CHECK == make_dbt_staging.ELEMENTARY_CHECK
+    assert NO_CHECKS == f"tag:{make_dbt_staging.ELEMENTARY_CHECK}"
+
+
+def test_the_checks_switch_here_is_the_one_every_check_reads():
+    import make_dbt_staging
+
+    ((name, value),) = build_marts.CHECKS_SWITCH
+    assert make_dbt_staging.ELEMENTARY_ENABLED == f"{{{{ env_var('{name}', 'false') == '{value}' }}}}"
+
+
+@pytest.mark.parametrize(
+    ("lane", "checks"), [(None, None), ("monthly", None), ("hourly", True)], ids=["no lane", "monthly", "hourly asked"]
+)
+def test_the_checks_switch_is_on_for_elementarys_tables_and_the_checks_pass_alone(lane, checks):
+    """Enabled, the checks cost every dbt command its parse, so only the two that need them in the graph carry the
+    switch: Elementary's own tables, whose dbt_tests the data-quality file reads each check's lineage from, and the
+    pass (make_dbt_staging.ELEMENTARY_ENABLED)."""
+    history = History("s3://bucket/history/ci", False, "python")
+    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=lane is None, lane=lane, checks=checks, history=history)
+
+    assert [(run.label, run.env) for run in runs if run.env] == [
+        (build_marts.ELEMENTARY_TABLES, build_marts.CHECKS_SWITCH),
+        (build_marts.ELEMENTARY_CHECKS, build_marts.CHECKS_SWITCH),
+    ]
+
+
+@pytest.mark.parametrize(("lane", "checks"), [("hourly", None), (None, False)], ids=["hourly", "no lane, asked for none"])
+def test_a_build_that_runs_no_checks_never_turns_their_switch_on(lane, checks):
+    """The hourly lane, which runs none yet, would otherwise load all 1,979 into Elementary's dbt_tests every hour."""
+    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=lane is None, lane=lane, checks=checks)
+
+    assert [run.label for run in runs if run.env] == []
+
+
+def test_main_gives_the_checks_switch_to_elementarys_tables_and_the_pass_and_to_no_other_command(monkeypatch, tmp_path):
+    monkeypatch.setenv("OURHIKE_ELEMENTARY_CHECKS", "true")  # set outside: still no other command's
+    _, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES))
+
+    switched = [argv[:2] for argv, _, env in recorder.calls if env.get("OURHIKE_ELEMENTARY_CHECKS") == "true"]
+    assert switched == [ELEMENTARY, ("dbt", "test")]
+    assert all(env.get("OURHIKE_ELEMENTARY") == "true" for _, _, env in recorder.calls), "never without Elementary's own"
+
+
+@pytest.mark.parametrize("lane", [None, "monthly", "hourly"])
+@pytest.mark.parametrize("manifest", [None, NONE_ALONE, HEAVY], ids=["unplanned", "none alone", "split"])
+def test_every_dbt_build_leaves_elementarys_checks_out_split_or_not(lane, manifest):
+    """A check built beside its model would run before the writers and at the build's threads, and an anomaly check
+    that errors there would fail the build (decision 102's "never blocks a publish"), so no dbt build selects one."""
+    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, manifest=manifest)
+
+    builds = [run for run in runs if run.argv[:2] == ("dbt", "build")]
+    assert builds
+    for run in builds:
+        assert NO_CHECKS in run.argv[run.argv.index("--exclude") :], run.label
+        assert not any(argument.startswith(NO_CHECKS) for argument in run.argv[: run.argv.index("--exclude")]), run.label
+
+
+def test_the_checks_run_after_the_writers_and_before_the_save_at_one_thread_whatever_the_builds_threads():
+    history = History("s3://bucket/history/ci", False, "python")
+    runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=True, threads=4, history=history)
+
+    stages = [run.stage for run in runs]
+    at = stages.index(build_marts.CHECKS)
+    assert stages.count(build_marts.CHECKS) == 1
+    assert runs[at - 1].stage == build_marts.WRITERS and runs[at + 1].label == build_marts.SAVE_LABEL
+    assert (runs[at].label, runs[at].argv, runs[at].cwd) == (build_marts.ELEMENTARY_CHECKS, *CHECKS_RUN)
+
+
+def test_the_monthly_lanes_checks_leave_out_what_its_writers_do_and_train_on_its_own_window():
+    runs = plan([*PAIR, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="monthly")
+
+    assert _checks(runs).argv == (
+        "dbt",
+        "test",
+        "--profiles-dir",
+        ".",
+        "--threads",
+        "1",
+        "-s",
+        NO_CHECKS,
+        "--exclude",
+        *build_marts.LANE_EXCLUDES,
+        "source:derived.weather_squares+",
+        "--vars",
+        '{"days_back": 400}',
+    )
+    assert build_marts.MONTHLY_TRAINING_DAYS == 400, "pipeline/ELT.md's 'about 400 days' (dbt_project.yml says why --vars)"
+
+
+@pytest.mark.parametrize(
+    ("state", "after"),
+    [(None, ("--indirect-selection", "cautious")), (Path("/m/target"), ("--defer", "--state", "/m/target"))],
+    ids=["no state", "deferred"],
+)
+def test_the_hourly_lane_runs_no_checks_yet_and_asked_for_them_runs_its_own_as_its_writers_are_chosen(state, after):
+    """build_marts.py's docstring, "THE HOURLY LANE RUNS NO CHECKS YET": the maintainer's to decide."""
+    assert build_marts.HOURLY_LANE_CHECKS is False
+    assert [build_marts.runs_checks(lane) for lane in (None, "monthly", "hourly")] == [True, True, False]
+    runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=state)
+    assert build_marts.CHECKS not in [run.stage for run in runs]
+
+    asked = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=state, checks=True)
+    assert _checks(asked).argv == (
+        "dbt",
+        "test",
+        "--profiles-dir",
+        ".",
+        "--threads",
+        "1",
+        "-s",
+        f"{NO_CHECKS},config.meta.cadence:hourly+",
+        f"{NO_CHECKS},config.meta.cadence:daily+",
+        "--exclude",
+        "source:derived.dem_samples+",
+        "source:derived.formed_routes+",
+        *after,
+    )
+
+
+def test_the_checks_leave_out_each_raw_table_the_warehouse_does_not_hold():
+    absent = ("source:bmta.raw_bmta__bmta_alerts_pdf", "source:tatc.raw_tatc__tatc_ridgerunner_reports")
+    runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=True, absent=absent)
+
+    checks = _checks(runs).argv
+    assert checks[checks.index("--exclude") :] == ("--exclude", *absent)
+    assert all(not set(absent) & set(run.argv) for run in runs if run.stage != build_marts.CHECKS), "the builds read them"
+
+
+def _source(name: str, table: str, cadence: str, schema: str = "raw") -> tuple[str, dict]:
+    return f"source.ourhike.{name}.{table}", {
+        "source_name": name,
+        "name": table,
+        "schema": schema,
+        "config": {"meta": {"cadence": cadence}},
+    }
+
+
+def test_absent_sources_names_each_raw_table_of_the_lane_that_the_warehouse_does_not_hold(tmp_path):
+    warehouse = tmp_path / "warehouse.duckdb"
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema raw")
+        con.execute("create table raw.raw_atc__shelters (x integer)")
+        con.execute("create view raw.raw_nws__alerts as select 1 as x")
+    manifest = {
+        "sources": dict(
+            [
+                _source("atc", "raw_atc__shelters", "monthly"),
+                _source("atc", "raw_atc__never_landed", "monthly"),
+                _source("nws", "raw_nws__alerts", "hourly"),
+                _source("bmta", "raw_bmta__bmta_alerts_pdf", "daily"),
+                _source("derived", "dem_samples", "monthly", schema="derived"),
+            ]
+        ),
+        "child_map": {},
+    }
+
+    assert build_marts.absent_sources(manifest, warehouse, None) == (
+        "source:atc.raw_atc__never_landed",
+        "source:bmta.raw_bmta__bmta_alerts_pdf",
+    )
+    assert build_marts.absent_sources(manifest, warehouse, "monthly") == ("source:atc.raw_atc__never_landed",)
+    assert build_marts.absent_sources(manifest, warehouse, "hourly") == ("source:bmta.raw_bmta__bmta_alerts_pdf",)
+    assert build_marts.absent_sources(manifest, tmp_path / "no_warehouse.duckdb", None) == ()
+
+
+def test_main_leaves_out_the_checks_on_the_raw_tables_the_warehouse_lacks_when_the_pass_starts(monkeypatch, tmp_path, capsys):
+    """Read when the pass starts, not after the seeds: a source whose own model failed in stage A has its raw tables
+    dropped then (one_sources_failures()), and its checks would error on them."""
+    warehouse = tmp_path / "warehouse.duckdb"
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema raw")
+        con.execute("create table raw.raw_atc__shelters (x integer)")
+        con.execute("create table raw.raw_amc__alerts (x integer)")
+    manifest = _manifest(*STEP_TABLES)
+    manifest["sources"] |= dict([_source("atc", "raw_atc__shelters", "monthly"), _source("amc", "raw_amc__alerts", "hourly")])
+
+    class Dropping(_Recorder):
+        def __call__(self, argv, *, cwd, env, check):
+            if _is_writers_run(tuple(argv)):  # as if stage A had held amc and dropped its table
+                build_marts.drop_raw_tables(warehouse, ["raw_amc__alerts"])
+            return super().__call__(argv, cwd=cwd, env=env, check=check)
+
+    code, recorder = _main(monkeypatch, tmp_path, manifest, recorder=Dropping())
+
+    (checks,) = [argv for argv, _, _ in recorder.calls if _is_checks_run(argv)]
+    assert code == 0
+    assert checks[checks.index("--exclude") :] == ("--exclude", "source:amc.raw_amc__alerts")
+    assert "-- build_marts: Elementary's checks leave out 1 raw table(s) this warehouse does not hold: amc.raw_amc__alerts" in (
+        capsys.readouterr().out
+    )
+
+
+def test_a_warehouse_the_checks_pass_cannot_read_leaves_nothing_out_and_stops_nothing(monkeypatch, tmp_path, capsys):
+    """The pass never stops a build, so neither may the read before it: a DuckDB error there runs every check."""
+
+    def unreadable(*_args, **_kwargs):
+        raise OSError("IO Error: Could not set lock on file")
+
+    monkeypatch.setattr(build_marts, "absent_sources", unreadable)
+
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES))
+
+    (checks,) = [argv for argv, _, _ in recorder.calls if _is_checks_run(argv)]
+    assert code == 0 and recorder.calls[-1][0][:3] == (*RESTORE, "save")
+    assert "--exclude" not in checks
+    assert (
+        "-- build_marts: Elementary's checks: the warehouse's raw tables were not read (IO Error: Could not set lock on file)"
+        in capsys.readouterr().out
+    )
+
+
+CHECK_RESULTS = [
+    {
+        "unique_id": "test.ourhike.elementary_source_volume_anomalies_bmta_raw_bmta__alerts_.1",
+        "status": "error",
+        "message": "Catalog Error: Table with name raw_bmta__alerts does not exist!\nLINE 14: from raw_bmta__alerts",
+    },
+    {"unique_id": "test.ourhike.elementary_volume_anomalies_closures_v1_.2", "status": "warn", "message": "Got 1 result"},
+    {"unique_id": "test.ourhike.elementary_source_schema_changes_atc_raw_atc__shelters_.3", "status": "pass"},
+]
+
+
+def test_a_check_that_errors_is_annotated_and_changes_neither_the_builds_exit_nor_its_save(monkeypatch, tmp_path, capsys):
+    """Decision 102: the checks never block a publish. A check that errors is said in the log and as an annotation,
+    never retried, and the build goes on to save its history and answers as it would have without the pass."""
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_checks_run, 1, CHECK_RESULTS, {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
+
+    out = capsys.readouterr().out
+    assert code == 0
+    commands = [argv for argv, _, _ in recorder.calls]
+    assert commands[-2][:2] == ("dbt", "test") and commands[-1][:3] == (*RESTORE, "save")
+    assert recorder.retries == [], "a `dbt test` is never retried"
+    assert "-- build_marts: Elementary's checks: 3 check(s), 1 error, 1 pass, 1 warn; exit 1" in out
+    assert (
+        "-- build_marts: Elementary's checks: error: ourhike.elementary_source_volume_anomalies_bmta_raw_bmta__alerts_.1: "
+        "Catalog Error: Table with name raw_bmta__alerts does not exist!\n" in out
+    ), "the message's first line alone"
+    assert "-- build_marts: Elementary's checks: warn: ourhike.elementary_volume_anomalies_closures_v1_.2\n" in out
+    assert (
+        "::warning title=Elementary's checks errored::1 check(s) errored (exit 1): "
+        "ourhike.elementary_source_volume_anomalies_bmta_raw_bmta__alerts_.1." in out
+    )
+    assert "::error" not in out
+
+
+def test_a_partial_build_answers_partial_whatever_its_checks_say(monkeypatch, tmp_path):
+    processed = tmp_path / "processed"
+    writers = [
+        {"unique_id": "model.ourhike.pub_conditions_closures", "status": "success"},
+        {"unique_id": "model.ourhike.pub_conditions_notices", "status": "error", "message": "TopologyException"},
+    ]
+    recorder = _DbtRuns(
+        tmp_path / "run_results.json",
+        [
+            (_is_writers_run, 1, writers, {processed / "conditions_closures.json": "{}"}),
+            (_is_checks_run, 1, CHECK_RESULTS, {}),
+        ],
+    )
+
+    code, _ = _main(monkeypatch, tmp_path, _conditions_writers_manifest(tmp_path), recorder=recorder)
+
+    assert code == build_marts.PARTIAL_EXIT
+
+
+def test_checks_that_only_warn_are_counted_and_named_with_no_annotation(monkeypatch, tmp_path, capsys):
+    """Warnings are the design (CONTRACT.md's run order, step 4): the data-quality page reads them, not the log."""
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_checks_run, 0, CHECK_RESULTS[1:], {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "-- build_marts: Elementary's checks: 2 check(s), 1 pass, 1 warn; exit 0" in out
+    assert "::warning title=Elementary" not in out
+
+
+class _ChecksCrash(_Recorder):
+    """_Recorder whose checks pass exits 2 and leaves no run_results.json, as a dbt that crashed would."""
+
+    def __call__(self, argv, *, cwd, env, check):
+        completed = super().__call__(argv, cwd=cwd, env=env, check=check)
+        return subprocess.CompletedProcess(argv, 2) if _is_checks_run(tuple(argv)) else completed
+
+
+def test_a_checks_pass_that_leaves_no_results_says_so_and_stops_nothing(monkeypatch, tmp_path, capsys):
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=_ChecksCrash())
+
+    out = capsys.readouterr().out
+    assert code == 0 and recorder.calls[-1][0][:3] == (*RESTORE, "save")
+    assert "::warning title=Elementary's checks recorded nothing::the checks pass ended with exit 2" in out
+
+
+def test_a_checks_pass_that_selects_nothing_is_annotated_because_every_lane_has_checks():
+    lines = build_marts.checks_report([], 0)
+
+    assert lines[0] == "-- build_marts: Elementary's checks: 0 check(s), none selected; exit 0"
+    assert lines[1].startswith("::warning title=Elementary's checks ran none::the checks pass selected no check (exit 0)")
+    assert len(lines) == 2
+
+
+def test_the_checks_report_names_ten_errors_and_counts_the_rest():
+    results = [{"unique_id": f"test.ourhike.check_{number:02d}", "status": "error", "message": "x" * 300} for number in range(12)]
+
+    lines = build_marts.checks_report(results, 1)
+
+    assert lines[0] == "-- build_marts: Elementary's checks: 12 check(s), 12 error; exit 1"
+    assert all(len(line.rsplit(": ", 1)[-1]) == build_marts.FAILED_VALUE_WIDTH for line in lines[1:13])
+    assert lines[-1].startswith("::warning title=Elementary's checks errored::12 check(s) errored (exit 1): ourhike.check_00")
+    assert "ourhike.check_09 and 2 more." in lines[-1] and "check_10" not in lines[-1]

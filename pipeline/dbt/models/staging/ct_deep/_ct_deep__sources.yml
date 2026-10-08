@@ -21,6 +21,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ct_deep_blue_blazed'", "trailname", "par_name", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           Connecticut Blue-Blazed Hiking Trails (sources.json
           `ct_deep_blue_blazed`). Key: TrailName, Par_Name and geometry, 351

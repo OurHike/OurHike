@@ -22,10 +22,13 @@ written its table, and fail. So:
 3. for each STEPS entry, in order: the step, then
    `dbt build -s source:derived.<its table>+`, less what a later step's table
    also feeds, which waits for that step;
-4. the pub_ writers LAST (`-s path:models/publish`): `dbt build` tests each
-   model after building it, so a writer built beside its parents would write
-   its file before a failing test upstream could stop it (ELT.md, "Publish
-   (reverse ETL)").
+4. the pub_ writers after every other model (`-s path:models/publish`): `dbt
+   build` tests each model after building it, so a writer built beside its
+   parents would write its file before a failing test upstream could stop it
+   (ELT.md, "Publish (reverse ETL)");
+5. Elementary's checks (`dbt test -s tag:elementary_check`), which every
+   build before leaves out: below, "ELEMENTARY'S CHECKS RUN AFTER THE
+   WRITERS".
 
 Contracts stay enforced in every invocation. `dbt deps` is not here: CI and
 scripts/test.sh run it first, and a sandbox whose proxy cannot fetch the
@@ -171,7 +174,8 @@ THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST. The row-history snapshots
 the only state a build carries from one run to the next, and the warehouse is
 rebuilt from raw every
 run, so `row_history.py restore` runs before `dbt seed` and `row_history.py
-save` after the writers, only when every command before it succeeded. The
+save` after the writers and Elementary's checks, only when every command
+before it succeeded (the checks pass excepted, which never stops a build). The
 store is --history-url, else OURHIKE_HISTORY_URL. A store with no history
 yet is a cold start, and cold starts are allowed only:
 - under --fixtures with no store named, into a new temporary directory, so
@@ -265,6 +269,57 @@ package:elementary` comes before `dbt seed`, and stage A leaves the package
 out. That run also loads the tables describing the project itself, through
 their own post-hooks, which is why dbt_project.yml turns the end-of-run
 hook's copy of that work off. The pytest suites leave the switch off.
+
+ELEMENTARY'S CHECKS RUN AFTER THE WRITERS, in a pass of their own, before the
+row history's save (decision 102, ELT.md "Data quality (decision 102)"):
+`dbt test -s tag:elementary_check` at one thread, lane-scoped as the writers
+are (the lane's excludes, a held step's and a withdrawn table's). Every check
+is tagged `elementary_check` at warn (make_dbt_staging.py's raw_table_checks()
+on every raw table, the marts' YAML for the rest), and every dbt build before
+the pass leaves that tag out, so no check runs beside its model, where one
+that errored would fail the build. The pass never changes the build's exit
+and never stops a publish. Warnings are the design, and the data-quality file
+reads them; a check that errors, or a pass that ends without results or
+selects none, is named in the log with one `::warning` annotation
+(checks_report()), and the build goes on to save its history. It is never retried: `dbt retry` follows
+a build that failed, whose nodes a publish needs, and a check is no such node
+(Reasoned; the maintainer's three retries were asked of builds). The checks
+on a raw table the warehouse does not hold are left out (absent_sources()),
+because they would error on an absence the extract has already reported. The
+monthly lane's pass trains on MONTHLY_TRAINING_DAYS, given as --vars.
+Nearly all of the pass's time is Elementary's own work while dbt compiles each
+check (it queries the table, stores the metrics and scores them, before the
+test's one select runs), so the pass grows with the number of checks and
+hardly with their kind, and not with --threads: 0.32 to 0.35 s of CPU a check
+and about 20 s a pass (measured 2026-10-08 on the fixtures in a 4-CPU
+sandbox: the monthly lane's 917 checks took 314 s of CPU and 295 s of wall on
+a quiet machine; under other builds' load the hourly lane's 1,041 took 381 s
+and 485 s, 280 of them 117 s and 189 s, and all 1,041 at four threads 407 s
+in 390 s; dbt timed the tests themselves at 5 to 22 s a pass). The checks
+are enabled only where they are needed, for Elementary's own tables and for
+the pass, and only in a build that runs them (CHECKS_SWITCH), because enabled
+they cost every dbt command too: `dbt parse` with Elementary on took 16.9 to
+17.5 s of CPU with the 1,979 enabled against 12.0 to 12.8 s without them,
+alternated three times the same day, and 13.9 to 16.8 s with them disabled.
+The hourly lane, which runs none, took 406 s of CPU against 347 s before the
+checks with them enabled, 86 s against 47 s of its Elementary tables' wall
+in loading dbt_tests, and 384 s against 359 s with them disabled (two runs,
+each beside a build of the commit before, the same day). CI's fixture build
+runs the 1,949 whose tables its warehouse holds: 718 s and 802 s of wall in
+two builds in that sandbox, about 650 to 700 s of CPU by the figures above,
+against the 253 to 428 s its whole build_marts.py took on runners before the
+checks (ELT.md, "What step 1 measured").
+
+THE HOURLY LANE RUNS NO CHECKS YET (HOURLY_LANE_CHECKS, the maintainer's to
+decide). Its 1,053 checks would cost about 360 to 385 s of CPU by the
+figures above, 7.2 to 10.6 minutes on a runner that pays Elementary 1.2 to
+1.65 times what the sandbox did (ELT.md, "What step 1 measured"), where
+decision 103 gives the whole build step 10 minutes and the build already
+takes about 263 to 303 s of them (Reasoned from those figures; one timed run
+of the lane with its checks settles it). Without them the lane still parses
+them, disabled, in each of its five dbt commands. CI's fixture build, which
+has no lane, runs every check of both lanes meanwhile, so one that errors is
+annotated on every pull request rather than found first in the lane.
 """
 
 from __future__ import annotations
@@ -291,6 +346,24 @@ SEED = "dbt seed"
 ELEMENTARY_TABLES = "Elementary's own tables"
 #: dbt_project.yml's switch for Elementary's models and hooks, on for every dbt command this file runs.
 ELEMENTARY_SWITCH = {"OURHIKE_ELEMENTARY": "true"}
+#: The tag of every Elementary check (make_dbt_staging.py's ELEMENTARY_CHECK, spelled out because this file imports only
+#: the standard library; tests/test_build_marts.py holds the two equal). Every dbt build here leaves the tagged tests
+#: out, and ELEMENTARY_CHECKS runs them (the module docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS").
+ELEMENTARY_CHECK = "elementary_check"
+ELEMENTARY_CHECKS = "Elementary's checks"
+#: The checks' own switch (make_dbt_staging.py's ELEMENTARY_ENABLED reads it and says why they have one), as Run.env:
+#: on only in a build that runs them, and there only for the two dbt commands that need them in the graph, Elementary's
+#: own tables, whose dbt_tests table must describe every check the data-quality file counts, and the checks pass.
+CHECKS_SWITCH = (("OURHIKE_ELEMENTARY_CHECKS", "true"),)
+#: The monthly lane's training window for them, in days, given as `--vars` on its checks pass alone: ELT.md's "about
+#: 400 days", so a lane that builds once a month trains on its last 13 builds where Elementary's 14 would hold none.
+#: @unvalidated: settled by counting the monthly lane's false alarms over its first season. dbt_project.yml says why
+#: --vars and not the var itself (a var rendered from Jinja reaches Elementary as a string).
+MONTHLY_TRAINING_DAYS = 400
+#: Whether the hourly lane runs ELEMENTARY_CHECKS. Not yet: its 1,053 checks would take longer than the hourly build
+#: step has left inside decision 103's 10 minutes (the module docstring, "THE HOURLY LANE RUNS NO CHECKS YET", has the
+#: sums), and turning them on is the maintainer's decision. CI's fixture build runs every check of both lanes meanwhile.
+HOURLY_LANE_CHECKS = False
 MANIFEST_PATH = DBT_DIR / "target" / "manifest.json"
 #: What the dbt run that just ended did, node by node: read for its failed tests, its warnings and its failed writers.
 RUN_RESULTS_PATH = DBT_DIR / "target" / "run_results.json"
@@ -580,18 +653,20 @@ def started_history_stores(path: Path = HISTORY_STORES) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class Run:
-    """One command of the build: what the log calls it, its argv, the directory it runs in, and which of the two dbt
-    runs main() answers a failure of differently it is (STAGE_A or WRITERS; the module docstring, "ONE SOURCE OR ONE
-    WRITER NEVER STOPS THE REST")."""
+    """One command of the build: what the log calls it, its argv, the directory it runs in, which of the dbt runs
+    main() answers differently it is (STAGE_A or WRITERS, the module docstring, "ONE SOURCE OR ONE WRITER NEVER STOPS
+    THE REST"; CHECKS, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"), and what it adds to the build's environment
+    (CHECKS_SWITCH)."""
 
     label: str
     argv: tuple[str, ...]
     cwd: Path
     stage: str = ""
+    env: tuple[tuple[str, str], ...] = ()
 
 
-#: Run.stage of stage A, and of the pub_ writers' dbt run.
-STAGE_A, WRITERS = "stage_a", "writers"
+#: Run.stage of stage A, of the pub_ writers' dbt run, and of Elementary's checks.
+STAGE_A, WRITERS, CHECKS = "stage_a", "writers", "checks"
 
 
 def _builds(
@@ -655,6 +730,8 @@ def plan(
     save_history: bool = True,
     manifest: dict | None = None,
     withdrawn: tuple[str, ...] = (),
+    checks: bool | None = None,
+    absent: tuple[str, ...] = (),
 ) -> list[Run]:
     """Every command of the build, in order, for these steps, in `lane` (None: every node), less the steps `without` names,
     between the row history's restore and its save when `history` names a store (the save left out when
@@ -662,7 +739,10 @@ def plan(
     docstring, "--history-on-failure degrade"). Every dbt build but the writers' and the hourly lane's is split around
     the builds_alone models, the writers' runs at one thread but in the hourly lane, and given `manifest` (main() plans again once `dbt seed` has written it), the passes it
     shows select nothing are left out (the module docstring, "A MODEL TAGGED `builds_alone`"). Each `withdrawn` raw
-    table (withdrawn_tables()) is left out of every dbt build with everything below its source."""
+    table (withdrawn_tables()) is left out of every dbt build with everything below its source. Every dbt build leaves
+    Elementary's checks out, and with `checks` (None: the lane's own answer, runs_checks()) they run after the writers,
+    less the checks on each `absent` source (absent_sources()), in their own pass (the module docstring, "ELEMENTARY'S
+    CHECKS RUN AFTER THE WRITERS")."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
     if state is not None and lane != HOURLY:
@@ -688,11 +768,20 @@ def plan(
         selection = (*LANE_EXCLUDES, *(LANE_PARENTS if state is None else ()))
         after = ("--defer", "--state", str(state)) if state is not None else ("--indirect-selection", "cautious")
 
+    if checks is None:
+        checks = runs_checks(lane)
     runs = [
-        Run(ELEMENTARY_TABLES, (dbt, "run", *common, "--select", "package:elementary"), DBT_DIR),
+        # With the checks' switch when they run, so Elementary's dbt_tests describes each (CHECKS_SWITCH).
+        Run(
+            ELEMENTARY_TABLES,
+            (dbt, "run", *common, "--select", "package:elementary"),
+            DBT_DIR,
+            env=CHECKS_SWITCH if checks else (),
+        ),
         Run(SEED, (dbt, "seed", *common), DBT_DIR),
     ]
-    stage_a_exclude = ["package:dbt_project_evaluator", "package:elementary", "path:models/publish"]
+    no_checks = f"tag:{ELEMENTARY_CHECK}"  # every dbt build's: the checks pass runs them, after the writers
+    stage_a_exclude = ["package:dbt_project_evaluator", "package:elementary", "path:models/publish", no_checks]
     if running:
         stage_a_exclude.append(f"source:{DERIVED_SOURCE}+")
     no_snapshots = () if snapshots else (SNAPSHOTS,)
@@ -709,7 +798,7 @@ def plan(
             f"what {DERIVED_SOURCE}.{step.table} unblocks",
             **builds,
             select=(f"source:{DERIVED_SOURCE}.{step.table}+",),
-            exclude=("path:models/publish", *later, *held, *no_snapshots, *lane_exclude),
+            exclude=("path:models/publish", no_checks, *later, *held, *no_snapshots, *lane_exclude),
             after=after,
         )
     if lane == HOURLY:
@@ -718,11 +807,22 @@ def plan(
     else:
         writers = ("-s", "path:models/publish")
         label = "the pub_ writers"
-    if held or lane_exclude:
-        writers += ("--exclude", *lane_exclude, *held)
+    writers += ("--exclude", no_checks, *lane_exclude, *held)
     # One writer at a time but in the hourly lane (the module docstring, "THE PUB_ WRITERS BUILD ONE AT A TIME").
     options = common if lane == HOURLY else alone
     runs.append(Run(label, (dbt, "build", *options, *writers, *after), DBT_DIR, WRITERS))
+    if checks:
+        # Lane-scoped as the writers are, at one thread, and with the monthly lane's training window (the module
+        # docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS").
+        if lane == HOURLY:
+            chosen = tuple(f"{no_checks},{selector}" for selector in LANE_EXCLUDES)
+        else:
+            chosen = (no_checks,)
+        left_out = (*lane_exclude, *held, *absent)
+        argv = (dbt, "test", *alone, "-s", *chosen, *(("--exclude", *left_out) if left_out else ()), *after)
+        if lane == MONTHLY:
+            argv += ("--vars", json.dumps({"days_back": MONTHLY_TRAINING_DAYS}))
+        runs.append(Run(ELEMENTARY_CHECKS, argv, DBT_DIR, CHECKS, CHECKS_SWITCH))
     if history is not None:
         store = ("--url", history.url, "--warehouse", str(paths.warehouse))
         restore = (history.python, "row_history.py", "restore", *store, *(("--cold-start",) if history.cold_start else ()))
@@ -730,6 +830,12 @@ def plan(
         if save_history:
             runs.append(Run(SAVE_LABEL, (history.python, "row_history.py", "save", *store), PIPELINE_DIR))
     return runs
+
+
+def runs_checks(lane: str | None) -> bool:
+    """Whether a build in `lane` runs Elementary's checks: every lane but the hourly one, until HOURLY_LANE_CHECKS (the
+    module docstring, "THE HOURLY LANE RUNS NO CHECKS YET")."""
+    return lane != HOURLY or HOURLY_LANE_CHECKS
 
 
 def _cadence(source: dict) -> str | None:
@@ -1230,6 +1336,77 @@ def withdrawn_tables(warehouse: Path, schema: str = "raw") -> tuple[str, ...]:
     return tuple(table for table in sorted(WITHDRAWABLE) if table not in present and newest.get(table) == WITHDRAWN_OUTCOME)
 
 
+def absent_sources(manifest: dict, warehouse: Path, lane: str | None, schema: str = "raw") -> tuple[str, ...]:
+    """`source:<source>.<table>` for each raw table of `lane`'s (every one with no lane) that the warehouse does not
+    hold, for the checks pass to leave out: a check on a table that is not there errors ("Table with name ... does
+    not exist", measured 2026-10-08 on four of the fixture warehouse's notice tables), and its absence says nothing
+    about the data. A generated base model reads such a table as no rows (macros/raw_or_empty.sql,
+    macros/notices.sql), so the build itself goes on: a PDF's table where the extract had no pypdf, a keyed API whose
+    key the job lacks, a layer that has never landed."""
+    if not warehouse.exists():
+        return ()
+    import duckdb
+
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        present = {
+            name
+            for (name,) in con.execute(
+                "select table_name from information_schema.tables where table_schema = ?", [schema]
+            ).fetchall()
+        }
+    faster = faster_nodes(manifest) if lane is not None else set()
+    left_out = []
+    for uid, source in sorted((manifest.get("sources") or {}).items()):
+        if source.get("schema") != schema or (source.get("identifier") or source.get("name")) in present:
+            continue
+        if lane is not None and (uid in faster) != (lane == HOURLY):
+            continue  # the other lane's table, which this lane's checks never select
+        left_out.append(f"source:{source.get('source_name')}.{source.get('name')}")
+    return tuple(left_out)
+
+
+def checks_report(results: list[dict] | None, returncode: int) -> list[str]:
+    """What the log says about Elementary's checks pass, which never changes the build's exit (the module docstring,
+    "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"): a count of each status, every check that warned or errored by name,
+    each error's first line cut at FAILED_VALUE_WIDTH, and an annotation (`::warning`) when any check errored or the
+    pass ended without results. No check's rows: Elementary keeps none (dbt_project.yml's test_sample_row_count)."""
+    if results is None:
+        return [
+            f"::warning title=Elementary's checks recorded nothing::the checks pass ended with exit {returncode} and left "
+            "no run_results.json of its own, so no check of this build is reported. The build and its publish go on."
+        ]
+    statuses: dict[str, int] = {}
+    for result in results:
+        statuses[str(result.get("status"))] = statuses.get(str(result.get("status")), 0) + 1
+    counts = ", ".join(f"{count} {status}" for status, count in sorted(statuses.items())) or "none selected"
+    lines = [f"-- build_marts: {ELEMENTARY_CHECKS}: {len(results)} check(s), {counts}; exit {returncode}"]
+    if not results:
+        # Every lane's pass selects its marts' checks at least, so none at all is a switch or a selection gone wrong.
+        lines.append(
+            f"::warning title=Elementary's checks ran none::the checks pass selected no check (exit {returncode}), so "
+            "nothing of this build was checked: CHECKS_SWITCH or the pass's selection is wrong. The build and its "
+            "publish go on."
+        )
+    errored = []
+    for result in sorted(results, key=lambda each: str(each.get("unique_id"))):
+        status = str(result.get("status"))
+        if status not in ("warn", "fail", "error", "runtime error"):
+            continue
+        name = str(result.get("unique_id", "")).removeprefix("test.")
+        first = (str(result.get("message") or "").strip().splitlines() or [""])[0][:FAILED_VALUE_WIDTH]
+        lines.append(f"-- build_marts: {ELEMENTARY_CHECKS}: {status}: {name}" + (f": {first}" if status != "warn" else ""))
+        if status in ("error", "runtime error"):
+            errored.append(name)
+    if errored or returncode != 0:
+        shown = ", ".join(errored[:10]) + (f" and {len(errored) - 10} more" if len(errored) > 10 else "")
+        lines.append(
+            f"::warning title=Elementary's checks errored::{len(errored)} check(s) errored (exit {returncode})"
+            + (f": {shown}" if shown else "")
+            + ". A check that errors stops nothing: the build, its exit and its publish go on, and the page counts it."
+        )
+    return lines
+
+
 def drop_raw_tables(warehouse: Path, tables: list[str], schema: str = "raw") -> list[str]:
     """Drop each of `tables` the warehouse holds in `schema`, a table or a view, and return the ones it held."""
     import duckdb
@@ -1399,6 +1576,8 @@ def main(argv: list[str] | None = None) -> int:
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
     # TZ=UTC and OURHIKE_BUILT_BY: the module docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST".
     env = {**os.environ, **files, "TZ": "UTC", "OURHIKE_BUILT_BY": built_by(os.environ), **ELEMENTARY_SWITCH}
+    for name, _ in CHECKS_SWITCH:
+        env.pop(name, None)  # the checks' switch is each Run's own to give (Run.env), never inherited by every command
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
     print(f"-- build_marts: OURHIKE_BUILT_BY={env['OURHIKE_BUILT_BY']}", flush=True)
     if notice:
@@ -1412,7 +1591,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.dry_run:
         for run in runs:
-            print(f"{run.label}: (cd {run.cwd} && {' '.join(run.argv)})")
+            print(f"{run.label}: (cd {run.cwd} && {' '.join([*(f'{name}={value}' for name, value in run.env), *run.argv])})")
         return 0
 
     # COPY creates no directory (phone_file.sql), and the writers write here.
@@ -1436,6 +1615,22 @@ def main(argv: list[str] | None = None) -> int:
     while position < len(runs):
         run = runs[position]
         position += 1
+        if run.stage == CHECKS:
+            # Less the checks on each raw table the warehouse does not hold now, which counts the tables of a source
+            # dropped after a failed model of its own (one_sources_failures()), and the same pass otherwise. A
+            # warehouse that cannot be read here leaves nothing out, rather than stopping a build the pass never stops.
+            try:
+                absent = absent_sources(_read_manifest(), paths.warehouse, args.lane)
+            except Exception as unread:  # whatever DuckDB raises: the pass goes on without it
+                print(f"-- build_marts: {ELEMENTARY_CHECKS}: the warehouse's raw tables were not read ({unread})", flush=True)
+                absent = ()
+            if absent:
+                print(
+                    f"-- build_marts: {ELEMENTARY_CHECKS} leave out {len(absent)} raw table(s) this warehouse does not "
+                    f"hold: {', '.join(selector.removeprefix('source:') for selector in absent)}",
+                    flush=True,
+                )
+                (run,) = [each for each in plan(STEPS, **planned, absent=absent) if each.stage == CHECKS]
         print(f"-- build_marts {position}/{len(runs)}: {run.label}", flush=True)
         # A dbt run's results are the run_results.json it leaves, and an earlier run's file is removed first so
         # nothing else can be mistaken for them. Never told apart by mtime: Linux stamps a file from a coarse clock
@@ -1446,9 +1641,15 @@ def main(argv: list[str] | None = None) -> int:
             RUN_RESULTS_PATH.unlink(missing_ok=True)
         started = time.time()
         results_since = float("-inf") if run.cwd == DBT_DIR else started
-        completed = subprocess.run(run.argv, cwd=run.cwd, env=env, check=False)
+        completed = subprocess.run(run.argv, cwd=run.cwd, env={**env, **dict(run.env)}, check=False)
+        if run.stage == CHECKS:
+            # Never retried, never a stop, never the build's exit (the module docstring, "ELEMENTARY'S CHECKS RUN
+            # AFTER THE WRITERS"): reported, and the build goes on to save its history.
+            for line in checks_report(read_run_results(results_since), completed.returncode):
+                print(line, flush=True)
+            continue
         if completed.returncode != 0 and run.argv[1:2] == ("build",) and run.cwd == DBT_DIR:
-            completed = retry_failed_build(run, env, completed)
+            completed = retry_failed_build(run, {**env, **dict(run.env)}, completed)
         if completed.returncode != 0 and run.stage in (STAGE_A, WRITERS) and completed.returncode not in PUBLISHABLE_EXITS:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
             for line in failed_test_rows(paths.warehouse, results_since):

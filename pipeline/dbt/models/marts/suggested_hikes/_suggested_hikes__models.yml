@@ -14,6 +14,36 @@ models:
       contract:
         enforced: true
     data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: the hikes at each build; the hikes per club and source, so one
+      # club's hikes vanishing cannot hide inside the total; each column's null
+      # rate, the long text (a hike's overview, description, directions,
+      # transit and route notes, its two notes and its three whole records)
+      # left out. No exposure_schema_validity: three phone files read this
+      # mart, and with more than one Elementary 0.26.0 checks a column only
+      # through context["render"], which dbt 2.0.6 does not have (the test
+      # errored, measured 2026-10-08), so it could check nothing here.
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(overview|description|directions|public_transport|route_notes|highlight_note|measured_note|shelf_record|detail_record|highlight_record)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # SH08: absent means never priced, never 0, and both feet go together.
       - dbt_utils.expression_is_true:
           arguments:

@@ -20,6 +20,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nj_statewide_trails'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           Statewide Trails in New Jersey (NJ Geospatial Forum Trails Task
           Force, hosted by NJDEP) (sources.json `nj_statewide_trails`). Key:
@@ -30,6 +41,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'njdep_park_trails'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NJ State Park Service Trails (NJDEP Bureau of GIS, Features/Land
           layer 63) (sources.json `njdep_park_trails`). Key: GLOBALID unique

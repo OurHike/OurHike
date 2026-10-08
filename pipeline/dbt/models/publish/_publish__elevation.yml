@@ -248,3 +248,13 @@ exposures:
         # after, first run"), not a ceiling anyone chose.
         size_budget_bytes: 219158
         cadence: monthly
+        # The mart columns this file's writer reads, in Elementary's type words, which
+        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # the one phone file reading that mart: with more, Elementary 0.26.0 needs
+        # context["render"], which dbt 2.0.6 lacks.
+        referenced_columns:
+          - {column_name: line_id, data_type: string}
+          - {column_name: seq, data_type: numeric}
+          - {column_name: part_start, data_type: boolean}
+          - {column_name: distance_milli_mi, data_type: numeric}
+          - {column_name: elevation_deci_ft, data_type: numeric}

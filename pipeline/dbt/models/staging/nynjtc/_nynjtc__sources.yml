@@ -29,6 +29,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_long_path'", "lp_section", "mileage"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYNJTC Long Path (sources.json: discovered 2026-08-24). 43 polyline
           segments, measured live that day - the same count and field list
@@ -52,6 +63,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_highlands_trail'", "section_name"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYNJTC Highlands Trail, NY and NJ sections (sources.json:
           discovered 2026-08-24). 12 section features, measured live that
@@ -71,6 +93,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_long_path_guide'", "number"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYNJTC's Long Path End-to-End Section Guide (sources.json's
           nynjtc_long_path_guide), landed by the guide_pages kind

@@ -21,6 +21,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'duluth_superior_hiking_trail'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           Superior Hiking Trail (Duluth section) (sources.json
           `duluth_superior_hiking_trail`). Key: GlobalID unique on 67 live

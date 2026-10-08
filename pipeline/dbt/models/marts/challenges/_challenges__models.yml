@@ -26,6 +26,40 @@ models:
       - v: 1
         defined_in: challenges
     data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: the rows at each build; the rows per club and source, so one
+      # club's challenges vanishing cannot hide inside the total; each
+      # column's null rate, the long text (a challenge's summary, its sections
+      # and items) left out; and the columns challenges.json reads, its
+      # exposure's referenced_columns, which Elementary 0.26.0 can check on
+      # dbt 2.0.6 because one phone file reads this mart (points_of_interest's
+      # comment says why more could not be).
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(challenge_summary|sections|items)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.exposure_schema_validity:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # CH11: both ends inclusive days, so a one-day window is a window.
       - dbt_utils.expression_is_true:
           name: challenges_windows_close_on_or_after_they_open

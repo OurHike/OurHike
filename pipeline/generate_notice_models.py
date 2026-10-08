@@ -47,6 +47,11 @@ WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
   and a PDF notice has none (is_pdf_notice()). Each the notices legs read is
   tagged NOTICES_JOB_TAG, which publish-conditions.yml's freshness step
   selects after it has published.
+- Elementary's checks (decision 102), each at warn and tagged
+  `elementary_check`, which build_marts.py runs after the writers (in CI's
+  fixture build, and in the hourly lane once its HOURLY_LANE_CHECKS is on):
+  every raw table's from make_dbt_staging.py's raw_table_checks(), and on each
+  staging model whose source dates its notices, event_freshness_check().
 And once: dbt/seeds/notice_readers.csv (every closures and warnings resource,
 hand-staged ones included: its key, club, type, reader, listing and raw
 table), and the two unions, int_closures__club_notices_unioned and
@@ -74,6 +79,9 @@ import yaml
 # GeoJSON coordinates, a lat/lon value, a decimal pair): a registry note
 # quoted into a model's comment or description is published there.
 from check_docs_site import SHAPES as DOCS_SITE_SHAPES
+
+# Elementary's checks on a raw table, and their tag and severity: one home for both generators (decision 102).
+from make_dbt_staging import elementary_check_config, raw_table_checks
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 DBT_DIR = PIPELINE_DIR / "dbt"
@@ -793,7 +801,9 @@ def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
                         "arguments": {"key_columns": _duplicates_key(source)},
                         "config": {"severity": _exactness_severity(source)},
                     }
-                }
+                },
+                # Elementary's checks on every raw table (decision 102), from their one home.
+                *raw_table_checks(source.cadence),
             ],
         }
         tables.append(table)
@@ -839,7 +849,28 @@ def render_base_yml(club: str, sources: list[NoticeSource]) -> str:
     return f"# {MARKER}; do not edit by hand.\n" + _dump({"version": 2, "models": models})
 
 
-def render_models_yml(club: str, sources: list[NoticeSource]) -> str:
+def dates_its_notices(source: NoticeSource, fields: dict[str, dict]) -> bool:
+    """Whether the source states when it last edited each notice: its `edited` role names a field of its own (a
+    literal is refused there, LITERAL_ROLES), which render_stg() stages as `source_edited_at`."""
+    return "edited" in _roles(source, fields)
+
+
+def event_freshness_check() -> dict:
+    """Elementary's event freshness on a staged notice source (decision 102, pipeline/ELT.md, "The checks, and where
+    each goes": "the gap between a notice's own date and our load"): at each build, how long since the newest notice's
+    own `source_edited_at`, which Elementary learns per source. No `update_timestamp_column`: with `_loaded_at` there,
+    Elementary would bucket the rows by the day they loaded, and every raw table is replaced at each load
+    (extract/_run.py's write_disposition), so each day before the last load would read as holding no notice
+    (Reasoned from Elementary 0.26.0's event_freshness_metric_query, which gives such a day the bucket's length)."""
+    return {
+        "elementary.event_freshness_anomalies": {
+            "arguments": {"event_timestamp_column": "source_edited_at"},
+            "config": elementary_check_config(),
+        }
+    }
+
+
+def render_models_yml(club: str, sources: list[NoticeSource], fields: dict[str, dict]) -> str:
     models = [
         {
             "name": source.stg_model,
@@ -847,6 +878,7 @@ def render_models_yml(club: str, sources: list[NoticeSource]) -> str:
                 f"{_title(source)} (sources.json `{source.key}`) in the shared club-notice shape: facts and a "
                 "link, never the source's paragraphs (decision 55)."
             ),
+            **({"data_tests": [event_freshness_check()]} if dates_its_notices(source, fields) else {}),
             "columns": [
                 {"name": "notice_key", "description": "The base model's key.", "data_tests": ["unique", "not_null"]},
             ],
@@ -1246,7 +1278,7 @@ def render_all() -> dict[Path, str]:
         folder = STAGING_DIR / club / "notices"
         files[folder / f"_{club}_notices__sources.yml"] = render_sources_yml(club, club_sources)
         files[folder / "base" / f"_{club}_notices__base.yml"] = render_base_yml(club, club_sources)
-        files[folder / f"_{club}_notices__models.yml"] = render_models_yml(club, club_sources)
+        files[folder / f"_{club}_notices__models.yml"] = render_models_yml(club, club_sources, fields)
     files[READERS_SEED] = render_readers_seed(sources)
     files[UNION_MODEL] = render_union(sources)
     files[UNION_YML] = render_union_yml(sources)

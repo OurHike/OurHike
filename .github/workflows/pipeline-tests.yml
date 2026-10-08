@@ -620,7 +620,7 @@ jobs:
       # field, a held source's checks neither named nor counted, and nothing
       # but counts and names in either. The fixture build above writes both
       # too, from what its own dbt tests recorded. Measured 2026-10-08 in a
-      # sandbox: 8 passed in 47 s, two dbt builds.
+      # sandbox: 8 passed in 35 s, two dbt builds.
       - name: The data-quality files (tests/test_dbt_data_quality_builds.py)
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_data_quality_builds.py

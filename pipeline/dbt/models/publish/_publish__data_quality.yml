@@ -71,9 +71,9 @@ models:
         data_type: json
       - name: series
         description: >
-          What the page's chart draws: every mart's row-count history this build measured, and the metric
-          history behind each needs_a_look entry that has a table's metric, each flagged in_needs_a_look, the
-          newest 168 points of each (macros/data_quality.sql).
+          What the page's chart draws: every mart's row-count history this build measured, and the history
+          behind each needs_a_look entry whose metric is a count, a rate or an age, each naming its table,
+          column and mart and flagged in_needs_a_look, the newest 168 points of each (macros/data_quality.sql).
         data_type: json
       - name: by_mart
         description: The counted checks on each mart's own models, intermediates, snapshot and singular tests.
@@ -114,9 +114,9 @@ models:
         data_type: json
       - name: series
         description: >
-          What the page's chart draws: every mart's row-count history this build measured, and the metric
-          history behind each needs_a_look entry that has a table's metric, each flagged in_needs_a_look, the
-          newest 168 points of each (macros/data_quality.sql).
+          What the page's chart draws: every mart's row-count history this build measured, and the history
+          behind each needs_a_look entry whose metric is a count, a rate or an age, each naming its table,
+          column and mart and flagged in_needs_a_look, the newest 168 points of each (macros/data_quality.sql).
         data_type: json
       - name: by_mart
         description: The counted checks on each mart's own models, intermediates, snapshot and singular tests.

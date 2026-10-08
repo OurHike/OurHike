@@ -49,6 +49,8 @@ SECRETS = (
     "SECRET-CLUB",
     "SECRET-VALUE",
     "SECRET-SOURCE-VALUE",
+    # A column's minimum, one row's own value.
+    "0.1234",
 )
 #: The tables and tests a held source reaches: never named.
 HELD_NAMES = (
@@ -189,7 +191,9 @@ def _table_of(parent: str | None) -> tuple[str | None, str | None]:
         return "seeds", parent.rsplit(".", 1)[-1]
     schema = {"models/marts/": "marts", "models/publish/": "publish", "models/staging/": "staging"}
     path = (MODELS.get(parent) or SNAPSHOTS.get(parent))[0]
-    name = parent.split(".")[2]
+    # A versioned model's relation is named with its version, as the project's marts are (trail_lines_v1).
+    parts = parent.split(".")
+    name = "_".join(parts[2:])
     return next((value for key, value in schema.items() if path.startswith(key)), "intermediate"), name
 
 
@@ -354,6 +358,19 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         sub_type="min",
         column="distance_ft",
     )
+    # A second column's null count, the same metric as name's, and its null rate: three column series on one table.
+    status_nulls, status_rate = (
+        _result(
+            "columns_mart",
+            invocation=checks,
+            at=B3,
+            status="warn",
+            test_type="anomaly_detection",
+            sub_type=metric,
+            column="status",
+        )
+        for metric in ("null_count", "null_percent")
+    )
     dimension = _result(
         "dimension_mart", invocation=checks, at=B3, status="warn", test_type="anomaly_detection", sub_type="dimension", failures=3
     )
@@ -367,6 +384,8 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         closures_fresh,
         null_count,
         smallest,
+        status_nulls,
+        status_rate,
         _result(
             "columns_mart",
             invocation=checks,
@@ -419,12 +438,14 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         _anomaly_row(closures_fresh["id"], B3, 90000.0, 0.0, 86400.0, True, metric="freshness"),
         _anomaly_row(null_count["id"], B3, 7.0, 0.0, 2.5, True, metric="null_count", column="name"),
         _anomaly_row(smallest["id"], B3, 0.1234, 10.0, 20.0, True, metric="min", column="distance_ft"),
+        _anomaly_row(status_nulls["id"], B3, 4.0, 0.0, 1.0, True, metric="null_count", column="status"),
+        _anomaly_row(status_rate["id"], B3, 12.5, 0.0, 5.0, True, metric="null_percent", column="status"),
         _anomaly_row(
             dimension["id"], B3, 2.0, 30.0, 40.0, True, metric="dimension", dimension="club", dimension_value="SECRET-CLUB"
         ),
     ]
     dec_table, secret_table = "WAREHOUSE.RAW.RAW_NYSDEC__DEC_HIKING_TRAILS", "WAREHOUSE.RAW.RAW_SECRET__SECRET_LAYER"
-    mart_table, closures_table = "WAREHOUSE.MARTS.TRAIL_LINES", "WAREHOUSE.MARTS.CLOSURES"
+    mart_table, closures_table = "WAREHOUSE.MARTS.TRAIL_LINES_V1", "WAREHOUSE.MARTS.CLOSURES_V1"
     # The trail_lines mart measured every hour for 200 hours to this build's bucket, all inside its check's 14 days:
     # more points than a series keeps.
     metrics += [(mart_table, _hours_before(B3, k), 1000.0 + k, _hours_before(B3, k), "row_count") for k in range(200)]
@@ -439,11 +460,20 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         (dec_table, "2026-09-01 07:05:00", 5100.0, "2026-09-01 07:05:00", "row_count"),
         (dec_table, B1, 5240.0, B1, "row_count"),
         (dec_table, B2, 5262.0, B2, "row_count"),
-        # Elementary rewrites a recent bucket: the later row wins.
+        # Elementary appends a recomputed bucket under the same id: the newer row wins.
         (dec_table, B3, 4000.0, "2026-10-08 07:04:00", "row_count"),
         (dec_table, B3, 4118.0, B3, "row_count"),
         (secret_table, B3, 12.0, B3, "row_count"),
     ]
+    # Column metrics, named by Elementary in capitals: two columns' null counts, one's null rate, and a minimum, which
+    # is one row's own value and never charted.
+    for column, metric, values in (
+        ("NAME", "null_count", (1.0, 2.0, 7.0)),
+        ("STATUS", "null_count", (0.0, 1.0, 4.0)),
+        ("STATUS", "null_percent", (0.0, 2.5, 12.5)),
+        ("DISTANCE_FT", "min", (0.5, 0.25, 0.1234)),
+    ):
+        metrics += [(mart_table, at, value, at, metric, column) for at, value in zip((B1, B2, B3), values, strict=True)]
     return results, rows, metrics
 
 
@@ -483,11 +513,14 @@ def _warehouse(path: Path, *, empty: bool = False) -> None:
                 metric_name varchar, metric_value float, source_value varchar, bucket_start timestamp,
                 bucket_end timestamp, updated_at timestamp, dimension varchar, dimension_value varchar)"""
         )
-        for number, (table, bucket, value, updated, metric) in enumerate(metrics):
+        # A metric row's id is its table, column, metric and bucket (and settings, here none), as Elementary's is, so
+        # a recomputed bucket's rows share one.
+        for table, bucket, value, updated, metric, *column in metrics:
+            name = column[0] if column else None
             con.execute(
-                "insert into elementary.data_monitoring_metrics values (?, ?, null, ?, ?, 'SECRET-SOURCE-VALUE', "
+                "insert into elementary.data_monitoring_metrics values (?, ?, ?, ?, ?, 'SECRET-SOURCE-VALUE', "
                 "null, ?, ?, null, null)",
-                [str(number), table, metric, value, bucket, updated],
+                [f"{table}|{name}|{metric}|{bucket}", table, name, metric, value, bucket, updated],
             )
         for table in ("dbt_models", "dbt_snapshots"):
             con.execute(
@@ -590,7 +623,7 @@ def test_each_lanes_file_names_its_format_lane_and_when_it_was_built(files):
 
 
 def test_this_builds_counted_checks_by_kind_a_held_source_neither_named_nor_counted(files):
-    """23 checks count. Left out: every check a held source reaches (secret_layer's raw table, its staging, the
+    """25 checks count. Left out: every check a held source reaches (secret_layer's raw table, its staging, the
     union of it with dec's, the snapshot of that union, a singular test reading it), the mystery table the registry
     has no row for, the club whose notice_readers row names a held key though its own name publishes, a step's
     derived table that shares a registry key's name, a test Elementary's dbt_tests does not hold, and a skipped test.
@@ -598,13 +631,13 @@ def test_this_builds_counted_checks_by_kind_a_held_source_neither_named_nor_coun
     closures mart's one table_anomalies test is two checks, its freshness and its row count."""
     document = files["monthly"]
 
-    assert document["totals"] == _counts(23, 11, 10, 1, 1)
+    assert document["totals"] == _counts(25, 11, 12, 1, 1)
     assert document["kinds"] == [
         {"kind": "freshness", **_counts(2, 1, 1, 0, 0)},
         {"kind": "volume", **_counts(3, 1, 2, 0, 0)},
         {"kind": "schema", **_counts(2, 1, 1, 0, 0)},
         {"kind": "dbt_tests", **_counts(12, 7, 3, 1, 1)},
-        {"kind": "anomalies", **_counts(4, 1, 3, 0, 0)},
+        {"kind": "anomalies", **_counts(6, 1, 5, 0, 0)},
     ]
 
 
@@ -633,10 +666,10 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
     assert look == [
         # An error measured nothing.
         entry("dbt_tests", "int_trail_lines__after_the_mart", "id", "error", None, None, None, now, None, "relationships"),
-        entry("dbt_tests", "trail_lines", "status", "fail", 2, None, None, now, None, "accepted_values"),
+        entry("dbt_tests", "trail_lines_v1", "status", "fail", 2, None, None, now, None, "accepted_values"),
         # Freshness in Elementary's seconds, a whole number.
-        entry("freshness", "closures", None, "warn", 90000, 0.0, 86400.0, now, "freshness", "table_anomalies"),
-        entry("volume", "closures", None, "warn", 40, 50.0, 60.0, now, "row_count", "table_anomalies"),
+        entry("freshness", "closures_v1", None, "warn", 90000, 0.0, 86400.0, now, "freshness", "table_anomalies"),
+        entry("volume", "closures_v1", None, "warn", 40, 50.0, 60.0, now, "row_count", "table_anomalies"),
         # Warned in build 2 too, after passing in build 1: since build 2. A row count is a whole number.
         entry("volume", dec, None, "warn", 4118, 5231.3, 5292.7, last_build, "row_count", "volume_anomalies"),
         # One entry per changed column, the table's capitals lowered.
@@ -646,21 +679,27 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
         entry("dbt_tests", "int_trail_lines__checked", None, "warn", 6, None, None, now, None, "assert_lines_match_checks"),
         entry("dbt_tests", "stg_atc__challenges", "id", "warn", 1, None, None, now, None, "not_null"),
         # Passed in the build before, so since this build.
-        entry("dbt_tests", "trail_lines", "name", "warn", 5, None, None, now, None, "not_null"),
+        entry("dbt_tests", "trail_lines_v1", "name", "warn", 5, None, None, now, None, "not_null"),
         # A column's minimum is one row's own value: its numbers are never written.
-        entry("anomalies", "trail_lines", "distance_ft", "warn", None, None, None, now, "min", "column_anomalies"),
-        entry("anomalies", "trail_lines", "name", "warn", 7, 0.0, 2.5, now, "null_count", "column_anomalies"),
+        entry("anomalies", "trail_lines_v1", "distance_ft", "warn", None, None, None, now, "min", "column_anomalies"),
+        entry("anomalies", "trail_lines_v1", "name", "warn", 7, 0.0, 2.5, now, "null_count", "column_anomalies"),
+        # A rate in Elementary's percent, to 3 places.
+        entry("anomalies", "trail_lines_v1", "status", "warn", 4, 0.0, 1.0, now, "null_count", "column_anomalies"),
+        entry("anomalies", "trail_lines_v1", "status", "warn", 12.5, 0.0, 5.0, now, "null_percent", "column_anomalies"),
         # How many dimension values are out of band, never which.
-        entry("anomalies", "trail_lines", None, "warn", 3, None, None, now, "dimension", "dimension_anomalies"),
+        entry("anomalies", "trail_lines_v1", None, "warn", 3, None, None, now, "dimension", "dimension_anomalies"),
     ]
 
 
 #: Each series as the file writes it, each band where that series' check scored the bucket and null where no kept
-#: run did. The closures mart's two come from one test, each from its own metric's scored rows.
+#: run did. The closures mart's two come from one test, each from its own metric's scored rows. A mart's table is
+#: named by version, and `mart` names its folder, as by_mart does.
 CLOSURES_SERIES = [
     {
-        "table": "closures",
+        "table": "closures_v1",
+        "column": None,
         "metric": "freshness",
+        "mart": "closures",
         "in_needs_a_look": True,
         "points": [
             {"at": "2026-10-06T07:05:00Z", "value": 3000, "expected_min": None, "expected_max": None},
@@ -669,8 +708,10 @@ CLOSURES_SERIES = [
         ],
     },
     {
-        "table": "closures",
+        "table": "closures_v1",
+        "column": None,
         "metric": "row_count",
+        "mart": "closures",
         "in_needs_a_look": True,
         "points": [
             {"at": "2026-10-06T07:05:00Z", "value": 52, "expected_min": None, "expected_max": None},
@@ -681,7 +722,9 @@ CLOSURES_SERIES = [
 ]
 DEC_SERIES = {
     "table": "raw_nysdec__dec_hiking_trails",
+    "column": None,
     "metric": "row_count",
+    "mart": None,
     "in_needs_a_look": True,
     "points": [
         {"at": "2026-10-06T07:05:00Z", "value": 5240, "expected_min": None, "expected_max": None},
@@ -691,6 +734,31 @@ DEC_SERIES = {
 }
 
 
+def _column_series(column: str, metric: str, values: tuple, band: tuple[float, float]) -> dict:
+    """A trail_lines column's metric over the three builds, banded at this build's bucket alone."""
+    points = [
+        {"at": at, "value": value, "expected_min": None, "expected_max": None}
+        for at, value in zip(("2026-10-06T07:05:00Z", "2026-10-07T07:05:00Z", "2026-10-08T07:05:00Z"), values, strict=True)
+    ]
+    points[-1].update({"expected_min": band[0], "expected_max": band[1]})
+    return {
+        "table": "trail_lines_v1",
+        "column": column,
+        "metric": metric,
+        "mart": "trail_lines",
+        "in_needs_a_look": True,
+        "points": points,
+    }
+
+
+#: Two columns' null counts on one table, told apart by their column, and a null rate to 3 places.
+COLUMN_SERIES = [
+    _column_series("name", "null_count", (1, 2, 7), (0.0, 2.5)),
+    _column_series("status", "null_count", (0, 1, 4), (0.0, 1.0)),
+    _column_series("status", "null_percent", (0.0, 2.5, 12.5), (0.0, 5.0)),
+]
+
+
 def _trail_lines_series() -> dict:
     """The trail_lines mart's newest 168 hourly points of the 200 it has, oldest first, scored at this build's alone."""
     points = []
@@ -698,19 +766,27 @@ def _trail_lines_series() -> dict:
         at = (datetime.fromisoformat(B3) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
         low, high = (990.0, 1010.0) if hours == 0 else (None, None)
         points.append({"at": at, "value": 1000 + hours, "expected_min": low, "expected_max": high})
-    return {"table": "trail_lines", "metric": "row_count", "in_needs_a_look": False, "points": points}
+    return {
+        "table": "trail_lines_v1",
+        "column": None,
+        "metric": "row_count",
+        "mart": "trail_lines",
+        "in_needs_a_look": False,
+        "points": points,
+    }
 
 
 def test_the_series_are_every_marts_row_count_and_each_entrys_metric_the_newest_168_points_of_each(files):
     """The scope the maintainer chose by poll (2026-10-08): every mart's row count this build measured, needing a
-    look or not, and the table's metric behind each needs_a_look entry, needs-a-look series first. The closures mart's
-    row count, named both ways, appears once. The point outside the dec check's 14 days is left out, the rewritten
-    bucket's later row wins, the held source's metric has no series, the column measures none, and the trail_lines
-    mart's 200 hourly points are cut to the newest 168."""
+    look or not, and the history behind each needs_a_look entry whose metric is a count, a rate or an age, a table's
+    or a column's, needs-a-look series first. One series per table, column and metric: the closures mart's row
+    count, named both ways, appears once, and trail_lines' two null counts are two series. The point outside the dec
+    check's 14 days is left out, the rewritten bucket's newer row wins, the held source's metric has no series, nor
+    has the column minimum or the dimension, and the trail_lines mart's 200 hourly points are cut to the newest 168."""
     series = files["monthly"]["series"]
 
-    assert series == [*CLOSURES_SERIES, DEC_SERIES, _trail_lines_series()]
-    assert [len(entry["points"]) for entry in series] == [3, 3, 3, 168]
+    assert series == [*CLOSURES_SERIES, DEC_SERIES, *COLUMN_SERIES, _trail_lines_series()]
+    assert [len(entry["points"]) for entry in series] == [3, 3, 3, 3, 3, 3, 168]
 
 
 def test_learning_counts_the_builds_whose_anomaly_checks_the_history_holds(files):
@@ -722,7 +798,7 @@ def test_by_mart_counts_the_marts_own_models_intermediates_and_singular_tests(fi
     and its folder's two singular tests; its union, held, is not among them. closures: its table check's two."""
     assert files["monthly"]["by_mart"] == [
         {"mart": "closures", **_counts(2, 0, 2, 0, 0)},
-        {"mart": "trail_lines", **_counts(12, 5, 5, 1, 1)},
+        {"mart": "trail_lines", **_counts(14, 5, 7, 1, 1)},
     ]
 
 
@@ -747,7 +823,9 @@ def test_nothing_but_counts_and_names_leaves_the_warehouse(files):
         "int_trail_lines__checked",
         "stg_atc__challenges",
         "trail_lines",
+        "trail_lines_v1",
         "closures",
+        "closures_v1",
         "table_anomalies",
         "id",
         "name",
@@ -766,6 +844,7 @@ def test_nothing_but_counts_and_names_leaves_the_warehouse(files):
         "row_count",
         "min",
         "null_count",
+        "null_percent",
         "dimension",
     }
 

@@ -1,29 +1,30 @@
-"""refresh-reference.yml, the monthly lane: nothing in it can reach production, and each job holds only its own keys.
+"""refresh-reference.yml, the monthly lane's scheduled half: it extracts, pins and starts the build, nothing in it can
+reach production, and each job holds only its own keys.
 
 pipeline/ELT.md, "Why a scheduled run cannot reach production", lists the
 locks: no input names an environment, the one publish writes UA's keys by a
-literal, and promotion is the release train's. This file holds the ones a
-workflow file can hold, and the rest ELT.md asks of the lane: its schedule,
-its one-run-at-a-time group, dlt's telemetry off, the build through
-build_marts.py's monthly lane, the confirm job that sees a cancelled
-publish (#1513 - A queued publish is silently cancelled when another one
-joins publish-data, and it looks like a green build), and the two other
-workflows the lane changes.
+literal, and promotion is the release train's. Since the maintainer's choice B
+(poll, 2026-10-08) the lane is two workflows: this one extracts every monthly
+resource, pins the raw inputs and dispatches build-reference.yml by name with
+the pinned raw_run, and that one builds from the pin and publishes
+(test_build_reference.py holds that half). This file holds what a workflow
+file can hold of this half: its schedule, the one-run-at-a-time group, dlt's
+telemetry off, which job holds which step down to the pin, the dispatch's one
+permission, its ref and its raw_run, and the `refused` job.
 
 It also holds ELT.md's new assertion for every scheduled workflow that
 publishes ("Repository tests a new workflow must satisfy"): each names UA as
-a literal, and publish-conditions.yml's production leg is the one exemption.
+a literal, in its own publish steps and in those of a workflow it dispatches,
+and publish-conditions.yml's production leg is the one exemption.
 """
 
 from __future__ import annotations
 
-import ast
 import json
 import os
 import re
-import shutil
+import shlex
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -31,16 +32,35 @@ import yaml
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
 NAME = "refresh-reference.yml"
-#: The parity job's families and groups, which the job runs by name from pipeline/.
-LANE = Path(__file__).resolve().parents[2] / "pipeline" / "parity_lane.py"
+#: The workflow this one's dispatch job starts with the pinned raw_run.
+BUILD = "build-reference.yml"
 PUBLIC_BUCKET_SECRETS = {"R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"}
 RAW_STORE_SECRETS = {"R2_RAW_BUCKET", "R2_RAW_ACCESS_KEY_ID", "R2_RAW_SECRET_ACCESS_KEY"}
 SECRET = re.compile(r"\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)")
+#: `gh workflow run <file>`: a workflow another one starts by file name.
+DISPATCH = re.compile(r"\bgh workflow run ([\w.-]+\.ya?ml)\b")
 # The scheduled publishers that write production, each with why: publish-conditions.yml
 # bakes conditions/ for both environments hourly, outside every release folder, because
 # "a closure that has reopened must stop being served" (pipeline/DATA_RELEASES.md:274;
 # ELT.md, "The conditions bake keeps publishing straight to production").
 PRODUCTION_ON_A_SCHEDULE = {"publish-conditions.yml"}
+#: The run id the extract job hands on: extract/_run.py stamps it with "%Y%m%dT%H%M%S.%fZ".
+RAW_RUN = "20261008T041936.333353Z"
+#: Every step the build job ran down to the pin before choice B, now the pin job's, by name.
+PIN_STEPS = [
+    "Is this raw_run pinned already",
+    "Today's fetchers' files for this raw_run, and the DEM tile index",
+    "OSM's Geofabrik extracts and the last landed water scans, from the raw store",
+    "Scan the extracts for water (fetch_osm_water.py, fetch_trail_water.py --derive)",
+    "Say which water scans this build lands",
+    "Pin this run's raw inputs",
+]
+# fetch_trail_water.ELEVATION_CACHE_PATH and export_elevation.SAMPLE_CACHE_PATH, workspace-relative: the EPQS answers
+# step_osm_water_grade.py and fetch_trail_water.py --derive ask through, and the DEM per-point cache beside the tile
+# index step_dem_sampling.py samples from. pipeline/tests/test_fetch_cache_paths.py holds them to the constants.
+ELEVATION_ANSWERS = {"pipeline/data/raw/epqs_elevations.json", "pipeline/data/raw/elevation/samples.json"}
+#: How GitHub runs a `run:` step whose job names no shell.
+BASH = ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c"]
 
 
 def _load(path: Path) -> dict:
@@ -75,6 +95,33 @@ def _runs(job: dict) -> str:
     return "\n".join(str(step.get("run") or "") for step in job.get("steps") or [])
 
 
+def _first_step(steps: list[dict], text: str) -> int:
+    found = [index for index, step in enumerate(steps) if text in (step.get("run") or "")]
+    assert found, f"no step runs {text!r}"
+    return found[0]
+
+
+def _cached_paths(step: dict, env: dict) -> set[str]:
+    path = str((step.get("with") or {}).get("path", ""))
+    for name, value in env.items():
+        path = path.replace("${{ env.%s }}" % name, str(value))
+    return {line.strip() for line in path.splitlines() if line.strip()}
+
+
+def _cache_steps(job: dict, workflow: dict, kind: str) -> list[int]:
+    """The indexes of the job's actions/cache/<kind> steps over the EPQS answers and the DEM samples."""
+    env = {**workflow["env"], **(job.get("env") or {})}
+    return [
+        index
+        for index, step in enumerate(job["steps"])
+        if str(step.get("uses", "")).startswith(f"actions/cache/{kind}") and _cached_paths(step, env) == ELEVATION_ANSWERS
+    ]
+
+
+def _dispatched(workflow: dict) -> set[str]:
+    return {name for job in (workflow.get("jobs") or {}).values() for name in DISPATCH.findall(_runs(job))}
+
+
 def test_it_runs_at_05_15_utc_on_the_3rd_and_on_a_dispatch_that_takes_no_input(workflow):
     triggers = _triggers(workflow)
 
@@ -97,14 +144,17 @@ def test_nothing_in_it_reads_an_input_or_names_any_environment_but_ua(workflow):
                 assert step["env"]["OURHIKE_DATA_ENV"] == "ua", f"{job_id}: {step.get('name')}"
 
 
-def test_only_the_publish_job_holds_the_public_buckets_keys_or_the_write_switch(workflow):
+def test_its_four_jobs_are_the_extract_the_pin_the_dispatch_and_refused(workflow):
+    """Choice B: the build, publish, confirm and parity jobs are build-reference.yml's, started by the dispatch."""
+    assert list(workflow["jobs"]) == ["extract", "pin", "dispatch", "refused"]
+    assert not {"build", "publish", "confirm", "parity", "parity-report"} & set(workflow["jobs"])
+
+
+def test_no_job_holds_the_public_buckets_keys_or_the_write_switch(workflow):
+    """The publish is build-reference.yml's job, and the only one there that holds them."""
     for job_id, job in workflow["jobs"].items():
         holds = _secrets(job) & PUBLIC_BUCKET_SECRETS
-        writes = "R2_WRITE_ENABLED" in yaml.safe_dump(job)
-        if job_id == "publish":
-            assert holds == PUBLIC_BUCKET_SECRETS and writes
-        else:
-            assert not holds and not writes, f"{job_id} holds {sorted(holds)} or R2_WRITE_ENABLED"
+        assert not holds and "R2_WRITE_ENABLED" not in yaml.safe_dump(job), f"{job_id} holds {sorted(holds)}"
 
 
 def test_the_extract_job_holds_the_raw_store_and_the_upstream_credentials_and_nothing_else(workflow):
@@ -114,7 +164,12 @@ def test_the_extract_job_holds_the_raw_store_and_the_upstream_credentials_and_no
     assert _secrets(workflow["jobs"]["extract"]) == RAW_STORE_SECRETS | {"R2_ENDPOINT_URL"} | upstream
 
 
-@pytest.mark.parametrize("job_id", ["extract", "build", "parity"])
+def test_the_pin_job_holds_the_raw_store_and_nothing_else_and_the_others_hold_no_secret(workflow):
+    assert _secrets(workflow["jobs"]["pin"]) == RAW_STORE_SECRETS | {"R2_ENDPOINT_URL"}
+    assert not _secrets(workflow["jobs"]["dispatch"]) and not _secrets(workflow["jobs"]["refused"])
+
+
+@pytest.mark.parametrize("job_id", ["extract", "pin"])
 def test_a_job_holding_the_raw_store_key_names_every_raw_secret_before_it_uses_one(workflow, job_id):
     steps = workflow["jobs"][job_id]["steps"]
     first = next(index for index, step in enumerate(steps) if _secrets(step))
@@ -145,8 +200,9 @@ def test_the_extract_runs_the_monthly_lane_with_its_as_landed_copy_and_cross_lan
     assert "--normalize-workers 4" in runs
 
 
-def test_a_layer_refused_on_its_own_lets_the_build_run_and_the_last_job_go_red(workflow):
-    """Monthly runs 10, 11, 12, 14 and 15 each stopped on one layer; extract/_run.py's ISOLATING_LANES now exits 3."""
+def test_a_layer_refused_on_its_own_lets_the_pin_and_the_dispatch_run_and_the_last_job_go_red(workflow):
+    """Monthly runs 10, 11, 12, 14 and 15 each stopped on one layer; extract/_run.py's ISOLATING_LANES now exits 3.
+    `refused` waits on this file's jobs alone: the build it would once have waited on is build-reference.yml's run."""
     extract = workflow["jobs"]["extract"]
     (step,) = [step for step in extract["steps"] if step.get("id") == "extract"]
     assert '"$status" -eq 3' in step["run"] and "partial=true" in step["run"]
@@ -157,48 +213,48 @@ def test_a_layer_refused_on_its_own_lets_the_build_run_and_the_last_job_go_red(w
     assert refused["if"] == "always() && needs.extract.outputs.partial == 'true'"
     assert set(refused["needs"]) == set(workflow["jobs"]) - {"refused"}, "after every other job"
     assert not _secrets(refused) and "exit 1" in _runs(refused)
+    for job_id in ("pin", "dispatch"):
+        assert "if" not in workflow["jobs"][job_id], f"{job_id} must run after a partial extract, which exits 0"
 
 
-def test_the_build_runs_through_build_marts_monthly_lane_and_no_dbt_command_of_its_own(workflow):
-    runs = _runs(workflow["jobs"]["build"])
+def test_the_pin_job_holds_every_step_the_build_ran_down_to_the_pin_and_no_dbt(workflow):
+    """Choice B moved them whole, in order; build-reference.yml's build job starts at "Build the warehouse from the
+    pin" and holds none of them (test_build_reference.py)."""
+    job = workflow["jobs"]["pin"]
+    names = [step.get("name") for step in job["steps"]]
+    held = [name for name in names if name in PIN_STEPS]
+    runs = _runs(job)
 
-    assert "python build_marts.py --lane monthly" in runs
-    assert not re.search(r"\bdbt (build|run|seed|test)\b", runs), "the build order is build_marts.py's alone"
+    assert held == PIN_STEPS
+    assert job["needs"] == "extract" and job["env"]["RAW_RUN"] == "${{ needs.extract.outputs.raw_run }}"
+    assert "requirements-dbt.txt" not in yaml.safe_dump(job) and "generate_dbt.py" not in runs
+    assert not re.search(r"\bdbt\"?\s+(deps|build|run|seed|test|parse)\b", runs), "no dbt command runs before the pin"
+    assert "build_marts.py" not in runs and "--warehouse" not in runs, "the warehouse is build-reference.yml's to build"
 
 
-def test_the_build_builds_from_the_pin_and_writes_only_under_steps(workflow):
-    runs = _runs(workflow["jobs"]["build"])
+def test_the_pin_job_pins_and_writes_only_under_steps(workflow):
+    runs = _runs(workflow["jobs"]["pin"])
 
-    assert "extract._run" not in runs, "the build job never extracts, so it never writes the raw store's raw/"
-    assert re.search(r"extract\._warehouse load .*--raw-run", runs.replace("\n", " ")), "the warehouse comes from the pin"
+    assert "extract._run" not in runs, "the pin job never extracts, so it never writes the raw store's raw/"
     for match in re.finditer(r'--steps-url "([^"]+)"', runs):
         assert match.group(1) == "s3://$R2_RAW_BUCKET/steps", match.group(0)
-    for command in ("pin", "store"):
-        assert f"extract._warehouse {command}" in runs
+    assert "extract._warehouse pin " in runs and "extract._warehouse store" not in runs
 
 
-def _first_step(steps: list[dict], text: str) -> int:
-    found = [index for index, step in enumerate(steps) if text in (step.get("run") or "")]
-    assert found, f"no build step runs {text!r}"
-    return found[0]
-
-
-def test_the_build_scans_osm_water_from_the_raw_stores_extracts_before_the_pin_that_build_marts_reads(workflow):
+def test_the_pin_job_scans_osm_water_from_the_raw_stores_extracts_before_the_pin_that_build_marts_reads(workflow):
     """#1652 - Download OSM's Geofabrik extracts at most once a month, into a private raw bucket that outlives the
     7-day Actions cache. The copies come down after today's fetchers' files (fetch_trail_water.py --derive reads ATC's
     sites from the as-landed copy), both scans run over them before the pin, the pin carries the scans, and
-    build_marts.py lands them from the pin through the warehouse step's materialised files."""
-    steps = workflow["jobs"]["build"]["steps"]
+    build-reference.yml's build_marts.py lands them from the pin through the warehouse step's materialised files."""
+    steps = workflow["jobs"]["pin"]["steps"]
     as_landed = _first_step(steps, "extract._warehouse as-landed")
     pull = _first_step(steps, "-m extract._geofabrik pull")
     osm = _first_step(steps, "fetch_osm_water.py")
     site = _first_step(steps, "fetch_trail_water.py --derive")
     landed = _first_step(steps, "-m extract._geofabrik landed")
     pin = _first_step(steps, "extract._warehouse pin ")
-    load = _first_step(steps, "extract._warehouse load")
-    marts = _first_step(steps, "build_marts.py --lane monthly")
 
-    assert as_landed < pull < osm == site < landed < pin < load < marts
+    assert as_landed < pull < osm == site < landed < pin
     # extract/_geofabrik.py's SCANS: each scan pinned under derived/, never at its scanner's own path.
     for pinned, local in {
         "derived/osm_water.geojson": "osm_water.geojson",
@@ -207,10 +263,10 @@ def test_the_build_scans_osm_water_from_the_raw_stores_extracts_before_the_pin_t
         assert f"--extra {pinned}=data/raw/{local}" in steps[pin]["run"], pinned
 
 
-def test_the_water_scans_run_only_on_a_complete_set_never_fail_the_build_and_free_the_disk(workflow):
+def test_the_water_scans_run_only_on_a_complete_set_never_fail_the_pin_and_free_the_disk(workflow):
     """A missing or unreadable copy lands the last landed scans rather than a scan of part of the corridor, and a scan
-    that refuses or crashes leaves them standing: neither may stop the rest of the monthly build."""
-    steps = workflow["jobs"]["build"]["steps"]
+    that refuses or crashes leaves them standing: neither may stop the pin, or the build after it."""
+    steps = workflow["jobs"]["pin"]["steps"]
     pull = steps[_first_step(steps, "-m extract._geofabrik pull")]
     scan = steps[_first_step(steps, "fetch_osm_water.py")]
     landed = steps[_first_step(steps, "-m extract._geofabrik landed")]
@@ -224,198 +280,131 @@ def test_the_water_scans_run_only_on_a_complete_set_never_fail_the_build_and_fre
 
 
 def test_every_step_down_to_the_pin_is_skipped_on_a_rerun_that_already_has_one(workflow):
-    steps = workflow["jobs"]["build"]["steps"]
+    """A rerun of the pin job on a raw_run already pinned goes straight on to the dispatch."""
+    steps = workflow["jobs"]["pin"]["steps"]
     check = next(index for index, step in enumerate(steps) if step.get("id") == "pinned")
     pin = _first_step(steps, "extract._warehouse pin ")
 
     assert "extract._warehouse has-pin" in steps[check]["run"]
     for step in steps[check + 1 : pin + 1]:
         assert "steps.pinned.outputs.pinned" in step.get("if", ""), step.get("name")
+    for step in steps[pin + 1 :]:
+        assert str(step.get("uses", "")).startswith("actions/cache/save"), f"{step.get('name')} runs after the pin"
+    assert workflow["jobs"]["dispatch"]["needs"] == ["extract", "pin"] and "if" not in workflow["jobs"]["dispatch"]
 
 
-# fetch_trail_water.ELEVATION_CACHE_PATH and export_elevation.SAMPLE_CACHE_PATH, workspace-relative: the EPQS answers
-# step_osm_water_grade.py and fetch_trail_water.py --derive ask through, and the DEM per-point cache beside the tile
-# index step_dem_sampling.py samples from. pipeline/tests/test_fetch_cache_paths.py holds them to the constants.
-ELEVATION_ANSWERS = {"pipeline/data/raw/epqs_elevations.json", "pipeline/data/raw/elevation/samples.json"}
+def test_the_pin_job_restores_the_epqs_answers_before_the_scan_that_asks_and_saves_them_for_the_build(workflow):
+    """ARC-3 of PR #1805's second review carried the EPQS answers and the DEM samples between attempts in one job.
+    fetch_trail_water.py --derive asks EPQS through the first file, so the pin job restores before it and saves after,
+    also on a failed run, under the prefix build-reference.yml's build job restores (test_build_reference.py holds
+    the two files to one prefix and one path list)."""
+    job = workflow["jobs"]["pin"]
+    steps = job["steps"]
+    (restore,) = _cache_steps(job, workflow, "restore")
+    (save,) = _cache_steps(job, workflow, "save")
 
-
-def _cached_paths(step: dict, env: dict) -> set[str]:
-    path = str((step.get("with") or {}).get("path", ""))
-    for name, value in env.items():
-        path = path.replace("${{ env.%s }}" % name, str(value))
-    return {line.strip() for line in path.splitlines() if line.strip()}
-
-
-def test_the_build_restores_and_saves_the_epqs_answers_and_the_dem_samples_around_every_step_that_asks(workflow):
-    """ARC-3 of PR #1805's second review: monthly runs 20, 21 and 22 each asked USGS EPQS about the same 3,118 corridor
-    OSM water points again, for 21.3, 41.5 and 54.2 min, because nothing carried an answer from one attempt to the next.
-    publish-vector-data.yml carries both files in FETCH_OUTPUTS. Restored before the first step that asks, and not
-    behind the pin's check, because a rerun that already has a pin is the attempt that needs the answers most; saved
-    after build_marts.py, and on a failed run too."""
-    job = workflow["jobs"]["build"]
-    steps, env = job["steps"], {**workflow["env"], **(job.get("env") or {})}
-    restores = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/cache/restore")]
-    saves = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/cache/save")]
-    (restore,) = [i for i in restores if _cached_paths(steps[i], env) == ELEVATION_ANSWERS]
-    (save,) = [i for i in saves if _cached_paths(steps[i], env) == ELEVATION_ANSWERS]
-
-    assert restore < _first_step(steps, "fetch_trail_water.py --derive") and restore < _first_step(steps, "build_marts.py")
-    assert "steps.pinned" not in str(steps[restore].get("if", "")), "a rerun from its pin needs the answers too"
-    assert save > _first_step(steps, "build_marts.py --lane monthly")
-    assert "always()" in str(steps[save]["if"])
+    assert restore < _first_step(steps, "fetch_trail_water.py --derive") < _first_step(steps, "extract._warehouse pin ") < save
+    assert "always()" in str(steps[save]["if"]) and steps[save]["continue-on-error"] is True
     prefix = str(steps[save]["with"]["key"]).split("${{")[0]
-    assert prefix and str(steps[restore]["with"]["restore-keys"]).strip() == prefix
+    assert prefix == "monthly-elevation-answers-" and str(steps[restore]["with"]["restore-keys"]).strip() == prefix
 
 
-def test_every_parity_group_reads_the_builds_epqs_answers_and_never_saves_them(workflow):
-    """Today's OSM water grade asks EPQS one point at a time through fetch_trail_water.elevation_ft()'s disk cache,
-    which is this cache's first file: one at a time, monthly run 23's grade asked from 06:09 to 09:05 UTC and was
-    cancelled. Restored from the build job's entry, so the old side asks only for the walks the dbt side never did."""
-    build, job = workflow["jobs"]["build"], workflow["jobs"]["parity"]
-    steps, env = job["steps"], {**workflow["env"], **(job.get("env") or {})}
-    (restore,) = [
-        i
-        for i, step in enumerate(steps)
-        if str(step.get("uses", "")).startswith("actions/cache/restore") and _cached_paths(step, env) == ELEVATION_ANSWERS
-    ]
-    saved = next(
-        step
-        for step in build["steps"]
-        if str(step.get("uses", "")).startswith("actions/cache/save") and _cached_paths(step, env) == ELEVATION_ANSWERS
-    )
+def test_the_dispatch_job_alone_holds_actions_write_and_hands_the_build_this_runs_ref_and_raw_run(workflow):
+    """workflow_dispatch is the event a GITHUB_TOKEN may start a run with ("workflow_dispatch and repository_dispatch
+    events always create workflow runs", GitHub's docs), and the dispatch endpoint needs `actions: write`. Everything
+    the dispatched text is made of reaches the script through env, as test_run_steps_take_inputs_through_env.py
+    requires of every run step."""
+    job = workflow["jobs"]["dispatch"]
+    (step,) = [step for step in job["steps"] if "gh workflow run" in (step.get("run") or "")]
 
-    assert "if" not in steps[restore], "every group, so a POI family moved between groups is never graded cold"
-    assert restore < _first_step(steps, "parity_lane.py --group") and restore > _first_step(steps, "extract._warehouse load")
-    assert str(steps[restore]["with"]["restore-keys"]).strip() == str(saved["with"]["key"]).split("${{")[0]
-    assert not [step for step in steps if str(step.get("uses", "")).startswith("actions/cache/save")]
-
-
-def test_the_build_keeps_the_row_history_at_history_monthly_through_the_extracts_venv(workflow):
-    """pipeline/row_history.py: the snapshots go in the raw store's bucket under this lane's own prefix, and the
-    restore and save need s3fs, which only the extract's venv carries."""
-    (step,) = [step for step in workflow["jobs"]["build"]["steps"] if "build_marts.py" in (step.get("run") or "")]
-
-    assert '--history-url "s3://$R2_RAW_BUCKET/history/monthly"' in step["run"]
-    assert '--history-python "$RUNNER_TEMP/extract/bin/python"' in step["run"]
-    assert "--history-cold-start" not in step["run"], "a cold start is row_history_stores.toml's to allow, never a flag"
-    assert {"R2_RAW_BUCKET", "R2_RAW_ACCESS_KEY_ID", "R2_RAW_SECRET_ACCESS_KEY", "R2_ENDPOINT_URL"} <= _secrets(step)
-    # The monthly lane fails loudly: only the conditions legs publish without their history (the maintainer, by
-    # poll, 2026-10-03), so a failed restore here stops the build before dbt runs.
-    assert "--history-on-failure" not in step["run"]
-
-
-def _lane_literal(name: str):
-    """parity_lane.py's module-level literal `name`, read without importing the file: it is a pipeline script."""
-    for node in ast.parse(LANE.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
-            return ast.literal_eval(node.value)
-    raise AssertionError(f"parity_lane.py has no literal {name}")
-
-
-def test_the_parity_job_writes_nothing_and_runs_one_group_of_families_per_runner(workflow):
-    job = workflow["jobs"]["parity"]
-    runs = _runs(job)
-
-    assert not re.search(r"extract\._warehouse (pin|store)\b", runs)
-    assert 'parity_lane.py --group "$GROUP" --out "$PARITY_DIR"' in runs
-    assert job["strategy"]["fail-fast"] is False, "one group's failure must not cancel the others' answers"
-    assert job["strategy"]["matrix"]["group"] == list(_lane_literal("GROUPS")), (
-        "a group the job never runs, or one the lane lacks"
-    )
-    uploads = [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact")]
-    assert uploads and uploads[-1]["if"] == "always()"
-    assert uploads[-1]["with"]["name"] == "monthly-parity-${{ matrix.group }}"
-
-
-def test_the_parity_report_joins_every_group_into_the_one_artifact_the_gate_reads_and_holds_no_credential(workflow):
-    job = workflow["jobs"]["parity-report"]
-    runs = _runs(job)
-
-    assert not _secrets(job)
-    assert "parity" in job["needs"] and "always()" in job["if"] and "needs.build.result == 'success'" in job["if"]
-    downloads = [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/download-artifact")]
-    merged = next(step for step in downloads if step["with"].get("pattern"))
-    assert merged["with"] == {"pattern": "monthly-parity-*", "path": "${{ runner.temp }}/parity", "merge-multiple": True}
-    assert 'parity_lane.py --join "$PARITY_DIR" --raw-run "$RAW_RUN"' in runs
-    assert 'gate_report.py --parity-dir "$PARITY_DIR/results"' in runs
-    uploads = [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact")]
-    assert uploads[-1]["if"] == "always()" and uploads[-1]["with"]["name"] == "monthly-parity"
-    assert "parity-report" in workflow["jobs"]["refused"]["needs"]
-
-
-STUB_PARITY = """
-import json, os, pathlib
-def main(argv):
-    with open(os.environ["STUB_LOG"], "a") as log:
-        log.write(json.dumps(argv) + "\\n")
-    print(f"{argv[0]}: no differences across 0 records, keyed by id")
-    results = pathlib.Path(argv[argv.index("--json-dir") + 1])
-    results.mkdir(parents=True, exist_ok=True)
-    (results / f"{argv[0]}.json").write_text(json.dumps({"outcome": "no_differences"}))
-    return 0
-"""
-
-
-def test_every_monthly_parity_run_writes_keys_only_into_the_uploaded_folder(workflow, tmp_path):
-    """The monthly-parity artifact is public, and its old side holds held-back sources: parity.py's
-    --keys-only (tests/test_parity.py) is what keeps their records and geometry out of it. Each group's command line
-    runs here as the job runs it, with a stand-in parity.py beside parity_lane.py, and the join as parity-report runs it."""
-    job = workflow["jobs"]["parity"]
-    step = next(step for step in job["steps"] if step.get("name") == "Parity with today's exporters")
-    upload = next(step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact"))
-    report = workflow["jobs"]["parity-report"]
-    joined = next(step for step in report["steps"] if step.get("name") == "Every group's answers in one summary")
-    assert step["env"]["PARITY_DIR"] == joined["env"]["PARITY_DIR"] == "${{ runner.temp }}/parity"
-    assert upload["with"]["path"].rstrip("/") == "${{ runner.temp }}/parity"
-
-    work = tmp_path / "work"
-    work.mkdir()
-    shutil.copyfile(LANE, work / "parity_lane.py")
-    (work / "parity.py").write_text(STUB_PARITY)
-    python = tmp_path / "runner" / "pipeline" / "bin" / "python"
-    python.parent.mkdir(parents=True)
-    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
-    python.chmod(0o755)
-    # Every group into one folder, as parity-report's merge-multiple download leaves them.
-    parity_dir = tmp_path / "runner" / "parity"
-    env = {
-        **os.environ,
-        "PARITY_DIR": str(parity_dir),
-        "RUNNER_TEMP": str(tmp_path / "runner"),
-        "RAW_RUN": "1",
-        "GITHUB_STEP_SUMMARY": str(tmp_path / "summary.md"),
-        "STUB_LOG": str(tmp_path / "calls.jsonl"),
+    assert workflow["permissions"] == {"contents": "read"}
+    assert job["permissions"] == {"actions": "write"}
+    assert [job_id for job_id, other in workflow["jobs"].items() if "permissions" in other] == ["dispatch"]
+    assert step["env"] == {
+        "GH_TOKEN": "${{ github.token }}",
+        "RAW_RUN": "${{ needs.extract.outputs.raw_run }}",
+        "REF": "${{ github.ref_name }}",
     }
-    for group in job["strategy"]["matrix"]["group"]:
-        subprocess.run(["bash", "-c", step["run"]], cwd=work, env={**env, "GROUP": group}, check=True, capture_output=True)
-    subprocess.run(["bash", "-c", joined["run"]], cwd=work, env=env, check=True, capture_output=True)
-
-    calls = [json.loads(line) for line in (tmp_path / "calls.jsonl").read_text().splitlines()]
-    assert sorted(argv[0] for argv in calls) == sorted(_lane_families()), "every family once, and nothing else"
-    for argv in calls:
-        assert "--keys-only" in argv, argv
-        assert argv[argv.index("--json-dir") + 1] == str(parity_dir / "results"), argv
-    summary = json.loads((parity_dir / "summary.json").read_text())
-    assert summary["raw_run"] == "1"
-    assert {entry["status"] for entry in summary["families"].values()} == {"match"}, "the status comes from results/<family>.json"
-    assert (tmp_path / "summary.md").read_text().count(" | match |") == len(_lane_families())
+    assert 'gh workflow run build-reference.yml --repo "$GITHUB_REPOSITORY" --ref "$REF" -f "raw_run=$RAW_RUN"' in step["run"]
+    assert "${{" not in step["run"]
+    assert _dispatched(workflow) == {BUILD} and (WORKFLOWS / BUILD).is_file()
 
 
-def test_the_publish_job_stages_the_dbt_writers_files_on_ua_inside_publish_data(workflow):
-    job = workflow["jobs"]["publish"]
-    step = next(step for step in job["steps"] if step.get("run") == "python publish.py")
-
-    assert step["env"]["OURHIKE_PHONE_FILES"] == "dbt" and step["env"]["OURHIKE_DATA_ENV"] == "ua"
-    assert job["concurrency"] == {"group": "publish-data", "cancel-in-progress": False}
-    assert job["needs"] == "build"
+def _dispatch_step(workflow: dict) -> dict:
+    (step,) = [step for step in workflow["jobs"]["dispatch"]["steps"] if "gh workflow run" in (step.get("run") or "")]
+    return step
 
 
-def test_confirm_runs_when_publish_was_cancelled_and_holds_no_credential(workflow):
-    job = workflow["jobs"]["confirm"]
+def _run_the_dispatch(workflow: dict, tmp_path: Path, ref: str, gh_exit: int = 0) -> tuple[int, str, list[list[str]]]:
+    """The dispatch step's script, as GitHub runs it, with a stand-in `gh` that logs its argv and exits `gh_exit`."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    log = tmp_path / "gh.jsonl"
+    stub = bin_dir / "gh"
+    stub.write_text(
+        "#!/usr/bin/env python3\nimport json, os, sys\n"
+        "with open(os.environ['GH_LOG'], 'a') as log:\n    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        f"sys.exit({gh_exit})\n"
+    )
+    stub.chmod(0o755)
+    summary = tmp_path / "summary.md"
+    summary.write_text("")
+    completed = subprocess.run(
+        [*BASH, _dispatch_step(workflow)["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "GH_LOG": str(log),
+            "GH_TOKEN": "a-token-the-stand-in-ignores",
+            "GITHUB_REPOSITORY": "OurHike/OurHike",
+            "GITHUB_STEP_SUMMARY": str(summary),
+            "RAW_RUN": RAW_RUN,
+            "REF": ref,
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+    return completed.returncode, summary.read_text(), calls
 
-    assert "always()" in job["if"] and "needs.build.result == 'success'" in job["if"]
-    assert set(job["needs"]) == {"build", "publish"}
-    assert not _secrets(job)
+
+def test_the_dispatch_starts_build_reference_on_this_ref_with_this_raw_run_and_its_summary_says_how_again(workflow, tmp_path):
+    """The brief for choice B: each extract run's summary prints the raw_run and the exact command that builds from
+    it again. That command, run as printed, makes the same call the job made."""
+    status, summary, calls = _run_the_dispatch(workflow, tmp_path, "main")
+
+    expected = ["workflow", "run", BUILD, "--repo", "OurHike/OurHike", "--ref", "main", "-f", f"raw_run={RAW_RUN}"]
+    assert status == 0 and calls == [expected]
+    assert f"raw_run `{RAW_RUN}` is pinned" in summary
+    (command,) = [line for line in summary.splitlines() if line.startswith("gh workflow run ")]
+    assert command == f"gh workflow run {BUILD} --repo OurHike/OurHike --ref main -f raw_run={RAW_RUN}"
+    assert shlex.split(command)[1:] == expected
+    assert "This run dispatched build-reference.yml on `main`" in summary
+
+
+def test_the_rebuild_command_stays_one_command_whatever_the_branch_is_called(workflow, tmp_path):
+    """git allows a quote, a semicolon and `$(...)` in a branch name (`git check-ref-format --branch` accepts this
+    one), so the printed command quotes each word (printf %q) and reads back as the same argv, never as a second
+    command."""
+    ref = "claude/it's;$(touch${IFS}PWNED)"
+    status, summary, calls = _run_the_dispatch(workflow, tmp_path, ref)
+
+    assert status == 0 and calls[0][calls[0].index("--ref") + 1] == ref
+    (command,) = [line for line in summary.splitlines() if line.startswith("gh workflow run ")]
+    assert shlex.split(command)[1:] == calls[0]
+    assert not (tmp_path / "PWNED").exists()
+
+
+def test_a_dispatch_that_fails_turns_the_job_red_and_leaves_the_command_to_run_by_hand(workflow, tmp_path):
+    """Until a build-reference.yml is on the default branch GitHub refuses the dispatch (the workflow's comment):
+    the job goes red, and the summary still holds the command, with no line claiming the build was started."""
+    status, summary, calls = _run_the_dispatch(workflow, tmp_path, "main", gh_exit=1)
+
+    assert status != 0 and len(calls) == 1
+    assert f"gh workflow run {BUILD} --repo OurHike/OurHike --ref main -f raw_run={RAW_RUN}" in summary
+    assert "This run dispatched" not in summary
 
 
 def _publishes(job: dict) -> list[dict]:
@@ -423,20 +412,24 @@ def _publishes(job: dict) -> list[dict]:
 
 
 def test_every_scheduled_workflow_that_publishes_names_ua_as_a_literal():
-    """ELT.md's new assertion: a schedule refreshes UA, and only the release train changes what a hiker downloads."""
+    """ELT.md's new assertion: a schedule refreshes UA, and only the release train changes what a hiker downloads.
+    A workflow a scheduled one dispatches publishes on that schedule too, so its publish steps are held the same:
+    refresh-reference.yml publishes through build-reference.yml."""
     checked = []
     for path in sorted(WORKFLOWS.glob("*.yml")):
         workflow = _load(path)
         if "schedule" not in _triggers(workflow) or path.name in PRODUCTION_ON_A_SCHEDULE:
             continue
-        for job_id, job in (workflow.get("jobs") or {}).items():
-            for step in _publishes(job):
-                environment = {**(workflow.get("env") or {}), **(job.get("env") or {}), **(step.get("env") or {})}
-                assert environment.get("OURHIKE_DATA_ENV") == "ua", (
-                    f"{path.name}:{job_id} publishes on a schedule with OURHIKE_DATA_ENV "
-                    f"{environment.get('OURHIKE_DATA_ENV')!r}; only the literal 'ua' may"
-                )
-                checked.append(path.name)
+        for name in [path.name, *sorted(_dispatched(workflow))]:
+            publisher = workflow if name == path.name else _load(WORKFLOWS / name)
+            for job_id, job in (publisher.get("jobs") or {}).items():
+                for step in _publishes(job):
+                    environment = {**(publisher.get("env") or {}), **(job.get("env") or {}), **(step.get("env") or {})}
+                    assert environment.get("OURHIKE_DATA_ENV") == "ua", (
+                        f"{name}:{job_id}, on {path.name}'s schedule, publishes with OURHIKE_DATA_ENV "
+                        f"{environment.get('OURHIKE_DATA_ENV')!r}; only the literal 'ua' may"
+                    )
+                    checked.append(path.name)
     assert {"refresh-reference.yml", "publish-weather.yml"} <= set(checked), checked
 
 
@@ -444,63 +437,3 @@ def test_the_one_scheduled_production_publisher_is_still_the_conditions_bake():
     for name in PRODUCTION_ON_A_SCHEDULE:
         workflow = _load(WORKFLOWS / name)
         assert "schedule" in _triggers(workflow), f"{name} lost its schedule, so its exemption here is stale"
-
-
-def test_the_freshness_check_reports_when_the_monthly_refresh_is_over_35_days_old():
-    workflow = _load(WORKFLOWS / "check-upstream-freshness.yml")
-    job = workflow["jobs"]["check"]
-    step = next(step for step in job["steps"] if step.get("id") == "monthly")
-
-    assert step["env"]["MONTHLY_WORKFLOW"] == NAME and step["env"]["MAX_AGE_DAYS"] == "35"
-    assert workflow["permissions"] == {"contents": "read", "issues": "write", "actions": "read"}
-    issue = next(step for step in job["steps"] if step.get("name") == "Open, update, or close the tracking issue")
-    assert "steps.monthly.outputs.alarm == 'true'" in issue["if"]
-    assert "!refreshAlarm" in issue["with"]["script"], "an overdue refresh must keep #478 open"
-
-
-def test_the_weekly_planner_gives_way_on_its_schedule_only_once_the_monthly_lane_has_run():
-    workflow = _load(WORKFLOWS / "build-data-release.yml")
-    give_way = workflow["jobs"]["give-way"]
-    script = _runs(give_way)
-
-    assert workflow["jobs"]["plan"]["needs"] == "give-way"
-    assert workflow["jobs"]["plan"]["if"] == "needs.give-way.outputs.plan == 'true'"
-    # Which runs count is test_monthly_refresh_counts_a_run_that_refreshed_ua.py's, against a stand-in API.
-    assert '"schedule"' in script and "refresh-reference.yml/runs?branch=main&status=completed" in script
-    assert "workflow_dispatch" in _triggers(workflow), "the dispatch stays (decision 28a)"
-    assert not _secrets(give_way) and not _secrets(workflow["jobs"]["plan"])
-
-
-# --- The parity families, one home: CI's own step ---
-
-# `--json-dir <dir>` (gate_report.py's results, on every CI line) may sit between parity.py and the family,
-# and a family's name may hold a digit (stage 6's `elevation_v2`).
-CI_PARITY = re.compile(
-    r'parity\.py (?:--json-dir \S+ )?"?([a-z0-9_$]+)"? --new "?data/processed/dbt/([^ "]+?)"?(?= |$)( --raw-dir data/raw)?', re.M
-)
-POI_LOOP = re.compile(r"for poi_type in ([a-z ]+); do")
-#: pipeline-tests.yml's parity lines for files the hourly conditions lane writes, not this one.
-HOURLY_FAMILIES = {"atc_updates", "nynjtc_alerts", "closures", "reports", "weather_alerts", "work_projects"}
-
-
-def _ci_families() -> dict[str, tuple[str, bool]]:
-    steps = _load(WORKFLOWS / "pipeline-tests.yml")["jobs"]["dbt"]["steps"]
-    script = next(step["run"] for step in steps if step.get("name") == "Parity with today's exporters")
-    kinds = POI_LOOP.search(script).group(1).split()
-    found = {}
-    for family, name, raw in CI_PARITY.findall(script):
-        for kind in kinds if "$poi_type" in family else [None]:
-            found[family.replace("$poi_type", kind or "")] = (name.replace("$poi_type", kind or ""), bool(raw))
-    return found
-
-
-def _lane_families() -> dict[str, tuple[str, bool]]:
-    """parity_lane.py's FAMILIES: each family's file and whether it is handed --raw-dir data/raw."""
-    return {family: (name, reads_raw) for family, (name, reads_raw) in _lane_literal("FAMILIES").items()}
-
-
-def test_the_monthly_parity_runs_every_family_ci_runs_except_the_hourly_conditions_files():
-    ci = _ci_families()
-
-    assert HOURLY_FAMILIES <= set(ci), "a conditions family left CI's step; HOURLY_FAMILIES is stale"
-    assert _lane_families() == {family: entry for family, entry in ci.items() if family not in HOURLY_FAMILIES}

@@ -19,13 +19,15 @@
 # people to ignore the one signal that matters. The run fails only if the
 # check itself broke.
 #
-# IT ALSO WATCHES THE MONTHLY LANE. refresh-reference.yml refreshes UA on the
-# 3rd of each month, and a monthly cron nobody has watched fire may not
-# (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd"). So when its last
-# run on main that refreshed UA is more than 35 days old, the tracking issue
-# carries a row saying so, and the remedy is a dispatch of
-# refresh-reference.yml. Reading the run list and its jobs needs `actions:
-# read` and nothing else; this job still cannot write to R2 or start a run.
+# IT ALSO WATCHES THE MONTHLY LANE. refresh-reference.yml extracts and pins
+# on the 3rd of each month and dispatches build-reference.yml, which builds
+# from the pin and refreshes UA, and a monthly cron nobody has watched fire
+# may not (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd"). So when
+# the extract behind the newest build on main that refreshed UA is more than
+# 35 days old, the tracking issue carries a row saying so, and the remedy is
+# a dispatch of refresh-reference.yml. Reading the run list and its jobs
+# needs `actions: read` and nothing else; this job still cannot write to R2
+# or start a run.
 
 name: Check upstream freshness
 
@@ -49,7 +51,7 @@ on:
 permissions:
   contents: read
   issues: write
-  # The run list of refresh-reference.yml, for the 35-day alarm. Read-only:
+  # The run list of build-reference.yml, for the 35-day alarm. Read-only:
   # a workflow cannot be dispatched, cancelled or re-run with it.
   actions: read
 
@@ -149,24 +151,33 @@ jobs:
       # measured on a weekly cron here (8.1 h, smoke-published.yml), rounded
       # up to a margin: @unvalidated until a year of monthly firings shows the
       # real spread (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd").
-      # The age runs from the last run on main that refreshed UA, or, before
-      # there is one, from the workflow's own `created_at`, so the alarm does
-      # not ring in the month after the merge (that GitHub sets it when the
-      # file reaches the default branch is @unvalidated; the first run after
-      # the merge shows the value). A workflow that is not on the default
-      # branch at all says so and rings nothing; an answer the API would not
-      # give is `could not be checked`, which this job never rounds down to
-      # fine.
+      # The age runs from the extract behind the newest build on main that
+      # refreshed UA: the instant its raw_run began, which build-reference.yml's
+      # run-name writes into the run's title. Until the maintainer's choice B
+      # (2026-10-08) split the lane, one run extracted and built, so its own
+      # start was that instant; dating a build by its start now would let a
+      # build from an old pin, dispatched by hand, clear the alarm while UA
+      # serves that old pin's data. A title that names no
+      # raw_run is `could not be checked`, never a fresh date. Before any
+      # build has refreshed UA, the age runs from the workflow's own
+      # `created_at`, so the alarm does not ring in the month after the merge
+      # (that GitHub sets it when the file reaches the default branch is
+      # @unvalidated; the first run after the merge shows the value). A
+      # workflow that is not on the default branch at all says so and rings
+      # nothing; an answer the API would not give is `could not be checked`,
+      # which this job never rounds down to fine.
       #
-      # REFRESHED UA, NOT GREEN (WF3 of the PR #1805 review). A monthly run
-      # that leaves one layer out still refreshes UA, and its last job then
-      # fails the run on purpose (decision 49); runs 16 and 17 both concluded
-      # `failure` that way. So a run counts when its job "Confirm UA serves
-      # what the build wrote" succeeded, whatever the run concluded, and only
-      # a run of main counts: a pull request branch's dispatch is not the
-      # monthly lane running. Up to 30 completed runs are read, newest first,
-      # with one job listing each until one counts. build-data-release.yml's
-      # give-way asks the same question the same way, and
+      # REFRESHED UA, NOT GREEN (WF3 of the PR #1805 review). A run can
+      # refresh UA and still conclude `failure`: monthly runs 16 and 17 did,
+      # when one workflow still extracted and built and its last job failed
+      # the run for a layer left out (decision 49), and a build-reference.yml
+      # run does when a parity group fails after its confirm passed. So a run
+      # counts when its job "Confirm UA serves what the build wrote" succeeded,
+      # whatever the run concluded, and only a run of main counts: a pull
+      # request branch's dispatch is not the monthly lane running. Up to 30
+      # completed runs are read, newest first, with one job listing each
+      # until one counts. build-data-release.yml's give-way asks whether one
+      # counts the same way, and
       # .github/tests/test_monthly_refresh_counts_a_run_that_refreshed_ua.py
       # runs both scripts against a stand-in for the API.
       - name: Is the monthly refresh overdue
@@ -176,18 +187,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           API_URL: ${{ github.api_url }}
-          MONTHLY_WORKFLOW: refresh-reference.yml
+          MONTHLY_WORKFLOW: build-reference.yml
           MAX_AGE_DAYS: "35"
         run: |
           python - <<'PY'
           import json
           import os
+          import re
           import urllib.error
           import urllib.request
           from datetime import datetime, timezone
 
           base = f"{os.environ['API_URL']}/repos/{os.environ['REPOSITORY']}/actions/workflows/{os.environ['MONTHLY_WORKFLOW']}"
           headers = {"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"}
+          # An extract run's id, as extract/_run.py stamps it and build-reference.yml's run-name puts it in the title.
+          RAW_RUN = re.compile(r"\b(\d{8}T\d{6}\.\d{6}Z)\b")
 
           def get(url):
               with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as response:
@@ -200,6 +214,11 @@ jobs:
               """The run's confirm job passed: UA's latest.json names every phone file its build wrote."""
               jobs = get(f"{run['jobs_url']}?filter=all&per_page=100").get("jobs") or []
               return any(job.get("name") == "Confirm UA serves what the build wrote" and job.get("conclusion") == "success" for job in jobs)
+
+          def extracted_at(run):
+              """When the extract the run built from began, from the raw_run its title names; None for a title naming none."""
+              found = RAW_RUN.search(run.get("display_title") or "")
+              return datetime.strptime(found.group(1), "%Y%m%dT%H%M%S.%fZ").replace(tzinfo=timezone.utc) if found else None
 
           now, limit = datetime.now(timezone.utc), int(os.environ["MAX_AGE_DAYS"])
           answer = {"workflow": os.environ["MONTHLY_WORKFLOW"], "max_age_days": limit, "checked_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
@@ -215,15 +234,23 @@ jobs:
           except (urllib.error.URLError, TimeoutError, ValueError) as error:
               answer.update(state="unknown", detail=f"the API did not answer: {error}")
           else:
-              since = stamp(last["run_started_at"]) if last else stamp(workflow["created_at"])
-              age = (now - since).total_seconds() / 86400
-              answer.update(
-                  since=since.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                  age_days=round(age, 1),
-                  last_refresh=last["html_url"] if last else None,
-                  runs_read=len(runs),
-                  state="overdue" if age > limit else "ok",
-              )
+              since = extracted_at(last) if last else stamp(workflow["created_at"])
+              if since is None:
+                  answer.update(
+                      state="unknown",
+                      detail=f"{last['html_url']} refreshed UA, but its title names no raw_run, so how old its extract is is not known",
+                      last_refresh=last["html_url"],
+                      runs_read=len(runs),
+                  )
+              else:
+                  age = (now - since).total_seconds() / 86400
+                  answer.update(
+                      since=since.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                      age_days=round(age, 1),
+                      last_refresh=last["html_url"] if last else None,
+                      runs_read=len(runs),
+                      state="overdue" if age > limit else "ok",
+                  )
           print(json.dumps(answer, indent=2))
           with open("monthly_refresh.json", "w") as handle:
               json.dump(answer, handle, indent=2)
@@ -258,7 +285,7 @@ jobs:
               echo "The check did not produce a report. See the step log above."
             fi
             echo
-            echo "### The monthly refresh (refresh-reference.yml)"
+            echo "### The monthly refresh (refresh-reference.yml's extract, as build-reference.yml built it)"
             echo
             if [ -f monthly_refresh.json ]; then
               echo "State: \`${MONTHLY_STATE:-none}\`"
@@ -360,7 +387,7 @@ jobs:
                     : '',
                   '',
                   'Changed data is not published data — this job holds no R2 credentials. Run **Publish vector data** to rebuild.',
-                  refreshAlarm ? 'The monthly row clears when a run of **Refresh reference data** (refresh-reference.yml) on main next refreshes UA, which its job "Confirm UA serves what the build wrote" passing shows, even when a refused layer turns that run red: dispatch it.' : '',
+                  refreshAlarm ? 'The monthly row clears when a build on main from an extract under 35 days old refreshes UA, which its job "Confirm UA serves what the build wrote" passing shows, even when another job turns that run red. **Refresh reference data** (refresh-reference.yml) extracts, pins and starts that build (build-reference.yml): dispatch it.' : '',
                   '',
                   `Last checked ${verdict.checked_at ?? monthly.checked_at} · [run](${process.env.RUN_URL})`,
                   '',

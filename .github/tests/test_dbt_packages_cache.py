@@ -38,7 +38,8 @@ DEPS = re.compile(r"\bdbt\"?\s+deps\b")
 JOBS_THAT_RUN_DEPS = {
     ("pipeline-tests.yml", "dbt"),
     ("publish-conditions.yml", "publish"),
-    ("refresh-reference.yml", "build"),
+    # The monthly lane's build, which choice B (2026-10-08) moved out of refresh-reference.yml.
+    ("build-reference.yml", "build"),
 }
 
 

@@ -3086,14 +3086,15 @@ Every line references `main` at 23fca25, read 2026-10-01. `main` has since moved
 
 | Workflow | Trigger | Change |
 |---|---|---|
-| **`refresh-reference.yml`** (new) | `cron: "15 5 3 * *"` + `workflow_dispatch` | The monthly lane (decision 1). `data_environment` is fixed to `ua`, with no input to change it |
+| **`refresh-reference.yml`** (new) | `cron: "15 5 3 * *"` + `workflow_dispatch` | The monthly lane (decision 1), its extract and its pin; since the maintainer's choice B (poll, 2026-10-08) it ends by dispatching `build-reference.yml` with the pinned `raw_run`. `data_environment` is fixed to `ua`, with no input to change it |
+| **`build-reference.yml`** (new, choice B) | `workflow_dispatch`, one required input: `raw_run` | The monthly lane's build from a pin: `build_marts.py --lane monthly`, the UA publish, the confirm job and decision 30's parity, moved whole from `refresh-reference.yml`. Started by `refresh-reference.yml` after each pin, and by hand on any earlier pin ([Rebuilding from a pin](#rebuilding-from-a-pin)). Shares `raw-lake-monthly` with `refresh-reference.yml`, so it waits for the run that started it to end |
 | `publish-vector-data.yml` | dispatch, **plus `workflow_call`** | Its build becomes callable, as the header written under **#1314 — Build DATA_RELEASES.md §2's weekly candidate build, minus the raster half that #855 switched off** recommends (`build-data-release.yml:30-34`: "The first is right and is its own change"). Gains a `raw_run` input |
 | `verify-release.yml`, `publish-podcasts.yml` | dispatch, plus `workflow_call` | Called monthly with UA. Production podcasts stay a dispatch |
 | `publish-conditions.yml` | `40 * * * *`, unchanged | dlt and dbt run inside it, and it gains NWS alerts, so it is the one job that builds `warnings` ([below](#the-hourly-lanes)). Since decision 61 its extract keeps the twelve tables `extract/_run.py`'s `HOURLY_JOB_TABLES` names, and it adds the notices legs' served copy to its warehouse |
 | **`extract-notices.yml`** (new, decision 61) | `22 2-22/4 * * *` + `workflow_dispatch` | Every other club's and agency's closures and warnings into the notices legs' stores, with up to an hour to read, then the served copy the hourly build reads. Publishes nothing; its own concurrency group ([Phase F](#phase-f-the-hourly-lanes-budget)) |
 | `publish-weather.yml` | `55 * * * *`, unchanged | keeps the NBM forecast only; its NWS-alert half moves to the conditions job (decision 28a) |
-| `build-data-release.yml` | `25 6 * * 1`, a weekly planner that writes nothing | its Monday run gives way to the monthly `refresh-reference.yml` (decision 28a): the schedule retires once `refresh-reference.yml` has run once, and the dispatch stays |
-| `check-upstream-freshness.yml` | daily `20 7 * * *` | Also reports in **#478 — Upstream data freshness** when the last successful `refresh-reference.yml` run is over 35 days old |
+| `build-data-release.yml` | `25 6 * * 1`, a weekly planner that writes nothing | its Monday run gives way to the monthly lane (decision 28a): the schedule retires once a `build-reference.yml` run on main has refreshed UA, and the dispatch stays |
+| `check-upstream-freshness.yml` | daily `20 7 * * *` | Also reports in **#478 — Upstream data freshness** when the extract behind the newest `build-reference.yml` run on main that refreshed UA began over 35 days ago, dated by the `raw_run` in that run's title |
 
 **Two workflow headers are reversed on purpose.** `publish-vector-data.yml:16-17` says "Publishing overwrites what hikers download, so it is a deliberate act". A schedule now drives it, UA only, and the deliberate act moves to the promotion. `verify-release.yml` is dispatch-only because "On a schedule it would download 1.6 GB a day to answer a question nobody asked" (`verify-release.yml:11-12`); monthly, it downloads 1.6 GB a month, to answer whether the month's UA build is fit to promote.
 
@@ -3150,6 +3151,16 @@ The `concurrency:` group and the `maintain` job are explained in [Where data liv
 
 **`confirm` answers #1513 — A queued publish is silently cancelled when another one joins publish-data, and it looks like a green build.** GitHub keeps one pending entrant per concurrency group, and the hourly conditions bake joins `publish-data` several times a day. `confirm` reads `environments/ua/latest.json` over public HTTPS, with no credential, and goes red unless every artifact the build listed carries the build's own `sha256` there. `generated_at` proves nothing, because the conditions bake rewrites `latest.json` too.
 
+#### Rebuilding from a pin
+
+A fix to a build that failed after a good extract is tried on that extract's pin, with no new extract (the maintainer's choice B, by poll, 2026-10-08). Dispatch `build-reference.yml` with the pin's `raw_run`, and as `--ref` the branch whose code should build it; each `refresh-reference.yml` run's summary prints this command under "Build from this pin", with its own values:
+
+```sh
+gh workflow run build-reference.yml --ref main -f raw_run=20261008T041936.333353Z
+```
+
+What that saves is Reasoned from monthly run 29's step times (37726904273): the extract job's 107 minutes and the pin's 45.5 (today's fetchers' files and the DEM tile index 28, the OSM extracts and water scans 5, the pin itself 12.5), against about 81 minutes of build steps after the pin (5.3 to build the warehouse, 70 for `build_marts.py`, 5.8 to store it), with the publish and parity jobs run either way. It carries no change to an extractor, to a fetcher or scanner the pin job runs, or to the upstream data: those need a new pin, so a dispatch of `refresh-reference.yml`. A `raw_run` whose warehouse is already in the step cache keeps the first build's there, since the store step is write-once, and the parity job reads that one; a pin older than the one UA serves moves UA back to its data, and the 35-day alarm dates UA by the pin, not by the build. The build waits in `raw-lake-monthly` behind any run of either workflow, and a `raw_run` with no pin stops at the build job's pin check: "raw_run X has no pin; dispatch refresh-reference.yml to extract one". GitHub takes a `workflow_dispatch` only for a workflow whose file is on the default branch (its docs, "Events that trigger workflows"), so from a branch both this command and `refresh-reference.yml`'s own dispatch job need a `build-reference.yml` on `main` first, as `39fe1f13` put `refresh-reference.yml`'s placeholder there for **#1809 — refresh-reference.yml has to exist on main before PR #1805's monthly lane can be dispatched for its go/no-go run**. That dispatch job and the EPQS answers' cache entry crossing from its pin job to the build are `@unvalidated` until a run shows them.
+
 #### The schedule: 05:15 UTC on the 3rd
 
 | Choice | Reason |
@@ -3164,7 +3175,7 @@ The `concurrency:` group and the `maintain` job are explained in [Where data liv
 
 | Lock | Mechanism |
 |---|---|
-| No input | `refresh-reference.yml` declares no `data_environment` and passes the literal `ua` |
+| No input | `refresh-reference.yml` declares no input, and `build-reference.yml` only `raw_run`; neither declares a `data_environment`, and the publish steps pass the literal `ua` |
 | Key prefix | `publish.py` scopes every key by `OURHIKE_DATA_ENV`, so "a UA run cannot reach production's keys" (`publish-vector-data.yml:1360-1363`) |
 | No gate to skip | `ua` resolves to an environment with no reviewer (**#1330 — A routine UA publish waits on the same production approval as a real release**); a production dispatch still resolves to the literal `production` and waits (RELEASING.md §12) |
 | The pin | Phones read the release folder the committed `DATA_RELEASE` names (`client/src/lib/dataRelease.ts:103`, `'2026-09-24-2'`). Only a client release moves it, until stage 4 replaces it with decision 44's committed `channels.json`, which the release train moves |

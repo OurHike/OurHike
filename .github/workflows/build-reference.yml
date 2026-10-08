@@ -1,0 +1,765 @@
+# The monthly lane's build, from a pin: dbt builds the warehouse and every
+# mart from the raw inputs refresh-reference.yml pinned for one extract run
+# (steps/raw_inputs/<raw_run>/), the dbt writers' files are staged as a UA
+# release, UA is read back, and today's exporters are compared with the dbt
+# writers on the same pin (decision 30). Cut out of refresh-reference.yml by
+# the maintainer's choice B (poll, 2026-10-08), and that file's header says
+# why. Its dispatch job starts this one after each pin, and a person can
+# start it on any raw_run that has a pin, so a fix is tried on real monthly
+# data without paying for a new extract:
+#
+#   gh workflow run build-reference.yml --ref main -f raw_run=20261008T041936.333353Z
+#
+# with the raw_run a refresh-reference.yml run's summary names, and as --ref
+# the branch whose code should build it. pipeline/ELT.md, "Rebuilding from a
+# pin", says what that costs and what it does not carry.
+#
+# NOTHING HERE CAN REACH PRODUCTION (ELT.md, "Why a scheduled run cannot
+# reach production"; .github/tests/test_build_reference.py holds it):
+#   - The one input is the raw_run, refused unless it has an extract run id's
+#     shape, and nothing names an environment: both publish steps ("Publish
+#     to UA" and "Put the podcast list in place on UA") set OURHIKE_DATA_ENV
+#     to the literal `ua`. publish.py scopes every key it writes by that
+#     value (lib/data_env.py).
+#   - Phones follow channels.json (decision 44), which only the release
+#     train uploads (`publish.py --channels`).
+#   - Promotion is the release train's, built from the same pinned inputs,
+#     so what is promoted is what UA showed.
+#
+# FIVE JOBS, EACH HOLDING ONLY ITS OWN CREDENTIALS:
+#   build    R2_RAW_* only, writing only under steps/ and history/monthly/.
+#            Builds the warehouse and marts from the pin with the row history
+#            restored and saved, and hands files on.
+#   publish  The public bucket's R2_* only: publish.py, OURHIKE_PHONE_FILES=dbt.
+#   confirm  No credential. Fails unless UA's latest.json, and for a v2 file
+#            its release folder's manifest, names every phone file the build
+#            wrote. Its name is read: check-upstream-freshness.yml's 35-day
+#            alarm and build-data-release.yml's give-way count a run on main
+#            whose "Confirm UA serves what the build wrote" passed.
+#   parity   R2_RAW_* to read the pin; writes nothing. Today's exporters
+#            against the dbt writers on the pinned inputs (decision 30), one
+#            group of families per runner (pipeline/parity_lane.py).
+#   parity-report  No credential. Joins the groups' answers into the one
+#            `monthly-parity` artifact and writes the gate's per-key report.
+name: Build reference data from a pin
+
+# The raw_run in every run's title, so the run list says which pin each
+# build read, and check-upstream-freshness.yml dates UA's monthly data by the
+# extract behind it rather than by the build.
+run-name: Build reference data from raw_run ${{ inputs.raw_run }}
+
+on:
+  # Dispatch only: refresh-reference.yml's dispatch job starts it after each
+  # pin, and a person can start it on any raw_run that has one. No schedule,
+  # since the lane's clock is refresh-reference.yml's, and no input but the
+  # raw_run, so nothing here can name an environment.
+  workflow_dispatch:
+    inputs:
+      raw_run:
+        description: "The pinned extract run to build from, as a refresh-reference.yml run's summary names it, such as 20261008T041936.333353Z"
+        type: string
+        required: true
+
+# ONE RUN AT A TIME, IN THIS FILE AND refresh-reference.yml TOGETHER, because
+# between them they are the only writers of the raw store's monthly prefix
+# and of the step cache under steps/ (ELT.md, "One catalog per lake, one
+# writer"), and both declare this group. So a build refresh-reference.yml's
+# dispatch job starts waits, queued, until that run has ended, and a run of
+# either file dispatched while the other is going waits behind it. The cost:
+# GitHub keeps one pending run per group, so a run that queues while another
+# is already waiting cancels the waiting one, which does not go red. A hand
+# dispatch of either file made while a build that refresh-reference.yml
+# started is still waiting cancels that build; the run that started it
+# prints the command that starts it again.
+concurrency:
+  group: raw-lake-monthly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  # dlt's telemetry is on by default and would send from a job holding R2
+  # write keys (the dlt skill, rule 3). Every job here inherits this.
+  RUNTIME__DLTHUB_TELEMETRY: "false"
+  # dbt's documented opt-out, and the only switch set (pipeline-tests.yml's
+  # dbt job says why: the dbt Product Licensing Agreement, section 3.2).
+  DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
+  # The two answer caches publish-vector-data.yml carries in FETCH_OUTPUTS,
+  # at the paths the code reads them from (fetch_trail_water.py's
+  # ELEVATION_CACHE_PATH, export_elevation.py's SAMPLE_CACHE_PATH;
+  # pipeline/tests/test_fetch_cache_paths.py holds them). The list the build
+  # job's restore and save and the parity job's restore all read, and the one
+  # refresh-reference.yml's pin job saves under: actions/cache finds an entry
+  # only by the same paths it was saved with, so the two files declare the
+  # same list, and .github/tests/test_build_reference.py holds them equal.
+  ELEVATION_ANSWERS: |
+    pipeline/data/raw/epqs_elevations.json
+    pipeline/data/raw/elevation/samples.json
+
+jobs:
+  build:
+    name: Build the warehouse and every mart from the pin
+    runs-on: ubuntu-latest
+    # Measured on monthly run 29 (37726904273, the Actions API's step times),
+    # the first build to go green: "Build the warehouse from the pin" 5.3 min,
+    # build_marts.py 70 and storing the warehouse 5.8, so 81 of this job's
+    # 240. That run's build job took 129 min, the pin's 45.5 of them, now
+    # refresh-reference.yml's pin job; the 2.4 left over covered this job's
+    # installs, dbt's packages and the caches (Reasoned: the remainder).
+    #
+    # build_marts.py's share moves with USGS EPQS. step_osm_water_grade.py:
+    # Measured 21.3, 41.5 and 54.2 min on monthly runs 20, 21 and 22
+    # (37296900535, 37323395441, and 37370582492's attempt 2; 2026-10-05/06),
+    # each grading the same 3,118 corridor points, 1,056 or 1,057 reachable,
+    # with no answer carried from an earlier attempt. Same input at 2.5x the
+    # time is EPQS's latency, not the work (Reasoned). The EPQS answers and
+    # the DEM samples are now carried between attempts and from the pin job
+    # (the step "Restore the EPQS answers and the DEM samples"), so a later
+    # attempt asks only what an earlier one did not get answered. 240 is the
+    # limit this job had with the pin's steps in it, kept rather than cut to
+    # one measured run.
+    timeout-minutes: 240
+    defaults:
+      run:
+        working-directory: pipeline
+    env:
+      RAW_RUN: ${{ inputs.raw_run }}
+    steps:
+      # THE RAW_RUN IS A DISPATCHER'S TEXT, read through the job's env and
+      # never pasted into a script, the rule
+      # .github/tests/test_run_steps_take_inputs_through_env.py holds. So the
+      # first step, before the checkout and before any step holds a secret,
+      # refuses anything without an extract run id's shape:
+      # extract/_run.py stamps each run's id with "%Y%m%dT%H%M%S.%fZ", as
+      # 20261008T041936.333353Z. In the workspace root, which exists before
+      # the checkout does (test_workflow_working_directory.py).
+      - name: Refuse a raw_run that is not an extract run's id
+        working-directory: .
+        run: |
+          shape='^[0-9]{8}T[0-9]{6}\.[0-9]{6}Z$'
+          if [[ ! "$RAW_RUN" =~ $shape ]]; then
+            printf -v shown '%q' "$RAW_RUN"
+            echo "::error title=Not a raw_run::raw_run $shown is not an extract run's id, which reads like 20261008T041936.333353Z (a refresh-reference.yml run's summary names its own); nothing was built."
+            exit 1
+          fi
+          echo "raw_run $RAW_RUN has the shape of an extract run's id."
+
+      - uses: actions/checkout@v7
+
+      # 3.12 for dbt, whose requirements-dbt.txt was compiled on it
+      # (pipeline-tests.yml's dbt job); the extract and the pipeline's own
+      # pins get venvs of their own, as there.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pipeline/requirements-dbt.txt
+            pipeline/requirements-extract.txt
+            pipeline/requirements.txt
+
+      - name: Name every secret this job needs, and stop if one is missing
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          R2_RAW_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          R2_RAW_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+        run: |
+          missing=()
+          for name in R2_ENDPOINT_URL R2_RAW_BUCKET R2_RAW_ACCESS_KEY_ID R2_RAW_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Raw store secrets missing::${missing[*]} not set; nothing was built."
+            exit 1
+          fi
+
+      # pipeline-tests.yml's dbt job explains both paths and the key.
+      - name: Restore dbt's DuckDB driver and v2's spatial extension
+        id: dbt-runtime
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/com.getdbt/adbc
+            ~/.duckdb/extensions/v1.5.4
+          key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
+
+      - name: Install dbt, the extract's pins and the pipeline's pins
+        run: |
+          pip install --quiet -r requirements-dbt.txt
+          python -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+          python -m venv "$RUNNER_TEMP/pipeline"
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet -r requirements.txt
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "duckdb-extension-spatial==$("$RUNNER_TEMP/pipeline/bin/python" -c 'import duckdb; print(duckdb.__version__)')"
+          "$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py
+
+      # A raw_run with no pin stops here, by name, before dbt's packages and
+      # the build: extract._warehouse has-pin exits 1 and prints "not pinned"
+      # for a raw_run with no raw_inputs.json under steps/raw_inputs/, the
+      # file a pin writes last. Any other exit is the store's or the
+      # command's, and says so, so a credential that stopped working is never
+      # reported as a missing pin.
+      - name: Is this raw_run pinned
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          set +e
+          answer=$("$RUNNER_TEMP/extract/bin/python" -m extract._warehouse has-pin --lane monthly \
+            --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" --steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN")
+          status=$?
+          set -e
+          echo "$answer"
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if [ "$status" -eq 1 ] && [[ "$answer" == *"not pinned"* ]]; then
+            echo "::error title=No pin::raw_run $RAW_RUN has no pin; dispatch refresh-reference.yml to extract one"
+          else
+            echo "::error title=The pin could not be read::extract._warehouse has-pin exited $status for raw_run $RAW_RUN, which says nothing about whether it is pinned; its log above says why."
+          fi
+          exit 1
+
+      # The dbt generators' output, which is not committed (pipeline/ELT.md
+      # decision 91), written before any dbt command reads the project, on
+      # the extract's venv: the generators read its club folders, whose
+      # modules import dlt.
+      - name: Generate the dbt models (generate_dbt.py)
+        run: '"$RUNNER_TEMP/extract/bin/python" generate_dbt.py'
+
+      # dbt's packages: pipeline-tests.yml's dbt job explains the key, why a
+      # hit skips deps, and why only a deps that succeeded is saved (ARCH-6 of
+      # the PR #1805 review).
+      - name: Restore dbt's packages
+        id: dbt-packages
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/dbt/dbt_packages
+          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
+
+      - name: dbt deps
+        id: deps
+        if: steps.dbt-packages.outputs.cache-hit != 'true'
+        working-directory: pipeline/dbt
+        run: dbt deps --profiles-dir .
+
+      - name: Save dbt's packages
+        if: always() && steps.deps.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/dbt/dbt_packages
+          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
+
+      # THE EPQS ANSWERS AND THE DEM SAMPLES, carried from one attempt to the
+      # next (ARC-3 of PR #1805's second review). Without them every attempt
+      # re-asked USGS EPQS about the same 3,118 corridor OSM water points, for
+      # 21 to 54 min (the job's budget above), and an EPQS outage would leave
+      # fewer than build_osm_water_reach.py's MIN_REACHABLE (40) points
+      # reachable, so step_osm_water_grade.py would refuse and stop the month
+      # (traced in the code, not seen: runs 20 to 22 failed later, out of
+      # memory).
+      #
+      # WHEN A CACHED ANSWER MAY BE USED is the code's, as it is for the
+      # vector build, and nothing here widens it:
+      #   - fetch_trail_water.elevation_ft() keeps only an answered elevation.
+      #     A null, or five failed tries, is never written, so the next
+      #     attempt asks again rather than reading a cached unknown.
+      #   - export_elevation.py's sample cache is thrown away whole when the
+      #     tile index's edition marker moves, and never holds a sample from
+      #     a cell whose edition the marker cannot pin (_load_sample_cache,
+      #     _sources_with_no_pinned_edition). The index is this run's, from
+      #     fetch_elevation.py or the pin, so samples taken against an index
+      #     with another marker are not read.
+      #   - No verdict is carried: step_osm_water_grade.py checkpoints into a
+      #     temporary folder and grades every point again, from the answers.
+      #
+      # Unconditional: every run of this workflow builds from a pin that
+      # exists, and grades and samples. The key is the idiom
+      # publish-vector-data.yml's "Restore fetched data" uses (never hit
+      # exactly, take the newest entry by prefix); the save is keyed on what
+      # it saves (.github/tests/test_cache_keys_are_content_addressed.py).
+      #
+      # FROM ONE WORKFLOW TO THE OTHER. refresh-reference.yml's pin job
+      # restores this prefix too, before fetch_trail_water.py --derive asks
+      # EPQS, and saves what it was answered, so the build it dispatches
+      # starts from that. An entry belongs to a branch, not to a workflow:
+      # "Workflow runs can restore caches created in either the current
+      # branch or the default branch", and "A cache created for a branch in a
+      # workflow run can be accessed and restored from another workflow run"
+      # of the same repository and branch (GitHub's docs, "Dependency caching
+      # reference", read 2026-10-08). The pin job dispatches this workflow on
+      # its own ref, so its entry is in reach, and of several entries under
+      # the prefix "the action returns the most recently created cache". An
+      # entry matches only the `path` list it was saved with, which its
+      # version stamps, so ELEVATION_ANSWERS is the same list in both files.
+      # @unvalidated: no run has restored an entry across the two workflows
+      # yet; this step's log names the key it restored.
+      #
+      # NOT FROM ONE MONTH TO THE NEXT. GitHub evicts an entry nobody reads
+      # for 7 days, so the 3rd's run starts cold unless an attempt ran in the
+      # week before; this carries answers between attempts and close reruns,
+      # the case runs 20 to 22 were. Carrying them across months needs the
+      # raw store, which outlives the Actions cache (the pin's extras, as the
+      # water scans are carried).
+      - name: Restore the EPQS answers and the DEM samples
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.ELEVATION_ANSWERS }}
+          key: monthly-elevation-answers-${{ github.run_id }}
+          restore-keys: monthly-elevation-answers-
+
+      # From the pin alone, as the promotion will, and the pin's as-landed
+      # files and DEM index replace whatever the step above left in data/raw.
+      - name: Build the warehouse from the pin
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: >-
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse load
+          --lane monthly --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly"
+          --steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN"
+          --warehouse data/warehouse.duckdb --raw-dir data/raw
+
+      # --lane monthly leaves out every node an hourly or daily source
+      # reaches, so UA's conditions/ files stay as the conditions lane wrote
+      # them. The pub_ writers run last, so dbt's last manifest and run
+      # results, which publish.py reads, are theirs. Its steps land the pin's
+      # water scans, which the step above wrote under data/raw/derived/
+      # (build_marts.py's lane_args for step_osm_water and step_site_water).
+      #
+      # THE ROW HISTORY (pipeline/row_history.py): build_marts.py restores
+      # the snapshots from history/monthly/ in the raw store's bucket before
+      # dbt runs, and saves them back only after the writers succeed, through
+      # the extract's venv, which has s3fs. One prefix for this lane; each
+      # conditions leg keeps its own. The key is the raw store's own, as for
+      # the pin above, under the names dlt reads. A restore that fails, or an
+      # empty prefix once row_history_stores.toml lists `monthly`, stops the
+      # build before dbt runs, so no run silently dates every row as new.
+      - name: dbt build, the Python steps and the pub_ writers (build_marts.py --lane monthly)
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        # THE MODELS TAGGED builds_alone BUILD ONE AT A TIME, everything else at
+        # dbt's own thread count. Monthly run 20 (37296900535), the first live build
+        # past stage A, failed at "what derived.poi_photos unblocks" when
+        # int_places__resolved and int_trail_network__cuts built side by side: "Out
+        # of Memory Error: failed to allocate data of size 16.0 MiB (12.5 GiB/12.4
+        # GiB used)", DuckDB's default limit on this 16 GB runner (Measured
+        # 2026-10-05). Both carry the tag, and build_marts.py splits each build
+        # around it (its docstring, "A MODEL TAGGED `builds_alone`"). Alone was not
+        # enough: monthly run 21 (37323395441) built each by itself and both ran
+        # out again, so both queries were rewritten to hold less, and run 22
+        # (37370582492) ran the first rewrite of the cuts out too (each model's
+        # header says how it holds less now). Whether each fits in the limit is
+        # @unvalidated until a monthly run passes that step.
+        run: >-
+          python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
+          --history-url "s3://$R2_RAW_BUCKET/history/monthly" --history-python "$RUNNER_TEMP/extract/bin/python"
+
+      # Also when build_marts.py failed: the answers an attempt paid for are
+      # what the next attempt needs, whatever a later step made of them.
+      # Keyed on the files, so an attempt that asked nothing new adds no entry,
+      # and a rerun (same run_id) can still save what it added.
+      - name: Save the EPQS answers and the DEM samples
+        if: always() && hashFiles('pipeline/data/raw/epqs_elevations.json', 'pipeline/data/raw/elevation/samples.json') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.ELEVATION_ANSWERS }}
+          key: monthly-elevation-answers-${{ hashFiles('pipeline/data/raw/epqs_elevations.json', 'pipeline/data/raw/elevation/samples.json') }}
+
+      - name: Save dbt's DuckDB driver and v2's spatial extension
+        if: always() && steps.dbt-runtime.outputs.cache-hit != 'true' && hashFiles('pipeline/requirements-dbt.txt') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cache/com.getdbt/adbc
+            ~/.duckdb/extensions/v1.5.4
+          key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
+
+      # The warehouse beside the manifest that describes it, under ELT.md's
+      # key (`steps/dbt_warehouse/<data_environment>/<raw_run>/`): what the
+      # parity job reads, and what the hourly lane's --defer and the next
+      # monthly build will. Write-once; a rerun keeps the first attempt's.
+      # So does a later build from the same raw_run (ELT.md, "Rebuilding from
+      # a pin"), whose parity job then reads the first build's warehouse.
+      - name: Store the warehouse and its manifest in the step cache
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: >-
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse store
+          --lane monthly --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly"
+          --steps-url "s3://$R2_RAW_BUCKET/steps" --key "dbt_warehouse/ua/$RAW_RUN"
+          data/warehouse.duckdb dbt/target/manifest.json dbt/target/run_results.json
+
+      # The publish, confirm and parity jobs' input. The least common
+      # ancestor of these paths is pipeline/, which is where the downloads
+      # extract them (.github/tests/test_artifact_handoff_paths.py).
+      - name: Hand the phone files on
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-phone-files
+          path: |
+            pipeline/data/processed/dbt/
+            pipeline/dbt/target/manifest.json
+            pipeline/dbt/target/run_results.json
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Stage a release on UA from the dbt writers' files
+    needs: build
+    runs-on: ubuntu-latest
+    # The literal `ua`, never an expression: an environment with no reviewer
+    # (#1330 - A routine UA publish waits on the same production approval as
+    # a real release). Nothing in this file can name production.
+    environment: ua
+    # Every writer of latest.json shares this group: publish() reads, changes
+    # and rewrites it (.github/tests/test_publish_concurrency.py).
+    concurrency:
+      group: publish-data
+      cancel-in-progress: false
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: monthly-phone-files
+          path: pipeline/
+
+      # OURHIKE_PHONE_FILES=dbt: each key a dbt exposure names comes from its
+      # pub_ writer's file (publish.collect_dbt_phone_files). A writer that
+      # did not run keeps the bucket's last good object, and keys no exposure
+      # names carry forward from UA's latest.json. publish() stages a release
+      # folder when a release-scoped file moved. A v2 file goes into that
+      # folder only (publish.release_only()), and the hike details are cut
+      # into one object per hike (publish.cut_suggested_hike_details()).
+      - name: Publish to UA
+        id: publish
+        env:
+          R2_WRITE_ENABLED: "true"
+          OURHIKE_DATA_ENV: ua
+          OURHIKE_PHONE_FILES: dbt
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python publish.py
+
+      # podcasts/episodes.json is a live root key, outside every release
+      # folder (export_podcasts.py's docstring, on #1683 — Offer podcast
+      # episodes picked for the hike, with a one-tap Spotify save and an in-app
+      # player; publish.py's LIVE_ROOT_PREFIXES), so it is uploaded on its own, to UA. Production's
+      # podcast list stays a dispatch of publish-podcasts.yml.
+      - name: Put the podcast list in place on UA
+        env:
+          R2_WRITE_ENABLED: "true"
+          OURHIKE_DATA_ENV: ua
+          OURHIKE_PHONE_FILES: dbt
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python publish.py --live podcasts/episodes.json
+
+  confirm:
+    name: Confirm UA serves what the build wrote
+    needs: [build, publish]
+    # Also when publish was cancelled or skipped, the case this job exists
+    # for: #1513 - A queued publish is silently cancelled when another one
+    # joins publish-data, and it looks like a green build.
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: monthly-phone-files
+          path: pipeline/
+
+      # Public HTTPS GETs, no credential. Each phone file written this run
+      # must be in UA's latest.json with the sha256 the build wrote, or, for
+      # a v2 file, in the manifest of the release folder latest.json names,
+      # the one place a v2 file is listed (publish.release_only()).
+      # `generated_at` proves nothing: the conditions bake rewrites
+      # latest.json too. publish.served_entries() reads both, and sends
+      # lib/user_agent.py's USER_AGENT, without which data.ourhike.org
+      # answered 403 (monthly run 29's confirm job, 37726904273).
+      - name: Every written phone file is what UA's latest.json names
+        env:
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+        run: |
+          if [ -z "$DATA_BASE_URL" ]; then
+            echo "::error title=No DATA_BASE_URL::there is no public URL to read UA's latest.json from, so nothing was confirmed."
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+
+          import publish
+
+          written = publish.collect_dbt_phone_files().artifacts
+          served, urls = publish.served_entries(os.environ["DATA_BASE_URL"], "ua", written)
+          wrong = sorted(key for key, entry in written.items() if (served.get(key) or {}).get("sha256") != entry["sha256"])
+          print(f"{len(written) - len(wrong)} of {len(written)} phone files the build wrote are what {' and '.join(urls)} name.")
+          for key in wrong:
+              print(f"::error title=Not on UA::{key}: the build wrote {written[key]['sha256']}, UA names {(served.get(key) or {}).get('sha256')}")
+          raise SystemExit(1 if wrong else 0)
+          PY
+
+  parity:
+    name: Parity with today's exporters, on the pinned inputs (${{ matrix.group }})
+    needs: build
+    runs-on: ubuntu-latest
+    # ONE GROUP OF FAMILIES PER RUNNER, side by side, each group in one
+    # process so the exporter runs its families share run once
+    # (pipeline/parity_lane.py's GROUPS and its docstring). Monthly run 29
+    # (37726904273) ran all 41 families one after another in this one job,
+    # and its 120 minutes ran out on the twelfth.
+    #
+    # 180 MINUTES, the vector build's own: each group runs a share of
+    # publish-vector-data.yml's export steps, and that whole build job fits
+    # its 180-minute timeout (run 37114537637, 2026-10-03: 2 h 22 min). That
+    # run's slow steps, one per group: export_nearby_trails.py 13 m 13 s
+    # (`network`, and again under `pois`), build_trail_graph.py 40 m 57 s
+    # (`graph`), and export_network_elevation.py 39 m 43 s then
+    # export_network_profile.py 8 m 33 s (`graph_climbs`, which samples a
+    # cold copy of the tile index here). Each runner also spends about
+    # 4.5 minutes on its venvs and the pin (run 29), and `network` about
+    # 22 more on nearby_trails' comparison: its 36.8 minutes in run 29, less
+    # network_overview's 14.3 over the same exporter run (Reasoned).
+    # @unvalidated as a whole until a run reports every group's time.
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [network, pois, graph, graph_climbs, rest]
+    defaults:
+      run:
+        working-directory: pipeline
+    env:
+      RAW_RUN: ${{ inputs.raw_run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pipeline/requirements-extract.txt
+            pipeline/requirements.txt
+
+      - name: Name every secret this job needs, and stop if one is missing
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          R2_RAW_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          R2_RAW_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+        run: |
+          missing=()
+          for name in R2_ENDPOINT_URL R2_RAW_BUCKET R2_RAW_ACCESS_KEY_ID R2_RAW_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Raw store secrets missing::${missing[*]} not set; the pin cannot be read."
+            exit 1
+          fi
+
+      # Today's exporters import shapely, pyproj, rasterio and requests; the
+      # pin is read through the extract's own pins.
+      - name: Install the extract's pins and the pipeline's pins
+        run: |
+          python -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+          python -m venv "$RUNNER_TEMP/pipeline"
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet -r requirements.txt
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "duckdb-extension-spatial==$("$RUNNER_TEMP/pipeline/bin/python" -c 'import duckdb; print(duckdb.__version__)')"
+          "$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: monthly-phone-files
+          path: pipeline/
+
+      # Both sides of parity read the same pin. The dbt side read the pinned
+      # tables; today's exporters read the pinned as-landed files at their
+      # fetchers' paths under data/raw/ (extract/_run.py says what that copy
+      # is and is not), the warehouse the build stored (suggested_hikes
+      # routes over its graph), and the reviewed files in git. A family whose
+      # input no dlt table holds is recorded as not compared, never passing.
+      - name: Today's fetchers' files and the built warehouse, from the pin
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          store=(--lane monthly --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly")
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse load "${store[@]}" \
+            --steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN" --raw-dir data/raw
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse fetch "${store[@]}" \
+            --steps-url "s3://$R2_RAW_BUCKET/steps" --key "dbt_warehouse/ua/$RAW_RUN" --out data warehouse.duckdb
+
+      # The build job's EPQS answers, where fetch_trail_water.py's
+      # elevation_ft() reads its disk cache, as publish-vector-data.yml carries
+      # it between publishes: today's OSM water grade (the pois group's POI
+      # files) then asks EPQS only for a walk the dbt side never asked about,
+      # four at a time (parity.py's _osm_water_old()). Its entry is this run's
+      # newest, which the build job saved. Restored and never saved here. The
+      # DEM samples in it reach no old side, whose sampler reads a cold copy of
+      # the tile index (parity.py's _cold_index()). Every group restores it, so
+      # moving a POI family between groups cannot leave it cold.
+      - name: The build's EPQS answers, for today's OSM water grade
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.ELEVATION_ANSWERS }}
+          key: monthly-elevation-answers-${{ github.run_id }}
+          restore-keys: monthly-elevation-answers-
+
+      # DECISION 30's PARITY ON FROZEN INPUTS: pipeline-tests.yml's parity
+      # families less the six hourly conditions files, this group's share of
+      # them, through pipeline/parity_lane.py. A difference is evidence for the
+      # gate, not a failure of this lane, so the step fails only when none of
+      # the group's families could be compared. Each family's output is kept
+      # as <family>.txt, results/<family>.json is its result for
+      # gate_report.py, and summary-<group>.json gives each `match`, `differs`
+      # or `not_compared` (today's exporter could not run: an input no pin
+      # holds, or a crash; the family's .txt has the traceback).
+      #
+      # Keys only (parity.py's --keys-only, which parity_lane.py always
+      # passes): the artifact is public, and the old side runs on every layer
+      # the pin holds, held-back sources included. So the log and the results
+      # name each difference by key and changed fields, never with either
+      # record. To see the records, rerun that family's parity.py line without
+      # the flag, on this raw_run's pin, as the steps above set it up.
+      - name: Parity with today's exporters
+        env:
+          PARITY_DIR: ${{ runner.temp }}/parity
+          GROUP: ${{ matrix.group }}
+        run: '"$RUNNER_TEMP/pipeline/bin/python" parity_lane.py --group "$GROUP" --out "$PARITY_DIR"'
+
+      - name: Keep this group's parity answers for the gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-parity-${{ matrix.group }}
+          path: ${{ runner.temp }}/parity/
+          retention-days: 90
+          if-no-files-found: warn
+
+  # Every group's answers in the one `monthly-parity` artifact the gate reads,
+  # and the gate's per-key report over all of them. It runs when any group
+  # ran, and a group that never answered reads as not_compared
+  # (parity_lane.py --join), never as a match.
+  parity-report:
+    name: The gate's per-key report, from every parity group
+    needs: [build, parity]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: pipeline
+    env:
+      RAW_RUN: ${{ inputs.raw_run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      # gate_report.py imports the exporters to read each file's key names.
+      - name: Install the pipeline's pins
+        run: |
+          python -m venv "$RUNNER_TEMP/pipeline"
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet -r requirements.txt
+
+      # The dbt manifest the writers ran from, which gate_report.py reads.
+      - uses: actions/download-artifact@v8
+        with:
+          name: monthly-phone-files
+          path: pipeline/
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: monthly-parity-*
+          path: ${{ runner.temp }}/parity
+          merge-multiple: true
+
+      - name: Every group's answers in one summary
+        env:
+          PARITY_DIR: ${{ runner.temp }}/parity
+        run: '"$RUNNER_TEMP/pipeline/bin/python" parity_lane.py --join "$PARITY_DIR" --raw-run "$RAW_RUN"'
+
+      # The gate's per-key report, from pipeline/gate_report.py (ELT.md: "every
+      # existing R2 key comes out byte-equal, or is listed with a reviewed
+      # reason"). With no parity result to read, the step warns rather than
+      # inventing a report.
+      - name: The gate's per-key report
+        env:
+          PARITY_DIR: ${{ runner.temp }}/parity
+        run: |
+          if [ -z "$(find "$PARITY_DIR/results" -name '*.json' -print -quit 2>/dev/null)" ]; then
+            echo "::warning title=No parity results for the gate::parity.py wrote no --json-dir result, so gate_report.py has nothing to read."
+          else
+            "$RUNNER_TEMP/pipeline/bin/python" gate_report.py --parity-dir "$PARITY_DIR/results" --out "$PARITY_DIR/gate"
+          fi
+
+      - name: Keep the parity answers for the gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-parity
+          path: ${{ runner.temp }}/parity/
+          retention-days: 90
+          if-no-files-found: warn

@@ -536,15 +536,91 @@ def _club_line_reasons(old: dict, new: dict, family_key: str, key_of: Callable[[
     return reasons
 
 
+#: Why a line that swallowed another layer's copies of it can carry another name in each file (TL18).
+INHERITED_NAME_REASON = (
+    "expected by int_trail_lines__network_deduplicated's header, which says so: a line with no name of its own takes "
+    "the name of the first named copy it swallows (lib/duplicates.py's merge()), and the SQL takes the copies in "
+    "staging-key order where today's exporter takes them in file order. A Socrata layer's file order is its `:id` "
+    "order, which a replacement of the dataset mints again (ELT.md, 'Stable upstream keys'), so today's name can "
+    "change with no change on the ground and the staging key's cannot. Explained only where the line is in both files, "
+    "has swallowed the same layer's copies in both, and differs in its name alone. Monthly run 30's two, rebuilt from "
+    "NYC Open Data's live rows on 2026-10-08: nyc_parks_trails:row-2fd6-t8ys~mjm7 swallows two nyc_cscl_paths "
+    "segments, 'BROOKFIELD PARK WEST OUTER LOOP' first in file order and 'BROOKFIELD PARK BLUE TRAIL' first by key; "
+    "row-7cmw.ec29~bksa swallows five greenway segments, 'CUNNINGHAM PARK GREENWAY' first in file order and "
+    "'VANDERBILT MOTOR PARKWAY' first by key"
+)
+
+
+def _inherited_name_reasons(old: dict, new: dict) -> dict[str, str]:
+    """INHERITED_NAME_REASON for each line both files hold that names the same swallowed layer (`duplicate_of`) in both
+    and differs from its twin in `properties.name` and nothing else."""
+    new_by_id = {str(feature["properties"]["id"]): feature for feature in new.get("features") or []}
+
+    def unnamed(feature: dict) -> str:
+        return canonical({**feature, "properties": {**feature["properties"], "name": None}})
+
+    reasons: dict[str, str] = {}
+    for feature in old.get("features") or []:
+        line_id = str(feature["properties"]["id"])
+        twin = new_by_id.get(line_id)
+        if twin is None or feature["properties"].get("name") == twin["properties"].get("name"):
+            continue
+        swallowed = feature["properties"].get("duplicate_of")
+        if swallowed and swallowed == twin["properties"].get("duplicate_of") and unnamed(feature) == unnamed(twin):
+            reasons[f"properties.id {line_id}"] = INHERITED_NAME_REASON
+    return reasons
+
+
 def _nearby_trails_reasons(old: dict, new: dict) -> dict[str, str]:
-    """nearby_trails' two explained kinds: a line whose id alone differs, and decision 64's club lines."""
+    """nearby_trails' three explained kinds: a line whose id alone differs, a name inherited in another order, and
+    decision 64's club lines."""
     club = _club_line_reasons(old, new, "properties.id", lambda feature: str(feature["properties"]["id"]))
-    return {**_network_id_reasons(old, new), **club}
+    return {**_network_id_reasons(old, new), **_inherited_name_reasons(old, new), **club}
+
+
+#: Why a sketch group of today's draws a part more often than the dbt writer's (_overview_copy_reasons()).
+OVERVIEW_COPY_REASON = (
+    "expected by decision 40, as NETWORK_COPY_REASON is for the lines: write_overview() draws a part for each line "
+    "of a group, so today's sketch draws a line export_nearby_trails.py publishes twice, an exact copy, twice, where "
+    "staging keeps one copy and the dbt writer draws it once. Explained only where the two groups draw the same "
+    "parts and today's draws some of them more often. Monthly run 30's two: alaska_trails' 7 exact copies, 2 of "
+    "Haessler-Norris Sled Dog, a through route with a group of its own, and 5 of lines no through route names (S "
+    "Turns, Stairway to Heaven twice, 264 and Moose Hill). write_overview() over the dbt writer's alaska_trails "
+    "lines, once as published and once with a second copy of each, changes those two groups and no other, by 2 "
+    "and 1 repeats of parts each already draws (2026-10-08; the copies below the seam's floor draw nothing)"
+)
+
+
+def _overview_copy_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The sketch groups whose parts, as a set, are the dbt writer's, where today's draws some of them more often
+    (OVERVIEW_COPY_REASON). A part either side draws that the other does not, any other property, and a group one side
+    lacks are not explained here."""
+
+    def parts(feature: dict) -> Counter:
+        return Counter(canonical(part) for part in (feature.get("geometry") or {}).get("coordinates") or [])
+
+    def once_each(feature: dict) -> str:
+        geometry = feature.get("geometry") or {}
+        return canonical({**feature, "geometry": {**geometry, "coordinates": sorted(parts(feature))}})
+
+    new_by_key = {_overview_key(feature): feature for feature in new.get("features") or []}
+    reasons: dict[str, str] = {}
+    for feature in old.get("features") or []:
+        key = _overview_key(feature)
+        twin = new_by_key.get(key)
+        if twin is None or once_each(feature) != once_each(twin):
+            continue
+        was, now = parts(feature), parts(twin)
+        if was != now and not now - was:
+            reasons[f"properties (source, name, blaze_color, trail_status) {key}"] = OVERVIEW_COPY_REASON
+    return reasons
 
 
 def _network_overview_reasons(old: dict, new: dict) -> dict[str, str]:
-    """network_overview's one explained kind: decision 64's club groups, after every network group."""
-    return _club_line_reasons(old, new, "properties (source, name, blaze_color, trail_status)", _overview_key)
+    """network_overview's two explained kinds: a group today's draws some parts of more often, and decision 64's club
+    groups, after every network group."""
+    club = _club_line_reasons(old, new, "properties (source, name, blaze_color, trail_status)", _overview_key)
+    return {**_overview_copy_reasons(old, new), **club}
 
 
 #: Why a place can be in the dbt writer's places.json and not in today's. tests/test_dbt_places_parity.py holds it to

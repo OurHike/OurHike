@@ -796,6 +796,62 @@ def test_parity_does_not_call_a_staging_key_what_a_line_with_a_globalid_publishe
     assert set(reasons.values()) == {parity.NETWORK_ID_REASONS["globalid_in_any_case"]}
 
 
+def test_parity_explains_a_name_a_line_inherits_from_another_swallowed_copy_and_nothing_else():
+    """Run 30's nyc_parks_trails:row-2fd6-t8ys~mjm7: no name of its own, two named nyc_cscl_paths copies swallowed, the
+    first in file order today and the first by staging key in SQL. Only a name, and only on a line that swallowed the
+    same layer's copies on both sides, is explained."""
+    family = parity.FAMILIES["nearby_trails"]
+    path = [[0.0, 0.0], [1.0, 1.0]]
+
+    def survivor(line_id: str, name: str, swallowed: str | None = "nyc_cscl_paths", **changed) -> dict:
+        feature = _line(line_id, name, path)
+        feature["properties"].update({"duplicate_of": swallowed, **changed} if swallowed else changed)
+        return feature
+
+    old = {
+        "features": [
+            survivor("p:1", "BROOKFIELD PARK WEST OUTER LOOP"),
+            survivor("p:2", "Named once", swallowed=None),
+            survivor("p:3", "Old name", length_miles=1.0),
+            survivor("p:4", "Old name"),
+        ]
+    }
+    new = {
+        "features": [
+            survivor("p:1", "BROOKFIELD PARK BLUE TRAIL"),
+            survivor("p:2", "Named twice", swallowed=None),
+            survivor("p:3", "New name", length_miles=2.0),
+            survivor("p:4", "New name", swallowed="nyc_dot_greenways"),
+        ]
+    }
+
+    assert family.explained(old, new) == {"properties.id p:1": parity.INHERITED_NAME_REASON}
+
+
+def test_parity_explains_a_sketch_group_today_draws_a_copied_part_of_twice_and_nothing_else():
+    """Run 30's alaska_trails groups: today's exporter draws an exact copy's part once per copy, the dbt writer once.
+    A group with a part only one side draws, or with the dbt writer drawing one more often, is still a difference."""
+    family = parity.FAMILIES["network_overview"]
+    one, two, three = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]], [[4.0, 4.0], [5.0, 5.0]]
+
+    def sketch(name: str, *parts) -> dict:
+        return {
+            "type": "Feature",
+            "properties": {"source": "alaska_trails", "name": name, "blaze_color": "Unknown", "trail_status": "open"},
+            "geometry": {"type": "MultiLineString", "coordinates": list(parts)},
+        }
+
+    old = {"features": [sketch("Copied", one, two, one), sketch("Lost", one, two), sketch("Doubled by dbt", one, two)]}
+    new = {"features": [sketch("Copied", two, one), sketch("Lost", one, three), sketch("Doubled by dbt", one, two, two)]}
+
+    found = {what for what, _, _ in parity.differences(old, new, family)}
+    reasons = family.explained(old, new)
+
+    copied = 'properties (source, name, blaze_color, trail_status) ["alaska_trails","Copied","Unknown","open"]'
+    assert copied in found
+    assert reasons == {copied: parity.OVERVIEW_COPY_REASON}
+
+
 def test_parity_compares_a_sketch_features_parts_as_a_set():
     family = parity.FAMILIES["network_overview"]
 

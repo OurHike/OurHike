@@ -1334,10 +1334,13 @@ jobs:
       # command (decision 102). On the fixtures in a sandbox the same day,
       # this lane's build took 128 s with Elementary and 68 s without (132 s
       # and 74 s on a second machine), about 33 s of it Elementary's tables
-      # and 18 s the hook after stage A (Measured). On the soak's slowest green build, 203 s, that is about
-      # 263 s, which 6 minutes held but not with a retry of stage A beside it
-      # (Reasoned from those sums; this step's summary line on the first UA
-      # runs settles it). The job's cap rose to 15 to hold this one.
+      # and 18 s the hook after stage A (Measured). CI's dbt job suggests a
+      # runner pays 1.2 to 1.65 times what the sandbox did (pipeline/ELT.md,
+      # "What step 1 measured"), so on the soak's slowest green build, 203 s,
+      # this step is about 273 to 303 s: inside 6 minutes alone, but not with
+      # a retry of stage A beside it (Reasoned from those sums; this step's
+      # summary line on the first UA runs settles it). The job's cap rose to
+      # 15 to hold this one.
       # .github/tests/test_conditions_build_budget.py holds both sums; the
       # headroom it asks for is @unvalidated, and a few weeks of this step's
       # summary line would show how fast the build grows.

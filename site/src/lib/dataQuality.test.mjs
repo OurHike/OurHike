@@ -9,6 +9,9 @@ import {
   FETCH_TIMEOUT_MS,
   FORMAT,
   buildPage,
+  chartControls,
+  chooseFromMenu,
+  chooseFromRow,
   configFrom,
   formatAge,
   formatCount,
@@ -16,8 +19,10 @@ import {
   formatDurationRange,
   formatNumber,
   formatWhen,
+  initialChart,
   laneUrl,
   readQualityFile,
+  seriesKey,
   settleLane,
 } from "./dataQuality.mjs";
 import * as examples from "./dataQualityExamples.mjs";
@@ -60,6 +65,8 @@ describe("reading a file", () => {
     ["monthlyLearning", "monthly"],
     ["hourlyWithWarning", "hourly"],
     ["hourlyAllGreen", "hourly"],
+    ["monthlyManyProblems", "monthly"],
+    ["hourlyManyProblems", "hourly"],
   ])("reads the example %s", (example, lane) => {
     expect(readQualityFile(examples[example](), lane)).toMatchObject({ ok: true });
   });
@@ -80,6 +87,11 @@ describe("reading a file", () => {
       series: [{ ...f.series[0], points: [{ value: 1, expected_min: null, expected_max: null }] }],
     }),
     "a by_mart that is not a list": (f) => ({ ...f, by_mart: {} }),
+    "an in_needs_a_look that is not true or false": (f) => ({
+      ...f,
+      series: [{ ...f.series[0], in_needs_a_look: "yes" }],
+    }),
+    "a series column that is not a name": (f) => ({ ...f, series: [{ ...f.series[0], column: 7 }] }),
   };
 
   it.each(Object.keys(broken))("refuses %s, whole", (what) => {
@@ -104,6 +116,14 @@ describe("reading a file", () => {
     file.series[0].points.reverse();
     const points = readQualityFile(file, "monthly").file.series[0].points;
     expect(points.map((p) => p.at.getTime())).toEqual([...points.map((p) => p.at.getTime())].sort((a, b) => a - b));
+  });
+
+  it("reads each series' in_needs_a_look and column, and a file written before either existed", () => {
+    const series = readQualityFile(examples.monthlyManyProblems(), "monthly").file.series;
+    expect(new Set(series.map((s) => s.inNeedsALook))).toEqual(new Set([true, false]));
+    expect(series.find((s) => s.column === "trail_status")).toMatchObject({ table: "trail_lines", metric: "null_percent" });
+    const older = readQualityFile(examples.monthlyWithWarnings(), "monthly").file.series;
+    expect(older.map((s) => [s.inNeedsALook, s.column])).toEqual([[null, null]]);
   });
 
   it("turns a body that was not JSON into a file of the wrong format, and passes every other state through", () => {
@@ -342,6 +362,204 @@ describe("the page, state by state", () => {
   it("gives no age it would have to guess, when the visitor's clock is behind the build's", () => {
     const view = page(MISSING, read(examples.hourlyAllGreen(), "hourly"), new Date("2026-10-07T22:00:00Z"));
     expect(view.cards[1].meta).toBe("Trail conditions, rebuilt every hour · last run 7 Oct 2026, 23:05 UTC");
+  });
+});
+
+/** The page drawn from the invented many-problems pair: 43 entries, 38 series, 11 marts. */
+const manyView = () => page(read(examples.monthlyManyProblems(), "monthly"), read(examples.hourlyManyProblems(), "hourly"));
+const FAILING = new Set(["Failed", "Could not run"]);
+
+describe("Needs a look, listed and folded (round 3's option D)", () => {
+  it("never folds what failed, what could not run, or a status it does not know - whatever else is in the list", () => {
+    const monthly = examples.monthlyManyProblems();
+    // A failure of a kind that also has warnings, so it would share their fold if anything folded it.
+    monthly.needs_a_look.push(
+      { kind: "volume", table: "preview_fixture_40__trails", column: null, metric: "row_count", status: "fail", value: 3, expected_min: 90, expected_max: 110, since: null },
+      { kind: "schema", table: "preview_fixture_41__trails", column: "kind", metric: null, status: "skipped", value: null, expected_min: null, expected_max: null, since: null },
+    );
+    for (const view of [manyView(), page(read(monthly, "monthly"), read(examples.hourlyManyProblems(), "hourly"))]) {
+      const { look, items } = view.sections;
+      const folded = look.warnings.folded.flatMap((group) => group.items);
+      expect(folded.every((item) => item.status === "Warned")).toBe(true);
+      expect(look.failing.items.every((item) => FAILING.has(item.status))).toBe(true);
+      expect(items.filter((item) => FAILING.has(item.status))).toEqual(look.failing.items);
+      // Every entry is drawn once: listed, other, or in one fold.
+      expect([...look.failing.items, ...look.other.items, ...folded].map((item) => item.id).sort()).toEqual(
+        items.map((item) => item.id).sort(),
+      );
+    }
+    const withSkipped = page(read(monthly, "monthly"), MISSING).sections.look;
+    expect(withSkipped.other.items.map((item) => [item.status, item.table])).toEqual([["Skipped", "preview_fixture_41__trails"]]);
+    expect(withSkipped.failing.items.at(0)).toMatchObject({ status: "Failed", table: "trail_lines" });
+    expect(withSkipped.failing.items.map((item) => item.table)).toContain("preview_fixture_40__trails");
+  });
+
+  it("folds the warnings one line per kind, in the five kinds' order, each saying how many it holds", () => {
+    const { look } = manyView().sections;
+    expect(look.failing.title).toBe("Failed or could not run · 8");
+    expect(look.warnings.title).toBe("Warnings · 35, by kind");
+    expect(look.warnings.folded.map((group) => [group.kind, group.summary])).toEqual([
+      ["freshness", "8 warnings"],
+      ["volume", "14 warnings"],
+      ["schema", "6 warnings"],
+      ["anomalies", "7 warnings"],
+    ]);
+    const light = page(read(examples.monthlyWithWarnings(), "monthly"), MISSING).sections.look;
+    expect(light.failing.items).toEqual([]);
+    expect(light.warnings.folded.map((group) => group.summary)).toEqual(["1 warning", "1 warning", "1 warning"]);
+  });
+});
+
+describe("the Show menu", () => {
+  const optionLabels = (group) => group.options.map((option) => option.label);
+
+  it("lists the entries' histories under Needs a look, worst first, then every other mart under Every mart, in By mart's order", () => {
+    const { menu, chart } = manyView().sections;
+    expect(menu.map((group) => group.label)).toEqual(["Needs a look", "Every mart"]);
+    const [look, marts] = menu;
+    expect(look.options[0]).toEqual({ key: chart.key, label: "Null rate of trail_status in trail_lines · Monthly" });
+    expect(optionLabels(look).slice(1, 3)).toEqual([
+      "Rows in preview_fixture_07__water_sources · Monthly",
+      "Rows in preview_fixture_03__trails · Monthly",
+    ]);
+    expect(optionLabels(marts)).toEqual([
+      "Rows in trail_network · Monthly",
+      "Rows in elevation · Monthly",
+      "Rows in places · Monthly",
+      "Rows in suggested_hikes · Monthly",
+      "Rows in challenges · Monthly",
+      "Rows in podcasts · Monthly",
+      "Rows in sources · Monthly",
+      "Rows in closures · Hourly",
+    ]);
+  });
+
+  it("lists every series once, and a mart whose row count needs a look under Needs a look alone", () => {
+    const { menu, charts } = manyView().sections;
+    const keys = menu.flatMap((group) => group.options.map((option) => option.key));
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(new Set(keys)).toEqual(new Set(charts.keys()));
+    const [look, marts] = menu;
+    expect(optionLabels(look)).toContain("Rows in trail_lines · Monthly");
+    expect(optionLabels(marts)).not.toContain("Rows in trail_lines · Monthly");
+  });
+
+  it("works the two groups out from the entries when the file does not flag its series", () => {
+    const strip = (file) => ({ ...file, series: file.series.map(({ in_needs_a_look, ...rest }) => rest) });
+    const unflagged = page(
+      read(strip(examples.monthlyManyProblems()), "monthly"),
+      read(strip(examples.hourlyManyProblems()), "hourly"),
+    ).sections.menu;
+    expect(unflagged).toEqual(manyView().sections.menu);
+    const older = page(read(examples.monthlyWithWarnings(), "monthly"), MISSING).sections.menu;
+    expect(older).toEqual([
+      { label: "Needs a look", options: [{ key: expect.any(String), label: "Rows in preview_fixture__trails · Monthly" }] },
+    ]);
+  });
+
+  it("opens on the worst entry's own history, and on the first mart's row count when nothing needs a look", () => {
+    expect(manyView().sections.chart.title).toEqual([
+      "Null rate of ",
+      { code: "trail_status" },
+      " in ",
+      { code: "trail_lines" },
+      ", one point per monthly build",
+    ]);
+    const quiet = examples.monthlyManyProblems();
+    quiet.needs_a_look = [];
+    quiet.series = quiet.series.filter((s) => !s.in_needs_a_look);
+    const { chart, menu, items } = page(read(quiet, "monthly"), MISSING).sections;
+    expect(items).toEqual([]);
+    expect(chart.table).toBe("trail_network");
+    expect(menu.map((group) => group.label)).toEqual(["Every mart"]);
+  });
+});
+
+describe("Chart buttons", () => {
+  it("sit on every entry with a history and on no other", () => {
+    const { items } = manyView().sections;
+    const charted = items.filter((item) => item.chart !== null);
+    expect(charted).toHaveLength(30);
+    expect(items.filter((item) => ["dbt tests", "Schema"].includes(item.kind)).every((item) => item.chart === null)).toBe(true);
+    expect(items.filter((item) => item.status === "Could not run").every((item) => item.chart === null)).toBe(true);
+    expect(charted[0]).toMatchObject({
+      table: "trail_lines",
+      column: "trail_status",
+      chartName: "Chart null rate of trail_status in trail_lines, Monthly",
+    });
+  });
+
+  it("match a column's history to that column's entry and to no other column's", () => {
+    const file = examples.monthlyManyProblems();
+    // trail_lines.surface warns with a history; trail_lines.id gains a null-rate warning with none.
+    file.needs_a_look.push({ ...file.needs_a_look.find((entry) => entry.column === "surface"), column: "id" });
+    const { items } = page(read(file, "monthly"), MISSING).sections;
+    const row = (column) => items.find((item) => item.table === "trail_lines" && item.column === column && item.kind === "Anomalies");
+    expect(row("surface").chart).toBe(seriesKey({ lane: "monthly", table: "trail_lines", column: "surface", metric: "null_percent" }));
+    expect(row("id").chart).toBeNull();
+  });
+
+  it("sit on every mart the file holds a row count for, and on none an older file lists", () => {
+    const { marts } = manyView().sections;
+    expect(marts.every((mart) => mart.chart !== null)).toBe(true);
+    expect(marts.map((mart) => mart.id)).toEqual(marts.map((_, i) => `dq-mart-${i}`));
+    const older = page(read(examples.monthlyWithWarnings(), "monthly"), MISSING).sections;
+    expect(older.marts.every((mart) => mart.chart === null)).toBe(true);
+    expect(older.buttons.map((button) => button.from)).toEqual(["Needs a look"]);
+  });
+});
+
+describe("the menu and the buttons, in step", () => {
+  const sections = () => manyView().sections;
+  const rowOf = (s, table, kind) => s.items.find((item) => item.table === table && item.kind === kind).id;
+
+  it("open with the first series chosen, no button pressed and no 'Charted from' line", () => {
+    const s = sections();
+    const shown = chartControls(s, initialChart(s));
+    expect(shown.selected).toBe(s.chart.key);
+    expect(shown.chart).toBe(s.chart);
+    expect(shown.pressed).toEqual([]);
+    expect(shown.charted).toBeNull();
+  });
+
+  it("set the menu from a pressed button, press that row alone, and name it above the chart", () => {
+    const s = sections();
+    const row = rowOf(s, "preview_fixture_12__shelters", "Volume");
+    const shown = chartControls(s, chooseFromRow(s, row));
+    expect(shown.selected).toBe(seriesKey({ lane: "monthly", table: "preview_fixture_12__shelters", metric: "row_count" }));
+    expect(shown.chart.table).toBe("preview_fixture_12__shelters");
+    expect(shown.pressed).toEqual([row]);
+    expect(shown.charted).toEqual({ from: "Needs a look", table: "preview_fixture_12__shelters", column: null, row });
+  });
+
+  it("clear a pressed button when the menu chooses another series", () => {
+    const s = sections();
+    const pressed = chooseFromRow(s, rowOf(s, "preview_fixture_12__shelters", "Volume"));
+    const other = s.menu[1].options[0].key;
+    const shown = chartControls(s, chooseFromMenu(other));
+    expect(chartControls(s, pressed).pressed).toHaveLength(1);
+    expect(shown.selected).toBe(other);
+    expect(shown.chart.table).toBe("trail_network");
+    expect(shown.pressed).toEqual([]);
+    expect(shown.charted).toBeNull();
+  });
+
+  it("press a mart's row from By mart, and the row of the series the page opened on when its own button is pressed", () => {
+    const s = sections();
+    const mart = s.marts.find((row) => row.mart === "trail_network");
+    expect(chartControls(s, chooseFromRow(s, mart.id))).toMatchObject({
+      pressed: [mart.id],
+      charted: { from: "By mart", table: "trail_network", row: mart.id },
+    });
+    const opening = s.items.find((item) => item.chart === s.chart.key);
+    const shown = chartControls(s, chooseFromRow(s, opening.id));
+    expect(shown.selected).toBe(s.chart.key);
+    expect(shown.pressed).toEqual([opening.id]);
+  });
+
+  it("change nothing for a row with no Chart button", () => {
+    const s = sections();
+    expect(chooseFromRow(s, rowOf(s, "closures", "dbt tests"))).toBeNull();
   });
 });
 

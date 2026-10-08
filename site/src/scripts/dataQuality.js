@@ -9,10 +9,30 @@
 //
 // Everything this file decides is in src/lib/dataQuality.mjs and
 // dataQualityHtml.mjs, where vitest can hold it. This is only the wiring:
-// fetch, settle, draw, and the chart's readout.
+// fetch, settle, draw, the chart's readout, and the Show menu and Chart
+// buttons that choose what the chart draws.
 
-import { FETCH_TIMEOUT_MS, LANES, buildPage, configFrom, laneUrl, settleLane } from "../lib/dataQuality.mjs";
-import { nearestPoint, renderBody, renderCard, renderChart } from "../lib/dataQualityHtml.mjs";
+import {
+  FETCH_TIMEOUT_MS,
+  LANES,
+  buildPage,
+  chartControls,
+  chooseFromMenu,
+  chooseFromRow,
+  configFrom,
+  initialChart,
+  laneUrl,
+  settleLane,
+} from "../lib/dataQuality.mjs";
+import {
+  nearestPoint,
+  renderBody,
+  renderCard,
+  renderChart,
+  renderChartFigure,
+  renderChartTitle,
+  renderCharted,
+} from "../lib/dataQualityHtml.mjs";
 
 /** One lane's fetch: `read` with its JSON, `missing` on a 404, `failed` otherwise. */
 async function fetchLane(url) {
@@ -127,8 +147,89 @@ function mountChart(holder, chart) {
   });
 
   draw();
-  if ("ResizeObserver" in window) new ResizeObserver(() => requestAnimationFrame(draw)).observe(box);
-  else window.addEventListener("resize", draw);
+  // Returned so a chart replaced by another series stops redrawing into a
+  // box that is no longer on the page.
+  if ("ResizeObserver" in window) {
+    const observer = new ResizeObserver(() => requestAnimationFrame(draw));
+    observer.observe(box);
+    return () => observer.disconnect();
+  }
+  window.addEventListener("resize", draw);
+  return () => window.removeEventListener("resize", draw);
+}
+
+/** Smoothly unless the reader asked for less motion; site.css's `scroll-behavior` says the same. */
+const motion = () => (window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
+
+/** The listeners of the last draw's chart, so the next draw can take them off. */
+let wired = null;
+
+/**
+ * The Show menu and the Chart buttons, kept in step through one state
+ * (dataQuality.mjs's chartControls decides what each shows; this applies it).
+ * A Chart button also takes the reader to the chart, and the chart's "Back to
+ * the row" link takes them back to the button they pressed.
+ */
+function wireChart(body, sections) {
+  // The body element outlives each draw, so its click listener from a
+  // previous draw is taken off before this one's goes on.
+  wired?.abort();
+  wired = new AbortController();
+  const { signal } = wired;
+  const card = body.querySelector("[data-chart-figure]")?.closest("section");
+  if (!card) return;
+  const slot = card.querySelector("[data-chart-figure]");
+  const select = card.querySelector("[data-chart-select]");
+  const line = card.querySelector("[data-charted]");
+  let state = initialChart(sections);
+  let unmount = mountChart(slot.querySelector("[data-chart]"), sections.chart);
+
+  const apply = (next) => {
+    const changed = next.key !== state.key;
+    state = next;
+    const shown = chartControls(sections, state);
+    if (changed && shown.chart) {
+      card.querySelector("[data-chart-title]").innerHTML = renderChartTitle(shown.chart);
+      const tableOpen = slot.querySelector("details")?.open ?? false;
+      unmount();
+      slot.innerHTML = renderChartFigure(shown.chart, { tableOpen });
+      unmount = mountChart(slot.querySelector("[data-chart]"), shown.chart);
+    }
+    if (select) select.value = shown.selected;
+    for (const button of body.querySelectorAll("[data-chart-key]")) {
+      button.setAttribute("aria-pressed", String(shown.pressed.includes(button.dataset.row)));
+    }
+    line.innerHTML = renderCharted(shown.charted);
+    line.hidden = shown.charted === null;
+  };
+
+  select?.addEventListener("change", () => apply(chooseFromMenu(select.value)), { signal });
+
+  body.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-chart-key]");
+    if (button) {
+      const next = chooseFromRow(sections, button.dataset.row);
+      if (!next) return;
+      apply(next);
+      // To the chart, and focus on its title, so a screen reader hears what is
+      // drawn now and the next Tab is the way back.
+      card.scrollIntoView({ behavior: motion(), block: "start" });
+      card.querySelector("[data-chart-title]").focus({ preventScroll: true });
+      return;
+    }
+    const back = event.target.closest("[data-back]");
+    if (!back || state.origin === null) return;
+    event.preventDefault();
+    const row = document.getElementById(state.origin);
+    if (!row) return;
+    // The row may be a warning inside a fold the reader has since closed.
+    const fold = row.closest("details");
+    if (fold) fold.open = true;
+    row.scrollIntoView({ behavior: motion(), block: "center" });
+    // The pressed button the reader can see: a mart's row holds two, one per width.
+    const pressed = [...row.querySelectorAll("[data-chart-key]")].find((candidate) => candidate.offsetParent !== null);
+    (pressed ?? row).focus({ preventScroll: true });
+  }, { signal });
 }
 
 function draw(root, config, lanes) {
@@ -145,8 +246,7 @@ function draw(root, config, lanes) {
     madeFrom.textContent = view.colophon ?? "";
     madeFrom.hidden = view.colophon === null;
   }
-  const holder = body.querySelector("[data-chart]");
-  if (holder && view.sections?.chart) mountChart(holder, view.sections.chart);
+  if (view.sections?.chart) wireChart(body, view.sections);
 }
 
 /** Read the two files and draw the page into `root`, the element carrying `data-base` and `data-release`. */

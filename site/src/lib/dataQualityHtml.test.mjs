@@ -21,6 +21,8 @@ import {
   renderBody,
   renderCard,
   renderChart,
+  renderChartFigure,
+  renderCharted,
 } from "./dataQualityHtml.mjs";
 import * as examples from "./dataQualityExamples.mjs";
 
@@ -32,6 +34,8 @@ const MISSING = { state: "missing" };
 const view = (monthly, hourly) => buildPage({ config: CONFIG, monthly, hourly, now: NOW });
 const lookingView = () =>
   view(lane(examples.monthlyWithWarnings(), "monthly"), lane(examples.hourlyWithWarning(), "hourly"));
+const manyView = () =>
+  view(lane(examples.monthlyManyProblems(), "monthly"), lane(examples.hourlyManyProblems(), "hourly"));
 const codes = (markup) => [...markup.matchAll(/<code>(.*?)<\/code>/g)].map((m) => m[1].replaceAll("<wbr>", ""));
 
 describe("names from a file", () => {
@@ -50,6 +54,21 @@ describe("names from a file", () => {
     expect(body).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
     const { markup } = renderChart(page.sections.chart, 900);
     expect(markup).not.toContain("<img");
+  });
+
+  it("are escaped in the Chart buttons, the Show menu and the line naming where a chart came from", () => {
+    const hostile = '"><img src=x onerror="alert(1)">';
+    const file = examples.monthlyManyProblems();
+    file.needs_a_look = file.needs_a_look.map((item) => ({ ...item, table: `${item.table}${hostile}` }));
+    file.series = file.series.map((series) => ({ ...series, table: `${series.table}${hostile}` }));
+    file.by_mart = file.by_mart.map((mart) => ({ ...mart, mart: `${mart.mart}${hostile}` }));
+    const page = view(lane(file, "monthly"), MISSING);
+    const body = renderBody(page);
+    expect(body).toContain('data-chart-key="');
+    expect(body).toContain("<optgroup");
+    expect(body).not.toContain("<img");
+    const [button] = page.sections.buttons;
+    expect(renderCharted({ ...button, row: `${button.row}${hostile}` })).not.toContain("<img");
   });
 
   it("break after an underscore and nowhere else, so a phone column wraps a name between its words", () => {
@@ -115,6 +134,56 @@ describe("cards and bodies", () => {
     const points = examples.monthlyWithWarnings().series[0].points.length;
     expect([...table.slice(0, table.indexOf("</table>")).matchAll(/<tr><td class="dq-when">/g)]).toHaveLength(points);
   });
+
+  it("keeps the table of numbers open across a change of series, when the reader had opened it", () => {
+    const { chart } = lookingView().sections;
+    expect(renderChartFigure(chart)).toContain('<details class="dq-details">');
+    expect(renderChartFigure(chart, { tableOpen: true })).toContain('<details class="dq-details" open>');
+  });
+});
+
+describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
+  it("puts every failed and unrunnable entry before the first fold, and only warnings inside one", () => {
+    const body = renderBody(manyView());
+    const look = body.slice(body.indexOf('id="dq-look-title"'), body.indexOf('id="dq-chart"'));
+    const firstFold = look.indexOf("<details");
+    const statuses = (markup) => [...markup.matchAll(/dq-pill--\w+">.*?<\/svg>([^<]+)<\/span>/g)].map((m) => m[1]);
+    expect(statuses(look.slice(0, firstFold))).toEqual([...Array(4).fill("Failed"), ...Array(4).fill("Could not run")]);
+    expect(new Set(statuses(look.slice(firstFold)))).toEqual(new Set(["Warned"]));
+    expect(look.match(/<details class="dq-panel dq-fold"/g)).toHaveLength(4);
+    expect(look).not.toMatch(/<details class="dq-panel dq-fold"[^>]* open/);
+  });
+
+  it("draws a Chart button on each row with a history and two per mart, none of them pressed as the page opens", () => {
+    const body = renderBody(manyView());
+    expect(body.match(/<button type="button" class="dq-chart-btn"/g)).toHaveLength(30 + 11);
+    expect(body.match(/class="dq-chart-btn dq-chart-btn--inline"/g)).toHaveLength(11);
+    expect(body).not.toContain('aria-pressed="true"');
+    expect(body).toContain('aria-label="Chart null rate of trail_status in trail_lines, Monthly">');
+  });
+
+  it("draws the Show menu as a native select in its two groups, the chart's series selected", () => {
+    const page = manyView();
+    const body = renderBody(page);
+    expect(body).toContain('<label class="dq-show__label" for="dq-show">Show</label>');
+    expect(body.match(/<optgroup label="([^"]+)">/g)).toEqual(['<optgroup label="Needs a look">', '<optgroup label="Every mart">']);
+    const selected = [...body.matchAll(/<option value="([^"]*)" selected>/g)].map((m) => m[1].replaceAll("&quot;", '"'));
+    expect(selected).toEqual([page.sections.chart.key]);
+    expect(body.match(/<option /g)).toHaveLength(38);
+  });
+
+  it("leaves the menu out when the files hold one series, and the Chart column out when no mart has one", () => {
+    const body = renderBody(lookingView());
+    expect(body).not.toContain("<select");
+    expect(body).not.toContain("dq-col-chart");
+  });
+
+  it("names where a chart came from, with the way back to its row", () => {
+    expect(renderCharted(null)).toBe("");
+    expect(renderCharted({ from: "By mart", table: "trail_network", column: null, row: "dq-mart-2" })).toBe(
+      'Charted from By mart · <code>trail_<wbr>network</code> · <a href="#dq-mart-2" data-back>Back to the row</a>',
+    );
+  });
 });
 
 describe("the chart", () => {
@@ -178,7 +247,9 @@ describe("the chart", () => {
         })),
       },
     ];
-    const charts = [chart(), view(MISSING, lane(hourly, "hourly")).sections.chart];
+    const week = view(MISSING, lane(examples.hourlyManyProblems(), "hourly")).sections.chart;
+    expect(week.points).toHaveLength(168);
+    const charts = [chart(), view(MISSING, lane(hourly, "hourly")).sections.chart, week];
     for (const drawn of charts) {
       for (let width = 300; width <= 1300; width += 10) {
         const layout = chartLayout(drawn, width);
@@ -194,6 +265,17 @@ describe("the chart", () => {
         }
       }
     }
+  });
+
+  it("names the day on an hourly axis that spans more than one, and only the time on one that does not", () => {
+    const week = view(MISSING, lane(examples.hourlyManyProblems(), "hourly")).sections.chart;
+    const layout = chartLayout(week, 900);
+    const texts = axisLabels(week, layout.xs, 900, layout.plot.width).map((label) => label.text);
+    expect(texts.length).toBeGreaterThan(1);
+    for (const text of texts) expect(text).toMatch(/^\d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}$/);
+    const day = { ...week, points: week.points.slice(-12) };
+    const sameDay = chartLayout(day, 900);
+    for (const label of axisLabels(day, sameDay.xs, 900, sameDay.plot.width)) expect(label.text).toMatch(/^\d{2}:\d{2}$/);
   });
 
   it("finds the point nearest the pointer", () => {
@@ -224,10 +306,17 @@ describe("classes the page uses", () => {
     "dq-chart__hit": "a transparent rectangle for the pointer, drawn with fill set on the element",
   };
 
+  it("hides an element with the hidden attribute whatever display its class sets", () => {
+    // `.dq-item { display: grid }` beat the browser's own [hidden] rule in round 2's prototype list.
+    expect(css).toMatch(/\.dq \[hidden\] \{\s*display: none !important;\s*\}/);
+  });
+
   it("defines every dq- class the page and its markup name", () => {
     const markup = [
       read("../pages/data/quality/index.astro"),
       renderBody(lookingView()),
+      renderBody(manyView()),
+      renderCharted({ from: "Needs a look", table: "t", column: "c", row: "dq-row-0" }),
       renderBody(view(MISSING, MISSING)),
       renderBody(view(lane(examples.monthlyLearning(), "monthly"), MISSING)),
       ...lookingView().cards.map(renderCard),

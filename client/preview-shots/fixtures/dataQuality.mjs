@@ -38,6 +38,12 @@ export const EXAMPLE_BASE = 'https://data-quality-example.invalid'
  * `monthly` and `hourly` - invented files, or null for "not published" (404).
  * Throws when site/dist is not built, which the runner turns into a sentence
  * in the comment rather than a photograph of the wrong page.
+ *
+ * Typed loosely on purpose: a spec passes any of the examples' files, whose
+ * shapes differ, and the page itself is what judges a file.
+ *
+ * @param {import('playwright').Page} page
+ * @param {{ monthly?: object | null, hourly?: object | null }} [files]
  */
 export async function serveDataQuality(
   page,
@@ -77,15 +83,20 @@ export async function serveDataQuality(
  * Nothing here was measured."), so the picture cannot travel without the
  * sentence. Under the lede, where the mock put it; styled from the site's own
  * aliases, because the real page has no such element to style.
+ *
+ * `before` puts it ahead of another element instead, for a frame scrolled
+ * past the lede, so the frame still says it wherever the camera stops - in
+ * the page's flow, where it covers nothing the frame is there to show.
  */
-export async function labelInvented(page) {
-  await page.locator('.dq-lede').evaluate((lede) => {
+export async function labelInvented(page, { before = null } = {}) {
+  const anchor = before ?? page.locator('.dq-lede')
+  await anchor.evaluate((node, ahead) => {
     const pill = document.createElement('p')
     pill.textContent =
       'Invented figures, routed in by the preview recipe. Nothing here was measured.'
     pill.style.cssText = [
       'display: inline-block',
-      'margin-top: 12px',
+      ahead ? 'margin-bottom: 12px' : 'margin-top: 12px',
       'padding: 4px 12px',
       'border: 1px dashed var(--border-2)',
       'border-radius: 999px',
@@ -93,6 +104,7 @@ export async function labelInvented(page) {
       'color: var(--fg-1)',
       'background: var(--surface-warning)',
     ].join(';')
-    lede.after(pill)
-  })
+    if (ahead) node.before(pill)
+    else node.after(pill)
+  }, before !== null)
 }

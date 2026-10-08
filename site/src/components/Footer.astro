@@ -45,11 +45,21 @@ import Mark from './Mark.astro'
         <a href="/for-orgs/claim/">Claim your org</a>
         <a href="/for-orgs/demo/">See a published club</a>
       </div>
+      {
+        /* THE DATA, LAST: the dbt docs at /data/ and the data-quality page at
+           /data/quality/ (pipeline/ELT.md decisions 10 and 102), which the
+           maintainer chose on 2026-10-08 as how a visitor finds them. /data/
+           is not in site/dist - pages.yml and pr-preview.yml copy the docs
+           there when they assemble the site - so it answers wherever the site
+           is deployed, and not where a bare site build is served. */
+      }
       <div class="footer__col">
         <span class="footer__heading">THE PROJECT</span>
         <a href="https://github.com/OurHike/OurHike">Source on GitHub — AGPL-3.0</a>
         <a href="https://github.com/OurHike/OurHike/issues">Tell us what broke</a>
         <a href="/app/">Open the app</a>
+        <a href="/data/">Data docs</a>
+        <a href="/data/quality/">Data quality</a>
       </div>
     </div>
     <p class="footer__credits">

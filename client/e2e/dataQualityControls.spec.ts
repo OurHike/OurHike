@@ -7,7 +7,9 @@ import { serveDataQuality } from '../preview-shots/fixtures/dataQuality.mjs'
 import {
   EXAMPLE_NOW,
   hourlyManyProblems,
+  hourlyWithWarning,
   monthlyManyProblems,
+  monthlyWithWarnings,
 } from '../../site/src/lib/dataQualityExamples.mjs'
 
 /**
@@ -16,7 +18,9 @@ import {
  * 38 series (site/src/lib/dataQualityExamples.mjs). The maintainer's round-3
  * choice (pipeline/ELT.md decision 102, 2026-10-08): every failure listed and
  * the warnings folded by kind; a Show menu above the chart; a Chart button on
- * each row with a history and on each mart, kept in step with the menu.
+ * each row with a history and on each mart, kept in step with the menu. And
+ * its answers to round 3's forks (2026-10-08): the first chart's own button
+ * starts pressed, and a kind with three warnings or fewer opens by itself.
  *
  * What each control SHOWS is decided in site/src/lib/dataQuality.mjs and held
  * by the site's vitest suite; this holds that the page wires it up - focus
@@ -28,13 +32,16 @@ import {
 const LOOK = 'section[aria-labelledby="dq-look-title"]'
 const MARTS = 'section[aria-labelledby="dq-marts-title"]'
 
-async function open(page: Page) {
-  await page.clock.setFixedTime(new Date(EXAMPLE_NOW))
-  await serveMarketingSite(page)
-  await serveDataQuality(page, {
+async function open(
+  page: Page,
+  files: { monthly: object; hourly: object } = {
     monthly: monthlyManyProblems(),
     hourly: hourlyManyProblems(),
-  })
+  },
+) {
+  await page.clock.setFixedTime(new Date(EXAMPLE_NOW))
+  await serveMarketingSite(page)
+  await serveDataQuality(page, files)
   await page.goto('/', { waitUntil: 'load' })
   await openSitePage(page, '/data/quality/')
   await page.locator('[data-slot="body"][aria-busy="false"]').waitFor()
@@ -71,7 +78,10 @@ test('a Chart button pressed from the keyboard charts its row, sets the menu, an
   page,
 }) => {
   await open(page)
-  await expect(pressed(page)).toHaveCount(0)
+  // The first chart's own row starts pressed: the failed null-rate check.
+  const opening = row(page, 'trail_status', 'Anomalies').locator('[data-chart-key]')
+  await expect(pressed(page)).toHaveCount(1)
+  await expect(opening).toHaveAttribute('aria-pressed', 'true')
   await page.locator('details[data-fold="volume"] > summary').click()
   const button = row(page, 'preview_fixture_12__shelters', 'Volume').locator(
     '[data-chart-key]',
@@ -83,6 +93,7 @@ test('a Chart button pressed from the keyboard charts its row, sets the menu, an
   await expect(title(page)).toBeFocused()
   expect(await menu(page).inputValue()).toContain('preview_fixture_12__shelters')
   await expect(button).toHaveAttribute('aria-pressed', 'true')
+  await expect(opening).toHaveAttribute('aria-pressed', 'false')
   await expect(pressed(page)).toHaveCount(1)
   await expect(page.locator('[data-charted]')).toContainText('Charted from Needs a look')
 
@@ -93,6 +104,40 @@ test('a Chart button pressed from the keyboard charts its row, sets the menu, an
   await page.keyboard.press('Enter')
   await expect(button).toBeFocused()
   await expect(button).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('the first chart’s button starts pressed inside its closed fold, and Back to the row opens it', async ({
+  page,
+}) => {
+  // Without the null-rate failure's history, the first chart is the first
+  // Volume warning's, and Volume's 14 warnings stay folded.
+  const monthly = monthlyManyProblems()
+  monthly.series = monthly.series.filter((series) => series.column !== 'trail_status')
+  await open(page, { monthly, hourly: hourlyManyProblems() })
+  const volume = page.locator('details[data-fold="volume"]')
+  await expect(volume).not.toHaveAttribute('open')
+  const button = row(page, 'preview_fixture_07__water_sources', 'Volume').locator(
+    '[data-chart-key]',
+  )
+  await expect(button).toHaveAttribute('aria-pressed', 'true')
+  await expect(title(page)).toContainText('preview_fixture_07__water_sources')
+  await expect(page.locator('[data-charted]')).toContainText(
+    'Charted from Needs a look · preview_fixture_07__water_sources',
+  )
+
+  await page.locator('[data-back]').click()
+  await expect(volume).toHaveAttribute('open')
+  await expect(button).toBeFocused()
+})
+
+test('a kind with three warnings or fewer is open as the page loads', async ({
+  page,
+}) => {
+  await open(page, { monthly: monthlyWithWarnings(), hourly: hourlyWithWarning() })
+  const folds = page.locator(`${LOOK} details.dq-fold`)
+  await expect(folds).toHaveCount(4)
+  for (const fold of await folds.all()) await expect(fold).toHaveAttribute('open')
+  await expect(page.locator(`${LOOK} li.dq-item`).first()).toBeVisible()
 })
 
 test('a choice in the Show menu clears the pressed button and the line naming it', async ({

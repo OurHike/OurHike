@@ -431,6 +431,9 @@ function parse(value, lane) {
       table: name(entry.table, `${where}.table`),
       column: name(entry.column, `${where}.column`, { optional: true }),
       metric: name(entry.metric, `${where}.metric`),
+      // The mart a versioned table is: `trail_lines_v1` is `trail_lines`, the
+      // name by_mart uses. Absent for a table that is no mart's.
+      mart: name(entry.mart, `${where}.mart`, { optional: true }),
       inNeedsALook: typeof flag === "boolean" ? flag : null,
       points,
     };
@@ -791,11 +794,23 @@ function seriesOf(item, series) {
   );
 }
 
-/** A mart's own row count, or null when the file holds none for it. */
+/**
+ * A mart's own row count, or null when the file holds none for it. Joined
+ * by the series' `mart` where it names one, and else by its table: C1's
+ * test-warehouse file (2026-10-08) writes the versioned table
+ * (`trail_lines_v1`) with `mart: "trail_lines"`, while by_mart names the mart
+ * alone, so a join on the table found no mart and By mart drew no Chart
+ * button.
+ */
 function martSeries(mart, series) {
   return (
-    series.find((s) => s.lane === mart.lane && s.table === mart.mart && (s.column ?? null) === null && s.metric === MART_METRIC) ??
-    null
+    series.find(
+      (s) =>
+        s.lane === mart.lane &&
+        (s.mart ?? s.table) === mart.mart &&
+        (s.column ?? null) === null &&
+        s.metric === MART_METRIC,
+    ) ?? null
   );
 }
 
@@ -962,12 +977,24 @@ function whereInRange(point) {
 }
 
 /**
+ * The most warnings a kind can hold and still open by itself. A kind with
+ * more stays folded behind its one line.
+ *
+ * THE MAINTAINER'S FIGURE, chosen by poll on 2026-10-08 against round 3's
+ * fork-2 frames: a light build's four one-warning kinds, drawn all folded and
+ * drawn open. It is a decision, not a measurement - nobody has measured how
+ * many rows a reader takes in before a fold starts to help.
+ */
+export const OPEN_FOLD_MAX = 3;
+
+/**
  * "Needs a look" as the maintainer chose it by poll on 2026-10-08 (option D
  * of round 2's frames): every entry that failed, could not run, or reports a
  * status this page does not know is listed in full; only warnings are folded,
- * one line per kind that opens. A failure is never behind a fold however many
- * there are - folding is what a long list of warnings gets, and a failure
- * hidden by one is the thing a reader came to find.
+ * one line per kind that opens, and a kind with OPEN_FOLD_MAX or fewer opens
+ * by itself. A failure is never behind a fold however many there are -
+ * folding is what a long list of warnings gets, and a failure hidden by one
+ * is the thing a reader came to find.
  */
 function lookView(items) {
   const failing = items.filter((item) => item.rank < STATUSES.warn.rank);
@@ -979,6 +1006,7 @@ function lookView(items) {
       kind: kind.id,
       label: kind.label,
       summary: `${formatCount(own.length)} ${plural(own.length, "warning", "warnings")}`,
+      open: own.length <= OPEN_FOLD_MAX,
       items: own,
     };
   }).filter((group) => group.items.length > 0);
@@ -1025,13 +1053,23 @@ function sectionsView(lanes, read) {
     };
   });
 
+  // The row whose Chart button starts pressed: the entry pickSeries took the
+  // first chart from, or else the mart it fell back to. Null when the first
+  // series has no button at all.
+  const firstKey = first ? seriesKey(first) : null;
+  const opening =
+    firstKey === null
+      ? null
+      : ((items.find((item) => item.chart === firstKey) ?? marts.find((mart) => mart.chart === firstKey))?.id ?? null);
+
   return {
     scope: scopeLine(lanes, read),
     tiles: KINDS.map((kind) => tile(kind, read, merged, learning)),
     items,
     look: lookView(items),
     quiet,
-    chart: first ? charts.get(seriesKey(first)) : null,
+    chart: firstKey === null ? null : charts.get(firstKey),
+    opening,
     charts,
     menu: menu.groups,
     // Every Chart button the page draws, by the row it sits on: what the
@@ -1047,11 +1085,15 @@ function sectionsView(lanes, read) {
 // ---------------------------------------------------------------- choosing a series
 
 /**
- * What the chart shows: a series' key, and the row whose Chart button put it
- * there (null when the Show menu did, or nothing has been chosen yet).
+ * What the chart shows: a series' key, and the row whose Chart button stands
+ * for it (null when the Show menu chose it). As the page opens that row is
+ * the one the first chart came from, so its button starts pressed - the
+ * maintainer's answer to round 3's fork 1, by poll on 2026-10-08. A warning's
+ * row keeps its fold closed when the fold would be (OPEN_FOLD_MAX): its
+ * button is pressed inside it, and "Back to the row" opens the fold.
  */
 export function initialChart(sections) {
-  return { key: sections.chart?.key ?? null, origin: null };
+  return { key: sections.chart?.key ?? null, origin: sections.opening ?? null };
 }
 
 /** A choice in the Show menu: that series, from no row. */
@@ -1070,12 +1112,13 @@ export function chooseFromRow(sections, row) {
  * browser only applies it. THE MENU AND THE BUTTONS STAY IN STEP, by the two
  * rules the maintainer's round-3 choice set (2026-10-08): pressing a Chart
  * button sets the menu to that button's series, and a choice in the menu
- * clears any pressed button that names another series. A button is pressed
- * only by being pressed - not because the page opened on its series, nor
- * because the menu chose it - so a pressed button always means "the one I
- * pressed is what the chart shows", and the chart's "Charted from" line is
- * there exactly when one is. `pressed` lists rows, not buttons: a mart's row
- * holds two buttons, one for each width, and both read as pressed.
+ * clears any pressed button that names another series. One row's button is
+ * pressed at a time - the first chart's row as the page opens
+ * (initialChart), then the row last pressed - so a pressed button always
+ * means "this row is what the chart shows", and the chart's "Charted from"
+ * line is there exactly when one is. A menu choice presses none. `pressed`
+ * lists rows, not buttons: a mart's row holds two buttons, one for each
+ * width, and both read as pressed.
  */
 export function chartControls(sections, state) {
   const origin =

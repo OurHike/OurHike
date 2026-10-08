@@ -19,6 +19,7 @@ import {
   formatDurationRange,
   formatNumber,
   formatWhen,
+  OPEN_FOLD_MAX,
   initialChart,
   laneUrl,
   readQualityFile,
@@ -370,6 +371,27 @@ const manyView = () => page(read(examples.monthlyManyProblems(), "monthly"), rea
 const FAILING = new Set(["Failed", "Could not run"]);
 
 describe("Needs a look, listed and folded (round 3's option D)", () => {
+  it("opens a kind of 3 warnings by itself and keeps a kind of 4 folded - the maintainer's figure", () => {
+    expect(OPEN_FOLD_MAX).toBe(3);
+    const monthly = examples.monthlyManyProblems();
+    const kept = { schema: 3, anomalies: 4 };
+    const seen = { schema: 0, anomalies: 0 };
+    monthly.needs_a_look = monthly.needs_a_look.filter((entry) => {
+      if (entry.status !== "warn" || !(entry.kind in kept)) return true;
+      seen[entry.kind] += 1;
+      return seen[entry.kind] <= kept[entry.kind];
+    });
+    const { folded } = page(read(monthly, "monthly"), MISSING).sections.look.warnings;
+    expect(folded.map((group) => [group.kind, group.items.length, group.open])).toEqual([
+      ["freshness", 5, false],
+      ["volume", 12, false],
+      ["schema", 3, true],
+      ["anomalies", 4, false],
+    ]);
+    const light = page(read(examples.monthlyWithWarnings(), "monthly"), MISSING).sections.look.warnings;
+    expect(light.folded.every((group) => group.open)).toBe(true);
+  });
+
   it("never folds what failed, what could not run, or a status it does not know - whatever else is in the list", () => {
     const monthly = examples.monthlyManyProblems();
     // A failure of a kind that also has warnings, so it would share their fold if anything folded it.
@@ -507,19 +529,75 @@ describe("Chart buttons", () => {
     expect(older.marts.every((mart) => mart.chart === null)).toBe(true);
     expect(older.buttons.map((button) => button.from)).toEqual(["Needs a look"]);
   });
+
+  it("find a mart's row count under its versioned table, by the series' mart, as C1's file names them", () => {
+    // C1's test-warehouse file, 2026-10-08: `table: "trail_lines_v1", mart: "trail_lines"`, and by_mart says "trail_lines".
+    const file = examples.monthlyManyProblems();
+    file.series = file.series.map((series) =>
+      series.in_needs_a_look ? series : { ...series, table: `${series.table}_v1`, mart: series.table },
+    );
+    const { marts, menu } = page(read(file, "monthly"), MISSING).sections;
+    const network = marts.find((mart) => mart.mart === "trail_network");
+    expect(network.chart).toBe(seriesKey({ lane: "monthly", table: "trail_network_v1", metric: "row_count" }));
+    expect(network.chartName).toBe("Chart rows in trail_network_v1, Monthly");
+    expect(marts.every((mart) => mart.chart !== null)).toBe(true);
+    expect(menu[1].options[0].label).toBe("Rows in trail_network_v1 · Monthly");
+  });
 });
 
 describe("the menu and the buttons, in step", () => {
   const sections = () => manyView().sections;
   const rowOf = (s, table, kind) => s.items.find((item) => item.table === table && item.kind === kind).id;
 
-  it("open with the first series chosen, no button pressed and no 'Charted from' line", () => {
+  it("open with the first chart's own row pressed, the menu on its series, and the line naming that row", () => {
     const s = sections();
     const shown = chartControls(s, initialChart(s));
+    // pickSeries took the first chart from the worst entry with a history: the failed null-rate check.
+    const opening = s.items.find((item) => item.id === s.opening);
+    expect(opening).toMatchObject({ status: "Failed", table: "trail_lines", column: "trail_status", chart: s.chart.key });
+    expect(s.items.findIndex((item) => item.chart !== null)).toBe(s.items.indexOf(opening));
     expect(shown.selected).toBe(s.chart.key);
     expect(shown.chart).toBe(s.chart);
-    expect(shown.pressed).toEqual([]);
-    expect(shown.charted).toBeNull();
+    expect(shown.pressed).toEqual([opening.id]);
+    expect(shown.charted).toEqual({ from: "Needs a look", table: "trail_lines", column: "trail_status", row: opening.id });
+  });
+
+  it("open with a warning's row pressed inside its closed fold, when the first chart is a warning's", () => {
+    const monthly = examples.monthlyManyProblems();
+    monthly.series = monthly.series.filter((series) => series.column !== "trail_status");
+    const s = page(read(monthly, "monthly"), read(examples.hourlyManyProblems(), "hourly")).sections;
+    const shown = chartControls(s, initialChart(s));
+    const volume = s.look.warnings.folded.find((group) => group.kind === "volume");
+    expect(volume.open).toBe(false);
+    expect(volume.items.map((item) => item.id)).toContain(s.opening);
+    expect(s.items.find((item) => item.id === s.opening).table).toBe("preview_fixture_07__water_sources");
+    expect(shown.pressed).toEqual([s.opening]);
+    expect(shown.charted).toMatchObject({ from: "Needs a look", table: "preview_fixture_07__water_sources" });
+  });
+
+  it("open with the first mart's row pressed when nothing needs a look, and with none when no button draws the first chart", () => {
+    const quiet = examples.monthlyManyProblems();
+    quiet.needs_a_look = [];
+    quiet.series = quiet.series.filter((series) => !series.in_needs_a_look);
+    const s = page(read(quiet, "monthly"), MISSING).sections;
+    const mart = s.marts.find((row) => row.mart === "trail_network");
+    expect(chartControls(s, initialChart(s))).toMatchObject({
+      pressed: [mart.id],
+      charted: { from: "By mart", table: "trail_network", row: mart.id },
+    });
+    const unmatched = examples.monthlyWithWarnings();
+    unmatched.needs_a_look = [];
+    const lone = page(read(unmatched, "monthly"), MISSING).sections;
+    expect(lone.chart.table).toBe("preview_fixture__trails");
+    expect(chartControls(lone, initialChart(lone))).toMatchObject({ pressed: [], charted: null });
+  });
+
+  it("release the opening press when another row's button is pressed, and when the menu chooses another series", () => {
+    const s = sections();
+    const other = s.items.find((item) => item.table === "preview_fixture_12__shelters" && item.kind === "Volume");
+    expect(chartControls(s, chooseFromRow(s, other.id)).pressed).toEqual([other.id]);
+    const elsewhere = s.menu[1].options[0].key;
+    expect(chartControls(s, chooseFromMenu(elsewhere))).toMatchObject({ selected: elsewhere, pressed: [], charted: null });
   });
 
   it("set the menu from a pressed button, press that row alone, and name it above the chart", () => {

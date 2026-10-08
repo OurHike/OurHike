@@ -24,3 +24,11 @@ packages:
     version: 1.4.0
   - package: dbt-labs/codegen
     version: 0.14.1
+# Elementary's data-quality package (decision 102, pipeline/ELT.md "Data
+# quality (decision 102)"): its tests and the tables it keeps their results
+# in. 0.26.0 (released 2026-09-08, Apache-2.0) is tagged "v2 compatible" on
+# the Hub; on dbt 2.0.6 and DuckDB it needs the two overrides in
+# macros/elementary_overrides.sql (measured 2026-10-07, a scratch project).
+# Off unless OURHIKE_ELEMENTARY is `true` (dbt_project.yml says why).
+  - package: elementary-data/elementary
+    version: 0.26.0

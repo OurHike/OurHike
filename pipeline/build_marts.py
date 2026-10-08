@@ -94,10 +94,10 @@ fixture build leaves 18 passes out. Over the real project with today's two
 tags, the split reaches one build, "what derived.poi_photos unblocks", in the
 monthly lane and in a build with no lane (plan() over `dbt parse`'s manifest,
 2026-10-05). The hourly lane never splits: publish-conditions.yml gives its
-build 6 minutes, and a dbt invocation on a runner spends about 9.4 s before
-its first node (run 20's step 13, from its start to its first result:
-Measured). alone_problems() refuses a tagged model an hourly or daily source
-reaches, whose tag that lane would ignore.
+build 10 minutes (6 until decision 103), and a dbt invocation on a runner
+spends about 9.4 s before its first node (run 20's step 13, from its start
+to its first result: Measured). alone_problems() refuses a tagged model an
+hourly or daily source reaches, whose tag that lane would ignore.
 
 THE PUB_ WRITERS BUILD ONE AT A TIME (--threads 1) in every lane but the
 hourly one. Monthly run 25 (refresh-reference.yml 37614075245) built every
@@ -114,7 +114,7 @@ builds_alone tag on the four: the other 38 writers' own times in run 25 sum
 to 48.3 s, against a monthly run of four hours or more, and a heavy
 writer added later is covered without anybody tagging it. The hourly lane
 keeps --threads: it writes only the files an hourly or daily source reaches,
-none of the four, inside publish-conditions.yml's 6 minutes.
+none of the four, inside publish-conditions.yml's 10 minutes.
 
 A FAILED dbt BUILD IS RETRIED, up to DBT_RETRIES (3) times, in every lane:
 `dbt retry --threads 1` after the build, then after each retry that fails,
@@ -142,7 +142,7 @@ passes. A failure that is not chance, a SQL error, costs three more runs of
 its failed nodes and what they skipped, at one thread; what that costs a
 monthly run is @unvalidated, settled by the step times of the first run that
 retries one. The hourly lane gets no deadline either: a build that fails and
-retries three times can meet publish-conditions.yml's 6-minute step cap, which
+retries three times can meet publish-conditions.yml's 10-minute step cap, which
 fails the job before "Publish to R2", so that hour publishes nothing new; how
 often is @unvalidated, settled by the summary's retry lines over the first
 weeks. A build that defers (`--defer --state`) is retried the same way:
@@ -254,6 +254,17 @@ requirements-dbt.txt venv and the steps need requirements.txt's rasterio
 runs on either. Every dbt command gets OURHIKE_WAREHOUSE and
 OURHIKE_PROCESSED_DIR as absolute paths, so dbt and the steps read one
 warehouse.
+
+ELEMENTARY'S TABLES ARE BUILT FIRST, right after the row history is restored
+(decision 102, ELT.md "Data quality (decision 102)"). Every dbt command here
+runs with OURHIKE_ELEMENTARY=true, dbt_project.yml's switch for Elementary's
+models and its two hooks, and the end-of-run hook writes each command's
+results into those tables. With a table missing, a command records nothing
+and still passes (measured 2026-10-08 on dbt 2.0.6), so `dbt run --select
+package:elementary` comes before `dbt seed`, and stage A leaves the package
+out. That run also loads the tables describing the project itself, through
+their own post-hooks, which is why dbt_project.yml turns the end-of-run
+hook's copy of that work off. The pytest suites leave the switch off.
 """
 
 from __future__ import annotations
@@ -276,6 +287,10 @@ DBT_DIR = PIPELINE_DIR / "dbt"
 DERIVED_SOURCE = "derived"
 # The first run, after which the manifest it wrote is checked against STEPS.
 SEED = "dbt seed"
+#: The run before it (the module docstring, "ELEMENTARY'S TABLES ARE BUILT FIRST").
+ELEMENTARY_TABLES = "Elementary's own tables"
+#: dbt_project.yml's switch for Elementary's models and hooks, on for every dbt command this file runs.
+ELEMENTARY_SWITCH = {"OURHIKE_ELEMENTARY": "true"}
 MANIFEST_PATH = DBT_DIR / "target" / "manifest.json"
 #: What the dbt run that just ended did, node by node: read for its failed tests, its warnings and its failed writers.
 RUN_RESULTS_PATH = DBT_DIR / "target" / "run_results.json"
@@ -673,8 +688,11 @@ def plan(
         selection = (*LANE_EXCLUDES, *(LANE_PARENTS if state is None else ()))
         after = ("--defer", "--state", str(state)) if state is not None else ("--indirect-selection", "cautious")
 
-    runs = [Run(SEED, (dbt, "seed", *common), DBT_DIR)]
-    stage_a_exclude = ["package:dbt_project_evaluator", "path:models/publish"]
+    runs = [
+        Run(ELEMENTARY_TABLES, (dbt, "run", *common, "--select", "package:elementary"), DBT_DIR),
+        Run(SEED, (dbt, "seed", *common), DBT_DIR),
+    ]
+    stage_a_exclude = ["package:dbt_project_evaluator", "package:elementary", "path:models/publish"]
     if running:
         stage_a_exclude.append(f"source:{DERIVED_SOURCE}+")
     no_snapshots = () if snapshots else (SNAPSHOTS,)
@@ -850,7 +868,8 @@ def alone_problems(manifest: dict) -> list[str]:
     for uid in sorted(tagged & faster_nodes(manifest)):
         problems.append(
             f"{_name(uid)} builds alone ({BUILDS_ALONE}), and an hourly or daily source reaches it: the hourly lane never "
-            "splits its builds (6 minutes leave no room), so it would build beside other models there"
+            "splits its builds (each split is one more dbt invocation inside its step cap), so it would build beside "
+            "other models there"
         )
     return problems
 
@@ -1379,7 +1398,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(refused))
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
     # TZ=UTC and OURHIKE_BUILT_BY: the module docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST".
-    env = {**os.environ, **files, "TZ": "UTC", "OURHIKE_BUILT_BY": built_by(os.environ)}
+    env = {**os.environ, **files, "TZ": "UTC", "OURHIKE_BUILT_BY": built_by(os.environ), **ELEMENTARY_SWITCH}
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
     print(f"-- build_marts: OURHIKE_BUILT_BY={env['OURHIKE_BUILT_BY']}", flush=True)
     if notice:

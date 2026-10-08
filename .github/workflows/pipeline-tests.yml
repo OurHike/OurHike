@@ -395,12 +395,13 @@ jobs:
 
       # DBT'S PACKAGES, CACHED, for the reason dbt's driver and spatial build
       # are (their restore step, further up): `dbt deps` reads
-      # packages.yml's three packages from hub.getdbt.com and
-      # their tarballs from codeload.github.com, so every run needed both
+      # packages.yml's packages (four since decision 102) from hub.getdbt.com
+      # and their tarballs from codeload.github.com, so every run needed both
       # hosts up (ARCH-6 of the PR #1805 review; soak run 538's log shows the
-      # hourly lane installing all three at 01:19:19 on 2026-10-05). The key
-      # hashes packages.yml and package-lock.yml, which between them pin every
-      # version, so a hit is what deps would write. A hit skips deps: measured
+      # hourly lane installing the three it had then, at 01:19:19 on
+      # 2026-10-05). The key hashes packages.yml and package-lock.yml, which
+      # between them pin every version, so a hit is what deps would write.
+      # A hit skips deps: measured
       # 2026-10-05 on dbt 2.0.6 in a sandbox, `dbt parse` with dbt_packages/
       # in place and no deps that session finished "'parse' successfully".
       # Saved straight after a deps that succeeded, never after a failed one,

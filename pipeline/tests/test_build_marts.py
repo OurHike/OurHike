@@ -54,20 +54,17 @@ def argvs(runs):
     return [(run.argv, run.cwd) for run in runs]
 
 
+#: plan()'s first dbt command (build_marts.py's docstring, "ELEMENTARY'S TABLES ARE BUILT FIRST"), and its first two
+#: arguments as the recorded calls list them.
+ELEMENTARY_RUN = (("dbt", "run", "--profiles-dir", ".", "--select", "package:elementary"), DBT_DIR)
+ELEMENTARY = ("dbt", "run")
+
+
 def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers():
     runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
 
     assert argvs(runs) == [
-        (("dbt", "seed", "--profiles-dir", "."), DBT_DIR),
-        (("dbt", "build", "--profiles-dir", ".", "--exclude", "package:dbt_project_evaluator", "path:models/publish"), DBT_DIR),
-        (("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish"), DBT_DIR),
-    ]
-
-
-def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks():
-    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
-
-    assert argvs(runs) == [
+        ELEMENTARY_RUN,
         (("dbt", "seed", "--profiles-dir", "."), DBT_DIR),
         (
             (
@@ -77,6 +74,30 @@ def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks(
                 ".",
                 "--exclude",
                 "package:dbt_project_evaluator",
+                "package:elementary",
+                "path:models/publish",
+            ),
+            DBT_DIR,
+        ),
+        (("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish"), DBT_DIR),
+    ]
+
+
+def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks():
+    runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
+
+    assert argvs(runs) == [
+        ELEMENTARY_RUN,
+        (("dbt", "seed", "--profiles-dir", "."), DBT_DIR),
+        (
+            (
+                "dbt",
+                "build",
+                "--profiles-dir",
+                ".",
+                "--exclude",
+                "package:dbt_project_evaluator",
+                "package:elementary",
                 "path:models/publish",
                 "source:derived+",
             ),
@@ -105,6 +126,7 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
     runs = plan([DEM_SAMPLING, SECOND], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
 
     assert [run.argv[:2] for run in runs] == [
+        ("dbt", "run"),
         ("dbt", "seed"),
         ("dbt", "build"),
         ("python", "step_dem_sampling.py"),
@@ -113,7 +135,7 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         ("dbt", "build"),
         ("dbt", "build"),
     ]
-    after_first, after_second = runs[3].argv, runs[5].argv
+    after_first, after_second = runs[4].argv, runs[6].argv
     assert after_first[after_first.index("-s") :] == (
         "-s",
         "source:derived.dem_samples+",
@@ -127,14 +149,26 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         "--exclude",
         "path:models/publish",
     )
-    assert runs[4].argv == ("python", "step_second.py", "--warehouse", "/w/warehouse.duckdb")
+    assert runs[5].argv == ("python", "step_second.py", "--warehouse", "/w/warehouse.duckdb")
     assert runs[-1].argv == ("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish")
+
+
+def test_elementary_s_own_tables_build_before_the_seeds_and_stage_a_leaves_the_package_out():
+    """With Elementary on and its tables missing, a dbt command records nothing (decision 102, measured on dbt
+    2.0.6), the seeds' included, so its tables come first."""
+    for lane in (None, "monthly", "hourly"):
+        runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane)
+
+        assert (runs[0].label, runs[0].argv, runs[0].cwd) == (build_marts.ELEMENTARY_TABLES, *ELEMENTARY_RUN), lane
+        assert runs[1].label == build_marts.SEED, lane
+        stage_a = runs[2].argv
+        assert "package:elementary" in stage_a[stage_a.index("--exclude") :], lane
 
 
 def test_without_fixtures_a_step_gets_no_fixture_arguments_and_reads_its_own_defaults():
     runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=False, manifest=NONE_ALONE)
 
-    assert runs[2].argv == ("python", "step_dem_sampling.py", "--warehouse", "/w/warehouse.duckdb")
+    assert runs[3].argv == ("python", "step_dem_sampling.py", "--warehouse", "/w/warehouse.duckdb")
 
 
 def test_threads_reach_every_dbt_seed_and_build_and_no_step_and_the_writers_build_at_one():
@@ -159,7 +193,7 @@ def test_the_writers_build_one_at_a_time_outside_the_hourly_lane(lane):
 
 
 def test_the_hourly_lanes_writers_keep_the_builds_threads():
-    """Its writers are the files an hourly or daily source reaches, inside publish-conditions.yml's 6 minutes."""
+    """Its writers are the files an hourly or daily source reaches, inside publish-conditions.yml's step cap."""
     writers = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", threads=4)[-1]
 
     assert writers.stage == build_marts.WRITERS
@@ -341,11 +375,18 @@ def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(mo
     assert (tmp_path / "processed").is_dir(), "COPY creates no directory, so the writers' folder must exist first"
 
 
+def test_every_command_runs_with_elementary_on(monkeypatch, tmp_path):
+    """dbt_project.yml's switch (decision 102): on for everything build_marts.py runs, off for the pytest suites."""
+    _, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES))
+
+    assert {env.get("OURHIKE_ELEMENTARY") for _, _, env in recorder.calls} == {"true"}
+
+
 def test_main_stops_at_the_first_command_that_fails_and_answers_with_its_exit_code(monkeypatch, tmp_path):
-    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={3: 2})
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={4: 2})
 
     assert code == 2
-    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed"), ("dbt", "build")]
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ELEMENTARY, ("dbt", "seed"), ("dbt", "build")]
     assert not [argv for argv, _, _ in recorder.calls if argv[2:3] == ("save",)], "a failed build never saves"
 
 
@@ -353,8 +394,8 @@ def test_main_stops_at_the_first_command_that_fails_and_answers_with_its_exit_co
 
 
 def _retrying_main(monkeypatch, tmp_path, retry_codes, extra=()):
-    """_main() with stage A's build (the third command) failing, and its `dbt retry`s answered from `retry_codes`."""
-    recorder = _Recorder({3: 1})
+    """_main() with stage A's build (the fourth command) failing, and its `dbt retry`s answered from `retry_codes`."""
+    recorder = _Recorder({4: 1})
     original = _answer_retries
     monkeypatch.setattr(sys.modules[__name__], "_answer_retries", lambda each: original(each, retry_codes))
     return _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), extra=extra, recorder=recorder)
@@ -367,7 +408,7 @@ def test_a_failed_dbt_build_is_retried_at_one_thread_and_the_build_carries_on_on
 
     assert code == 0
     assert recorder.retries == [("dbt", "retry", "--profiles-dir", ".", "--threads", "1")] * 2
-    assert [argv[:2] for argv, _, _ in recorder.calls][2] == ("dbt", "build")
+    assert [argv[:2] for argv, _, _ in recorder.calls][3] == ("dbt", "build")
     assert any(argv[2:3] == ("save",) for argv, _, _ in recorder.calls), "the build went on to the writers and the save"
     out = capsys.readouterr().out
     assert "dbt retry 1/3" in out and "dbt retry 2/3" in out and "passed on retry 2" in out
@@ -378,11 +419,11 @@ def test_a_dbt_build_still_failing_after_three_retries_stops_the_build(monkeypat
 
     assert code == 1
     assert len(recorder.retries) == build_marts.DBT_RETRIES == 3
-    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed"), ("dbt", "build")]
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ELEMENTARY, ("dbt", "seed"), ("dbt", "build")]
 
 
 def test_a_failed_python_step_or_seed_is_never_retried(monkeypatch, tmp_path):
-    for codes in ({1: 1}, {2: 1}):
+    for codes in ({1: 1}, {2: 1}, {3: 1}):
         recorder = _Recorder(codes)
         code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
         assert code != 0 and recorder.retries == [], codes
@@ -392,13 +433,13 @@ def test_the_hourly_lane_retries_a_failed_build_three_times_with_the_builds_indi
     """The maintainer, 2026-10-07: "The hourly lane should get the same retry logic", and then, of a deadline inside
     publish-conditions.yml's 6 minutes, "do up to 3 retries. period". Without --state the hourly build takes its
     lane's parents with `--indirect-selection cautious`, and a retry that dropped it would test them all eagerly."""
-    recorder = _Recorder({3: 1})
+    recorder = _Recorder({4: 1})
     # So the build reaches stage A: _manifest() holds no step_<name> exposure for lane_problems() to read.
     monkeypatch.setattr(build_marts, "lane_problems", lambda manifest, steps, lane: [])
     code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), extra=("--lane", "hourly"), recorder=recorder)
 
     assert code == 1
-    build = recorder.calls[2][0]
+    build = recorder.calls[3][0]
     assert build[:2] == ("dbt", "build") and build[-2:] == ("--indirect-selection", "cautious")
     retry = ("dbt", "retry", "--profiles-dir", ".", "--threads", "1", "--indirect-selection", "cautious")
     assert recorder.retries == [retry] * build_marts.DBT_RETRIES
@@ -470,7 +511,7 @@ def test_main_refuses_after_the_seeds_when_a_derived_source_has_no_step(monkeypa
     code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES, "unwritten"))
 
     assert code == 1
-    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed")]
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ELEMENTARY, ("dbt", "seed")]
     assert "source derived.unwritten is declared and no entry of build_marts.STEPS writes it" in capsys.readouterr().out
 
 
@@ -612,6 +653,7 @@ def test_the_hourly_lane_with_nothing_to_defer_to_builds_its_nodes_and_their_par
     runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly")
 
     assert argvs(runs) == [
+        ELEMENTARY_RUN,
         (("dbt", "seed", "--profiles-dir", "."), DBT_DIR),
         (
             (
@@ -626,6 +668,7 @@ def test_the_hourly_lane_with_nothing_to_defer_to_builds_its_nodes_and_their_par
                 "+config.meta.cadence:daily",
                 "--exclude",
                 "package:dbt_project_evaluator",
+                "package:elementary",
                 "path:models/publish",
                 "source:derived.dem_samples+",
                 "source:derived.formed_routes+",
@@ -657,21 +700,21 @@ def test_the_hourly_lane_with_nothing_to_defer_to_builds_its_nodes_and_their_par
 def test_the_hourly_lane_defers_every_build_to_the_state_it_is_given_and_takes_no_parents():
     runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=Path("/m/target"))
 
-    for run in runs[1:]:
+    for run in runs[2:]:
         if run.argv[0] == "python":
             assert "--defer" not in run.argv, "a Python step reads the warehouse; it has nothing to defer"
             continue
         assert run.argv[-3:] == ("--defer", "--state", "/m/target"), run.argv
         assert not set(build_marts.LANE_PARENTS) & set(run.argv), run.argv
         assert "--indirect-selection" not in run.argv
-    assert "--defer" not in runs[0].argv, "dbt seed loads files; it has nothing to defer"
+    assert "--defer" not in runs[0].argv + runs[1].argv, "Elementary's tables and dbt seed have nothing to defer to"
 
 
 def test_an_hourly_step_runs_in_the_hourly_lane_and_no_monthly_step_does():
     runs = plan([*PAIR, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly")
 
     assert [run.label for run in runs if run.argv[0] == "python"] == ["step_weather_squares"]
-    stage_a, unblocked = runs[1].argv, runs[3].argv
+    stage_a, unblocked = runs[2].argv, runs[4].argv
     assert "source:derived+" in stage_a, "stage A leaves every derived table's descendants for after its step"
     assert unblocked[unblocked.index("-s") :] == (
         "-s",
@@ -862,7 +905,7 @@ def test_main_refuses_after_the_seeds_when_the_monthly_lane_would_leave_a_steps_
     code, recorder = _main(monkeypatch, tmp_path, manifest, extra=("--lane", "monthly"))
 
     assert code == 1
-    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed")]
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ELEMENTARY, ("dbt", "seed")]
     assert f"{DEM_SAMPLING.name} reads model.ourhike.closures" in capsys.readouterr().out
 
 
@@ -928,13 +971,13 @@ def test_a_step_that_says_it_reads_no_model_and_whose_exposure_lists_one_is_refu
 # --- The models that build alone (build_marts.py's docstring, "A MODEL TAGGED `builds_alone`") ---
 
 ALONE, BELOW = "tag:builds_alone", "tag:builds_alone+"
-STAGE_A_EXCLUDES = ("package:dbt_project_evaluator", "path:models/publish", "source:derived+")
+STAGE_A_EXCLUDES = ("package:dbt_project_evaluator", "package:elementary", "path:models/publish", "source:derived+")
 
 
 def test_stage_a_has_no_dash_s_so_its_passes_select_the_tag_itself_the_tagged_ones_on_one_thread():
     runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, threads=4)
 
-    assert [(run.label, run.argv) for run in runs[1:4]] == [
+    assert [(run.label, run.argv) for run in runs[2:5]] == [
         (
             "stage A: everything no Python step reads back: all but the models that build alone and what they feed",
             ("dbt", "build", "--profiles-dir", ".", "--threads", "4", "--exclude", *STAGE_A_EXCLUDES, BELOW),
@@ -978,9 +1021,12 @@ def test_the_hourly_lane_splits_no_build_because_its_six_minute_step_has_no_room
     runs = plan([*PAIR, SQUARES], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=state)
 
     assert not [run.argv for run in runs if any(build_marts.BUILDS_ALONE in argument for argument in run.argv)]
-    assert [run.argv[:2] for run in runs] == [("dbt", "seed"), ("dbt", "build"), ("python", "step_weather_squares.py")] + [
-        ("dbt", "build")
-    ] * 2
+    assert [run.argv[:2] for run in runs] == [
+        ("dbt", "run"),
+        ("dbt", "seed"),
+        ("dbt", "build"),
+        ("python", "step_weather_squares.py"),
+    ] + [("dbt", "build")] * 2
 
 
 @pytest.mark.parametrize("lane", [None, "monthly", "hourly"])
@@ -1039,6 +1085,7 @@ def test_given_the_manifest_a_build_with_no_tagged_model_in_its_selection_is_not
     whole = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
 
     assert [run.label for run in runs] == [
+        build_marts.ELEMENTARY_TABLES,
         build_marts.SEED,
         "stage A: everything no Python step reads back",
         "step_dem_sampling",
@@ -1047,7 +1094,7 @@ def test_given_the_manifest_a_build_with_no_tagged_model_in_its_selection_is_not
         "what derived.dem_samples unblocks: what the models that build alone feed",
         "the pub_ writers",
     ]
-    assert runs[1] == whole[1]
+    assert runs[2] == whole[2]
 
 
 def test_given_the_manifest_a_pass_that_selects_nothing_is_left_out():
@@ -1154,7 +1201,8 @@ def test_alone_problems_refuses_a_tagged_model_an_hourly_source_reaches_since_th
 
     assert build_marts.alone_problems(hourly) == [
         "int_closures__unioned builds alone (builds_alone), and an hourly or daily source reaches it: the hourly lane "
-        "never splits its builds (6 minutes leave no room), so it would build beside other models there"
+        "never splits its builds (each split is one more dbt invocation inside its step cap), so it would build "
+        "beside other models there"
     ]
 
 
@@ -1167,7 +1215,7 @@ def test_main_refuses_after_the_seeds_when_the_split_would_build_a_tagged_model_
     code, recorder = _main(monkeypatch, tmp_path, bad)
 
     assert code == 1
-    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ("dbt", "seed")]
+    assert [argv[:2] for argv, _, _ in recorder.calls] == [RESTORE, ELEMENTARY, ("dbt", "seed")]
     assert "heavier builds alone (builds_alone) and reads below" in capsys.readouterr().out
 
 
@@ -1190,7 +1238,7 @@ def test_plan_with_a_history_store_restores_before_the_seeds_and_saves_after_the
 
     store = ("--url", "s3://bucket/history/monthly", "--warehouse", "/w/warehouse.duckdb")
     assert runs[0].argv == ("/venv/extract/bin/python", "row_history.py", "restore", *store)
-    assert runs[1].argv[:2] == ("dbt", "seed")
+    assert (runs[1].argv, runs[1].cwd) == ELEMENTARY_RUN and runs[2].argv[:2] == ("dbt", "seed")
     assert runs[-1].argv == ("/venv/extract/bin/python", "row_history.py", "save", *store)
     assert runs[-2].argv[-2:] == ("-s", "path:models/publish"), "the save waits for the writers"
 
@@ -1286,7 +1334,7 @@ def test_a_degraded_build_runs_every_dbt_command_without_snapshots_or_history_an
 def test_a_command_that_fails_with_the_degraded_exit_code_is_answered_as_a_plain_failure(monkeypatch, tmp_path):
     """publish-conditions.yml publishes on DEGRADED_EXIT, so only a build that did degrade may answer with it."""
     for extra in ((), ("--history-on-failure", "degrade")):
-        code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={3: build_marts.DEGRADED_EXIT}, extra=extra)
+        code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={4: build_marts.DEGRADED_EXIT}, extra=extra)
 
         assert code == 1
 

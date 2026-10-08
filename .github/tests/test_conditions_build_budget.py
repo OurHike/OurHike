@@ -45,7 +45,7 @@ def test_the_build_steps_cap_is_half_again_above_the_slowest_measured_build():
 
 
 def test_a_build_that_runs_to_its_cap_still_ends_inside_the_jobs_cap():
-    """Otherwise a build that finished just under its own cap would meet the job's 10 minutes before the publish."""
+    """Otherwise a build that finished just under its own cap would meet the job's own cap before the publish."""
     job_cap = _job()["timeout-minutes"] * 60
     assert _build_step()["timeout-minutes"] * 60 + SLOWEST_REST_OF_JOB_SECONDS <= job_cap
 

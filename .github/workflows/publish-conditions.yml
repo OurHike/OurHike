@@ -298,7 +298,12 @@ jobs:
   publish:
     name: Publish (${{ matrix.data_environment }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 15 since decision 103 (pipeline/ELT.md): the dbt build step's own cap
+    # rose from 6 to 10 minutes, and .github/tests/test_conditions_build_budget.py
+    # holds that cap, the freshness step's and the slowest rest of the job
+    # inside this one. client/src/lib/noticeSelection.ts's SAME_BUILD_MS is
+    # this number by its own reasoning, and moved with it.
+    timeout-minutes: 15
     # One run per data environment, because this is the source where sharing
     # hurts most: closures and reports are baked from a *database*, so a single
     # bake would put whichever database it read in front of both audiences at
@@ -539,7 +544,7 @@ jobs:
 
       # Separate venvs for the extract and dbt, as CI's dbt job keeps them.
       # Timed into the summary: whether the installs fit beside the bake in
-      # this job's ten minutes is open in pipeline/ELT.md ("The hourly
+      # this job's cap is open in pipeline/ELT.md ("The hourly
       # lanes": "one timed run settles it").
       - name: Install the extract's and dbt's own pins (dbt path)
         if: env.PHONE_FILES == 'dbt'
@@ -691,7 +696,8 @@ jobs:
       # roughly five minutes it needs under a minute of.
       #
       # THE FOUR CAPS HAVE TO FIT THE JOB, which is what sizes the other three
-      # rather than each step's own worst case. The job budget is 10 minutes;
+      # rather than each step's own worst case. The job budget was 10 minutes
+      # when they were sized (15 since decision 103's build cap);
       # run 381 measured 32 s of set-up, checkout, Python and install before
       # the first fetch and 6-8 s of exports, ledger and R2 upload after the
       # last one. So the four ceilings may total about 8 minutes, and they do:
@@ -700,10 +706,11 @@ jobs:
       # cost (NYNJTC 3-4 s, drought 0-1 s warm) that reaching a cap means
       # something is wrong.
       #
-      # If all four hit their ceilings the job would still die at 10 minutes.
-      # That is not a regression - it is today's behaviour - and it is the case
-      # no step timeout can fix. What these buy is the case that has happened:
-      # one slow upstream, bounded, with the publish still reached.
+      # If all four hit their ceilings, the old 10 minutes left the publish
+      # almost nothing, the case no step timeout can fix; the job's 15 since
+      # decision 103 leave it more (Reasoned from the sums above). What these
+      # buy is the case that has happened: one slow upstream, bounded, with
+      # the publish still reached.
       #
       # `@unvalidated` in one respect, stated rather than implied: nobody has
       # measured the DISTRIBUTION of this step, only these two runs and the
@@ -1047,7 +1054,7 @@ jobs:
       # (export_weather_alerts.py's docstring), placed on the squares.
       # Measured "alerts under 1 s" on the weather job's runners
       # (publish-weather.yml, 2026-09-25/29), so the one-minute cap is about
-      # sixty times the observed cost and fits this job's ten minutes.
+      # sixty times the observed cost and fits this job's cap.
       # `continue-on-error` so NWS not answering never holds back the
       # closures: export_weather_alerts.py then writes nothing, and publish.py
       # carries the last weather_alerts.json forward with its own fetched_at.
@@ -1148,8 +1155,8 @@ jobs:
         # 6, not 4: soak runs 506 and 512 each ran out of 4 minutes, one on its
         # load and one on a change check that waited 2 m 12 s for a host
         # refusing connections. The maintainer, 2026-10-04: "if this is going
-        # to be too hard to keep fast, let's expand now". The job's 10 minutes
-        # still hold: run 512 spent about 1 minute before this step and 40 s after.
+        # to be too hard to keep fast, let's expand now". The job's cap still
+        # holds: run 512 spent about 1 minute before this step and 40 s after.
         timeout-minutes: 6
         # EACH LEG IS HANDED ITS OWN DATABASE'S URL AND NO OTHER, as
         # CONDITIONS_DATABASE_URL, the one name the extract reads. Each secret
@@ -1308,7 +1315,8 @@ jobs:
       # is saved, so a notice this build lacks is never closed in the history
       # (build_marts.py's docstring).
       #
-      # SIX MINUTES, NOT FOUR (WF5 of the PR #1805 review, and ARCH-7's cap).
+      # SIX MINUTES, NOT FOUR, until decision 103 (WF5 of the PR #1805 review,
+      # and ARCH-7's cap).
       # Measured from the API's step times for the UA leg's seven green soak
       # runs 529 to 539 (2026-10-04/05): this step took 83 to 182 s, and the
       # rest of the job 132 to 179 s. Run 538's 182 s was 6.5 s restoring the
@@ -1316,15 +1324,27 @@ jobs:
       # squares and what they unblock, 45.8 s of writers and 14.6 s saving the
       # history. A step that hits its cap fails the job and skips "Publish to
       # R2", so every hourly file misses that hour, and 4 minutes left 58 s.
-      # Six is about twice the slowest build, and a build at its full cap
-      # plus run 536's 179 s outside it is 539 s, inside the job's 600.
+      # Six was about twice the slowest build, and a build at its full cap
+      # plus run 536's 179 s outside it was 539 s, inside the job's 600.
+      #
+      # TEN MINUTES SINCE ELEMENTARY (decision 103; the maintainer,
+      # 2026-10-08: "Boosting the budget to 10 mins should be fine, if you
+      # think we can keep it that low"). build_marts.py now builds
+      # Elementary's tables first and its end-of-run hook records each dbt
+      # command (decision 102). On the fixtures in a sandbox the same day,
+      # this lane's build took 128 s with Elementary and 68 s without (132 s
+      # and 74 s on a second machine), about 33 s of it Elementary's tables
+      # and 18 s the hook after stage A (Measured). On the soak's slowest green build, 203 s, that is about
+      # 263 s, which 6 minutes held but not with a retry of stage A beside it
+      # (Reasoned from those sums; this step's summary line on the first UA
+      # runs settles it). The job's cap rose to 15 to hold this one.
       # .github/tests/test_conditions_build_budget.py holds both sums; the
       # headroom it asks for is @unvalidated, and a few weeks of this step's
       # summary line would show how fast the build grows.
       - name: Build the closures and warnings marts and their writers (dbt path)
         id: build
         if: env.PHONE_FILES == 'dbt'
-        timeout-minutes: 6
+        timeout-minutes: 10
         env:
           ENVIRONMENT: ${{ matrix.data_environment }}
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
@@ -1560,7 +1580,7 @@ jobs:
       # three runs alike (Measured 2026-10-07 in a sandbox), most of it dbt
       # parsing the project. @unvalidated on a runner, whose step time
       # settles it. .github/tests/test_conditions_build_budget.py holds it
-      # inside the job's 10 minutes beside the build's cap, and
+      # inside the job's cap beside the build's, and
       # .github/tests/test_conditions_notice_freshness.py holds the rest.
       - name: Check the notice sources' freshness, red after 24 hours unread (dbt path)
         if: ${{ !cancelled() && env.PHONE_FILES == 'dbt' && steps.build.outcome == 'success' }}

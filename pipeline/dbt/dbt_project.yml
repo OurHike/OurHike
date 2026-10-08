@@ -39,6 +39,19 @@ models:
       # would otherwise write its file before the tests upstream of it fail.
       +materialized: phone_file
       +schema: publish
+  # Elementary's own tables (decision 102), in a schema of their own. Off
+  # unless OURHIKE_ELEMENTARY is `true`, which only build_marts.py sets, so
+  # the docs site, the evaluator and the pytest suites' builds never carry
+  # its 30 models (Reasoned: a disabled model is no node of the manifest).
+  # Off, both of Elementary's hooks return at once and every Elementary test
+  # passes without querying anything (measured 2026-10-08). On with its
+  # tables missing, a command records nothing and still passes, with the
+  # artifact upload below turned off: `dbt seed` and a build of the seeds
+  # and their tests against a warehouse without them (measured the same day).
+  # build_marts.py builds them first so that nothing goes unrecorded.
+  elementary:
+    +schema: elementary
+    +enabled: "{{ env_var('OURHIKE_ELEMENTARY', 'false') == 'true' }}"
 
 # The row-history snapshots, one per mart (macros/row_history.sql):
 # decision 57, which amends decision 52, puts them in the intermediate layer,
@@ -85,6 +98,18 @@ data_tests:
     +severity: "{{ env_var('DBT_PROJECT_EVALUATOR_SEVERITY', 'error') }}"
 
 vars:
+  # Elementary keeps up to 5 failing rows per test by default (0.26.0's
+  # get_config_var.sql); none here, because the hourly lane carries hikers'
+  # own reports and no row ever leaves the warehouse (decision 102).
+  test_sample_row_count: 0
+  # Elementary's end-of-run hook re-reads every node of the project into its
+  # artifact tables after each dbt command, by default. build_marts.py builds
+  # those tables first in every build, and their own post-hooks load them, so
+  # here the hook skips it: one `dbt seed` against the fixture warehouse spent
+  # 17.07 s in the hook with it and 0.22 s without (measured 2026-10-08), and
+  # a fixture build runs 15 dbt commands.
+  disable_dbt_artifacts_autoupload: true
+
   # Where the pub_ writers write, relative to pipeline/dbt/. A folder of its
   # own under data/processed/ while each family's Python writer still runs:
   # export_sources.py writes data/processed/stewards.json and registry.json,
@@ -599,3 +624,6 @@ vars:
 dispatch:
   - macro_namespace: dbt_utils
     search_order: ["ourhike", "dbt_utils"]
+  # Elementary's DuckDB path under dbt 2 (macros/elementary_overrides.sql).
+  - macro_namespace: elementary
+    search_order: ["ourhike", "elementary"]

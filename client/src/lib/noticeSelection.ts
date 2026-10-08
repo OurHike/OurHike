@@ -47,18 +47,19 @@ export interface Routing {
  * mart's row history is snapshotted on its own clock, and on soak run 536's
  * file (2026-10-05) the closures mart's rows of five sources read 22:01:55
  * and their warnings mart's rows 22:01:56, both from the build that first
- * loaded them (Measured: 1 s). Ten minutes is publish-conditions.yml's cap on
- * the whole job (`timeout-minutes: 10`), which one build's snapshots cannot
- * outlast, and the job shares the publish-data concurrency group, so two
- * builds never overlap (Reasoned).
+ * loaded them (Measured: 1 s). Fifteen minutes is publish-conditions.yml's cap
+ * on the whole job (`timeout-minutes: 15`, 10 until decision 103 raised the
+ * build step's own cap), which one build's snapshots cannot outlast, and the
+ * job shares the publish-data concurrency group, so two builds never overlap
+ * (Reasoned).
  *
  * @unvalidated as a number: it is the job's cap, not a measured spread. A
- * notice first seen in a build that began within ten minutes of its source's
- * first build is not counted - a miss, the direction a banner that must not
- * cry wolf errs in. What would settle it is the spread of `first_seen_at`
- * within each build's rows over a few weeks of hourly files.
+ * notice first seen in a build that began within fifteen minutes of its
+ * source's first build is not counted - a miss, the direction a banner that
+ * must not cry wolf errs in. What would settle it is the spread of
+ * `first_seen_at` within each build's rows over a few weeks of hourly files.
  */
-export const SAME_BUILD_MS = 10 * 60 * 1000
+export const SAME_BUILD_MS = 15 * 60 * 1000
 
 function seenTime(notice: TrailNotice): number | null {
   if (notice.first_seen_at === null || notice.first_seen_at === undefined) return null

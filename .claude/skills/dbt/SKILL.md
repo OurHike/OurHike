@@ -605,8 +605,9 @@ it").
   folder has files before trusting a run.
 
 The workaround is to clone each package at the tag `packages.yml` pins. The
-evaluator's tags carry a `v`; the other two do not (`git ls-remote --tags`,
-2026-10-01):
+evaluator's tags carry a `v`; the others do not (`git ls-remote --tags`,
+2026-10-01, and 2026-10-08 for Elementary, whose package lives in
+elementary-data/dbt-data-reliability):
 
 ```sh
 cd pipeline/dbt
@@ -614,10 +615,13 @@ rm -rf dbt_packages && mkdir dbt_packages
 git clone -q --depth 1 --branch 1.4.1  https://github.com/dbt-labs/dbt-utils             dbt_packages/dbt_utils
 git clone -q --depth 1 --branch 0.14.1 https://github.com/dbt-labs/dbt-codegen           dbt_packages/codegen
 git clone -q --depth 1 --branch v1.4.0 https://github.com/dbt-labs/dbt-project-evaluator dbt_packages/dbt_project_evaluator
+git clone -q --depth 1 --branch 0.26.0 https://github.com/elementary-data/dbt-data-reliability dbt_packages/elementary
 ```
 
 Then run `scripts/test.sh --no-dbt-deps`, which skips `dbt deps` (and so does
-not empty the clones) and says so in its last line. `dbt parse` over the
+not empty the clones) and says so in its last line. Without the flag its
+`dbt deps` empties them, and every later `dbt parse` then tries the download
+again and empties them too (measured 2026-10-08), so clone again after one. `dbt parse` over the
 clones finished in 645 ms on dbt-oss 2.0.5 and in under a second on 2.0.6
 (measured 2026-10-01). **On dbt-oss 2.0.5 a build failed with hub.getdbt.com
 unreachable although `dbt_packages/` was present**; on 2.0.6, with the

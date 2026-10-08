@@ -13,3 +13,14 @@
 [started]
 monthly = "2026-10-07, refresh-reference.yml run 37614075245 (monthly run 25), which saved 9 snapshot tables, 26,016,290 rows"
 conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 505), which saved 2 snapshot tables, 457 rows"
+
+# The same stores, by the same names, once Elementary's history (decision 102)
+# has been saved there: each names the run whose save first wrote its
+# elementary.json. Every store above was saved before decision 102, so each
+# holds a history.json and no elementary.json, and the first run with
+# Elementary there starts that history, with a warning, which is not a loss.
+# Once a store is listed here, a missing elementary.json is refused as lost
+# history (row_history.py, "THE COLD START"). Only a store listed under
+# [started] may be listed here. List one after its first run has saved, never
+# before.
+[elementary_started]

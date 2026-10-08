@@ -533,24 +533,46 @@ for (const variant of VARIANTS) {
             )
           }
         }
-        // What sticks out, so a failure names it: the outermost elements
-        // past the right edge that no scroll container holds. A failure seen
-        // only in phone-webkit (flow run 37799207718) said nothing but 564.
-        const wide: string[] = []
-        for (const el of document.body.querySelectorAll('*')) {
-          const r = el.getBoundingClientRect()
-          if (r.width < 1 || r.right <= vw + 0.5 || scrolls(el.parentElement ?? el))
-            continue
-          const parent = el.parentElement?.getBoundingClientRect()
-          if (parent && parent.right > vw + 0.5) continue
+        // What sticks out, so a failure names it. A failure seen only in
+        // phone-webkit (flow runs 37799207718 and 37801933011) measured the
+        // page 564px wide while no element's own box passed the edge, so
+        // this names three things: the root boxes' widths, the outermost
+        // elements past the edge, and any element whose content runs wider
+        // than its box (text set nowrap, a long word, a pseudo-element).
+        const name = (el: Element) => {
           const cls =
             typeof el.className === 'string' && el.className
               ? `.${el.className.trim().split(/\s+/).join('.')}`
               : ''
-          wide.push(
-            `${el.tagName.toLowerCase()}${cls} ${Math.round(r.left)}..${Math.round(r.right)}`,
+          return `${el.tagName.toLowerCase()}${cls}`
+        }
+        const root = document.documentElement.getBoundingClientRect()
+        const wide: string[] = [
+          `html ${Math.round(root.width)}, body ${Math.round(document.body.getBoundingClientRect().width)}`,
+        ]
+        for (const el of document.body.querySelectorAll('*')) {
+          const r = el.getBoundingClientRect()
+          if (r.right <= vw + 0.5 || scrolls(el.parentElement ?? el)) continue
+          const parent = el.parentElement
+          if (
+            parent &&
+            parent !== document.body &&
+            parent.getBoundingClientRect().right > vw + 0.5
           )
-          if (wide.length === 5) break
+            continue
+          wide.push(`${name(el)} ${Math.round(r.left)}..${Math.round(r.right)}`)
+          if (wide.length === 6) break
+        }
+        for (const el of document.body.querySelectorAll('*')) {
+          if (scrolls(el)) continue
+          const over = el.scrollWidth - el.clientWidth
+          if (over <= 1 || el.clientWidth === 0) continue
+          const r = el.getBoundingClientRect()
+          if (r.left + el.scrollWidth <= vw + 0.5) continue
+          wide.push(
+            `${name(el)} holds ${el.scrollWidth}px in ${el.clientWidth}px at ${Math.round(r.left)}`,
+          )
+          if (wide.length === 12) break
         }
         return { scroll: document.documentElement.scrollWidth, width: vw, crowded, wide }
       }, MIN_EDGE_PX)

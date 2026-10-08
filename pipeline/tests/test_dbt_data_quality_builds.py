@@ -8,10 +8,10 @@ build) chosen to reach one rule of the file, and a project graph in which two
 raw tables publish, three are held, one is OurHike's own registry, and one is
 a step's derived table. Then the two writers are built, with Elementary on,
 and each file is read field by field: what counts, what is named, the order of
-what needs a look, since when, the series and its window, the learning count,
-and that no row value, sample, coordinate, check message or held table's name
-reaches either. A second warehouse holds no result at all, and two more builds
-of the monthly writer widen its series by the one parameter that scopes it.
+what needs a look, since when, which series are charted, their window and
+their cap, the learning count, and that no row value, sample, coordinate,
+check message or held table's name reaches either. A second warehouse holds no
+result at all.
 
 Run by the dbt job, which sets OURHIKE_DBT, as the other *_builds.py files are;
 the pytest job, which has no dbt, skips.
@@ -23,6 +23,7 @@ import json
 import os
 import re
 import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -96,6 +97,8 @@ PUBLICATION = [
 NOTICE_READERS = [("club_notices", "raw_club__club_news")]
 
 MART = "model.ourhike.trail_lines.v1"
+# A second mart, whose table check warns on both of its metrics.
+CLOSURES = "model.ourhike.closures.v1"
 UNION = "model.ourhike.int_trail_lines__unioned"
 AFTER = "model.ourhike.int_trail_lines__after_the_mart"
 CHECKED = "model.ourhike.int_trail_lines__checked"
@@ -116,6 +119,7 @@ MODELS = {
         ["model.ourhike.stg_dec__hiking_trails", "model.ourhike.stg_registry__sources"],
     ),
     MART: ("models/marts/trail_lines/trail_lines.sql", [UNION]),
+    CLOSURES: ("models/marts/closures/closures.sql", ["model.ourhike.stg_nws__alerts"]),
     AFTER: ("models/intermediate/trail_lines/int_trail_lines__after_the_mart.sql", [MART]),
     "model.ourhike.pub_trails_geojson": ("models/publish/pub_trails_geojson.sql", [MART]),
 }
@@ -147,6 +151,7 @@ TESTS = {
     "volume_dec": ("volume_anomalies", DEC, None, "models/staging/dec/_dec__sources.yml"),
     "volume_secret": ("volume_anomalies", SECRET, None, "models/staging/secret/_secret__sources.yml"),
     "volume_mart": ("volume_anomalies", MART, None, YML),
+    "table_closures": ("table_anomalies", CLOSURES, None, "models/marts/closures/_closures__models.yml"),
     "freshness_nws": ("freshness_anomalies", NWS, None, "models/staging/nws/_nws__sources.yml"),
     "schema_dec": ("schema_changes", DEC, None, "models/staging/dec/_dec__sources.yml"),
     "schema_mystery": ("schema_changes", MYSTERY, None, "models/staging/mystery/_mystery__sources.yml"),
@@ -168,6 +173,10 @@ TESTS = {
 
 def _uid(name: str) -> str:
     return f"test.ourhike.{name}"
+
+
+def _hours_before(at: str, hours: int) -> str:
+    return (datetime.fromisoformat(at) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _table_of(parent: str | None) -> tuple[str | None, str | None]:
@@ -274,6 +283,14 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
                 "volume_secret", invocation=invocation, at=at, status="warn", test_type="anomaly_detection", sub_type="row_count"
             )
         )
+        # The closures mart's one table check, two metrics, passing; build 2's run scored its bucket on each.
+        for metric, value, low, high in (("row_count", 55.0, 50.0, 60.0), ("freshness", 3600.0, 0.0, 86400.0)):
+            passed = _result(
+                "table_closures", invocation=invocation, at=at, status="pass", test_type="anomaly_detection", sub_type=metric
+            )
+            results.append(passed)
+            if invocation == "b2-checks":
+                rows.append(_anomaly_row(passed["id"], B2, value, low, high, False, metric=metric))
 
     # This build: stage A, a retry of one of its tests, and the checks' pass.
     a, retry, checks = "b3-stage-a", "b3-retry", "b3-checks"
@@ -308,9 +325,16 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
     secret = _result(
         "volume_secret", invocation=checks, at=B3, status="warn", test_type="anomaly_detection", sub_type="row_count", failures=1
     )
-    # The mart's row count, inside its band: in no needs_a_look entry, so charted only by a wider series scope.
+    # The trail_lines mart's row count, inside its band: in no needs_a_look entry, charted as every mart's is.
     mart_volume = _result(
         "volume_mart", invocation=checks, at=B3, status="pass", test_type="anomaly_detection", sub_type="row_count"
+    )
+    # The closures mart's table check warns on both its metrics: one test, two series.
+    closures_rows, closures_fresh = (
+        _result(
+            "table_closures", invocation=checks, at=B3, status="warn", test_type="anomaly_detection", sub_type=metric, failures=1
+        )
+        for metric in ("row_count", "freshness")
     )
     null_count = _result(
         "columns_mart",
@@ -339,6 +363,8 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         volume,
         secret,
         mart_volume,
+        closures_rows,
+        closures_fresh,
         null_count,
         smallest,
         _result(
@@ -388,7 +414,9 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         _anomaly_row(volume["id"], B2, 5262.0, 5100.0, 5400.0, False),
         _anomaly_row(volume["id"], B3, 4118.0, 5231.3, 5292.7, True),
         _anomaly_row(secret["id"], B3, 12.0, 100.0, 120.0, True),
-        _anomaly_row(mart_volume["id"], B3, 818.0, 800.0, 830.0, False),
+        _anomaly_row(mart_volume["id"], B3, 1000.0, 990.0, 1010.0, False),
+        _anomaly_row(closures_rows["id"], B3, 40.0, 50.0, 60.0, True),
+        _anomaly_row(closures_fresh["id"], B3, 90000.0, 0.0, 86400.0, True, metric="freshness"),
         _anomaly_row(null_count["id"], B3, 7.0, 0.0, 2.5, True, metric="null_count", column="name"),
         _anomaly_row(smallest["id"], B3, 0.1234, 10.0, 20.0, True, metric="min", column="distance_ft"),
         _anomaly_row(
@@ -396,19 +424,25 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         ),
     ]
     dec_table, secret_table = "WAREHOUSE.RAW.RAW_NYSDEC__DEC_HIKING_TRAILS", "WAREHOUSE.RAW.RAW_SECRET__SECRET_LAYER"
-    mart_table = "WAREHOUSE.MARTS.TRAIL_LINES"
+    mart_table, closures_table = "WAREHOUSE.MARTS.TRAIL_LINES", "WAREHOUSE.MARTS.CLOSURES"
+    # The trail_lines mart measured every hour for 200 hours to this build's bucket, all inside its check's 14 days:
+    # more points than a series keeps.
+    metrics += [(mart_table, _hours_before(B3, k), 1000.0 + k, _hours_before(B3, k), "row_count") for k in range(200)]
     metrics += [
-        (mart_table, B1, 812.0, B1),
-        (mart_table, B2, 815.0, B2),
-        (mart_table, B3, 818.0, B3),
+        (closures_table, B1, 52.0, B1, "row_count"),
+        (closures_table, B2, 55.0, B2, "row_count"),
+        (closures_table, B3, 40.0, B3, "row_count"),
+        (closures_table, B1, 3000.0, B1, "freshness"),
+        (closures_table, B2, 3600.0, B2, "freshness"),
+        (closures_table, B3, 90000.0, B3, "freshness"),
         # Outside the check's 14 days: left out of its series.
-        (dec_table, "2026-09-01 07:05:00", 5100.0, "2026-09-01 07:05:00"),
-        (dec_table, B1, 5240.0, B1),
-        (dec_table, B2, 5262.0, B2),
+        (dec_table, "2026-09-01 07:05:00", 5100.0, "2026-09-01 07:05:00", "row_count"),
+        (dec_table, B1, 5240.0, B1, "row_count"),
+        (dec_table, B2, 5262.0, B2, "row_count"),
         # Elementary rewrites a recent bucket: the later row wins.
-        (dec_table, B3, 4000.0, "2026-10-08 07:04:00"),
-        (dec_table, B3, 4118.0, B3),
-        (secret_table, B3, 12.0, B3),
+        (dec_table, B3, 4000.0, "2026-10-08 07:04:00", "row_count"),
+        (dec_table, B3, 4118.0, B3, "row_count"),
+        (secret_table, B3, 12.0, B3, "row_count"),
     ]
     return results, rows, metrics
 
@@ -449,11 +483,11 @@ def _warehouse(path: Path, *, empty: bool = False) -> None:
                 metric_name varchar, metric_value float, source_value varchar, bucket_start timestamp,
                 bucket_end timestamp, updated_at timestamp, dimension varchar, dimension_value varchar)"""
         )
-        for number, (table, bucket, value, updated) in enumerate(metrics):
+        for number, (table, bucket, value, updated, metric) in enumerate(metrics):
             con.execute(
-                "insert into elementary.data_monitoring_metrics values (?, ?, null, 'row_count', ?, 'SECRET-SOURCE-VALUE', "
+                "insert into elementary.data_monitoring_metrics values (?, ?, null, ?, ?, 'SECRET-SOURCE-VALUE', "
                 "null, ?, ?, null, null)",
-                [str(number), table, value, bucket, updated],
+                [str(number), table, metric, value, bucket, updated],
             )
         for table in ("dbt_models", "dbt_snapshots"):
             con.execute(
@@ -488,9 +522,8 @@ def _warehouse(path: Path, *, empty: bool = False) -> None:
         con.executemany("insert into seeds.notice_readers values (?, ?)", NOTICE_READERS)
 
 
-def _build(root: Path, *, empty: bool = False, series: str | None = None) -> dict[str, dict]:
-    """Both writers, built by dbt over a warehouse of Elementary-shaped tables; their two files, read back. With
-    `series`, the monthly writer alone, its series scope set to that (macros/data_quality.sql, data_quality_series)."""
+def _build(root: Path, *, empty: bool = False) -> dict[str, dict]:
+    """Both writers, built by dbt over a warehouse of Elementary-shaped tables; their two files, read back."""
     warehouse, processed = root / "warehouse.duckdb", root / "processed"
     processed.mkdir(parents=True)
     _warehouse(warehouse, empty=empty)
@@ -504,10 +537,8 @@ def _build(root: Path, *, empty: bool = False, series: str | None = None) -> dic
         "TZ": "UTC",
     }
     paths = ("--target-path", str(root / "target"), "--log-path", str(root / "logs"))
-    writers = ("pub_data_quality",) if series else ("pub_data_quality", "pub_conditions_data_quality")
-    scope = ("--vars", json.dumps({"data_quality_series": series})) if series else ()
     completed = subprocess.run(
-        [DBT, "build", "-s", *writers, "--profiles-dir", ".", *paths, *scope],
+        [DBT, "build", "-s", "pub_data_quality", "pub_conditions_data_quality", "--profiles-dir", ".", *paths],
         cwd=DBT_DIR,
         env=env,
         capture_output=True,
@@ -515,8 +546,6 @@ def _build(root: Path, *, empty: bool = False, series: str | None = None) -> dic
         check=False,
     )
     assert completed.returncode == 0, completed.stdout[-4000:] + completed.stderr[-2000:]
-    if series:
-        return {"monthly": json.loads((processed / "data_quality.json").read_text(encoding="utf-8"))}
     return {
         "monthly": json.loads((processed / "data_quality.json").read_text(encoding="utf-8")),
         "hourly": json.loads((processed / "conditions_data_quality.json").read_text(encoding="utf-8")),
@@ -533,11 +562,6 @@ def files(tmp_path_factory) -> dict[str, dict]:
 @pytest.fixture(scope="module")
 def empty_files(tmp_path_factory) -> dict[str, dict]:
     return _build(tmp_path_factory.mktemp("data_quality_empty"), empty=True)
-
-
-@pytest.fixture(scope="module", params=["mart_row_counts", "published_row_counts"])
-def scoped_files(request, tmp_path_factory) -> tuple[str, dict[str, dict]]:
-    return request.param, _build(tmp_path_factory.mktemp(f"data_quality_{request.param}"), series=request.param)
 
 
 def _counts(checks: int, passed: int, warned: int, failed: int, errored: int) -> dict:
@@ -566,17 +590,18 @@ def test_each_lanes_file_names_its_format_lane_and_when_it_was_built(files):
 
 
 def test_this_builds_counted_checks_by_kind_a_held_source_neither_named_nor_counted(files):
-    """21 checks count. Left out: every check a held source reaches (secret_layer's raw table, its staging, the
+    """23 checks count. Left out: every check a held source reaches (secret_layer's raw table, its staging, the
     union of it with dec's, the snapshot of that union, a singular test reading it), the mystery table the registry
     has no row for, the club whose notice_readers row names a held key though its own name publishes, a step's
     derived table that shares a registry key's name, a test Elementary's dbt_tests does not hold, and a skipped test.
-    The retried test counts once, as its retry passed. Earlier builds' results are history, not this build's."""
+    The retried test counts once, as its retry passed. Earlier builds' results are history, not this build's. The
+    closures mart's one table_anomalies test is two checks, its freshness and its row count."""
     document = files["monthly"]
 
-    assert document["totals"] == _counts(21, 11, 8, 1, 1)
+    assert document["totals"] == _counts(23, 11, 10, 1, 1)
     assert document["kinds"] == [
-        {"kind": "freshness", **_counts(1, 1, 0, 0, 0)},
-        {"kind": "volume", **_counts(2, 1, 1, 0, 0)},
+        {"kind": "freshness", **_counts(2, 1, 1, 0, 0)},
+        {"kind": "volume", **_counts(3, 1, 2, 0, 0)},
         {"kind": "schema", **_counts(2, 1, 1, 0, 0)},
         {"kind": "dbt_tests", **_counts(12, 7, 3, 1, 1)},
         {"kind": "anomalies", **_counts(4, 1, 3, 0, 0)},
@@ -609,6 +634,9 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
         # An error measured nothing.
         entry("dbt_tests", "int_trail_lines__after_the_mart", "id", "error", None, None, None, now, None, "relationships"),
         entry("dbt_tests", "trail_lines", "status", "fail", 2, None, None, now, None, "accepted_values"),
+        # Freshness in Elementary's seconds, a whole number.
+        entry("freshness", "closures", None, "warn", 90000, 0.0, 86400.0, now, "freshness", "table_anomalies"),
+        entry("volume", "closures", None, "warn", 40, 50.0, 60.0, now, "row_count", "table_anomalies"),
         # Warned in build 2 too, after passing in build 1: since build 2. A row count is a whole number.
         entry("volume", dec, None, "warn", 4118, 5231.3, 5292.7, last_build, "row_count", "volume_anomalies"),
         # One entry per changed column, the table's capitals lowered.
@@ -627,41 +655,62 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
     ]
 
 
-#: The dec table's row counts within its check's 14 days, and the mart's: each band where that check scored a bucket.
+#: Each series as the file writes it, each band where that series' check scored the bucket and null where no kept
+#: run did. The closures mart's two come from one test, each from its own metric's scored rows.
+CLOSURES_SERIES = [
+    {
+        "table": "closures",
+        "metric": "freshness",
+        "in_needs_a_look": True,
+        "points": [
+            {"at": "2026-10-06T07:05:00Z", "value": 3000, "expected_min": None, "expected_max": None},
+            {"at": "2026-10-07T07:05:00Z", "value": 3600, "expected_min": 0.0, "expected_max": 86400.0},
+            {"at": "2026-10-08T07:05:00Z", "value": 90000, "expected_min": 0.0, "expected_max": 86400.0},
+        ],
+    },
+    {
+        "table": "closures",
+        "metric": "row_count",
+        "in_needs_a_look": True,
+        "points": [
+            {"at": "2026-10-06T07:05:00Z", "value": 52, "expected_min": None, "expected_max": None},
+            {"at": "2026-10-07T07:05:00Z", "value": 55, "expected_min": 50.0, "expected_max": 60.0},
+            {"at": "2026-10-08T07:05:00Z", "value": 40, "expected_min": 50.0, "expected_max": 60.0},
+        ],
+    },
+]
 DEC_SERIES = {
     "table": "raw_nysdec__dec_hiking_trails",
     "metric": "row_count",
+    "in_needs_a_look": True,
     "points": [
         {"at": "2026-10-06T07:05:00Z", "value": 5240, "expected_min": None, "expected_max": None},
         {"at": "2026-10-07T07:05:00Z", "value": 5262, "expected_min": 5100.0, "expected_max": 5400.0},
         {"at": "2026-10-08T07:05:00Z", "value": 4118, "expected_min": 5231.3, "expected_max": 5292.7},
     ],
 }
-MART_SERIES = {
-    "table": "trail_lines",
-    "metric": "row_count",
-    "points": [
-        {"at": "2026-10-06T07:05:00Z", "value": 812, "expected_min": None, "expected_max": None},
-        {"at": "2026-10-07T07:05:00Z", "value": 815, "expected_min": None, "expected_max": None},
-        {"at": "2026-10-08T07:05:00Z", "value": 818, "expected_min": 800.0, "expected_max": 830.0},
-    ],
-}
 
 
-def test_the_series_is_the_volume_checks_metric_over_its_window_with_the_band_where_one_was_scored(files):
-    """The default scope, the contract's: the metric behind each volume and freshness entry of needs_a_look. The point
-    outside the check's 14 days is left out, the rewritten bucket's later row wins, a build whose check scored no
-    bucket has no band, the held source's metric has no series at all, and the mart's, whose check passed, none."""
-    assert files["monthly"]["series"] == [DEC_SERIES]
+def _trail_lines_series() -> dict:
+    """The trail_lines mart's newest 168 hourly points of the 200 it has, oldest first, scored at this build's alone."""
+    points = []
+    for hours in range(167, -1, -1):
+        at = (datetime.fromisoformat(B3) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        low, high = (990.0, 1010.0) if hours == 0 else (None, None)
+        points.append({"at": at, "value": 1000 + hours, "expected_min": low, "expected_max": high})
+    return {"table": "trail_lines", "metric": "row_count", "in_needs_a_look": False, "points": points}
 
 
-def test_one_parameter_widens_the_series_to_every_marts_or_every_published_tables_row_count(scoped_files):
-    """data_quality_series, the one parameter (macros/data_quality.sql): every table under models/marts/ whose volume
-    check counted, or every table whose volume check counted. A held source's table is in neither."""
-    scope, built = scoped_files
-    expected = {"mart_row_counts": [MART_SERIES], "published_row_counts": [DEC_SERIES, MART_SERIES]}
-    assert built["monthly"]["series"] == expected[scope]
-    assert "raw_secret__secret_layer" not in json.dumps(built["monthly"])
+def test_the_series_are_every_marts_row_count_and_each_entrys_metric_the_newest_168_points_of_each(files):
+    """The scope the maintainer chose by poll (2026-10-08): every mart's row count this build measured, needing a
+    look or not, and the table's metric behind each needs_a_look entry, needs-a-look series first. The closures mart's
+    row count, named both ways, appears once. The point outside the dec check's 14 days is left out, the rewritten
+    bucket's later row wins, the held source's metric has no series, the column measures none, and the trail_lines
+    mart's 200 hourly points are cut to the newest 168."""
+    series = files["monthly"]["series"]
+
+    assert series == [*CLOSURES_SERIES, DEC_SERIES, _trail_lines_series()]
+    assert [len(entry["points"]) for entry in series] == [3, 3, 3, 168]
 
 
 def test_learning_counts_the_builds_whose_anomaly_checks_the_history_holds(files):
@@ -670,8 +719,11 @@ def test_learning_counts_the_builds_whose_anomaly_checks_the_history_holds(files
 
 def test_by_mart_counts_the_marts_own_models_intermediates_and_singular_tests(files):
     """trail_lines: its mart's tests and checks, the intermediate after the mart and the one reading the registry,
-    and its folder's two singular tests; its union, held, is not among them."""
-    assert files["monthly"]["by_mart"] == [{"mart": "trail_lines", **_counts(12, 5, 5, 1, 1)}]
+    and its folder's two singular tests; its union, held, is not among them. closures: its table check's two."""
+    assert files["monthly"]["by_mart"] == [
+        {"mart": "closures", **_counts(2, 0, 2, 0, 0)},
+        {"mart": "trail_lines", **_counts(12, 5, 5, 1, 1)},
+    ]
 
 
 def test_nothing_but_counts_and_names_leaves_the_warehouse(files):
@@ -695,6 +747,8 @@ def test_nothing_but_counts_and_names_leaves_the_warehouse(files):
         "int_trail_lines__checked",
         "stg_atc__challenges",
         "trail_lines",
+        "closures",
+        "table_anomalies",
         "id",
         "name",
         "status",

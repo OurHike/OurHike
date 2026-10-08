@@ -71,8 +71,9 @@ models:
         data_type: json
       - name: series
         description: >
-          The metric history the page's chart draws: by default behind each volume and freshness entry of
-          needs_a_look, as the dbt var data_quality_series chooses (macros/data_quality.sql).
+          What the page's chart draws: every mart's row-count history this build measured, and the metric
+          history behind each needs_a_look entry that has a table's metric, each flagged in_needs_a_look, the
+          newest 168 points of each (macros/data_quality.sql).
         data_type: json
       - name: by_mart
         description: The counted checks on each mart's own models, intermediates, snapshot and singular tests.
@@ -113,8 +114,9 @@ models:
         data_type: json
       - name: series
         description: >
-          The metric history the page's chart draws: by default behind each volume and freshness entry of
-          needs_a_look, as the dbt var data_quality_series chooses (macros/data_quality.sql).
+          What the page's chart draws: every mart's row-count history this build measured, and the metric
+          history behind each needs_a_look entry that has a table's metric, each flagged in_needs_a_look, the
+          newest 168 points of each (macros/data_quality.sql).
         data_type: json
       - name: by_mart
         description: The counted checks on each mart's own models, intermediates, snapshot and singular tests.

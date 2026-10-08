@@ -618,11 +618,9 @@ jobs:
       # with Elementary on over a warehouse of Elementary-shaped tables,
       # three builds of one lane's history, and each file read field by
       # field, a held source's checks neither named nor counted, and nothing
-      # but counts and names in either; then the monthly writer twice more,
-      # once per wider series scope (data_quality_series). The fixture build
-      # above writes both too, from what its own dbt tests recorded.
-      # Measured 2026-10-08 in a sandbox: 10 passed in 107 s, four dbt
-      # builds.
+      # but counts and names in either. The fixture build above writes both
+      # too, from what its own dbt tests recorded. Measured 2026-10-08 in a
+      # sandbox: 8 passed in 47 s, two dbt builds.
       - name: The data-quality files (tests/test_dbt_data_quality_builds.py)
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_data_quality_builds.py

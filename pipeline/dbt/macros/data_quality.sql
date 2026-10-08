@@ -69,11 +69,14 @@
     reads as passed. A skipped test ran nothing and is not counted.
 
     WHAT IT COSTS. Measured 2026-10-08 in a busy sandbox: the compiled SQL
-    took 1.9 to 2.7 s over 835,810 results, about the 831,600 that 504
+    took 1.2 to 1.3 s over 1,012,035 results, more than the 831,600 that 504
     hourly builds of 1,650 results each would leave in a 21-day history,
-    with ten series of 166 points; the fixture build's pass, both writers in
-    one dbt command, took 35.6 s, of which the two models ran side by side
-    for 6.7 s and the hooks for 1.3 s: the rest is dbt starting and parsing.
+    charting ten marts' row counts of 201 buckets each, cut to 168, every
+    point banded: a file of 150,679 bytes, about 90 bytes a point. The
+    fixture build's pass, both writers in one dbt command, took 35.6 s, of
+    which the two models ran side by side for 6.7 s and the hooks for 1.3 s:
+    the rest is dbt starting and parsing (a rerun of the pass over the same
+    warehouse with this series SQL took 29.2 s).
 
     ONE CHECK is one dbt test; one table's freshness or volume; one schema
     test (a table's schema, whatever number of columns changed); and one
@@ -137,24 +140,32 @@
       by the lane's history: this file's own built_at when it began in this
       build, which is how the page says "since this build"; else when that
       run's first result was detected.
-    - `series`: what the page's line chart can draw, one entry per table and
-      metric, each {table, metric, points}, its points the metric's history
-      within the check's training window (its `days_back`, Elementary's 14
-      days by default) from data_monitoring_metrics, each {at, value,
-      expected_min, expected_max}, the band where a check scored that point
-      and null where none did. Which tables is one parameter, the dbt var
-      `data_quality_series`, so a wider scope is a one-line change (its
-      default below, or a `vars:` line in dbt_project.yml):
-        needs_a_look          the metric behind each volume and freshness
-                              entry of needs_a_look (the default, the
-                              contract's);
-        mart_row_counts       the row count of every table under
-                              models/marts/ whose volume check counted;
-        published_row_counts  the row count of every table whose volume
-                              check counted, raw, staging and intermediate
-                              included: every one the rule above publishes.
-      The two wider scopes draw only what Elementary measured, so a table
-      with no volume check has no series.
+    - `series`: what the page's line chart can draw, as the maintainer chose
+      it by poll on 2026-10-08: the row count of every mart this build's
+      checks measured (a table under models/marts/ whose volume check
+      counted), whether or not it needs a look; and the table's own metric
+      (row_count, freshness or event_freshness) behind each needs_a_look
+      entry that has one. One series per table and metric, so one named both
+      ways appears once, each {table, metric, in_needs_a_look, points}:
+      `in_needs_a_look` is true when a needs_a_look entry names that table
+      and metric, which the page's menu groups by ("Needs a look", "Every
+      mart"). Its points are what data_monitoring_metrics holds for that
+      table and metric within the check's training window (its `days_back`,
+      Elementary's 14 days by default), the newest series_points of them,
+      each {at, value, expected_min, expected_max}, the band where a check
+      scored that bucket and null where none did. A column's measures are
+      not charted: a series names no column, so two columns' null counts
+      could not be told apart, and a column's min or max is row values. A
+      table Elementary does not measure has no series.
+      @unvalidated: series_points, 168, is a file-size choice, not a finding
+      about what a reader needs: 7 days of an hourly lane, against about
+      84 KB measured 2026-10-08 for a heavy invented hourly file while the
+      page was built, and about 90 bytes a banded point (WHAT IT COSTS, above).
+      What would settle it: the page's fetch and draw time for the largest
+      real hourly file on a slow phone connection, and how far back a reader
+      of the chart actually looks. A monthly series never reaches it
+      (Reasoned: one point per bucket within its days_back, 14 daily buckets
+      by default).
     - `by_mart`: the counted checks on each mart's own models, its
       intermediate folder, its snapshot and its folder of singular tests
       (models/marts/<mart>/, models/intermediate/<mart>/, snapshots/<mart>/,
@@ -204,17 +215,11 @@
         'row_count', 'freshness', 'event_freshness',
         'null_count', 'zero_count', 'missing_count', 'count_true', 'count_false'
     ] -%}
-    {#- Which tables `series` draws (the header, "series"): the one
-        parameter. Its guard is `exceptions`, which SQLFluff's jinja
-        templater does not define, because its var() gives back a stand-in
-        ('item') rather than the default. -#}
-    {%- set series_scopes = ['needs_a_look', 'mart_row_counts', 'published_row_counts'] -%}
-    {%- set series_scope = var('data_quality_series', 'needs_a_look') if exceptions is defined else 'needs_a_look' -%}
-    {%- if series_scope not in series_scopes -%}
-        {{ exceptions.raise_compiler_error(
-            "data_quality_series is one of " ~ series_scopes | join(", ") ~ ", not '" ~ series_scope ~ "'"
-        ) }}
-    {%- endif -%}
+    {#- The table-level metrics a series can chart, and the newest points of
+        each series kept (the header, "series"; the cap is @unvalidated
+        there). -#}
+    {%- set table_metrics = ['row_count', 'freshness', 'event_freshness'] -%}
+    {%- set series_points = 168 -%}
 with recursive
 
 -- Every result the lane's history holds, skipped runs left out, each with
@@ -637,39 +642,52 @@ sinces as (
     group by issue_runs.result_id
 ),
 
--- The tables and metrics `series` draws, as series_scope names them (the
--- header, "series"), one row each; the first of its checks by id stands for
--- the table where the band is read. Each table's history is deduplicated by
--- bucket below (Elementary rewrites its recent buckets) and kept within the
--- check's window.
+-- The series `series` draws (the header, "series"): the table-level metric
+-- behind each needs_a_look entry that has one, and the row count of each
+-- mart this build's checks measured.
+named_series as (
+    select
+        full_table_name,
+        table_name,
+        metric,
+        test_unique_id,
+        days_back,
+        true as in_needs_a_look
+    from issues
+    where metric in ('{{ table_metrics | join("', '") }}')
+    union all
+    select
+        full_table_name,
+        table_name,
+        metric,
+        test_unique_id,
+        days_back,
+        false as in_needs_a_look
+    from counted
+    where kind = 'volume' and metric = 'row_count' and on_a_mart
+),
+
+-- One row per table and metric, however many ways it was named. Its band is
+-- read from one check: a needs_a_look entry's, else the first by id.
 charted as (
     select
         full_table_name,
-        any_value(table_name) as table_name,
         metric,
-        min(test_unique_id) as test_unique_id,
+        any_value(table_name) as table_name,
+        bool_or(in_needs_a_look) as in_needs_a_look,
+        coalesce(min(test_unique_id) filter (where in_needs_a_look), min(test_unique_id)) as band_test,
         max(coalesce(days_back, 14)) as days_back
-    {%- if series_scope == 'needs_a_look' %}
-    from issues
-    where
-        kind in ('freshness', 'volume')
-        and metric in ('row_count', 'freshness', 'event_freshness')
-    {%- else %}
-    from counted
-    where
-        kind = 'volume'
-        and metric = 'row_count'
-        {%- if series_scope == 'mart_row_counts' %}
-        and on_a_mart
-        {%- endif %}
-    {%- endif %}
-        and table_name is not null
+    from named_series
+    where table_name is not null
     group by full_table_name, metric
 ),
 
+-- Each series' history, one value per bucket: Elementary rewrites its recent
+-- buckets, and the latest write wins.
 metric_points as (
     select
-        charted.test_unique_id,
+        charted.full_table_name,
+        charted.metric,
         metrics.bucket_end,
         arg_max(metrics.metric_value, metrics.updated_at) as metric_value
     from charted
@@ -679,54 +697,84 @@ metric_points as (
             and lower(metrics.metric_name) = charted.metric
             and metrics.column_name is null
             and metrics.dimension is null
-    group by charted.test_unique_id, metrics.bucket_end
+    group by charted.full_table_name, charted.metric, metrics.bucket_end
 ),
 
 windows as (
     select
-        charted.test_unique_id,
-        max(metric_points.bucket_end) - to_days(any_value(charted.days_back)) as starts_after
-    from charted
-    inner join metric_points on charted.test_unique_id = metric_points.test_unique_id
-    group by charted.test_unique_id
+        full_table_name,
+        metric,
+        max(bucket_end) as last_bucket
+    from metric_points
+    group by full_table_name, metric
 ),
 
--- The band a run of the check gave each bucket it scored, its last run's.
+-- The points within the check's training window, numbered newest first, so
+-- that the newest series_points of them are kept.
+ranked_points as (
+    select
+        metric_points.full_table_name,
+        metric_points.metric,
+        metric_points.bucket_end,
+        metric_points.metric_value,
+        row_number() over (
+            partition by metric_points.full_table_name, metric_points.metric
+            order by metric_points.bucket_end desc
+        ) as newest
+    from metric_points
+    inner join charted
+        on
+            metric_points.full_table_name = charted.full_table_name
+            and metric_points.metric = charted.metric
+    inner join windows
+        on
+            metric_points.full_table_name = windows.full_table_name
+            and metric_points.metric = windows.metric
+    where metric_points.bucket_end > windows.last_bucket - to_days(charted.days_back)
+),
+
+-- The band a run of the series' check gave each bucket it scored, its last
+-- run's.
 bands as (
     select
-        results.test_unique_id,
+        charted.full_table_name,
+        charted.metric,
         scores.bucket_end,
         arg_max(scores.expected_min, scores.created_at) as expected_min,
         arg_max(scores.expected_max, scores.created_at) as expected_max
     from scores
     inner join results on scores.result_id = results.result_id
-    inner join charted on results.test_unique_id = charted.test_unique_id and scores.metric = charted.metric
+    inner join charted on results.test_unique_id = charted.band_test and scores.metric = charted.metric
     where not scores.by_dimension and scores.column_name is null
-    group by results.test_unique_id, scores.bucket_end
+    group by charted.full_table_name, charted.metric, scores.bucket_end
 ),
 
 series as (
     select
         charted.table_name,
         charted.metric,
+        charted.in_needs_a_look,
         list(
             {
-                'at': strftime(metric_points.bucket_end, '%Y-%m-%dT%H:%M:%SZ'),
-                'value': cast(round(metric_points.metric_value) as bigint),
+                'at': strftime(ranked_points.bucket_end, '%Y-%m-%dT%H:%M:%SZ'),
+                'value': cast(round(ranked_points.metric_value) as bigint),
                 'expected_min': round(bands.expected_min, 3),
                 'expected_max': round(bands.expected_max, 3)
             }
-            order by metric_points.bucket_end
+            order by ranked_points.bucket_end
         ) as points
     from charted
-    inner join metric_points on charted.test_unique_id = metric_points.test_unique_id
-    inner join windows on charted.test_unique_id = windows.test_unique_id
+    inner join ranked_points
+        on
+            charted.full_table_name = ranked_points.full_table_name
+            and charted.metric = ranked_points.metric
     left join bands
         on
-            charted.test_unique_id = bands.test_unique_id
-            and metric_points.bucket_end = bands.bucket_end
-    where metric_points.bucket_end > windows.starts_after
-    group by charted.test_unique_id, charted.table_name, charted.metric
+            ranked_points.full_table_name = bands.full_table_name
+            and ranked_points.metric = bands.metric
+            and ranked_points.bucket_end = bands.bucket_end
+    where ranked_points.newest <= {{ series_points }}
+    group by charted.full_table_name, charted.table_name, charted.metric, charted.in_needs_a_look
 ),
 
 marts_tally as (
@@ -823,8 +871,9 @@ select
                 to_json(list({
                     'table': table_name,
                     'metric': metric,
+                    'in_needs_a_look': in_needs_a_look,
                     'points': points
-                } order by table_name, metric)),
+                } order by in_needs_a_look desc, table_name, metric)),
                 cast('[]' as json)
             )
         from series

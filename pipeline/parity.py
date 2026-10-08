@@ -426,23 +426,21 @@ def _network_old(name: str) -> dict:
 #: a unit-test row where the two answer that way, so none outlives its reason.
 NETWORK_ID_REASONS = {
     "globalid_in_any_case": (
-        "an improvement (TL05): the SQL reads a layer's GlobalID whatever its case, then its OBJECTID, then "
-        "Socrata's row id, where resolve_feature_id() matches only 'GlobalID' and falls back to the feature's "
-        "server row id or to its place in the file"
+        "an improvement (TL05): the SQL reads a layer's GlobalID whatever its case, then its object id (OBJECTID or "
+        "FID), then Socrata's row id, where resolve_feature_id() matches only 'GlobalID' and falls back to the "
+        "feature's server row id or to its place in the file"
     ),
     "feature_id_not_landed": (
         "expected by TL05's ledger row until the extract lands it: the extract lands a feature's properties and "
         "geometry and not its GeoJSON id, so a layer whose only id is that one is numbered by its place in the file"
     ),
     "staging_key_for_a_line_with_no_id": (
-        "an improvement (TL05): a line whose layer gives no GlobalID, OBJECTID or Socrata row id, and whose staging "
-        "model keeps no raw-table order, is published under its staging key, as every club line is: decision 40's "
-        "key, unique in its layer (cotrex_trails' feature_id; nc_mst_trail's TRAILNAME and geometry). Today's "
+        "an improvement (TL05): a line whose layer gives no GlobalID, object id (OBJECTID or FID) or Socrata row "
+        "id, and whose staging model keeps no raw-table order, is published under its staging key, as every club "
+        "line is: decision 40's key, unique in its layer and the same for the same row next release. Today's "
         "exporter numbers such a line `generated-<n>` by its place in the file, an id that names another line once "
-        "the file's order moves. The SQL's fallback had been the line's rank in staging-key order, which named "
-        "another line than today's on all 97,222 of monthly run 30's such lines, though the lines were the same: "
-        "rebuilt from the live layers on 2026-10-08, today's 96,892 cotrex_trails and 328 nc_mst_trail lines pair "
-        "one for one with run 30's on every property but the id, and on geometry"
+        "the file's order moves. No line of monthly run 30 reaches this case: every ArcGIS network layer whose "
+        "metadata answered on 2026-10-08 names its object id OBJECTID or FID, or has a GLOBALID read first"
     ),
 }
 
@@ -464,6 +462,23 @@ NETWORK_COPY_REASON = (
     "differing only in Socrata's row id"
 )
 
+#: Why a line the old side numbers by its place carries its layer's object id in the dbt file. Not one of
+#: NETWORK_ID_REASONS either: on a feature that has its GeoJSON id the SQL and resolve_feature_id() answer alike
+#: (the unit-test row sql::an_object_id_named_fid_is_the_id), and what differs is the old side's input, so
+#: tests/test_dbt_trail_lines_network_parity.py holds it to a pair of files.
+AS_LANDED_ID_REASON = (
+    "expected, from the old side's input and not from either writer (TL05): today's fetcher writes each ArcGIS "
+    "feature's GeoJSON id, which ArcGIS sets to the layer's object id, and resolve_feature_id() publishes it where "
+    "the layer has no field named exactly 'GlobalID'; the SQL publishes the same object id from its landed column, "
+    "OBJECTID or FID. The file the old side reads has no GeoJSON id (the extract's as-landed copy drops it; "
+    "make_dbt_fixtures.py's files never had one), so there today's exporter numbers the line by its place in the "
+    "file. Explained only for a line equal in both files on every other property and on geometry, its old ids all "
+    "positional and its new ids all whole numbers. Read on 2026-10-08: of the 24 ArcGIS network layers whose "
+    "metadata answered, the object id field is OBJECTID on 20 and FID on 3 (cotrex_trails, nc_mst_trail, "
+    "nynjtc_long_path), and cotrex_trails, nc_mst_trail and both NYNJTC layers each gave two features a GeoJSON id "
+    "equal to it"
+)
+
 
 def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     """The `properties.id` differences that are only a line's id, each with its reason.
@@ -472,7 +487,9 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     carries differently is explained by the case its ids show. Two positional ids for one line are never explained:
     where the dbt writer publishes one, it numbers the layer in its raw table's order, the fetched file's
     (int_trail_lines__network_judged's `source_row`), as today's exporter does, so a line they number differently is
-    a defect. A layer whose staging model keeps no such order is published under its staging key (STAGING_KEY).
+    a defect. A layer whose staging model keeps no such order is published under its staging key (STAGING_KEY). A line
+    the old side numbers by place and the dbt writer by its object id, a whole number, is the old side's input
+    (AS_LANDED_ID_REASON).
     """
 
     def line(feature: dict) -> str:
@@ -491,6 +508,9 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     def staging_key(feature_id: str) -> bool:
         return STAGING_KEY.fullmatch(feature_id.partition(":")[2]) is not None
 
+    def object_id(feature_id: str) -> bool:
+        return feature_id.partition(":")[2].isdigit()
+
     old_ids, new_ids = ids(old), ids(new)
     reasons: dict[str, str] = {}
     for shared in old_ids.keys() & new_ids.keys():
@@ -504,6 +524,10 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
                 reasons[f"properties.id {feature_id}"] = NETWORK_COPY_REASON
             continue
         if all(positional(feature_id) for feature_id in was + now):
+            continue
+        if all(positional(feature_id) for feature_id in was) and all(object_id(feature_id) for feature_id in now):
+            for feature_id in set(was) | set(now):
+                reasons[f"properties.id {feature_id}"] = AS_LANDED_ID_REASON
             continue
         if all(positional(feature_id) for feature_id in was) and all(staging_key(feature_id) for feature_id in now):
             case = "staging_key_for_a_line_with_no_id"

@@ -17,28 +17,37 @@
 -- settle it: a real drive between 0.8 and 1.0.
 --
 -- `trail_line_id` is `{source_key}:{id}` (TL05, lib/feature_id.py): the
--- first non-null of GlobalID, OBJECTID and Socrata's `_socrata_id`, else
--- `generated-<n>` (`layer_position` below), else the row's staging key. The
--- Python reads `GlobalID` in exactly that case and then the GeoJSON
--- feature's `id`, which is not landed; dlt lowercases every column, so case
--- cannot be matched here. That an ArcGIS feature's `id` always equals its
--- OBJECTID is Reasoned from the REST API's GeoJSON output and @unvalidated:
--- one live fetch comparing the two on each registered ArcGIS layer settles
--- it.
+-- first non-null of GlobalID, OBJECTID, FID and Socrata's `_socrata_id`,
+-- else `generated-<n>` (`layer_position` below), else the row's staging
+-- key. The Python reads `GlobalID` in exactly that case and then the
+-- GeoJSON feature's `id`, which the extract lands only as the layer's
+-- object id column; dlt lowercases every column, so case cannot be matched
+-- here.
 --
--- THE STAGING KEY, WHERE THE LAYER GIVES NO ID AND ITS ROWS NO ORDER. The
--- Python numbers such a line by its place in the fetched file, and only a
--- stg model carrying `source_row` (the two NYNJTC layers) keeps that place.
--- Every other such layer is published under decision 40's staging key, as
--- every club line is (int_trail_lines__club_published): unique in its
--- layer, and the same id for the same row in the next release, where a
--- place names another line once anything above it moves. Its last fallback
--- had been the row's rank in staging-key order, an order today's exporter
--- does not number in: monthly run 30's parity found the two files holding
--- another line, or none, under 96,895 of cotrex_trails' `generated-<n>`
--- keys and 327 of nc_mst_trail's (refresh-reference.yml 37772454847; both
--- layers' object id is `FID`, which neither writer reads, read from their
--- metadata 2026-10-08).
+-- OBJECTID AND FID ARE BOTH THE OBJECT ID, the field ArcGIS copies into a
+-- feature's GeoJSON `id`, under the two names the registered layers use.
+-- Read from the 24 ArcGIS network layers' metadata on 2026-10-08 (the 25th,
+-- DEC's, refused the connection): the object id field is OBJECTID on 20,
+-- FID on 3 (cotrex_trails, nc_mst_trail, nynjtc_long_path) and OBJECTID_1
+-- on pasda_dcnr_trails, which carries a GLOBALID read first. Asked for two
+-- features each, cotrex_trails, nc_mst_trail and both NYNJTC layers
+-- answered a GeoJSON `id` equal to their object id field. So today's fetch
+-- and export publish `cotrex_trails:<FID>`, and so does this model; until
+-- FID was read here, those two layers' 97,220 lines on monthly run 30
+-- (refresh-reference.yml 37772454847) were numbered by their rank in
+-- staging-key order instead. That the two names cover every layer is
+-- @unvalidated past the registry of 2026-10-08: a layer registered later
+-- whose object id has a third name, and no GlobalID, falls to the staging
+-- key, which one metadata read of the new layer would catch.
+--
+-- THE STAGING KEY, THE LAST RESORT, where a row has none of the four ids
+-- and its stg model keeps no raw-table order: decision 40's key, as every
+-- club line has (int_trail_lines__club_published), unique in its layer and
+-- the same for the same row next release. No line of run 30 reaches it.
+-- The two NYNJTC layers, whose stg models carry `source_row` and not the
+-- object id, are numbered by place, where today's fetch publishes their
+-- object id; parity cannot see that, since the as-landed copy it gives
+-- today's exporter drops the GeoJSON `id` too (ELT.md, TL05).
 --
 -- `trail_status` (TL10) is 'open' or 'closed' from the status column, and
 -- `closure_kind` 'long_term' where the steward marked a line closed. A
@@ -121,6 +130,7 @@ read_fields as (
         coalesce(
             json_extract_string(unioned.properties, '$.globalid'),
             json_extract_string(unioned.properties, '$.objectid'),
+            json_extract_string(unioned.properties, '$.fid'),
             json_extract_string(unioned.properties, '$._socrata_id')
         ) as upstream_id,
         unioned.geom,
@@ -151,8 +161,9 @@ read_fields as (
         -- The feature's place in its layer, for `generated-<n>`, every row
         -- counted as the Python counts them: `source_row`, the raw table's
         -- order and so the fetched file's (Reasoned, stg_nynjtc__long_path),
-        -- which only the two NYNJTC layers with no id field carry. Null on
-        -- every other layer, whose row then takes its staging key (above).
+        -- which only the two NYNJTC layers carry, their stg models keeping
+        -- no object id column (above). Null on every other layer, whose row
+        -- with none of the four ids then takes its staging key.
         unioned.source_row as layer_position
     from unioned
     inner join sources on unioned.source_key = sources.source_key

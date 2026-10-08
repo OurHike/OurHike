@@ -361,7 +361,9 @@ def test_keep_reason_declared_name_and_the_id_chain_answer_what_the_unit_test_ex
         hints = PYTHON_FEATURES.get(key, {})
         if "globalid" in properties:
             properties[hints.get("globalid", "GlobalID")] = properties.pop("globalid")
-        feature_id = hints.get("feature_id", landed.get("objectid"))
+        # The GeoJSON `id` today's fetch writes is the layer's object id, under whichever of its two names it lands.
+        object_id = next((landed[name] for name in ("objectid", "fid") if landed.get(name) is not None), None)
+        feature_id = hints.get("feature_id", object_id)
         geometry = shapely.from_wkt(row["geom"]) if row.get("geom") else None
         boundary, refused = boundaries[row["source_key"]]
         want = expected[key]
@@ -767,8 +769,9 @@ KEY_A, KEY_B = "0742349b6d9a3d7cc353f7e8f7ee3c9b", "f746a29a5bd0688e72a3d564723a
 
 
 def test_parity_explains_a_positional_id_the_dbt_writer_publishes_as_the_lines_staging_key():
-    """Monthly run 30's cotrex_trails and nc_mst_trail lines: today's `generated-<place in the file>` beside the dbt
-    writer's staging key, two equal lines included, is NETWORK_ID_REASONS' staging-key case for every id."""
+    """A layer with no GlobalID, no object id named OBJECTID or FID and no Socrata row id (no line of monthly run 30):
+    today's `generated-<place in the file>` beside the dbt writer's staging key, two equal lines included, is
+    NETWORK_ID_REASONS' staging-key case for every id."""
     family = parity.FAMILIES["nearby_trails"]
     a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]
     old = {"features": [_line("s:generated-0", "A", a), _line("s:generated-1", "B", b), _line("s:generated-2", "B", b)]}
@@ -784,6 +787,31 @@ def test_parity_explains_a_positional_id_the_dbt_writer_publishes_as_the_lines_s
 
     assert {what for what, _, _ in parity.differences(old, new, family)} == set(reasons)
     assert set(reasons.values()) == {parity.NETWORK_ID_REASONS["staging_key_for_a_line_with_no_id"]}
+
+
+def test_parity_explains_a_place_in_the_as_landed_copy_beside_the_layers_object_id_and_nothing_else():
+    """Monthly run 30's cotrex_trails and nc_mst_trail lines once FID is read: the old side numbers each by its place
+    in the as-landed copy, which has no GeoJSON id, and the dbt writer publishes its FID, two equal lines included.
+    A line that differs in anything but its id is still a difference."""
+    family = parity.FAMILIES["nearby_trails"]
+    a, b, c = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]], [[4.0, 4.0], [5.0, 5.0]]
+    old = {
+        "features": [
+            _line("s:generated-0", "A", a),
+            _line("s:generated-1", "B", b),
+            _line("s:generated-3", "B", b),
+            _line("s:generated-4", "C", c),
+        ]
+    }
+    new = {"features": [_line("s:1", "A", a), _line("s:2", "B", b), _line("s:4", "B", b), _line("s:5", "C renamed", c)]}
+
+    found = {what for what, _, _ in parity.differences(old, new, family)}
+    reasons = family.explained(old, new)
+
+    explained = {f"properties.id s:{n}" for n in ("generated-0", "generated-1", "generated-3", 1, 2, 4)}
+    assert set(reasons) == explained
+    assert set(reasons.values()) == {parity.AS_LANDED_ID_REASON}
+    assert found - explained == {"properties.id s:generated-4", "properties.id s:5"}
 
 
 def test_parity_does_not_call_a_staging_key_what_a_line_with_a_globalid_publishes():

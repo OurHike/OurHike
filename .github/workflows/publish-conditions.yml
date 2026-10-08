@@ -1484,7 +1484,7 @@ jobs:
       - name: Fail the run if the build held a source or a writer back (dbt path)
         if: steps.build.outputs.partial == 'true'
         run: |
-          echo "::error title=Part of the build held back::The build held back a source for its rows or its own failed model, a writer that failed, or a table the extract withdrew, and published everything else. The build step's log names each one and why; a held source carries its last good rows and a failed writer's file keeps its last published copy."
+          echo "::error title=Part of the build held back::The build held back a source for its rows or its own failed model, a writer that failed, a table the extract withdrew, or Elementary's history, which failed to restore or save while the row history did not (decision 102), and published everything else. The build step's log names each one and why; a held source carries its last good rows and a failed writer's file keeps its last published copy."
           exit 1
 
       # Last for the same reason: the closures and warnings files published

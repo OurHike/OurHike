@@ -363,6 +363,14 @@ cannot see it (measured 2026-10-01). So:
   entry's `where`, WordPress `X-WP-Total`, the slug count of ATC's
   trail-updates sitemap, the moderated query's own `count(*)` for OurHike's
   Postgres, an NWS `200` with no features. Without it the zero is `UNKNOWN`.
+  **A count you make of what you parsed is not one**: a page whose layout
+  moved parses to none exactly as an empty page does. So every reader kind
+  declares `zero_proof` on its own class (`extract/_contract.py`'s
+  `Resource.zero_proof`): the upstream's count it reads, in words, or `None`.
+  The run check refuses a zero from a `None` kind whatever it recorded, and
+  keeps the shrink floor on such a table where it may be empty.
+  `tests/test_extract_zero_proofs.py` pins every kind's answer, so a new kind
+  is refused until somebody writes it down.
 
 **Rule 4 on a safety path: no check may answer `FRESH` while the data moved.**
 

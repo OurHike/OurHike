@@ -1083,8 +1083,9 @@ jobs:
       # 1. THE REGISTRY, FROM THIS CHECKOUT. The closures and warnings marts
       # keep only rows whose source may publish (int_sources__publication,
       # which reads sources.json). ELT.md has each hourly leg defer to its
-      # environment's monthly warehouse for that, and no monthly run has
-      # stored one yet (refresh-reference.yml's "Store the warehouse"), so
+      # environment's monthly warehouse for that, which build-reference.yml
+      # stores ("Store the warehouse and its manifest in the step cache";
+      # monthly runs 29 and 30 stored UA's) and no leg reads back yet, so
       # the leg loads sources.json itself: git's copy at this commit, through
       # the monthly lane's own resource, into a store on this runner that
       # dies with it. Nothing of it reaches the raw store. It runs first

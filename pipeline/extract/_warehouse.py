@@ -13,8 +13,9 @@ every check (ELT.md, "A full reload that cannot empty a safety table",
 measured 2026-10-01). A table with no committed file refuses the build:
 "no closures" is a claim, and a missing file is not evidence for it.
 
-A PINNED RAW_RUN (`pin`, `load --raw-run`; refresh-reference.yml's monthly
-run) is a write-once copy, at `<steps-url>/raw_inputs/<raw_run>/`, of what a
+A PINNED RAW_RUN (`pin` in refresh-reference.yml's pin job, `load --raw-run`
+in build-reference.yml's build and parity jobs) is a write-once copy, at
+`<steps-url>/raw_inputs/<raw_run>/`, of what a
 build of one extract run (its `run_id`, the raw_run) reads: each table's
 committed rows as of that run, its `_extract_runs` rows and its as-landed
 files, `raw_inputs.json` last. The production promotion builds from it alone,
@@ -115,7 +116,7 @@ DUCKDB_TYPES = {
 def _naming(pipeline):
     """The pipeline schema's naming, or sql_ci_v1's own on a fresh working directory, which holds no schema yet.
 
-    A build job starts from an empty dlt directory (refresh-reference.yml), and
+    A build job starts from an empty dlt directory (build-reference.yml), and
     `default_schema` raises there; extract/_run.py and .dlt/config.toml set
     `sql_ci_v1` for every run, so its convention is the one the files were named by.
     """
@@ -876,9 +877,10 @@ def pin_raw_inputs(
 ) -> tuple[dict, bool]:
     """Copy what a build of `raw_run` reads to `<steps-url>/raw_inputs/<raw_run>/`. Returns (manifest, whether this call wrote it).
 
-    WRITE-ONCE. An existing pin is the answer, never overwritten: a rerun of a
-    build job reads the pin its first attempt wrote, and so does the
-    promotion. `extras` are other files the build read that no dlt table
+    WRITE-ONCE. An existing pin is the answer, never overwritten: a rerun of
+    refresh-reference.yml's pin job finds the pin its first attempt wrote,
+    and every build of that raw_run reads it, as the promotion will.
+    `extras` are other files the build read that no dlt table
     holds, by their path under data/raw/ (the DEM tile index
     fetch_elevation.py writes), pinned beside the as-landed copies. A table
     in `landed_tables` (as_landed_tables(), from the command line) whose

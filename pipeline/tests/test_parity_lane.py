@@ -1,6 +1,6 @@
 """parity_lane.py, the monthly lane's parity: every family in one group, keys only, and a crash is that family's answer.
 
-refresh-reference.yml's parity job runs one group of families per runner, each
+build-reference.yml's parity job runs one group of families per runner, each
 group in one process (parity_lane.py's docstring has monthly run 29's timings,
 which are why). These hold what that has to keep from the one-process-per-family
 form it replaced: every family still runs, every answer is keys only, one

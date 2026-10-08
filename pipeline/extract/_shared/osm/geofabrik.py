@@ -4,9 +4,10 @@ OpenStreetMap is an aggregator (decision 18), so it lives in _shared/. The
 table is the extracts' manifest, one row per state: where the copy is kept
 under the monthly lane's `current/osm/`, its size, sha256 and Geofabrik's
 Last-Modified. Never the bytes (decision 4), and never the water: the water
-points and site water are refresh-reference.yml's build job's scans of the
-copies (fetch_osm_water.py, fetch_trail_water.py --derive), landed by
-step_osm_water.py and step_site_water.py. extract/_geofabrik.py is the design
+points and site water are refresh-reference.yml's pin job's scans of the
+copies (fetch_osm_water.py, fetch_trail_water.py --derive), landed in
+build-reference.yml's build by step_osm_water.py and step_site_water.py.
+extract/_geofabrik.py is the design
 and holds the 30-day maximum age (#1652 — Download OSM's Geofabrik extracts
 at most once a month, into a private raw bucket that outlives the 7-day
 Actions cache).

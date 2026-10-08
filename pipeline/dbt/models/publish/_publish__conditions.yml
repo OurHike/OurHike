@@ -814,9 +814,10 @@ exposures:
       client/src/lib/plannedNotices.ts's one question of it: is a planned
       route inside this state? Never drawn. Its bytes hold between builds,
       so its ETag does too. A monthly node (its upstream is the Census
-      Bureau's TIGER/Line file), so refresh-reference.yml's dbt path writes
-      it; the exporters' path has no writer for it, and a phone without it
-      shows no state-wide notice, as decision 68 left them.
+      Bureau's TIGER/Line file), so the monthly lane's dbt build
+      (build-reference.yml) writes it; the exporters' path has no writer for
+      it, and a phone without it shows no state-wide notice, as decision 68
+      left them.
     depends_on:
       - ref('pub_conditions_notice_states')
     config:

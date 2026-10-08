@@ -144,7 +144,7 @@ exposures:
       meta:
         r2_keys: [data_quality.json]
         format: json
-        # The lane that builds it, refresh-reference.yml's.
+        # The lane that builds it: the monthly one, in build-reference.yml's build job.
         cadence: monthly
         sidecar: true
 

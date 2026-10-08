@@ -118,15 +118,15 @@ the record rather than sitting in a registry line somebody has to find.
 
 Usage:
     python fetch_trail_water.py            # ATC's two layers and the extracts fetched as needed
-    python fetch_trail_water.py --derive   # from files on disk alone (refresh-reference.yml's build)
+    python fetch_trail_water.py --derive   # from files on disk alone (refresh-reference.yml's pin job)
 
-`--derive` is the monthly build's form (#1652 — Download OSM's Geofabrik
+`--derive` is the monthly lane's form (#1652 — Download OSM's Geofabrik
 extracts at most once a month, into a private raw bucket that outlives the
 7-day Actions cache): the shelters and campsites are the ATC layers as the
 monthly extract landed them, its as-landed copy at data/raw/shelters.geojson
 and data/raw/campsites.geojson (extract/_run.py's as_landed_path()), read
 in fetch_atc_features' shape and order; the fourteen state extracts are the
-ones the build pulled from the raw store into OSM_RAW_DIR, and a missing one
+ones the pin job pulled from the raw store into OSM_RAW_DIR, and a missing one
 refuses the derivation rather than being fetched (from_disk_sites() and
 missing_extracts()). The NHD subregions and EPQS are read as always. The
 rule, the guards and the file written are the same either way.

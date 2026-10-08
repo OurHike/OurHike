@@ -666,7 +666,8 @@ def test_main_flushes_the_cache_even_when_it_refuses(tmp_path, monkeypatch):
 
 def test_an_epqs_lookup_that_fails_or_answers_null_is_not_cached_so_the_next_attempt_asks_again(tmp_path, monkeypatch):
     """The rule that makes carrying this file between runs safe (publish-vector-data.yml's FETCH_OUTPUTS, and
-    refresh-reference.yml's build job since ARC-3 of PR #1805's second review): only an answered elevation is kept.
+    the monthly lane since ARC-3 of PR #1805's second review, whose refresh-reference.yml pin job and
+    build-reference.yml build job each restore and save it): only an answered elevation is kept.
     A null value, or five failed tries, must reach the next attempt as a question, never as a cached unknown."""
     cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
     monkeypatch.setattr(trail_water.time, "sleep", lambda _seconds: None)

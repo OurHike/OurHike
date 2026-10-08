@@ -1,4 +1,4 @@
-"""extract/_geofabrik.py: OSM's Geofabrik extracts kept in the raw store at most monthly, and the build's pull of them.
+"""extract/_geofabrik.py: OSM's Geofabrik extracts kept in the raw store at most monthly, and the pin job's pull of them.
 
 #1652 — Download OSM's Geofabrik extracts at most once a month, into a
 private raw bucket that outlives the 7-day Actions cache. Every server is
@@ -438,7 +438,7 @@ def test_landed_says_which_scan_the_build_lands_and_warns_when_a_complete_set_ke
     assert "kept from raw_run 20260903T051500.000000Z" in capsys.readouterr().out
 
 
-def test_the_pin_paths_the_build_writes_are_the_ones_build_marts_lands_and_the_scanners_write():
+def test_the_pin_paths_the_pin_job_writes_are_the_ones_build_marts_lands_and_the_scanners_write():
     """One list, three readers: refresh-reference.yml's pin step (its pin job's, since choice B moved the build to
     build-reference.yml), build_marts.py's monthly lane and the two scanners."""
     import yaml

@@ -313,10 +313,10 @@ def test_each_step_script_takes_every_flag_its_entry_gives_it(step):
         assert re.search(rf"(^|\s|\[){re.escape(flag)}\b", help_text), f"{step.command[0]} --help names no {flag}"
 
 
-def test_the_monthly_lane_lands_the_water_scans_its_build_job_pinned_and_fixtures_land_their_own():
-    """#1652: refresh-reference.yml's build job scans the Geofabrik extracts the raw store keeps and pins the scans as
-    derived/osm_water.geojson and derived/trail_water.json; build_marts.py --lane monthly names exactly those, and the
-    fixture build and the hourly lane never do."""
+def test_the_monthly_lane_lands_the_water_scans_its_pin_job_pinned_and_fixtures_land_their_own():
+    """#1652: refresh-reference.yml's pin job scans the Geofabrik extracts the raw store keeps and pins the scans as
+    derived/osm_water.geojson and derived/trail_water.json; build_marts.py --lane monthly, build-reference.yml's build,
+    names exactly those, and the fixture build and the hourly lane never do."""
 
     def args_of(name: str, **options) -> tuple[str, ...]:
         (run,) = [run for run in plan(STEPS, dbt="dbt", python="python", paths=PATHS, **options) if run.label == name]

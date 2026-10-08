@@ -3,7 +3,7 @@
     python build_marts.py --fixtures [--dbt dbt] [--python <interpreter>]
         [--warehouse data/warehouse.duckdb] [--processed-dir data/processed/dbt]
         [--raw-dir data/raw] [--threads N] [--dry-run]
-    python build_marts.py --lane monthly ...                 # refresh-reference.yml
+    python build_marts.py --lane monthly ...                 # build-reference.yml
     python build_marts.py --lane hourly [--state <dir>] ...  # the hourly conditions lane
 
 The one home of the build order (pipeline/ELT.md, "Python steps, outside dbt"
@@ -38,7 +38,7 @@ A LANE BUILDS ONLY ITS OWN NODES (--lane; ELT.md, "Every node carries its
 cadence"). A node's cadence is the fastest `meta.cadence` among the sources
 it reads, so `config.meta.cadence:hourly+` selects every node an hourly
 source reaches.
-- `monthly` (refresh-reference.yml) excludes every node an hourly or daily
+- `monthly` (build-reference.yml) excludes every node an hourly or daily
   source reaches, writers included: its warehouse holds only the monthly raw
   tables, so those nodes would fail on a missing source or, if built, store
   month-old closures (ELT.md's probe, measured on dbt-oss 2.0.5). A source
@@ -492,9 +492,9 @@ STEPS: list[Step] = [
     # walk to, fetch_trail_water.py's rule over int_points_of_interest__water_sites.
     # Under --fixtures it reads each site's candidate reaches and the EPQS
     # answers make_dbt_fixtures.py wrote, never the network. The monthly lane
-    # lands the site water refresh-reference.yml's build job derived from the
+    # lands the site water refresh-reference.yml's pin job derived from the
     # Geofabrik extracts the raw store keeps (fetch_trail_water.py --derive,
-    # #1652), pinned with the build's raw inputs, or the last landed one.
+    # #1652), pinned with that run's raw inputs, or the last landed one.
     Step(
         name="step_site_water",
         table="site_water",
@@ -508,10 +508,10 @@ STEPS: list[Step] = [
         lane_args=((MONTHLY, ("--from-file", "{raw_dir}/derived/trail_water.json")),),
     ),
     # PO03: OSM's water points. Under --fixtures it lands make_dbt_fixtures.py's
-    # points; the monthly lane lands the build job's scan of the Geofabrik
-    # extracts (fetch_osm_water.py, #1652), pinned with its raw inputs, or the
-    # last landed one, and warns when none has ever landed (step_osm_water.py's
-    # docstring says how).
+    # points; the monthly lane lands refresh-reference.yml's pin job's scan of
+    # the Geofabrik extracts (fetch_osm_water.py, #1652), pinned with that
+    # run's raw inputs, or the last landed one, and warns when none has ever
+    # landed (step_osm_water.py's docstring says how).
     Step(
         name="step_osm_water",
         table="osm_water",

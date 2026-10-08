@@ -3,7 +3,7 @@
     python parity_lane.py --group network --out "$RUNNER_TEMP/parity"
     python parity_lane.py --join "$RUNNER_TEMP/parity" --raw-run "$RAW_RUN"
 
-refresh-reference.yml's `parity` job runs each group in GROUPS on a runner of
+build-reference.yml's `parity` job runs each group in GROUPS on a runner of
 its own, side by side, and `parity-report` joins their answers into the one
 `monthly-parity` artifact gate_report.py reads (decision 30's parity on frozen
 inputs: pipeline-tests.yml's parity families less the six hourly conditions
@@ -39,7 +39,7 @@ EVERY ANSWER IS KEYS ONLY (parity.py's --keys-only): the artifact is public, and
 the old side runs on every layer the pin holds, held-back sources included. So
 each difference is named by key and changed fields, never with either record.
 To see the records, rerun that family's parity.py line without the flag, on the
-raw_run's pin, as refresh-reference.yml's parity job sets it up.
+raw_run's pin, as build-reference.yml's parity job sets it up.
 
 A difference is evidence for the gate, not a failure of the lane: a group fails
 only when none of its families could be compared. Each family's console is kept
@@ -65,7 +65,7 @@ PIPELINE = Path(__file__).resolve().parent
 #: Each family's file from its pub_ writer, under data/processed/dbt/, and
 #: whether its old side is handed data/raw (parity.py's --raw-dir): the raw
 #: files, or for the graph's climbs the DEM tiles under it. A literal, so
-#: .github/tests/test_refresh_reference.py reads it without importing this file
+#: .github/tests/test_build_reference.py reads it without importing this file
 #: and holds it to pipeline-tests.yml's families.
 FAMILIES = {
     "podcasts": ("podcasts_episodes.json", False),

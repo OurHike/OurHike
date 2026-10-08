@@ -121,7 +121,7 @@ def test_the_cli_exits_1_on_a_difference(tmp_path, monkeypatch, capsys):
     assert parity.main(["fake", "--new", str(new)]) == 0
 
 
-# --- --keys-only: what refresh-reference.yml uploads to a public artifact ---
+# --- --keys-only: what build-reference.yml uploads to a public artifact ---
 
 
 def _feature(feature_id: str, name: str, lon: float, lat: float) -> dict:

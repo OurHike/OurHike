@@ -59,10 +59,10 @@ raise) is written as `old_side_refused` before the exit, so a refusal reads
 as one and not as a missing run.
 
 `--keys-only` prints and writes each difference's key and changed fields,
-never either side's record (without_records()). refresh-reference.yml uses
-it because its results go into a public artifact, and its old side is
-today's exporters on every layer the raw store holds, held-back sources
-included.
+never either side's record (without_records()). build-reference.yml's parity
+job uses it, through parity_lane.py, because its results go into a public
+artifact, and its old side is today's exporters on every layer the raw store
+holds, held-back sources included.
 """
 
 from __future__ import annotations
@@ -1412,7 +1412,7 @@ def _osm_water_old() -> tuple[str, str] | None:
     A monthly run's pin holds fetch_osm_water.py's own points instead (PINNED_OSM_WATER), scanned from the kept
     Geofabrik extracts (#1652), and those are the old side's points. No fixture answers exist for them, so they are
     graded through fetch_trail_water.elevation_ft() as today's publish grades them: its disk cache first, which
-    refresh-reference.yml's parity job restores from the build job's EPQS answers as publish-vector-data.yml carries it
+    build-reference.yml's parity job restores from its build job's EPQS answers as publish-vector-data.yml carries it
     between publishes, then live EPQS for a point the cache lacks. Those points are asked
     fetch_trail_water.EPQS_AT_ONCE at a time before the gate (prefetch_elevations()), as step_osm_water_grade asks them
     on the dbt side, and the gate reads the answers from memory: the same answers it would get asking one at a time.

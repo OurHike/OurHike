@@ -400,23 +400,16 @@ def _conditions_old(key: str) -> dict:
 
 
 def _network_old(name: str) -> dict:
-    """One file export_nearby_trails.main() writes, from a whole run into a temporary folder.
+    """One file export_nearby_trails.main() writes, from the run _published_network() keeps for this process.
 
     main() has no builder that stops short of writing, so it runs as a publish
     runs it, and the tiles, the shared-ground pairs and the manifest it writes
-    beside the file are thrown away. Its own lines go to a buffer, so this
-    step prints the comparison and nothing else.
+    beside the file are left where they are. The run is shared: nearby_trails
+    and network_overview are two files of one run, and the POI families read
+    its nearby_trails.geojson, so a process holding several of them (parity_lane.py)
+    runs the exporter once, where monthly run 29 ran it once per family.
     """
-    import contextlib
-    import io
-    import tempfile
-
-    import export_nearby_trails
-
-    with tempfile.TemporaryDirectory() as out, contextlib.redirect_stdout(io.StringIO()):
-        export_nearby_trails.OUT_DIR = Path(out)
-        export_nearby_trails.main()
-        return json.loads((Path(out) / name).read_text(encoding="utf-8"))
+    return json.loads((_published_network().parent / name).read_text(encoding="utf-8"))
 
 
 #: Why a network line's published id can differ between the two writers
@@ -1380,9 +1373,15 @@ def _osm_water_old() -> tuple[str, str] | None:
     scan, and the fixture has a dozen. With no points file there is no OSM water, as on a run that never fetched it.
 
     A monthly run's pin holds fetch_osm_water.py's own points instead (PINNED_OSM_WATER), scanned from the kept
-    Geofabrik extracts (#1652), and those are the old side's points, graded against live EPQS as today's publish grades
-    them, since no fixture answers exist for them. write() stays unguarded there too, so an EPQS outage reads as fewer
-    reachable points on both sides rather than stopping parity.
+    Geofabrik extracts (#1652), and those are the old side's points. No fixture answers exist for them, so they are
+    graded through fetch_trail_water.elevation_ft() as today's publish grades them: its disk cache first, which
+    refresh-reference.yml's parity job restores from the build job's EPQS answers as publish-vector-data.yml carries it
+    between publishes, then live EPQS for a point the cache lacks. Those points are asked
+    fetch_trail_water.EPQS_AT_ONCE at a time before the gate (prefetch_elevations()), as step_osm_water_grade asks them
+    on the dbt side, and the gate reads the answers from memory: the same answers it would get asking one at a time.
+    One at a time, monthly run 23's grade asked EPQS from 06:09 to 09:05 UTC and was cancelled; four at a time, run
+    24's asked 2,342 points in 33.2 minutes (ELT.md's monthly-run ledger). write() stays unguarded there too, so an EPQS
+    outage reads as fewer reachable points on both sides rather than stopping parity.
     """
     import contextlib
     import io
@@ -1392,6 +1391,7 @@ def _osm_water_old() -> tuple[str, str] | None:
 
     import build_osm_water_reach as reach
     import export_poi
+    import fetch_trail_water
 
     raw = export_poi.RAW_DIR
     pinned = raw / PINNED_OSM_WATER
@@ -1413,11 +1413,24 @@ def _osm_water_old() -> tuple[str, str] | None:
         con.execute("INSTALL spatial; LOAD spatial;")
         with contextlib.redirect_stdout(io.StringIO()):
             records = reach.measure_distances(con, quiet=True)
+            if answers is None:
+                fetch_trail_water.prefetch_elevations(_walk_ends(records))
             reach.apply_grade_gate(records, quiet=True)
             reach.write(records, guard=False)
     finally:
         reach.RAW_DIR, reach.NETWORK_LINES_PATH, reach.OUT_PATH, reach.elevation_ft = live
     return str(points.relative_to(raw)), str(folder / "osm_water_reach.json")
+
+
+def _walk_ends(records: list[dict]) -> list[tuple[float, float]]:
+    """The (lat, lon) of both ends of every walk build_osm_water_reach.apply_grade_gate() will grade, in its order:
+    the water, then the feature it passed on."""
+    return [
+        point
+        for record in records
+        if record["passes_distance"] and "passes_grade" not in record
+        for point in ((record["lat"], record["lon"]), (record["walk_to"]["lat"], record["walk_to"]["lon"]))
+    ]
 
 
 def _guide_sections_old() -> Path:

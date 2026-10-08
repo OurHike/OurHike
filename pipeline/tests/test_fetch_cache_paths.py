@@ -193,12 +193,13 @@ MONTHLY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "refresh-reference.yml"
 
 def test_the_monthly_build_caches_the_epqs_answers_and_the_dem_samples_where_the_code_reads_them():
     """refresh-reference.yml's build job carries the two answer caches between attempts (ARC-3 of PR #1805's second
-    review), named in its job env. A path that drifted from the constant would restore beside the file the step reads,
-    and every attempt would ask EPQS again with both cache steps green."""
+    review), and its parity job reads them, both through the workflow env's one list. A path that drifted from the
+    constant would restore beside the file the step reads, and every attempt would ask EPQS again with both cache steps
+    green."""
     import export_elevation
 
     workflow = yaml.safe_load(MONTHLY_WORKFLOW.read_text(encoding="utf-8"))
-    raw = workflow["jobs"]["build"]["env"]["ELEVATION_ANSWERS"]
+    raw = workflow["env"]["ELEVATION_ANSWERS"]
     cached = {line.strip() for line in raw.splitlines() if line.strip()}
 
     expected = {

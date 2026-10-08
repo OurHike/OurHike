@@ -15,7 +15,7 @@
 #   - Promotion is the release train's, built from this run's pinned inputs
 #     (steps/raw_inputs/<raw_run>/), so what is promoted is what UA showed.
 #
-# FIVE JOBS, EACH HOLDING ONLY ITS OWN CREDENTIALS:
+# SIX JOBS, EACH HOLDING ONLY ITS OWN CREDENTIALS:
 #   extract  R2_RAW_* and HIKEFINDER_PASSWORD, no public-bucket key. Lands
 #            every monthly resource in the private raw store (`our-hike-raw`,
 #            decision 43), checked before and after the load, plus the
@@ -26,10 +26,14 @@
 #            scans, builds the warehouse and marts from the pin with the row
 #            history restored and saved, hands files on.
 #   publish  The public bucket's R2_* only: publish.py, OURHIKE_PHONE_FILES=dbt.
-#   confirm  No credential. Fails unless UA's latest.json names every phone
-#            file the build wrote.
+#   confirm  No credential. Fails unless UA's latest.json, and for a v2 file
+#            its release folder's manifest, names every phone file the build
+#            wrote.
 #   parity   R2_RAW_* to read the pin; writes nothing. Today's exporters
-#            against the dbt writers on the pinned inputs (decision 30).
+#            against the dbt writers on the pinned inputs (decision 30), one
+#            group of families per runner (pipeline/parity_lane.py).
+#   parity-report  No credential. Joins the groups' answers into the one
+#            `monthly-parity` artifact and writes the gate's per-key report.
 #
 # NOT HERE YET: `notes` (decision 14's note ageing), `verify`
 # (verify-release.yml has no workflow_call), the cell and shard cutters
@@ -73,6 +77,16 @@ env:
   # dbt's documented opt-out, and the only switch set (pipeline-tests.yml's
   # dbt job says why: the dbt Product Licensing Agreement, section 3.2).
   DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
+  # The two answer caches publish-vector-data.yml carries in FETCH_OUTPUTS,
+  # at the paths the code reads them from (fetch_trail_water.py's
+  # ELEVATION_CACHE_PATH, export_elevation.py's SAMPLE_CACHE_PATH;
+  # pipeline/tests/test_fetch_cache_paths.py holds them). One home for the
+  # list the build job's restore and save and the parity job's restore all
+  # read, as FETCH_OUTPUTS is there: actions/cache finds an entry only by the
+  # same paths it was saved with.
+  ELEVATION_ANSWERS: |
+    pipeline/data/raw/epqs_elevations.json
+    pipeline/data/raw/elevation/samples.json
 
 jobs:
   extract:
@@ -245,16 +259,6 @@ jobs:
         working-directory: pipeline
     env:
       RAW_RUN: ${{ needs.extract.outputs.raw_run }}
-      # The two answer caches publish-vector-data.yml carries in FETCH_OUTPUTS,
-      # at the paths the code reads them from (fetch_trail_water.py's
-      # ELEVATION_CACHE_PATH, export_elevation.py's SAMPLE_CACHE_PATH;
-      # pipeline/tests/test_fetch_cache_paths.py holds them). One home for the
-      # list the restore and the save below both read, as FETCH_OUTPUTS is
-      # there: actions/cache finds an entry only by the same paths it was
-      # saved with.
-      ELEVATION_ANSWERS: |
-        pipeline/data/raw/epqs_elevations.json
-        pipeline/data/raw/elevation/samples.json
     steps:
       - uses: actions/checkout@v7
 
@@ -752,13 +756,32 @@ jobs:
           PY
 
   parity:
-    name: Parity with today's exporters, on the pinned inputs
+    name: Parity with today's exporters, on the pinned inputs (${{ matrix.group }})
     needs: [extract, build]
     runs-on: ubuntu-latest
-    # @unvalidated: today's exporters on real data. export_nearby_trails.py
-    # and export_poi.py are the long ones; the vector build's whole export
-    # stage fits its 180-minute timeout.
-    timeout-minutes: 120
+    # ONE GROUP OF FAMILIES PER RUNNER, side by side, each group in one
+    # process so the exporter runs its families share run once
+    # (pipeline/parity_lane.py's GROUPS and its docstring). Monthly run 29
+    # (37726904273) ran all 41 families one after another in this one job,
+    # and its 120 minutes ran out on the twelfth.
+    #
+    # 180 MINUTES, the vector build's own: each group runs a share of
+    # publish-vector-data.yml's export steps, and that whole build job fits
+    # its 180-minute timeout (run 37114537637, 2026-10-03: 2 h 22 min). That
+    # run's slow steps, one per group: export_nearby_trails.py 13 m 13 s
+    # (`network`, and again under `pois`), build_trail_graph.py 40 m 57 s
+    # (`graph`), and export_network_elevation.py 39 m 43 s then
+    # export_network_profile.py 8 m 33 s (`graph_climbs`, which samples a
+    # cold copy of the tile index here). Each runner also spends about
+    # 4.5 minutes on its venvs and the pin (run 29), and `network` about
+    # 22 more on nearby_trails' comparison: its 36.8 minutes in run 29, less
+    # network_overview's 14.3 over the same exporter run (Reasoned).
+    # @unvalidated as a whole until a run reports every group's time.
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [network, pois, graph, graph_climbs, rest]
     defaults:
       run:
         working-directory: pipeline
@@ -827,99 +850,99 @@ jobs:
           "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse fetch "${store[@]}" \
             --steps-url "s3://$R2_RAW_BUCKET/steps" --key "dbt_warehouse/ua/$RAW_RUN" --out data warehouse.duckdb
 
-      # DECISION 30's PARITY ON FROZEN INPUTS: one parity.py run per monthly
-      # family, pipeline-tests.yml's parity families less the six hourly
-      # conditions files. A difference is evidence for the gate, not a failure
-      # of this lane, so the step fails only when no family could be compared.
-      # Each family's output is kept as <family>.txt, and summary.json gives
-      # each `match`, `differs` or `not_compared` (today's exporter could not
-      # run: an input no pin holds, or a crash; the log has the traceback).
-      # Results go to results/<family>.json for gate_report.py, which refuses
-      # any other JSON there, so summary.json sits one level up.
+      # The build job's EPQS answers, where fetch_trail_water.py's
+      # elevation_ft() reads its disk cache, as publish-vector-data.yml carries
+      # it between publishes: today's OSM water grade (the pois group's POI
+      # files) then asks EPQS only for a walk the dbt side never asked about,
+      # four at a time (parity.py's _osm_water_old()). Its entry is this run's
+      # newest, which the build job saved. Restored and never saved here. The
+      # DEM samples in it reach no old side, whose sampler reads a cold copy of
+      # the tile index (parity.py's _cold_index()). Every group restores it, so
+      # moving a POI family between groups cannot leave it cold.
+      - name: The build's EPQS answers, for today's OSM water grade
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.ELEVATION_ANSWERS }}
+          key: monthly-elevation-answers-${{ github.run_id }}
+          restore-keys: monthly-elevation-answers-
+
+      # DECISION 30's PARITY ON FROZEN INPUTS: pipeline-tests.yml's parity
+      # families less the six hourly conditions files, this group's share of
+      # them, through pipeline/parity_lane.py. A difference is evidence for the
+      # gate, not a failure of this lane, so the step fails only when none of
+      # the group's families could be compared. Each family's output is kept
+      # as <family>.txt, results/<family>.json is its result for
+      # gate_report.py, and summary-<group>.json gives each `match`, `differs`
+      # or `not_compared` (today's exporter could not run: an input no pin
+      # holds, or a crash; the family's .txt has the traceback).
       #
-      # --keys-only: the artifact is public, and the old side runs on every
-      # layer the pin holds, held-back sources included. So the log and the
-      # results name each difference by key and changed fields, never with
-      # either record. To see the records, rerun that family's parity.py line
-      # without the flag, on this raw_run's pin, as the steps above set it up.
+      # Keys only (parity.py's --keys-only, which parity_lane.py always
+      # passes): the artifact is public, and the old side runs on every layer
+      # the pin holds, held-back sources included. So the log and the results
+      # name each difference by key and changed fields, never with either
+      # record. To see the records, rerun that family's parity.py line without
+      # the flag, on this raw_run's pin, as the steps above set it up.
       - name: Parity with today's exporters
         env:
           PARITY_DIR: ${{ runner.temp }}/parity
-        run: |
-          mkdir -p "$PARITY_DIR"
-          "$RUNNER_TEMP/pipeline/bin/python" - <<'PY'
-          import json
-          import os
-          import subprocess
-          import sys
-          from pathlib import Path
+          GROUP: ${{ matrix.group }}
+        run: '"$RUNNER_TEMP/pipeline/bin/python" parity_lane.py --group "$GROUP" --out "$PARITY_DIR"'
 
-          out = Path(os.environ["PARITY_DIR"])
-          python = f"{os.environ['RUNNER_TEMP']}/pipeline/bin/python"
-          report = ("--json-dir", str(out / "results"), "--keys-only")
-          raw = ("--raw-dir", "data/raw")
-          families = {
-              "podcasts": ("podcasts_episodes.json", ()),
-              "stewards": ("stewards.json", ()),
-              "registry": ("registry.json", ()),
-              "nearby_trails": ("nearby_trails.geojson", ()),
-              "network_overview": ("network_overview.geojson", ()),
-              "trails": ("trails.geojson", ()),
-              "trail_miles": ("trail_miles.json", ()),
-              "trails_overview": ("trails_overview.geojson", ()),
-              "spurs": ("spurs.json", ()),
-              "club_sections": ("club_sections.json", ()),
-              "elevation": ("elevation_profile.json", raw),
-              "trail_graph_elevation": ("trail_graph_elevation.json", raw),
-              "trail_graph_profile": ("trail_graph_profile.json", raw),
-              **{
-                  f"poi_{kind}": (f"poi_{kind}.geojson", ())
-                  for kind in ("shelter", "campsite", "water", "resupply", "viewpoint", "parking", "privy", "trailhead")
-              },
-              "nearby_poi": ("nearby_poi.geojson", ()),
-              "retired_poi": ("retired_poi.geojson", ()),
-              "suggested_hikes": ("suggested_hikes.json", raw),
-              "suggested_hikes_detail": ("suggested_hikes_detail.json", raw),
-              "highlights": ("highlights.json", raw),
-              "places": ("places.json", ()),
-              "challenges": ("challenges.json", ()),
-              "trail_graph": ("trail_graph.json", ()),
-              "trail_graph_geometry": ("trail_graph_geometry.json", ()),
-              # Stage 6's v2 files, each against the v1 file this build wrote beside it.
-              "elevation_v2": ("elevation_profile_v2.json", ()),
-              "trail_miles_v2": ("trail_miles_v2.json", ()),
-              **{
-                  f"poi_{kind}_v2": (f"poi_{kind}_v2.geojson", ())
-                  for kind in ("shelter", "campsite", "water", "resupply", "viewpoint", "parking", "privy", "trailhead")
-              },
-              "nearby_poi_v2": ("nearby_poi_v2.geojson", ()),
-          }
-          # parity.py's result_document() outcomes. A family with no results/<family>.json
-          # crashed before parity.py's finish() wrote one, so it is not_compared too.
-          statuses = {
-              "no_differences": "match",
-              "neither_writes": "match",
-              "differences": "differs",
-              "one_side_writes": "differs",
-              "old_side_refused": "not_compared",
-          }
-          summary = {}
-          for family, (name, extra) in families.items():
-              argv = [python, "parity.py", family, "--new", f"data/processed/dbt/{name}", *extra, *report]
-              done = subprocess.run(argv, capture_output=True, text=True)
-              (out / f"{family}.txt").write_text(done.stdout + done.stderr)
-              result = out / "results" / f"{family}.json"
-              status = statuses[json.loads(result.read_text())["outcome"]] if result.exists() else "not_compared"
-              summary[family] = {"status": status, "exit_code": done.returncode, "new": f"data/processed/dbt/{name}", "log": f"{family}.txt"}
-              print(f"{family}: {status}")
-          (out / "summary.json").write_text(json.dumps({"raw_run": os.environ["RAW_RUN"], "families": summary}, indent=2))
-          counts = {status: sum(entry["status"] == status for entry in summary.values()) for status in ("match", "differs", "not_compared")}
-          print(f"parity on raw_run {os.environ['RAW_RUN']}: {counts}")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as page:
-              page.write(f"## Parity on raw_run `{os.environ['RAW_RUN']}`\n\n| family | answer |\n|---|---|\n")
-              page.writelines(f"| {family} | {entry['status']} |\n" for family, entry in summary.items())
-          sys.exit(1 if counts["match"] + counts["differs"] == 0 else 0)
-          PY
+      - name: Keep this group's parity answers for the gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-parity-${{ matrix.group }}
+          path: ${{ runner.temp }}/parity/
+          retention-days: 90
+          if-no-files-found: warn
+
+  # Every group's answers in the one `monthly-parity` artifact the gate reads,
+  # and the gate's per-key report over all of them. It runs when any group
+  # ran, and a group that never answered reads as not_compared
+  # (parity_lane.py --join), never as a match.
+  parity-report:
+    name: The gate's per-key report, from every parity group
+    needs: [extract, build, parity]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: pipeline
+    env:
+      RAW_RUN: ${{ needs.extract.outputs.raw_run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      # gate_report.py imports the exporters to read each file's key names.
+      - name: Install the pipeline's pins
+        run: |
+          python -m venv "$RUNNER_TEMP/pipeline"
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet -r requirements.txt
+
+      # The dbt manifest the writers ran from, which gate_report.py reads.
+      - uses: actions/download-artifact@v8
+        with:
+          name: monthly-phone-files
+          path: pipeline/
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: monthly-parity-*
+          path: ${{ runner.temp }}/parity
+          merge-multiple: true
+
+      - name: Every group's answers in one summary
+        env:
+          PARITY_DIR: ${{ runner.temp }}/parity
+        run: '"$RUNNER_TEMP/pipeline/bin/python" parity_lane.py --join "$PARITY_DIR" --raw-run "$RAW_RUN"'
 
       # The gate's per-key report, from pipeline/gate_report.py (ELT.md: "every
       # existing R2 key comes out byte-equal, or is listed with a reviewed
@@ -954,7 +977,7 @@ jobs:
   # each layer and why.
   refused:
     name: Fail the run if a layer was refused on its own
-    needs: [extract, build, publish, confirm, parity]
+    needs: [extract, build, publish, confirm, parity, parity-report]
     if: always() && needs.extract.outputs.partial == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 1

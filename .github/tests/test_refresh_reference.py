@@ -17,9 +17,11 @@ a literal, and publish-conditions.yml's production leg is the one exemption.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -29,6 +31,8 @@ import yaml
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
 NAME = "refresh-reference.yml"
+#: The parity job's families and groups, which the job runs by name from pipeline/.
+LANE = Path(__file__).resolve().parents[2] / "pipeline" / "parity_lane.py"
 PUBLIC_BUCKET_SECRETS = {"R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"}
 RAW_STORE_SECRETS = {"R2_RAW_BUCKET", "R2_RAW_ACCESS_KEY_ID", "R2_RAW_SECRET_ACCESS_KEY"}
 SECRET = re.compile(r"\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)")
@@ -249,7 +253,7 @@ def test_the_build_restores_and_saves_the_epqs_answers_and_the_dem_samples_aroun
     behind the pin's check, because a rerun that already has a pin is the attempt that needs the answers most; saved
     after build_marts.py, and on a failed run too."""
     job = workflow["jobs"]["build"]
-    steps, env = job["steps"], job.get("env") or {}
+    steps, env = job["steps"], {**workflow["env"], **(job.get("env") or {})}
     restores = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/cache/restore")]
     saves = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/cache/save")]
     (restore,) = [i for i in restores if _cached_paths(steps[i], env) == ELEVATION_ANSWERS]
@@ -261,6 +265,29 @@ def test_the_build_restores_and_saves_the_epqs_answers_and_the_dem_samples_aroun
     assert "always()" in str(steps[save]["if"])
     prefix = str(steps[save]["with"]["key"]).split("${{")[0]
     assert prefix and str(steps[restore]["with"]["restore-keys"]).strip() == prefix
+
+
+def test_every_parity_group_reads_the_builds_epqs_answers_and_never_saves_them(workflow):
+    """Today's OSM water grade asks EPQS one point at a time through fetch_trail_water.elevation_ft()'s disk cache,
+    which is this cache's first file: one at a time, monthly run 23's grade asked from 06:09 to 09:05 UTC and was
+    cancelled. Restored from the build job's entry, so the old side asks only for the walks the dbt side never did."""
+    build, job = workflow["jobs"]["build"], workflow["jobs"]["parity"]
+    steps, env = job["steps"], {**workflow["env"], **(job.get("env") or {})}
+    (restore,) = [
+        i
+        for i, step in enumerate(steps)
+        if str(step.get("uses", "")).startswith("actions/cache/restore") and _cached_paths(step, env) == ELEVATION_ANSWERS
+    ]
+    saved = next(
+        step
+        for step in build["steps"]
+        if str(step.get("uses", "")).startswith("actions/cache/save") and _cached_paths(step, env) == ELEVATION_ANSWERS
+    )
+
+    assert "if" not in steps[restore], "every group, so a POI family moved between groups is never graded cold"
+    assert restore < _first_step(steps, "parity_lane.py --group") and restore > _first_step(steps, "extract._warehouse load")
+    assert str(steps[restore]["with"]["restore-keys"]).strip() == str(saved["with"]["key"]).split("${{")[0]
+    assert not [step for step in steps if str(step.get("uses", "")).startswith("actions/cache/save")]
 
 
 def test_the_build_keeps_the_row_history_at_history_monthly_through_the_extracts_venv(workflow):
@@ -277,45 +304,80 @@ def test_the_build_keeps_the_row_history_at_history_monthly_through_the_extracts
     assert "--history-on-failure" not in step["run"]
 
 
-def test_the_parity_job_writes_nothing_and_keeps_its_answers(workflow):
+def _lane_literal(name: str):
+    """parity_lane.py's module-level literal `name`, read without importing the file: it is a pipeline script."""
+    for node in ast.parse(LANE.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"parity_lane.py has no literal {name}")
+
+
+def test_the_parity_job_writes_nothing_and_runs_one_group_of_families_per_runner(workflow):
     job = workflow["jobs"]["parity"]
     runs = _runs(job)
 
     assert not re.search(r"extract\._warehouse (pin|store)\b", runs)
-    assert "parity.py" in runs and 'gate_report.py --parity-dir "$PARITY_DIR/results"' in runs
+    assert 'parity_lane.py --group "$GROUP" --out "$PARITY_DIR"' in runs
+    assert job["strategy"]["fail-fast"] is False, "one group's failure must not cancel the others' answers"
+    assert job["strategy"]["matrix"]["group"] == list(_lane_literal("GROUPS")), (
+        "a group the job never runs, or one the lane lacks"
+    )
     uploads = [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact")]
     assert uploads and uploads[-1]["if"] == "always()"
+    assert uploads[-1]["with"]["name"] == "monthly-parity-${{ matrix.group }}"
+
+
+def test_the_parity_report_joins_every_group_into_the_one_artifact_the_gate_reads_and_holds_no_credential(workflow):
+    job = workflow["jobs"]["parity-report"]
+    runs = _runs(job)
+
+    assert not _secrets(job)
+    assert "parity" in job["needs"] and "always()" in job["if"] and "needs.build.result == 'success'" in job["if"]
+    downloads = [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/download-artifact")]
+    merged = next(step for step in downloads if step["with"].get("pattern"))
+    assert merged["with"] == {"pattern": "monthly-parity-*", "path": "${{ runner.temp }}/parity", "merge-multiple": True}
+    assert 'parity_lane.py --join "$PARITY_DIR" --raw-run "$RAW_RUN"' in runs
+    assert 'gate_report.py --parity-dir "$PARITY_DIR/results"' in runs
+    uploads = [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact")]
+    assert uploads[-1]["if"] == "always()" and uploads[-1]["with"]["name"] == "monthly-parity"
+    assert "parity-report" in workflow["jobs"]["refused"]["needs"]
 
 
 STUB_PARITY = """
-import json, os, pathlib, sys
-with open(os.environ["STUB_LOG"], "a") as log:
-    log.write(json.dumps(sys.argv[1:]) + "\\n")
-print(f"{sys.argv[1]}: no differences across 0 records, keyed by id")
-results = pathlib.Path(sys.argv[sys.argv.index("--json-dir") + 1])
-results.mkdir(parents=True, exist_ok=True)
-(results / f"{sys.argv[1]}.json").write_text(json.dumps({"outcome": "no_differences"}))
+import json, os, pathlib
+def main(argv):
+    with open(os.environ["STUB_LOG"], "a") as log:
+        log.write(json.dumps(argv) + "\\n")
+    print(f"{argv[0]}: no differences across 0 records, keyed by id")
+    results = pathlib.Path(argv[argv.index("--json-dir") + 1])
+    results.mkdir(parents=True, exist_ok=True)
+    (results / f"{argv[0]}.json").write_text(json.dumps({"outcome": "no_differences"}))
+    return 0
 """
 
 
 def test_every_monthly_parity_run_writes_keys_only_into_the_uploaded_folder(workflow, tmp_path):
     """The monthly-parity artifact is public, and its old side holds held-back sources: parity.py's
-    --keys-only (tests/test_parity.py) is what keeps their records and geometry out of it."""
-    steps = workflow["jobs"]["parity"]["steps"]
-    step = next(step for step in steps if step.get("name") == "Parity with today's exporters")
-    upload = next(step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact"))
-    assert step["env"]["PARITY_DIR"] == "${{ runner.temp }}/parity"
+    --keys-only (tests/test_parity.py) is what keeps their records and geometry out of it. Each group's command line
+    runs here as the job runs it, with a stand-in parity.py beside parity_lane.py, and the join as parity-report runs it."""
+    job = workflow["jobs"]["parity"]
+    step = next(step for step in job["steps"] if step.get("name") == "Parity with today's exporters")
+    upload = next(step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact"))
+    report = workflow["jobs"]["parity-report"]
+    joined = next(step for step in report["steps"] if step.get("name") == "Every group's answers in one summary")
+    assert step["env"]["PARITY_DIR"] == joined["env"]["PARITY_DIR"] == "${{ runner.temp }}/parity"
     assert upload["with"]["path"].rstrip("/") == "${{ runner.temp }}/parity"
 
-    script = step["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
-    (tmp_path / "work").mkdir()
-    (tmp_path / "work" / "parity.py").write_text(STUB_PARITY)
+    work = tmp_path / "work"
+    work.mkdir()
+    shutil.copyfile(LANE, work / "parity_lane.py")
+    (work / "parity.py").write_text(STUB_PARITY)
     python = tmp_path / "runner" / "pipeline" / "bin" / "python"
     python.parent.mkdir(parents=True)
     python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
     python.chmod(0o755)
+    # Every group into one folder, as parity-report's merge-multiple download leaves them.
     parity_dir = tmp_path / "runner" / "parity"
-    parity_dir.mkdir()
     env = {
         **os.environ,
         "PARITY_DIR": str(parity_dir),
@@ -324,15 +386,19 @@ def test_every_monthly_parity_run_writes_keys_only_into_the_uploaded_folder(work
         "GITHUB_STEP_SUMMARY": str(tmp_path / "summary.md"),
         "STUB_LOG": str(tmp_path / "calls.jsonl"),
     }
-    subprocess.run([sys.executable, "-c", script], cwd=tmp_path / "work", env=env, check=True, capture_output=True)
+    for group in job["strategy"]["matrix"]["group"]:
+        subprocess.run(["bash", "-c", step["run"]], cwd=work, env={**env, "GROUP": group}, check=True, capture_output=True)
+    subprocess.run(["bash", "-c", joined["run"]], cwd=work, env=env, check=True, capture_output=True)
 
     calls = [json.loads(line) for line in (tmp_path / "calls.jsonl").read_text().splitlines()]
-    assert len(calls) == len(_lane_families(workflow))
+    assert sorted(argv[0] for argv in calls) == sorted(_lane_families()), "every family once, and nothing else"
     for argv in calls:
         assert "--keys-only" in argv, argv
         assert argv[argv.index("--json-dir") + 1] == str(parity_dir / "results"), argv
-    summary = json.loads((parity_dir / "summary.json").read_text())["families"]
-    assert {entry["status"] for entry in summary.values()} == {"match"}, "the status comes from results/<family>.json"
+    summary = json.loads((parity_dir / "summary.json").read_text())
+    assert summary["raw_run"] == "1"
+    assert {entry["status"] for entry in summary["families"].values()} == {"match"}, "the status comes from results/<family>.json"
+    assert (tmp_path / "summary.md").read_text().count(" | match |") == len(_lane_families())
 
 
 def test_the_publish_job_stages_the_dbt_writers_files_on_ua_inside_publish_data(workflow):
@@ -428,18 +494,13 @@ def _ci_families() -> dict[str, tuple[str, bool]]:
     return found
 
 
-def _lane_families(workflow: dict) -> dict[str, tuple[str, bool]]:
-    script = next(
-        step["run"] for step in workflow["jobs"]["parity"]["steps"] if step.get("name") == "Parity with today's exporters"
-    )
-    block = script[script.index("families = {") + len("families = ") : script.index("statuses = ")]
-    raw = ("--raw-dir", "data/raw")
-    families = eval(block, {"raw": raw})  # noqa: S307 - the workflow's own literal, read to compare it with CI's
-    return {family: (name, extra == raw) for family, (name, extra) in families.items()}
+def _lane_families() -> dict[str, tuple[str, bool]]:
+    """parity_lane.py's FAMILIES: each family's file and whether it is handed --raw-dir data/raw."""
+    return {family: (name, reads_raw) for family, (name, reads_raw) in _lane_literal("FAMILIES").items()}
 
 
-def test_the_monthly_parity_runs_every_family_ci_runs_except_the_hourly_conditions_files(workflow):
+def test_the_monthly_parity_runs_every_family_ci_runs_except_the_hourly_conditions_files():
     ci = _ci_families()
 
     assert HOURLY_FAMILIES <= set(ci), "a conditions family left CI's step; HOURLY_FAMILIES is stale"
-    assert _lane_families(workflow) == {family: entry for family, entry in ci.items() if family not in HOURLY_FAMILIES}
+    assert _lane_families() == {family: entry for family, entry in ci.items() if family not in HOURLY_FAMILIES}

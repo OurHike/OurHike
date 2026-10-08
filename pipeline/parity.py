@@ -1920,6 +1920,16 @@ def canonical(value) -> str:
 DUPLICATE = "duplicate"
 
 
+def key_order(key: str) -> tuple:
+    """Where a record key sorts among the differences: a key of digits alone by its number, before every other key,
+    and the rest as text.
+
+    Sorted as text, the junction graph's `edge_index 1000000` led monthly run 30's 2,440,987 differences and
+    `edge_index 999999` ended them, while the first edge that differed was 595,379; the head of the list read as
+    "every edge from 1,000,000 on" (Measured from that run's trail_graph.txt)."""
+    return (0, int(key), key) if key.isascii() and key.isdigit() else (1, 0, key)
+
+
 def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | None, str | None]]:
     """(what, old, new) for every record and top-level field that differs, by key; empty when the two agree."""
 
@@ -1950,7 +1960,7 @@ def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | N
     # record per key, the last copy stood for the rest, so a writer that published one water point twice, one copy
     # wrong, compared equal on an unordered family (PY-4 of PR #1805's second review).
     a, b = index(old), index(new)
-    for key in sorted(a.keys() | b.keys()):
+    for key in sorted(a.keys() | b.keys(), key=key_order):
         was, now = a.get(key, []), b.get(key, [])
         if len(was) > 1 or len(now) > 1:
             found.append((f"{DUPLICATE} {family.key} {key}", canonical(was) if was else None, canonical(now) if now else None))

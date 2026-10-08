@@ -154,12 +154,35 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
     expect(look).not.toMatch(/<details class="dq-panel dq-fold"[^>]* open/);
   });
 
-  it("draws a Chart button on each row with a history and two per mart, none of them pressed as the page opens", () => {
-    const body = renderBody(manyView());
+  it("draws a Chart button on each row with a history and two per mart, the first chart's row pressed as the page opens", () => {
+    const page = manyView();
+    const body = renderBody(page);
     expect(body.match(/<button type="button" class="dq-chart-btn"/g)).toHaveLength(30 + 11);
     expect(body.match(/class="dq-chart-btn dq-chart-btn--inline"/g)).toHaveLength(11);
-    expect(body).not.toContain('aria-pressed="true"');
+    const pressed = [...body.matchAll(/data-row="([^"]+)" aria-pressed="true"/g)].map((m) => m[1]);
+    expect(pressed).toEqual([page.sections.opening]);
+    expect(body).toContain(
+      `<li class="dq-panel dq-item dq-item--bad" id="${page.sections.opening}">`,
+    );
     expect(body).toContain('aria-label="Chart null rate of trail_status in trail_lines, Monthly">');
+    expect(body).toContain(
+      `<p class="dq-charted" data-charted>Charted from Needs a look · <code>trail_<wbr>lines</code> · <code>trail_<wbr>status</code> · <a href="#${page.sections.opening}" data-back>Back to the row</a></p>`,
+    );
+  });
+
+  it("opens a fold of 3 warnings and keeps a fold of 4 closed", () => {
+    const monthly = examples.monthlyManyProblems();
+    const kept = { schema: 3, anomalies: 4 };
+    const seen = { schema: 0, anomalies: 0 };
+    monthly.needs_a_look = monthly.needs_a_look.filter((entry) => {
+      if (entry.status !== "warn" || !(entry.kind in kept)) return true;
+      seen[entry.kind] += 1;
+      return seen[entry.kind] <= kept[entry.kind];
+    });
+    const body = renderBody(view(lane(monthly, "monthly"), MISSING));
+    expect(body).toContain('<details class="dq-panel dq-fold" data-fold="schema" open>');
+    expect(body).toContain('<details class="dq-panel dq-fold" data-fold="anomalies">');
+    expect(renderBody(lookingView()).match(/<details class="dq-panel dq-fold" data-fold="\w+" open>/g)).toHaveLength(4);
   });
 
   it("draws the Show menu as a native select in its two groups, the chart's series selected", () => {

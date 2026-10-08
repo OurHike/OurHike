@@ -157,6 +157,9 @@ models:
       in (PL09), a trailhead or parking area with no line near it dropped
       (PL10), and no miles anywhere when nothing was measured (PL11).
       Must-match numbers are JSON text, which the places mart casts back.
+    config:
+      # Logs each row holding text DuckDB could not store (macros/storable_text.sql).
+      post_hook: "{{ log_broken_text(this, ['place_id', 'kind', 'source_key']) }}"
     data_tests:
       # Warns: dbt prints only a row count, so the model's post-hook logs
       # the rows, and int_places__final leaves them out (macros/storable_text.sql).

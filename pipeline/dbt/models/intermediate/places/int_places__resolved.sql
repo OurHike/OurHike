@@ -1,8 +1,4 @@
-{{ config(
-    materialized='table',
-    tags=['builds_alone'],
-    post_hook="{{ log_broken_text(this, ['place_id', 'kind', 'source_key']) }}",
-) }}
+{{ config(materialized='table', tags=['builds_alone']) }}
 -- builds_alone: Out of Memory Error here in monthly run 20 (37296900535).
 -- Not enough: alone in monthly run 21 (37323395441) it ran out at 12.4 GiB.
 {#- The disc's radius in metres, multiplied as doubles, the way Python's

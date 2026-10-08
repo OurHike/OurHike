@@ -3,7 +3,7 @@
 # GitHub Pages is what makes this installable at all: a PWA needs HTTPS before
 # any browser will offer "Install app", and Pages provides it for free.
 #
-# Four things land, at the paths the site is written to expect:
+# Five things land, at the paths the site is written to expect:
 #
 #   /         site/dist/              - the site, built by Astro from
 #                                       site/src (#116; WEBSITE.md is the plan)
@@ -17,6 +17,11 @@
 #                                       (.github/actions/dbt-docs-site;
 #                                       pipeline/ELT.md, decision 10). Never
 #                                       under /app/, the app's PWA scope
+#   /data/quality/                    - the data-quality page, built by Astro
+#             site/src/pages/data/      from site/src like the rest of the
+#                                       site and pointed at the bucket below
+#                                       (decision 102); the one path under
+#                                       /data/ that is the site's, not the docs'
 #
 # Those are apex paths because `site/CNAME` moves this site onto `ourhike.org`
 # (#733). It used to be a project site under `/OurHike/`, and the prefix was
@@ -567,20 +572,31 @@ jobs:
           cp client/public/favicon.svg _site/favicon.svg
           # The dbt docs at /data/, beside the app and never under it: /app/
           # is the PWA's scope, and an installed app would claim the docs.
-          # Refused if the site already put something there, so the two can
-          # never be silently merged. Then checked as copied, because this
+          # ONE PATH UNDER IT IS THE SITE'S: data/quality/, the data-quality
+          # page (pipeline/ELT.md decision 102), which site/dist brings. So the
+          # site may hold that and nothing else under data/, and the docs may
+          # not bring a quality/ of their own; either is refused, so the two
+          # can never be silently merged. Then checked as copied, because this
           # copy is what ships: check_docs_site.py fails a missing index.html,
           # assets/ or Parquet, a recorded --vars, and coordinate-shaped text
           # (it says what it searches for, and the one place it allows it),
           # and with --served a script, worker or WASM file from another
-          # origin (decision 93: the page runs on the app's origin).
+          # origin (decision 93: the page runs on the app's origin). It reads
+          # data/quality/ too, which holds none of those.
           if [ -e _site/data ]; then
-            echo "::error::site/dist already holds data/, which is the dbt docs' path. Move one of them."
-            exit 1
+            strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality -printf '%f ')
+            if [ -n "$strays" ]; then
+              echo "::error::site/dist holds data/${strays% } beside data/quality/, and data/ is the dbt docs' path. Move one of them."
+              exit 1
+            fi
           fi
           mkdir -p _site/data
           # Never empty: `cp -r "/." _site/data/` would copy the runner's root.
           : "${DOCS_DIR:?the docs step named no directory}"
+          if [ -e "$DOCS_DIR/quality" ]; then
+            echo "::error::The dbt docs hold a quality/ of their own, which is the data-quality page's path. Move one of them."
+            exit 1
+          fi
           cp -r "$DOCS_DIR"/. _site/data/
           python pipeline/check_docs_site.py _site/data --served
           # Pages runs Jekyll by default, which skips files beginning with an
@@ -609,6 +625,13 @@ jobs:
           else
             echo "::warning::No DATA_BASE_URL, so /status/ will say it is unconfigured rather than checking anything."
           fi
+
+          # The data-quality page reads the same bucket from the visitor's
+          # browser, for the same reason, and the monthly file from the
+          # release this build's app pins: the script takes DATA_URL from the
+          # environment and DATA_RELEASE from client/src/lib/dataRelease.ts,
+          # and fails when the page no longer holds its placeholders.
+          python .github/scripts/configure_quality_page.py _site/data/quality/index.html
 
       # Through the local action rather than peaceiris/actions-gh-pages, which
       # pushes exactly once and fails the whole deploy on a rejected push. See

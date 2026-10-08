@@ -1,0 +1,86 @@
+---
+// The two data pages, as tabs across the top of the one this site builds:
+// the dbt docs at /data/ and the data-quality page at /data/quality/ (mock B,
+// chosen by the maintainer on 2026-10-07; pipeline/ELT.md decision 102).
+//
+// UNDER THE SITE'S OWN NAV, NOT IN PLACE OF IT. Mock B drew a header holding
+// the mark and these two tabs and nothing else. On ourhike.org the page is
+// one of the site's, so it keeps the nav, the skip link and the footer every
+// other page has, and the tabs become a row beneath them - the shape
+// OrgNav.astro already gives the four org pages.
+//
+// ONLY THIS PAGE CARRIES THEM. /data/ itself is dbt's own docs app, built by
+// .github/actions/dbt-docs-site, and nothing of the site's is drawn on it, so
+// the way back from the docs is the browser's.
+const here = Astro.url.pathname
+
+const tabs = [
+  { href: '/data/', label: 'Data docs' },
+  { href: '/data/quality/', label: 'Data quality' },
+]
+---
+
+<nav class="data-nav" aria-label="Data">
+  <div class="wrap data-nav__row">
+    {
+      tabs.map((tab) => (
+        <a
+          class="data-nav__tab"
+          href={tab.href}
+          aria-current={here === tab.href ? 'page' : undefined}
+        >
+          {tab.label}
+        </a>
+      ))
+    }
+  </div>
+</nav>
+
+<style>
+  .data-nav {
+    background: var(--bg-surface);
+    border-block: 1px solid var(--border-1);
+  }
+
+  .data-nav__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-block: 10px;
+  }
+
+  .data-nav__tab {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding-inline: 14px;
+    border-radius: 999px;
+    color: var(--fg-2);
+    font-size: 14.5px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .data-nav__tab:hover {
+    color: var(--fg-1);
+  }
+
+  /* The page you are on, in the sunken sage and the brand's darker ink, as
+     mock B marks it; `aria-current` carries it for a screen reader too. */
+  .data-nav__tab[aria-current='page'] {
+    background: var(--bg-sunken);
+    color: var(--brand-primary-hover);
+  }
+
+  /* 44px on a phone, the handoff's minimum for a target (HANDOFF_README.md,
+     Responsive), which client/e2e/sitePages.spec.ts holds every page to. */
+  @media (max-width: 720px) {
+    .data-nav__row {
+      padding-block: 6px;
+    }
+
+    .data-nav__tab {
+      min-height: 44px;
+    }
+  }
+</style>

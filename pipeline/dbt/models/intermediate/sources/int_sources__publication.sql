@@ -34,7 +34,14 @@
 --   own points and no prose is held in tests/test_organizations.py, since
 --   no model here knows an organization's type. A photo, audio, hike-list,
 --   notice or other page source is still refused (rule 6): the
---   presumption does not reach prose.
+--   presumption does not reach prose. A club's notice pages, feeds and
+--   posts publish on another basis, the maintainer's facts and a link
+--   (`maintainer_authorisation`, decisions 53 and 55; 131 of the 132 such
+--   sources in seeds/notice_readers.csv on 2026-10-08, TATC's republished
+--   ridgerunner reports `unresolved`), which decision 107 (the
+--   maintainer's poll, 2026-10-08) confirmed for clubs' closure posts:
+--   closed or open, the dates, the place and a link, never the post's
+--   words.
 -- - RULE 5: restrictive words that no decision answers. Read from the row's
 --   own fields: the words it quotes (`terms`, and `terms_verbatim` where a
 --   row carries the whole text), its `licence_basis`, and the decisions and

@@ -205,6 +205,19 @@ def test_no_pub_writer_reads_a_club_notice_model_except_through_the_marts():
         assert not refs & generated, f"{path.name} reads {sorted(refs & generated)}"
 
 
+def test_the_wording_union_reads_every_generated_notice_source(files):
+    """Decision 107 (the maintainer's poll, 2026-10-08): a club's closure post publishes as facts and a link, never the
+    post's words. int_warnings__wording_leaks is what holds a source whose published row carries its own words, and it
+    knows a source's words only from int_warnings__notice_wording_unioned, so a notice source that union leaves out
+    could publish its paragraphs unchecked. 264 generated sources and 264 read, on 2026-10-08 at 4ad88f3b."""
+    generated = {source.key for source in generator.notice_sources() if not source.hand_staged}
+    read = set()
+    for path, text in files.items():
+        if path.name.startswith(generator.WORDING_MODEL.stem.removesuffix("_unioned") + "_part_"):
+            read |= set(re.findall(r"^        '([a-z0-9_]+)' as source_key,$", text, re.MULTILINE))
+    assert read == generated, {"left out": sorted(generated - read), "not a notice source": sorted(read - generated)}
+
+
 def test_the_readers_seed_marks_every_feed_a_window():
     for row in _seed("notice_readers"):
         assert (row["listing"] == "window") == (row["reader"] == "feed_notices"), row["raw_table"]

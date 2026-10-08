@@ -5940,6 +5940,10 @@ CLUB_TRAIL_LINE_FIELDS = {
         "creator:s stroke_opacity:i stroke_width:i title:s fill:s class:s updated:d stroke:s fill_opacity:d "
         "folderId:s gpstype:s ObjectId:o Shape__Length:d"
     ),
+    # Decision 54's wave 6 (2026-10-08): the Empire State Trail's segments and connector trails, the field lists
+    # their live ?f=json gave that day.
+    "oprhp_est_segments": "OBJECTID:o Type:s Surface:s Miles:d ParentLegName:s ParentLegID:s UID:s GlobalID:g Shape__Length:d",
+    "oprhp_est_connectors": "OBJECTID:o Name:s UID:s GlobalID:g Shape__Length:d",
     "patc_trails_master": (
         "OBJECTID:o TrailName:s TrailType:s MapMethod:s MapSource:s SurveyDate:s District:s Maintainer:s "
         "GuidebookSection:s Easement:s Comments:s SegmentLengthMiles:d MapFootprint:s SegmentFrom:s SegmentTo:s "

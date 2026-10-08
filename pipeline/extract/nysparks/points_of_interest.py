@@ -12,6 +12,10 @@
   and the service is on OPRHP's ArcGIS organisation beside the other layers here. Its
   PhoneNumber and Address are never asked for (its sources.json row says why).
 
+Not landed: Parks & Trails New York's `Campgrounds_(Public_View)` and
+`Erie_Canalway_Trail_Camping` layers, which the coverage audit named and did not count. They wait
+on a row of PTNY's own, and on a comparison with TrailFeature's 69 campgrounds.
+
 Each layer's row in sources.json holds its counts, dates, terms and key. Change checks are
 _kinds.py's ArcgisLayer: a conditional GET of the layer document on ArcGIS Online, and an allowed
 zero only beside the server's own returnCountOnly read in the same run.

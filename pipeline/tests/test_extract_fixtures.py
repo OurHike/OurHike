@@ -70,10 +70,11 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | PagePoints
     )
     fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
-    assert len(fetched) == 391, (
+    assert len(fetched) == 393, (
         "61 monthly layers and OPRHP's temporary closures on the hourly lane, and decision 53's 76 ArcGIS "
         "closure and warning layers: 70 hourly, 3 daily, 3 monthly, and decision 54's 83 places layers, all "
-        "monthly, its 98 trail-line layers, all monthly, and its 70 point layers, all monthly (wave 6 added "
+        "monthly, its 100 trail-line layers, all monthly (wave 6 added the Empire State Trail's two, "
+        "oprhp_est_segments and oprhp_est_connectors), and its 70 point layers, all monthly (wave 6 added "
         "the Empire State Trail's, oprhp_est_trail_features), and wave 6's 2 hourly closure layers "
         "(ptny_est_closures, oprhp_est_under_construction)"
     )

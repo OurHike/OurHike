@@ -38,6 +38,24 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nws_alerts'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           Every active NWS alert, one row per message as /alerts/active
           serves it, Test messages and cancellations included: the relay in

@@ -26,6 +26,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/challenges/atc'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           reference/challenges/atc/*.json, one row per file (#1780 — Let a
           club publish a challenge — places on its own trails that hikers opt

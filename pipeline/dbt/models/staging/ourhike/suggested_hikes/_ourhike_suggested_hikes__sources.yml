@@ -22,6 +22,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/highlights.json'", "_row"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           reference/highlights.json, the curated list of stretches somebody
           says are worth going to (features/CORRIDOR_VIEW.md; #595 — The

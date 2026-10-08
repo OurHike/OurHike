@@ -20,6 +20,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nyc_cscl_paths'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYC Street Centerline - pedestrian ways (path, boardwalk, step
           street, non-vehicular) (sources.json `nyc_cscl_paths`). Key:
@@ -30,6 +41,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nyc_park_drives'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYC park drives that are closed to cars (Central Park and Prospect
           Park) (sources.json `nyc_park_drives`). Key: globalid unique on
@@ -41,6 +63,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nyc_dot_greenways'", "segmentid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYC DOT Greenways (current, off-street) (sources.json
           `nyc_dot_greenways`). Key: segmentid, 2,995 of 2,995 live rows after

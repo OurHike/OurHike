@@ -51,6 +51,24 @@ exposures:
         r2_keys: [places.json]
         format: json
         cadence: monthly
+        # The mart columns this file's writer reads, in Elementary's type words, which
+        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # the one phone file reading that mart: with more, Elementary 0.26.0 needs
+        # context["render"], which dbt 2.0.6 lacks.
+        referenced_columns:
+          - {column_name: place_id, data_type: string}
+          - {column_name: place_order, data_type: numeric}
+          - {column_name: kind, data_type: string}
+          - {column_name: name, data_type: string}
+          - {column_name: poi_id, data_type: string}
+          - {column_name: category, data_type: string}
+          - {column_name: state, data_type: string}
+          - {column_name: within_park, data_type: string}
+          - {column_name: lon, data_type: numeric}
+          - {column_name: lat, data_type: numeric}
+          - {column_name: bbox, data_type: other}
+          - {column_name: trail_miles, data_type: numeric}
+          - {column_name: source, data_type: string}
 
 # The writer's unit tests, one per case of tests/test_export_places.py whose rule is the
 # document's shape. tests/test_dbt_places_parity.py builds each expected document

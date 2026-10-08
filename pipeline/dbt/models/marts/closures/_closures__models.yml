@@ -29,6 +29,38 @@ models:
       - v: 1
         defined_in: closures
     data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: in CI's fixture build, and in the hourly lane once it runs
+      # checks (build_marts.py's HOURLY_LANE_CHECKS). The rows at each build;
+      # the rows per club and source, so one club's notices vanishing cannot
+      # hide inside the total; and each column's null rate, the geometry and
+      # the long text (a reporter's note, NYS Parks' place description) left
+      # out. The closure dates' own checks are on their columns. No
+      # exposure_schema_validity: five phone files read this mart, and with
+      # more than one Elementary 0.26.0 checks a column only through
+      # context["render"], which dbt 2.0.6 does not have (the test errored,
+      # measured 2026-10-08), so it could check nothing here.
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(geom_geojson|note|closure_place)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # A.T. miles inside the trail's own extent (ATC's half-mile markers,
       # 0.5-2197.5; lib/atc_updates.py's TRAIL_MILE_MIN and TRAIL_MILE_MAX) and
       # in order. ERROR for ATC's rows, which int_closures__atc_checked refuses
@@ -196,12 +228,32 @@ models:
           it before publishing). A hunting area's season where its layer gives
           one, and never a season OurHike supplied (decision 67).
         data_type: date
+        data_tests:
+          # A closure date (decision 102): its null rate against the builds
+          # before, at warn, here and on ends_on and expected_reopen.
+          # Elementary's minimum and maximum are numeric monitors only (0.26.0's
+          # get_available_monitors()), so a date gets its null rate alone.
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - name: ends_on
         description: >
           The day a club notice says it ends, as the source states it, in UTC;
           null where the source states none. A notice past it is held back,
           never published.
         data_type: date
+        data_tests:
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - name: source_edited_at
         description: >
           The row's own edit date from its source (ATC's `updated_at`), null
@@ -261,6 +313,14 @@ models:
       - name: expected_reopen
         description: When it is expected to reopen, where anyone said; null otherwise.
         data_type: timestamptz
+        data_tests:
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - name: reroute_url
         description: A page describing the way around, where there is one.
         data_type: varchar

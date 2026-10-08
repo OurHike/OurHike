@@ -19,6 +19,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'sources.json'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           pipeline/sources.json, the registry of every upstream data source:
           64 registered sources on 2026-10-01, and the top-level blocks that
@@ -35,6 +46,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/nynjtc_paper_maps.json'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           reference/nynjtc_paper_maps.json, a person's join of NYNJTC's store
           products to the map sheets each holds and the parks each sheet

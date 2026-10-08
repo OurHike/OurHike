@@ -80,6 +80,20 @@ exposures:
         # The lane that reads its source. A person's dispatch of
         # publish-podcasts.yml is what ships an edit today, on no schedule.
         cadence: monthly
+        # The mart columns this file's writer reads, in Elementary's type words, which
+        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # the one phone file reading that mart: with more, Elementary 0.26.0 needs
+        # context["render"], which dbt 2.0.6 lacks.
+        referenced_columns:
+          - {column_name: spotify_id, data_type: string}
+          - {column_name: title, data_type: string}
+          - {column_name: show_name, data_type: string}
+          - {column_name: minutes, data_type: numeric}
+          - {column_name: hikes, data_type: other}
+          - {column_name: at_miles, data_type: other}
+          - {column_name: pois, data_type: other}
+          - {column_name: links, data_type: other}
+          - {column_name: list_position, data_type: numeric}
   - name: stewards_json
     label: stewards.json
     type: application

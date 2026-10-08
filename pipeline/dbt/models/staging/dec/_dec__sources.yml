@@ -45,6 +45,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_hiking_trails'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS DEC Hiking Trails, statewide (sources.json: discovered
           2026-08-25). 5,286 polyline segments - 4,931 LineString, 355
@@ -83,6 +94,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_lean_tos'", "asset_uid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS DEC Lean-tos, statewide (sources.json: discovered 2026-08-27).
           315 rows, counted live that day. Registered as LAYER 0 ONLY - layer
@@ -111,6 +133,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_primitive_campsites'", "asset_uid", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS DEC Primitive Campsites, statewide (discovered 2026-08-27).
           2,078 rows counted live that day, and exactly the big layer's
@@ -125,6 +158,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_scenic_vistas'", "asset_uid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS DEC Scenic Vistas, statewide (discovered 2026-08-27). 134 rows
           counted live that day, matching the big layer's 134 PUBLICUSE 'Y'
@@ -138,6 +182,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_firetowers'", "asset_uid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS DEC Firetowers, statewide (discovered 2026-08-27). 35 rows
           counted live that day against 34 in the big layer's public slice -
@@ -151,6 +206,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_viewing_areas'", "asset_uid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS DEC Viewing Areas, statewide (discovered 2026-08-27). 34 rows
           counted live that day against 33 OBSERVATION PLATFORM rows in the
@@ -166,6 +232,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_parking_areas'", "asset_uid", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS DEC Parking, statewide (discovered 2026-08-27). 1,852 rows
           counted live that day against 1,857 parking-shaped rows in the big
@@ -182,6 +259,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_backcountry_features'", "asset_uid", "name", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS DEC Back Country Features (discovered 2026-08-27). 21,468
           points counted live that day, and NOT A POI LAYER - DEC's own

@@ -20,6 +20,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'blm_trails'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))", "blm_miles", "route_plan_id", "def_fet2", "plan_season_rstrct_code", "route_prmry_nm"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           BLM trails and routes (Natl GTLF public display) (sources.json
           `blm_trails`). Key: geometry plus five route columns, 19,530 of

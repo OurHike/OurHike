@@ -33,6 +33,24 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_closures'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           OurHike's moderator-verified closures, PUBLIC_CLOSURES_SQL's rows:
           `moderation_status = 'verified'`, every status, ordered by mile and
@@ -47,6 +65,24 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_reports'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           OurHike's public reports, PUBLIC_REPORTS_SQL's rows: `status IN
           ('verified', 'resolved') AND visibility = 'public'`, every
@@ -62,6 +98,24 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_notes'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           OurHike's visible field notes, PUBLIC_NOTES_SQL's rows: each place's
           five most recent inside 90 days. No mart reads them;
@@ -76,6 +130,24 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_disputes'", "poi_id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           The places field notes say are gone, PUBLIC_DISPUTES_SQL's rows:
           one per POI that two accounts or more have marked not found inside

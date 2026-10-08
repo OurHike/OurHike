@@ -44,7 +44,8 @@ Column names are the registry's field names as dlt names them on landing (the `s
 .dlt/config.toml sets, path by path), quoted where DuckDB reserves the word, so `DESC_` is `"desc"`.
 
 WHAT IT WRITES, for each club folder <f> with such layers, under dbt/models/staging/<f>/:
-- `_<f>__generated__sources.yml`: each raw table, with its duplicates_are_exact test on the model's own key.
+- `_<f>__generated__sources.yml`: each raw table, with its duplicates_are_exact test on the model's own key and
+  Elementary's checks (raw_table_checks(), decision 102), which generate_notice_models.py writes on its raw tables too.
 - `base/base_<f>__<key>.sql` and `base/_<f>__generated__base.yml`: one base model per raw table.
 - `stg_<f>__<type>.sql` and `_<f>__generated__models.yml`: one staging model per type, every layer of that
   type in the folder conformed to its union's columns, the layer's own columns kept whole as `properties`.
@@ -159,6 +160,83 @@ DEFAULT_REGION = "us_and_territories"
 REGIONS_DECIDED_BY_HAND = frozenset({"trail_lines", "points_of_interest"})
 
 LINE = 76  # SQL comment width: SQLFluff's LT05 holds every line to 80
+
+# --- Elementary's checks on raw tables (decision 102) -----------------------------------------------------------
+
+#: The tag every Elementary check carries, and no other test does: build_marts.py leaves the tagged tests out of
+#: every dbt build and runs them in a pass of their own after the writers (its docstring, "ELEMENTARY'S CHECKS RUN
+#: AFTER THE WRITERS"). tests/test_elementary_checks.py holds the tag and the severity on every check.
+ELEMENTARY_CHECK = "elementary_check"
+#: The cadences whose raw tables also get a freshness check: the hourly lane's (build_marts.py's FASTER_THAN_MONTHLY).
+FRESHNESS_CADENCES = ("hourly", "daily")
+#: Every check exists only with a switch of its own on, OURHIKE_ELEMENTARY_CHECKS, which only build_marts.py sets: in a
+#: build that runs the checks, for the two dbt commands that need them in the graph, Elementary's own tables (whose
+#: dbt_tests table is where the data-quality file reads each check's lineage) and the checks pass (its CHECKS_SWITCH).
+#: Every other command, the docs site, the evaluator and the pytest suites' builds carry none: enabled, the 1,979
+#: checks cost each `dbt parse` about 5 s of CPU, and the hourly lane, which runs none, 59 s of CPU over the commit
+#: before them, against 25 s with them disabled (measured 2026-10-08, build_marts.py's docstring, "ELEMENTARY'S
+#: CHECKS RUN AFTER THE WRITERS"). Never on without Elementary's own switch (dbt_project.yml's OURHIKE_ELEMENTARY):
+#: with it off, 0.26.0's exposure_schema_validity compiles to the text `None` and errors, and every other kind passes
+#: having queried nothing (both measured 2026-10-08 on dbt 2.0.6). A test whose `enabled` renders false is no node of
+#: the manifest (measured the same day in a scratch project).
+ELEMENTARY_ENABLED = "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+
+
+def elementary_check_config() -> dict:
+    """Every Elementary check's `config`, a new dict each call (so yaml.safe_dump writes no alias between checks): at
+    warn, never error, because at error severity one failed Elementary test skipped the 10 checks below it (the spike,
+    measured 2026-10-07; pipeline/ELT.md, "Data quality (decision 102)", "All at warn"); tagged ELEMENTARY_CHECK; and
+    enabled with the checks' own switch alone (ELEMENTARY_ENABLED)."""
+    return {"severity": "warn", "tags": [ELEMENTARY_CHECK], "enabled": ELEMENTARY_ENABLED}
+
+
+def raw_table_checks(cadence: str | None, timestamp_column: str = "_loaded_at") -> list[dict]:
+    """The Elementary checks one raw table carries, as items of its source table's `data_tests` (pipeline/ELT.md,
+    "The checks, and where each goes"). The one home of them: both generators write these, and
+    tests/test_elementary_checks.py holds every hand-written raw table to the same list.
+
+    - volume_anomalies with no timestamp column: the table's rows at each build. Not rows per day by `_loaded_at`,
+      which ELT.md names for the hourly sources: every raw table is loaded with write_disposition "replace"
+      (extract/_run.py), so all of a table's rows carry its last load's stamp, and Elementary recounts the last two
+      days' buckets from the table as it stands (0.26.0's get_metric_buckets_min_and_max treats a source as
+      incremental), which would record 0 for each day before a reload. Reasoned from those two, not run.
+    - schema_changes: a column added, dropped or retyped upstream, against the columns the last build recorded.
+    - freshness_anomalies on `timestamp_column` (the table's loaded_at_field, else `_loaded_at`), on an hourly or
+      daily source: the gap since its last load, which Elementary learns per source. A source the change check
+      finds unchanged keeps its last load's stamp (ELT.md, "dlt configuration requirements"), so what it learns is
+      how long the source usually goes unchanged, and a source reloaded every run gives it no point at all (one
+      stamp, later than every bucket it scores). dbt's own `source freshness` keeps decisions 100 and 101.
+    """
+    checks: list[dict] = [
+        {"elementary.volume_anomalies": {"config": elementary_check_config()}},
+        {"elementary.schema_changes": {"config": elementary_check_config()}},
+    ]
+    if cadence in FRESHNESS_CADENCES:
+        checks.append(
+            {
+                "elementary.freshness_anomalies": {
+                    "arguments": {"timestamp_column": timestamp_column},
+                    "config": elementary_check_config(),
+                }
+            }
+        )
+    return checks
+
+
+def raw_table_checks_yaml(cadence: str | None, indent: int) -> list[str]:
+    """raw_table_checks() as `data_tests` list items at `indent`, the way sources_yaml() writes its YAML."""
+    pad, lines = " " * indent, []
+    for check in raw_table_checks(cadence):
+        ((name, body),) = check.items()
+        lines.append(f"{pad}- {name}:")
+        for key in ("arguments", "config"):
+            if key not in body:
+                continue
+            lines.append(f"{pad}    {key}:")
+            for field, value in body[key].items():
+                shown = _yaml_list(value) if isinstance(value, list) else json.dumps(value) if "{{" in str(value) else value
+                lines.append(f"{pad}      {field}: {shown}")
+    return lines
 
 
 @dataclass(frozen=True)
@@ -726,6 +804,7 @@ def _yaml_list(items: list[str]) -> str:
 
 
 def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
+    cadence = _cadence(folder_tables)
     lines = [
         YAML_MARK + "version: 2",
         "",
@@ -742,7 +821,7 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
         "    config:",
         "      loaded_at_field: _loaded_at",
         "      meta:",
-        f"        cadence: {_cadence(folder_tables)}",
+        f"        cadence: {cadence}",
         "      freshness:",
         "        # The extract's cadence, not the steward's. @unvalidated, the same",
         "        # threshold and open question as _atc__sources.yml.",
@@ -768,6 +847,8 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
             "              arguments:",
             f"                key_columns: {_yaml_list(_raw_key_columns(table.key_inputs()))}",
             *([f"                row_id_columns: {_yaml_list(FILE_ROW_IDS)}"] if table.entry.get("kind") in FILE_KINDS else []),
+            "          # Elementary's checks (raw_table_checks()), each at warn and run after the writers.",
+            *raw_table_checks_yaml(cadence, 10),
             "        description: >",
             _folded(f"{table.title} (sources.json `{table.key}`). Key: {table.key_comment()}", 10),
         ]

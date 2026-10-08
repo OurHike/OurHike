@@ -37,6 +37,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_hike_finder'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           The Hike Finder export (heardimmunity.org/hikefinder, behind a site
           password since 2026-09-15), one row per hike as lib/hikefinder.py's
@@ -59,6 +70,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/nynjtc_hike_photos.json'", "_row"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           reference/nynjtc_hike_photos.json, the hike-to-photograph join a
           person confirmed row by row against match_wayback_hike_photos.py's

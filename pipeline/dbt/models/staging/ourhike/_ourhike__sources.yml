@@ -18,6 +18,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/poi_identity.json'", "poi_id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           reference/poi_identity.json, the POI identity ledger
           (features/POI_IDENTITY.md): one row per POI ever published, 8,563
@@ -34,6 +45,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/blaze_mapping.json'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           reference/blaze_mapping.json, the reviewed blaze mapping (#782, features/NEARBY_TRAILS.md section 4): per-source tables of what a raw value is as paint, each row somebody's decision. One row, the whole document, verbatim.
       - name: raw_ourhike__trail_name_aliases
@@ -42,6 +64,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/trail_name_aliases.json'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           reference/trail_name_aliases.json, the reviewed trail-name aliases: each through route's names by publisher, with the rejected and removed candidates. One row, the whole document, verbatim.
       - name: raw_ourhike__work_projects
@@ -50,6 +83,24 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/work_projects.json'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         config:
           # Read on the hourly conditions lane (its folder file's TYPE is
           # closures), because a cancelled workday must clear with the next

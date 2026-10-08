@@ -53,6 +53,15 @@ models:
               elevation_ft is, where the DEM has no answer at the sample,
               never 0.
             data_type: integer
+            data_tests:
+              # v1's elevation_ft check, on the column that replaces it.
+              - elementary.column_anomalies:
+                  arguments:
+                    column_anomalies: [null_percent, min, max]
+                  config:
+                    severity: warn
+                    tags: [elementary_check]
+                    enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         data_tests:
           - dbt_utils.unique_combination_of_columns:
               arguments:
@@ -76,7 +85,64 @@ models:
           - dbt_utils.equal_rowcount:
               arguments:
                 compare_model: ref('elevation', v=1)
+          # Elementary's checks, as v1 carries them (below), and the columns
+          # elevation_profile.json's v2 reads, its exposure's
+          # referenced_columns: one phone file reads v2, which is what lets
+          # Elementary 0.26.0 check them on dbt 2.0.6 (v1's comment says why).
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.dimension_anomalies:
+              arguments:
+                dimensions: [club, source_key]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.all_columns_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.exposure_schema_validity:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: the samples at each build; the samples per club and source,
+      # so one club's line vanishing cannot hide inside the total; and each
+      # column's null rate (no geometry and no long text here). The
+      # elevation's own check is on its column. No exposure_schema_validity on
+      # v1: two phone files read it, and with more than one Elementary 0.26.0
+      # checks a column only through context["render"], which dbt 2.0.6 does
+      # not have (the test errored, measured 2026-10-08), so it could check
+      # nothing here.
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [line_id, seq]
@@ -162,6 +228,15 @@ models:
               arguments:
                 min_value: -300
                 max_value: 20500
+          # A safety column (decision 102): its null rate, lowest and highest
+          # sample against the builds before, at warn.
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent, min, max]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - name: elevation_m
         description: >
           The DEM's elevation at the sample in metres, as step_dem_sampling

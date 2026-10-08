@@ -23,6 +23,30 @@ models:
     versions:
       - v: 1
         defined_in: sources
+    data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: the registered sources at each build, and each column's null
+      # rate, the long text (an organization's note, a steward's terms and
+      # attribution) left out. No rows per club and source: this mart has no
+      # `club`, and holds one row per source_key, so a count per key is always
+      # 1. No exposure_schema_validity: two phone files read this mart, and
+      # with more than one Elementary 0.26.0 checks a column only through
+      # context["render"], which dbt 2.0.6 does not have (the test errored,
+      # measured 2026-10-08), so it could check nothing here.
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(org_note|steward_terms|steward_attribution)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     columns:
       - name: source_key
         description: The registry key, e.g. `atc_shelters`.

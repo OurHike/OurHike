@@ -37,6 +37,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'shelters'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Shelters (sources.json: discovered 2026-07-24 via the ATC
           Experience Builder app's operational layers). One row per shelter,
@@ -56,6 +67,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'campsites'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Campsites (sources.json: discovered 2026-07-24 via the ATC
           Experience Builder app's operational layers). Same ANST_Facilities
@@ -73,6 +95,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'viewpoints'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Viewpoints (sources.json: discovered 2026-07-24 via the ATC
           Experience Builder app's operational layers). ANST_Facilities
@@ -86,6 +119,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'parking'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Parking (sources.json: discovered 2026-07-24). ANST_Facilities
           schema family, plus lot inventory (Type/Surface/Capacity fields).
@@ -98,6 +142,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'privies'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Privies (sources.json: discovered 2026-07-24). ANST_Facilities
           schema family.
@@ -110,6 +165,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'communities'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Communities (sources.json: discovered 2026-07-24). Towns with
           official A.T. Community designation - a resupply PROXY, which is
@@ -127,6 +193,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'bridges'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Bridges (sources.json: discovered 2026-07-24).
           ANST_Facilities schema family. The one POI-shaped registered layer
@@ -142,6 +219,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'centerline'", "coalesce(globalid, cast(objectid as varchar))"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Centerline (sources.json: discovered 2026-07-24) - the 3,025
           maintaining-club-edited segments every geometry export merges.
@@ -163,6 +251,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'side_trails'", "coalesce(globalid, cast(objectid as varchar))"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Side Trails (sources.json: discovered 2026-07-24) - the blue
           blazes. export_spurs.py owns the published artifact; the staged
@@ -183,6 +282,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'trail_club_sections'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Trail Club Sections (sources.json: discovered 2026-07-24) -
           which club maintains which stretch. export_club_sections.py owns
@@ -198,6 +308,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'half_mile_points_from_springer'", "point_id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Half Mile Points From Springer (sources.json: discovered
           2026-07-24) - ATC's own mile scale, the calibration authority for
@@ -215,6 +336,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'at_treadway'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           A.T. Treadway (sources.json: discovered 2026-07-24) - 30 built
           treadway segments with construction inventory.
@@ -227,6 +359,24 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/atc_updates.json'", "_row"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         config:
           # Read on the hourly conditions lane, as every closures type is
           # (extract/_contract.py's CADENCE_BY_TYPE). Its change marker is the
@@ -272,6 +422,24 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/atc_updates.json'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         config:
           # The same file as raw_atc__atc_trail_updates, on the same lane,
           # measured from the run log for the same reason.
@@ -300,6 +468,24 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'atc_trail_updates'", "slug"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         config:
           # Read on the hourly conditions lane, as every closures type is. How
           # recently the extract loaded the pages, from its run log
@@ -379,6 +565,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/water_distance.json'", "atc_global_id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           reference/water_distance.json's `sites`, one row per A.T. shelter
           and campsite (512 on 2026-10-01): how far ATC's Campsite

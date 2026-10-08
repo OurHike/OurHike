@@ -44,7 +44,11 @@ models:
   # the docs site, the evaluator and the pytest suites' builds never carry
   # its 30 models (Reasoned: a disabled model is no node of the manifest).
   # Off, both of Elementary's hooks return at once and every Elementary test
-  # passes without querying anything (measured 2026-10-08). On with its
+  # passes without querying anything (measured 2026-10-08), but
+  # exposure_schema_validity, which compiles to the text `None` and errors
+  # (measured the same day): so the checks have a switch of their own,
+  # OURHIKE_ELEMENTARY_CHECKS, which build_marts.py turns on only beside
+  # this one (make_dbt_staging.py's ELEMENTARY_ENABLED says when). On with its
   # tables missing, a command records nothing and still passes, with the
   # artifact upload below turned off: `dbt seed` and a build of the seeds
   # and their tests against a warehouse without them (measured the same day).
@@ -107,8 +111,36 @@ vars:
   # those tables first in every build, and their own post-hooks load them, so
   # here the hook skips it: one `dbt seed` against the fixture warehouse spent
   # 17.07 s in the hook with it and 0.22 s without (measured 2026-10-08), and
-  # a fixture build runs 15 dbt commands.
+  # a fixture build runs 16 dbt commands, Elementary's checks pass among them.
   disable_dbt_artifacts_autoupload: true
+  # ELEMENTARY'S TRAINING AND DETECTION, which every check's warning rests on
+  # (decision 102): 0.26.0's own defaults (get_config_var.sql), written here
+  # so they are read in one place. Each is @unvalidated, a default and not a
+  # finding, settled by counting each lane's false alarms over the first
+  # season (pipeline/ELT.md, "Memory between runs").
+  # - days_back, the training window: 14 days, which the hourly lane fills
+  #   with 336 builds. The monthly lane builds once a month, so 14 days would
+  #   hold none of its earlier builds: build_marts.py gives its checks pass
+  #   400 (MONTHLY_TRAINING_DAYS, ELT.md's "about 400 days") as --vars,
+  #   because dbt 2.0.6 hands a var rendered from Jinja here over as a string
+  #   ("400"), `as_number` or not, where --vars gives a number and keeps the
+  #   other vars (both measured 2026-10-08 in a scratch project).
+  # - backfill_days, the detection window: 2 days. A check warns while any
+  #   point inside it scores as anomalous, so in the hourly lane one bad build
+  #   keeps its check warning for about 48 builds after it (Reasoned from
+  #   0.26.0's get_read_anomaly_scores_query()).
+  # - anomaly_sensitivity: 3 standard deviations. The newest point is inside
+  #   its own training set (0.26.0's anomaly scores, "rows between unbounded
+  #   preceding and current row"), so with n points no score passes
+  #   (n - 1) / sqrt(n): 2.85 at 10 points, 3.02 at 11. No check can warn on
+  #   an anomaly before its window holds 11 points (measured 2026-10-08 on
+  #   DuckDB 1.5.5, that window over n - 1 equal points and one outlier).
+  # min_training_set_size is not set: 0.26.0 takes it as an argument of every
+  # anomaly test and reads it nowhere (get_anomalies_test_configuration.sql),
+  # so its default of 7 gates nothing. The 11 points above are the real wait.
+  days_back: 14
+  backfill_days: 2
+  anomaly_sensitivity: 3
 
   # Where the pub_ writers write, relative to pipeline/dbt/. A folder of its
   # own under data/processed/ while each family's Python writer still runs:

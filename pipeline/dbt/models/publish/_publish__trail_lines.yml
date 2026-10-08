@@ -268,6 +268,15 @@ exposures:
         # after, first run"), not a ceiling anyone chose.
         size_budget_bytes: 179522
         cadence: monthly
+        # The mart columns this file's writer reads, in Elementary's type words, which
+        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # the one phone file reading that mart: with more, Elementary 0.26.0 needs
+        # context["render"], which dbt 2.0.6 lacks.
+        referenced_columns:
+          - {column_name: trail_line_id, data_type: string}
+          - {column_name: line_kind, data_type: string}
+          - {column_name: feature_order, data_type: numeric}
+          - {column_name: vertex_milli_miles, data_type: other}
   - name: trails_overview_geojson
     label: trails_overview.geojson
     type: application

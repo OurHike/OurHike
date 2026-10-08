@@ -21,6 +21,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'cotrex_trails'", "feature_id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           Colorado trails statewide (COTREX) (sources.json `cotrex_trails`).
           Key: feature_id unique on 96,897 of 96,897 live rows.

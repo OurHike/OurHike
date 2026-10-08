@@ -79,7 +79,58 @@ models:
           - dbt_utils.equal_rowcount:
               arguments:
                 compare_model: ref('points_of_interest', v=1)
+          # Elementary's checks, as v1 carries them (below).
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.dimension_anomalies:
+              arguments:
+                dimensions: [club, source_key]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.all_columns_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+                exclude_regexp: "^(geom_geojson|description|nearby|photos)$"
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: the rows at each build; the rows per club and source, so one
+      # club's layer vanishing cannot hide inside the national total; and each
+      # column's null rate, the geometry and the long text (a description, the
+      # site and photo JSON) left out. The water distance's own check is on
+      # its column. No exposure_schema_validity: three phone files read v1 and
+      # nine read v2, and with more than one Elementary 0.26.0 checks a column
+      # only through context["render"], which dbt 2.0.6 does not have (the
+      # test errored, measured 2026-10-08), so it could check nothing here.
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(geom_geojson|description|nearby|photos)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # The lon/lat swap test on what ships. A stray point upstream (three
       # USFS recreation sites on 2026-10-03,
       # tests/singular/assert_pois_land_in_the_region_this_build_covers.sql)
@@ -254,6 +305,16 @@ models:
       - name: water_distance_ft
         description: CSI's distance to the nearest water in ATC's feet, on a shelter, a campsite or a synthesized water point.
         data_type: integer
+        data_tests:
+          # A safety column (decision 102): its null rate, shortest and
+          # longest distance against the builds before, at warn.
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent, min, max]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - name: water_distance_source
         description: >
           How ATC arrived at the distance, CSI's Nearest_Water_Source verbatim:

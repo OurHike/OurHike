@@ -21,6 +21,17 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'massgis_long_distance_trails'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           Massachusetts long-distance trails (MassGIS) (sources.json
           `massgis_long_distance_trails`). Key: GLOBALID unique on 32 of 32

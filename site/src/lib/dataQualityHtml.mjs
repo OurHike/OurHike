@@ -104,8 +104,23 @@ ${tile.learning ? html`<p class="dq-tile__learning">${tile.learning}</p>` : ""}
 </article>`;
 }
 
-function renderItem(item) {
-  return html`<li class="dq-panel dq-item dq-item--${item.tone}">
+const CHART_ICON = html`<svg class="dq-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.5 13.5h13M3 11l3.2-4 2.6 2.2L13 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>`;
+
+/**
+ * A Chart button: draws series `key` in the chart, and is pressed while the
+ * chart draws it (dataQuality.mjs's chartControls). Its word stays "Chart"
+ * whether pressed or not - a toggle whose words change with its state reads
+ * twice over to a screen reader, which hears the state already. `label` is
+ * the name a reader hears, the word first and then the series ("Chart rows
+ * in trail_lines, Monthly"): an aria-label rather than visually hidden text,
+ * which a page audit measures as text running off the screen.
+ */
+export function chartButton({ key, row, label, pressed, extra = null }) {
+  return html`<button type="button" class="${extra ? `dq-chart-btn ${extra}` : "dq-chart-btn"}" data-chart-key="${key}" data-row="${row}" aria-pressed="${pressed ? "true" : "false"}" aria-label="${label}">${CHART_ICON}Chart</button>`;
+}
+
+function renderItem(item, charted) {
+  return html`<li class="dq-panel dq-item dq-item--${item.tone}" id="${item.id}">
 <span class="dq-item__stripe" aria-hidden="true"></span>
 <div class="dq-item__what">
 <p class="dq-item__head">${item.kind} · ${name(item.table)}${item.column ? html` · ${name(item.column)}` : ""}</p>
@@ -114,18 +129,54 @@ function renderItem(item) {
 <div class="dq-item__when">
 ${pill({ tone: item.tone, text: item.status })}
 <p>${item.lane}${item.since ? ` · ${item.since}` : ""}</p>
+${item.chart ? chartButton({ key: item.chart, row: item.id, label: item.chartName, pressed: item.chart === charted }) : ""}
 </div>
 </li>`;
 }
 
-function renderMarts(marts) {
+const itemList = (items, charted) => html`<ul class="dq-items">${items.map((item) => renderItem(item, charted))}</ul>`;
+
+/**
+ * "Needs a look": what failed or could not run, every row of it; then the
+ * warnings, one closed line per kind that opens onto its rows (dataQuality.mjs,
+ * lookView, says why only warnings fold).
+ */
+function renderLook(look, charted) {
+  const { failing, other, warnings } = look;
+  return html`${failing.items.length ? html`<h3 class="dq-look__subhead">${failing.title}</h3>
+${itemList(failing.items, charted)}` : ""}
+${other.items.length ? html`<h3 class="dq-look__subhead">${other.title}</h3>
+${itemList(other.items, charted)}` : ""}
+${
+  warnings.count
+    ? html`<h3 class="dq-look__subhead">${warnings.title}</h3>
+<div class="dq-folds">
+${warnings.folded.map(
+  (group) => html`<details class="dq-panel dq-fold" data-fold="${group.kind}">
+<summary>${icon("warn")}<span class="dq-fold__what"><strong>${group.label}</strong> · ${group.summary}</span></summary>
+${itemList(group.items, charted)}
+</details>
+`,
+)}
+</div>`
+    : ""
+}`;
+}
+
+function renderMarts(marts, charted) {
   if (marts.length === 0) return html`<p class="dq-panel dq-quiet">No mart was checked in these builds.</p>`;
+  // Its own column on a laptop; on a phone under the mart's name, because a
+  // fourth column does not fit 390 px (round 2's frames). Two buttons, one
+  // shown at a time by site.css, so only the shown one is in the tab order.
+  const charting = marts.some((row) => row.chart);
+  const button = (row, extra) =>
+    chartButton({ key: row.chart, row: row.id, label: row.chartName, pressed: row.chart === charted, extra });
   return html`<div class="dq-panel dq-table-wrap">
 <table class="dq-table" aria-labelledby="dq-marts-title">
-<thead><tr><th scope="col">Mart</th><th scope="col" class="dq-col-lane">Lane</th><th scope="col" class="dq-num">Checks</th><th scope="col">Result</th></tr></thead>
+<thead><tr><th scope="col">Mart</th><th scope="col" class="dq-col-lane">Lane</th><th scope="col" class="dq-num">Checks</th><th scope="col">Result</th>${charting ? html`<th scope="col" class="dq-col-chart"><span class="dq-sr">Chart</span></th>` : ""}</tr></thead>
 <tbody>
 ${marts.map(
-  (row) => html`<tr><td>${name(row.mart)}<span class="dq-lane-tag">${row.lane}</span></td><td class="dq-col-lane">${row.lane}</td><td class="dq-num">${row.checks}</td><td><p class="dq-pills">${row.pills.map(pill)}</p></td></tr>
+  (row) => html`<tr id="${row.id}"><td>${name(row.mart)}<span class="dq-lane-tag">${row.lane}</span>${row.chart ? button(row, "dq-chart-btn--inline") : ""}</td><td class="dq-col-lane">${row.lane}</td><td class="dq-num">${row.checks}</td><td><p class="dq-pills">${row.pills.map(pill)}</p></td>${charting ? html`<td class="dq-col-chart">${row.chart ? button(row, null) : ""}</td>` : ""}</tr>
 `,
 )}
 </tbody>
@@ -133,10 +184,57 @@ ${marts.map(
 </div>`;
 }
 
-function renderChartSection(chart) {
-  return html`<section class="dq-section dq-panel dq-chart-card" aria-labelledby="dq-chart-title">
-<h2 id="dq-chart-title">${segments(chart.title)}</h2>
-<figure class="dq-figure">
+/**
+ * The Show menu: every series the files hold, in the groups dataQuality.mjs's
+ * menuOf puts them in. A native <select>, so a phone opens its own picker;
+ * site.css restyles its list on a desktop browser that can (`base-select`).
+ * Not drawn for fewer than two series - there is nothing to choose between.
+ */
+export function renderShow(menu, selected) {
+  if (menu.reduce((count, group) => count + group.options.length, 0) < 2) return "";
+  return html`<div class="dq-show">
+<label class="dq-show__label" for="dq-show">Show</label>
+<select class="dq-show__select" id="dq-show" data-chart-select>
+${menu.map(
+  (group) =>
+    html`<optgroup label="${group.label}">${group.options.map(
+      (option) => html`<option value="${option.key}"${option.key === selected ? html` selected` : ""}>${option.label}</option>`,
+    )}</optgroup>
+`,
+)}</select>
+</div>`;
+}
+
+/** The chart's title, as markup: it changes with the series, so the browser redraws it on its own. */
+export function renderChartTitle(chart) {
+  return html`${segments(chart.title)}`.text;
+}
+
+/**
+ * The line above a chart a Chart button put there: which row it came from,
+ * and the way back to it. Empty when the menu chose the series.
+ */
+export function renderCharted(charted) {
+  if (!charted) return "";
+  return html`Charted from ${charted.from} · ${name(charted.table)}${charted.column ? html` · ${name(charted.column)}` : ""} · <a href="#${charted.row}" data-back>Back to the row</a>`.text;
+}
+
+function renderChartSection(s) {
+  return html`<section class="dq-section dq-panel dq-chart-card" id="dq-chart" aria-labelledby="dq-chart-title">
+<h2 id="dq-chart-title" tabindex="-1" data-chart-title>${segments(s.chart.title)}</h2>
+<p class="dq-charted" data-charted hidden></p>
+${renderShow(s.menu, s.chart.key)}
+<div data-chart-figure>${new Markup(renderChartFigure(s.chart))}</div>
+</section>`;
+}
+
+/**
+ * Everything under the chart's title that changes with the series: the key,
+ * the chart, its caption and its table of numbers. `tableOpen` keeps that
+ * table open across a change, when the reader had opened it.
+ */
+export function renderChartFigure(chart, { tableOpen = false } = {}) {
+  return html`<figure class="dq-figure">
 <div class="dq-key" aria-hidden="true">
 <span><i class="dq-key__line"></i>${chart.format.label} at each point</span>
 <span><i class="dq-key__band"></i>Expected range</span>
@@ -148,7 +246,7 @@ function renderChartSection(chart) {
 <p class="dq-sr" aria-live="polite" data-chart-live></p>
 </div>
 <figcaption class="dq-figcaption">${chart.summary} ${chart.caption}</figcaption>
-<details class="dq-details">
+<details class="dq-details"${tableOpen ? html` open` : ""}>
 <summary>The numbers behind the chart</summary>
 <div class="dq-table-wrap">
 <table class="dq-table">
@@ -162,8 +260,7 @@ ${chart.rows.map(
 </table>
 </div>
 </details>
-</figure>
-</section>`;
+</figure>`.text;
 }
 
 /** Everything under the two build cards: a notice, or the four sections. */
@@ -171,6 +268,9 @@ export function renderBody(view) {
   if (view.notice) return renderNotice(view.notice).text;
   if (!view.sections) return "";
   const s = view.sections;
+  // As the page opens no Chart button is pressed: a button is pressed only by
+  // being pressed (dataQuality.mjs, chartControls).
+  const charted = null;
   return html`<section class="dq-section" aria-labelledby="dq-kinds-title">
 <h2 id="dq-kinds-title">The five kinds of check</h2>
 <p class="dq-scope">${s.scope}</p>
@@ -178,16 +278,12 @@ export function renderBody(view) {
 </section>
 <section class="dq-section" aria-labelledby="dq-look-title">
 <h2 id="dq-look-title">Needs a look</h2>
-${
-  s.items.length
-    ? html`<ul class="dq-items">${s.items.map(renderItem)}</ul>`
-    : html`<p class="dq-panel dq-quiet">${icon("ok")}<span>${s.quiet}</span></p>`
-}
+${s.items.length ? renderLook(s.look, charted) : html`<p class="dq-panel dq-quiet">${icon("ok")}<span>${s.quiet}</span></p>`}
 </section>
-${s.chart ? renderChartSection(s.chart) : ""}
+${s.chart ? renderChartSection(s) : ""}
 <section class="dq-section" aria-labelledby="dq-marts-title">
 <h2 id="dq-marts-title">By mart</h2>
-${renderMarts(s.marts)}
+${renderMarts(s.marts, charted)}
 </section>`.text;
 }
 
@@ -298,8 +394,10 @@ const LABEL_GAP = 10;
  * first render at 1280 px), so that is checked after placing, not before.
  */
 export function axisLabels(chart, xs, width, room) {
+  const span = chart.points.length > 1 ? chart.points.at(-1).at - chart.points[0].at : 0;
+  const withDay = span > 24 * 3600 * 1000;
   const placed = labelled(xs.length, room).map((i) => {
-    const text = formatTickLabel(chart.points[i].at, chart.lane);
+    const text = formatTickLabel(chart.points[i].at, chart.lane, { withDay });
     const w = text.length * CHAR_PX;
     if (xs[i] - w / 2 < 2) {
       const x = Math.max(2, xs[i] - 4);

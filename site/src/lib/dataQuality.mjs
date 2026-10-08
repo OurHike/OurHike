@@ -157,13 +157,17 @@ const METRICS = {
 
 /**
  * The metric a check of each kind measures when its entry does not name one.
- * The file's `needs_a_look` entries carry no metric (d102 contract, "The
- * file"), but its `kind` mapping does decide two: volume is Elementary's row
+ * A file written before entries carried `metric` (the d102 contract's first
+ * shape) still says this much through `kind`: volume is Elementary's row
  * count, and freshness its freshness. The other kinds measure many metrics,
  * so without a name their values are printed as bare numbers. An entry that
- * does carry a `metric` is worded by that instead.
+ * does carry a `metric` is worded by that instead, and one whose `metric` is
+ * null - a dbt test, a schema change - measures nothing a history could hold.
  */
 const DEFAULT_METRIC = { volume: "row_count", freshness: "freshness" };
+
+/** The metric a mart's own row is charted by: its row count, from the volume checks. */
+const MART_METRIC = "row_count";
 
 const COUNT_KEYS = ["checks", "passed", "warned", "failed", "errored"];
 const MAX_NAME = 256;
@@ -244,11 +248,16 @@ export function formatDay(date) {
   return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
 }
 
-/** A short axis label: the month and year for a monthly build, the UTC time for an hourly run. */
-export function formatTickLabel(date, lane) {
-  return lane === "monthly"
-    ? `${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`
-    : `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+/**
+ * A short axis label: the month and year for a monthly build, the UTC time
+ * for an hourly run - with its day when the history spans more than one, as
+ * an hourly series can now hold a week (its newest 168 runs), where "06:00"
+ * alone would name seven different points.
+ */
+export function formatTickLabel(date, lane, { withDay = false } = {}) {
+  if (lane === "monthly") return `${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+  const time = `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+  return withDay ? `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${time}` : time;
 }
 
 /**
@@ -411,10 +420,18 @@ function parse(value, lane) {
       };
     });
     points.sort((a, b) => a.at - b.at);
+    // Absent in a file written before the menu's two groups existed, and then
+    // worked out from the entries instead (needsALook, below).
+    const flag = entry.in_needs_a_look;
+    if (flag !== undefined && flag !== null && typeof flag !== "boolean") {
+      fail(`${where}.in_needs_a_look is not true or false`);
+    }
     return {
       lane,
       table: name(entry.table, `${where}.table`),
+      column: name(entry.column, `${where}.column`, { optional: true }),
       metric: name(entry.metric, `${where}.metric`),
+      inNeedsALook: typeof flag === "boolean" ? flag : null,
       points,
     };
   });
@@ -655,18 +672,29 @@ function shortSentence(item) {
   return `${statusOf(item.status).label.toLowerCase()}.`;
 }
 
-function itemView(item) {
+/**
+ * One entry as the list draws it. `id` is the row's element id, which the
+ * chart's "Back to the row" link returns to; `chart` is the key of the series
+ * holding this entry's own history, or null when the file holds none.
+ */
+function itemView(item, index, series) {
   const status = statusOf(item.status);
   const sameBuild = item.since !== null && item.since.getTime() === item.builtAt.getTime();
+  const own = seriesOf(item, series);
   return {
+    id: `dq-row-${index}`,
     tone: status.tone,
     status: status.label,
+    rank: status.rank,
+    kindId: item.kind,
     kind: KIND.get(item.kind).label,
     table: item.table,
     column: item.column,
     lane: LANE_LABEL[item.lane],
     sentence: itemSentence(item),
     since: item.since === null ? null : sameBuild ? "Since this build" : `Since ${formatWhen(item.since)}`,
+    chart: own ? seriesKey(own) : null,
+    chartName: own ? buttonName(own) : null,
   };
 }
 
@@ -718,25 +746,144 @@ function tile(kind, read, items, learning) {
   };
 }
 
+// ---------------------------------------------------------------- the series
+
 /**
- * The series behind the worst entry that has one, else the first series a
- * read file holds. An entry that names no metric - a dbt test, a schema
- * change - has no history behind it and is passed over. It used to match any
- * series of its table, so a failed dbt test on `trail_lines` drew
- * trail_lines' row count as if that were what failed (round 2's heavy file,
- * 2026-10-08).
+ * One series' identity on the page - lane, table, column and metric - as the
+ * value the Show menu's options and the Chart buttons carry. JSON rather than
+ * the four joined by a separator, because a name from a file may hold any
+ * character a separator could be.
  */
-function pickSeries(read, items) {
-  const all = read.flatMap((file) => file.series);
+export function seriesKey(series) {
+  return JSON.stringify([series.lane, series.table, series.column ?? null, series.metric]);
+}
+
+/** Every series the read files hold, once each: a second copy of a key is dropped. */
+function uniqueSeries(read) {
+  const seen = new Set();
+  return read
+    .flatMap((file) => file.series)
+    .filter((series) => {
+      const key = seriesKey(series);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+/**
+ * The series that is `item`'s own history, or null. Same lane, table, column
+ * and metric: a column's null rate is not its neighbour's, and a series that
+ * names no column is a table's own (its row count, its freshness). An entry
+ * that names no metric - a dbt test, a schema change - has no history and
+ * matches nothing. It once matched any series on its table, so a failed dbt
+ * test on `trail_lines` drew trail_lines' row count as if that were what
+ * failed (round 2's heavy file, 2026-10-08).
+ */
+function seriesOf(item, series) {
+  const metric = item.metric ?? DEFAULT_METRIC[item.kind];
+  if (!metric) return null;
+  return (
+    series.find(
+      (s) =>
+        s.lane === item.lane && s.table === item.table && (s.column ?? null) === (item.column ?? null) && s.metric === metric,
+    ) ?? null
+  );
+}
+
+/** A mart's own row count, or null when the file holds none for it. */
+function martSeries(mart, series) {
+  return (
+    series.find((s) => s.lane === mart.lane && s.table === mart.mart && (s.column ?? null) === null && s.metric === MART_METRIC) ??
+    null
+  );
+}
+
+/**
+ * What a series is, in words: "Rows in trail_lines · Monthly", or "Null rate
+ * of surface in trail_lines · Monthly" for a column's - the Show menu's
+ * option text.
+ */
+export function seriesName(series, sep = " · ") {
+  const fmt = metricFormat(series.metric);
+  const what = fmt.known ? fmt.label : series.metric;
+  return `${what}${series.column ? ` of ${series.column}` : ""} in ${series.table}${sep}${LANE_LABEL[series.lane]}`;
+}
+
+/**
+ * The name a screen reader hears for a Chart button: its one visible word
+ * first, then the series - "Chart rows in trail_lines, Monthly". A comma
+ * where the menu has " · ", which a reader may speak as "dot".
+ */
+function buttonName(series) {
+  const name = seriesName(series, ", ");
+  return `Chart ${name.charAt(0).toLowerCase()}${name.slice(1)}`;
+}
+
+/**
+ * Whether a series belongs under "Needs a look" in the Show menu rather than
+ * "Every mart": the file's `in_needs_a_look` says so, and a file written
+ * before that field existed is answered from its entries - a series some
+ * entry draws its history from needs a look.
+ */
+function needsALook(series, items) {
+  if (series.inNeedsALook !== null) return series.inNeedsALook;
+  return items.some((item) => seriesOf(item, [series]) !== null);
+}
+
+/**
+ * The Show menu's two groups. "Needs a look" lists its series in the order
+ * the list above it does, worst first; "Every mart" in By mart's order. A
+ * series is listed once, in the group its flag puts it in, so a mart whose
+ * row count needs a look is under "Needs a look" and not again under "Every
+ * mart" - the shape the maintainer chose from (round 2's frames, 2026-10-08).
+ * A group with nothing in it is left out.
+ */
+function menuOf(series, items, marts) {
+  const look = [];
+  const other = [];
+  const placed = new Set();
+  const place = (list, s) => {
+    const key = seriesKey(s);
+    if (placed.has(key)) return;
+    placed.add(key);
+    list.push(s);
+  };
   for (const item of items) {
-    const metric = item.metric ?? DEFAULT_METRIC[item.kind];
-    if (!metric) continue;
-    const match = all.find(
-      (series) => series.lane === item.lane && series.table === item.table && series.metric === metric,
-    );
-    if (match) return match;
+    const own = seriesOf(item, series);
+    if (own && needsALook(own, items)) place(look, own);
   }
-  return all[0] ?? null;
+  for (const mart of marts) {
+    const own = martSeries(mart, series);
+    if (own && !needsALook(own, items)) place(other, own);
+  }
+  for (const s of series) place(needsALook(s, items) ? look : other, s);
+  return {
+    look,
+    other,
+    groups: [
+      { label: "Needs a look", options: look },
+      { label: "Every mart", options: other },
+    ]
+      .filter((group) => group.options.length > 0)
+      .map((group) => ({
+        label: group.label,
+        options: group.options.map((s) => ({ key: seriesKey(s), label: seriesName(s) })),
+      })),
+  };
+}
+
+/**
+ * The series the chart opens on: the history behind the worst entry that has
+ * one; when no entry has one, the first mart's row count the menu lists; and
+ * failing both, the first series the files hold.
+ */
+function pickSeries(series, items, menu) {
+  for (const item of items) {
+    const own = seriesOf(item, series);
+    if (own) return own;
+  }
+  return menu.other[0] ?? series[0] ?? null;
 }
 
 function outsideOf(point) {
@@ -754,7 +901,10 @@ function chartView(series, read) {
   const drawn = points.filter((point) => point.value !== null);
   const outside = points.filter((point) => point.outside !== null);
   const each = series.lane === "monthly" ? "monthly build" : "hourly run";
-  const title = [`${fmt.known ? fmt.label : "Values"} in `, code(series.table), `, one point per ${each}`];
+  const what = fmt.known ? fmt.label : "Values";
+  const title = series.column
+    ? [`${what} of `, code(series.column), " in ", code(series.table), `, one point per ${each}`]
+    : [`${what} in `, code(series.table), `, one point per ${each}`];
 
   let summary;
   if (drawn.length === 0) summary = "No build in this history recorded a value.";
@@ -779,8 +929,10 @@ function chartView(series, read) {
   ].join("");
 
   return {
+    key: seriesKey(series),
     lane: series.lane,
     table: series.table,
+    column: series.column ?? null,
     metric: series.metric,
     format: fmt,
     title,
@@ -809,35 +961,130 @@ function whereInRange(point) {
   return "Inside the range";
 }
 
+/**
+ * "Needs a look" as the maintainer chose it by poll on 2026-10-08 (option D
+ * of round 2's frames): every entry that failed, could not run, or reports a
+ * status this page does not know is listed in full; only warnings are folded,
+ * one line per kind that opens. A failure is never behind a fold however many
+ * there are - folding is what a long list of warnings gets, and a failure
+ * hidden by one is the thing a reader came to find.
+ */
+function lookView(items) {
+  const failing = items.filter((item) => item.rank < STATUSES.warn.rank);
+  const other = items.filter((item) => item.rank === OTHER_STATUS_RANK);
+  const warnings = items.filter((item) => item.rank === STATUSES.warn.rank);
+  const folded = KINDS.map((kind) => {
+    const own = warnings.filter((item) => item.kindId === kind.id);
+    return {
+      kind: kind.id,
+      label: kind.label,
+      summary: `${formatCount(own.length)} ${plural(own.length, "warning", "warnings")}`,
+      items: own,
+    };
+  }).filter((group) => group.items.length > 0);
+  return {
+    failing: { title: `Failed or could not run · ${formatCount(failing.length)}`, items: failing },
+    // A status this page does not know is not a warning it can vouch for, so
+    // it is listed with the failures rather than folded with the warnings.
+    other: { title: `Other results · ${formatCount(other.length)}`, items: other },
+    warnings: { title: `Warnings · ${formatCount(warnings.length)}, by kind`, count: warnings.length, folded },
+  };
+}
+
 function sectionsView(lanes, read) {
-  const items = mergedItems(read);
+  const merged = mergedItems(read);
   const learning = learningNote(read);
   const totals = sumCounts(read.map((file) => file.totals));
   const problems = totals.warned + totals.failed + totals.errored;
   const where = read.length === 2 ? "either build above" : LANE_NOUN[read[0].lane];
 
   let quiet = null;
-  if (items.length === 0) {
+  if (merged.length === 0) {
     quiet =
       problems === 0
         ? `Nothing needs a look: no check in ${where} warned, failed or could not run.${learning ? " The anomaly checks are still learning, so a quiet result says less than it will once they have their history." : ""}`
         : `${formatCount(problems)} ${plural(problems, "check needs", "checks need")} a look by the counts above, and the ${plural(read.length, "file lists", "files list")} none of them.`;
   }
 
+  const series = uniqueSeries(read);
+  const fileMarts = read.flatMap((file) => file.marts);
+  const menu = menuOf(series, merged, fileMarts);
+  const charts = new Map(series.map((s) => [seriesKey(s), chartView(s, read)]));
+  const first = pickSeries(series, merged, menu);
+  const items = merged.map((item, i) => itemView(item, i, series));
+  const marts = fileMarts.map((mart, i) => {
+    const own = martSeries(mart, series);
+    return {
+      id: `dq-mart-${i}`,
+      mart: mart.mart,
+      lane: LANE_LABEL[mart.lane],
+      checks: formatCount(mart.checks),
+      pills: resultPills(mart),
+      chart: own ? seriesKey(own) : null,
+      chartName: own ? buttonName(own) : null,
+    };
+  });
+
   return {
     scope: scopeLine(lanes, read),
-    tiles: KINDS.map((kind) => tile(kind, read, items, learning)),
-    items: items.map(itemView),
+    tiles: KINDS.map((kind) => tile(kind, read, merged, learning)),
+    items,
+    look: lookView(items),
     quiet,
-    chart: chartView(pickSeries(read, items), read),
-    marts: read.flatMap((file) =>
-      file.marts.map((mart) => ({
-        mart: mart.mart,
-        lane: LANE_LABEL[mart.lane],
-        checks: formatCount(mart.checks),
-        pills: resultPills(mart),
-      })),
-    ),
+    chart: first ? charts.get(seriesKey(first)) : null,
+    charts,
+    menu: menu.groups,
+    // Every Chart button the page draws, by the row it sits on: what the
+    // chart's "Charted from" line names, and where "Back to the row" goes.
+    buttons: [
+      ...items.filter((item) => item.chart).map((item) => ({ row: item.id, key: item.chart, from: "Needs a look", table: item.table, column: item.column })),
+      ...marts.filter((mart) => mart.chart).map((mart) => ({ row: mart.id, key: mart.chart, from: "By mart", table: mart.mart, column: null })),
+    ],
+    marts,
+  };
+}
+
+// ---------------------------------------------------------------- choosing a series
+
+/**
+ * What the chart shows: a series' key, and the row whose Chart button put it
+ * there (null when the Show menu did, or nothing has been chosen yet).
+ */
+export function initialChart(sections) {
+  return { key: sections.chart?.key ?? null, origin: null };
+}
+
+/** A choice in the Show menu: that series, from no row. */
+export function chooseFromMenu(key) {
+  return { key, origin: null };
+}
+
+/** A Chart button on row `row`: that row's series, remembered so the chart can say where it came from. */
+export function chooseFromRow(sections, row) {
+  const button = sections.buttons.find((candidate) => candidate.row === row);
+  return button ? { key: button.key, origin: row } : null;
+}
+
+/**
+ * Everything the chart's controls show for `state`, worked out here so the
+ * browser only applies it. THE MENU AND THE BUTTONS STAY IN STEP, by the two
+ * rules the maintainer's round-3 choice set (2026-10-08): pressing a Chart
+ * button sets the menu to that button's series, and a choice in the menu
+ * clears any pressed button that names another series. A button is pressed
+ * only by being pressed - not because the page opened on its series, nor
+ * because the menu chose it - so a pressed button always means "the one I
+ * pressed is what the chart shows", and the chart's "Charted from" line is
+ * there exactly when one is. `pressed` lists rows, not buttons: a mart's row
+ * holds two buttons, one for each width, and both read as pressed.
+ */
+export function chartControls(sections, state) {
+  const origin =
+    state.origin === null ? null : (sections.buttons.find((button) => button.row === state.origin && button.key === state.key) ?? null);
+  return {
+    chart: sections.charts.get(state.key) ?? null,
+    selected: state.key,
+    pressed: origin ? [origin.row] : [],
+    charted: origin ? { from: origin.from, table: origin.table, column: origin.column, row: origin.row } : null,
   };
 }
 

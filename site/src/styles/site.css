@@ -1630,6 +1630,14 @@ a:hover {
   padding-block: 32px 8px;
 }
 
+/* `hidden` hides, whatever display a class gives the element. The browser's
+ * own `[hidden] { display: none }` loses to any class that sets display, and
+ * `.dq-item`'s `display: grid` beat it in round 2's prototype list
+ * (2026-10-08), so a row meant to be hidden was drawn. */
+.dq [hidden] {
+  display: none !important;
+}
+
 /* Weight 400 wherever it sits: public/fonts/ carries Plex Mono at 400 only,
  * so a name inside a bold heading would otherwise be drawn in a synthesized
  * bold. `break-word` and not `anywhere`: dataQualityHtml.mjs offers a break
@@ -1990,11 +1998,277 @@ a:hover {
   }
 }
 
+/* What failed or could not run is listed; warnings fold, a line per kind. */
+.dq-look__subhead {
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+  margin: 4px 0 10px;
+}
+
+.dq-items + .dq-look__subhead {
+  margin-top: 22px;
+}
+
+.dq-folds {
+  display: grid;
+  gap: 10px;
+}
+
+/* Two classes, so a phone's `.dq-panel` padding further down does not add
+ * to the summary's own. */
+.dq-panel.dq-fold {
+  padding: 0;
+}
+
+/* 52px tall, past the 44px target sitePages.spec.ts holds a phone to. Grid
+ * drops the browser's marker, so the chevron is drawn here, and turns when
+ * the fold opens. */
+.dq-fold > summary {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 52px;
+  padding: 10px 18px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--fg-1);
+  list-style: none;
+}
+
+.dq-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dq-fold > summary::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  margin-inline: 4px;
+  border-right: 2px solid var(--fg-2);
+  border-bottom: 2px solid var(--fg-2);
+  transform: rotate(45deg) translateY(-3px);
+}
+
+.dq-fold[open] > summary::after {
+  transform: rotate(225deg) translateY(-1px);
+}
+
+.dq-fold > summary:focus-visible {
+  outline: 3px solid var(--accent-blaze-orange);
+  outline-offset: 2px;
+}
+
+.dq-fold > summary .dq-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--warning);
+}
+
+.dq-fold__what {
+  min-width: 0;
+}
+
+.dq-fold .dq-items {
+  padding: 0 12px 12px;
+}
+
+/* The Chart button on a row, and on a mart in By mart. Pressed is filled, so
+ * the charted row is told apart by more than a hue. */
+.dq-chart-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  font: 600 13.5px/1 var(--font-body);
+  color: var(--brand-primary);
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-2);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dq-chart-btn:hover {
+  border-color: var(--brand-primary);
+}
+
+.dq-chart-btn[aria-pressed="true"] {
+  color: var(--bg-surface);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+
+.dq-chart-btn:focus-visible {
+  outline: 3px solid var(--accent-blaze-orange);
+  outline-offset: 2px;
+}
+
+.dq-chart-btn .dq-icon {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 560px) {
+  .dq-chart-btn {
+    min-height: 44px;
+  }
+}
+
 /* ---- the chart ---- */
 
 .dq-chart-card > h2 {
   font-size: 20px;
   line-height: 1.3;
+}
+
+/* Focused when a Chart button brings the reader here, so a screen reader
+ * hears the new title. A ring only for the keyboard. */
+.dq-chart-card > h2:focus {
+  outline: none;
+}
+
+.dq-chart-card > h2:focus-visible {
+  outline: 3px solid var(--accent-blaze-orange);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* Room above whatever a Chart button or "Back to the row" scrolls to. */
+.dq-chart-card,
+.dq-item,
+.dq-table tr {
+  scroll-margin-block: 16px;
+}
+
+.dq-charted {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.dq-charted a {
+  font-weight: 600;
+  color: var(--brand-primary);
+}
+
+.dq-show {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin: 12px 0 4px;
+}
+
+.dq-show__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+
+/* 16px, or iOS Safari zooms the page into the field when it takes focus.
+ * A height rather than a minimum, which a native select centres its text in. */
+.dq-show__select {
+  min-width: min(380px, 100%);
+  max-width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  font: 500 16px/1.2 var(--font-body);
+  color: var(--fg-1);
+  background-color: var(--bg-canvas);
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+}
+
+.dq-show__select:focus-visible {
+  outline: 3px solid var(--accent-blaze-orange);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .dq-show__label {
+    width: 100%;
+  }
+
+  .dq-show__select {
+    width: 100%;
+  }
+}
+
+/* THE LIST DRAWN IN THE SITE'S OWN TYPE, where a browser can, and only with
+ * a mouse: `appearance: base-select` lets a desktop Chromium (135 and later)
+ * style the open list as round 2's frames drew it, and a browser without it
+ * keeps its own - the rule is dropped whole, `::picker()` and all. Never on a
+ * touch screen, where a phone's own picker is the better control (the
+ * maintainer's choice to keep it, 2026-10-08). */
+@media (hover: hover) and (pointer: fine) {
+  .dq-show__select,
+  .dq-show__select::picker(select) {
+    appearance: base-select;
+  }
+
+  .dq-show__select {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .dq-show__select::picker(select) {
+    max-height: min(440px, 70vh);
+    max-width: calc(100vw - 32px);
+    margin-block: 6px;
+    padding: 6px;
+    color: var(--fg-1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-2);
+    border-radius: 10px;
+    box-shadow:
+      0 2px 4px rgb(20 19 15 / 0.08),
+      0 12px 28px rgb(20 19 15 / 0.16);
+  }
+
+  .dq-show__select::picker-icon {
+    margin-inline-start: auto;
+    color: var(--fg-2);
+  }
+
+  .dq-show__select optgroup {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+
+  .dq-show__select option {
+    padding: 8px 10px;
+    border-radius: 7px;
+    white-space: normal;
+    overflow-wrap: break-word;
+    font-size: 14.5px;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--fg-1);
+  }
+
+  .dq-show__select option:hover,
+  .dq-show__select option:focus-visible {
+    background: var(--bg-sunken);
+  }
+
+  .dq-show__select option:checked {
+    font-weight: 600;
+  }
+
+  .dq-show__select option::checkmark {
+    color: var(--brand-primary);
+  }
 }
 
 .dq-figure {
@@ -2141,10 +2415,6 @@ a:hover {
   white-space: nowrap;
 }
 
-.dq-tip[hidden] {
-  display: none;
-}
-
 .dq-figcaption {
   margin-top: 10px;
   max-width: 75ch;
@@ -2217,6 +2487,18 @@ a:hover {
   color: var(--fg-2);
 }
 
+/* By mart's Chart button: a column of its own on a laptop, under the mart's
+ * name on a phone (dataQualityHtml.mjs draws both; one shows at a time). */
+.dq-table .dq-col-chart {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dq-chart-btn--inline {
+  display: none;
+}
+
 /* Three columns on a phone: the lane moves under the mart's name, so the
  * table fits a 390px screen without a sideways scroll of its own. */
 @media (max-width: 560px) {
@@ -2234,12 +2516,18 @@ a:hover {
     padding-inline: 6px;
   }
 
-  .dq-table .dq-col-lane {
+  .dq-table .dq-col-lane,
+  .dq-table .dq-col-chart {
     display: none;
   }
 
   .dq-lane-tag {
     display: block;
+  }
+
+  .dq-chart-btn--inline {
+    display: inline-flex;
+    margin-top: 8px;
   }
 }
 

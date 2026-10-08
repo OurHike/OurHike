@@ -2190,16 +2190,25 @@ a:hover {
   outline-offset: 2px;
 }
 
-/* On a phone the menu is the row's whole width and never more. phone-webkit
- * measured the page 564px wide on a 390px phone in CI (flow runs 37799207718,
- * 37801933011 and 37804068642), and the last named it: `div.dq-show holds
- * 523px in 308px`, while no element's own box passed the edge. So the select's
- * box fitted, and what ran on was WebKit's text inside the native select,
- * laid out as wide as the longest option (Reasoned from that report;
- * Chromium's phone project keeps it inside). `overflow: hidden` clips the
- * select's own contents to its box, which an outline is drawn outside of, so
- * the focus ring stays. @unvalidated until CI's phone-webkit run passes. */
+/* On a phone the menu is the row's whole width and never more, and the row
+ * clips what WebKit's native select carries past it. phone-webkit measured
+ * the page 564px wide on a 390px phone in CI (flow runs 37799207718,
+ * 37801933011, 37804068642 and 37806105475): "div.dq-show holds 523px in
+ * 308px", while no element's own box passed the edge, the select's
+ * included. Neither `min-width: 0` nor `overflow: hidden` on the select
+ * moved it, so the 523px lives inside WebKit's rendering of the select,
+ * where a page's rules do not reach (Reasoned from those four reports;
+ * Chromium's phone project keeps it inside). The row itself clips instead,
+ * with a 6px pad, which the select's focus ring (3px at a 2px offset) sits
+ * inside, and margins that cancel the pad, so nothing moves. @unvalidated
+ * until CI's phone-webkit run passes. */
 @media (max-width: 560px) {
+  .dq-show {
+    overflow: hidden;
+    padding: 6px;
+    margin: 6px -6px -2px;
+  }
+
   .dq-show__label {
     width: 100%;
   }

@@ -4093,9 +4093,41 @@ This repository's fixture build and its hourly lane on the fixtures, in a 4-core
 
 ### Memory between runs
 
-An anomaly test compares a build with the builds before it, and each lane builds its warehouse from nothing. Elementary's history tables (metrics, test results, column snapshots, run results) are restored before the build and saved after it, beside the row history (`row_history.py`). They need a rule of their own: Elementary rewrites its recent metric buckets, where the row history refuses a table that shrank.
+An anomaly test compares a build with the builds before it, and each lane builds its warehouse from nothing. **Built 2026-10-08 (step 3):** `row_history.py` restores four of Elementary's tables before "Elementary's own tables" runs, so their incremental models add each build to them, and saves them after the build, in the same two commands and the same store as the row history (`--history-url`, `row_history_stores.toml`). Its docstring, "ELEMENTARY'S HISTORY", is the one home of the rules. In short:
 
-The hourly lane reaches 7 points in 7 hours. The monthly lane needs a training window of about 400 days, and stays quiet for its first 7 builds; the page says "learning, 3 of 7 builds" until then. **@unvalidated:** the 7-point wait, the 3-standard-deviation band and both windows are Elementary's defaults, not findings. They are settled by counting false alarms over the first season, per lane.
+| kept | read back by (Reasoned from Elementary 0.26.0's macros) |
+|---|---|
+| `data_monitoring_metrics` | every anomaly check: its training set, and which buckets are already computed |
+| `schema_columns_snapshot` | `schema_changes`: each table's latest snapshot, and only that |
+| `elementary_test_results` | the page (step 4): how long a check has warned, and how many builds the history holds |
+| `dbt_invocations` | the page: which dbt command each result came from |
+
+- **Left out:** `dbt_run_results`, read back only for an incremental model, and this project has none (6,868 rows a fixture build); `test_result_rows`, failing rows and anomaly scores, because no row leaves the warehouse; `dbt_source_freshness_results`, which nothing reads; the tables describing the project, rebuilt every build.
+- **A pointer of its own**, `elementary.json`, and folders, `elementary/<save_id>/`, beside `history.json` and `saves/`, sharing each save's id. Neither part's failure touches the other's pointer, and a save by a `row_history.py` from before step 3 leaves it alone.
+- **The guard is by key, not by count.** Elementary appends a recomputed metric bucket as a new row with the same `id`, and its readers keep the newest: a check with a timestamp column recomputes its last 2 days on a source, and its whole window on any other model, every build. So the warehouse table only grows, while the saved copy keeps one row per id. `restore` records every restored row's key, and `save` refuses when one is gone from the warehouse: Elementary only appends to these tables.
+- **Retention:** each save keeps the newest row of each metric `id` whose `bucket_end` is inside `--keep-days`, the results and invocations inside it, and each table's latest schema snapshot whatever its age. `build_marts.py`'s `ELEMENTARY_KEEP_DAYS` gives **430 days monthly** (400, plus 30) and **21 hourly** (Elementary's 14, plus 7); a check whose days_back or bucket outgrows those needs them moved with it.
+- **What bounds the store:** 24 Elementary saves (`KEEP_SAVES`), each at most `--keep-days` of builds. Measured 2026-10-08 in a shared 4-core sandbox through the real `save` and `restore`, on a local directory, with synthetic rows: the fixture build's own 5,036 test results cycled to a lane's count (1,650 hourly, near the 1,648 the hourly lane's fixture build recorded before step 2's checks; 8,448 monthly, assumed), and 500 hourly or 3,000 monthly metric rows a build (assumed):
+
+  | lane | builds in the window | one Elementary save | save | restore |
+  |---|---:|---:|---:|---:|
+  | hourly at the 5.7 runs a day measured (below) | 120 × 1,650 results | 2,497,134 bytes | 0.90 s | 3.28 s |
+  | hourly at the 24 a day its cron declares | 504 × 1,650 results | 10,257,637 bytes | 2.31 s | 6.53 s |
+  | monthly | 15 × 8,448 results | 2,475,672 bytes | 0.90 s | 2.78 s |
+
+  So Elementary adds about 60 to 250 MB to a conditions leg's store and about 60 MB to the monthly one (Reasoned: 24 saves of those sizes). R2's transfer is not in these times.
+- **The cold start:** every store saved before step 3 holds a `history.json` and no `elementary.json`. Its first run starts Elementary's history, with a warning, until `row_history_stores.toml`'s `[elementary_started]` lists the store; from then on a missing one is refused as lost history.
+- **Failures, per lane:** the monthly lane stops, as for the row history. A conditions leg keeps its row dates: the snapshots restore and save as usual, Elementary's checks see no earlier build or its history is not saved, `row_history.py` exits 3, and `build_marts.py` answers `PARTIAL_EXIT`, so the leg publishes and then goes red. `--no-history-save` saves neither.
+- **Proved on the fixtures**, measured 2026-10-08 in the same sandbox, shared with three other builds: two `build_marts.py --fixtures` runs in fresh warehouses against one `file://` store, with four Elementary checks on a scratch model for the run (never committed), since step 2's checks were not in that tree.
+
+  | | invocations | test results | metric rows | schema snapshot rows |
+  |---|---:|---:|---:|---:|
+  | build 1, cold start, saved | 15 | 5,041 | 17 | 3 |
+  | build 2's warehouse after its build: restored + its own | 15 + 15 | 5,041 + 5,041 | 17 + 17 | 3 + 3 |
+  | build 2's save | 30 | 10,082 | 20 | 3 |
+
+  Build 2's checks read build 1 back: build 1 printed "Not enough data to calculate anomaly scores" 3 times and build 2 never. 14 of build 2's 17 metric rows rewrote build 1's ids (the timestamped check on a table recomputed all 14 days), so the save kept 20, one per id, and the schema snapshot kept its latest 3 rows of 6. Elementary's part saved in 0.11 s (build 1) and 0.15 s (build 2) and restored in 0.25 s, where the snapshots' part took 0.16 s, 0.17 s and 0.76 s; its saves were 528,856 and 561,227 bytes. "Elementary's own tables" took 66 s over no history and 75 s over the restored one; the whole builds 732 s and 917 s. A third, hourly-lane build with `--history-on-failure degrade`, on a copy of the store with one Elementary file torn, restored and saved the snapshots, said `Elementary's history not restored` with both sha256s, left `elementary.json` naming the last good save, and exited 5.
+
+The hourly lane reaches 7 points after 7 runs: about 30 hours at the 5.7 runs a day **#1346 — Every cron in this repository fires about five times a day, whatever it declares — including the conditions bake** measured (Reasoned). The monthly lane needs a training window of about 400 days, and stays quiet for its first 7 builds; the page says "learning, 3 of 7 builds" until then. **@unvalidated:** the 7-point wait, the 3-standard-deviation band and both windows are Elementary's defaults, not findings. They are settled by counting false alarms over the first season, per lane. So are R2 for Elementary's files, a runner's restore and save times, and a store's real size, until one UA monthly dispatch and two hourly runs show a save and a restore.
 
 ### Where it runs, and where the results go
 
@@ -4114,7 +4146,7 @@ The hourly lane reaches 7 points in 7 hours. The monthly lane needs a training w
 
 1. The package, the two overrides and their dispatch entry, its schema; the fixture build green. **Built 2026-10-08** ([What step 1 measured](#what-step-1-measured)).
 2. The checks, through the generators and the marts' YAML, at warn.
-3. The memory: Elementary's tables saved and restored with the row history; one UA monthly dispatch and two hourly runs prove a save and a restore.
+3. The memory: Elementary's tables saved and restored with the row history; one UA monthly dispatch and two hourly runs prove a save and a restore. **Built 2026-10-08 and proved on the fixtures** ([Memory between runs](#memory-between-runs)); the UA dispatches are still to run.
 4. The page: the `data_quality.json` pass, `/data/quality/` in `pages.yml`, and a preview recipe so CI photographs it.
 5. After the first season: read the false alarms, tune the windows, move the quiet tests to error.
 

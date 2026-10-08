@@ -1239,7 +1239,7 @@ def test_plan_with_a_history_store_restores_before_the_seeds_and_saves_after_the
     store = ("--url", "s3://bucket/history/monthly", "--warehouse", "/w/warehouse.duckdb")
     assert runs[0].argv == ("/venv/extract/bin/python", "row_history.py", "restore", *store)
     assert (runs[1].argv, runs[1].cwd) == ELEMENTARY_RUN and runs[2].argv[:2] == ("dbt", "seed")
-    assert runs[-1].argv == ("/venv/extract/bin/python", "row_history.py", "save", *store)
+    assert runs[-1].argv == ("/venv/extract/bin/python", "row_history.py", "save", *store, "--keep-days", "430")
     assert runs[-2].argv[-2:] == ("-s", "path:models/publish"), "the save waits for the writers"
 
 
@@ -1282,20 +1282,94 @@ def test_the_fixtures_with_no_store_named_cold_start_in_a_new_temporary_director
 
 def test_a_store_listed_as_started_may_not_cold_start_and_one_not_listed_may_with_a_warning():
     started = {"monthly": "refresh-reference.yml run 1"}
+    lists = {"started": started, "elementary_started": started}
 
     listed, quiet = build_marts.resolve_history(
-        "s3://b/history/monthly", fixtures=False, cold_start=False, python="python", started=started
+        "s3://b/history/monthly", fixtures=False, cold_start=False, python="python", **lists
     )
     unlisted, warning = build_marts.resolve_history(
-        "s3://b/history/conditions_ua", fixtures=False, cold_start=False, python="python", started=started
+        "s3://b/history/conditions_ua", fixtures=False, cold_start=False, python="python", **lists
     )
-    forced, _ = build_marts.resolve_history(
-        "s3://b/history/monthly", fixtures=False, cold_start=True, python="python", started=started
+    forced, _ = build_marts.resolve_history("s3://b/history/monthly", fixtures=False, cold_start=True, python="python", **lists)
+
+    assert not listed.cold_start and not listed.elementary_cold_start and quiet is None
+    assert unlisted.cold_start and warning.startswith("::warning") and "conditions_ua" in warning
+    assert unlisted.elementary_cold_start, "a store whose row history may start may start Elementary's"
+    assert forced.cold_start and forced.elementary_cold_start
+
+
+def test_a_store_started_before_decision_102_may_start_elementarys_history_until_it_is_listed_for_it():
+    """Every store saved before Elementary came holds the snapshots and no elementary.json (row_history.py's
+    docstring, "THE COLD START"): its first run with Elementary starts that history, said in a warning, and only a
+    store [elementary_started] lists refuses a missing one."""
+    started = {"monthly": "refresh-reference.yml run 1"}
+
+    first, warning = build_marts.resolve_history(
+        "s3://b/history/monthly", fixtures=False, cold_start=False, python="python", started=started, elementary_started={}
+    )
+    runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, history=first)
+
+    assert not first.cold_start and first.elementary_cold_start
+    assert warning.startswith("::warning title=Elementary's history not started::") and "[elementary_started]" in warning
+    assert runs[0].argv[-1] == "--elementary-cold-start", "the snapshots' history may not start again, Elementary's may"
+
+
+def test_row_history_stores_toml_lists_elementary_stores_only_among_the_started_ones():
+    """A store's Elementary history is saved by the same save as its snapshots, so a store listed for Elementary and not
+    for the snapshots is a mistake in the file: its --cold-start would let Elementary's history start again."""
+    elementary = build_marts.started_elementary_stores()
+
+    assert set(elementary) <= set(build_marts.started_history_stores())
+    assert all("/" not in name and isinstance(run, str) and run for name, run in elementary.items())
+
+
+@pytest.mark.parametrize(("lane", "days"), [("monthly", "430"), ("hourly", "21"), (None, "430")])
+def test_the_save_keeps_its_lanes_days_of_elementarys_history(lane, days):
+    history = History("s3://bucket/history/x", False, "python")
+    save = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, history=history)[-1]
+
+    assert save.label == build_marts.SAVE_LABEL
+    assert save.argv[save.argv.index("--keep-days") + 1] == days
+
+
+def test_degrade_reaches_both_the_restore_and_the_save_as_elementarys_policy():
+    history = History("s3://bucket/history/conditions_ua", False, "python", on_failure="degrade")
+    runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", history=history)
+
+    for run in (runs[0], runs[-1]):
+        assert run.argv[-2:] == ("--elementary-on-failure", "degrade"), run.label
+    plain = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, history=History("/h", False, "python"))
+    assert not [run for run in plain if "--elementary-on-failure" in run.argv]
+
+
+@pytest.mark.parametrize("which", [1, -1], ids=["restore", "save"])
+def test_elementarys_history_alone_failing_under_degrade_publishes_with_the_row_dates_and_goes_red(monkeypatch, tmp_path, which):
+    """row_history.py's exit 3 (its docstring, "ITS FAILURES ARE THE ROW HISTORY'S"): the row history was restored or
+    saved and Elementary's was not, so the build carries on with the snapshots and answers PARTIAL_EXIT, never
+    DEGRADED_EXIT, whose workflow message says the row dates were nulled."""
+    manifest = _manifest(*STEP_TABLES)
+    calls = len(_main(monkeypatch, tmp_path, manifest)[1].calls)
+    position = 1 if which == 1 else calls
+
+    code, recorder = _main(
+        monkeypatch,
+        tmp_path,
+        manifest,
+        codes={position: build_marts.ELEMENTARY_DEGRADED_EXIT},
+        extra=("--history-on-failure", "degrade"),
     )
 
-    assert not listed.cold_start and quiet is None
-    assert unlisted.cold_start and warning.startswith("::warning") and "conditions_ua" in warning
-    assert forced.cold_start
+    assert code == build_marts.PARTIAL_EXIT
+    assert len(recorder.calls) == calls, "every command still runs, the save included"
+    assert all(env.get("OURHIKE_ROW_HISTORY") != "off" for _, _, env in recorder.calls), "the snapshots stay in"
+    assert not [argv for argv, _, _ in recorder.calls[1:] if build_marts.SNAPSHOTS in argv]
+
+
+def test_row_history_exit_3_without_degrade_is_a_plain_failure(monkeypatch, tmp_path):
+    """Only --elementary-on-failure degrade makes row_history.py answer 3; under `fail` any exit of the restore stops."""
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), codes={1: build_marts.ELEMENTARY_DEGRADED_EXIT})
+
+    assert code == build_marts.ELEMENTARY_DEGRADED_EXIT and len(recorder.calls) == 1
 
 
 def test_row_history_stores_toml_lists_store_names_with_the_run_that_started_each():

@@ -190,11 +190,21 @@ same characters on every machine (macros/row_hash.sql), and with
 OURHIKE_BUILT_BY, the git commit and workflow run, which each snapshot
 version records as `_built_by` (never hashed), so a reader can tell a change
 upstream from a change to this project's rules.
+ELEMENTARY'S HISTORY RIDES IN THE SAME TWO COMMANDS (decision 102;
+row_history.py, "ELEMENTARY'S HISTORY"): the restore puts its four kept
+tables back before "Elementary's own tables" builds, so their incremental
+models add this build to them, and the save writes them out with the
+snapshots, keeping ELEMENTARY_KEEP_DAYS of the lane's builds (--keep-days).
+A store with no Elementary history yet may start it under the same three
+rules, against row_history_stores.toml's [elementary_started] rather than
+[started]: every store saved before decision 102 holds the snapshots and no
+Elementary history, which is its first run, not a loss.
 
 --no-history-save restores the history and builds with it, and saves
-nothing back: for a build that knows some of its inputs are missing, so that
-a row's absence is never recorded as its removal. publish-conditions.yml
-passes it when the notices legs' served copy was not the newest
+nothing back, Elementary's history included, so a build known to lack inputs
+never joins its checks' training set either: for a build that knows some of
+its inputs are missing, so that a row's absence is never recorded as its
+removal. publish-conditions.yml passes it when the notices legs' served copy was not the newest
 (extract/_warehouse.py, "THE SERVED COPY"), because the closures and
 warnings marts then lack, or hold older, notices; saved, the history would
 close those rows and reopen them an hour later with a new `_changed_at`.
@@ -211,7 +221,14 @@ everything else has passed, so the workflow publishes and then goes red. A
 command that fails with that code itself is answered with 1, so the workflow
 never reads a failed build as a publishable one. The
 default, `fail`, is the monthly lane's: a restore that fails stops the build
-before dbt runs.
+before dbt runs. Elementary's history fails the same way in each lane, with
+one difference degrade needs: row_history.py gets --elementary-on-failure
+degrade, and when only Elementary's part fails it still restores or saves
+the snapshots and exits ELEMENTARY_DEGRADED_EXIT (3). That is answered as
+part of the build held back, PARTIAL_EXIT, never as DEGRADED_EXIT: the row
+dates stand, Elementary's checks see no earlier build in that run or its
+history is not saved, and the workflow publishes and then goes red. A
+failure of Elementary's history never nulls a hiker's row dates.
 
 ONE SOURCE OR ONE WRITER NEVER STOPS THE REST (decision 81, the maintainer's
 poll of 2026-10-05: "Hold that source and publish the rest"; review finding
@@ -255,8 +272,9 @@ runs on either. Every dbt command gets OURHIKE_WAREHOUSE and
 OURHIKE_PROCESSED_DIR as absolute paths, so dbt and the steps read one
 warehouse.
 
-ELEMENTARY'S TABLES ARE BUILT FIRST, right after the row history is restored
-(decision 102, ELT.md "Data quality (decision 102)"). Every dbt command here
+ELEMENTARY'S TABLES ARE BUILT FIRST, right after the row history and
+Elementary's own history are restored (decision 102, ELT.md "Data quality
+(decision 102)"). Every dbt command here
 runs with OURHIKE_ELEMENTARY=true, dbt_project.yml's switch for Elementary's
 models and its two hooks, and the end-of-run hook writes each command's
 results into those tables. With a table missing, a command records nothing
@@ -277,7 +295,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import tomllib
@@ -483,6 +501,20 @@ class Paths:
 #: HISTORY IS RESTORED FIRST AND SAVED LAST").
 HISTORY_STORES = PIPELINE_DIR / "row_history_stores.toml"
 RESTORE_LABEL, SAVE_LABEL = "restore the row history", "save the row history"
+#: How many days of Elementary's history each lane's save keeps (row_history.py's docstring, "RETENTION"), as
+#: --keep-days: the training window its checks read back, plus a margin. Monthly: 400 days, plus 30; ELT.md gives that
+#: lane a window of about 400 ("Memory between runs"), so that the 7 earlier builds an anomaly check waits for, one a
+#: month, fall inside it. Hourly: Elementary's default days_back of 14, plus 7. Reasoned from Elementary 0.26.0: a
+#: check reads back from its days_back before now, moved to the start of that day and then of its bucket
+#: (get_trunc_min_bucket_start_expr()), and the save before a build ran earlier than the build, so a margin of 30
+#: days covers buckets of up to four weeks and 7 days buckets of up to six. A lane whose checks take a longer
+#: days_back or bucket than that needs these moved with it. The windows themselves are @unvalidated (ELT.md), settled
+#: by the first season's false alarms. A build with no lane, CI's fixtures, builds both lanes' checks and keeps the
+#: longer.
+ELEMENTARY_KEEP_DAYS = {MONTHLY: 430, HOURLY: 21}
+#: row_history.py's exit when, under --elementary-on-failure degrade, Elementary's history alone could not be restored
+#: or saved: answered as part of the build held back (the module docstring, "--history-on-failure degrade").
+ELEMENTARY_DEGRADED_EXIT = 3
 #: What --history-on-failure degrade leaves out of every dbt build once the restore has failed: the snapshots,
 #: which would otherwise start a history this run cannot keep and the marts must not read.
 SNAPSHOTS = "resource_type:snapshot"
@@ -491,7 +523,8 @@ SNAPSHOTS = "resource_type:snapshot"
 DEGRADED_EXIT = 4
 HISTORY_ON_FAILURE = ("fail", "degrade")
 #: build_marts.py's exit when the build finished with part of it held back (the module docstring, "ONE SOURCE OR ONE
-#: WRITER NEVER STOPS THE REST"): every file written may publish, and the workflow goes red once it has. Not 0 and not
+#: WRITER NEVER STOPS THE REST", and Elementary's history under "--history-on-failure degrade"): every file written may
+#: publish, and the workflow goes red once it has. Not 0 and not
 #: 1 for DEGRADED_EXIT's reason; and DEGRADED_PARTIAL_EXIT when the build was degraded too, so the workflow can say both.
 PARTIAL_EXIT = 5
 DEGRADED_PARTIAL_EXIT = 6
@@ -523,12 +556,25 @@ class History:
     url: str
     cold_start: bool
     python: str
+    #: Whether a store with no Elementary history may start it in this build (the module docstring, "THE ROW HISTORY
+    #: IS RESTORED FIRST AND SAVED LAST"): resolve_history()'s rules, against [elementary_started].
+    elementary_cold_start: bool = False
+    #: --history-on-failure, which reaches row_history.py as --elementary-on-failure (the module docstring,
+    #: "--history-on-failure degrade").
+    on_failure: str = "fail"
 
 
 def resolve_history(
-    url: str | None, *, fixtures: bool, cold_start: bool, python: str, started: dict[str, str]
+    url: str | None,
+    *,
+    fixtures: bool,
+    cold_start: bool,
+    python: str,
+    started: dict[str, str],
+    elementary_started: dict[str, str] | None = None,
 ) -> tuple[History, str | None]:
-    """The store this build restores from and saves to, and a line to print about it.
+    """The store this build restores from and saves to, and a line to print about it. `started` and
+    `elementary_started` are row_history_stores.toml's [started] and [elementary_started] (None: no store listed).
 
     Raises ValueError when no store is named outside --fixtures."""
     if not url:
@@ -538,17 +584,23 @@ def resolve_history(
                 "would start its history again in a warehouse this run throws away (pipeline/row_history.py)."
             )
         url = tempfile.mkdtemp(prefix="ourhike-history-")
-        return History(url, True, python), (
+        return History(url, True, python, True), (
             f"--fixtures with no history store named: a cold start in {url}, a new temporary directory no later run reads"
         )
     if cold_start:
-        return History(url, True, python), f"--history-cold-start: an empty {url} starts its history in this build"
+        return History(url, True, python, True), f"--history-cold-start: an empty {url} starts its history in this build"
     name = history_store_name(url)
     if name not in started:
-        return History(url, True, python), (
+        return History(url, True, python, True), (
             f"::warning title=Row history store not started::{name} is not in row_history_stores.toml, so an empty "
-            f"{url} starts its history in this build. Once this run has saved, list {name} there, so that from then "
-            "on an empty store is refused as lost history."
+            f"{url} starts its history in this build, and Elementary's. Once this run has saved, list {name} there, "
+            "under [started] and [elementary_started], so that from then on an empty store is refused as lost history."
+        )
+    if name not in (elementary_started or {}):
+        return History(url, False, python, True), (
+            f"::warning title=Elementary's history not started::{name} is not in row_history_stores.toml's "
+            f"[elementary_started], so if {url} holds no elementary.json, Elementary's history starts in this build. "
+            f"Once this run has saved, list {name} there, so that from then on a missing one is refused as lost history."
         )
     return History(url, False, python), None
 
@@ -576,6 +628,11 @@ def history_store_name(url: str) -> str:
 
 def started_history_stores(path: Path = HISTORY_STORES) -> dict[str, str]:
     return tomllib.loads(path.read_text(encoding="utf-8"))["started"]
+
+
+def started_elementary_stores(path: Path = HISTORY_STORES) -> dict[str, str]:
+    """row_history_stores.toml's [elementary_started]: the stores whose Elementary history has been saved at least once."""
+    return tomllib.loads(path.read_text(encoding="utf-8")).get("elementary_started", {})
 
 
 @dataclass(frozen=True)
@@ -725,10 +782,14 @@ def plan(
     runs.append(Run(label, (dbt, "build", *options, *writers, *after), DBT_DIR, WRITERS))
     if history is not None:
         store = ("--url", history.url, "--warehouse", str(paths.warehouse))
-        restore = (history.python, "row_history.py", "restore", *store, *(("--cold-start",) if history.cold_start else ()))
+        # --cold-start lets Elementary's history start too (row_history.py's docstring, "THE COLD START").
+        cold = ("--cold-start",) if history.cold_start else ("--elementary-cold-start",) if history.elementary_cold_start else ()
+        policy = ("--elementary-on-failure", "degrade") if history.on_failure == "degrade" else ()
+        restore = (history.python, "row_history.py", "restore", *store, *cold, *policy)
         runs.insert(0, Run(RESTORE_LABEL, restore, PIPELINE_DIR))
         if save_history:
-            runs.append(Run(SAVE_LABEL, (history.python, "row_history.py", "save", *store), PIPELINE_DIR))
+            keep = ("--keep-days", str(ELEMENTARY_KEEP_DAYS[lane] if lane else max(ELEMENTARY_KEEP_DAYS.values())))
+            runs.append(Run(SAVE_LABEL, (history.python, "row_history.py", "save", *store, *keep, *policy), PIPELINE_DIR))
     return runs
 
 
@@ -1378,7 +1439,9 @@ def main(argv: list[str] | None = None) -> int:
             cold_start=args.history_cold_start,
             python=args.history_python,
             started=started_history_stores(),
+            elementary_started=started_elementary_stores(),
         )
+        history = replace(history, on_failure=args.history_on_failure)
         options = {
             "dbt": args.dbt,
             "python": args.python,
@@ -1402,7 +1465,8 @@ def main(argv: list[str] | None = None) -> int:
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
     print(f"-- build_marts: OURHIKE_BUILT_BY={env['OURHIKE_BUILT_BY']}", flush=True)
     if notice:
-        print(f"-- build_marts: {notice}", flush=True)
+        # A workflow command is one only at the start of its line, so a warning is printed as it is.
+        print(notice if notice.startswith("::") else f"-- build_marts: {notice}", flush=True)
     if args.no_history_save:
         print(
             "::warning title=Row history not saved::--no-history-save: this build restores the row history and saves "
@@ -1488,6 +1552,16 @@ def main(argv: list[str] | None = None) -> int:
                         flush=True,
                     )
                 partial.append(f"{len(holds)} test(s) holding a source")
+        if (
+            completed.returncode == ELEMENTARY_DEGRADED_EXIT
+            and run.label in (RESTORE_LABEL, SAVE_LABEL)
+            and args.history_on_failure == "degrade"
+        ):
+            # The module docstring, "--history-on-failure degrade": the row dates stand, and only Elementary's history
+            # is held back; row_history.py's ::error above says why.
+            done = "restored" if run.label == RESTORE_LABEL else "saved"
+            partial.append(f"Elementary's history not {done}")
+            continue
         if completed.returncode != 0 and run.label == RESTORE_LABEL and args.history_on_failure == "degrade":
             # The module docstring, "--history-on-failure degrade": build and publish with null dates, save nothing.
             print(

@@ -29,9 +29,12 @@
 # takes the dbt path, the UA leg always. Each leg:
 #   1. takes the warehouse its build handed off (pipeline/hand_off.py), from
 #      the leg's history store in the private raw store,
-#      history/conditions_<leg>/checks/. Not an Actions artifact: an
-#      artifact of a public repository is anyone's to download, and the
-#      warehouse holds every raw table the leg read (hand_off.py says why);
+#      history/conditions_<leg>/checks/, only when that build ran on the
+#      commit this run checked out: a push since the build makes the
+#      branch's newest commit another one, and that hour is not checked.
+#      Not an Actions artifact: an artifact of a public repository is
+#      anyone's to download, and the warehouse holds every raw table the
+#      leg read (hand_off.py says why);
 #   2. runs `build_marts.py --lane hourly --checks-only`: Elementary's history
 #      restored alone, from the save the build just made; Elementary's own
 #      tables with the checks' switch; every check the lane has; the lane's
@@ -281,11 +284,14 @@ jobs:
           key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
 
       # hand_off.py's exit 4 is "nothing at the store is this run's": a
-      # build that took the exporters path, failed before its hand-off, or
-      # was replaced by a later build's. Said, and the leg ends green with
-      # nothing checked; a store that cannot be read, or a torn upload, is
-      # red. Three minutes, @unvalidated: the warehouse's size over R2
-      # decides it (the hand-off's log line gives both).
+      # build that took the exporters path, failed before its hand-off, was
+      # replaced by a later build's, or ran on another commit than this
+      # checkout, which a push since the build makes the branch's newest
+      # (hand_off.py, "THE CHECKS RUN THE BUILD'S OWN COMMIT, OR NONE").
+      # Said, and the leg ends green with nothing checked; a store that
+      # cannot be read, or a torn upload, is red. Three minutes,
+      # @unvalidated: the warehouse's size over R2 decides it (the
+      # hand-off's log line gives both).
       - name: Take the warehouse this leg's build handed off
         id: take
         if: steps.wanted.outputs.run == 'true'
@@ -293,6 +299,7 @@ jobs:
         env:
           ENVIRONMENT: ${{ matrix.data_environment }}
           BUILD_RUN: ${{ inputs.build_run }}
+          COMMIT: ${{ github.sha }}
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
@@ -301,13 +308,13 @@ jobs:
         run: |
           set +e
           "$RUNNER_TEMP/extract/bin/python" hand_off.py take --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
-            --warehouse data/warehouse.duckdb --run "$BUILD_RUN"
+            --warehouse data/warehouse.duckdb --run "$BUILD_RUN" --commit "$COMMIT"
           status=$?
           set -e
           if [ "$status" -eq 0 ]; then
             echo "taken=true" >> "$GITHUB_OUTPUT"
           elif [ "$status" -eq 4 ]; then
-            echo "::warning title=Nothing to check::build_run $BUILD_RUN handed no warehouse to the $ENVIRONMENT leg's store, so nothing was checked and conditions/data_quality.json keeps its last copy. Its build took the exporters path, failed before its hand-off, or a later build's replaced it."
+            echo "::warning title=Nothing to check::build_run $BUILD_RUN left no warehouse in the $ENVIRONMENT leg's store for this checkout, so nothing was checked and conditions/data_quality.json keeps its last copy. Its build took the exporters path, failed before its hand-off, a later build's replaced it, or it ran on another commit than this one; hand_off.py's line above says which."
             echo "taken=false" >> "$GITHUB_OUTPUT"
           else
             exit "$status"

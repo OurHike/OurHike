@@ -1,7 +1,7 @@
 """hand_off: hand an hourly build's warehouse to the run that checks it, through the leg's history store (decision 110).
 
-    python hand_off.py put --url URL --warehouse W --run RUN [--attempt N]
-    python hand_off.py take --url URL --warehouse W --run RUN
+    python hand_off.py put --url URL --warehouse W --run RUN [--attempt N] [--commit SHA]
+    python hand_off.py take --url URL --warehouse W --run RUN [--commit SHA]
 
 publish-conditions.yml's dbt path builds and publishes; check-conditions.yml,
 which it starts once its build has published, runs Elementary's checks over
@@ -12,10 +12,21 @@ leg's history store, the private raw store's history/conditions_<leg>/, which
 both jobs already hold the key to:
 
     checks/warehouse.duckdb   the newest build's warehouse, overwritten by each build
-    checks/hand_off.json      which run put it, its size and sha256: written last
+    checks/hand_off.json      which run put it, from which commit, its size and sha256: written last
 
 and `take`, in the checks run, reads it back for the run it was asked to
 check, refusing a warehouse another run put.
+
+THE CHECKS RUN THE BUILD'S OWN COMMIT, OR NONE. check-conditions.yml is
+dispatched on a branch, and GitHub runs it from that branch's newest commit,
+which a push between the build and its checks makes a later one than the
+build's. Its checks would then parse a project the warehouse was not built
+from, and a check of a model added or changed in between would error or
+read the old table, on a page that says what the data is. So `put` records
+the build's commit and `take`, given the checkout's, finds nothing to check
+when they differ (Reasoned; how often a push lands in those few minutes is
+not measured): that hour keeps the last data-quality file, whose
+`built_at` says how old it is.
 
 NOT AN ACTIONS ARTIFACT. Downloading one needs read access to the
 repository and nothing more ("Read access to the repository is required to
@@ -36,9 +47,10 @@ that build's run in hand_off.json and stops, exit NOT_HANDED_OFF, rather than
 checking the wrong hour.
 
 EXITS. 0 when the warehouse moved and its sha256 matched; NOT_HANDED_OFF (4)
-from `take` when nothing at the store is the asked run's, which
-check-conditions.yml reads as "this leg's build left nothing to check" (an
-exporters-path leg, or a build that failed before its put); 1 for anything
+from `take` when nothing at the store is the asked run's, or it is but
+from another commit, which check-conditions.yml reads as "this leg's build
+left nothing to check" (an exporters-path leg, a build that failed before
+its put, or a push since the build); 1 for anything
 else, a store that cannot be read, a torn upload, a warehouse still holding
 a write-ahead log.
 """
@@ -70,9 +82,9 @@ class NotHandedOff(Exception):
     """No warehouse at the store is the asked run's."""
 
 
-def put(url: str, warehouse: Path, run: str, attempt: str = "1") -> str:
+def put(url: str, warehouse: Path, run: str, attempt: str = "1", commit: str | None = None) -> str:
     """Checkpoint the warehouse, so the one file is the whole database, upload it, then write hand_off.json naming
-    `run`. Returns what it did, for the log."""
+    `run` and the `commit` it was built from. Returns what it did, for the log."""
     started = time.monotonic()
     if not warehouse.is_file():
         raise Refused(f"there is no warehouse at {warehouse} to hand off")
@@ -89,6 +101,7 @@ def put(url: str, warehouse: Path, run: str, attempt: str = "1") -> str:
         "format": FORMAT,
         "run": run,
         "attempt": attempt,
+        "commit": commit,
         "bytes": size,
         "sha256": digest,
         "put_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -97,9 +110,10 @@ def put(url: str, warehouse: Path, run: str, attempt: str = "1") -> str:
     return f"handed run {run}.{attempt}'s warehouse, {size} bytes, to {url}/{FOLDER}/, in {time.monotonic() - started:.2f} s"
 
 
-def take(url: str, warehouse: Path, run: str) -> str:
+def take(url: str, warehouse: Path, run: str, commit: str | None = None) -> str:
     """Download the warehouse `run` put, into `warehouse`, checked against its size and sha256. Returns what it did,
-    for the log; raises NotHandedOff when no warehouse at the store is `run`'s."""
+    for the log; raises NotHandedOff when no warehouse at the store is `run`'s, or when it was built from a commit
+    other than `commit`, the checkout's (the module docstring, "THE CHECKS RUN THE BUILD'S OWN COMMIT, OR NONE")."""
     started = time.monotonic()
     store = Store(url)
     store.check_reachable()
@@ -112,6 +126,11 @@ def take(url: str, warehouse: Path, run: str) -> str:
     if str(pointer.get("run")) != str(run):
         raise NotHandedOff(
             f"{url}/{FOLDER}/ holds run {pointer.get('run')}'s warehouse, put at {pointer.get('put_at')}, not run {run}'s"
+        )
+    if commit and pointer.get("commit") and pointer["commit"] != commit:
+        raise NotHandedOff(
+            f"run {run}'s build ran on {pointer['commit'][:12]} and this checkout is {commit[:12]}, so its checks would "
+            "parse a project the warehouse was not built from: nothing is checked this hour"
         )
     warehouse.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=warehouse.parent) as scratch:
@@ -138,14 +157,15 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--url", required=True, help="the leg's history store, as build_marts.py's --history-url")
         command.add_argument("--warehouse", required=True, type=Path)
         command.add_argument("--run", required=True, help="the publish-conditions.yml run whose build it is")
+        command.add_argument("--commit", help="put: the commit the build ran on; take: the checkout's, which must match")
         if name == "put":
             command.add_argument("--attempt", default="1", help="that run's attempt, for the log")
     args = parser.parse_args(argv)
     try:
         if args.command == "put":
-            message = put(args.url, args.warehouse, args.run, args.attempt)
+            message = put(args.url, args.warehouse, args.run, args.attempt, args.commit)
         else:
-            message = take(args.url, args.warehouse, args.run)
+            message = take(args.url, args.warehouse, args.run, args.commit)
     except NotHandedOff as nothing:
         print(f"hand_off: {nothing}", flush=True)
         return NOT_HANDED_OFF

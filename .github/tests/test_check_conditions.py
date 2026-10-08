@@ -290,6 +290,18 @@ def test_the_warehouse_crosses_through_the_legs_history_store_the_build_and_its_
         ], workflow.name
 
 
+def test_the_checks_take_a_warehouse_only_from_the_commit_they_checked_out():
+    """hand_off.py, "THE CHECKS RUN THE BUILD'S OWN COMMIT, OR NONE": the build records its commit, and the checks,
+    dispatched on a branch whose newest commit a push may have moved, give theirs; both read through env."""
+    hand_off = _step(BAKE, "publish", "Hand this build's warehouse to its checks (dbt path)")
+    take = _step(CHECKS, "check", "Take the warehouse this leg's build handed off")
+    checkout = [step for step in _steps(CHECKS, "check") if str(step.get("uses", "")).startswith("actions/checkout@")]
+
+    assert hand_off["env"]["COMMIT"] == take["env"]["COMMIT"] == "${{ github.sha }}"
+    assert '--commit "$COMMIT"' in hand_off["run"] and '--commit "$COMMIT"' in take["run"]
+    assert len(checkout) == 1 and "with" not in checkout[0], "the checkout is github.sha, the commit the take compares"
+
+
 def test_the_hand_off_follows_the_publish_red_or_green_and_never_turns_it_red():
     """publish.py exits 1 for a held source after uploading everything else, the hour the checks matter most; a failed
     hand-off is the checks' to report, never the publish's."""

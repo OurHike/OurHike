@@ -69,6 +69,22 @@ def test_take_answers_nothing_handed_off_with_its_own_exit_and_a_torn_upload_wit
     assert not taken.exists(), "nothing torn is left where the checks would read it"
 
 
+def test_the_checks_of_a_build_take_its_warehouse_only_from_the_commit_their_checkout_is(tmp_path, capsys):
+    """A push between the build and its checks makes the checkout a later commit than the build's, whose project the
+    warehouse was not built from: nothing to check, the same exit as a build that handed off nothing."""
+    store = tmp_path / "store"
+    built, build_commit = _warehouse(tmp_path / "build.duckdb"), "27f4ee3a73330ef3364a664132f2dbc73502984d"
+    hand_off.put(str(store), built, "7", commit=build_commit)
+    later = "fc32a8e6" + "0" * 32
+    args = ["take", "--url", str(store), "--warehouse", str(tmp_path / "checks.duckdb"), "--run", "7"]
+
+    assert hand_off.main([*args, "--commit", later]) == hand_off.NOT_HANDED_OFF
+    assert "run 7's build ran on 27f4ee3a7333 and this checkout is fc32a8e60000" in capsys.readouterr().out
+    assert not (tmp_path / "checks.duckdb").exists()
+    assert json.loads((store / hand_off.POINTER).read_text())["commit"] == build_commit
+    assert hand_off.main([*args, "--commit", build_commit]) == 0 and _closures(tmp_path / "checks.duckdb") == 3
+
+
 def test_put_refuses_a_warehouse_that_is_not_there(tmp_path, capsys):
     args = ["put", "--url", str(tmp_path / "store"), "--warehouse", str(tmp_path / "none.duckdb"), "--run", "7"]
 

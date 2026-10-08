@@ -1501,6 +1501,9 @@ jobs:
           ENVIRONMENT: ${{ matrix.data_environment }}
           RUN: ${{ github.run_id }}
           ATTEMPT: ${{ github.run_attempt }}
+          # The commit this build ran, which its checks must check out too
+          # (hand_off.py, "THE CHECKS RUN THE BUILD'S OWN COMMIT, OR NONE").
+          COMMIT: ${{ github.sha }}
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
@@ -1509,7 +1512,7 @@ jobs:
         run: >-
           "$RUNNER_TEMP/extract/bin/python" hand_off.py put
           --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT"
-          --warehouse data/warehouse.duckdb --run "$RUN" --attempt "$ATTEMPT"
+          --warehouse data/warehouse.duckdb --run "$RUN" --attempt "$ATTEMPT" --commit "$COMMIT"
 
       # A WARNING, NEVER RED: decision 100 (the maintainer's poll of
       # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt

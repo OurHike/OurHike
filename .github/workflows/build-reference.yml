@@ -634,7 +634,10 @@ jobs:
       # tables; today's exporters read the pinned as-landed files at their
       # fetchers' paths under data/raw/ (extract/_run.py says what that copy
       # is and is not), the warehouse the build stored (suggested_hikes
-      # routes over its graph), and the reviewed files in git. A family whose
+      # routes over its graph, and the Hike Finder's hikes and the Long Path
+      # guide's sections are read from its raw tables, which the pin carries
+      # and no as-landed file does: parity.py's _landed_hikes() and
+      # _landed_guide_sections()), and the reviewed files in git. A family whose
       # input no dlt table holds is recorded as not compared, never passing.
       - name: Today's fetchers' files and the built warehouse, from the pin
         env:

@@ -844,47 +844,106 @@ def _club_sections_old() -> dict:
 
 
 # The suggested_hikes family: export_suggested_hikes.py's shelf (the
-# suggested-hikes list) and details, and export_highlights.py's file. The Hike
-# Finder's pages are not in git, so fixture mode builds the warehouse from
-# make_dbt_fixtures.py's copies under <raw-dir>/hikefinder/, and the old side
-# runs those same pages through what a publish runs: fetch_hikefinder.py's
-# parse into its cache, route_hikefinder.py's build_results(), and
-# export_suggested_hikes.py's build_document(). Both sides route over the
-# warehouse's graph (beside <raw-dir>, as CI lays it out), written as
-# route_hikefinder.py's three files by step_form_route.graph_files() and read
-# by route_hikefinder.load_graph(), as trail_graph.json reaches it today.
+# suggested-hikes list) and details, and export_highlights.py's file. The old
+# side reads the hikes the extract landed (HIKE_FINDER_TABLE), which is the
+# dbt side's input too, as fetch_hikefinder.py's cache (_landed_hikes()), then
+# runs what a publish runs on that cache: route_hikefinder.py's
+# build_results() and export_suggested_hikes.py's build_document(). Both sides
+# route over the warehouse's graph (beside <raw-dir>, as CI and the monthly
+# parity job lay it out), written as route_hikefinder.py's three files by
+# step_form_route.graph_files() and read by route_hikefinder.load_graph(), as
+# trail_graph.json reaches it today.
+
+#: Where the extract lands NYNJTC's two page-read sources (pipeline/extract/nynjtc/), in the warehouse's `raw` schema:
+#: the tables the dbt sources `raw_nynjtc__nynjtc_hike_finder` and `raw_nynjtc__nynjtc_long_path_guide` name. A monthly
+#: pin carries them (extract/_warehouse.py's load_pinned()), and so does the warehouse fixture mode loads in CI.
+#: Spelled here because parity.py runs on requirements.txt, which has no dlt to ask extract/ for a table's name;
+#: tests/test_parity_landed_pages.py holds both to the dbt sources.
+HIKE_FINDER_TABLE = "raw.raw_nynjtc__nynjtc_hike_finder"
+GUIDE_TABLE = "raw.raw_nynjtc__nynjtc_long_path_guide"
+
+#: The cache entry's values that are lists or objects (lib/hikefinder.py's as_cache_entry(): ParsedHike.to_dict()'s
+#: nested values and hike_problems()' list), which the extract lands as JSON text (max_table_nesting 0), each with
+#: what an entry holds where the landed value is null. tests/test_parity_landed_pages.py holds the names to
+#: as_cache_entry()'s nested keys.
+HIKE_JSON_FIELDS = {
+    "start": None,
+    "features": [],
+    "directions": [],
+    "description": [],
+    "public_transport": [],
+    "raw_fields": {},
+    "problems": [],
+}
 
 
-def _hikefinder_cache(folder: Path, gpx_dir: Path) -> dict:
-    """fetch_hikefinder.py's cache for the pages fixture mode served: parse_hike(), as_cache_entry(), and a GPX
-    stored as store_gpx() stores one, only where it parses to a track point."""
-    from urllib.parse import urljoin
+def _landed_rows(warehouse: Path, table: str, order_by: str) -> list[dict] | None:
+    """Every row of `table` in the warehouse as {column: value}, in `order_by` order, rows that differ only in dlt's
+    own row id (`_dlt_id`) read once, as decision 40's staging dedupe keeps one of them; None where the warehouse or
+    the table does not exist."""
+    import duckdb
 
-    import export_suggested_hikes
-    from lib.hikefinder import DETAIL_PATH, SOURCE_KEY, as_cache_entry, listing_ids, parse_gpx, parse_hike
-    from lib.source_registry import find_source, load_registry
+    if not warehouse.exists():
+        return None
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        try:
+            columns = [row[0] for row in con.execute(f"describe {table}").fetchall()]
+        except duckdb.CatalogException:
+            return None
+        kept = ", ".join(f'"{name}"' for name in columns if name != "_dlt_id")
+        cursor = con.execute(f"select distinct {kept} from {table} order by {order_by}")
+        names = [column[0] for column in cursor.description]
+        return [dict(zip(names, values, strict=True)) for values in cursor.fetchall()]
 
-    base = find_source(load_registry(export_suggested_hikes.SOURCES_PATH), SOURCE_KEY)["url"].rstrip("/") + "/"
-    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+def _landed_hikes(warehouse: Path, gpx_dir: Path) -> dict[str, dict]:
+    """fetch_hikefinder.py's cache for the hikes the extract landed (HIKE_FINDER_TABLE), each track stored in
+    `gpx_dir` as store_gpx() stores one; {} where the warehouse holds no such table, as on a run that fetched none.
+
+    The published_hikes kind (extract/_kinds.py's PublishedHikes) lands one row per hike as lib/hikefinder.py's
+    parse_hike() and as_cache_entry() read its page, which is the entry fetch_hikefinder.py caches, and `gpx`, the
+    track as served where the hike has a published route and parse_gpx() reads a point from it, null otherwise:
+    exactly where store_gpx() writes a file and the entry names it in `gpx_file`. So this is the fetcher's cache
+    for the pages the extract read, with no page fetched again. In hike number order, the listing's
+    (listing_ids()).
+
+    WHY NOT THE PAGES. Until monthly run 30 the old side parsed make_dbt_fixtures.py's copies of the pages under
+    data/raw/hikefinder/, which only CI writes: a monthly pin carries the landed table and no page, so run 30
+    (refresh-reference.yml 37772454847) could compare neither suggested_hikes file. Reading the export again would
+    cost the host another 83 minutes at the 10-second crawl delay its robots.txt asks (extract/_kinds.py's
+    HIKEFINDER_THROTTLE_SECONDS) and would not be the pages the dbt side read."""
+    import dataclasses
+
+    from lib.hikefinder import ParsedHike
+
+    rows = _landed_rows(warehouse, HIKE_FINDER_TABLE, "id")
+    if not rows:
+        return {}
+    fields = [field.name for field in dataclasses.fields(ParsedHike)] + ["fetched_at", "problems"]
     hikes: dict[str, dict] = {}
-    for hike_id in listing_ids((folder / "hikes.html").read_text(encoding="utf-8")):
-        page = (folder / f"hike-{hike_id}.html").read_text(encoding="utf-8")
-        hike = parse_hike(page, hike_id, urljoin(base, DETAIL_PATH.format(id=hike_id)))
-        if hike is None:
+    tracks: dict[str, str | None] = {}
+    for row in rows:
+        entry = {name: row.get(name) for name in fields}
+        for name, empty in HIKE_JSON_FIELDS.items():
+            value = entry[name]
+            entry[name] = json.loads(value) if isinstance(value, str) else (empty if value is None else value)
+        key, track = str(entry["id"]), row.get("gpx") if entry["has_published_route"] else None
+        if key in hikes:
+            if hikes[key] != entry or tracks[key] != track:
+                raise SystemExit(f"{HIKE_FINDER_TABLE} lands hike {key} twice, differently: there is no one cache entry for it")
             continue
-        entry = as_cache_entry(hike, stamp)
+        hikes[key], tracks[key] = entry, track
+    for key, entry in hikes.items():
         entry["gpx_file"] = None
-        track = folder / f"track-{hike_id}.gpx"
-        if hike.has_published_route and track.exists() and parse_gpx(track.read_text(encoding="utf-8")) is not None:
-            (gpx_dir / f"{hike_id}.gpx").write_text(track.read_text(encoding="utf-8"), encoding="utf-8")
-            entry["gpx_file"] = f"{hike_id}.gpx"
-        hikes[str(hike_id)] = entry
+        if tracks[key]:
+            (gpx_dir / f"{key}.gpx").write_text(tracks[key], encoding="utf-8")
+            entry["gpx_file"] = f"{key}.gpx"
     return hikes
 
 
 def _suggested_hikes_old(part: str, raw_dir: Path) -> dict | None:
     """export_suggested_hikes.py's shelf (`part` "shelf") or every detail ("details"), or None where its main()
-    writes no file: a source that does not reach hikers, an export with no hike, or no hike that ships."""
+    writes no file: a source that does not reach hikers, no hike landed, or no hike that ships."""
     import tempfile
 
     import duckdb
@@ -899,14 +958,15 @@ def _suggested_hikes_old(part: str, raw_dir: Path) -> dict | None:
     if source is None or not source.get("reaches_hikers"):
         return None
     steward = source.get("steward") or source.get("attribution")
+    warehouse = raw_dir.parent / "warehouse.duckdb"
     with tempfile.TemporaryDirectory() as scratch:
         graph_dir, gpx_dir = Path(scratch) / "graph", Path(scratch) / "gpx"
         graph_dir.mkdir()
         gpx_dir.mkdir()
-        cache = _hikefinder_cache(raw_dir / "hikefinder", gpx_dir)
+        cache = _landed_hikes(warehouse, gpx_dir)
         if not cache:
             return None
-        with duckdb.connect(str(raw_dir.parent / "warehouse.duckdb"), read_only=True) as con:
+        with duckdb.connect(str(warehouse), read_only=True) as con:
             step_form_route.graph_files(con, graph_dir)
         starts = [(hike["start"]["lon"], hike["start"]["lat"]) for hike in cache.values() if hike.get("start")]
         graph = route_hikefinder.load_graph(graph_dir, starts)
@@ -1470,40 +1530,73 @@ def _walk_ends(records: list[dict]) -> list[tuple[float, float]]:
     ]
 
 
-def _guide_sections_old() -> Path:
-    """A folder holding sections.json as fetch_nynjtc_long_path_guide.py writes it, parsed from the fixture's guide pages.
+#: The Long Path guide's columns as the guide_pages kind lands them: lib/nynjtc_long_path_guide.Section.to_dict()'s
+#: keys, the three blocks and the notes as JSON text (max_table_nesting 0), each with what a section holds where the
+#: landed value is null. tests/test_parity_landed_pages.py holds the names to to_dict()'s.
+GUIDE_JSON_FIELDS = {"parking": [], "camping": [], "description": [], "notes": {}}
+GUIDE_FIELDS = ("number", "title", "distance_miles", "parks", "url", *GUIDE_JSON_FIELDS)
 
-    The fetcher reads NYNJTC's forty pages, which CI may not. The fixture's pages (make_dbt_fixtures.py's
-    guide_pages/nynjtc_long_path_guide/) are parsed here in the index's order by lib/nynjtc_long_path_guide.py's own
-    parse_index() and parse_section(), the functions the guide_pages kind calls. With no fixture pages the folder holds
-    nothing, as on a run that never fetched the guide.
+
+def _landed_guide_sections(warehouse: Path) -> list[dict] | None:
+    """The Long Path guide's sections as the extract landed them (GUIDE_TABLE), each in the shape
+    fetch_nynjtc_long_path_guide.py writes into sections.json (Section.to_dict()), in section number order; None where
+    the warehouse holds no such table.
+
+    The guide_pages kind (extract/_kinds.py's GuidePages) lands each section page as lib/nynjtc_long_path_guide.py's
+    parse_section() reads it, the parse the fetcher writes into sections.json, with the page's sha256 beside it; so
+    this is the fetcher's cache for the pages the extract read. Section number order is the index's: the guide's index
+    links sections 1 to 40 in number order (read live 2026-10-08 by parse_index()), and it is the order
+    step_long_path_guide reads them in, so build_records()' dedupe, which keeps the earliest of two records of one
+    place, keeps the same one on both sides."""
+    rows = _landed_rows(warehouse, GUIDE_TABLE, "number")
+    if rows is None:
+        return None
+    sections: list[dict] = []
+    for row in rows:
+        section = {name: row.get(name) for name in GUIDE_FIELDS}
+        for name, empty in GUIDE_JSON_FIELDS.items():
+            value = section[name]
+            section[name] = json.loads(value) if isinstance(value, str) else (empty if value is None else value)
+        if sections and sections[-1]["number"] == section["number"]:
+            if sections[-1] != section:
+                raise SystemExit(
+                    f"{GUIDE_TABLE} lands section {section['number']} twice, differently: there is no one page to read"
+                )
+            continue
+        sections.append(section)
+    return sections
+
+
+def _guide_sections_old() -> Path:
+    """A folder holding sections.json as fetch_nynjtc_long_path_guide.py writes it, from the sections the extract
+    landed (_landed_guide_sections()), or holding nothing where the warehouse has no guide table, as on a run that
+    never fetched the guide.
+
+    The fetcher reads NYNJTC's forty pages, which CI may not, and a monthly pin carries the landed table and no page.
+    In CI the table is make_dbt_fixtures.py's guide pages, which fixture mode served the extract; in a monthly run it
+    is the pin's. Monthly run 30 (refresh-reference.yml 37772454847) parsed the fixture's pages here, which a pin does
+    not carry, so its old side placed no guide waypoint, and its nearby_poi parity named all 271 the dbt writer
+    published, and places' the 111 lots among them. Today's guide_records() over the guide and Long Path layer read
+    live on 2026-10-08 places the same 271, every one equal to the dbt writer's in run 30, property for property.
     """
     import tempfile
 
-    from lib import nynjtc_long_path_guide as guide
-
     folder = Path(tempfile.mkdtemp(prefix="parity-guide-"))
-    pages_dir = RAW_DIR / "guide_pages" / guide.SOURCE_KEY
-    if not (pages_dir / "pages.json").exists():
-        return folder
-    files = json.loads((pages_dir / "pages.json").read_text(encoding="utf-8"))
-    index = (pages_dir / files[guide.INDEX_URL]).read_text(encoding="utf-8")
-    sections = [
-        guide.parse_section((pages_dir / files[url]).read_text(encoding="utf-8"), url, expected_number=number).to_dict()
-        for number, url in guide.parse_index(index)
-    ]
-    (folder / "sections.json").write_text(json.dumps(sections), encoding="utf-8")
+    sections = _landed_guide_sections(_warehouse())
+    if sections is not None:
+        (folder / "sections.json").write_text(json.dumps(sections), encoding="utf-8")
     return folder
 
 
 def _nearby_poi_old() -> dict:
     """export_nearby_poi.py's nearby_poi.geojson, by its own functions in main()'s order.
 
-    main() cannot run on the fixtures: it reads the guide's cache from data/raw/nynjtc_long_path_guide/, which no
-    fixture writes. So this calls main()'s functions in its order: each registered layer's build_records() in
-    poi_sources()'s order; guide_records() over the fixture guide's parsed sections (_guide_sections_old()) and the
-    layer's own Long Path lines, appended because the guide reaches hikers; the network ring and closed-trailhead mark
-    against the published network (_published_network()); and the place sites.
+    main() reads the guide's cache from data/raw/nynjtc_long_path_guide/, which neither CI nor a monthly pin writes.
+    So this calls main()'s functions in its order: each registered layer's build_records() in poi_sources()' order;
+    guide_records() over the guide's landed sections (_guide_sections_old()) and the layer's own Long Path lines,
+    appended where the guide reaches hikers, and refused as main() refuses it where it reaches hikers and nothing
+    landed; the network ring and closed-trailhead mark against the published network (_published_network()); and the
+    place sites.
     """
     import export_nearby_poi as nearby
 
@@ -1513,11 +1606,12 @@ def _nearby_poi_old() -> dict:
     for source in sources:
         features = json.loads((nearby.RAW_DIR / f"{source['key']}.geojson").read_text(encoding="utf-8")).get("features", [])
         records.extend(nearby.build_records(source, features)[0])
-    sections = _guide_sections_old()
-    if (sections / "sections.json").exists():
-        guide, stats = nearby.guide_records(registry, raw_dir=sections, lines_dir=nearby.RAW_DIR)
-        if stats is not None and stats.get("reaches_hikers"):
-            records.extend(guide)
+    try:
+        guide, stats = nearby.guide_records(registry, raw_dir=_guide_sections_old(), lines_dir=nearby.RAW_DIR)
+    except FileNotFoundError as missing:
+        raise SystemExit(f"export_nearby_poi.py refuses this input: {missing}") from missing
+    if stats is not None and stats.get("reaches_hikers"):
+        records.extend(guide)
     network = _published_network()
     records, _ = nearby.clip_to_network(records, network, nearby.boundary_paths_for(sources))
     nearby.mark_closed_trailheads(records, network)

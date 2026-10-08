@@ -746,15 +746,47 @@ def _spurs_records(document: dict, path: Path | None) -> dict:
     return {"spurs": [{"id": key, **record} for key, record in document.items()]}
 
 
+#: The export_poi.py module attributes _export_poi_as_published() sets, which _published_pois() puts back.
+EXPORT_POI_INPUTS = (
+    "NETWORK_LINES_PATH",
+    "TRAIL_WATER_PATH",
+    "OSM_WATER_FILENAME",
+    "OSM_WATER_REACH_FILENAME",
+    "IMAGES_FILENAME",
+    "ATC_IMAGES_FILENAME",
+    "load_screen_decisions",
+)
+
+
+def _export_poi_as_published(export_poi) -> None:
+    """Point export_poi.py at what a publish run hands it before its main(): the published network
+    (_published_network()), the derived site water (_site_water_old()), the graded OSM water (_osm_water_old()) and the
+    photo outcomes (_photos_old()). publish-vector-data.yml derives the water before it exports the POIs, so every
+    poi_<type>.geojson a publish writes, and every file read from them, carries that water, as the points_of_interest
+    mart's rows do."""
+    export_poi.NETWORK_LINES_PATH = _published_network()
+    export_poi.TRAIL_WATER_PATH = _site_water_old()
+    osm_water = _osm_water_old()
+    if osm_water is not None:
+        export_poi.OSM_WATER_FILENAME, export_poi.OSM_WATER_REACH_FILENAME = osm_water
+    _photos_old(export_poi)
+
+
 @functools.cache
 def _published_pois() -> Path:
     """The poi_<type>.geojson files export_poi.main() writes, in a folder kept for this process: what
-    export_spurs.py's load_destination_pois() reads in a publish run, from the same raw files and published network
-    (_published_network()) the points_of_interest mart is built from.
+    export_spurs.py's load_destination_pois() reads in a publish run, from the same raw files, published network and
+    water (_export_poi_as_published()) the points_of_interest mart is built from.
+
+    A spur's destination may be water, one of export_spurs.DESTINATION_POI_TYPES. Monthly run 29 ran this with the
+    network alone, so no site or OSM water, and 32 of its 784 spurs named a different destination POI than the dbt
+    side, 31 of them at a different distance; the missing water is the cause this file can name (Reasoned), and run 30
+    says whether it is the whole of it.
 
     Never data/processed/poi: the poi_<type> parity lines and earlier runs write there, and a POI file left there made
     export_spurs.py name a destination the dbt side never saw (side_trails: spur-to-shelter, measured 2026-10-02).
-    export_poi.py's module paths are put back afterwards, so the other families in the process see what they would have.
+    export_poi.py's module attributes are put back afterwards, so the other families in the process see what they
+    would have.
     """
     import contextlib
     import io
@@ -763,14 +795,15 @@ def _published_pois() -> Path:
     import export_poi
 
     out = Path(tempfile.mkdtemp(prefix="parity-poi-")) / "poi"
-    saved = export_poi.OUT_DIR, export_poi.NETWORK_LINES_PATH
+    saved = {name: getattr(export_poi, name) for name in ("OUT_DIR", *EXPORT_POI_INPUTS)}
     try:
         export_poi.OUT_DIR = out
-        export_poi.NETWORK_LINES_PATH = _published_network()
+        _export_poi_as_published(export_poi)
         with contextlib.redirect_stdout(io.StringIO()):
             export_poi.main()
     finally:
-        export_poi.OUT_DIR, export_poi.NETWORK_LINES_PATH = saved
+        for name, value in saved.items():
+            setattr(export_poi, name, value)
     return out
 
 
@@ -1280,12 +1313,7 @@ def _poi_by_type_old(poi_type: str) -> Callable[[], dict]:
     def old() -> dict:
         import export_poi
 
-        export_poi.NETWORK_LINES_PATH = _published_network()
-        export_poi.TRAIL_WATER_PATH = _site_water_old()
-        osm_water = _osm_water_old()
-        if osm_water is not None:
-            export_poi.OSM_WATER_FILENAME, export_poi.OSM_WATER_REACH_FILENAME = osm_water
-        _photos_old(export_poi)
+        _export_poi_as_published(export_poi)
         export_poi.main()
         return json.loads((export_poi.OUT_DIR / f"{poi_type}.geojson").read_text(encoding="utf-8"))
 
@@ -1567,7 +1595,7 @@ def _challenges_old() -> dict:
     import export_poi
 
     with contextlib.redirect_stdout(io.StringIO()):
-        export_poi.NETWORK_LINES_PATH = _published_network()
+        _export_poi_as_published(export_poi)
         export_poi.main()
     centerline = export_challenges.load_centerline(_cut_trails())
     pois = export_challenges.load_published_pois(export_poi.OUT_DIR)

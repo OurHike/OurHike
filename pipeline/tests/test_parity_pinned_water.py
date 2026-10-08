@@ -115,3 +115,34 @@ def test_the_fixtures_scan_never_asks_epqs(tmp_path, monkeypatch):
     events = _scan(tmp_path, monkeypatch, pinned=False, records=WALKS)
 
     assert events == [("gate", None)]
+
+
+def test_the_spurs_destinations_come_from_poi_files_carrying_the_water_a_publish_derives(tmp_path, monkeypatch):
+    """A spur may lead to water (export_spurs.DESTINATION_POI_TYPES), and the dbt side's destinations are the
+    points_of_interest mart's rows, site and OSM water among them. Monthly run 29's old side ran export_poi.py with the
+    published network alone, and 32 of its 784 spurs named a different destination POI."""
+    seen = {}
+    names = ("OUT_DIR", "NETWORK_LINES_PATH", "TRAIL_WATER_PATH", "OSM_WATER_FILENAME", "OSM_WATER_REACH_FILENAME")
+    monkeypatch.setattr(parity, "_published_network", lambda: tmp_path / "network.geojson")
+    monkeypatch.setattr(parity, "_site_water_old", lambda: tmp_path / "trail_water.json")
+    monkeypatch.setattr(parity, "_osm_water_old", lambda: (parity.PINNED_OSM_WATER, str(tmp_path / "reach.json")))
+    monkeypatch.setattr(parity, "_photos_old", lambda module: setattr(module, "IMAGES_FILENAME", "poi_photos/poi_images.json"))
+    monkeypatch.setattr(
+        export_poi, "main", lambda: seen.update({name: getattr(export_poi, name) for name in (*names, "IMAGES_FILENAME")})
+    )
+    before = {name: getattr(export_poi, name) for name in ("OUT_DIR", *parity.EXPORT_POI_INPUTS)}
+    parity._published_pois.cache_clear()
+    try:
+        out = parity._published_pois()
+    finally:
+        parity._published_pois.cache_clear()
+
+    assert seen == {
+        "OUT_DIR": out,
+        "NETWORK_LINES_PATH": tmp_path / "network.geojson",
+        "TRAIL_WATER_PATH": tmp_path / "trail_water.json",
+        "OSM_WATER_FILENAME": parity.PINNED_OSM_WATER,
+        "OSM_WATER_REACH_FILENAME": str(tmp_path / "reach.json"),
+        "IMAGES_FILENAME": "poi_photos/poi_images.json",
+    }
+    assert {name: getattr(export_poi, name) for name in before} == before, "export_poi.py's attributes are put back"

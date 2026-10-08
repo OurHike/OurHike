@@ -1172,6 +1172,21 @@ POI_REASONS = {
         "(int_points_of_interest__cautioned); only a record today's file lacks, of a layer whose taps "
         "layer_rules names plumbed_water, at low confidence with that caution"
     ),
+    "exact_copy_site": (
+        "expected by decision 40, as an exact copy staging removes is: the POI is in both files and only its site "
+        "differs, by exactly what lib/poi_sites.py's group_place_sites() makes of today's records once the copies "
+        "staging removed are gone. Today's file folds a privy or fountain and its exact copy, same name and same "
+        "spot, into one site (the copy riding the other's pin); with the copy gone the site is gone, and site_id, "
+        "site_role and site_name are null. Monthly run 30: NYC's Heckscher Playground and Ancient Playground "
+        "restrooms, each listed twice by NYC Parks (2 pairs of the 975 operational rows, read 2026-10-08)"
+    ),
+    "whole_number": (
+        "not a difference in any value: one number written two ways. Today's exporter passes a coordinate through as "
+        "the layer gave it, and a layer can give a whole number of degrees as an integer (NYC's Socrata restrooms: "
+        "Bensonhurst Park's longitude, -74, read 2026-10-08), where the dbt writer prints every coordinate as a "
+        "double (-74.0). JSON.parse reads both as the number -74, so a phone holds the same value. Explained only "
+        "where the two records are equal once every whole-number double is read as the integer it equals"
+    ),
 }
 
 
@@ -1180,33 +1195,99 @@ def _row_id_order(value) -> tuple:
     return (0, value, "") if isinstance(value, int | float) and not isinstance(value, bool) else (1, 0, str(value))
 
 
-def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
+def _removed_copies(old: dict, new: dict) -> set[str]:
     """The POIs today's file publishes and the dbt writer's does not, each an exact copy of one it does.
 
-    A copy is a feature of the same layer that agrees with another on its geometry and every property but `id` and
-    `source_feature_id` (the server's own row id); the copy with the lowest id is kept, as the staging dedupe keeps
-    the lowest OBJECTID. A missing feature is explained only when the kept copy is in the new file; anything else the
-    new file lacks, or has extra, is still a difference.
+    A copy is a feature of the same layer that agrees with another on its geometry and every property but `id`,
+    `source_feature_id` (the server's own row id) and the site properties, which today's exporter derives from the
+    copies themselves (_copy_site_reasons()); the copy with the lowest id is kept, as the staging dedupe keeps the
+    lowest OBJECTID or Socrata row id. A missing feature counts only when the kept copy is in the new file.
     """
 
     def body(feature: dict) -> tuple[str, str]:
-        properties = {name: value for name, value in feature["properties"].items() if name not in ("id", "source_feature_id")}
+        ignored = ("id", "source_feature_id", *SITE_PROPERTIES)
+        properties = {name: value for name, value in feature["properties"].items() if name not in ignored}
         return feature["properties"]["source"], canonical({"geometry": feature["geometry"], "properties": properties})
 
     new_ids = {_poi_id(feature) for feature in new.get("features") or []}
     copies: dict[tuple[str, str], list[dict]] = {}
     for feature in old.get("features") or []:
         copies.setdefault(body(feature), []).append(feature)
-    reasons: dict[str, str] = {}
+    removed: set[str] = set()
     for group in copies.values():
         if len(group) < 2:
             continue
         kept, *dropped = sorted(group, key=lambda feature: _row_id_order(feature["properties"]["source_feature_id"]))
-        if _poi_id(kept) not in new_ids:
+        if _poi_id(kept) in new_ids:
+            removed |= {_poi_id(feature) for feature in dropped if _poi_id(feature) not in new_ids}
+    return removed
+
+
+def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
+    """POI_REASONS["exact_copy"] for each of _removed_copies(); anything else the new file lacks, or has extra, is
+    still a difference."""
+    return {f"properties.id {poi_id}": POI_REASONS["exact_copy"] for poi_id in _removed_copies(old, new)}
+
+
+def _without_site(feature: dict) -> str:
+    """A feature's canonical JSON with its site properties left out."""
+    properties = {name: value for name, value in feature["properties"].items() if name not in SITE_PROPERTIES}
+    return canonical({**feature, "properties": properties})
+
+
+def _copy_site_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The POIs in both files that differ only in their site, where the new file's site is the one
+    lib/poi_sites.group_place_sites() makes of today's records less _removed_copies(): the site the copies made.
+
+    group_place_sites() and site_properties() are called as export_nearby_poi.py's main() calls them, on today's
+    records without the removed copies and without the site properties main() wrote onto them. A POI whose site the
+    new file draws otherwise, a POI that differs in anything else, and a POI one file lacks are not explained here.
+    """
+    from lib.poi_sites import group_place_sites, site_properties
+
+    removed = _removed_copies(old, new)
+    if not removed:
+        return {}
+    remaining = [
+        {name: value for name, value in feature["properties"].items() if name not in SITE_PROPERTIES}
+        for feature in old.get("features") or []
+        if _poi_id(feature) not in removed
+    ]
+    sites = site_properties(group_place_sites(remaining))
+    new_by_id = {_poi_id(feature): feature for feature in new.get("features") or []}
+    reasons: dict[str, str] = {}
+    for feature in old.get("features") or []:
+        poi_id = _poi_id(feature)
+        twin = new_by_id.get(poi_id)
+        if twin is None or canonical(feature) == canonical(twin) or _without_site(feature) != _without_site(twin):
             continue
-        for feature in dropped:
-            if _poi_id(feature) not in new_ids:
-                reasons[f"properties.id {_poi_id(feature)}"] = POI_REASONS["exact_copy"]
+        expected = sites.get(poi_id, {})
+        if all(twin["properties"].get(name) == expected.get(name) for name in SITE_PROPERTIES):
+            reasons[f"properties.id {poi_id}"] = POI_REASONS["exact_copy_site"]
+    return reasons
+
+
+def _whole_numbers(value):
+    """`value` with every double that is a whole number written as the integer it equals, as JSON.parse reads both."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_whole_numbers(inner) for inner in value]
+    if isinstance(value, dict):
+        return {name: _whole_numbers(inner) for name, inner in value.items()}
+    return value
+
+
+def _whole_number_reasons(old: dict, new: dict) -> dict[str, str]:
+    """POI_REASONS["whole_number"] for each POI in both files that differs only in how a whole number is written."""
+    new_by_id = {_poi_id(feature): feature for feature in new.get("features") or []}
+    reasons: dict[str, str] = {}
+    for feature in old.get("features") or []:
+        twin = new_by_id.get(_poi_id(feature))
+        if twin is None or canonical(feature) == canonical(twin):
+            continue
+        if canonical(_whole_numbers(feature)) == canonical(_whole_numbers(twin)):
+            reasons[f"properties.id {_poi_id(feature)}"] = POI_REASONS["whole_number"]
     return reasons
 
 
@@ -1262,9 +1343,16 @@ def _seasonal_tap_reasons(old: dict, new: dict) -> dict[str, str]:
 
 
 def _nearby_poi_reasons(old: dict, new: dict) -> dict[str, str]:
-    """nearby_poi's three explained kinds: an exact copy staging removed, decision 31's new data, and decision 65's
-    seasonal taps from a layer today's exporter reads."""
-    return {**_exact_copy_reasons(old, new), **_seasonal_tap_reasons(old, new), **_new_source_reasons(old, new)}
+    """nearby_poi's five explained kinds: an exact copy staging removed, the site its removal dissolves, a whole
+    number written two ways, decision 31's new data, and decision 65's seasonal taps from a layer today's exporter
+    reads."""
+    return {
+        **_exact_copy_reasons(old, new),
+        **_copy_site_reasons(old, new),
+        **_whole_number_reasons(old, new),
+        **_seasonal_tap_reasons(old, new),
+        **_new_source_reasons(old, new),
+    }
 
 
 #: export_poi.py's CSI_WATER_SOURCE: the source a synthesized water point publishes under.

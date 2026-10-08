@@ -603,6 +603,13 @@ class FeedNotices(_NoticeSource):
     Last-Modified cannot make every run read as changed.
     """
 
+    @property
+    def zero_proof(self) -> str:
+        """The feed's own items, as NWS's are its FeatureCollection's: parse_feed() refuses any body that is not RSS 2.0 or
+        Atom, so an empty channel is the feed saying it holds nothing, never an error page read as no items (Reasoned,
+        from NWS's case, which the dlt skill names)."""
+        return "the item count of an RSS 2.0 <channel> or Atom <feed>, in the answer the rows come from (parse_feed())"
+
     def column_hints(self) -> dict:
         hints = {name: {"data_type": "text"} for name in FEED_COLUMNS}
         hints.update(
@@ -1089,6 +1096,13 @@ class PageNotice(_NoticeSource):
     def timeout(self) -> int:
         """ClubPdf's 120 s for a PDF, which can be megabytes (GATC's 3_day_stay_order.pdf is 2,447,448 B [b4])."""
         return 120 if urlparse(self.url).path.lower().endswith(".pdf") else 60
+
+    @property
+    def zero_proof(self) -> None:
+        """None: the page is the notice, so a read lands its one row or raises, and the 1 it records is this reader's
+        own count. It never lands a zero for the run check to judge, and if it ever did, nothing upstream would have
+        counted it (extract/_run.py's run_check refuses such a zero)."""
+        return None
 
     def column_hints(self) -> dict:
         hints = {name: {"data_type": "text"} for name in PAGE_COLUMNS}

@@ -561,6 +561,11 @@ class ArcgisLayer(PersonRuled, Resource):
         return super().may_be_empty or bool(self.entry.get("may_be_empty"))
 
     @property
+    def zero_proof(self) -> str:
+        """The server's own `returnCountOnly` count under the entry's `where`, read after the pages (rows())."""
+        return "the server's returnCountOnly count under the entry's where, read after the pages (lib/arcgis.py's layer_count())"
+
+    @property
     def return_z(self) -> bool:
         """Whether the read keeps each vertex's Z: the entry's own `return_z`, off unless its row says so.
 
@@ -874,6 +879,10 @@ class SocrataDataset(PersonRuled, Resource):
         value = self._soql("count(*) as n").get("n")
         return int(value) if value is not None else None
 
+    @property
+    def zero_proof(self) -> str:
+        return "the portal's count(*) under the entry's own where (count())"
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """`count(*)` and `max(:updated_at)` under the entry's own `where`, with the `where` text kept.
 
@@ -1037,6 +1046,11 @@ class WordpressPosts(PersonRuled, Resource):
         return self.post_type or "posts"
 
     @property
+    def zero_proof(self) -> str:
+        """The site's `X-WP-Total`, which wp_list() reads off the same answers as the posts; none without that header."""
+        return "the site's X-WP-Total for the category, post type or parent read (wp_list())"
+
+    @property
     def category_slug(self) -> str:
         parts = [part for part in urlparse(self.entry["url"]).path.split("/") if part]
         if len(parts) < 2 or parts[-2] != "category":
@@ -1172,6 +1186,11 @@ class WordpressTerms(Resource):
     def api(self) -> str:
         return _wp_api(registry_entry(self.key))
 
+    @property
+    def zero_proof(self) -> str:
+        """The site's own counts; an empty taxonomy raises first (rows()), so this never lands a zero."""
+        return "the sum of each taxonomy's X-WP-Total; an empty taxonomy raises before any zero"
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """Always read when due: four small lists, once a day, cost less than a marker that could lie."""
         return Freshness.UNKNOWN, None
@@ -1243,6 +1262,12 @@ class GuidePages(Resource):
     def parsers(self):
         return GUIDE_PARSERS[self.key]
 
+    @property
+    def zero_proof(self) -> None:
+        """None: the count is the section pages this guide's parser finds linked from its index, and an index that
+        links none raises first."""
+        return None
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """UNKNOWN: there is no cheap marker, so the monthly lane reads the guide whole.
 
@@ -1301,6 +1326,11 @@ class PublishedHikes(Resource):
     password the listing is a login form, links no hike, and the run raises
     rather than landing an empty table.
     """
+
+    @property
+    def zero_proof(self) -> str:
+        """The total the listing states for itself; a listing that links no hike raises first, so this never lands a zero."""
+        return "the Hike Finder listing's own stated total; a listing that links no hike raises before any zero"
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """UNKNOWN: `hikes.php` serves neither an ETag nor a Last-Modified and there is no feed (measured 2026-09-15)."""
@@ -1374,6 +1404,11 @@ class ClubPdf(Resource):
         """
         entry = registry_entry(self.key)
         return request_with_retry(entry["url"], session=host_gated(entry), headers=headers or None, timeout=120)
+
+    @property
+    def zero_proof(self) -> None:
+        """None: rows() records no count at all, and the rows are what lib/club_pdfs.py's parser reads out of a PDF."""
+        return None
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """A conditional GET, then the body's sha256: WordPress re-serves the same bytes without a 304.
@@ -1483,6 +1518,11 @@ class OpentrailFeed(PersonRuled, Resource):
         headers = {"If-None-Match": etag} if etag else None
         return request_with_retry(OPENTRAIL_API_URL, session=session(), params={"trail": "AT"}, headers=headers, timeout=60)
 
+    @property
+    def zero_proof(self) -> None:
+        """None: rows() records no count, so its table is held to the shrink floor and may never be empty."""
+        return None
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         try:
             response = self._get((recorded or {}).get("etag"))
@@ -1530,6 +1570,11 @@ class HydrographyWatch(Resource):
     (check_freshness.py's `upstream_hydrography_marker`, whose rule this
     keeps). Measured 2026-08-14: all five answer `NHD`.
     """
+
+    @property
+    def zero_proof(self) -> None:
+        """None: the count is CORRIDOR_PROBES' length, this code's own constant, and a probe naming no unit raises."""
+        return None
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """UNKNOWN: five one-row queries a month cost less than a marker that could lie."""
@@ -1651,6 +1696,11 @@ class BucketListing(Resource):
         digest = hashlib.sha256(json.dumps(sorted((o["key"], o["etag"], o["size"]) for o in objects)).encode()).hexdigest()
         return {"objects": len(objects), "sha256": digest}
 
+    @property
+    def zero_proof(self) -> str:
+        """The bucket's own listing of the prefix, whole: _walk() raises unless its last page says IsTruncated false."""
+        return "the bucket's ListObjectsV2 listing under the prefix, its last page saying IsTruncated false"
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         try:
             marker = self._marker(self._walk())
@@ -1739,6 +1789,11 @@ class NwsAlerts(PersonRuled, Resource):
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         return Freshness.UNKNOWN, None
+
+    @property
+    def zero_proof(self) -> str:
+        """THE ZERO in the docstring above: a 200 FeatureCollection with no features (lib/nws_alerts.py's check_response)."""
+        return "a 200 whose body is a FeatureCollection with no features (lib/nws_alerts.py's check_response())"
 
     def column_hints(self) -> dict:
         hints = {name: {"data_type": "text"} for name in (*NWS_TEXT_PROPERTIES, "feature_id", "collection_updated")}
@@ -1844,6 +1899,10 @@ class ConditionsQuery(Resource):
     def _problem(self, conn) -> str | None:
         return export_conditions.reader_problem(conn, self.source_table)
 
+    @property
+    def zero_proof(self) -> str:
+        return "the moderated query's own count(*), in the rows' REPEATABLE READ transaction, after reader_problem()"
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """UNKNOWN when the reader can see the table: a few hundred rows an hour cost less than a marker that could lie."""
         with psycopg.connect(export_conditions.connection_url(), connect_timeout=10) as conn:
@@ -1928,6 +1987,11 @@ class ReviewedFile(Resource):
     @property
     def file(self) -> Path:
         return PIPELINE_DIR / self.path
+
+    @property
+    def zero_proof(self) -> str:
+        """The file is its own upstream (the docstring), so the rows a person reviewed into it are its count."""
+        return "the reviewed file's own rows: the file in git is its own upstream, and a missing file raises"
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         if not self.file.is_file():
@@ -2021,6 +2085,10 @@ class ReviewedDir(Resource):
     def files(self) -> list[Path]:
         return sorted((PIPELINE_DIR / self.path).glob("*.json"))
 
+    @property
+    def zero_proof(self) -> str:
+        return "the reviewed folder's own files: the folder in git is its own upstream"
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         digest = hashlib.sha256()
         for file in self.files:
@@ -2097,6 +2165,11 @@ class CatalogueRow(Resource):
     @property
     def name(self) -> str:
         return f"org_{self.club}"
+
+    @property
+    def zero_proof(self) -> None:
+        """None: the run check holds this shared table to exactly one row per managing club instead (run_check())."""
+        return None
 
     def rows(self, proofs: dict[str, int]):
         slug = slug_for_folder(self.club)
@@ -2178,6 +2251,11 @@ class PodcastFeed(PersonRuled, Resource):
     @property
     def entry(self) -> dict:
         return registry_entry(self.key)
+
+    @property
+    def zero_proof(self) -> str:
+        """An RSS channel's items, from the same answer as the rows; a body with no <channel> raises (rows())."""
+        return "the RSS <channel>'s own items, in the answer the rows come from; a body with no <channel> raises"
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         headers = {}
@@ -2495,6 +2573,11 @@ class AtcTrailUpdatePages(Resource):
     @property
     def exact_proof(self) -> bool:
         return True
+
+    @property
+    def zero_proof(self) -> str:
+        """The sitemap's slug count (the docstring's last paragraph); an empty sitemap raises before any zero."""
+        return "the slug count of ATC's trail-updates sitemap; an empty sitemap raises before any zero"
 
     @property
     def entry(self) -> dict:

@@ -57,11 +57,17 @@ read in full; FRESH needs every file's validator unchanged. Google My Maps sends
 neither (`cache-control: no-store`, measured 2026-10-04 on 9 exports), so a My
 Maps dataset is read every run.
 
-THE PROOF for an allowed zero, and the count every read is held to, is the
-file's own feature count read in the same run: the rows are built from the very
-documents that are counted, so the proof is exact (Resource.exact_proof). A file
-that parses to no feature at all is a broken read for every type here but one a
-row allows to be empty, never a quiet trail.
+THE COUNT every read is held to is the features this reader parses out of the
+files, in the same run: the rows are built from the very documents that are
+counted, so the proof is exact (Resource.exact_proof). IT PROVES NO ZERO
+(GisFile.zero_proof is None): that count is this reader's, not one the file
+states, and a file can parse to no feature while holding plenty. A zip whose
+members were renamed off the row's `zip_members` reads none of them, and a KML
+whose placemarks moved behind a NetworkLink, which is not followed, holds none
+of its own (Reasoned from parse() and parse_kml()). So a file that parses to no
+feature is refused by the run check whatever its row allows, and a row its
+`may_be_empty` lets empty keeps the shrink floor as well (extract/_run.py's
+run_check), never read as a quiet trail.
 
 WHAT A FILE MUST LOOK LIKE before it is read: the format its row declares (an
 HTML page served where a KML was is a moved file or a wall, and raises), in
@@ -755,6 +761,11 @@ class GisFile(_kinds.PersonRuled, Resource):
     @property
     def exact_proof(self) -> bool:
         return True
+
+    @property
+    def zero_proof(self) -> None:
+        """None: the count is this reader's parse of the files, so a zero proves nothing (the module docstring, THE COUNT)."""
+        return None
 
     def _session(self) -> requests.Session:
         delay = max(POLITE_SECONDS, float(self.entry.get("crawl_delay") or 0))

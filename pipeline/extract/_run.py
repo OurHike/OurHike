@@ -25,9 +25,10 @@ refresh, published docs, and lighter phone downloads):
    keeps its rows; STALE and UNKNOWN both read it whole.
 2. dlt extracts and normalizes what is left, every table `replace`.
 3. The run check (run_check()): each table present, non-empty unless its
-   type may be empty and the upstream's own count says zero, not shorter than
-   that count, and not below COLLAPSE_FLOOR of its last loaded size. A
-   failure aborts the package, so nothing lands and no marker advances.
+   type may be empty and the upstream's own count says zero (a count only a
+   kind with a Resource.zero_proof reads), not shorter than that count, and
+   not below COLLAPSE_FLOOR of its last loaded size. A failure aborts the
+   package, so nothing lands and no marker advances.
 4. The load, then the after-run check (committed()): the load committed, and
    the rows on disk are the rows normalized. A failure logs `unverified`, and
    extract/_warehouse.py refuses to read the tables.
@@ -363,7 +364,9 @@ def isolates(lane: str) -> bool:
 # MAX_FEATURE_DROP_RATIO, the one precedent here; six monthly runs of
 # _extract_runs give the smallest legitimate ratio per type, which is what
 # would settle it. Closures and warnings have no floor: every closure lifted
-# is exactly what a closures layer emptying looks like.
+# is exactly what a closures layer emptying looks like. That holds only beside
+# the upstream's own count, so a table that may be empty keeps the floor when
+# its kind reads none (Resource.zero_proof is None; run_check()).
 COLLAPSE_FLOOR = 0.5
 
 
@@ -1144,6 +1147,13 @@ def run_check(planned: list[Planned], rows: dict[str, int], proofs: dict[str, in
                 )
             elif proof > 0:
                 problems.append(f"{table}: 0 rows, and the upstream counts {proof}")
+            elif resource.zero_proof is None:
+                # The count this kind recorded is one it made of what it parsed (Resource.zero_proof), so a page
+                # whose layout moved reads as zero exactly as an empty one does: the zero is UNKNOWN.
+                problems.append(
+                    f"{table}: 0 rows, and a {type(resource).__name__} reads no upstream count that can prove a "
+                    "zero: the 0 it recorded is its own count of what it parsed, so the zero is unknown"
+                )
             continue
         if proof is not None and landed < proof:
             problems.append(f"{table}: {landed} rows, and the upstream counts {proof}")
@@ -1161,7 +1171,11 @@ def run_check(planned: list[Planned], rows: dict[str, int], proofs: dict[str, in
                 "shrink floor, so a read cut short would pass as rows removed"
             )
         prior = previous.get(table)
-        if not resource.may_be_empty and prior and landed < COLLAPSE_FLOOR * prior:
+        # A table that may be empty goes without the floor only where its kind reads the upstream's own count
+        # (Resource.zero_proof): that count is what tells closures lifted from a read cut short. A kind whose
+        # count is its own parse cannot tell them apart, so its table keeps the floor every other table has.
+        floored = not resource.may_be_empty or resource.zero_proof is None
+        if floored and prior and landed < COLLAPSE_FLOOR * prior:
             problems.append(f"{table}: {landed} rows against {prior} last time, below the {COLLAPSE_FLOOR:.0%} floor")
     return problems
 

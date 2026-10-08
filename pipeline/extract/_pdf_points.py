@@ -248,6 +248,12 @@ class PdfPoints(Resource):
     def exact_proof(self) -> bool:
         return True
 
+    @property
+    def zero_proof(self) -> None:
+        """None: the count is the rows this key's parser reads out of a PDF's text layer, which a reworded or rescanned
+        document can make none. A row whose `may_be_empty` lets it empty is still refused a zero (extract/_run.py)."""
+        return None
+
     def column_hints(self) -> dict:
         return {"geometry": {"data_type": "json"}, "source_url": {"data_type": "text"}, "document_bytes": {"data_type": "bigint"}}
 

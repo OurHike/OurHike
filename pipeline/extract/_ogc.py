@@ -176,6 +176,11 @@ class OgcFeatures(_Paged):
         url = self.entry["url"].rstrip("/")
         return url if url.endswith("/items") else f"{url}/items"
 
+    @property
+    def zero_proof(self) -> str:
+        """The module docstring's count: `numberMatched`, where the server sends one; with none, rows() records no proof."""
+        return "the server's numberMatched on the first page, where it sends one"
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         return Freshness.UNKNOWN, None
 
@@ -235,6 +240,15 @@ class JsonFeatures(_Paged):
     @property
     def exact_proof(self) -> bool:
         return self.paging == "single"
+
+    @property
+    def zero_proof(self) -> str:
+        """Where read() takes its count for the row's `paging`: a stated total, or a single whole answer's list."""
+        if self.paging == "wordpress":
+            return "the site's X-WP-Total for the route"
+        if self.paging == "single":
+            return "the list in one 200 answer, at the row's items_field (an answer whose items are not a list raises)"
+        return "the total the API states under the row's total_field, where the row names one"
 
     def _headers(self) -> dict | None:
         variable = self.entry.get("api_key_env")

@@ -19,8 +19,10 @@ GIS-file wave.
 
 THE ZERO. Closures and warnings may be empty, and an empty table counts only
 beside the upstream's own count read in the same run (the dlt skill, rule 2's
-second half). Each adapter says where its count comes from. Where the rows and
-the count come from one answer, the proof is exact (Resource.exact_proof).
+second half). Each adapter says where its count comes from, in its
+`zero_proof` (extract/_contract.py's Resource.zero_proof); the condition-report
+sheet's is None, because its count is its own parser's. Where the rows and the
+count come from one answer, the proof is exact (Resource.exact_proof).
 
 THE KEY. NPS's two endpoints sit behind api.data.gov's gateway, which refuses a
 request with no key (`API_KEY_MISSING`, answered to /robots.txt itself; the
@@ -256,6 +258,10 @@ class NpsAlerts(_kinds.PersonRuled, Resource):
     def exact_proof(self) -> bool:
         return True
 
+    @property
+    def zero_proof(self) -> str:
+        return "the API's own `total`, the same on every page of the read (an answer without one raises)"
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         nps_api_key()
         return Freshness.UNKNOWN, None
@@ -336,6 +342,10 @@ class NpsRoadEvents(_kinds.PersonRuled, Resource):
     @property
     def exact_proof(self) -> bool:
         return True
+
+    @property
+    def zero_proof(self) -> str:
+        return "a FeatureCollection whose features list is empty, the answer the rows come from (anything else raises)"
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         nps_api_key()
@@ -420,6 +430,13 @@ class DcnrParkAdvisories(_kinds.PersonRuled, Resource):
     def exact_proof(self) -> bool:
         return True
 
+    @property
+    def zero_proof(self) -> str:
+        """@unvalidated: an empty list was never observed, and what the API answers for a park id it no longer uses is
+        unknown, so a renumbered park would read as every advisory there lifted. What would settle it: one answer for
+        an id DCNR does not use, read once and recorded on the entry's sources.json row."""
+        return "a 200 JSON list for every park id the entry lists, each empty (an answer that is not a list raises)"
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         return Freshness.UNKNOWN, None
 
@@ -498,6 +515,11 @@ class UsgsElevatedVolcanoes(_kinds.PersonRuled, Resource):
     def exact_proof(self) -> bool:
         return True
 
+    @property
+    def zero_proof(self) -> str:
+        """Reasoned, not observed: the docstring's THE ZERO, that an empty list means nothing elevated."""
+        return "a 200 JSON list with no volcano in it, the answer the rows come from (anything else raises)"
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         return Freshness.UNKNOWN, None
 
@@ -572,6 +594,13 @@ class MediawikiAnnouncements(Resource):
     @property
     def exact_proof(self) -> bool:
         return True
+
+    @property
+    def zero_proof(self) -> str:
+        return (
+            "the embeddedin listing's own pages once the wiki says batchcomplete, after the template's own page is "
+            "found (a missing template raises)"
+        )
 
     def _listing(self, extra: dict) -> list[dict]:
         """Every page the generator lists, merged across continuation batches by pageid."""
@@ -746,6 +775,14 @@ class SheetCsvSegments(Resource):
     def exact_proof(self) -> bool:
         return True
 
+    @property
+    def zero_proof(self) -> None:
+        """None: the count is the segments this reader's parser finds in a sheet laid out for people (title rows, a
+        legend, several tables stacked), not a count the sheet states. Zero segments raise first, and a warnings table
+        of this kind keeps the shrink floor (extract/_run.py's run_check), so a sheet half rearranged is refused rather
+        than read as half its segments gone."""
+        return None
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         return Freshness.UNKNOWN, None
 
@@ -869,6 +906,11 @@ class MyMapsPlacemarks(_kinds.PersonRuled, Resource):
     @property
     def exact_proof(self) -> bool:
         return True
+
+    @property
+    def zero_proof(self) -> str:
+        """Google's KML export of the map, a fixed format: its placemarks are the map's own. Zero placemarks raise first."""
+        return "the placemarks of My Maps' own KML export of the map; a map with none raises before any zero"
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         return Freshness.UNKNOWN, None

@@ -88,7 +88,8 @@ CADENCE_BY_TYPE = {"closures": "hourly", "warnings": "hourly"}
 # still be empty when its sources.json entry says `may_be_empty: true`. An
 # allowed zero still needs the upstream's own count read in the same run
 # (extract/_run.py's run check), because an empty answer from a failed fetch
-# looks the same as a quiet trail.
+# looks the same as a quiet trail; Resource.zero_proof says which kinds read
+# such a count.
 MAY_BE_EMPTY = frozenset({"closures", "warnings"})
 
 # @unvalidated: the age at which a "not available" note must be looked at
@@ -370,6 +371,31 @@ class Resource:
         this code's mistake.
         """
         return False
+
+    @property
+    def zero_proof(self) -> str | None:
+        """The upstream's own count this kind reads, in words, or None where the count it records is its own.
+
+        A table that may be empty (MAY_BE_EMPTY, or a sources.json row's
+        `may_be_empty`) may land zero rows only beside the upstream's own
+        count, read in the same run, saying zero (pipeline/ELT.md, "A full
+        reload that cannot empty a safety table"). A count is the upstream's
+        when the upstream states it (ArcGIS's `returnCountOnly`, WordPress's
+        `X-WP-Total`) or when it is the length of a whole answer in a fixed
+        format that the reader refuses in any other shape (NWS's
+        FeatureCollection, an RSS channel). A count this code makes of what it
+        parsed out of a page written for people is not: a page whose layout
+        moved parses to none exactly as a page with nothing on it does.
+
+        extract/_run.py's run_check() refuses a zero from a kind whose answer
+        here is None, whatever `proofs` holds, and keeps the shrink floor on
+        such a table where it may be empty, since its shrink is no better
+        proven than its zero. None is the default, so a kind nobody has
+        checked is refused rather than trusted; each kind that reads a real
+        count declares it on its own class, and
+        tests/test_extract_zero_proofs.py pins which kinds do.
+        """
+        return None
 
     def rows(self, proofs: dict[str, int]):
         """Yield the upstream's rows, recording the upstream's own count in `proofs[self.table]` where it has one."""

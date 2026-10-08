@@ -804,6 +804,13 @@ class PagePoints(Resource):
         return True
 
     @property
+    def zero_proof(self) -> None:
+        """None: the count is the points a site's parser found on pages written for people, and a page whose layout
+        moved parses to none exactly as an empty one does. So a row whose `may_be_empty` lets it empty is still refused
+        a zero, and keeps the shrink floor (extract/_run.py's run_check)."""
+        return None
+
+    @property
     def crawl_delay(self) -> float:
         return max(_notices.DEFAULT_HOST_GAP_SECONDS, float(self.entry.get("crawl_delay") or 0))
 

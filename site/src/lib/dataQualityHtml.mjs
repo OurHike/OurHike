@@ -168,15 +168,18 @@ function renderMarts(marts, pressed) {
   // Its own column on a laptop; on a phone under the mart's name, because a
   // fourth column does not fit 390 px (round 2's frames). Two buttons, one
   // shown at a time by site.css, so only the shown one is in the tab order.
+  // The lane and the check count go under the name on a phone too, so the
+  // name keeps the width: with a Checks column, points_of_interest broke
+  // across two lines at 390 px (the maintainer's B, 2026-10-08).
   const charting = marts.some((row) => row.chart);
   const button = (row, extra) =>
     chartButton({ key: row.chart, row: row.id, label: row.chartName, pressed: pressed.includes(row.id), extra });
   return html`<div class="dq-panel dq-table-wrap">
 <table class="dq-table" aria-labelledby="dq-marts-title">
-<thead><tr><th scope="col">Mart</th><th scope="col" class="dq-col-lane">Lane</th><th scope="col" class="dq-num">Checks</th><th scope="col">Result</th>${charting ? html`<th scope="col" class="dq-col-chart"><span class="dq-sr">Chart</span></th>` : ""}</tr></thead>
+<thead><tr><th scope="col">Mart</th><th scope="col" class="dq-col-lane">Lane</th><th scope="col" class="dq-num dq-col-checks">Checks</th><th scope="col" class="dq-col-result">Result</th>${charting ? html`<th scope="col" class="dq-col-chart"><span class="dq-sr">Chart</span></th>` : ""}</tr></thead>
 <tbody>
 ${marts.map(
-  (row) => html`<tr id="${row.id}"><td>${name(row.mart)}<span class="dq-lane-tag">${row.lane}</span>${row.chart ? button(row, "dq-chart-btn--inline") : ""}</td><td class="dq-col-lane">${row.lane}</td><td class="dq-num">${row.checks}</td><td><p class="dq-pills">${row.pills.map(pill)}</p></td>${charting ? html`<td class="dq-col-chart">${row.chart ? button(row, null) : ""}</td>` : ""}</tr>
+  (row) => html`<tr id="${row.id}"><td>${name(row.mart)}<span class="dq-lane-tag">${row.lane} · ${row.checksPhrase}</span>${row.chart ? button(row, "dq-chart-btn--inline") : ""}</td><td class="dq-col-lane">${row.lane}</td><td class="dq-num dq-col-checks">${row.checks}</td><td class="dq-col-result"><p class="dq-pills">${row.pills.map(pill)}</p></td>${charting ? html`<td class="dq-col-chart">${row.chart ? button(row, null) : ""}</td>` : ""}</tr>
 `,
 )}
 </tbody>

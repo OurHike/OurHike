@@ -201,6 +201,15 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
     expect(body).not.toContain("dq-col-chart");
   });
 
+  it("puts a mart's lane and check count under its name for a phone, one check said as one", () => {
+    expect(renderBody(manyView())).toContain('<span class="dq-lane-tag">Monthly · 412 checks</span>');
+    const monthly = examples.monthlyManyProblems();
+    monthly.by_mart[0].checks = 1;
+    expect(renderBody(view(lane(monthly, "monthly"), MISSING))).toContain(
+      '<span class="dq-lane-tag">Monthly · 1 check</span>',
+    );
+  });
+
   it("names where a chart came from, with the way back to its row", () => {
     expect(renderCharted(null)).toBe("");
     expect(renderCharted({ from: "By mart", table: "trail_network", column: null, row: "dq-mart-2" })).toBe(

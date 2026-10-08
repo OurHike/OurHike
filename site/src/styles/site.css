@@ -2519,8 +2519,11 @@ a:hover {
   display: none;
 }
 
-/* Three columns on a phone: the lane moves under the mart's name, so the
- * table fits a 390px screen without a sideways scroll of its own. */
+/* Two columns on a phone: the lane and the check count move under the
+ * mart's name, and Result shrinks to its widest pill, so the table fits a
+ * 390px screen without a sideways scroll of its own and every one of the
+ * eleven mart names keeps to one line (points_of_interest, 142px, broke in
+ * two beside a Checks column; the maintainer chose this by poll, 2026-10-08). */
 @media (max-width: 560px) {
   .dq-panel {
     padding: 16px;
@@ -2537,8 +2540,13 @@ a:hover {
   }
 
   .dq-table .dq-col-lane,
+  .dq-table .dq-col-checks,
   .dq-table .dq-col-chart {
     display: none;
+  }
+
+  .dq-table .dq-col-result {
+    width: 1%;
   }
 
   .dq-lane-tag {

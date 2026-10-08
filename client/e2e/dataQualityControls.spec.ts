@@ -175,6 +175,29 @@ test('a mart charts from under its name on a phone, and the chart says it came f
   )
 })
 
+test('By mart keeps every mart name to one line on a phone, its lane and check count under it', async ({
+  page,
+}) => {
+  await open(page)
+  const names = page.locator(`${MARTS} tbody td:first-child code`)
+  await expect(names).toHaveCount(11)
+  // One line box each. Beside a Checks column, points_of_interest broke in
+  // two at 390 px; the maintainer chose the count under the name, 2026-10-08.
+  const broken = await names.evaluateAll((codes) =>
+    codes
+      .filter((code) => code.getClientRects().length !== 1)
+      .map((code) => code.textContent),
+  )
+  expect(broken).toEqual([])
+  await expect(page.locator(`${MARTS} th.dq-col-checks`)).toBeHidden()
+  await expect(
+    page
+      .locator(`${MARTS} tr`)
+      .filter({ hasText: 'trail_lines' })
+      .locator('.dq-lane-tag'),
+  ).toHaveText('Monthly · 412 checks')
+})
+
 test('the Show menu chooses from the keyboard on a laptop @desktop', async ({ page }) => {
   await open(page)
   const before = await title(page).textContent()

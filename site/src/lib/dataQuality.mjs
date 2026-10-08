@@ -1047,6 +1047,7 @@ function sectionsView(lanes, read) {
       mart: mart.mart,
       lane: LANE_LABEL[mart.lane],
       checks: formatCount(mart.checks),
+      checksPhrase: `${formatCount(mart.checks)} ${plural(mart.checks, "check", "checks")}`,
       pills: resultPills(mart),
       chart: own ? seriesKey(own) : null,
       chartName: own ? buttonName(own) : null,

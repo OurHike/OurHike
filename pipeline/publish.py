@@ -80,6 +80,7 @@ from lib.photo_screen import load_decisions, unpublishable_digests
 from lib.photo_store import PHOTO_EXTENSION, PHOTO_PREFIX, PHOTOS_DIRNAME, photo_key
 from lib.poi_schema import WITHDRAWN_POI_TYPES
 from lib.r2_keys import RELEASE_ID_PATTERN, assert_valid_keys
+from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
@@ -556,7 +557,83 @@ def _published_bytes(s3_client, bucket: str, key: str) -> bytes | None:
     return body
 
 
-def describe_changes(s3_client, bucket: str, prefix: str, changed: dict[str, dict]) -> dict[str, dict]:
+def release_only(name: str) -> bool:
+    """Whether an artifact's bytes live only in a release folder: a
+    release-scoped key under a schema version's own segment, `v2/<file>`.
+
+    Decision 44 writes a v2 beside its v1 at `releases/<id>/v2/<file>` and adds
+    no root key (pipeline/ELT.md, "Versions and channels"). The root's flat
+    keys are what installed apps read, and all of them are v1's. A build that
+    reads v2 resolves its release folder and reads `v2/<key>` inside it
+    (client/src/lib/config.ts's phoneFileKey, dataRelease.ts's releasePath),
+    so a flat `v2/` copy would be a permanent public URL that no build
+    fetches, under a prefix lib/r2_keys.py does not declare. Monthly run 29
+    (refresh-reference.yml 37726904273, 2026-10-08) tried to upload the
+    eleven v2 files flat, and that refusal stopped the run before anything
+    was uploaded.
+
+    So publish() uploads a changed one straight into the folder it stages,
+    and copies an unchanged or carried-forward one across from the folder
+    latest.json names. Only a folder's own manifest lists it. latest.json
+    describes the flat keys, and check_deployment.py, smoke_published.py and
+    every build that reads the root fetch each key it lists at that flat
+    name. The root-scoped families' versions, `conditions/v2/<file>` and
+    `podcasts/v2/<file>`, sit under declared prefixes and stay flat.
+    """
+    if name.startswith(check_contract_versions.ROOT_SCOPED_PREFIXES):
+        return False
+    version = check_contract_versions.version_in_key(name)
+    return version is not None and version >= 2
+
+
+def _release_only_entries(s3_client, bucket: str, prefix: str, release_id: str | None) -> dict[str, dict]:
+    """The release-only artifacts (release_only()) `release_id`'s folder holds,
+    as its own manifest lists them, or {} when latest.json names no release.
+
+    Raises when latest.json names a release whose manifest is not there: its
+    release-only files could then be neither compared nor carried forward,
+    and a folder staged without them is the incomplete release that
+    _stage_release() refuses."""
+    if release_id is None:
+        return {}
+    key = f"{prefix}{releases.release_key(release_id, releases.RELEASE_MANIFEST_NAME)}"
+    manifest = load_remote_json(s3_client, bucket, key)
+    if manifest is None:
+        raise RuntimeError(
+            f"latest.json names release {release_id}, and {key} is not there, so the release-only files that "
+            "folder holds can be neither compared nor carried forward. No artifact was uploaded."
+        )
+    return {name: entry for name, entry in (manifest.get("artifacts") or {}).items() if release_only(name)}
+
+
+def release_only_manifest_entries(held: dict[str, dict], local: dict[str, dict], changes: dict[str, dict]) -> dict[str, dict]:
+    """The release-only entries of a new folder's manifest: each one the last
+    folder `held`, carried forward without its `change`, then this run's
+    `local` ones, which win by name, in the shape latest.json's entries take.
+
+    A withdrawn POI type's file (lib/poi_schema.WITHDRAWN_POI_TYPES) is not
+    carried forward unless this run wrote it, for the reason publish() drops
+    one from latest.json (#1674)."""
+    withdrawn = {f"poi_{poi_type}.{kind}" for poi_type in WITHDRAWN_POI_TYPES for kind in ("geojson", "fgb")}
+    entries = {
+        name: {key: value for key, value in entry.items() if key != "change"}
+        for name, entry in held.items()
+        if name in local or name.rsplit("/", 1)[-1] not in withdrawn
+    }
+    for name, entry in local.items():
+        transfer = entry.get("transfer_bytes", (held.get(name) or {}).get("transfer_bytes"))
+        entries[name] = {
+            "sha256": entry["sha256"],
+            **({"size_bytes": entry["size_bytes"]} if "size_bytes" in entry else {}),
+            **({"transfer_bytes": transfer} if transfer is not None else {}),
+            **({"change": changes[name]} if name in changes else {}),
+        }
+    return entries
+
+
+def describe_changes(
+    s3_client, bucket: str, prefix: str, changed: dict[str, dict], previous_release: str | None = None
+) -> dict[str, dict]:
     """`{name: change}` for every artifact in `changed` this describes (#919).
 
     `changed` is the artifacts whose sha256 already differs from what is live -
@@ -574,12 +651,22 @@ def describe_changes(s3_client, bucket: str, prefix: str, changed: dict[str, dic
     shape that constant exists for; the per-artifact `except` stays INSIDE the
     worker so this function keeps failing one description at a time rather
     than losing the batch, which is the whole of the paragraph above.
+
+    A release-only artifact (release_only()) has no flat copy: its published
+    bytes are in `previous_release`'s folder, the one latest.json named, and
+    with no such folder it is a first publication.
     """
     names = [name for name in changed if describes_change(name)]
 
+    def published_key(name: str) -> str | None:
+        if not release_only(name):
+            return f"{prefix}{name}"
+        return f"{prefix}{releases.release_key(previous_release, name)}" if previous_release else None
+
     def describe(name: str) -> dict:
         try:
-            previous = _published_bytes(s3_client, bucket, f"{prefix}{name}")
+            key = published_key(name)
+            previous = None if key is None else _published_bytes(s3_client, bucket, key)
             return data_change.classify(previous, from_manifest_path(changed[name]["path"]).read_bytes())
         except Exception as exc:  # noqa: BLE001 - see the docstring
             return data_change.unreadable(f"{exc.__class__.__name__} reading the published copy")
@@ -1599,6 +1686,22 @@ LIVE_CACHE_CONTROL = "public, max-age=300"
 #: writers' files (read 2026-10-02).
 WRITER_CLOCK_SLACK_S = 2.0
 
+#: The one exposure key that names a family of objects rather than a file:
+#: each shipped hike's detail, `suggested_hikes_detail_<number>.json`
+#: (export_suggested_hikes.py's DETAIL_KEY). Its writer,
+#: pub_suggested_hikes_detail, puts every detail in one file, because a
+#: phone_file writes exactly one document, so collect_dbt_phone_files() cuts
+#: that file into the objects (cut_suggested_hike_details()). Monthly run 29
+#: (refresh-reference.yml 37726904273, 2026-10-08) published the family key
+#: as it stood, and lib/r2_keys.py refused its braces before anything was
+#: uploaded.
+DETAIL_FAMILY_KEY = "suggested_hikes_detail_{number}.json"
+#: The objects DETAIL_FAMILY_KEY names, so that an exporter's are dropped
+#: once dbt owns the family (with_dbt_phone_files()).
+DETAIL_FAMILY_PATTERN = re.compile(r"^suggested_hikes_detail_\d+\.json$")
+#: Where the cut writes the objects, inside the writers' processed_dir.
+DETAIL_CUT_DIRNAME = "suggested_hikes_detail"
+
 
 class UnknownPhoneFileSource(ValueError):
     """A value of PHONE_FILES_ENV_VAR that names neither pipeline. Its own type
@@ -1733,6 +1836,24 @@ def _run_started_at(result: dict) -> float | None:
         except ValueError:
             continue
     return min(parsed) if parsed else None
+
+
+def cut_suggested_hike_details(path: Path, processed_dir: Path) -> dict[str, dict]:
+    """pub_suggested_hikes_detail's file, `{"details": [...]}`, as the object per
+    hike a phone fetches when somebody opens it: `{key: {path, sha256}}`, in
+    collect_artifacts()' entry shape, the files under DETAIL_CUT_DIRNAME.
+
+    export_suggested_hikes.py's own number_details() and
+    write_detail_objects() name and write them, so the dbt writer's objects
+    carry the exporter's key rule (lib/suggestedHikesData.ts's detailKeyFor,
+    `<source>:<digits>`) and its bytes, and an id that rule cannot name raises
+    before anything is cut. Cut here, from the file this run's results prove
+    was written, so an object can never be older than its writer's run."""
+    import export_suggested_hikes  # only the dbt path cuts the details
+
+    details = json.loads(path.read_text(encoding="utf-8"))["details"]
+    numbered = export_suggested_hikes.number_details(details)
+    return export_suggested_hikes.write_detail_objects(numbered, processed_dir / DETAIL_CUT_DIRNAME)
 
 
 def collect_dbt_phone_files(
@@ -1888,6 +2009,11 @@ def collect_dbt_phone_files(
                 raise RuntimeError(f"{path} is empty; a phone file is never published empty ({writer_id}).")
             entry = {"path": to_manifest_path(path), "sha256": sha256_file(path), "size_bytes": size}
             for key in keys:
+                if key == DETAIL_FAMILY_KEY:
+                    cut = cut_suggested_hike_details(path, processed_dir)
+                    found.artifacts.update(cut)
+                    found.owned.update(cut)
+                    continue
                 (found.live if key.startswith(LIVE_ROOT_PREFIXES) else found.artifacts)[key] = dict(entry)
 
     if found.owned and writers_seen == 0:
@@ -1915,8 +2041,15 @@ def with_dbt_phone_files(artifacts: dict[str, dict], dbt: DbtPhoneFiles) -> dict
     An exporter's entry for a key a dbt writer owns is dropped even when that
     writer kept its last file: the key then publishes nothing this run and the
     bucket's last good object is carried forward, rather than the exporter's
-    file standing in for the pipeline this run publishes from."""
-    merged = {name: entry for name, entry in artifacts.items() if name not in dbt.owned}
+    file standing in for the pipeline this run publishes from. The detail
+    family (DETAIL_FAMILY_KEY) is owned whole: once its writer is dbt's, no
+    exporter's detail object is published, whichever numbers this run cut."""
+    family = DETAIL_FAMILY_KEY in dbt.owned
+    merged = {
+        name: entry
+        for name, entry in artifacts.items()
+        if name not in dbt.owned and not (family and DETAIL_FAMILY_PATTERN.match(name))
+    }
     merged.update(dbt.artifacts)
     return merged
 
@@ -1979,6 +2112,9 @@ def _stage_release(
     release_id: str,
     manifest: dict,
     sidecar_names: list[str],
+    *,
+    uploaded_here: frozenset[str] | set[str] = frozenset(),
+    previous_release: str | None = None,
 ) -> list[str]:
     """Copy this version's bytes into `releases/<id>/` and return what landed.
 
@@ -2003,6 +2139,13 @@ def _stage_release(
     returning a short list, and the ONE ordering that matters here - the
     folder's own manifest written after every copy has returned - is a stage
     boundary rather than something inside the batch.
+
+    A RELEASE-ONLY ARTIFACT (release_only()) has no flat key to copy from. One
+    this run changed is in the folder already (`uploaded_here`), and every
+    other is copied across from `previous_release`, the folder latest.json
+    named, which holds each one its own manifest lists. With no such folder
+    there is nowhere to copy one from, and the run fails before the first
+    copy, for the half-a-folder reason above.
     """
     names = [name for name in sorted([*manifest["artifacts"], *sidecar_names]) if releases.is_release_artifact(name)]
 
@@ -2013,16 +2156,28 @@ def _stage_release(
     # named something RELEASE_ID_PATTERN rejects would be a release nothing
     # could later resolve.
     assert_valid_keys([f"{prefix}{releases.release_key(release_id, name)}" for name in [*names, releases.RELEASE_MANIFEST_NAME]])
+    homeless = [name for name in names if release_only(name) and name not in uploaded_here and previous_release is None]
+    if homeless:
+        raise RuntimeError(
+            f"{', '.join(homeless)} live only in a release folder, and latest.json names no release to copy them "
+            "from. Nothing was staged."
+        )
+
+    def source_key(name: str) -> str:
+        if release_only(name):
+            return f"{prefix}{releases.release_key(previous_release, name)}"
+        return f"{prefix}{name}"
 
     def copy_one(name: str) -> str:
         s3_client.copy_object(
             Bucket=bucket,
-            CopySource={"Bucket": bucket, "Key": f"{prefix}{name}"},
+            CopySource={"Bucket": bucket, "Key": source_key(name)},
             Key=f"{prefix}{releases.release_key(release_id, name)}",
         )
         return name
 
-    staged: list[str] = _in_parallel([partial(copy_one, name) for name in names])
+    copied = set(_in_parallel([partial(copy_one, name) for name in names if name not in uploaded_here]))
+    staged = [name for name in names if name in copied or name in uploaded_here]
 
     # The folder's own manifest, written last of the folder's contents, so it
     # never describes bytes that have not landed yet.
@@ -2095,6 +2250,10 @@ def publish(
     `sidecars` (build metadata, see SIDECARS) never affects that decision and
     is uploaded only when a version is written.
 
+    A release-only artifact (release_only(), a `v2/<file>`) is uploaded into
+    the release folder this version stages rather than to a flat key, and
+    listed in that folder's manifest, never in latest.json.
+
     `environment` names which of RELEASING.md §3's environments this publishes
     to, defaulting to `$OURHIKE_DATA_ENV` - which has no default of its own, so
     a caller that says nothing anywhere gets an error rather than production.
@@ -2137,7 +2296,12 @@ def publish(
         [
             manifest_key,
             data_env.scope_key(environment, releases.RELEASE_INDEX_KEY),
-            *(f"{prefix}{name}" for name in (*artifacts, *sidecars, *photos, *parked)),
+            *(f"{prefix}{name}" for name in (*artifacts, *sidecars, *photos, *parked) if not release_only(name)),
+            # A release-only artifact's one key is inside a release folder, so
+            # that is the key checked, under today's id: the id staging picks
+            # can differ only in a `-<n>` suffix, and _stage_release checks
+            # the real one before its first copy.
+            *(f"{prefix}{releases.release_key(releases.next_release_id([]), name)}" for name in artifacts if release_only(name)),
         ]
     )
 
@@ -2167,6 +2331,18 @@ def publish(
 
     remote_manifest = load_remote_json(s3_client, bucket, manifest_key)
     remote_artifacts = remote_manifest["artifacts"] if remote_manifest else {}
+    # The release latest.json names: the folder that also holds its bytes,
+    # and the one every release-only artifact is carried forward from.
+    remote_release = remote_manifest.get("release") if remote_manifest else None
+
+    # A RELEASE-ONLY ARTIFACT IS NOT latest.json'S (release_only()). latest.json
+    # describes the flat keys, and its readers fetch each key it lists at its
+    # flat name: check_deployment.py and smoke_published.py on a schedule, and
+    # every build that reads the root. A v2 file has no flat key, so its
+    # record is its release folder's own manifest: it is diffed against the
+    # folder latest.json names and carried forward from it, below.
+    in_release = {name: entry for name, entry in artifacts.items() if release_only(name)}
+    artifacts = {name: entry for name, entry in artifacts.items() if name not in in_release}
 
     # Photos first, before any artifact that names them and well before the
     # manifest. A `poi_*.geojson` live in the bucket while its photos are
@@ -2280,6 +2456,50 @@ def publish(
     # first `upload_file` overwrites the side being diffed against (#919).
     changes = describe_changes(s3_client, bucket, prefix, changed)
 
+    # Whether this version is also a release, and which folder it is staged
+    # in, decided BEFORE the uploads, because a release-only artifact is
+    # uploaded straight into that folder (release_only()). The id is taken
+    # from the ids already used, so a second publish on one day gets `-2`
+    # rather than overwriting the morning's release, and it is read before
+    # anything under `releases/` is written, because the answer decides
+    # where it is written.
+    #
+    # A version is not automatically a release (#646). `conditions/` names
+    # are excluded from release folders by design - that prefix rewrites in
+    # place on a daily clock - and the baked bytes carry generated_at, so the
+    # daily run's sha moves even when no row changed. Staging on such a run
+    # would server-side-copy every frozen artifact into a folder
+    # byte-identical to yesterday's: one duplicate folder per environment per
+    # day, an index entry per day, and nothing anywhere that prunes. So a run
+    # whose uploads are all excluded names freezes nothing: the pointer still
+    # moves (fresh conditions hashes are the point of the bake), and it keeps
+    # naming the last real release, because those are still the bytes the
+    # folders hold.
+    #
+    # The last folder's release-only files are read only when a folder may be
+    # staged or a release-only file compared, so a publish of `conditions/`
+    # alone - the hourly lane's - never depends on a release folder.
+    flat_release_worthy = any(releases.is_release_artifact(name) for name in changed)
+    held_in_release = (
+        _release_only_entries(s3_client, bucket, prefix, remote_release) if in_release or flat_release_worthy else {}
+    )
+    skipped_in_release = sorted(
+        name for name, entry in in_release.items() if (held_in_release.get(name) or {}).get("sha256") == entry["sha256"]
+    )
+    changed_in_release = {name: entry for name, entry in in_release.items() if name not in set(skipped_in_release)}
+    changes.update(describe_changes(s3_client, bucket, prefix, changed_in_release, previous_release=remote_release))
+    release_worthy = flat_release_worthy or bool(changed_in_release)
+    release_id = None
+    if release_worthy:
+        index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
+        release_index = load_remote_json(s3_client, bucket, index_key)
+        release_id = releases.next_release_id(releases.index_ids(release_index))
+
+    def upload_key(name: str) -> str:
+        if release_only(name):
+            return f"{prefix}{releases.release_key(release_id, name)}"
+        return f"{prefix}{name}"
+
     # PUBLISH_CONCURRENCY at a time, and inside this stage only. Everything
     # ordered around these uploads stays ordered around them: the photos
     # landed above, the descriptions were read above, and the manifest that
@@ -2304,12 +2524,12 @@ def publish(
         # a crash. Recorded below, on one thread, against the name the worker
         # returned it with.
         measured = Path(upload_path).stat().st_size
-        s3_client.upload_file(upload_path, bucket, f"{prefix}{name}", ExtraArgs=extra)
+        s3_client.upload_file(upload_path, bucket, upload_key(name), ExtraArgs=extra)
         return name, measured
 
-    transfers = _in_parallel([partial(upload_one, name, entry) for name, entry in changed.items()])
+    transfers = _in_parallel([partial(upload_one, name, entry) for name, entry in {**changed, **changed_in_release}.items()])
     for name, transfer_bytes in transfers:
-        changed[name]["transfer_bytes"] = transfer_bytes
+        (changed_in_release if name in changed_in_release else changed)[name]["transfer_bytes"] = transfer_bytes
     uploaded: list[str] = [name for name, _ in transfers]
 
     # A withdrawal is a change to what the manifest serves even when no byte
@@ -2319,7 +2539,7 @@ def publish(
         return {
             "environment": environment,
             "uploaded": [],
-            "skipped": sorted(skipped),
+            "skipped": sorted([*skipped, *skipped_in_release]),
             "sidecars": [],
             "photos_uploaded": sorted(uploaded_photos),
             "version_written": False,
@@ -2391,36 +2611,19 @@ def publish(
     if sidecars:
         new_manifest["sidecars"] = {name: {"sha256": entry["sha256"]} for name, entry in sidecars.items()}
 
-    # A version is not automatically a release (#646). `conditions/` names
-    # are excluded from release folders by design - that prefix rewrites in
-    # place on a daily clock - and the baked bytes carry generated_at, so the
-    # daily run's sha moves even when no row changed. Staging on such a run
-    # would server-side-copy every frozen artifact into a folder
-    # byte-identical to yesterday's: one duplicate folder per environment per
-    # day, an index entry per day, and nothing anywhere that prunes. So a run
-    # whose uploads are all excluded names freezes nothing: the pointer still
-    # moves (fresh conditions hashes are the point of the bake), and it keeps
-    # naming the last real release, because those are still the bytes the
-    # folders hold.
-    release_worthy = any(releases.is_release_artifact(name) for name in uploaded)
     if release_worthy:
-        # Which folder this version's bytes are also kept in, taken from the
-        # ids already used so a second publish on one day gets `-2` rather
-        # than overwriting the morning's release. Read before anything under
-        # `releases/` is written, because the answer decides where it is
-        # written.
-        index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
-        release_index = load_remote_json(s3_client, bucket, index_key)
-        release_id = releases.next_release_id(releases.index_ids(release_index))
-
-        # The same manifest as the pointer's, minus what may not be frozen.
+        # The same manifest as the pointer's, minus what may not be frozen,
+        # plus the release-only files, which only a folder's manifest lists.
         # See lib/releases.is_release_artifact: `conditions/` is rewritten in
         # place on a daily clock, and a reopened closure must stop being
         # served - which an immutable folder cannot express.
         release_manifest = {
             **new_manifest,
             "release": release_id,
-            "artifacts": {name: entry for name, entry in new_manifest["artifacts"].items() if releases.is_release_artifact(name)},
+            "artifacts": {
+                **{name: entry for name, entry in new_manifest["artifacts"].items() if releases.is_release_artifact(name)},
+                **release_only_manifest_entries(held_in_release, in_release, changes),
+            },
         }
         staged = _stage_release(
             s3_client,
@@ -2429,6 +2632,8 @@ def publish(
             release_id,
             release_manifest,
             sorted(sidecars),
+            uploaded_here={name for name in uploaded if release_only(name)},
+            previous_release=remote_release,
         )
 
         s3_client.put_object(
@@ -2445,7 +2650,7 @@ def publish(
             ).encode("utf-8"),
         )
     else:
-        release_id = remote_manifest.get("release") if remote_manifest else None
+        release_id = remote_release
         staged = []
 
     # `latest.json` LAST, after the release folder and the index it is listed
@@ -2487,7 +2692,7 @@ def publish(
     return {
         "environment": environment,
         "uploaded": sorted(uploaded),
-        "skipped": sorted(skipped),
+        "skipped": sorted([*skipped, *skipped_in_release]),
         "sidecars": sorted(sidecars),
         "photos_uploaded": sorted(uploaded_photos),
         "version_written": True,
@@ -2496,6 +2701,38 @@ def publish(
         "release_artifacts": staged,
         "withdrawn": withdrawn,
     }
+
+
+def served_entries(base: str, environment: str, keys) -> tuple[dict[str, dict], list[str]]:
+    """What `environment` at the public `base` lists for each artifact, as
+    `{key: entry}`, and the URLs read to learn it.
+
+    latest.json's entries, and, when any of `keys` is release-only
+    (release_only()), the release-only entries of the folder latest.json
+    names, the one manifest that lists them. Each GET carries
+    lib/user_agent.py's USER_AGENT: data.ourhike.org answered urllib's own
+    agent 403 and that one 200 (measured 2026-10-08, after monthly run 29's
+    confirm job, refresh-reference.yml 37726904273, failed on the 403). An
+    unreadable manifest raises, so a confirmation can only fail loudly."""
+    import urllib.request  # only the confirm job reads the public bucket
+
+    def read(key: str) -> tuple[str, dict]:
+        url = f"{base.rstrip('/')}/{data_env.scope_key(environment, key)}"
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return url, json.load(response)
+
+    url, latest = read(MANIFEST_KEY)
+    served = dict(latest.get("artifacts") or {})
+    urls = [url]
+    if any(release_only(key) for key in keys):
+        release_id = latest.get("release")
+        if not release_id:
+            raise RuntimeError(f"{url} names no release, so no release-only file can be confirmed.")
+        url, folder = read(releases.release_key(release_id, releases.RELEASE_MANIFEST_NAME))
+        served.update({key: entry for key, entry in (folder.get("artifacts") or {}).items() if release_only(key)})
+        urls.append(url)
+    return served, urls
 
 
 def publish_live(

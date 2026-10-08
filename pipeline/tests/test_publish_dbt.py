@@ -658,6 +658,436 @@ def test_the_podcast_list_is_never_in_the_manifest_or_a_release(project, s3_clie
     assert "podcasts/episodes.json" not in _json_at(s3_client, "latest.json")["artifacts"]
 
 
+# --- a v2 file: its release folder is its only home -------------------------
+
+# The stewards writer and its v2, in the shape the eleven real v2 writers have
+# (pub_poi_water_v2: location poi_water_v2.geojson, key v2/poi_water.geojson).
+V2_WRITERS = {
+    "model.ourhike.pub_stewards": WRITERS["model.ourhike.pub_stewards"],
+    "model.ourhike.pub_stewards_v2": {"location": "stewards_v2.json", "when_empty": "fail", "keys": ["v2/stewards.json"]},
+}
+
+
+def _write_v2(project: Project, tag: str = "first", v2_tag: str | None = None) -> None:
+    project.write("stewards.json", json.dumps({"stewards": [tag]}))
+    project.write("stewards_v2.json", json.dumps({"format": 2, "stewards": [v2_tag or tag]}))
+
+
+@pytest.mark.parametrize(
+    ("name", "only_in_a_release"),
+    [
+        ("v2/poi_water.geojson", True),
+        ("v2/trail_miles.json", True),
+        ("v3/poi_water.geojson", True),
+        ("poi_water.geojson", False),
+        ("trail_graph_cell_n40w074.json", False),
+        # Root-scoped families keep their versions under declared prefixes.
+        ("conditions/v2/notices.json", False),
+        ("podcasts/v2/episodes.json", False),
+    ],
+)
+def test_only_a_release_scoped_key_under_a_version_segment_is_release_only(name, only_in_a_release):
+    assert publish.release_only(name) is only_in_a_release
+
+
+def _folder(s3_client, release_id: str) -> dict:
+    return _json_at(s3_client, f"releases/{release_id}/{releases.RELEASE_MANIFEST_NAME}")
+
+
+def test_a_v2_file_is_uploaded_into_the_release_folder_and_never_at_the_root(project, s3_client):
+    """Monthly run 29 (refresh-reference.yml 37726904273): the eleven v2 keys
+    went to the root, which lib/r2_keys.py refuses before any upload. Each
+    is now uploaded into the folder this publish stages and listed in that
+    folder's manifest only: latest.json describes the flat keys, and every
+    reader of it fetches what it lists at the root."""
+    _write_v2(project)
+    project.build(writers=V2_WRITERS)
+
+    result = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    keys = _keys(s3_client)
+    assert not any(key.startswith("v2/") for key in keys)
+    assert _json_at(s3_client, f"releases/{result['release']}/v2/stewards.json") == {"format": 2, "stewards": ["first"]}
+    latest = _json_at(s3_client, "latest.json")
+    assert "v2/stewards.json" not in latest["artifacts"]
+    assert latest["release"] == result["release"]
+    written = project.collect().artifacts["v2/stewards.json"]
+    entry = _folder(s3_client, result["release"])["artifacts"]["v2/stewards.json"]
+    assert entry["sha256"] == written["sha256"]
+    assert entry["size_bytes"] == written["size_bytes"]
+    assert entry["transfer_bytes"] > 0
+    assert "v2/stewards.json" in result["uploaded"]
+    assert "v2/stewards.json" in result["release_artifacts"]
+
+
+def test_an_unchanged_v2_file_is_copied_into_the_next_release_from_the_last(project, s3_client):
+    _write_v2(project, "first")
+    project.build(writers=V2_WRITERS)
+    first = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    project.write("stewards.json", json.dumps({"stewards": ["second"]}))
+    project.build(writers=V2_WRITERS)
+    second = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["uploaded"] == ["stewards.json"]
+    assert "v2/stewards.json" in second["skipped"]
+    assert second["release"] != first["release"]
+    assert _json_at(s3_client, f"releases/{second['release']}/v2/stewards.json") == {"format": 2, "stewards": ["first"]}
+    first_entry = _folder(s3_client, first["release"])["artifacts"]["v2/stewards.json"]
+    # Carried forward whole but for `change`, which described the last hop.
+    assert _folder(s3_client, second["release"])["artifacts"]["v2/stewards.json"] == {
+        key: value for key, value in first_entry.items() if key != "change"
+    }
+    assert not any(key.startswith("v2/") for key in _keys(s3_client))
+
+
+def test_a_v2_file_whose_writer_kept_is_carried_into_the_next_release(project, s3_client):
+    _write_v2(project, "first")
+    project.build(writers=V2_WRITERS)
+    first = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    project.write("stewards.json", json.dumps({"stewards": ["second"]}))
+    project.build(writers=V2_WRITERS, ran=["model.ourhike.pub_stewards"])
+    found = project.collect()
+    assert "v2/stewards.json" in found.kept
+    second = publish.publish(found.artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert _json_at(s3_client, f"releases/{second['release']}/v2/stewards.json") == {"format": 2, "stewards": ["first"]}
+    assert (
+        _folder(s3_client, second["release"])["artifacts"]["v2/stewards.json"]["sha256"]
+        == _folder(s3_client, first["release"])["artifacts"]["v2/stewards.json"]["sha256"]
+    )
+
+
+def test_a_release_with_no_v2_files_of_its_own_still_carries_the_last_ones(project, s3_client):
+    """Every folder is complete (lib/releases.py): a publish that wrote no v2
+    file, such as an exporter's, still stages one holding the last ones, or a
+    build reading v2 from that folder would find nothing there."""
+    _write_v2(project, "first")
+    project.build(writers=V2_WRITERS)
+    publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    exported = project.root / "exporter_stewards.json"
+    exported.write_text('{"stewards": ["the exporter"]}')
+    artifacts = {"stewards.json": {"path": str(exported), "sha256": publish.sha256_file(exported)}}
+    second = publish.publish(artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert _json_at(s3_client, f"releases/{second['release']}/v2/stewards.json") == {"format": 2, "stewards": ["first"]}
+    assert "v2/stewards.json" in _folder(s3_client, second["release"])["artifacts"]
+
+
+def test_a_changed_v2_file_alone_writes_a_version_and_a_release(project, s3_client):
+    _write_v2(project, "first")
+    project.build(writers=V2_WRITERS)
+    first = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    _write_v2(project, "first", v2_tag="second")
+    project.build(writers=V2_WRITERS)
+    second = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["uploaded"] == ["v2/stewards.json"]
+    assert second["version_written"]
+    assert second["version"] != first["version"]
+    assert second["release"] != first["release"]
+    assert _json_at(s3_client, "latest.json")["release"] == second["release"]
+    assert _json_at(s3_client, f"releases/{second['release']}/v2/stewards.json") == {"format": 2, "stewards": ["second"]}
+    # The v1 file is copied from its flat key, as before.
+    assert _json_at(s3_client, f"releases/{second['release']}/stewards.json") == {"stewards": ["first"]}
+    # The first folder is untouched.
+    assert _json_at(s3_client, f"releases/{first['release']}/v2/stewards.json") == {"format": 2, "stewards": ["first"]}
+
+
+def test_a_changed_v2_feature_collection_is_described_against_the_last_release(project, s3_client):
+    """describe_changes reads a release-only file's last copy from the folder
+    latest.json named: a flat read would find nothing and every v2 change
+    would reach a phone as one nobody could describe."""
+    writers = {
+        "model.ourhike.pub_stewards": WRITERS["model.ourhike.pub_stewards"],
+        "model.ourhike.pub_poi_water_v2": {
+            "location": "poi_water_v2.geojson",
+            "when_empty": "fail",
+            "keys": ["v2/poi_water.geojson"],
+        },
+    }
+
+    def water(*ids: str) -> str:
+        features = [{"type": "Feature", "geometry": None, "properties": {"id": poi_id}} for poi_id in ids]
+        return json.dumps({"type": "FeatureCollection", "features": features})
+
+    project.write("stewards.json", json.dumps({"stewards": ["first"]}))
+    project.write("poi_water_v2.geojson", water("spring-1"))
+    project.build(writers=writers)
+    publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    project.write("poi_water_v2.geojson", water("spring-1", "spring-2"))
+    project.build(writers=writers)
+    second = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    change = _folder(s3_client, second["release"])["artifacts"]["v2/poi_water.geojson"]["change"]
+    assert change["added"] == 1, change
+    assert "unreadable" not in json.dumps(change)
+
+
+def test_a_withdrawn_poi_types_v2_file_is_not_carried_forward(project, s3_client, tmp_path):
+    crossings = tmp_path / "poi_crossing_v2.geojson"
+    crossings.write_text('{"type": "FeatureCollection", "features": []}')
+    _write_v2(project, "first")
+    project.build(writers=V2_WRITERS)
+    first = {
+        **project.collect().artifacts,
+        "v2/poi_crossing.geojson": {"path": str(crossings), "sha256": publish.sha256_file(crossings)},
+    }
+    publish.publish(first, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    project.write("stewards.json", json.dumps({"stewards": ["second"]}))
+    project.build(writers=V2_WRITERS)
+    second = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    folder = _folder(s3_client, second["release"])["artifacts"]
+    assert "v2/poi_crossing.geojson" not in folder
+    assert "v2/stewards.json" in folder
+
+
+def test_a_release_whose_manifest_is_gone_refuses_a_v2_publish_before_any_upload(project, s3_client):
+    """latest.json names a folder whose manifest is not there, so its v2 files
+    can be neither compared nor carried forward."""
+    _write_v2(project)
+    project.build(writers=V2_WRITERS)
+    s3_client.put_object(
+        Bucket=BUCKET, Key="latest.json", Body=json.dumps({"version": "v0", "release": "2026-01-01", "artifacts": {}})
+    )
+
+    with pytest.raises(RuntimeError, match="is not there"):
+        publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert set(_keys(s3_client)) == {"latest.json"}
+
+
+def test_a_conditions_only_publish_never_reads_a_release_folder(project, s3_client):
+    """The hourly lane publishes `conditions/` alone, and a closure must not
+    wait on a release folder: with the last folder's manifest gone, it still
+    publishes."""
+    _write_all(project, "first")
+    project.build()
+    first = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+    s3_client.delete_object(Bucket=BUCKET, Key=f"releases/{first['release']}/{releases.RELEASE_MANIFEST_NAME}")
+
+    project.write("conditions_atc_updates.json", json.dumps({"atc_updates": ["second"]}))
+    project.build()
+    second = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["uploaded"] == ["conditions/atc_updates.json"]
+    assert second["release"] == first["release"]
+    assert _json_at(s3_client, "conditions/atc_updates.json") == {"atc_updates": ["second"]}
+
+
+def test_staging_refuses_a_release_only_file_it_has_nowhere_to_copy_from(s3_client):
+    manifest = {"version": "v1", "artifacts": {"v2/stewards.json": {"sha256": "a"}}}
+
+    with pytest.raises(RuntimeError, match="no release to copy them from"):
+        publish._stage_release(s3_client, BUCKET, "", "2026-10-08", manifest, [], previous_release=None)
+
+    assert _keys(s3_client) == {}
+
+
+# --- the confirm job's reads: what UA serves -----------------------------------
+
+
+@pytest.fixture
+def public_bucket(tmp_path):
+    """A public bucket over HTTP on localhost, answering urllib's own agent 403
+    as data.ourhike.org did (measured 2026-10-08), and recording each
+    request's agent."""
+    import http.server
+    import threading
+
+    root = tmp_path / "public"
+    root.mkdir()
+    agents: list[str] = []
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(root), **kwargs)
+
+        def do_GET(self):  # noqa: N802 - http.server's name
+            agent = self.headers.get("User-Agent", "")
+            agents.append(agent)
+            if agent.startswith("Python-urllib"):
+                self.send_error(403)
+                return
+            super().do_GET()
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def put(key: str, document: dict) -> None:
+        path = root / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(document))
+
+    try:
+        yield {"base": f"http://127.0.0.1:{server.server_address[1]}", "put": put, "agents": agents}
+    finally:
+        server.shutdown()
+
+
+def test_the_confirm_read_names_itself_and_takes_v2_entries_from_the_release_folder(public_bucket):
+    public_bucket["put"](
+        "environments/ua/latest.json",
+        {"release": "2026-10-08", "artifacts": {"stewards.json": {"sha256": "flat"}}},
+    )
+    public_bucket["put"](
+        "environments/ua/releases/2026-10-08/manifest.json",
+        {"artifacts": {"stewards.json": {"sha256": "flat"}, "v2/stewards.json": {"sha256": "folder"}}},
+    )
+
+    served, urls = publish.served_entries(public_bucket["base"], "ua", ["stewards.json", "v2/stewards.json"])
+
+    assert served == {"stewards.json": {"sha256": "flat"}, "v2/stewards.json": {"sha256": "folder"}}
+    assert urls == [
+        f"{public_bucket['base']}/environments/ua/latest.json",
+        f"{public_bucket['base']}/environments/ua/releases/2026-10-08/manifest.json",
+    ]
+    assert public_bucket["agents"] == [publish.USER_AGENT, publish.USER_AGENT]
+
+
+def test_the_confirm_read_needs_no_release_folder_without_a_v2_file(public_bucket):
+    public_bucket["put"]("environments/ua/latest.json", {"artifacts": {"stewards.json": {"sha256": "flat"}}})
+
+    served, urls = publish.served_entries(public_bucket["base"], "ua", ["stewards.json"])
+
+    assert served == {"stewards.json": {"sha256": "flat"}}
+    assert len(urls) == 1
+
+
+def test_the_confirm_read_refuses_a_v2_file_when_latest_json_names_no_release(public_bucket):
+    public_bucket["put"]("environments/ua/latest.json", {"artifacts": {}})
+
+    with pytest.raises(RuntimeError, match="names no release"):
+        publish.served_entries(public_bucket["base"], "ua", ["v2/stewards.json"])
+
+
+# --- the detail family: one writer's file, one object per hike ----------------
+
+DETAIL_WRITERS = {
+    "model.ourhike.pub_stewards": WRITERS["model.ourhike.pub_stewards"],
+    "model.ourhike.pub_suggested_hikes_detail": {
+        "location": "suggested_hikes_detail.json",
+        "when_empty": "keep_last_file",
+        "keys": [publish.DETAIL_FAMILY_KEY],
+    },
+}
+DETAILS = [
+    {"id": "nynjtc_favorite_hikes:50", "summary": 'A "loop" past Ä\u00e9 falls\twith a tab'},
+    {"id": "nynjtc_favorite_hikes:7", "summary": None},
+]
+
+
+def _write_details(project: Project, details=DETAILS) -> None:
+    project.write("stewards.json", json.dumps({"stewards": ["first"]}))
+    project.write("suggested_hikes_detail.json", json.dumps({"details": details}))
+
+
+def test_the_detail_writers_file_is_cut_into_one_object_per_hike(project):
+    """Monthly run 29 published `suggested_hikes_detail_{number}.json` as it
+    stood, braces and all. Each detail is its own object under the
+    exporter's key and in the exporter's bytes."""
+    _write_details(project)
+    project.build(writers=DETAIL_WRITERS)
+
+    found = project.collect()
+
+    assert publish.DETAIL_FAMILY_KEY not in found.artifacts
+    assert sorted(key for key in found.artifacts if key.startswith("suggested_hikes_detail")) == [
+        "suggested_hikes_detail_50.json",
+        "suggested_hikes_detail_7.json",
+    ]
+    for detail in DETAILS:
+        number = detail["id"].rsplit(":", 1)[1]
+        entry = found.artifacts[f"suggested_hikes_detail_{number}.json"]
+        written = publish.from_manifest_path(entry["path"]).read_bytes()
+        assert written == json.dumps(detail, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        assert entry["sha256"] == publish.sha256_file(publish.from_manifest_path(entry["path"]))
+    assert {"suggested_hikes_detail_50.json", publish.DETAIL_FAMILY_KEY} <= found.owned
+
+
+def test_a_detail_cut_leaves_no_object_from_an_earlier_cut(project):
+    _write_details(project)
+    project.build(writers=DETAIL_WRITERS)
+    project.collect()
+
+    _write_details(project, DETAILS[:1])
+    project.build(writers=DETAIL_WRITERS)
+    found = project.collect()
+
+    assert [key for key in found.artifacts if key.startswith("suggested_hikes_detail")] == ["suggested_hikes_detail_50.json"]
+    assert sorted(path.name for path in (project.out / publish.DETAIL_CUT_DIRNAME).iterdir()) == ["50.json"]
+
+
+def test_a_detail_id_no_phone_could_ask_for_refuses_before_anything_is_cut(project):
+    _write_details(project, [{"id": "nynjtc_favorite_hikes:hike-vista-loop-trail"}])
+    project.build(writers=DETAIL_WRITERS)
+
+    with pytest.raises(ValueError, match="detailKeyFor"):
+        project.collect()
+    assert not (project.out / publish.DETAIL_CUT_DIRNAME).exists()
+
+
+def test_a_detail_writer_that_kept_keeps_the_family_and_cuts_nothing(project):
+    _write_details(project)
+    (project.out / "suggested_hikes_detail.json").unlink()
+    project.build(writers=DETAIL_WRITERS)
+
+    found = project.collect()
+
+    assert publish.DETAIL_FAMILY_KEY in found.kept
+    assert not any(key.startswith("suggested_hikes_detail") for key in found.artifacts)
+
+
+def test_once_dbt_owns_the_detail_family_no_exporters_detail_is_published(project):
+    _write_details(project)
+    project.build(writers=DETAIL_WRITERS)
+    found = project.collect()
+    exporters = {
+        "suggested_hikes_detail_50.json": {"path": "exporter/50.json", "sha256": "e50"},
+        # A number this run's cut does not have: still the exporter's, still dropped.
+        "suggested_hikes_detail_99.json": {"path": "exporter/99.json", "sha256": "e99"},
+        "trails.geojson": {"path": "exporter/trails.geojson", "sha256": "e3"},
+    }
+
+    merged = publish.with_dbt_phone_files(exporters, found)
+
+    assert merged["suggested_hikes_detail_50.json"]["sha256"] == found.artifacts["suggested_hikes_detail_50.json"]["sha256"]
+    assert "suggested_hikes_detail_99.json" not in merged
+    assert merged["trails.geojson"] == exporters["trails.geojson"]
+
+
+def test_the_cut_details_and_a_v2_file_publish_together(project, s3_client):
+    """Run 29's whole refusal in one publish: every key passes the layout
+    check, the details land flat and in the folder, the v2 file in the folder
+    alone."""
+    writers = {**DETAIL_WRITERS, "model.ourhike.pub_stewards_v2": V2_WRITERS["model.ourhike.pub_stewards_v2"]}
+    _write_details(project)
+    project.write("stewards_v2.json", json.dumps({"format": 2, "stewards": ["first"]}))
+    project.build(writers=writers)
+
+    result = publish.publish(project.collect().artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    keys = _keys(s3_client)
+    latest = _json_at(s3_client, "latest.json")["artifacts"]
+    for name in ("suggested_hikes_detail_50.json", "suggested_hikes_detail_7.json"):
+        assert name in keys
+        assert name in latest
+        assert f"releases/{result['release']}/{name}" in keys
+    assert f"releases/{result['release']}/v2/stewards.json" in keys
+    assert "v2/stewards.json" not in latest
+    assert _json_at(s3_client, "suggested_hikes_detail_50.json") == DETAILS[0]
+
+
 # --- main(), both ways ------------------------------------------------------
 
 

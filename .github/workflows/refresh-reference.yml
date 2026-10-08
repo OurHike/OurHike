@@ -661,7 +661,9 @@ jobs:
       # pub_ writer's file (publish.collect_dbt_phone_files). A writer that
       # did not run keeps the bucket's last good object, and keys no exposure
       # names carry forward from UA's latest.json. publish() stages a release
-      # folder when a release-scoped file moved.
+      # folder when a release-scoped file moved. A v2 file goes into that
+      # folder only (publish.release_only()), and the hike details are cut
+      # into one object per hike (publish.cut_suggested_hike_details()).
       - name: Publish to UA
         id: publish
         env:
@@ -719,10 +721,14 @@ jobs:
           name: monthly-phone-files
           path: pipeline/
 
-      # One public HTTPS GET, no credential. Each phone file written this run
-      # must be in UA's latest.json with the sha256 the build wrote.
+      # Public HTTPS GETs, no credential. Each phone file written this run
+      # must be in UA's latest.json with the sha256 the build wrote, or, for
+      # a v2 file, in the manifest of the release folder latest.json names,
+      # the one place a v2 file is listed (publish.release_only()).
       # `generated_at` proves nothing: the conditions bake rewrites
-      # latest.json too.
+      # latest.json too. publish.served_entries() reads both, and sends
+      # lib/user_agent.py's USER_AGENT, without which data.ourhike.org
+      # answered 403 (monthly run 29's confirm job, 37726904273).
       - name: Every written phone file is what UA's latest.json names
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
@@ -732,19 +738,14 @@ jobs:
             exit 1
           fi
           python - <<'PY'
-          import json
           import os
-          import urllib.request
 
           import publish
-          from lib import data_env
 
           written = publish.collect_dbt_phone_files().artifacts
-          url = f"{os.environ['DATA_BASE_URL'].rstrip('/')}/{data_env.scope_key('ua', publish.MANIFEST_KEY)}"
-          with urllib.request.urlopen(url, timeout=60) as response:
-              served = json.load(response).get("artifacts") or {}
+          served, urls = publish.served_entries(os.environ["DATA_BASE_URL"], "ua", written)
           wrong = sorted(key for key, entry in written.items() if (served.get(key) or {}).get("sha256") != entry["sha256"])
-          print(f"{len(written) - len(wrong)} of {len(written)} phone files the build wrote are what {url} names.")
+          print(f"{len(written) - len(wrong)} of {len(written)} phone files the build wrote are what {' and '.join(urls)} name.")
           for key in wrong:
               print(f"::error title=Not on UA::{key}: the build wrote {written[key]['sha256']}, UA names {(served.get(key) or {}).get('sha256')}")
           raise SystemExit(1 if wrong else 0)

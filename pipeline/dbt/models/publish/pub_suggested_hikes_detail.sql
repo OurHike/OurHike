@@ -11,9 +11,9 @@
 -- writes exactly one document and dbt has no per-object fan-out
 -- (pipeline/ELT.md, "Four kinds of phone file"). Each detail ships as its own
 -- object, `suggested_hikes_detail_<number>.json`, the flat root key
--- write_details() names it under (DETAIL_KEY): cutting this file into those
--- objects is stage 4's, outside dbt, as the per-cell files are, and the key
--- is the number after the id's last colon, which the mart's test holds to
+-- write_details() names it under (DETAIL_KEY): publish.py cuts this file into
+-- those objects outside dbt (cut_suggested_hike_details()), and the key is
+-- the number after the id's last colon, which the mart's test holds to
 -- detailKeyFor's `<source>:<digits>`. Nothing is written when no hike ships,
 -- as for the shelf (pub_suggested_hikes).
 with hikes as (

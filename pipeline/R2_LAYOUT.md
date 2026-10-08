@@ -135,6 +135,21 @@ app-store builds cannot be forced forward (and RELEASING.md §10's planned `DATA
 constant would pin them harder still), so moving the flat keys is a change no phone
 already in the field could survive.
 
+**A versioned file lives only in a release folder** (decision 44 of [ELT.md](ELT.md),
+"Versions and channels"). A v2 phone file is written beside its v1 at
+`releases/<id>/v2/<file>`, and it has no flat key: every root key is v1's, and a build that
+reads v2 resolves its release folder and reads `v2/<file>` there
+(`client/src/lib/config.ts`'s `phoneFileKey`). So `publish.py` uploads a changed v2 file
+straight into the folder it stages, and copies an unchanged one across from the folder
+`latest.json` names. Only the folder's own `manifest.json` lists it. `latest.json`
+describes the flat keys, and `check_deployment.py`, `smoke_published.py` and every build
+that reads the root fetch each key it lists at that flat name. `v2/` is therefore never a
+top-level prefix, and `lib/r2_keys.py` refuses one at the root. Monthly run 29
+(`refresh-reference.yml` 37726904273, 2026-10-08) is why this is written down: it tried to
+upload the eleven v2 files flat, and that refusal stopped the run before anything was
+uploaded. The root-scoped families keep their versions under their own prefix
+(`conditions/v2/<file>`, `podcasts/v2/<file>`).
+
 `_internal/` is still not written by anything. It holds build intermediates keyed by
 release — per-cell mosaics and their state — whose producer is the raster build, and
 creating the prefix without that would be a prefix a prune job knows to spare and nothing

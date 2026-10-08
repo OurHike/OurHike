@@ -28,9 +28,10 @@ models:
     description: >
       Writes suggested_hikes_detail.json, every shipped hike's detail in shelf
       order, from the suggested_hikes mart: one row, `details`. Each detail is
-      published on its own as suggested_hikes_detail_<number>.json, which is
-      stage 4's cut, outside dbt. No row, and so no file, when no hike ships.
-      parity.py compares each detail with export_suggested_hikes.py's.
+      published on its own as suggested_hikes_detail_<number>.json, cut from
+      this file outside dbt by publish.py's cut_suggested_hike_details(). No
+      row, and so no file, when no hike ships. parity.py compares each detail
+      with export_suggested_hikes.py's.
     config:
       access: public
       contract:
@@ -98,9 +99,10 @@ exposures:
       Each shipped hike's detail, its own object at the bucket's root under a
       flat name (export_suggested_hikes.py's DETAIL_KEY: lib/r2_keys.py
       declares no prefix for them), fetched when somebody opens the hike.
-      pub_suggested_hikes_detail writes them as one file; cutting it into one
-      object per hike is stage 4's, as the per-cell files are, and until then
-      export_suggested_hikes.py's write_details() writes them.
+      pub_suggested_hikes_detail writes them as one file, and publish.py cuts
+      it into one object per hike (cut_suggested_hike_details(), with the
+      exporter's own write_detail_objects()), so the key below names a family:
+      `{number}` is each hike's number.
     depends_on:
       - ref('suggested_hikes')
       - ref('pub_suggested_hikes_detail')

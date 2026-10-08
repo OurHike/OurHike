@@ -7711,6 +7711,35 @@ CLUB_POINT_FIXTURES = {
         ("OBJECTID", "LOCATION"),
         {"OBJECTID": (1, 2), "LOCATION": ("Fixture black hills parking 0", "Fixture black hills parking 1")},
     ),
+    # Decision 54's wave 6 (2026-10-08): the Empire State Trail's TrailFeature layer, the field list
+    # its live metadata gave that day. Row 0 carries the '<Null>' name the live layer gives 18
+    # restrooms, so CI's build shows int_points_of_interest__club_points reading it as no name.
+    "external/oprhp_est_trail_features.geojson": (
+        (
+            "OBJECTID",
+            "Asset",
+            "Name",
+            "Description",
+            "PhoneNumber",
+            "Address",
+            "URL",
+            "ParentLegName",
+            "ParentLegID",
+            "Latitude",
+            "Longitude",
+            "UID",
+            "GlobalID",
+        ),
+        {
+            "OBJECTID": (1, 2),
+            "UID": ("{fixture-oprhp_est_trail_features-0}", "{fixture-oprhp_est_trail_features-1}"),
+            "GlobalID": ("fixture-est-global-0", "fixture-est-global-1"),
+            "Asset": ("Restroom", "Campground"),
+            "Name": ("<Null>", "Fixture oprhp est trail features 1"),
+            "PhoneNumber": ("fixture person", "fixture person"),
+            "Address": ("fixture person", "fixture person"),
+        },
+    ),
 }
 
 

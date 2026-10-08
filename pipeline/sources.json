@@ -780,6 +780,36 @@
       "reaches_hikers_comment": "Decision 67 (the maintainer, poll, 2026-10-04): a warning where a trail crosses one, the area drawn and the trail open. Its rules are in dbt and tested: a warnings.py source, so it never closes a trail (tests/singular/assert_a_hazard_area_never_closes_a_trail.sql); seeds/notice_hazard_areas.csv marks it a hunting area and publishes only the rows whose Description is 'Hunting area', so the 89 'Restricted Area/Safety Zone' polygons are held back rather than drawn as hunting; it gives no season dates, so none is published (starts_on and ends_on null); created_user and last_edited_user are never loaded. @unvalidated that Description carries 'Hunting area' word for word (the seed's row says why)."
     },
     {
+      "key": "oprhp_est_trail_features",
+      "title": "Empire State Trail features (NY State Parks' EST_Public TrailFeature layer)",
+      "kind": "club_arcgis_layer",
+      "url": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/EST_Public/FeatureServer/1",
+      "provider": "NYS OPRHP",
+      "trust": "authoritative",
+      "steward": "New York State Office of Parks, Recreation and Historic Preservation",
+      "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
+      "licence": "See oprhp_licence. The item behind this layer, 42193621bed6494a86a5cc343ee9a854 ('Empire State Trail'), carries OPRHP's terms word for word: its licenseInfo is the same 1,095 characters as oprhp_licence's terms_verbatim (compared 2026-10-08), so the same reading holds. Reuse is allowed, attribution to OPRHP is required and the purposes are informational and non-commercial, which the maintainer determined on 2026-08-24 that OurHike satisfies (oprhp_licence's own record); decision 22 puts OPRHP's GIS data on DEC's footing. Its accessInformation reads 'New York State Office of Parks, Recreation, and Historic Preservation GIS Section'.",
+      "licence_basis": "stated_by_org",
+      "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's empire-state-trail points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward the audit folds into nysparks), read again live for decision 54's wave 6 on 2026-10-08 under lib/user_agent.py's USER_AGENT: services.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key. Registered by hand.",
+      "discovered_date": "2026-10-08",
+      "id_field": "UID",
+      "id_comment": "`UID`, OPRHP's own id for each feature, a braced GUID that every EST_Public layer carries: 381 distinct of 381 rows, none null, read 2026-10-08. GlobalID is unique too, but on a hosted layer it is the server's, and OBJECTID is the server's row id, which a reload mints again (decision 40).",
+      "name_field": "Name",
+      "type_field": "Asset",
+      "person_fields": [
+        "PhoneNumber",
+        "Address"
+      ],
+      "person_fields_comment": "PhoneNumber is filled on the 69 campgrounds and on no other row (67 distinct), and Address on 319 rows (the 69 campgrounds and 250 of the 251 parking areas); some of the campgrounds are run privately, where either value can reach the person who runs it. Nothing downstream reads either, so both are left out of the fields asked for and never reach the raw store (decision 59; pipeline/ELT.md, 'Who may publish', rule 8). Counted 2026-10-08, values not copied here.",
+      "notes": "381 points, 13 fields, maxRecordCount 2,000, data last edited 2026-01-13 (editingInfo, read 2026-10-08). Asset: Parking Area 251, Campground 69, Restroom 40, Train Station 21. Name is the string '<Null>' on 18 rows, every one a Restroom, and filled on the rest; Description is '<Null>' on 347 and null on 29. Extent in EPSG:4326 (returnExtentOnly): lat 40.69 to 45.00, lon -79.16 to -73.36, inside the eastern box. Statistics fingerprint: count(OBJECTID) 381, max(OBJECTID) 433. No asset is water. ParentLegName and ParentLegID name the leg of the Empire State Trail each point serves. Where the trail runs through a state park its points sit beside oprhp_facilities' own; the POI dedupe settles the overlap.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True from 2026-10-08 (decision 63: a layer reaches hikers once its rules are in dbt and tested). int_points_of_interest__club_points types its points from the club_poi_types seed (Parking Area as parking, Campground as campsite, Restroom as privy; Train Station maps to no type and never publishes), an allowlist by the value the layer lands, each rule a unit test in _points_of_interest__club_points.yml, and reads the layer's '<Null>' name as no name. The classifier, int_sources__publication, the 500 ft ring around the published network and the dedupe then run over it as over every other organization's points. new_data_report.py counts what it adds.",
+      "meta": {
+        "cadence": "monthly"
+      }
+    },
+    {
       "key": "nynjtc_long_path",
       "title": "NYNJTC Long Path",
       "provider": "NYNJTC",

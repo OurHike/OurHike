@@ -134,10 +134,26 @@ measurement as (
     select count(*) > 0 as measured from published
 ),
 
+-- `club` is a group key, never any_value(club). Monthly run 28
+-- (refresh-reference.yml 37707271195, its log, 2026-10-08) logged 9 places
+-- whose `club` DuckDB could not store (macros/storable_text.sql), all Alaska
+-- Trails trails. Each value was 13 bytes where "alaska_trails" belonged,
+-- one past the 12 DuckDB keeps inline, so the value held a pointer to its
+-- text, and the bytes it pointed at were memory: runs of 7F 00 00, the high
+-- bytes of a 64-bit address. source_key, the same 13 bytes as a group key on
+-- the same rows, came through whole every time. Runs 26 and 27 stopped on
+-- this model's "Invalid unicode" without naming a column; this is the only
+-- broken text the guard has logged. Why the copy any_value() held broke is
+-- @unvalidated: a synthetic aggregate of this shape, 6,000,000 groups and a
+-- 300 MB limit on DuckDB 1.5.4, kept every value. A source key belongs to
+-- one extract folder, so adding `club` to the key changes no group; if one
+-- ever carried two, place_id's unique test fails rather than a place
+-- silently doubling.
 trail_totals as (
     select
         source_key,
         trail_name,
+        club,
         sum(
             st_length(
                 st_transform(
@@ -151,7 +167,6 @@ trail_totals as (
             ) }}
         ) as metres,
         st_extent_agg(geom) as extent,
-        any_value(club) as club,
         max(_loaded_at) as _loaded_at
     from (
         select
@@ -159,7 +174,7 @@ trail_totals as (
             st_geomfromgeojson(geom_geojson) as geom
         from published
     ) as published_lines
-    group by source_key, trail_name
+    group by source_key, trail_name, club
 ),
 
 trail_boxes as (

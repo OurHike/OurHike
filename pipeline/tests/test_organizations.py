@@ -426,7 +426,10 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # the Census Bureau's TIGER/Line states, a federal work on 17 U.S.C. 105 whose own metadata says it is "free to
     # use". Recounted from the merged registry 2026-10-05. Decision 54's wave 6 (2026-10-08) adds 1 `stated_by_org`:
     # the Empire State Trail's features (oprhp_est_trail_features), whose item carries OPRHP's terms word for word.
-    assert counts == {"maintainer_authorisation": 219, "public_gis": 252, "stated_by_org": 194, "unresolved": 29}
+    # Its closures and warnings add 4: the trail's work zones (`stated_by_org`, the same item) and Land Between The
+    # Lakes' alerts (`stated_by_org`, a federal work), the trail's closures page (`maintainer_authorisation`,
+    # decision 53's facts and a link) and Parks & Trails New York's closures view (`public_gis`).
+    assert counts == {"maintainer_authorisation": 220, "public_gis": 253, "stated_by_org": 196, "unresolved": 29}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

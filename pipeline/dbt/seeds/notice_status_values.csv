@@ -38,3 +38,5 @@ iata_trail_conditions,no,not_current,"posted no 57 of 80: the club has not poste
 iata_trail_conditions,pending,not_current,"posted pending 2 of 80: not yet posted"
 utah_ffsl_fire_restrictions,Rescinded,not_current,"Kept out at extraction too (`where` Status NOT IN ('Rescinded', 'Superseded'))"
 utah_ffsl_fire_restrictions,Superseded,not_current,"As above"
+ptny_est_closures,Closed,closes_trail,"trail_stat 'Closed' 9 of 9 (the row's notes, read live 2026-10-08): a view that shows only the Empire State Trail's closed sections"
+ptny_est_closures,Open,not_current,"One of trail_stat's four domain values (the row's notes); the view serves none, and an open section tells a hiker nothing"

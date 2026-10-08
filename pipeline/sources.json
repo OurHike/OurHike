@@ -810,6 +810,68 @@
       }
     },
     {
+      "key": "ptny_est_closures",
+      "title": "Empire State Trail closures (Parks & Trails New York's public view)",
+      "provider": "PTNY",
+      "kind": "club_arcgis_layer",
+      "url": "https://services8.arcgis.com/n04kfJI3iJERUht5/arcgis/rest/services/Empire_State_Trail_Closures_(Public_View)/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Parks & Trails New York",
+      "steward_contact": "https://www.ptny.org",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. Nothing is stated either way: the item (983c05216d2443f398762dd64bc0535c, 'Empire State Trail Closures (Public View)', owned by Parks & Trails New York's organisational account) has an empty licenseInfo and accessInformation, and the layer an empty copyrightText (read 2026-10-08). This is the maintainer's presumption, NOT A LICENCE FROM PTNY, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Parks & Trails New York",
+      "id_field": "OBJECTID",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's empire-state-trail closures row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward the audit folds into nysparks), and pipeline/ELT.md's folder-placement table, which names this layer for nysparks/closures.py until Parks & Trails New York has a catalogue row; read again live for decision 54's wave 6 on 2026-10-08 under lib/user_agent.py's USER_AGENT: services8.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key. Registered by hand.",
+      "discovered_date": "2026-10-08",
+      "notes": "9 polylines (returnCountOnly), 10 fields, maxRecordCount 2,000, last edited 2026-09-28 15:11 UTC (editingInfo, read 2026-10-08). A view of Parks & Trails New York's Empire State Trail layer that shows only closed segments: trail_stat is 'Closed' on all 9, from a domain of Open, Under Construction, Improvements Planned and Closed. trail_type (the surface) Paved 6, Stone Dust 2, On Road 1; trail_name is a single space on 7 rows and 'Shoreline Trail' and 'Shoreline Trail (On Road)' on the other 2, whose ownership is 'City of Buffalo' (a single space on the 7). So 7 of the 9 have no title, and seeds/notice_source_fields.csv names trail_name all the same rather than putting words in the layer's mouth. No date, reason or link field: the reasons are on the trail's own closures page (oprhp_est_trail_closures_page). The flags ECT, HVGT, CVT and CCT name the corridor (ECT '1' on all 9). Extent in EPSG:4326: lat 42.88 to 43.13, lon -78.90 to -75.21. Statistics fingerprint: count(OBJECTID) 9, max(OBJECTID) 425. KEY: no field but the server's own is unique and the view does not serve GlobalID; OBJECTID is distinct on 9 of them and the geometry is distinct on 9 of 9 (read 2026-10-08), so the generated base model keys on OBJECTID with the geometry.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-08): the layer states no date for any of its nine closures and no reason, so whether each is still in force cannot be read from it, and a reopened section drawn closed would be a closure nobody stands behind. seeds/notice_status_values.csv reads its 'Closed' as closing the trail, so the rule is in place. Settled by comparing the nine lines with the trail's own closures page (oprhp_est_trail_closures_page), item by item, and recording which the page confirms."
+    },
+    {
+      "key": "oprhp_est_trail_closures_page",
+      "title": "Empire State Trail closures page",
+      "provider": "NYS OPRHP",
+      "kind": "published_notices",
+      "url": "https://empiretrail.ny.gov/trail-closures",
+      "trust": "authoritative",
+      "steward": "New York State Office of Parks, Recreation and Historic Preservation",
+      "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
+      "licence": "Facts and a link only (decision 53, features/ORG_NOTICES.md §7), on the maintainer's 2026-10-03 decision to publish every club's notices that way; NOT a grant from OPRHP. empiretrail.ny.gov's robots.txt, read 2026-10-08 under our agent, is Drupal's default: its `User-agent: *` group disallows Drupal's own paths (35 Disallow lines), allows this one, and asks no Crawl-delay. The site's /disclaimer page, read the same day, states no terms that bear on reading the page.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "terms": "None found: the site's /disclaimer page is about Google Translate and states no terms of use (read 2026-10-08).",
+      "freshness": {
+        "kind": "read_in_full",
+        "url": "https://empiretrail.ny.gov/trail-closures",
+        "notes": "The page's validators are not trusted (extract/_notices.py's PageNotice, trust_validators off): every hourly run reads it, one request, and FRESH only when the landed row hashes as the last load's. Two reads on 2026-10-08, 27 minutes apart, were the same 23,686 bytes (sha256 of the whole response), so the page carries no per-render token (Measured, twice). It sends no ETag, and both reads carried Last-Modified 2026-10-08 17:34:25 GMT, a week after the page's own 'Updated October 1, 2026', while the site's other pages each sent a different time that day: the header dates the site's page cache, not the closures."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's empire-state-trail closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01), read again live for decision 54's wave 6 on 2026-10-08 under lib/user_agent.py's USER_AGENT, robots.txt first. Registered by hand.",
+      "discovered_date": "2026-10-08",
+      "notes": "One row: the page's notice (extract/_notices.py's PageNotice), keyed by `url`. Read 2026-10-08: HTTP 200, 23,686 bytes, <title> 'Trail Closures | Empire State Trail', one <h1> 'Trail Closures' (expect_title holds it), and its own stamp 'Updated October 1, 2026'. The extract's own reader, run over the saved page, picks the <main> region (7,618 characters of text), titles it 'Trail Closures' and dates it 2026-10-01 by its stated-date pattern. It lists the trail's closures and detours section by section (the Dunn Memorial Bridge's removed pedestrian access and its 'semi-permanent detour path' among them) and its non-closure notices (narrowed bikeways, construction traffic crossing the trail), and links canals.ny.gov's Canalway Trail alerts for the canal sections. No e-mail address or telephone number on the page (scanned 2026-10-08). STEWARD, Reasoned rather than read: the site names no publisher on this page or on its partners, FAQ and contact pages (read 2026-10-08; the FAQ says sections are administered by NY State Parks, the Canal Corporation, counties and local governments). It is a ny.gov site, and the trail's GIS service is OPRHP's (oprhp_est_trail_features' item names OPRHP's GIS Section), so the row sits with OPRHP's; the site's own statement, or OPRHP's word, would settle it.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-08), as for the other club pages read the same way (ncta_trail_alerts_page): stg_nysparks__oprhp_est_trail_closures_page reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the steward's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
+      "key": "oprhp_est_under_construction",
+      "title": "Empire State Trail sections under construction (NY State Parks' EST_Public layer)",
+      "kind": "club_arcgis_layer",
+      "url": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/EST_Public/FeatureServer/5",
+      "provider": "NYS OPRHP",
+      "trust": "authoritative",
+      "steward": "New York State Office of Parks, Recreation and Historic Preservation",
+      "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
+      "licence": "See oprhp_licence. The item behind this layer, 42193621bed6494a86a5cc343ee9a854 ('Empire State Trail'), carries OPRHP's terms word for word: its licenseInfo is the same 1,095 characters as oprhp_licence's terms_verbatim (compared 2026-10-08), so the same reading holds. Reuse is allowed, attribution to OPRHP is required and the purposes are informational and non-commercial, which the maintainer determined on 2026-08-24 that OurHike satisfies (oprhp_licence's own record); decision 22 puts OPRHP's GIS data on DEC's footing. Its accessInformation reads 'New York State Office of Parks, Recreation, and Historic Preservation GIS Section'. Held back for a review of the data, never of these terms: reaches_hikers_comment says what settles it.",
+      "licence_basis": "stated_by_org",
+      "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "id_field": "UID",
+      "discovered_via": "Read beside oprhp_est_trail_features, one layer of the same EST_Public service, which nysparks/closures.py's docstring named as not landed; read again live for decision 54's wave 6 on 2026-10-08 under lib/user_agent.py's USER_AGENT: services.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key. Registered by hand.",
+      "discovered_date": "2026-10-08",
+      "notes": "2 polygons, 8 fields, data last edited 2026-04-28 (editingInfo, read 2026-10-08), both on the Erie Canalway Trail's Rome to Utica leg (ParentLegID EC20). Description holds each work's own words: a culvert job 'Beginning October 27' in the Town of Whitestown, with no year, and a trail rehabilitation project from Utica Harbor Lock Road to Barnes Avenue. No status, date or link field. Statistics fingerprint: count(OBJECTID) 2, max(OBJECTID) 55. KEY: `UID` is distinct on 2 of them, none null (read 2026-10-08), OPRHP's own id.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-08): neither polygon carries a date, and one says only that work begins 'October 27' with no year, so nothing says either work is still under way. Settled by OPRHP's own word, or the closures page, on whether the two works are current."
+    },
+    {
       "key": "nynjtc_long_path",
       "title": "NYNJTC Long Path",
       "provider": "NYNJTC",
@@ -2376,6 +2438,35 @@
       "notes": "One row: the page's notice (extract/_notices.py's PageNotice), keyed by `url`. Read 2026-10-03: the USFS alerts template every forest shares, 0 alert cards under /alerts/<slug>, levels none, beside the four-card level legend, no pager and no feed. The reader's region is <main>, its title the page's <h1> 'Alerts' (expect_title holds it), and no date: the page states none of its own, and each card's 'Alert Start Date' is an item's, so date_pattern is off. A per-alert reader on the stable slug links is the next step phase A's evidence supports. Zero alerts, stated by the page ('No Featured Alerts at this Time') beside the four-card level legend. Its ETag and Last-Modified are the Drupal page cache's (Last-Modified equalled the request time), so they are not trusted. Drawn on by nez-perce.",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_usfs__usfs_nez_perce_nht_alerts reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
+      "key": "usfs_lbl_alerts",
+      "title": "Land Between The Lakes alerts",
+      "provider": "USFS",
+      "kind": "published_notices",
+      "url": "https://www.landbetweenthelakes.us/alerts/",
+      "trust": "authoritative",
+      "steward": "USDA Forest Service",
+      "steward_contact": "https://www.fs.usda.gov/about-agency/contact-us",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105 and the maintainer's adoption of it for usfs_trails (2026-09-02): Land Between The Lakes National Recreation Area is a unit of the Forest Service, and its site carries the USDA Forest Service signature and a usda.gov contact address (read 2026-10-08), so this is `stated_by_org` on usfs_trails' own reasoning. What publishes is decision 53's facts and a link (features/ORG_NOTICES.md §7). www.landbetweenthelakes.us's robots.txt, read 2026-10-08 under our agent, disallows only /wp-admin/ for every agent and asks no Crawl-delay.",
+      "licence_basis": "stated_by_org",
+      "attribution": "USDA Forest Service",
+      "terms": "None read for these pages beyond the federal public-domain reading in `licence`.",
+      "person_fields": [
+        "author"
+      ],
+      "person_fields_comment": "`author` is a WordPress user id, which resolves to a person; extract/_kinds.py's WP_DROPPED leaves it out with the API's plumbing, so it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59).",
+      "reader": "WordpressPosts",
+      "freshness": {
+        "kind": "wp_id_modified_set",
+        "url": "https://www.landbetweenthelakes.us/alerts/",
+        "notes": "extract/_kinds.py's WordpressPosts check: a sha256 of the (id, modified_gmt) set and X-WP-Total, one small request; a WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's lbl closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward the audit folds into usfs), read again live for decision 54's wave 6 on 2026-10-08 under lib/user_agent.py's USER_AGENT, robots.txt first. Registered by hand.",
+      "discovered_date": "2026-10-08",
+      "notes": "The `alerts` custom post type, read whole through its REST route, /wp-json/wp/v2/alerts, with X-WP-Total as the count: 9 posts on 2026-10-08, `id` distinct on 9 of 9, the key. Each post's content is empty; a post is its title, its own dates, its link and two taxonomies, alert-category (Roads 4, Trails 2, Weather 1, Wildlife Refuges 1, and one post with none) and facilities. The trail posts are 'North/South Trail Re-route' (created 2026-02-03; the coverage audit read its page as the North/South Trail closed from road 104 to road 110 by tornado damage, with a reroute) and 'Fort Henry Trail'; the rest are road closures, a severe-weather notice, the wildlife refuges' seasonal closures and one event's weather cancellation. Post `content` lands in the private raw store and never past `base_` (decision 55).",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63 (2026-10-08), as for the Forest Service's other alerts pages (usfs_r08_gwj_alerts): stg_usfs__usfs_lbl_alerts reads it into int_closures__club_notices, whose phase C rules are unit-tested; a post is facts and a link (its title, its own modified date, its URL), it carries no status, so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); its wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "usfs_pacific_northwest_trail",
@@ -18168,6 +18259,10 @@
       "U.S. Census Bureau": {
         "state": "not_asked",
         "note": "Not asked. Its state boundaries reach a phone only inside conditions/notice_states.json, which the app never draws (decision 76, 2026-10-04), so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "PTNY": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -19164,6 +19259,12 @@
         "provider": "U.S. Census Bureau",
         "name": "United States Census Bureau",
         "note": "The federal statistical agency. Registered for its TIGER/Line state boundaries alone (decision 76, 2026-10-04), which reach a phone only as the shapes conditions/notice_states.json carries for a state-wide agency notice, and are never drawn."
+      },
+      "org:ptny": {
+        "provider": "PTNY",
+        "state": "NY",
+        "name": "Parks & Trails New York",
+        "note": "A non-profit that publishes an interactive map of the Empire State Trail and a print Erie Canalway Trail guidebook, and manages volunteer programs along the Canalway Trail (the Empire State Trail site's partners page, read 2026-10-08). Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false. It has no catalogue row of its own, so its layer is claimed by nysparks/closures.py, beside OPRHP's (pipeline/ELT.md's folder-placement table)."
       }
     }
   },
@@ -24820,6 +24921,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          }
+        }
+      },
+      "PTNY": {
+        "probed_date": "2026-10-08",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false. That read opened the closures view alone and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the interactive Empire State Trail map on its own site (www.ptny.org, which the trail site's partners page links) is what a points-of-interest read would open."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false. That read opened the closures view alone and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the interactive Empire State Trail map on its own site (www.ptny.org, which the trail site's partners page links) is what a points-of-interest read would open."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false. That read opened the closures view alone and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the interactive Empire State Trail map on its own site (www.ptny.org, which the trail site's partners page links) is what a points-of-interest read would open."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false. That read opened the closures view alone and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the interactive Empire State Trail map on its own site (www.ptny.org, which the trail site's partners page links) is what a points-of-interest read would open."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false. That read opened the closures view alone and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the interactive Empire State Trail map on its own site (www.ptny.org, which the trail site's partners page links) is what a points-of-interest read would open."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false. That read opened the closures view alone and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the interactive Empire State Trail map on its own site (www.ptny.org, which the trail site's partners page links) is what a points-of-interest read would open."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false. That read opened the closures view alone and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the interactive Empire State Trail map on its own site (www.ptny.org, which the trail site's partners page links) is what a points-of-interest read would open."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its public view of the Empire State Trail's closed sections (ptny_est_closures) under decision 54's wave 6 (2026-10-08), at reaches_hikers: false. That read opened the closures view alone and asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the interactive Empire State Trail map on its own site (www.ptny.org, which the trail site's partners page links) is what a points-of-interest read would open."
           }
         }
       }

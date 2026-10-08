@@ -1,5 +1,5 @@
-"""USDA Forest Service: closures, 10 ArcGIS layers and 15 forests' alerts pages extracted here (decision 53 phase B,
-2026-10-03).
+"""USDA Forest Service: closures, 10 ArcGIS layers, 15 forests' alerts pages and one recreation area's alert posts
+extracted here (decision 53 phase B, 2026-10-03; decision 54's wave 6, 2026-10-08).
 
 - `usfs_rec_opportunities_status`: USFS Recreation Opportunities: sites not open (EDW),
   `EDW/EDW_RecreationOpportunities_01/MapServer/0`. Filtered on the agency's own status field:
@@ -58,6 +58,16 @@ with e-mail addresses, the coverage audit), and they are not read. A per-alert r
 slug is what phase A's evidence supports next. The alerts are closures and warnings both, and the
 warnings staging model reads these tables too, since a file takes one form.
 
+LAND BETWEEN THE LAKES' ALERTS, one WordpressPosts resource (extract/_kinds.py), added by decision
+54's wave 6 (2026-10-08), which folds the coverage audit's `lbl` candidate into this folder: Land
+Between The Lakes National Recreation Area is a unit of the Forest Service with a WordPress site of
+its own.
+
+- `usfs_lbl_alerts`: its `alerts` custom post type, https://www.landbetweenthelakes.us/alerts/, read
+  whole through the type's REST route, X-WP-Total 9 on 2026-10-08. A post is a title, its own
+  dates, its link and two taxonomies, alert-category and facilities; the type serves no body. The
+  host's robots.txt disallows only /wp-admin/ and asks no Crawl-delay (read 2026-10-08).
+
 ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
 https://services1.arcgis.com/gGHDlz6USftL5Pau/arcgis/rest/services/CNF_ClosureAreaPolygons/FeatureServer,
 Chugach NF's 22 one-polygon layers of winter motorized closure areas (service Last-Modified
@@ -69,7 +79,7 @@ of usfs_r04_forest_orders (the SAME_AS note below).
 from datetime import date
 
 from extract._contract import SameAs
-from extract._kinds import arcgis_layer, page_notice
+from extract._kinds import arcgis_layer, page_notice, wordpress_posts
 
 # The forests' alerts pages, one registry row each (sources.json, provider USFS).
 ALERTS_PAGES = (
@@ -102,6 +112,7 @@ CLAIMS = (
     "usfs_r01_kootenai_inaccessible",
     "usfs_forest_closure_area",
     *ALERTS_PAGES,
+    "usfs_lbl_alerts",
 )
 RESOURCES = [
     arcgis_layer(
@@ -119,6 +130,7 @@ RESOURCES = [
     arcgis_layer("usfs_r01_kootenai_inaccessible"),
     arcgis_layer("usfs_forest_closure_area"),
     *(page_notice(key, expect_title="Alerts", date_pattern=None) for key in ALERTS_PAGES),
+    wordpress_posts("usfs_lbl_alerts", post_type="alerts"),
 ]
 SAME_AS = (
     SameAs(

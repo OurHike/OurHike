@@ -529,6 +529,20 @@ describe("Chart buttons", () => {
     expect(older.marts.every((mart) => mart.chart === null)).toBe(true);
     expect(older.buttons.map((button) => button.from)).toEqual(["Needs a look"]);
   });
+
+  it("find a mart's row count under its versioned table, by the series' mart, as C1's file names them", () => {
+    // C1's test-warehouse file, 2026-10-08: `table: "trail_lines_v1", mart: "trail_lines"`, and by_mart says "trail_lines".
+    const file = examples.monthlyManyProblems();
+    file.series = file.series.map((series) =>
+      series.in_needs_a_look ? series : { ...series, table: `${series.table}_v1`, mart: series.table },
+    );
+    const { marts, menu } = page(read(file, "monthly"), MISSING).sections;
+    const network = marts.find((mart) => mart.mart === "trail_network");
+    expect(network.chart).toBe(seriesKey({ lane: "monthly", table: "trail_network_v1", metric: "row_count" }));
+    expect(network.chartName).toBe("Chart rows in trail_network_v1, Monthly");
+    expect(marts.every((mart) => mart.chart !== null)).toBe(true);
+    expect(menu[1].options[0].label).toBe("Rows in trail_network_v1 · Monthly");
+  });
 });
 
 describe("the menu and the buttons, in step", () => {

@@ -431,6 +431,9 @@ function parse(value, lane) {
       table: name(entry.table, `${where}.table`),
       column: name(entry.column, `${where}.column`, { optional: true }),
       metric: name(entry.metric, `${where}.metric`),
+      // The mart a versioned table is: `trail_lines_v1` is `trail_lines`, the
+      // name by_mart uses. Absent for a table that is no mart's.
+      mart: name(entry.mart, `${where}.mart`, { optional: true }),
       inNeedsALook: typeof flag === "boolean" ? flag : null,
       points,
     };
@@ -791,11 +794,23 @@ function seriesOf(item, series) {
   );
 }
 
-/** A mart's own row count, or null when the file holds none for it. */
+/**
+ * A mart's own row count, or null when the file holds none for it. Joined
+ * by the series' `mart` where it names one, and else by its table: C1's
+ * test-warehouse file (2026-10-08) writes the versioned table
+ * (`trail_lines_v1`) with `mart: "trail_lines"`, while by_mart names the mart
+ * alone, so a join on the table found no mart and By mart drew no Chart
+ * button.
+ */
 function martSeries(mart, series) {
   return (
-    series.find((s) => s.lane === mart.lane && s.table === mart.mart && (s.column ?? null) === null && s.metric === MART_METRIC) ??
-    null
+    series.find(
+      (s) =>
+        s.lane === mart.lane &&
+        (s.mart ?? s.table) === mart.mart &&
+        (s.column ?? null) === null &&
+        s.metric === MART_METRIC,
+    ) ?? null
   );
 }
 

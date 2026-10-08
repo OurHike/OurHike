@@ -2,9 +2,10 @@
 
     python build_marts.py --fixtures [--dbt dbt] [--python <interpreter>]
         [--warehouse data/warehouse.duckdb] [--processed-dir data/processed/dbt]
-        [--raw-dir data/raw] [--threads N] [--dry-run]
-    python build_marts.py --lane monthly ...                 # refresh-reference.yml
+        [--raw-dir data/raw] [--threads N] [--checks-base <dir>] [--dry-run]
+    python build_marts.py --lane monthly ...                 # build-reference.yml
     python build_marts.py --lane hourly [--state <dir>] ...  # the hourly conditions lane
+    python build_marts.py --lane hourly --checks-only ...    # its checks, check-conditions.yml
 
 The one home of the build order (pipeline/ELT.md, "Python steps, outside dbt"
 and "Running it"). CI's dbt job and scripts/test.sh call it with --fixtures.
@@ -28,7 +29,8 @@ written its table, and fail. So:
    (ELT.md, "Publish (reverse ETL)");
 5. Elementary's checks (`dbt test -s tag:elementary_check`), which every
    build before leaves out: below, "ELEMENTARY'S CHECKS RUN AFTER THE
-   WRITERS".
+   WRITERS", and in the hourly lane a run of their own after the build has
+   published, "THE HOURLY LANE'S CHECKS RUN APART".
 
 Contracts stay enforced in every invocation. `dbt deps` is not here: CI and
 scripts/test.sh run it first, and a sandbox whose proxy cannot fetch the
@@ -323,30 +325,85 @@ The hourly lane, which runs none, took 406 s of CPU against 347 s before the
 checks with them enabled, 86 s against 47 s of its Elementary tables' wall
 in loading dbt_tests, and 384 s against 359 s with them disabled (two runs,
 each beside a build of the commit before, the same day). CI's fixture build
-runs the 1,949 whose tables its warehouse holds: 718 s and 802 s of wall in
-two builds in that sandbox, about 650 to 700 s of CPU by the figures above,
-against the 253 to 428 s its whole build_marts.py took on runners before the
-checks (ELT.md, "What step 1 measured").
+with every check runs the 1,949 whose tables its warehouse holds: 718 s and
+802 s of wall in two builds in that sandbox, about 650 to 700 s of CPU by the
+figures above, against the 253 to 428 s its whole build_marts.py took on
+runners before the checks (ELT.md, "What step 1 measured").
 
-THE HOURLY LANE RUNS NO CHECKS YET (HOURLY_LANE_CHECKS, the maintainer's to
-decide). Its 1,053 checks would cost about 360 to 385 s of CPU by the
+A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES (decision 111, the
+maintainer's poll of 2026-10-08: "Run all of them that have been modified,
+and downstream models"; --checks-base). Given the base commit's dbt project
+directory, parsed with Elementary's two switches on into its own target/,
+the pass selects `tag:elementary_check,state:modified+` with `--state` at
+that target/: the checks on every node dbt finds changed against the base,
+and on every node below one. It runs every check instead, and says why in
+the log (checks_base_problems()), when no base is given (CI's dbt job gives
+none on a push to main, a merge-queue entry, or a base that would not parse,
+and says which), when the base's manifest is missing, when dbt_project.yml,
+packages.yml or package-lock.yml differs from the base's, or when any macro's
+SQL does: dbt 2.0.6's state comparison reads neither a var nor a macro.
+Measured 2026-10-08 with `dbt ls` against this project, its base parsed from
+this commit: no change selected 0 of the 1,979 checks, and a comment added to
+closures.sql the 6 on that mart (its pub_ writers below it carry none);
+anomaly_sensitivity moved from 3 to 4 in dbt_project.yml, a comment added to
+macros/elementary_overrides.sql, and one added to Elementary's own
+test_volume_anomalies.sql each selected 0. Two bases are no base: one parsed
+with the switches off, as CI's contract-versions step parses it, reads every
+check as new (1,979 of 1,979), and so does one parsed against a warehouse
+file of another name, since the file's name is every node's database (1,979
+of 1,979; its folder, OURHIKE_PROCESSED_DIR, OURHIKE_BUILT_BY,
+OURHIKE_BUILD_STARTED_AT and TZ moved none), so the base is parsed against
+the build's own warehouse path. A selection that reaches no check is an
+answer, said in the log without an annotation. Only a build with no lane
+takes a base: each lane runs every check it has.
+
+THE HOURLY LANE'S CHECKS RUN APART, AFTER ITS BUILD HAS PUBLISHED (decision
+110, the maintainer's poll of 2026-10-08: "All of them, hourly. build a
+different workflow that kicks off after the actual build";
+HOURLY_LANE_CHECKS). Its 1,053 checks cost about 360 to 385 s of CPU by the
 figures above, 7.2 to 10.6 minutes on a runner that pays Elementary 1.2 to
 1.65 times what the sandbox did (ELT.md, "What step 1 measured"), where
 decision 103 gives the whole build step 10 minutes and the build already
-takes about 263 to 303 s of them (Reasoned from those figures; one timed run
-of the lane with its checks settles it). Without them the lane still parses
-them, disabled, in each of its five dbt commands. CI's fixture build, which
-has no lane, runs every check of both lanes meanwhile, so one that errors is
-annotated on every pull request rather than found first in the lane.
+takes about 263 to 303 s of them (Reasoned from those figures). So `--lane
+hourly` builds, writes, saves its history and publishes with none of them,
+and writes no data-quality file, and `--lane hourly --checks-only` is the
+run that does both, over the warehouse the build left: check-conditions.yml,
+which publish-conditions.yml starts once its build has published, with the
+warehouse handed over through the leg's history store (hand_off.py). That
+run plans only these (plan_checks()):
+1. Elementary's history alone, restored from the store the build saved it
+   to (row_history.py restore --elementary-only), so its save, at the end,
+   builds on the build's;
+2. Elementary's own tables, with the checks' switch, so dbt_tests describes
+   each check the file counts;
+3. every check the lane has, as an in-build pass would select them;
+4. the lane's data-quality writer, counting the build's own results and the
+   checks', since OURHIKE_BUILD_STARTED_AT is the build's;
+5. Elementary's history alone, saved back.
+What it needs of the build it reads from the build's record, the table
+BUILD_RECORD that every build of a lane whose checks run apart writes into
+its warehouse last (write_build_record()): when the build started, the
+store it restored from, the steps it held, whether its row history was on,
+and whether it saved Elementary's history. A build that saved none of it
+(--no-history-save, a restore that failed, or a save of Elementary's part
+that failed) leaves its warehouse's own Elementary tables, the history it
+restored with its own results added, to the checks, which then restore and
+save nothing either: the build's inputs were short, so neither part joins
+the training set. The checks run never touches a phone file, and its exits
+are the build's: PARTIAL_EXIT when Elementary's history was held back and
+the file written, and 1 when the file was not.
 
 THE DATA-QUALITY FILE IS WRITTEN LAST (decision 102, step 4): the lane's
 DATA_QUALITY_WRITERS entry, pub_data_quality or pub_conditions_data_quality,
 in a pass of its own after the writers and Elementary's checks, before the
 row history is saved, because it reads what those checks recorded. The
-writers' pass leaves both out. Every dbt command gets OURHIKE_BUILD_STARTED_AT
-(UTC, to the second), which tells the file this build's results from the
-history in Elementary's tables (macros/data_quality.sql). Two rules keep the
-pass from touching what hikers get:
+writers' pass leaves both out. ONE WRITER OF EACH FILE: a lane whose checks
+run apart writes its file in that run and never in its build, so the hourly
+file always counts a build and its checks, never a build alone. Every dbt
+command gets OURHIKE_BUILD_STARTED_AT (UTC, to the second), which tells the
+file this build's results from the history in Elementary's tables
+(macros/data_quality.sql); the checks run takes the build's. Two rules keep
+the pass from touching what hikers get:
 - publish.py reads the run results of the writers' run as the proof that a
   phone file was written (publish.collect_dbt_phone_files), and every later
   dbt command writes its own over them, so the writers' are kept aside as
@@ -357,6 +414,9 @@ pass from touching what hikers get:
   data, not a phone file (decision 102: the checks "never block a publish").
   Its file is removed, the writers' run results are written back without it,
   so publish.py keeps the bucket's last copy, and an ::error says so.
+The checks run has no writers' run before its pass, so the pass's own results
+are what `publish.py --sidecar` reads there, and the file being that run's one
+product, a failed pass removes it and ends the run with 1, after the save.
 """
 
 from __future__ import annotations
@@ -399,10 +459,22 @@ CHECKS_SWITCH = (("OURHIKE_ELEMENTARY_CHECKS", "true"),)
 #: @unvalidated: settled by counting the monthly lane's false alarms over its first season. dbt_project.yml says why
 #: --vars and not the var itself (a var rendered from Jinja reaches Elementary as a string).
 MONTHLY_TRAINING_DAYS = 400
-#: Whether the hourly lane runs ELEMENTARY_CHECKS. Not yet: its 1,053 checks would take longer than the hourly build
-#: step has left inside decision 103's 10 minutes (the module docstring, "THE HOURLY LANE RUNS NO CHECKS YET", has the
-#: sums), and turning them on is the maintainer's decision. CI's fixture build runs every check of both lanes meanwhile.
-HOURLY_LANE_CHECKS = False
+#: Where a lane runs ELEMENTARY_CHECKS: IN_BUILD, a pass of the build itself after its writers (the monthly lane, and a
+#: build with no lane), or APART, a run of their own over the warehouse the build left, after the build has published
+#: (--checks-only; the module docstring, "THE HOURLY LANE'S CHECKS RUN APART").
+IN_BUILD, APART = "in the build", "apart"
+#: The hourly lane's answer: APART, every one of its checks every hour (decision 110, the maintainer's poll of
+#: 2026-10-08: "All of them, hourly. build a different workflow that kicks off after the actual build"), because they
+#: take longer than decision 103's 10-minute build step has left (the module docstring has the sums).
+HOURLY_LANE_CHECKS = APART
+#: The table a build whose lane's checks run apart writes into its warehouse last, for the checks run to read: what
+#: that run needs of the build (write_build_record()). Not a dbt schema, so no dbt command touches it.
+BUILD_RECORD = "build_marts.build_record"
+BUILD_RECORD_FORMAT = 1
+#: The files of a dbt project whose change dbt's state comparison cannot see, each compared byte for byte with the
+#: base's (the module docstring, "A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES"): the vars every check reads, and
+#: the packages Elementary's checks are made of.
+CHECKS_BASE_FILES = ("dbt_project.yml", "packages.yml", "package-lock.yml")
 MANIFEST_PATH = DBT_DIR / "target" / "manifest.json"
 #: What the dbt run that just ended did, node by node: read for its failed tests, its warnings and its failed writers.
 RUN_RESULTS_PATH = DBT_DIR / "target" / "run_results.json"
@@ -816,6 +888,7 @@ def plan(
     withdrawn: tuple[str, ...] = (),
     checks: bool | None = None,
     absent: tuple[str, ...] = (),
+    checks_base: Path | None = None,
 ) -> list[Run]:
     """Every command of the build, in order, for these steps, in `lane` (None: every node), less the steps `without` names,
     between the row history's restore and its save when `history` names a store (the save left out when
@@ -826,13 +899,17 @@ def plan(
     docstring, "A MODEL TAGGED `builds_alone`"). Each `withdrawn` raw table (withdrawn_tables()) is left out of every
     dbt build with everything below its source. Every dbt build leaves Elementary's checks out, and with `checks`
     (None: the lane's own answer, runs_checks()) they run after the writers, less the checks on each `absent` source
-    (absent_sources()), in their own pass (the module docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"). The
-    lane's data-quality writer builds after them, whether or not they ran (the module docstring, "THE DATA-QUALITY
-    FILE IS WRITTEN LAST")."""
+    (absent_sources()), in their own pass (the module docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"), and
+    given `checks_base`, a build with no lane runs only those state:modified+ reaches from it (the module docstring,
+    "A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES"). The lane's data-quality writer builds after them, whether
+    or not they ran, unless the lane's checks run apart, which leaves the file to their run (the module docstring,
+    "THE DATA-QUALITY FILE IS WRITTEN LAST")."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
     if state is not None and lane != HOURLY:
         raise ValueError("--state is the hourly lane's: only it defers to another build's nodes")
+    if checks_base is not None and lane is not None:
+        raise ValueError(f"--checks-base is a build's with no lane: the {lane} lane runs every check it has")
     if unknown := sorted(set(without) - {step.name for step in steps}):
         raise ValueError(f"--without-step names no entry of STEPS: {', '.join(unknown)}")
     common = ("--profiles-dir", profiles_dir, *(("--threads", str(threads)) if threads else ()))
@@ -902,23 +979,9 @@ def plan(
     options = common if lane == HOURLY else alone
     runs.append(Run(label, (dbt, "build", *options, *writers, *after), DBT_DIR, WRITERS))
     if checks:
-        # Lane-scoped as the writers are, at one thread, and with the monthly lane's training window (the module
-        # docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS").
-        if lane == HOURLY:
-            chosen = tuple(f"{no_checks},{selector}" for selector in LANE_EXCLUDES)
-        else:
-            chosen = (no_checks,)
-        left_out = (*lane_exclude, *held, *absent)
-        argv = (dbt, "test", *alone, "-s", *chosen, *(("--exclude", *left_out) if left_out else ()), *after)
-        if lane == MONTHLY:
-            argv += ("--vars", json.dumps({"days_back": MONTHLY_TRAINING_DAYS}))
-        runs.append(Run(ELEMENTARY_CHECKS, argv, DBT_DIR, CHECKS, CHECKS_SWITCH))
-    # The module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST". It leaves out what every other build does, which
-    # neither writer reads, so that each dbt build of a lane leaves out the same nodes.
-    quality = tuple(DATA_QUALITY_WRITERS.values()) if lane is None else (DATA_QUALITY_WRITERS[lane],)
-    quality_out = (no_checks, *held, *no_snapshots, *lane_exclude)
-    quality_argv = (dbt, "build", *common, "-s", *quality, "--exclude", *quality_out, *after)
-    runs.append(Run(DATA_QUALITY_LABEL, quality_argv, DBT_DIR, DATA_QUALITY))
+        runs.append(_checks_run(dbt, alone, lane, (*lane_exclude, *held, *absent), after, checks_base))
+    if not checks_apart(lane):
+        runs.append(_quality_run(dbt, common, lane, (*held, *no_snapshots, *lane_exclude), after))
     if history is not None:
         store = ("--url", history.url, "--warehouse", str(paths.warehouse))
         # --cold-start lets Elementary's history start too (row_history.py's docstring, "THE COLD START").
@@ -932,10 +995,107 @@ def plan(
     return runs
 
 
+def checks_apart(lane: str | None) -> bool:
+    """Whether `lane` runs Elementary's checks in a run of their own after its build (--checks-only), rather than in the
+    build: the hourly lane, by HOURLY_LANE_CHECKS (the module docstring, "THE HOURLY LANE'S CHECKS RUN APART")."""
+    return lane == HOURLY and HOURLY_LANE_CHECKS == APART
+
+
 def runs_checks(lane: str | None) -> bool:
-    """Whether a build in `lane` runs Elementary's checks: every lane but the hourly one, until HOURLY_LANE_CHECKS (the
-    module docstring, "THE HOURLY LANE RUNS NO CHECKS YET")."""
-    return lane != HOURLY or HOURLY_LANE_CHECKS
+    """Whether a build in `lane` runs Elementary's checks itself: every build but one whose lane runs them apart."""
+    return not checks_apart(lane)
+
+
+def _checks_run(
+    dbt: str,
+    alone: tuple[str, ...],
+    lane: str | None,
+    left_out: tuple[str, ...],
+    after: tuple[str, ...],
+    checks_base: Path | None = None,
+) -> Run:
+    """Elementary's checks pass (the module docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"): lane-scoped as the
+    writers are, less `left_out`, at one thread, with the monthly lane's training window, and given `checks_base` only
+    the checks state:modified+ reaches from that base project's target/ ("A PULL REQUEST RUNS THE CHECKS ITS CHANGE
+    REACHES")."""
+    no_checks = f"tag:{ELEMENTARY_CHECK}"
+    chosen = tuple(f"{no_checks},{selector}" for selector in LANE_EXCLUDES) if lane == HOURLY else (no_checks,)
+    if checks_base is not None:
+        chosen = tuple(f"{item},state:modified+" for item in chosen)
+        after = (*after, "--state", str(checks_base / "target"))
+    argv = (dbt, "test", *alone, "-s", *chosen, *(("--exclude", *left_out) if left_out else ()), *after)
+    if lane == MONTHLY:
+        argv += ("--vars", json.dumps({"days_back": MONTHLY_TRAINING_DAYS}))
+    return Run(ELEMENTARY_CHECKS, argv, DBT_DIR, CHECKS, CHECKS_SWITCH)
+
+
+def _quality_run(dbt: str, common: tuple[str, ...], lane: str | None, left_out: tuple[str, ...], after: tuple[str, ...]) -> Run:
+    """The lane's data-quality writer (the module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST"), both with no lane.
+    It leaves out what every other build does, which neither writer reads, so each dbt build of a lane leaves out the
+    same nodes."""
+    quality = tuple(DATA_QUALITY_WRITERS.values()) if lane is None else (DATA_QUALITY_WRITERS[lane],)
+    argv = (dbt, "build", *common, "-s", *quality, "--exclude", f"tag:{ELEMENTARY_CHECK}", *left_out, *after)
+    return Run(DATA_QUALITY_LABEL, argv, DBT_DIR, DATA_QUALITY)
+
+
+#: The checks run's restore and save of Elementary's history alone (row_history.py's --elementary-only), so the loop in
+#: main() can tell them from the build's restore and save of both.
+ELEMENTARY_RESTORE_LABEL, ELEMENTARY_SAVE_LABEL = "restore Elementary's history", "save Elementary's history"
+
+
+def plan_checks(
+    steps: list[Step],
+    *,
+    dbt: str,
+    paths: Paths,
+    lane: str,
+    record: dict,
+    threads: int | None = None,
+    profiles_dir: str = ".",
+    history: History | None = None,
+    save_history: bool = True,
+    withdrawn: tuple[str, ...] = (),
+    absent: tuple[str, ...] = (),
+) -> list[Run]:
+    """The checks run of `lane`, whose checks run apart, over the warehouse the build that wrote `record` left
+    (read_build_record(); the module docstring, "THE HOURLY LANE'S CHECKS RUN APART"): Elementary's history alone
+    restored from `history`, Elementary's own tables with the checks' switch, every check the lane has but those on
+    a step the build held, a `withdrawn` table or an `absent` source, the lane's data-quality writer, and Elementary's
+    history alone saved back (the save left out when `save_history` is false). The restore and the save are left out
+    when the record says the build saved no Elementary history, so the checks keep the history it restored."""
+    if not checks_apart(lane):
+        raise ValueError(f"--checks-only is a lane's whose checks run apart ({HOURLY}); the {lane} lane runs its own")
+    if record.get("lane") != lane:
+        raise ValueError(f"the warehouse's build record is the {record.get('lane')} lane's, not the {lane} lane's")
+    if record.get("state"):
+        raise ValueError(f"the build deferred to {record['state']} (--state), which a checks run does not have")
+    without = tuple(record.get("without") or ())
+    if unknown := sorted(set(without) - {step.name for step in steps}):
+        raise ValueError(f"the build record's held steps name no entry of STEPS: {', '.join(unknown)}")
+    common = ("--profiles-dir", profiles_dir, *(("--threads", str(threads)) if threads else ()))
+    alone = ("--profiles-dir", profiles_dir, "--threads", "1")
+    # The build's own selection: no --state (refused above), so every build of it took --indirect-selection cautious.
+    after = ("--indirect-selection", "cautious")
+    held = tuple(f"source:{DERIVED_SOURCE}.{step.table}+" for step in steps if step.lane != lane or step.name in without)
+    held += tuple(f"source:{WITHDRAWABLE[table]}.{table}+" for table in withdrawn)
+    no_snapshots = (SNAPSHOTS,) if record.get("row_history") == "off" else ()
+    runs = [
+        # With the checks' switch, so Elementary's dbt_tests describes each check the file counts (CHECKS_SWITCH).
+        Run(ELEMENTARY_TABLES, (dbt, "run", *common, "--select", "package:elementary"), DBT_DIR, env=CHECKS_SWITCH),
+        _checks_run(dbt, alone, lane, (*held, *absent), after),
+        _quality_run(dbt, common, lane, (*held, *no_snapshots), after),
+    ]
+    if history is not None and record.get("elementary_saved"):
+        store = ("--url", history.url, "--warehouse", str(paths.warehouse), "--elementary-only")
+        policy = ("--elementary-on-failure", "degrade") if history.on_failure == "degrade" else ()
+        runs.insert(
+            0, Run(ELEMENTARY_RESTORE_LABEL, (history.python, "row_history.py", "restore", *store, *policy), PIPELINE_DIR)
+        )
+        if save_history:
+            keep = ("--keep-days", str(ELEMENTARY_KEEP_DAYS[lane]))
+            save = (history.python, "row_history.py", "save", *store, *keep, *policy)
+            runs.append(Run(ELEMENTARY_SAVE_LABEL, save, PIPELINE_DIR))
+    return runs
 
 
 def _cadence(source: dict) -> str | None:
@@ -1465,11 +1625,16 @@ def absent_sources(manifest: dict, warehouse: Path, lane: str | None, schema: st
     return tuple(left_out)
 
 
-def checks_report(results: list[dict] | None, returncode: int) -> list[str]:
+def checks_report(results: list[dict] | None, returncode: int, *, none_is_an_answer: bool = False) -> list[str]:
     """What the log says about Elementary's checks pass, which never changes the build's exit (the module docstring,
     "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"): a count of each status, every check that warned or errored by name,
     each error's first line cut at FAILED_VALUE_WIDTH, and an annotation (`::warning`) when any check errored or the
-    pass ended without results. No check's rows: Elementary keeps none (dbt_project.yml's test_sample_row_count)."""
+    pass ended without results. No check's rows: Elementary keeps none (dbt_project.yml's test_sample_row_count).
+    `none_is_an_answer` for a pass that selects what a change reaches ("A PULL REQUEST RUNS THE CHECKS ITS CHANGE
+    REACHES"): a change that reaches no check selects none, which is said without an annotation, and so is a pass
+    that exited 0 and left no results, as dbt may answer a selection of nothing."""
+    if results is None and none_is_an_answer and returncode == 0:
+        results = []
     if results is None:
         return [
             f"::warning title=Elementary's checks recorded nothing::the checks pass ended with exit {returncode} and left "
@@ -1480,7 +1645,9 @@ def checks_report(results: list[dict] | None, returncode: int) -> list[str]:
         statuses[str(result.get("status"))] = statuses.get(str(result.get("status")), 0) + 1
     counts = ", ".join(f"{count} {status}" for status, count in sorted(statuses.items())) or "none selected"
     lines = [f"-- build_marts: {ELEMENTARY_CHECKS}: {len(results)} check(s), {counts}; exit {returncode}"]
-    if not results:
+    if not results and none_is_an_answer:
+        lines.append(f"-- build_marts: {ELEMENTARY_CHECKS}: nothing this change reaches carries a check")
+    elif not results:
         # Every lane's pass selects its marts' checks at least, so none at all is a switch or a selection gone wrong.
         lines.append(
             f"::warning title=Elementary's checks ran none::the checks pass selected no check (exit {returncode}), so "
@@ -1537,6 +1704,111 @@ def build_started_at(now: datetime | None = None) -> str:
     return (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def write_build_record(warehouse: Path, record: dict) -> None:
+    """Write BUILD_RECORD, one row of `record` as JSON, into the warehouse, replacing any earlier one (the module
+    docstring, "THE HOURLY LANE'S CHECKS RUN APART")."""
+    import duckdb
+
+    schema = BUILD_RECORD.split(".", 1)[0]
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute(f'create schema if not exists "{schema}"')
+        con.execute(f"create or replace table {BUILD_RECORD} (format integer, record varchar)")
+        con.execute(f"insert into {BUILD_RECORD} values (?, ?)", [BUILD_RECORD_FORMAT, json.dumps(record, sort_keys=True)])
+
+
+def read_build_record(warehouse: Path) -> dict:
+    """The record the build of this warehouse wrote (write_build_record()). Raises ValueError, saying why, for a
+    warehouse that is not there or holds no record a checks run can read."""
+    if not warehouse.exists():
+        raise ValueError(f"--checks-only reads a build's warehouse, and there is none at {warehouse}")
+    import duckdb
+
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        try:
+            rows = con.execute(f"select format, record from {BUILD_RECORD}").fetchall()
+        except duckdb.Error as missing:
+            raise ValueError(
+                f"{warehouse} holds no build record ({BUILD_RECORD}), so which build it is, and what it saved, is not "
+                f"known; a build of a lane whose checks run apart writes one last ({missing})"
+            ) from missing
+    if len(rows) != 1 or rows[0][0] != BUILD_RECORD_FORMAT:
+        raise ValueError(f"{warehouse}'s {BUILD_RECORD} is not one row of format {BUILD_RECORD_FORMAT}: {rows!r}")
+    return json.loads(rows[0][1])
+
+
+def _macro_sql(manifest: dict) -> dict[str, str | None]:
+    return {uid: macro.get("macro_sql") for uid, macro in (manifest.get("macros") or {}).items()}
+
+
+def checks_base_problems(base: Path, head_manifest: dict, project: Path = DBT_DIR) -> list[str]:
+    """Why a pass given the base project directory `base` runs every check rather than those state:modified+ reaches
+    from it (the module docstring, "A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES"): each a sentence, and none when
+    `base` answers. `head_manifest` is this build's, `project` this project's directory."""
+    manifest_path = base / "target" / "manifest.json"
+    try:
+        base_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as unread:
+        return [f"the base's manifest, {manifest_path}, could not be read ({unread})"]
+    problems = []
+    for name in CHECKS_BASE_FILES:
+        mine, theirs = project / name, base / name
+        if (mine.read_bytes() if mine.exists() else None) != (theirs.read_bytes() if theirs.exists() else None):
+            problems.append(f"{name} differs from the base's, and dbt's state comparison reads no var and no package")
+    head, before = _macro_sql(head_manifest), _macro_sql(base_manifest)
+    if not head:
+        problems.append("this build's manifest holds no macro, so the base's cannot be compared with it")
+    elif changed := sorted(uid for uid in head.keys() | before.keys() if head.get(uid) != before.get(uid)):
+        shown = ", ".join(changed[:3]) + (f" and {len(changed) - 3} more" if len(changed) > 3 else "")
+        problems.append(
+            f"{len(changed)} macro(s) differ from the base's ({shown}), and dbt 2.0.6's state comparison reads no macro"
+        )
+    return problems
+
+
+def checks_base_answer(lane: str | None, base: Path | None, head_manifest: dict) -> Path | None:
+    """The base the checks pass of a build in `lane` compares with, or None for every check, said in the log either way
+    for a build with no lane (the module docstring, "A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES"). A lane runs
+    every check it has, and plan() refuses it a base."""
+    if lane is not None:
+        return None
+    if base is None:
+        print(
+            f"-- build_marts: {ELEMENTARY_CHECKS}: every check, since no --checks-base names a base to compare with", flush=True
+        )
+        return None
+    if problems := checks_base_problems(base, head_manifest):
+        for problem in problems:
+            print(f"-- build_marts: {ELEMENTARY_CHECKS}: every check, not only those this change reaches: {problem}", flush=True)
+        return None
+    print(
+        f"-- build_marts: {ELEMENTARY_CHECKS}: only the checks on what changed since the base, {base}, and below it "
+        "(state:modified+)",
+        flush=True,
+    )
+    return base
+
+
+def build_record_written(warehouse: Path, record: dict) -> None:
+    """write_build_record(), said in the log, and never a stop: the build stands whatever its checks will find."""
+    try:
+        if not warehouse.exists():
+            raise FileNotFoundError(f"{warehouse} is not there")
+        write_build_record(warehouse, record)
+    except Exception as failed:  # whatever DuckDB raises: the build and its publish stand
+        print(
+            f"::warning title=No build record::{BUILD_RECORD} was not written ({failed}), so the checks after this "
+            "build will find no record and check nothing. The build, its exit and its publish are unchanged.",
+            flush=True,
+        )
+        return
+    print(
+        f"-- build_marts: {BUILD_RECORD} written for the checks after this build: exit {record['exit']}, Elementary's "
+        f"history {'saved' if record['elementary_saved'] else 'not saved'}, held steps "
+        f"{', '.join(record['without']) or 'none'}",
+        flush=True,
+    )
+
+
 def keep_writers_results(results_path: Path | None = None) -> None:
     """Copy the writers' run results aside, where no later dbt command writes (the module docstring, "THE DATA-QUALITY
     FILE IS WRITTEN LAST")."""
@@ -1548,12 +1820,19 @@ def keep_writers_results(results_path: Path | None = None) -> None:
 
 
 def data_quality_written(
-    completed: subprocess.CompletedProcess, manifest: dict, processed_dir: Path, results_path: Path | None = None
+    completed: subprocess.CompletedProcess,
+    manifest: dict,
+    processed_dir: Path,
+    results_path: Path | None = None,
+    *,
+    alone: bool = False,
 ) -> None:
     """After the data-quality pass, run_results.json as publish.py reads it: the writers' run's results, with the
     pass's own added when it passed. A failed pass's files are removed, so publish.py keeps the bucket's last copy, and
     an ::error says so; the build goes on (the module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST"). With no
-    writers' results kept, no run_results.json is left, so publish.py refuses rather than reads every file as kept."""
+    writers' results kept, no run_results.json is left, so publish.py refuses rather than reads every file as kept.
+    `alone`, the checks run's pass, which has no writers' run before it: a pass that passed leaves its own results,
+    which `publish.py --sidecar` reads, and one that failed leaves none."""
     path = results_path or RUN_RESULTS_PATH
     kept = _run_results_document(path.with_name(WRITERS_RESULTS_NAME))
     own = _run_results_document(path) if completed.returncode == 0 else None
@@ -1564,12 +1843,21 @@ def data_quality_written(
         files = writer_files(manifest, writers, processed_dir)
         for file in files.values():
             file.unlink(missing_ok=True)
+        where = (
+            "This checks run goes red once Elementary's history is saved."
+            if alone
+            else "Every phone file still publishes, and the build's exit is unchanged."
+        )
         print(
             f"::error title=Data-quality file not written::{DATA_QUALITY_LABEL} failed (exit {completed.returncode}), so "
             f"{', '.join(sorted(file.name for file in files.values())) or 'its file'} is not published and the bucket's "
-            "last copy stands. Every phone file still publishes, and the build's exit is unchanged.",
+            f"last copy stands. {where}",
             flush=True,
         )
+    if alone:
+        if own is None:
+            path.unlink(missing_ok=True)
+        return
     if kept is None:
         path.unlink(missing_ok=True)
         return
@@ -1688,6 +1976,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="restore the row history and build with it, but save nothing back: some of this build's inputs are missing",
     )
+    parser.add_argument(
+        "--checks-only",
+        action="store_true",
+        help="the hourly lane's checks run: Elementary's checks and the data-quality file over the warehouse its build left",
+    )
+    parser.add_argument(
+        "--checks-base",
+        type=Path,
+        help="no lane: a base commit's dbt project, parsed with Elementary's switches on; only the checks its change reaches run",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the commands and run none")
     args = parser.parse_args(argv)
 
@@ -1696,6 +1994,8 @@ def main(argv: list[str] | None = None) -> int:
         processed_dir=_resolved(args.processed_dir, "OURHIKE_PROCESSED_DIR", PIPELINE_DIR / "data" / "processed" / "dbt"),
         raw_dir=args.raw_dir.resolve(),
     )
+    checks_only = args.checks_only
+    record: dict = {}
     try:
         history, notice = resolve_history(
             args.history_url,
@@ -1718,27 +2018,64 @@ def main(argv: list[str] | None = None) -> int:
             "without": tuple(args.without_step),
             # Read before anything runs: the extract and the served copy have written the warehouse already.
             "withdrawn": withdrawn_tables(paths.warehouse),
+            "checks_base": args.checks_base.resolve() if args.checks_base else None,
         }
         planned = {**options, "history": history, "save_history": not args.no_history_save}
-        runs = plan(STEPS, **planned)
+        if checks_only:
+            # The module docstring, "THE HOURLY LANE'S CHECKS RUN APART": what the run needs of the build is its record.
+            if args.without_step or args.state or args.checks_base:
+                raise ValueError("--checks-only takes the build's held steps from its record, and no --state or --checks-base")
+            record = read_build_record(paths.warehouse)
+            if record.get("elementary_saved") and record.get("history_url") != history.url:
+                raise ValueError(
+                    f"the build saved Elementary's history to {record.get('history_url')}, and this run would restore and "
+                    f"save it at {history.url}: pass that store as --history-url"
+                )
+            planned = {
+                "dbt": args.dbt,
+                "paths": paths,
+                "lane": args.lane,
+                "record": record,
+                "threads": args.threads,
+                "profiles_dir": options["profiles_dir"],
+                "history": history,
+                "save_history": not args.no_history_save,
+                "withdrawn": options["withdrawn"],
+            }
+            runs = plan_checks(STEPS, **planned)
+        else:
+            runs = plan(STEPS, **planned)
     except ValueError as refused:
         parser.error(str(refused))
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
     # TZ=UTC and OURHIKE_BUILT_BY: the module docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST";
-    # OURHIKE_BUILD_STARTED_AT: "THE DATA-QUALITY FILE IS WRITTEN LAST".
+    # OURHIKE_BUILD_STARTED_AT: "THE DATA-QUALITY FILE IS WRITTEN LAST", the build's own in its checks run.
     env = {
         **os.environ,
         **files,
         "TZ": "UTC",
         "OURHIKE_BUILT_BY": built_by(os.environ),
-        "OURHIKE_BUILD_STARTED_AT": build_started_at(),
+        "OURHIKE_BUILD_STARTED_AT": record.get("started_at") or build_started_at(),
         **ELEMENTARY_SWITCH,
     }
     for name, _ in CHECKS_SWITCH:
         env.pop(name, None)  # the checks' switch is each Run's own to give (Run.env), never inherited by every command
+    if record.get("row_history") == "off":
+        env["OURHIKE_ROW_HISTORY"] = "off"  # as the build's dbt commands ran, so the project renders as it did there
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
     print(f"-- build_marts: OURHIKE_BUILT_BY={env['OURHIKE_BUILT_BY']}", flush=True)
-    if notice:
+    if checks_only:
+        print(
+            f"-- build_marts: the checks of the {record.get('lane')} build that started {record.get('started_at')} "
+            f"({record.get('built_by')}), which exited {record.get('exit')}: "
+            + (
+                "Elementary's history restored from its store and saved back"
+                if record.get("elementary_saved")
+                else "that build saved no Elementary history, so this run keeps the history it restored and saves none"
+            ),
+            flush=True,
+        )
+    if notice and not checks_only:
         # A workflow command is one only at the start of its line, so a warning is printed as it is.
         print(notice if notice.startswith("::") else f"-- build_marts: {notice}", flush=True)
     if args.no_history_save:
@@ -1759,7 +2096,15 @@ def main(argv: list[str] | None = None) -> int:
     # What this build held back and still finished, for PARTIAL_EXIT (the module docstring, "ONE SOURCE OR ONE WRITER
     # NEVER STOPS THE REST").
     partial: list[str] = []
-    for table in options["withdrawn"]:
+    # The row history's restore and save, by exit, for the build record's elementary_saved; and the checks run's file.
+    history_exits: dict[str, int] = {}
+    quality_failed = False
+    # Whether the checks pass selects only what a change reaches (the module docstring, "A PULL REQUEST RUNS THE
+    # CHECKS ITS CHANGE REACHES"), which makes none an answer rather than a fault.
+    modified_only = False
+    for table in options["withdrawn"] if not checks_only else ():
+        # The checks run leaves them out of its checks as the build left them out of its builds, and says nothing: the
+        # build's own run already went red for them.
         print(
             f"::error title={table} withdrawn::the extract found {table} unavailable (its newest {RUN_LOG_TABLE} row), "
             f"so it is not in this warehouse, and source:{WITHDRAWABLE[table]}.{table} and everything below it are "
@@ -1767,7 +2112,7 @@ def main(argv: list[str] | None = None) -> int:
             "the run goes red afterwards.",
             flush=True,
         )
-    if options["withdrawn"]:
+    if options["withdrawn"] and not checks_only:
         partial.append(f"{', '.join(options['withdrawn'])} withdrawn by the extract")
     stage_a_rerun = False
     position = 0
@@ -1789,7 +2134,13 @@ def main(argv: list[str] | None = None) -> int:
                     f"hold: {', '.join(selector.removeprefix('source:') for selector in absent)}",
                     flush=True,
                 )
-                (run,) = [each for each in plan(STEPS, **planned, absent=absent) if each.stage == CHECKS]
+            if checks_only:
+                (run,) = [each for each in plan_checks(STEPS, **planned, absent=absent) if each.stage == CHECKS]
+            else:
+                base = checks_base_answer(args.lane, planned.get("checks_base"), _read_manifest())
+                modified_only = base is not None
+                again = plan(STEPS, **{**planned, "absent": absent, "checks_base": base})
+                (run,) = [each for each in again if each.stage == CHECKS]
         print(f"-- build_marts {position}/{len(runs)}: {run.label}", flush=True)
         # A dbt run's results are the run_results.json it leaves, and an earlier run's file is removed first so
         # nothing else can be mistaken for them. Never told apart by mtime: Linux stamps a file from a coarse clock
@@ -1801,10 +2152,13 @@ def main(argv: list[str] | None = None) -> int:
         started = time.time()
         results_since = float("-inf") if run.cwd == DBT_DIR else started
         completed = subprocess.run(run.argv, cwd=run.cwd, env={**env, **dict(run.env)}, check=False)
+        if run.label in (RESTORE_LABEL, SAVE_LABEL):
+            history_exits[run.label] = completed.returncode
         if run.stage == CHECKS:
             # Never retried, never a stop, never the build's exit (the module docstring, "ELEMENTARY'S CHECKS RUN
             # AFTER THE WRITERS"): reported, and the build goes on to save its history.
-            for line in checks_report(read_run_results(results_since), completed.returncode):
+            results = read_run_results(results_since)
+            for line in checks_report(results, completed.returncode, none_is_an_answer=modified_only):
                 print(line, flush=True)
             continue
         if completed.returncode != 0 and run.argv[1:2] == ("build",) and run.cwd == DBT_DIR:
@@ -1813,7 +2167,19 @@ def main(argv: list[str] | None = None) -> int:
         if run.stage == WRITERS:
             keep_writers_results()
         if run.stage == DATA_QUALITY:
-            data_quality_written(completed, _read_manifest(), paths.processed_dir)
+            data_quality_written(completed, _read_manifest(), paths.processed_dir, alone=checks_only)
+            quality_failed = completed.returncode != 0
+            continue
+        if run.label in (ELEMENTARY_RESTORE_LABEL, ELEMENTARY_SAVE_LABEL):
+            # The checks run's restore and save of Elementary's history alone: under degrade, a failure of either is
+            # row_history.py's ELEMENTARY_DEGRADED_EXIT, and the file is still written and published, and the run goes
+            # red after; anything else stops the run, before or after its checks.
+            if completed.returncode == ELEMENTARY_DEGRADED_EXIT and args.history_on_failure == "degrade":
+                partial.append(f"Elementary's history not {'restored' if run.label == ELEMENTARY_RESTORE_LABEL else 'saved'}")
+                continue
+            if completed.returncode != 0:
+                print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
+                return 1 if completed.returncode in PUBLISHABLE_EXITS else completed.returncode
             continue
         if completed.returncode != 0 and run.stage in (STAGE_A, WRITERS) and completed.returncode not in PUBLISHABLE_EXITS:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
@@ -1901,16 +2267,41 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
             runs = runs[:position] + again
+    if checks_only:
+        # The module docstring, "THE HOURLY LANE'S CHECKS RUN APART": the file is this run's one product.
+        if partial:
+            print(f"-- build_marts: checked with part of it held back ({'; '.join(partial)})", flush=True)
+        if quality_failed:
+            print("-- build_marts: exit 1: the data-quality file was not written, so there is nothing to publish", flush=True)
+            return 1
+        if partial:
+            print(f"-- build_marts: exit {PARTIAL_EXIT}: publish the data-quality file, then go red", flush=True)
+            return PARTIAL_EXIT
+        return 0
     if partial:
         print(f"-- build_marts: built with part of it held back ({'; '.join(partial)})", flush=True)
+    code = (DEGRADED_PARTIAL_EXIT if partial else DEGRADED_EXIT) if degraded else PARTIAL_EXIT if partial else 0
+    if checks_apart(args.lane):
+        # Last, so the record says what the build did: the module docstring, "THE HOURLY LANE'S CHECKS RUN APART".
+        build_record_written(
+            paths.warehouse,
+            {
+                "lane": args.lane,
+                "started_at": env["OURHIKE_BUILD_STARTED_AT"],
+                "built_by": env["OURHIKE_BUILT_BY"],
+                "without": sorted(args.without_step),
+                "state": str(options["state"]) if options["state"] else None,
+                "history_url": history.url,
+                "row_history": "off" if degraded else "on",
+                "elementary_saved": history_exits.get(RESTORE_LABEL) == 0 and history_exits.get(SAVE_LABEL) == 0,
+                "exit": code,
+            },
+        )
     if degraded:
-        code = DEGRADED_PARTIAL_EXIT if partial else DEGRADED_EXIT
         print(f"-- build_marts: built without the row history; exit {code}", flush=True)
-        return code
-    if partial:
+    elif partial:
         print(f"-- build_marts: exit {PARTIAL_EXIT}: publish what was written, then go red", flush=True)
-        return PARTIAL_EXIT
-    return 0
+    return code
 
 
 if __name__ == "__main__":

@@ -761,6 +761,76 @@ def test_with_the_switch_on_main_uploads_the_writers_build_metadata_beside_the_v
     assert f"releases/{result['release']}/data_quality.json" in _keys(s3_client)
 
 
+# --- the hourly lane's data-quality file, put in place by its checks run (decision 110) ------------------------------
+
+#: The checks run's one dbt writer: build_marts.py --checks-only builds pub_conditions_data_quality and nothing else.
+CHECKS_RUN = ["model.ourhike.pub_conditions_data_quality"]
+
+
+def _checks_run(project: Project, built_at: str = "2026-10-08T21:52:00Z") -> publish.DbtPhoneFiles:
+    _write_quality(project, built_at)
+    project.build(writers=QUALITY_WRITERS, ran=CHECKS_RUN)
+    return project.collect()
+
+
+def test_the_checks_run_puts_the_hourly_data_quality_file_in_place_and_touches_nothing_else(project, s3_client, monkeypatch):
+    """No artifact, no latest.json, no release folder: nothing a phone reads, under the environment's prefix as
+    publish() puts a sidecar."""
+    monkeypatch.setenv(data_env.ENVIRONMENT_VAR, "ua")
+    monkeypatch.setenv(publish.PHONE_FILES_ENV_VAR, publish.PHONE_FILES_FROM_DBT)
+    found = _checks_run(project)
+
+    result = publish.publish_sidecar(["conditions/data_quality.json"], dbt=found, s3_client=s3_client, bucket=BUCKET)
+
+    assert result == {"environment": "ua", "uploaded": ["conditions/data_quality.json"], "kept": []}
+    assert list(_keys(s3_client)) == ["environments/ua/conditions/data_quality.json"]
+    assert _json_at(s3_client, "environments/ua/conditions/data_quality.json")["built_at"] == "2026-10-08T21:52:00Z"
+    head = s3_client.head_object(Bucket=BUCKET, Key="environments/ua/conditions/data_quality.json")
+    assert (head["ContentType"], head["CacheControl"]) == ("application/json", publish.ARTIFACT_CACHE_CONTROL)
+    assert "ContentEncoding" not in head, "a sidecar goes up as it is, as publish() puts one"
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["data_quality.json", "stewards.json", "conditions/atc_updates.json"],
+    ids=["the monthly file, which a release folder carries", "a phone file", "a key no sidecar names"],
+)
+def test_the_checks_run_puts_nothing_in_place_but_a_sidecar_outside_every_release(project, s3_client, monkeypatch, key):
+    monkeypatch.setenv(publish.PHONE_FILES_ENV_VAR, publish.PHONE_FILES_FROM_DBT)
+    found = _checks_run(project)
+
+    with pytest.raises(RuntimeError, match="takes a dbt sidecar that no release folder carries"):
+        publish.publish_sidecar([key], dbt=found, s3_client=s3_client, bucket=BUCKET)
+    assert _keys(s3_client) == {}
+
+
+def test_a_data_quality_file_its_checks_run_did_not_write_is_left_as_the_bucket_holds_it(project, s3_client, monkeypatch, capsys):
+    monkeypatch.setenv(publish.PHONE_FILES_ENV_VAR, publish.PHONE_FILES_FROM_DBT)
+    _write_quality(project, "2026-10-08T21:52:00Z")
+    project.build(writers=QUALITY_WRITERS, ran=["model.ourhike.pub_stewards"])
+
+    result = publish.publish_sidecar(["conditions/data_quality.json"], dbt=project.collect(), s3_client=s3_client, bucket=BUCKET)
+
+    assert result["uploaded"] == [] and result["kept"] == ["conditions/data_quality.json"]
+    assert "KEPT: conditions/data_quality.json is left as it is" in capsys.readouterr().out
+    assert _keys(s3_client) == {}
+
+
+def test_main_puts_a_sidecar_from_the_checks_runs_artifacts_only_on_the_dbt_path(monkeypatch, s3_client, project):
+    _checks_run(project)
+    monkeypatch.setattr(publish, "DBT_MANIFEST_PATH", project.target / "manifest.json")
+    monkeypatch.setattr(publish, "DBT_RUN_RESULTS_PATH", project.target / "run_results.json")
+    monkeypatch.setenv(publish.DBT_PROCESSED_DIR_ENV_VAR, str(project.out))
+    _main_env(monkeypatch, s3_client)
+
+    with pytest.raises(publish.UnknownPhoneFileSource, match="--sidecar uploads a dbt writer's file"):
+        publish.main(["--sidecar", "conditions/data_quality.json"])
+    monkeypatch.setenv(publish.PHONE_FILES_ENV_VAR, publish.PHONE_FILES_FROM_DBT)
+    result = publish.main(["--sidecar", "conditions/data_quality.json"])
+
+    assert result["uploaded"] == ["conditions/data_quality.json"] and list(_keys(s3_client)) == ["conditions/data_quality.json"]
+
+
 # --- a v2 file: its release folder is its only home -------------------------
 
 # The stewards writer and its v2, in the shape the eleven real v2 writers have

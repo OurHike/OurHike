@@ -97,11 +97,15 @@ staleness boundary test in #32, green on the pull request and red on the merge.
 
 ### Builds or publishes data
 
-Every job that runs `publish.py` in the eight publishing paths shares
-`concurrency: publish-data`, so two of them can never interleave;
-`refresh-reference.yml` publishes through the `build-reference.yml` run it
-dispatches, whose `publish` job holds the group. All are dispatch-only
-except `publish-conditions.yml`, `publish-weather.yml` and
+Every job that runs `publish.py` to write a version in the nine publishing
+paths shares `concurrency: publish-data`, so two of them can never
+interleave; `refresh-reference.yml` publishes through the `build-reference.yml`
+run it dispatches, whose `publish` job holds the group. The one exception is
+`check-conditions.yml`, whose `publish.py --sidecar` puts one object,
+`conditions/data_quality.json`, in place and touches no `latest.json`: it
+holds each leg's `conditions-history-<leg>` group with `publish-conditions.yml`'s
+leg instead, so it never cancels a publisher queued in `publish-data`. All
+are dispatch-only except `publish-conditions.yml`, `publish-weather.yml` and
 `refresh-reference.yml`, and of those only `publish-conditions.yml` writes
 production on its schedule.
 
@@ -111,7 +115,8 @@ production on its schedule.
 | `build-dem.yml` | DEM archive → `build`, `publish` |
 | `build-raster.yml` | raster background → `disabled`, `compute-cells`, `render`, `assemble`, `publish` — **switched off for v2** (#855): the `disabled` job refuses every dispatch in seconds unless `run_despite_withdrawal` is ticked |
 | `publish-vector-data.yml` | trails, POIs and the manifest hikers download → `build`, `publish` |
-| `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch |
+| `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch → `publish`, one leg per data environment, then `checks`, which starts `check-conditions.yml` once both legs have published and alone holds `actions: write`. Each leg also holds `conditions-history-<leg>` beside the workflow's `publish-data` |
+| `check-conditions.yml` | every Elementary check of the hourly lane (decision 110), over the warehouse each leg's build handed off through its history store, then that leg's `conditions/data_quality.json` → `check`, one leg per data environment. Dispatch-only, by `publish-conditions.yml`'s `checks` job, with `data_environment` and a required `build_run`; production only from `main` and only while production's hourly leg is on the dbt path. Never a phone file or `latest.json`; shares `conditions-history-<leg>` with `publish-conditions.yml`'s leg, so the next build waits for its checks |
 | `publish-weather.yml` | the NBM forecast for every trail square, one file per cell, and the active NWS alerts over trail squares, to UA only → `build`, `publish` — hourly as well as dispatch, only `publish` holds the group, and either half publishes without the other (#1056) |
 | `refresh-reference.yml` | the monthly lane of `pipeline/ELT.md`, its scheduled half: every monthly dlt resource into the private raw store, the raw inputs pinned under `steps/raw_inputs/<raw_run>/`, then a dispatch of `build-reference.yml` with that `raw_run` → `extract`, `pin`, `dispatch`, `refused`. No input; monthly as well as dispatch. Only `dispatch` holds a permission beyond reading, `actions: write`. Shares `raw-lake-monthly` with `build-reference.yml`, so the build it starts waits for it to end |
 | `build-reference.yml` | the monthly lane's build from a pin (the maintainer's choice B, 2026-10-08): every mart through `build_marts.py --lane monthly` from a pinned `raw_run`, a release staged on UA from the dbt writers' files, and decision 30's parity on the same pin → `build`, `publish`, `confirm`, `parity`, `parity-report`. Dispatch-only, with one required input, `raw_run`, held to an extract run id's shape; `refresh-reference.yml` starts it after each pin, and a person can start it on any pinned `raw_run` to try a fix without a new extract. UA only, by a literal. Only `publish` holds `publish-data` |

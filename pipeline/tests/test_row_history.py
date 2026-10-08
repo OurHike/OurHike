@@ -498,3 +498,77 @@ def test_the_default_keep_days_is_the_longest_any_lane_keeps_and_the_exit_codes_
     assert row_history.ELEMENTARY_KEEP_DAYS == max(build_marts.ELEMENTARY_KEEP_DAYS.values())
     assert row_history.ELEMENTARY_DEGRADED_EXIT == build_marts.ELEMENTARY_DEGRADED_EXIT
     assert build_marts.ELEMENTARY_DEGRADED_EXIT not in (0, 1, 2, *build_marts.PUBLISHABLE_EXITS)
+
+
+# --- ELEMENTARY'S HISTORY ALONE: the hourly lane's checks run after its build (decision 110) ------------------------
+
+CHECKS_AT = BUILD_2.replace(hour=7)
+
+
+def _hourly_build(tmp_path):
+    """A build that restored both parts from a started store, added its own rows and saved both, as
+    build_marts.py --lane hourly does: its warehouse, the store, and the build's save id."""
+    store, _ = _first_build(tmp_path)
+    warehouse = _next_build(tmp_path, store, "build.duckdb")
+    _elementary_build(warehouse, BUILD_2, "inv2")
+    save(str(store), warehouse, keep_days=21, now=BUILD_2)
+    return store, warehouse, _elementary_pointer(store)["save_id"]
+
+
+def test_the_checks_run_restores_elementarys_history_alone_and_saves_its_checks_over_the_builds(tmp_path):
+    store, warehouse, build_save = _hourly_build(tmp_path)
+    rows_pointer, snapshot_rows = (store / POINTER).read_text(), _rows(warehouse)
+
+    restored = row_history.restore_elementary(str(store), warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    saved = row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    after = _next_build(tmp_path, store, "next.duckdb")
+
+    assert f"restored save {build_save}" in restored and "Elementary's history: saved" in saved
+    assert (store / POINTER).read_text() == rows_pointer, "history.json and the snapshots' saves are the build's"
+    assert _rows(warehouse) == snapshot_rows, "the snapshot tables are left as the build left them"
+    pointer = _elementary_pointer(store)
+    assert pointer["previous_save_id"] == build_save and pointer["save_id"] != build_save
+    assert _elementary_rows(after, "dbt_invocations", "invocation_id") == [("inv1",), ("inv2",), ("inv3",)]
+
+
+def test_the_checks_runs_save_refuses_when_a_build_saved_after_its_restore(tmp_path):
+    """The next hourly build waits for the checks run (their shared concurrency group); were it not to, this is the
+    refusal that keeps the checks from saving over its history."""
+    store, warehouse, _ = _hourly_build(tmp_path)
+    row_history.restore_elementary(str(store), warehouse)
+    later = _next_build(tmp_path, store, "later.duckdb")
+    save(str(store), later, keep_days=21, now=CHECKS_AT)
+
+    with pytest.raises(row_history.ElementaryRefused, match="another run saved Elementary's history in between"):
+        row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    assert row_history.main(["save", "--url", str(store), "--warehouse", str(warehouse), "--elementary-only"]) == 1
+
+
+def test_under_degrade_a_checks_run_whose_restore_fails_checks_with_no_history_and_saves_none(tmp_path, capsys):
+    store, warehouse, build_save = _hourly_build(tmp_path)
+    entry = _elementary_pointer(store)["tables"]["elementary_test_results"]
+    (store / entry["file"]).write_bytes(b"torn")
+    args = ["--url", str(store), "--warehouse", str(warehouse), "--elementary-only", "--elementary-on-failure", "degrade"]
+
+    restored = row_history.main(["restore", *args])
+    _elementary_tables(warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    saved = row_history.main(["save", *args])
+
+    out = capsys.readouterr().out
+    assert (restored, saved) == (row_history.ELEMENTARY_DEGRADED_EXIT, 0)
+    assert "::error title=Elementary's history not restored::" in out and "none of it is saved" in out
+    assert _elementary_rows(warehouse, "dbt_invocations", "invocation_id") == [("inv3",)], "no earlier build, not part of one"
+    assert _elementary_pointer(store)["save_id"] == build_save
+
+
+def test_under_degrade_a_store_the_checks_run_cannot_reach_is_elementarys_failure_too(tmp_path):
+    """Its row history is the build's to have restored, so nothing else is at stake in this run."""
+    _, warehouse, _ = _hourly_build(tmp_path)
+    nowhere = str(tmp_path / "no" / "such" / "store")
+
+    with pytest.raises(row_history.ElementaryDegraded, match="does not exist"):
+        row_history.restore_elementary(nowhere, warehouse, elementary_on_failure="degrade")
+    with pytest.raises(Refused, match="does not exist"):
+        row_history.restore_elementary(nowhere, warehouse)

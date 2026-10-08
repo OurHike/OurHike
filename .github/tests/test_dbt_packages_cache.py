@@ -40,6 +40,8 @@ JOBS_THAT_RUN_DEPS = {
     ("publish-conditions.yml", "publish"),
     # The monthly lane's build, which choice B (2026-10-08) moved out of refresh-reference.yml.
     ("build-reference.yml", "build"),
+    # The hourly lane's checks, which decision 110 (2026-10-08) runs after its build has published.
+    ("check-conditions.yml", "check"),
 }
 
 

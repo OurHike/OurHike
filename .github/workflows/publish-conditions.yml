@@ -304,6 +304,21 @@ jobs:
     # inside this one. client/src/lib/noticeSelection.ts's SAME_BUILD_MS is
     # this number by its own reasoning, and moved with it.
     timeout-minutes: 15
+    # A SECOND GROUP, EACH LEG'S OWN, BESIDE THE WORKFLOW'S publish-data,
+    # which still holds the whole run (a job's group is added to its
+    # workflow's, never in place of it: Reasoned from GitHub's "Using
+    # concurrency", where each is described on its own; @unvalidated until a
+    # leg is seen waiting on it). check-conditions.yml's leg holds the same
+    # group (decision 110): this leg restores and saves its history store,
+    # history/conditions_<leg>, and the checks of the build before restore
+    # and save Elementary's history in it too, each refusing to save over a
+    # save it did not restore (row_history.py). So a leg whose last build's
+    # checks are still running waits for them instead of racing their save.
+    # The two legs' groups differ, so neither can cancel the other's pending
+    # slot, which is what keeps publish-data at the workflow level above.
+    concurrency:
+      group: conditions-history-${{ matrix.data_environment }}
+      cancel-in-progress: false
     # One run per data environment, because this is the source where sharing
     # hurts most: closures and reports are baked from a *database*, so a single
     # bake would put whichever database it read in front of both audiences at
@@ -1420,6 +1435,7 @@ jobs:
           "
 
       - name: Publish to R2
+        id: publish
         env:
           # The gate publish.py checks. Set only on this step, so every other
           # step here is structurally incapable of writing to the bucket -
@@ -1456,6 +1472,44 @@ jobs:
           started=$SECONDS
           python publish.py
           printf -- '- publish.py (OURHIKE_PHONE_FILES=%s): %s s\n\n' "$OURHIKE_PHONE_FILES" "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
+      # THE WAREHOUSE, HANDED TO THE CHECKS (decision 110; pipeline/hand_off.py):
+      # every Elementary check of this lane runs in check-conditions.yml, which
+      # the `checks` job below starts once every leg has got here, over this
+      # build's warehouse. It goes to this leg's history store, beside the
+      # history the build just saved, in the private raw store, overwriting the
+      # last build's; never as an Actions artifact, which anyone could download
+      # from a public repository (hand_off.py says why). After the publish,
+      # never before it, so its upload cannot delay a hiker's files; whether
+      # the publish went green or red, since publish.py exits 1 for a held
+      # source after uploading everything else, the hour the checks matter
+      # most. continue-on-error, so a failed hand-off never turns the publish
+      # red: hand_off.py's ::error says why, and the checks of this run then
+      # say they found nothing to check.
+      #
+      # ONE MINUTE, which the job's budget leaves
+      # (.github/tests/test_conditions_build_budget.py), @unvalidated: the
+      # warehouse's size over R2 decides it, and this step's log line gives
+      # both. build_marts.py writes the build's record into the warehouse last
+      # (its docstring, "THE HOURLY LANE'S CHECKS RUN APART"), so what crosses
+      # is the whole of what the checks need.
+      - name: Hand this build's warehouse to its checks (dbt path)
+        if: ${{ !cancelled() && env.PHONE_FILES == 'dbt' && steps.build.outcome == 'success' && (steps.publish.outcome == 'success' || steps.publish.outcome == 'failure') }}
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          ENVIRONMENT: ${{ matrix.data_environment }}
+          RUN: ${{ github.run_id }}
+          ATTEMPT: ${{ github.run_attempt }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: >-
+          "$RUNNER_TEMP/extract/bin/python" hand_off.py put
+          --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT"
+          --warehouse data/warehouse.duckdb --run "$RUN" --attempt "$ATTEMPT"
 
       # A WARNING, NEVER RED: decision 100 (the maintainer's poll of
       # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
@@ -1638,3 +1692,64 @@ jobs:
             ~/.cache/com.getdbt/adbc
             ~/.duckdb/extensions/v1.5.4
           key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
+
+  # THE CHECKS OF THIS RUN'S BUILD ARE check-conditions.yml (decision 110,
+  # the maintainer's poll of 2026-10-08: "All of them, hourly. build a
+  # different workflow that kicks off after the actual build"), started
+  # here once every leg has built and published, with the legs this run ran
+  # and this run as `build_run`, on this run's ref. Each of its legs takes
+  # the warehouse its leg handed off above, runs every Elementary check of
+  # the lane and puts conditions/data_quality.json in place; one whose leg
+  # handed off nothing (the exporters path, or a build that failed) says so
+  # and checks nothing.
+  #
+  # THROUGH THE API'S workflow_dispatch, as refresh-reference.yml's
+  # `dispatch` job starts build-reference.yml: the one event a GITHUB_TOKEN
+  # may start a run with ("workflow_dispatch and repository_dispatch events
+  # always create workflow runs", GitHub's docs, "Triggering a workflow from
+  # a workflow", as that job quotes them), with `actions: write` on this job
+  # alone, and every word of the command reaching the script through env.
+  # GitHub takes it only for a file the default branch holds, which PR #1827
+  # - Add dispatch-only build-reference.yml, purge-person-fields.yml and
+  # check-conditions.yml placeholders to main is for; until that merges,
+  # this job goes red with the publish already done.
+  #
+  # NEVER IN THE PUBLISH'S WAY: it runs after both legs, whatever they
+  # concluded (`!cancelled()`), so a red leg still has the checks of the
+  # other, and its failure can only colour this run once everything was
+  # published. The summary keeps the command that starts the checks again.
+  checks:
+    name: Start the checks of this run's build (check-conditions.yml)
+    needs: publish
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      # LEGS is the matrix's own rule, so the checks run the legs this run
+      # ran: both only from main, and neither for a dispatch asking for UA
+      # alone nor for one picking the dbt path.
+      # .github/tests/test_check_conditions.py evaluates both expressions for
+      # every trigger, ref and input.
+      - name: Dispatch check-conditions.yml on this ref, with this run as its build_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.ref_name }}
+          BUILD_RUN: ${{ github.run_id }}
+          LEGS: ${{ (github.ref == 'refs/heads/main' && inputs.data_environment != 'ua' && inputs.phone_files != 'dbt') && 'both' || 'ua' }}
+        run: |
+          printf -v again 'gh workflow run check-conditions.yml --repo %q --ref %q -f %q -f %q' "$GITHUB_REPOSITORY" "$REF" "data_environment=$LEGS" "build_run=$BUILD_RUN"
+          {
+            echo "## The checks of this run's build"
+            echo
+            echo "check-conditions.yml runs every Elementary check of the hourly lane over each leg's warehouse and puts conditions/data_quality.json in place. To run them again on this build, while it is still the newest its leg handed off:"
+            echo
+            echo '```'
+            echo "$again"
+            echo '```'
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$again"
+          gh workflow run check-conditions.yml --repo "$GITHUB_REPOSITORY" --ref "$REF" -f "data_environment=$LEGS" -f "build_run=$BUILD_RUN"
+          echo "This run dispatched check-conditions.yml on \`$REF\` for the $LEGS leg(s)." >> "$GITHUB_STEP_SUMMARY"

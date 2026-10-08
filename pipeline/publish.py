@@ -45,6 +45,9 @@ today's path, the Python exporters' manifests. `dbt` takes every key a dbt
 exposure names from its pub_ writer's file instead (collect_dbt_phone_files),
 and `python publish.py --live podcasts/episodes.json` puts the one live root
 key in place from its writer. The cutover is setting it; nothing does yet.
+`python publish.py --sidecar conditions/data_quality.json` puts the hourly
+lane's data-quality file in place on its own, as its checks run writes it
+after the build has published (publish_sidecar()), and nothing else.
 
 `python publish.py --channels` uploads the committed channels.json, decision
 44's pointer to the release folder each environment's phones read, and nothing
@@ -1798,6 +1801,8 @@ class DbtPhoneFiles:
     `sidecars` is the files a writer wrote whose exposure says they are build
     metadata (DBT_SIDECAR_META), in SIDECARS' entry shape: publish() uploads
     each beside a new version and never lets one cause a version.
+    `sidecar_keys` is every key such an exposure names, written or kept,
+    which publish_sidecar() holds a key it is asked to put in place to.
     """
 
     artifacts: dict[str, dict] = field(default_factory=dict)
@@ -1807,6 +1812,7 @@ class DbtPhoneFiles:
     owned: set[str] = field(default_factory=set)
     failed: dict[str, str] = field(default_factory=dict)
     sidecars: dict[str, dict] = field(default_factory=dict)
+    sidecar_keys: set[str] = field(default_factory=set)
 
 
 #: A run result that is a failure, as build_marts.py's FAILED_STATUSES reads one.
@@ -1960,6 +1966,8 @@ def collect_dbt_phone_files(
                     raise RuntimeError(f"{key} is named by {owner[key]} and by {exposure_id}; one key has one writer.")
                 owner[key] = exposure_id
             found.owned.update(keys)
+            if is_sidecar:
+                found.sidecar_keys.update(keys)
 
             result = results.get(writer_id)
             if result is None:
@@ -2824,6 +2832,72 @@ def publish_live(
     return {"environment": environment, "uploaded": uploaded, "kept": sorted(set(keys) - set(uploaded))}
 
 
+def publish_sidecar(
+    keys: list[str],
+    *,
+    dbt: DbtPhoneFiles | None = None,
+    s3_client=None,
+    bucket: str | None = None,
+    environment: str | None = None,
+) -> dict:
+    """Put each dbt sidecar outside every release folder in place on its own, from its writer, and nothing else.
+
+    The hourly lane's data-quality file, conditions/data_quality.json, is
+    written by the checks run after the hourly build has published
+    (build_marts.py's docstring, "THE HOURLY LANE'S CHECKS RUN APART";
+    check-conditions.yml), where publish() would upload it only beside a new
+    version, and that run has no artifact to version. So this puts it where
+    publish() puts a sidecar, the same key under the environment's prefix
+    with the same headers (upload_args(compress=False)), and touches no
+    artifact, no manifest and no release folder: nothing a phone reads.
+
+    Refuses a key that is not a dbt sidecar (DBT_SIDECAR_META) and one a
+    release folder carries (lib/releases.is_release_artifact), whose copy
+    there only a version can stage: the monthly data_quality.json. A key
+    whose writer wrote nothing in the run being published uploads nothing,
+    said, and leaves the bucket's object as it was. Only with
+    OURHIKE_PHONE_FILES=dbt, the one pipeline with sidecar writers.
+    """
+    if not writes_enabled():
+        raise PermissionError(f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing.")
+    environment = data_env.resolve(environment)
+    if phone_files_source() != PHONE_FILES_FROM_DBT:
+        raise UnknownPhoneFileSource(
+            f"--sidecar uploads a dbt writer's file, and {PHONE_FILES_ENV_VAR} is not {PHONE_FILES_FROM_DBT!r}."
+        )
+    dbt = dbt if dbt is not None else collect_dbt_phone_files()
+    refused = [key for key in keys if key not in dbt.sidecar_keys or releases.is_release_artifact(key)]
+    if refused:
+        raise RuntimeError(
+            f"--sidecar takes a dbt sidecar that no release folder carries ({releases.CONDITIONS_PREFIX}); "
+            f"not {', '.join(refused)}. Nothing was published."
+        )
+    prefix = data_env.prefix_for(environment)
+    assert_valid_keys([f"{prefix}{key}" for key in keys])
+    verify_hashes({key: dbt.sidecars[key] for key in keys if key in dbt.sidecars})
+
+    if s3_client is None:
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=os.environ["R2_ENDPOINT_URL"],
+            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+            config=BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S),
+        )
+    if bucket is None:
+        bucket = os.environ["R2_BUCKET"]
+
+    uploaded = []
+    for key in keys:
+        if key not in dbt.sidecars:
+            print(f"  KEPT: {key} is left as it is - {dbt.kept.get(key, 'its writer wrote nothing this run')}.")
+            continue
+        upload_path, extra = upload_args(key, str(from_manifest_path(dbt.sidecars[key]["path"])), compress=False)
+        s3_client.upload_file(upload_path, bucket, f"{prefix}{key}", ExtraArgs=extra)
+        uploaded.append(key)
+    return {"environment": environment, "uploaded": uploaded, "kept": sorted(set(keys) - set(uploaded))}
+
+
 #: The committed pointer (decision 44; pipeline/ELT.md, "Versions and
 #: channels"): which release folder a phone reads, per data environment and
 #: schema version, e.g. {"production": {"v1": "2026-09-24-2"}, "ua": {...}}.
@@ -2945,6 +3019,13 @@ def _arguments(argv: list[str]) -> argparse.Namespace:
         metavar="KEY",
         help=f"put this live root key ({', '.join(LIVE_ROOT_PREFIXES)}) in place from its dbt writer instead of publishing a version",
     )
+    parser.add_argument(
+        "--sidecar",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help=f"put this dbt sidecar ({releases.CONDITIONS_PREFIX}) in place from its writer, and nothing else: no version",
+    )
     return parser.parse_args(argv)
 
 
@@ -2967,6 +3048,10 @@ def main(argv: list[str] | None = None) -> dict:
     if args.live:
         result = publish_live(args.live, environment=environment)
         print(f"Live keys put in place in {environment}: {result['uploaded'] or 'none'}.")
+        return result
+    if args.sidecar:
+        result = publish_sidecar(args.sidecar, environment=environment)
+        print(f"Sidecars put in place in {environment}, outside every version: {result['uploaded'] or 'none'}.")
         return result
 
     artifacts = collect_artifacts()

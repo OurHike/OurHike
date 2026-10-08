@@ -1,14 +1,16 @@
 """row_history: keep the warehouse's row-history snapshots, and Elementary's history, between runs, outside the warehouse.
 
     python row_history.py restore --url URL --warehouse W [--cold-start] [--elementary-cold-start]
-        [--elementary-on-failure fail|degrade]
+        [--elementary-on-failure fail|degrade] [--elementary-only]
     python row_history.py save --url URL --warehouse W [--keep-days N] [--elementary-on-failure fail|degrade]
+        [--elementary-only]
 
 build_marts.py runs `restore` before its first dbt command and `save` after
 its last one has succeeded, so a failed build never saves. Everything else
 about the snapshots is macros/row_history.sql's (pipeline/dbt/). Elementary's
 history rides in the same two commands and the same store, beside the
-snapshots and apart from them ("ELEMENTARY'S HISTORY", below).
+snapshots and apart from them ("ELEMENTARY'S HISTORY", below), and the hourly
+lane's checks run restores and saves it alone ("ELEMENTARY'S HISTORY ALONE").
 
 WHY OUTSIDE THE WAREHOUSE. Each lane builds its warehouse from the raw pin on
 a fresh runner, so the snapshot tables (int_<mart>__history, one per mart, in
@@ -149,6 +151,26 @@ store row_history_stores.toml's [elementary_started] does not list. Every
 store saved before decision 102 holds a history.json and no elementary.json,
 and that is Elementary's first build there, not a loss. Once a store is
 listed, an absent elementary.json is refused (exit 2) as lost history.
+
+ELEMENTARY'S HISTORY ALONE (--elementary-only, decision 110). The hourly
+lane's checks run in a run of their own after its build has published
+(build_marts.py --checks-only, check-conditions.yml), over the warehouse the
+build left. The build restored and saved both parts; the checks run then
+`restore --elementary-only`s the save the build just made, which puts that
+build's own Elementary rows back, retention's cut aside, and gives the
+warehouse a receipt that names that save, then `save --elementary-only`s
+what its checks added. Both leave the snapshot tables, history.json and
+saves/ alone, and the row history's receipt with them. Every guard of
+Elementary's part holds as in a whole save: the receipt's URL, every
+restored row's key, and elementary.json still naming the restored save, so
+the next hourly build, which waits for the checks run (the two share a
+concurrency group, conditions-history-<leg>), builds on the checks' save
+rather than racing it. Under degrade every failure of either command,
+reaching the store included, is ELEMENTARY_DEGRADED_EXIT: a restore drops
+the kept tables and writes a receipt saying so, which the save then answers
+by saving nothing. Each save takes a new save id under elementary/, so with
+a build and its checks each saving every hour, KEEP_SAVES Elementary folders
+hold about half as many hours as the row history's do (Reasoned).
 
 ITS FAILURES ARE THE ROW HISTORY'S, and one more thing the conditions legs
 need. Under the default --elementary-on-failure fail, a failure of
@@ -625,6 +647,38 @@ def restore(
     return f"{rows}\n{elementary}"
 
 
+def _drop_elementary_receipts(con: duckdb.DuckDBPyConnection) -> None:
+    for table in (ELEMENTARY_RECEIPT, ELEMENTARY_KEYS):
+        con.execute(f"drop table if exists {RECEIPT_SCHEMA}.{table}")
+
+
+def restore_elementary(url: str, warehouse: Path, cold_start: bool = False, elementary_on_failure: str = "fail") -> str:
+    """Replace the warehouse's Elementary kept tables with the store's current Elementary save, and leave its snapshot
+    tables and their receipt as they are (the module docstring, "ELEMENTARY'S HISTORY ALONE"). Returns what it did, for
+    the log; raises ElementaryDegraded under `elementary_on_failure` degrade for any failure, the store's reach included,
+    having dropped the kept tables and written a receipt saying nothing was restored."""
+    if elementary_on_failure not in ELEMENTARY_ON_FAILURE:
+        raise ValueError(f"elementary_on_failure is one of {ELEMENTARY_ON_FAILURE}, not {elementary_on_failure!r}")
+    with duckdb.connect(str(warehouse)) as con:
+        # No receipt until this restore has finished, so a restore that fails half-way cannot be saved.
+        _drop_elementary_receipts(con)
+        try:
+            store = Store(url)
+            store.check_reachable()
+            return _restore_elementary(store, url, con, cold_start)
+        except Exception as error:  # noqa: BLE001 - every failure here is answered by the policy
+            _drop_elementary_receipts(con)
+            _drop_kept(con)
+            if elementary_on_failure != "degrade":
+                raise
+            _write_elementary_receipt(con, url, None, NOT_RESTORED, {})
+            raise ElementaryDegraded(
+                "",
+                f"{_failure(error)}. Elementary's history was not restored, so the checks see no earlier build in this "
+                "run, none of it is saved, and the store keeps its last good save. Fix the store before the next run.",
+            ) from error
+
+
 @dataclass(frozen=True)
 class _RowsSave:
     tables: list[str]
@@ -870,6 +924,56 @@ def save(
     return "\n".join(lines)
 
 
+def save_elementary(
+    url: str,
+    warehouse: Path,
+    keep_days: int = ELEMENTARY_KEEP_DAYS,
+    elementary_on_failure: str = "fail",
+    now: datetime | None = None,
+) -> str:
+    """Write the warehouse's Elementary kept tables to the store as a save of Elementary's history alone, then point
+    elementary.json at it, and leave history.json and every snapshot save as they are (the module docstring,
+    "ELEMENTARY'S HISTORY ALONE"). save()'s guards on Elementary's part all hold: a receipt from this URL, every
+    restored row's key still in the warehouse, and elementary.json still naming the save the warehouse restored.
+    Returns what it did, for the log; raises ElementaryDegraded under `elementary_on_failure` degrade."""
+    if elementary_on_failure not in ELEMENTARY_ON_FAILURE:
+        raise ValueError(f"elementary_on_failure is one of {ELEMENTARY_ON_FAILURE}, not {elementary_on_failure!r}")
+    if keep_days < 1:
+        raise Refused(f"--keep-days {keep_days}: a save keeps at least one day of Elementary's history")
+    now = now or datetime.now(UTC)
+    if now.tzinfo is not None:
+        now = now.astimezone(UTC).replace(tzinfo=None)
+    cutoff = now - timedelta(days=keep_days)
+    try:
+        store = Store(url)
+        store.check_reachable()
+        with duckdb.connect(str(warehouse)) as con:
+            plan = _check_elementary_save(store, url, con, warehouse)
+            if plan is None:
+                return (
+                    "Elementary's history: not restored in this run, so none of it is saved, and "
+                    f"{ELEMENTARY_POINTER} keeps naming the last good save"
+                )
+            save_id = _new_save_id()
+            line = _write_elementary(store, url, con, plan, save_id, cutoff, keep_days)
+    except Exception as error:  # noqa: BLE001 - every failure here is answered by the policy
+        if elementary_on_failure != "degrade":
+            raise
+        raise ElementaryDegraded(
+            "",
+            f"{_failure(error)}. Elementary's history was not saved, and {ELEMENTARY_POINTER} keeps naming its last good save.",
+        ) from error
+    try:
+        _prune(store, ELEMENTARY_SAVES, save_id, plan.restored_save)
+    except Exception as error:  # noqa: BLE001 - as above
+        if elementary_on_failure != "degrade":
+            raise
+        raise ElementaryDegraded(
+            line, f"{_failure(error)}: Elementary's history was saved, and its oldest saves are not all removed."
+        ) from error
+    return line
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -882,6 +986,11 @@ def main(argv: list[str] | None = None) -> int:
             choices=ELEMENTARY_ON_FAILURE,
             default="fail",
             help="degrade: a failure of Elementary's history alone still restores or saves the row history, exit 3",
+        )
+        command.add_argument(
+            "--elementary-only",
+            action="store_true",
+            help="Elementary's history alone, the snapshots left as they are: the checks run after an hourly build",
         )
         if name == "restore":
             command.add_argument("--cold-start", action="store_true", help="allow a store with no history.json")
@@ -897,10 +1006,16 @@ def main(argv: list[str] | None = None) -> int:
             )
     args = parser.parse_args(argv)
     try:
-        if args.command == "restore":
+        if args.command == "restore" and args.elementary_only:
+            message = restore_elementary(
+                args.url, args.warehouse, args.cold_start or args.elementary_cold_start, args.elementary_on_failure
+            )
+        elif args.command == "restore":
             message = restore(
                 args.url, args.warehouse, args.cold_start, args.elementary_cold_start or None, args.elementary_on_failure
             )
+        elif args.elementary_only:
+            message = save_elementary(args.url, args.warehouse, args.keep_days, args.elementary_on_failure)
         else:
             message = save(args.url, args.warehouse, args.keep_days, args.elementary_on_failure)
         for line in message.splitlines():

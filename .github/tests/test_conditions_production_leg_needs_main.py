@@ -347,11 +347,19 @@ def test_a_dispatch_can_choose_the_ua_leg_alone_even_from_main():
     assert choice["type"] == "choice" and "ua" in choice["options"]
 
 
+#: What a step that asks to run regardless must also ask for, so that a refused leg still skips it: the build to have
+#: succeeded. A refused first step skips the build, whose outcome is then `skipped`, never `success`.
+AFTER_A_BUILD = "steps.build.outcome == 'success'"
+
+
 def test_the_refusal_is_the_first_step_and_nothing_after_it_runs_regardless():
     """A failed first step skips every later step unless that step asks to run
     anyway. Nothing that reads a conditions database or writes the bucket may
     ask: its `if:` names none of always(), failure() or cancelled(), so a
-    refused production leg reads nothing and publishes nothing."""
+    refused production leg reads nothing and publishes nothing. The one shape
+    that may is a step that also asks for a build that succeeded (the hand-off
+    of the build's warehouse to its checks, decision 110), which a refused leg
+    never has."""
     steps = _workflow()["jobs"][JOB]["steps"]
     assert steps[0].get("name") == GUARD_STEP
     assert "if" not in steps[0], "the refusal must run on every leg, not only when a condition holds"
@@ -364,6 +372,10 @@ def test_the_refusal_is_the_first_step_and_nothing_after_it_runs_regardless():
     ]
     assert sensitive, "no step reads a conditions database or writes the bucket, so this test checks nothing"
     runs_regardless = [
-        step.get("name") for step in sensitive if re.search(r"\b(always|failure|cancelled)\(", str(step.get("if", "")))
+        step.get("name")
+        for step in sensitive
+        if re.search(r"\b(always|failure|cancelled)\(", str(step.get("if", ""))) and AFTER_A_BUILD not in str(step.get("if"))
     ]
     assert runs_regardless == [], f"these would run after a refused first step: {runs_regardless}"
+    (build,) = [index for index, step in enumerate(steps) if step.get("id") == "build"]
+    assert "always(" not in str(steps[build].get("if", "")) and "cancelled(" not in str(steps[build].get("if", ""))

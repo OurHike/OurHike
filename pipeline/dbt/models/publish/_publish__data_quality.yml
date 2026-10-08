@@ -1,0 +1,175 @@
+version: 2
+
+# The data-quality page's two files (decision 102; pipeline/ELT.md, "Data
+# quality (decision 102)"): one per lane, each every check that lane's build
+# ran, as counts and names, published sources only. macros/data_quality.sql
+# holds the SQL of both and says what each field holds and why.
+#
+# ON ONLY WITH ELEMENTARY. Both writers read Elementary's own tables, which
+# dbt_project.yml turns off unless OURHIKE_ELEMENTARY is `true`, so both
+# writers and both exposures carry the same switch. Off, a writer that refs a
+# disabled model parses, and an exposure on a disabled writer warns
+# (NodeNotFoundOrDisabled, dbt1087) unless it is disabled too; with both
+# switched, `dbt parse` with Elementary off finished with no warning and put
+# all four in the manifest's `disabled` (measured 2026-10-08 on dbt 2.0.6,
+# this project). So the docs site, the evaluator and the pytest suites' builds
+# carry neither.
+#
+# NO DATA TESTS ON EITHER WRITER: dbt 2.0.6 keeps a disabled model's tests
+# enabled (the same parse listed six tests on the two writers among its
+# nodes while the writers were disabled), so a test here would run against
+# a relation no Elementary-off build makes. phone_file holds each to one row
+# and its contract to these columns.
+#
+# BUILT IN A PASS OF THEIR OWN. build_marts.py leaves both out of the writers'
+# pass and builds the lane's one after Elementary's checks
+# (DATA_QUALITY_WRITERS there).
+#
+# BUILD METADATA, NOT A PHONE FILE (`meta.sidecar`): publish.py uploads each
+# beside a new version and never lets it cause one, as it does build_state.json
+# (publish.SIDECARS). Every build stamps a new `built_at`, so as a phone file the
+# monthly one would stage a release folder on every publish whatever else
+# changed, and its size moves with what needs a look, which
+# verify_release.py's check 17 fails past a 10% drop. As build metadata it is
+# in no manifest's `artifacts`, so check_deployment.py, smoke_published.py,
+# verify_release.py and the phone, which walk those, never read it.
+
+models:
+  - name: pub_data_quality
+    description: >
+      Writes data_quality.json, the monthly lane's file for
+      ourhike.org/data/quality/: one row, format, lane, built_at, totals,
+      kinds, learning, needs_a_look, series and by_mart, which phone_file
+      copies to processed_dir/data_quality.json as one JSON document.
+      macros/data_quality.sql says what each holds.
+    config:
+      enabled: "{{ env_var('OURHIKE_ELEMENTARY', 'false') == 'true' }}"
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: format
+        description: "`ourhike-data-quality/1`, the shape the page reads."
+        data_type: varchar
+      - name: lane
+        description: "`monthly`."
+        data_type: varchar
+      - name: built_at
+        description: When this build's data-quality pass started, its last dbt command, UTC to the second.
+        data_type: varchar
+      - name: totals
+        description: The counted checks of this build, as checks, passed, warned, failed and errored.
+        data_type: json
+      - name: kinds
+        description: The same per kind, all five in the page's order.
+        data_type: json
+      - name: learning
+        description: How many builds the lane's history holds anomaly results from, and how many an anomaly check waits for.
+        data_type: json
+      - name: needs_a_look
+        description: Every counted check that did not pass, worst first, as names and numbers.
+        data_type: json
+      - name: series
+        description: >
+          What the page's chart draws: every mart's row-count history this build measured, and the history
+          behind each needs_a_look entry whose metric is a count, a rate or an age, each naming its table,
+          column and mart and flagged in_needs_a_look, the newest 168 points of each (macros/data_quality.sql).
+        data_type: json
+      - name: by_mart
+        description: The counted checks on each mart's own models, intermediates, snapshot and singular tests.
+        data_type: json
+
+  - name: pub_conditions_data_quality
+    description: >
+      Writes conditions/data_quality.json, the hourly lane's file for
+      ourhike.org/data/quality/, in pub_data_quality's shape with `lane`
+      `hourly`, which phone_file copies to
+      processed_dir/conditions_data_quality.json.
+    config:
+      enabled: "{{ env_var('OURHIKE_ELEMENTARY', 'false') == 'true' }}"
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: format
+        description: "`ourhike-data-quality/1`, the shape the page reads."
+        data_type: varchar
+      - name: lane
+        description: "`hourly`."
+        data_type: varchar
+      - name: built_at
+        description: When this build's data-quality pass started, its last dbt command, UTC to the second.
+        data_type: varchar
+      - name: totals
+        description: The counted checks of this build, as checks, passed, warned, failed and errored.
+        data_type: json
+      - name: kinds
+        description: The same per kind, all five in the page's order.
+        data_type: json
+      - name: learning
+        description: How many builds the lane's history holds anomaly results from, and how many an anomaly check waits for.
+        data_type: json
+      - name: needs_a_look
+        description: Every counted check that did not pass, worst first, as names and numbers.
+        data_type: json
+      - name: series
+        description: >
+          What the page's chart draws: every mart's row-count history this build measured, and the history
+          behind each needs_a_look entry whose metric is a count, a rate or an age, each naming its table,
+          column and mart and flagged in_needs_a_look, the newest 168 points of each (macros/data_quality.sql).
+        data_type: json
+      - name: by_mart
+        description: The counted checks on each mart's own models, intermediates, snapshot and singular tests.
+        data_type: json
+
+exposures:
+  - name: data_quality_json
+    label: data_quality.json
+    type: dashboard
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      The monthly lane's checks, read by the page at
+      ourhike.org/data/quality/ (site/src/pages/data/quality/index.astro)
+      from the release folder its build's DATA_RELEASE names,
+      releases/<id>/data_quality.json. Uploaded flat as data_quality.json
+      beside each new version and copied into the release folder that version
+      stages, as build metadata (meta.sidecar), never in a manifest's
+      artifacts.
+    depends_on:
+      - ref('pub_data_quality')
+    config:
+      enabled: "{{ env_var('OURHIKE_ELEMENTARY', 'false') == 'true' }}"
+      meta:
+        r2_keys: [data_quality.json]
+        format: json
+        # The lane that builds it, refresh-reference.yml's.
+        cadence: monthly
+        sidecar: true
+
+  - name: conditions_data_quality_json
+    label: conditions/data_quality.json
+    type: dashboard
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      The hourly lane's checks, read by the page at
+      ourhike.org/data/quality/ (site/src/pages/data/quality/index.astro) at
+      conditions/data_quality.json. Rewritten in place beside each new
+      version, outside every release folder, as build metadata
+      (meta.sidecar), never in a manifest's artifacts.
+    depends_on:
+      - ref('pub_conditions_data_quality')
+    config:
+      enabled: "{{ env_var('OURHIKE_ELEMENTARY', 'false') == 'true' }}"
+      meta:
+        r2_keys: [conditions/data_quality.json]
+        format: json
+        # publish-conditions.yml's cron, "40 * * * *", which fires about
+        # five times a day (#1346 — Every cron in this repository fires about
+        # five times a day, whatever it declares — including the conditions
+        # bake).
+        cadence: hourly
+        sidecar: true

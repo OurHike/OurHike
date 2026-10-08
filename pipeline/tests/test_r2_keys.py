@@ -13,11 +13,14 @@ names are asserted against the real rules, and a future artifact that cannot
 pass fails here rather than in a bucket nobody can undo.
 """
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 import cut_trail_graph
 import publish
-from lib import data_env, r2_keys
+from lib import data_env, r2_keys, releases
 
 
 def test_every_artifact_name_publish_can_produce_is_a_legal_key():
@@ -86,6 +89,25 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         ],
     ]
 
+    r2_keys.assert_valid_keys(names)
+
+
+def test_every_key_a_dbt_writers_exposure_names_is_a_legal_key():
+    """publish.collect_dbt_phone_files() publishes each writer's file under the key its exposure names, the
+    data-quality page's two (decision 102) among them, so each is held to the layout here rather than at the first
+    upload that tries it. A release-only key is checked where it lands, inside a release folder, and the hike
+    details' family key as one object of it, as publish.cut_suggested_hike_details() names them. An exposure with no
+    pub_ writer documents a file Python writes, such as the cells' `<cell>` families, and is that file's to check."""
+    keys = set()
+    for path in sorted((Path(publish.__file__).parent / "dbt" / "models" / "publish").glob("*.yml")):
+        for exposure in yaml.safe_load(path.read_text(encoding="utf-8")).get("exposures") or []:
+            if any(node.startswith("ref('pub_") for node in exposure.get("depends_on") or []):
+                keys.update(((exposure.get("config") or {}).get("meta") or {}).get("r2_keys") or [])
+    assert {"data_quality.json", "conditions/data_quality.json"} <= keys
+
+    names = [
+        releases.release_key("2026-10-08", key) if publish.release_only(key) else key.replace("{number}", "1") for key in keys
+    ]
     r2_keys.assert_valid_keys(names)
 
 

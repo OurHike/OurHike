@@ -338,6 +338,25 @@ of the lane with its checks settles it). Without them the lane still parses
 them, disabled, in each of its five dbt commands. CI's fixture build, which
 has no lane, runs every check of both lanes meanwhile, so one that errors is
 annotated on every pull request rather than found first in the lane.
+
+THE DATA-QUALITY FILE IS WRITTEN LAST (decision 102, step 4): the lane's
+DATA_QUALITY_WRITERS entry, pub_data_quality or pub_conditions_data_quality,
+in a pass of its own after the writers and Elementary's checks, before the
+row history is saved, because it reads what those checks recorded. The
+writers' pass leaves both out. Every dbt command gets OURHIKE_BUILD_STARTED_AT
+(UTC, to the second), which tells the file this build's results from the
+history in Elementary's tables (macros/data_quality.sql). Two rules keep the
+pass from touching what hikers get:
+- publish.py reads the run results of the writers' run as the proof that a
+  phone file was written (publish.collect_dbt_phone_files), and every later
+  dbt command writes its own over them, so the writers' are kept aside as
+  writers_run_results.json, beside run_results.json, and written back after
+  this pass with its own results added. With them lost, publish.py would read
+  every phone file but this one as kept, and publish nothing else, quietly.
+- a failed pass never stops the build or changes its exit: the file is page
+  data, not a phone file (decision 102: the checks "never block a publish").
+  Its file is removed, the writers' run results are written back without it,
+  so publish.py keeps the bucket's last copy, and an ::error says so.
 """
 
 from __future__ import annotations
@@ -346,11 +365,13 @@ import argparse
 import csv
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 import tomllib
@@ -389,6 +410,12 @@ RUN_RESULTS_PATH = DBT_DIR / "target" / "run_results.json"
 #: The scheduled lanes (the module docstring, "A LANE BUILDS ONLY ITS OWN NODES").
 MONTHLY, HOURLY = "monthly", "hourly"
 LANES = (MONTHLY, HOURLY)
+#: Each lane's data-quality writer (the module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST"); a build with no lane
+#: writes both.
+DATA_QUALITY_WRITERS = {MONTHLY: "pub_data_quality", HOURLY: "pub_conditions_data_quality"}
+DATA_QUALITY_LABEL = "the data-quality file"
+#: Where the writers' run results wait while later dbt commands run, beside run_results.json.
+WRITERS_RESULTS_NAME = "writers_run_results.json"
 #: The cadences faster than monthly. Daily rides the hourly lane when due
 #: (extract/_run.py's DUE_AFTER), so its nodes are the hourly lane's too.
 FASTER_THAN_MONTHLY = ("hourly", "daily")
@@ -712,8 +739,8 @@ def started_elementary_stores(path: Path = HISTORY_STORES) -> dict[str, str]:
 class Run:
     """One command of the build: what the log calls it, its argv, the directory it runs in, which of the dbt runs
     main() answers differently it is (STAGE_A or WRITERS, the module docstring, "ONE SOURCE OR ONE WRITER NEVER STOPS
-    THE REST"; CHECKS, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"), and what it adds to the build's environment
-    (CHECKS_SWITCH)."""
+    THE REST"; CHECKS, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"; DATA_QUALITY, "THE DATA-QUALITY FILE IS WRITTEN
+    LAST"), and what it adds to the build's environment (CHECKS_SWITCH)."""
 
     label: str
     argv: tuple[str, ...]
@@ -722,8 +749,8 @@ class Run:
     env: tuple[tuple[str, str], ...] = ()
 
 
-#: Run.stage of stage A, of the pub_ writers' dbt run, and of Elementary's checks.
-STAGE_A, WRITERS, CHECKS = "stage_a", "writers", "checks"
+#: Run.stage of stage A, of the pub_ writers' dbt run, of Elementary's checks, and of the data-quality file's.
+STAGE_A, WRITERS, CHECKS, DATA_QUALITY = "stage_a", "writers", "checks", "data_quality"
 
 
 def _builds(
@@ -794,12 +821,14 @@ def plan(
     between the row history's restore and its save when `history` names a store (the save left out when
     `save_history` is false: --no-history-save), and with no snapshot built when `snapshots` is false (the module
     docstring, "--history-on-failure degrade"). Every dbt build but the writers' and the hourly lane's is split around
-    the builds_alone models, the writers' runs at one thread but in the hourly lane, and given `manifest` (main() plans again once `dbt seed` has written it), the passes it
-    shows select nothing are left out (the module docstring, "A MODEL TAGGED `builds_alone`"). Each `withdrawn` raw
-    table (withdrawn_tables()) is left out of every dbt build with everything below its source. Every dbt build leaves
-    Elementary's checks out, and with `checks` (None: the lane's own answer, runs_checks()) they run after the writers,
-    less the checks on each `absent` source (absent_sources()), in their own pass (the module docstring, "ELEMENTARY'S
-    CHECKS RUN AFTER THE WRITERS")."""
+    the builds_alone models, the writers' runs at one thread but in the hourly lane, and given `manifest` (main()
+    plans again once `dbt seed` has written it), the passes it shows select nothing are left out (the module
+    docstring, "A MODEL TAGGED `builds_alone`"). Each `withdrawn` raw table (withdrawn_tables()) is left out of every
+    dbt build with everything below its source. Every dbt build leaves Elementary's checks out, and with `checks`
+    (None: the lane's own answer, runs_checks()) they run after the writers, less the checks on each `absent` source
+    (absent_sources()), in their own pass (the module docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"). The
+    lane's data-quality writer builds after them, whether or not they ran (the module docstring, "THE DATA-QUALITY
+    FILE IS WRITTEN LAST")."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
     if state is not None and lane != HOURLY:
@@ -861,10 +890,14 @@ def plan(
     if lane == HOURLY:
         writers = ("-s", *(f"path:models/publish,{selector}" for selector in LANE_EXCLUDES))
         label = "the hourly lane's pub_ writers"
+        leave_out = (no_checks, *lane_exclude, *held)
     else:
         writers = ("-s", "path:models/publish")
         label = "the pub_ writers"
-    writers += ("--exclude", no_checks, *lane_exclude, *held)
+        # The data-quality writers wait for Elementary's checks; no hourly or daily source reaches either, so the
+        # hourly lane's selection takes neither.
+        leave_out = (no_checks, *DATA_QUALITY_WRITERS.values(), *lane_exclude, *held)
+    writers += ("--exclude", *leave_out)
     # One writer at a time but in the hourly lane (the module docstring, "THE PUB_ WRITERS BUILD ONE AT A TIME").
     options = common if lane == HOURLY else alone
     runs.append(Run(label, (dbt, "build", *options, *writers, *after), DBT_DIR, WRITERS))
@@ -880,6 +913,12 @@ def plan(
         if lane == MONTHLY:
             argv += ("--vars", json.dumps({"days_back": MONTHLY_TRAINING_DAYS}))
         runs.append(Run(ELEMENTARY_CHECKS, argv, DBT_DIR, CHECKS, CHECKS_SWITCH))
+    # The module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST". It leaves out what every other build does, which
+    # neither writer reads, so that each dbt build of a lane leaves out the same nodes.
+    quality = tuple(DATA_QUALITY_WRITERS.values()) if lane is None else (DATA_QUALITY_WRITERS[lane],)
+    quality_out = (no_checks, *held, *no_snapshots, *lane_exclude)
+    quality_argv = (dbt, "build", *common, "-s", *quality, "--exclude", *quality_out, *after)
+    runs.append(Run(DATA_QUALITY_LABEL, quality_argv, DBT_DIR, DATA_QUALITY))
     if history is not None:
         store = ("--url", history.url, "--warehouse", str(paths.warehouse))
         # --cold-start lets Elementary's history start too (row_history.py's docstring, "THE COLD START").
@@ -1493,6 +1532,54 @@ def _read_manifest() -> dict:
         return {}
 
 
+def build_started_at(now: datetime | None = None) -> str:
+    """OURHIKE_BUILD_STARTED_AT: when this build started, UTC to the second, as DuckDB casts a TIMESTAMP."""
+    return (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def keep_writers_results(results_path: Path | None = None) -> None:
+    """Copy the writers' run results aside, where no later dbt command writes (the module docstring, "THE DATA-QUALITY
+    FILE IS WRITTEN LAST")."""
+    path = results_path or RUN_RESULTS_PATH
+    kept = path.with_name(WRITERS_RESULTS_NAME)
+    kept.unlink(missing_ok=True)
+    if path.exists():
+        shutil.copyfile(path, kept)
+
+
+def data_quality_written(
+    completed: subprocess.CompletedProcess, manifest: dict, processed_dir: Path, results_path: Path | None = None
+) -> None:
+    """After the data-quality pass, run_results.json as publish.py reads it: the writers' run's results, with the
+    pass's own added when it passed. A failed pass's files are removed, so publish.py keeps the bucket's last copy, and
+    an ::error says so; the build goes on (the module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST"). With no
+    writers' results kept, no run_results.json is left, so publish.py refuses rather than reads every file as kept."""
+    path = results_path or RUN_RESULTS_PATH
+    kept = _run_results_document(path.with_name(WRITERS_RESULTS_NAME))
+    own = _run_results_document(path) if completed.returncode == 0 else None
+    if completed.returncode != 0:
+        writers = [
+            uid for uid in (manifest.get("nodes") or {}) if _is_writer(uid) and _name(uid) in DATA_QUALITY_WRITERS.values()
+        ]
+        files = writer_files(manifest, writers, processed_dir)
+        for file in files.values():
+            file.unlink(missing_ok=True)
+        print(
+            f"::error title=Data-quality file not written::{DATA_QUALITY_LABEL} failed (exit {completed.returncode}), so "
+            f"{', '.join(sorted(file.name for file in files.values())) or 'its file'} is not published and the bucket's "
+            "last copy stands. Every phone file still publishes, and the build's exit is unchanged.",
+            flush=True,
+        )
+    if kept is None:
+        path.unlink(missing_ok=True)
+        return
+    if own is not None:
+        latest = {result.get("unique_id"): result for result in kept["results"]}
+        latest.update({result.get("unique_id"): result for result in own["results"]})
+        kept = {**kept, "results": list(latest.values())}
+    path.write_text(json.dumps(kept), encoding="utf-8")
+
+
 def _report_writers(results: list[dict], manifest: dict, failed: dict[str, str], processed_dir: Path, since: float) -> str:
     """Remove each failed writer's file and say which files the others wrote: the lines publish-conditions.yml's log
     keeps, and the summary for the build's last line.
@@ -1637,8 +1724,16 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as refused:
         parser.error(str(refused))
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
-    # TZ=UTC and OURHIKE_BUILT_BY: the module docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST".
-    env = {**os.environ, **files, "TZ": "UTC", "OURHIKE_BUILT_BY": built_by(os.environ), **ELEMENTARY_SWITCH}
+    # TZ=UTC and OURHIKE_BUILT_BY: the module docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST";
+    # OURHIKE_BUILD_STARTED_AT: "THE DATA-QUALITY FILE IS WRITTEN LAST".
+    env = {
+        **os.environ,
+        **files,
+        "TZ": "UTC",
+        "OURHIKE_BUILT_BY": built_by(os.environ),
+        "OURHIKE_BUILD_STARTED_AT": build_started_at(),
+        **ELEMENTARY_SWITCH,
+    }
     for name, _ in CHECKS_SWITCH:
         env.pop(name, None)  # the checks' switch is each Run's own to give (Run.env), never inherited by every command
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
@@ -1714,6 +1809,12 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if completed.returncode != 0 and run.argv[1:2] == ("build",) and run.cwd == DBT_DIR:
             completed = retry_failed_build(run, {**env, **dict(run.env)}, completed)
+        # The module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST".
+        if run.stage == WRITERS:
+            keep_writers_results()
+        if run.stage == DATA_QUALITY:
+            data_quality_written(completed, _read_manifest(), paths.processed_dir)
+            continue
         if completed.returncode != 0 and run.stage in (STAGE_A, WRITERS) and completed.returncode not in PUBLISHABLE_EXITS:
             print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
             for line in failed_test_rows(paths.warehouse, results_since):

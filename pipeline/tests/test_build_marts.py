@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
@@ -62,6 +63,26 @@ ELEMENTARY = ("dbt", "run")
 #: no lane plans it (build_marts.py's docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS").
 NO_CHECKS = "tag:elementary_check"
 CHECKS_RUN = (("dbt", "test", "--profiles-dir", ".", "--threads", "1", "-s", NO_CHECKS), DBT_DIR)
+#: The writers' pass outside the hourly lane leaves the data-quality writers for a pass of their own (build_marts.py's
+#: docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST"), and that pass, in a build with no lane.
+QUALITY_WRITERS = ("pub_data_quality", "pub_conditions_data_quality")
+WRITERS_RUN = (
+    (
+        "dbt",
+        "build",
+        "--profiles-dir",
+        ".",
+        "--threads",
+        "1",
+        "-s",
+        "path:models/publish",
+        "--exclude",
+        NO_CHECKS,
+        *QUALITY_WRITERS,
+    ),
+    DBT_DIR,
+)
+QUALITY_RUN = (("dbt", "build", "--profiles-dir", ".", "-s", *QUALITY_WRITERS, "--exclude", NO_CHECKS), DBT_DIR)
 
 
 def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers_then_elementarys_checks():
@@ -84,11 +105,9 @@ def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers_th
             ),
             DBT_DIR,
         ),
-        (
-            ("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish", "--exclude", NO_CHECKS),
-            DBT_DIR,
-        ),
+        WRITERS_RUN,
         CHECKS_RUN,
+        QUALITY_RUN,
     ]
 
 
@@ -138,11 +157,9 @@ def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks(
             ),
             DBT_DIR,
         ),
-        (
-            ("dbt", "build", "--profiles-dir", ".", "--threads", "1", "-s", "path:models/publish", "--exclude", NO_CHECKS),
-            DBT_DIR,
-        ),
+        WRITERS_RUN,
         CHECKS_RUN,
+        QUALITY_RUN,
     ]
 
 
@@ -159,6 +176,7 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         ("dbt", "build"),
         ("dbt", "build"),
         ("dbt", "test"),
+        ("dbt", "build"),
     ]
     after_first, after_second = runs[4].argv, runs[6].argv
     assert after_first[after_first.index("-s") :] == (
@@ -177,19 +195,8 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         NO_CHECKS,
     )
     assert runs[5].argv == ("python", "step_second.py", "--warehouse", "/w/warehouse.duckdb")
-    assert runs[-2].argv == (
-        "dbt",
-        "build",
-        "--profiles-dir",
-        ".",
-        "--threads",
-        "1",
-        "-s",
-        "path:models/publish",
-        "--exclude",
-        NO_CHECKS,
-    )
-    assert (runs[-1].argv, runs[-1].cwd) == CHECKS_RUN
+    assert (runs[-3].argv, runs[-3].cwd) == WRITERS_RUN
+    assert (runs[-2].argv, runs[-2].cwd) == CHECKS_RUN and (runs[-1].argv, runs[-1].cwd) == QUALITY_RUN
 
 
 def test_elementary_s_own_tables_build_before_the_seeds_and_stage_a_leaves_the_package_out():
@@ -665,6 +672,19 @@ def test_the_monthly_lane_is_the_whole_plan_with_every_hourly_or_daily_node_excl
                 "--vars",
                 json.dumps({"days_back": build_marts.MONTHLY_TRAINING_DAYS}),
             )
+        elif full_run.stage == build_marts.DATA_QUALITY:
+            expected = (
+                "dbt",
+                "build",
+                "--profiles-dir",
+                ".",
+                "-s",
+                "pub_data_quality",
+                "--exclude",
+                NO_CHECKS,
+                *build_marts.LANE_EXCLUDES,
+            )
+            assert lane_run.argv == expected, "its lane's writer alone"
         elif full_run.argv[:2] != ("dbt", "build"):
             assert lane_run.argv == full_run.argv, "the seeds and the Python steps are the same in every lane"
         else:
@@ -686,6 +706,7 @@ def test_the_monthly_lanes_writers_leave_the_hourly_writers_unrun():
         "path:models/publish",
         "--exclude",
         NO_CHECKS,
+        *QUALITY_WRITERS,
         "config.meta.cadence:hourly+",
         "config.meta.cadence:daily+",
     )
@@ -749,6 +770,23 @@ def test_the_hourly_lane_with_nothing_to_defer_to_builds_its_nodes_and_their_par
             DBT_DIR,
         ),
         # No checks pass: build_marts.py's docstring, "THE HOURLY LANE RUNS NO CHECKS YET".
+        (
+            (
+                "dbt",
+                "build",
+                "--profiles-dir",
+                ".",
+                "-s",
+                "pub_conditions_data_quality",
+                "--exclude",
+                NO_CHECKS,
+                "source:derived.dem_samples+",
+                "source:derived.formed_routes+",
+                "--indirect-selection",
+                "cautious",
+            ),
+            DBT_DIR,
+        ),
     ]
 
 
@@ -1089,7 +1127,7 @@ def test_the_hourly_lane_splits_no_build_because_its_six_minute_step_has_no_room
         ("dbt", "seed"),
         ("dbt", "build"),
         ("python", "step_weather_squares.py"),
-    ] + [("dbt", "build")] * 2
+    ] + [("dbt", "build")] * 3
 
 
 @pytest.mark.parametrize("lane", [None, "monthly", "hourly"])
@@ -1099,6 +1137,7 @@ def test_the_writers_build_is_never_split_and_never_names_the_tag(lane):
 
     writers = [run for run in split if "writers" in run.label]
     assert [run.argv for run in writers] == [_writers(whole).argv] and _writers(split) == _writers(whole)
+    assert split[-1] == whole[-1], "and so is the data-quality pass after them"
     assert not any(build_marts.BUILDS_ALONE in argument for argument in _writers(whole).argv)
 
 
@@ -1157,6 +1196,7 @@ def test_given_the_manifest_a_build_with_no_tagged_model_in_its_selection_is_not
         "what derived.dem_samples unblocks: what the models that build alone feed",
         "the pub_ writers",
         build_marts.ELEMENTARY_CHECKS,
+        build_marts.DATA_QUALITY_LABEL,
     ]
     assert runs[2] == whole[2]
 
@@ -1305,8 +1345,8 @@ def test_plan_with_a_history_store_restores_before_the_seeds_and_saves_after_the
     assert runs[0].argv == ("/venv/extract/bin/python", "row_history.py", "restore", *store)
     assert (runs[1].argv, runs[1].cwd) == ELEMENTARY_RUN and runs[2].argv[:2] == ("dbt", "seed")
     assert runs[-1].argv == ("/venv/extract/bin/python", "row_history.py", "save", *store, "--keep-days", "430")
-    assert runs[-2].stage == build_marts.CHECKS, "the save comes after Elementary's checks"
-    assert runs[-3].stage == build_marts.WRITERS, "and the checks after the writers"
+    stages = [run.stage for run in runs[-4:-1]]
+    assert stages == [build_marts.WRITERS, build_marts.CHECKS, build_marts.DATA_QUALITY], "the save waits for all three"
 
 
 def test_no_history_save_restores_and_builds_with_the_history_and_saves_nothing(monkeypatch, tmp_path, capsys):
@@ -1483,8 +1523,8 @@ def test_without_snapshots_every_build_but_the_writers_excludes_them():
     runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=True, snapshots=False)
 
     builds = [run.argv for run in runs if run.argv[:2] == ("dbt", "build")]
-    assert len(builds) == 7, "stage A and the step's build, each split in three, and the writers"
-    assert [build_marts.SNAPSHOTS in argv for argv in builds] == [True] * 6 + [False]
+    assert len(builds) == 8, "stage A and the step's build, each split in three, the writers, and the data-quality file"
+    assert [build_marts.SNAPSHOTS in argv for argv in builds] == [True] * 6 + [False, True]
 
 
 def test_built_by_names_the_commit_and_the_workflow_run_in_characters_a_sql_literal_takes():
@@ -2069,7 +2109,8 @@ def test_the_checks_run_after_the_writers_and_before_the_save_at_one_thread_what
     stages = [run.stage for run in runs]
     at = stages.index(build_marts.CHECKS)
     assert stages.count(build_marts.CHECKS) == 1
-    assert runs[at - 1].stage == build_marts.WRITERS and runs[at + 1].label == build_marts.SAVE_LABEL
+    assert runs[at - 1].stage == build_marts.WRITERS and runs[at + 2].label == build_marts.SAVE_LABEL
+    assert runs[at + 1].stage == build_marts.DATA_QUALITY, "the data-quality file reads what the checks recorded"
     assert (runs[at].label, runs[at].argv, runs[at].cwd) == (build_marts.ELEMENTARY_CHECKS, *CHECKS_RUN)
 
 
@@ -2237,7 +2278,8 @@ def test_a_check_that_errors_is_annotated_and_changes_neither_the_builds_exit_no
     out = capsys.readouterr().out
     assert code == 0
     commands = [argv for argv, _, _ in recorder.calls]
-    assert commands[-2][:2] == ("dbt", "test") and commands[-1][:3] == (*RESTORE, "save")
+    assert commands[-3][:2] == ("dbt", "test") and commands[-1][:3] == (*RESTORE, "save")
+    assert _is_quality_run(commands[-2]), "and the data-quality file is written from what they recorded"
     assert recorder.retries == [], "a `dbt test` is never retried"
     assert "-- build_marts: Elementary's checks: 3 check(s), 1 error, 1 pass, 1 warn; exit 1" in out
     assert (
@@ -2316,3 +2358,119 @@ def test_the_checks_report_names_ten_errors_and_counts_the_rest():
     assert all(len(line.rsplit(": ", 1)[-1]) == build_marts.FAILED_VALUE_WIDTH for line in lines[1:13])
     assert lines[-1].startswith("::warning title=Elementary's checks errored::12 check(s) errored (exit 1): ourhike.check_00")
     assert "ourhike.check_09 and 2 more." in lines[-1] and "check_10" not in lines[-1]
+
+
+# --- The data-quality file (build_marts.py's docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST") ---
+
+
+def _is_quality_run(argv: tuple[str, ...]) -> bool:
+    return "-s" in argv and argv[argv.index("-s") + 1] in QUALITY_WRITERS
+
+
+@pytest.mark.parametrize(
+    "lane, writers",
+    [(None, QUALITY_WRITERS), ("monthly", ("pub_data_quality",)), ("hourly", ("pub_conditions_data_quality",))],
+)
+def test_the_lanes_data_quality_writer_builds_after_the_writers_and_before_the_save_and_the_writers_leave_it(lane, writers):
+    """Decision 102's run order: the writers, Elementary's checks, then the file that reads what the checks recorded,
+    then the save. Outside the hourly lane the writers' `-s path:models/publish` would take both data-quality writers,
+    so it leaves them out; no hourly or daily source reaches either, so the hourly lane's never takes them."""
+    history = History("s3://bucket/history/x", False, "python")
+    runs = plan([], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, history=history)
+
+    quality = runs[-2]
+    assert (quality.stage, quality.label, quality.cwd) == (build_marts.DATA_QUALITY, build_marts.DATA_QUALITY_LABEL, DBT_DIR)
+    assert quality.argv[: quality.argv.index("-s")] == ("dbt", "build", "--profiles-dir", ".")
+    assert quality.argv[quality.argv.index("-s") + 1 :][: len(writers)] == writers
+    before = [build_marts.WRITERS] if lane == "hourly" else [build_marts.WRITERS, build_marts.CHECKS]
+    assert [run.stage for run in runs[-2 - len(before) : -2]] == before, "the hourly lane runs no checks yet"
+    assert runs[-1].label == build_marts.SAVE_LABEL
+    writers_run = _writers(runs).argv
+    left_out = writers_run[writers_run.index("--exclude") + 1 :] if "--exclude" in writers_run else ()
+    assert set(QUALITY_WRITERS) <= set(left_out) or lane == "hourly"
+
+
+def test_every_command_gets_one_build_start_in_utc_to_the_second(monkeypatch, tmp_path):
+    """macros/data_quality.sql tells this build's results from the lane's history by it."""
+    _, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES))
+
+    (start,) = {env.get("OURHIKE_BUILD_STARTED_AT") for _, _, env in recorder.calls}
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", start)
+    moment = datetime(2026, 10, 8, 7, 5, 0, 700000, tzinfo=timezone.utc)
+    assert build_marts.build_started_at(moment) == "2026-10-08 07:05:00"
+
+
+def _quality_manifest(tmp_path: Path) -> dict:
+    """The conditions writers' manifest, with the two data-quality writers and where each writes."""
+    manifest = _conditions_writers_manifest(tmp_path)
+    manifest["nodes"]["model.ourhike.pub_data_quality"] = {"config": {"location": "data_quality.json"}}
+    manifest["nodes"]["model.ourhike.pub_conditions_data_quality"] = {"config": {"location": "conditions_data_quality.json"}}
+    return manifest
+
+
+WRITERS_RESULTS = [{"unique_id": "model.ourhike.pub_conditions_closures", "status": "success"}]
+QUALITY_RESULTS = [
+    {"unique_id": "model.ourhike.pub_data_quality", "status": "success"},
+    {"unique_id": "model.ourhike.pub_conditions_data_quality", "status": "success"},
+]
+
+
+def test_after_the_data_quality_pass_run_results_hold_the_writers_results_and_its_own(monkeypatch, tmp_path):
+    """publish.py proves each phone file written by the run results it reads, and the data-quality pass writes its own
+    over the writers': read alone, they would leave every phone file but this one kept, and nothing else published."""
+    processed = tmp_path / "processed"
+    recorder = _DbtRuns(
+        tmp_path / "run_results.json",
+        [
+            (_is_writers_run, 0, WRITERS_RESULTS, {processed / "conditions_closures.json": "{}"}),
+            (_is_quality_run, 0, QUALITY_RESULTS, {processed / "data_quality.json": "{}"}),
+        ],
+    )
+
+    code, _ = _main(monkeypatch, tmp_path, _quality_manifest(tmp_path), recorder=recorder)
+
+    assert code == 0
+    results = json.loads((tmp_path / "run_results.json").read_text())["results"]
+    assert [result["unique_id"] for result in results] == [
+        "model.ourhike.pub_conditions_closures",
+        "model.ourhike.pub_data_quality",
+        "model.ourhike.pub_conditions_data_quality",
+    ]
+    assert (tmp_path / build_marts.WRITERS_RESULTS_NAME).exists(), "kept beside run_results.json, in target/"
+
+
+def test_a_failed_data_quality_pass_removes_its_file_and_leaves_the_writers_results_and_the_exit_alone(
+    monkeypatch, tmp_path, capsys
+):
+    """Decision 102's checks never block a publish, and nor does the file that reports them: a pass that fails after
+    its retries leaves no file to publish, run results that name no data-quality writer (so publish.py keeps the
+    bucket's last copy), and the build's exit as the rest of the build made it, with the row history still saved."""
+    processed = tmp_path / "processed"
+    failed = [{"unique_id": "model.ourhike.pub_data_quality", "status": "error"}]
+    recorder = _DbtRuns(
+        tmp_path / "run_results.json",
+        [
+            (_is_writers_run, 0, WRITERS_RESULTS, {processed / "conditions_closures.json": "{}"}),
+            (_is_quality_run, 1, failed, {processed / "data_quality.json": '{"format": "ourhike-data-q'}),
+        ],
+    )
+
+    code, _ = _main(monkeypatch, tmp_path, _quality_manifest(tmp_path), recorder=recorder)
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert len(recorder.retries) == build_marts.DBT_RETRIES, "a failed build is retried, this one too"
+    assert sorted(path.name for path in processed.iterdir()) == ["conditions_closures.json"]
+    assert json.loads((tmp_path / "run_results.json").read_text())["results"] == WRITERS_RESULTS
+    assert "::error title=Data-quality file not written::" in out and "data_quality.json is not published" in out
+    assert recorder.calls[-1][0][:3] == (*RESTORE, "save")
+
+
+def test_with_no_writers_results_kept_the_data_quality_pass_leaves_no_run_results_to_misread(tmp_path):
+    """Read alone, the pass's own results would say every phone file's writer did not run; with none, publish.py
+    refuses for want of run results instead, which is the loud direction."""
+    results = _results(tmp_path / "run_results.json", *QUALITY_RESULTS)
+
+    build_marts.data_quality_written(subprocess.CompletedProcess([], 0), {}, tmp_path, results_path=results)
+
+    assert not results.exists()

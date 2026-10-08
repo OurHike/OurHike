@@ -537,8 +537,11 @@ jobs:
 
       # --lane monthly leaves out every node an hourly or daily source
       # reaches, so UA's conditions/ files stay as the conditions lane wrote
-      # them. The pub_ writers run last, so dbt's last manifest and run
-      # results, which publish.py reads, are theirs. Its steps land the pin's
+      # them. The pub_ writers' run results, which publish.py reads, are what
+      # target/run_results.json holds at the end, with the data-quality
+      # file's added, though that file's pass runs after them
+      # (build_marts.py's docstring, "THE DATA-QUALITY FILE IS WRITTEN
+      # LAST"). Its steps land the pin's
       # water scans, which the step above wrote under data/raw/derived/
       # (build_marts.py's lane_args for step_osm_water and step_site_water).
       #

@@ -718,13 +718,21 @@ function tile(kind, read, items, learning) {
   };
 }
 
-/** The series behind the worst entry that has one, else the first series a read file holds. */
+/**
+ * The series behind the worst entry that has one, else the first series a
+ * read file holds. An entry that names no metric - a dbt test, a schema
+ * change - has no history behind it and is passed over. It used to match any
+ * series of its table, so a failed dbt test on `trail_lines` drew
+ * trail_lines' row count as if that were what failed (round 2's heavy file,
+ * 2026-10-08).
+ */
 function pickSeries(read, items) {
   const all = read.flatMap((file) => file.series);
   for (const item of items) {
     const metric = item.metric ?? DEFAULT_METRIC[item.kind];
+    if (!metric) continue;
     const match = all.find(
-      (series) => series.lane === item.lane && series.table === item.table && (!metric || series.metric === metric),
+      (series) => series.lane === item.lane && series.table === item.table && series.metric === metric,
     );
     if (match) return match;
   }

@@ -653,6 +653,10 @@ jobs:
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
           DOCS_DIR: ${{ runner.temp }}/data-docs
+          # The same base again, by the name .github/scripts/configure_quality_page.py
+          # reads in pages.yml too, so /data/quality/ here reads the data this
+          # preview's app reads.
+          DATA_URL: ${{ steps.data.outputs.url }}
         run: |
           mkdir -p _site/app
           # The BUILT site, not the source tree - site/src would be shipped raw
@@ -671,13 +675,22 @@ jobs:
           # map rather than anything saying the docs are broken.
           # check_docs_site.py refuses the missing part instead, and with
           # --served a script, worker or WASM file from another origin.
+          # data/quality/ is the site's, as in pages.yml, and the same two
+          # refusals keep the site and the docs from replacing each other.
           if [ -e _site/data ]; then
-            echo "::error::site/dist already holds data/, which is the dbt docs' path. Move one of them."
-            exit 1
+            strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality -printf '%f ')
+            if [ -n "$strays" ]; then
+              echo "::error::site/dist holds data/${strays% } beside data/quality/, and data/ is the dbt docs' path. Move one of them."
+              exit 1
+            fi
           fi
           mkdir -p _site/data
           # Never empty: `cp -r "/." _site/data/` would copy the runner's root.
           : "${DOCS_DIR:?the docs step named no directory}"
+          if [ -e "$DOCS_DIR/quality" ]; then
+            echo "::error::The dbt docs hold a quality/ of their own, which is the data-quality page's path. Move one of them."
+            exit 1
+          fi
           cp -r "$DOCS_DIR"/. _site/data/
           python pipeline/check_docs_site.py _site/data --served
           # THE ONE PLACE THIS PREVIEW IS DELIBERATELY NOT PRODUCTION, and it
@@ -732,6 +745,15 @@ jobs:
           # obstacle - a `pr-<n>` origin is on the bucket's allow-list
           # (.github/expected-origins.yml), so the checks would run if this
           # ever wanted them to.
+          #
+          # /data/quality/ IS pointed at data here, the base the preview's app
+          # reads - production's by default, UA's when "Resolve the data
+          # source" chose it - because a preview is how that page gets
+          # reviewed, and what it reads is two public files. It reads its
+          # release from the client's DATA_RELEASE, as in pages.yml, so until
+          # a release in that base carries the monthly file, its card says
+          # "Not published yet".
+          python .github/scripts/configure_quality_page.py _site/data/quality/index.html
 
           # THE SECOND CLOUDFLARE-ONLY FILE, and it is here for the same
           # reason `_redirects` is: Pages reads it, GitHub Pages ignores it, so

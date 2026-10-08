@@ -15,7 +15,10 @@ What lives where:
 - `src/pages/` — one `.astro` file per page. Home, Get the app, About,
   Support the trail today; Explore (Phase 4) and For clubs / Get involved
   (Phase 6) join per WEBSITE.md §9, and the nav only ever links pages that
-  exist.
+  exist. `data/quality/` is the data-quality page (pipeline/ELT.md decision
+  102): it reads its figures in the browser, and both deploys point it at the
+  bucket with `.github/scripts/configure_quality_page.py`, as `pages.yml` does
+  the status page.
 - `src/styles/site.css` — the site's stylesheet. Design tokens are NOT copied
   here: `src/layouts/Base.astro` imports
   `client/src/design-system/tokens/colors.css`, so the client's copy stays

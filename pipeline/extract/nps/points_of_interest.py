@@ -5,8 +5,9 @@ own trail_orgs.json row, nps-poi, and is extracted once there, in nps_poi/points
 
 Decision 54, wave 3 (2026-10-04): `nps_api_campgrounds`, the NPS Data API's /campgrounds, 665
 nationally by the API's own total (one request with api.data.gov's public demo key). It needs
-NPS_API_KEY, which the monthly job does not pass yet, so until a maintainer adds it the table is
-withdrawn as unavailable, never read as empty (extract/_ogc.py's JsonFeatures). The clubs whose
+NPS_API_KEY, which refresh-reference.yml's extract job passes from the repository's secret; a run
+without the secret withdraws the table as unavailable, never reads it as empty
+(extract/_ogc.py's JsonFeatures). The clubs whose
 point cells name it (natr, semo) draw their portion by `parkCode` in dbt (decision 34). Not
 registered: /visitorcenters, which answered 429 on the demo key, so nothing was read of it.
 """

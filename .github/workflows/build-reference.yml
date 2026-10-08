@@ -366,8 +366,11 @@ jobs:
         # enough: monthly run 21 (37323395441) built each by itself and both ran
         # out again, so both queries were rewritten to hold less, and run 22
         # (37370582492) ran the first rewrite of the cuts out too (each model's
-        # header says how it holds less now). Whether each fits in the limit is
-        # @unvalidated until a monthly run passes that step.
+        # header says how it holds less now). Both now fit: monthly run 24
+        # (37459433469) built int_trail_network__cuts alone in 38.3 s and
+        # int_places__resolved in 2 m 40 s, and neither has run out of memory
+        # since (runs 26 and 27 stopped in int_places__resolved on a text error
+        # instead, which 3c5102c2 catches).
         run: >-
           python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
           --history-url "s3://$R2_RAW_BUCKET/history/monthly" --history-python "$RUNNER_TEMP/extract/bin/python"

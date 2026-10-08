@@ -342,7 +342,7 @@ async function published(
  * handed back only when it is from that release; with no `release` given, a
  * stored copy stands as its own. A fresh fetch is not held to it: the answer
  * carries its own `release`, and the caller decides whether it can take a
- * newer one, because only the caller knows what is already merged.
+ * cell of that release, because only the caller knows what is already merged.
  */
 export async function loadGraphShard(
   cell: CoverageCell,
@@ -795,9 +795,9 @@ async function batchSnapshot(signal?: AbortSignal): Promise<BatchSnapshot> {
  * can give one cell the same number of edges in a different order, and the
  * count passes them. So a half is used only when it is from the release the
  * graph was built from: a stored copy by the version stored beside it, a
- * fetched one by the manifest's. A graph built from an older release than the
- * manifest's - a session that started without signal - takes a stored half
- * of its own release or none.
+ * fetched one by the manifest's. A graph built from another release than the
+ * manifest's - a session that started without signal, on cells stored before
+ * an update - takes a stored half of its own release or none.
  */
 async function fetchCompanionCell<E>(
   cell: LoadedGraphCell,

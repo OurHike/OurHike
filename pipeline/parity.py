@@ -434,7 +434,22 @@ NETWORK_ID_REASONS = {
         "expected by TL05's ledger row until the extract lands it: the extract lands a feature's properties and "
         "geometry and not its GeoJSON id, so a layer whose only id is that one is numbered by its place in the file"
     ),
+    "staging_key_for_a_line_with_no_id": (
+        "an improvement (TL05): a line whose layer gives no GlobalID, OBJECTID or Socrata row id, and whose staging "
+        "model keeps no raw-table order, is published under its staging key, as every club line is: decision 40's "
+        "key, unique in its layer (cotrex_trails' feature_id; nc_mst_trail's TRAILNAME and geometry). Today's "
+        "exporter numbers such a line `generated-<n>` by its place in the file, an id that names another line once "
+        "the file's order moves. The SQL's fallback had been the line's rank in staging-key order, which named "
+        "another line than today's on all 97,222 of monthly run 30's such lines, though the lines were the same: "
+        "rebuilt from the live layers on 2026-10-08, today's 96,892 cotrex_trails and 328 nc_mst_trail lines pair "
+        "one for one with run 30's on every property but the id, and on geometry"
+    ),
 }
+
+#: A staging key as int_trail_lines__network_judged publishes it after the layer's key: dbt_utils'
+#: generate_surrogate_key(), an md5 in 32 lowercase hex digits. No GlobalID, OBJECTID or Socrata row id the network
+#: publishes has that form (run 30's nearby_trails.geojson: GlobalIDs carry hyphens, the rest are digits or `row-`).
+STAGING_KEY = re.compile(r"[0-9a-f]{32}")
 
 
 #: Why a line today's file publishes more than once is published once by the
@@ -455,8 +470,9 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
 
     A line is the same line in both files when its source, other properties and geometry are, and every id such a line
     carries differently is explained by the case its ids show. Two positional ids for one line are never explained:
-    both writers number a layer with no id in its file's order (int_trail_lines__network_judged), so a line they
-    number differently is a defect.
+    where the dbt writer publishes one, it numbers the layer in its raw table's order, the fetched file's
+    (int_trail_lines__network_judged's `source_row`), as today's exporter does, so a line they number differently is
+    a defect. A layer whose staging model keeps no such order is published under its staging key (STAGING_KEY).
     """
 
     def line(feature: dict) -> str:
@@ -472,6 +488,9 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     def positional(feature_id: str) -> bool:
         return ":generated-" in feature_id
 
+    def staging_key(feature_id: str) -> bool:
+        return STAGING_KEY.fullmatch(feature_id.partition(":")[2]) is not None
+
     old_ids, new_ids = ids(old), ids(new)
     reasons: dict[str, str] = {}
     for shared in old_ids.keys() & new_ids.keys():
@@ -486,7 +505,12 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
             continue
         if all(positional(feature_id) for feature_id in was + now):
             continue
-        case = "feature_id_not_landed" if all(positional(feature_id) for feature_id in now) else "globalid_in_any_case"
+        if all(positional(feature_id) for feature_id in was) and all(staging_key(feature_id) for feature_id in now):
+            case = "staging_key_for_a_line_with_no_id"
+        elif all(positional(feature_id) for feature_id in now):
+            case = "feature_id_not_landed"
+        else:
+            case = "globalid_in_any_case"
         for feature_id in set(was) | set(now):
             reasons[f"properties.id {feature_id}"] = NETWORK_ID_REASONS[case]
     return reasons

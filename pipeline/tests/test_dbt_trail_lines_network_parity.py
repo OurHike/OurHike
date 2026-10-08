@@ -12,8 +12,8 @@ by running the Python over each dbt unit test's own rows, one test per model:
   normalize_identifier() (TL01, TL08, TL09);
 - int_trail_lines__network_judged: keep_reason(), declared_name(),
   load_boundary() and lib/feature_id.py (TL04-TL07, TL10, TL11, TL13, TL05),
-  where DELIBERATE_IDS holds the two id rows that differ on purpose and
-  parity.py's NETWORK_ID_REASONS has to name the same two cases;
+  where DELIBERATE_IDS holds the three id rows that differ on purpose and
+  parity.py's NETWORK_ID_REASONS has to name the same three cases;
 - int_trail_lines__network_counts: count_problems();
 - int_trail_lines__network_deduplicated: deduplicate(), publication first;
 - int_trail_lines__network_area_closures: apply_area_closures(), NYS Parks'
@@ -310,6 +310,7 @@ JUDGED = "int_trail_lines__network_judged_answers_what_keep_reason_answers"
 DELIBERATE_IDS = {
     "sql::a_globalid_in_capitals_is_still_the_id": "globalid_in_any_case",
     "sql::a_feature_id_the_extract_does_not_land": "feature_id_not_landed",
+    "sql::a_line_with_no_id_and_no_file_order_takes_its_staging_key": "staging_key_for_a_line_with_no_id",
 }
 
 #: What the Python's feature carried that the warehouse does not: the
@@ -760,6 +761,39 @@ def test_parity_never_explains_two_positional_ids_that_name_different_lines():
     new = {"features": [_line("s:generated-0", "A", b), _line("s:generated-1", "A", a)]}
     assert parity.differences(old, new, family)
     assert family.explained(old, new) == {}
+
+
+KEY_A, KEY_B = "0742349b6d9a3d7cc353f7e8f7ee3c9b", "f746a29a5bd0688e72a3d564723a3b5e"
+
+
+def test_parity_explains_a_positional_id_the_dbt_writer_publishes_as_the_lines_staging_key():
+    """Monthly run 30's cotrex_trails and nc_mst_trail lines: today's `generated-<place in the file>` beside the dbt
+    writer's staging key, two equal lines included, is NETWORK_ID_REASONS' staging-key case for every id."""
+    family = parity.FAMILIES["nearby_trails"]
+    a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]
+    old = {"features": [_line("s:generated-0", "A", a), _line("s:generated-1", "B", b), _line("s:generated-2", "B", b)]}
+    new = {
+        "features": [
+            _line(f"s:{KEY_A}", "B", b),
+            _line(f"s:{KEY_B}", "B", b),
+            _line("s:0123456789abcdef0123456789abcdef", "A", a),
+        ]
+    }
+
+    reasons = family.explained(old, new)
+
+    assert {what for what, _, _ in parity.differences(old, new, family)} == set(reasons)
+    assert set(reasons.values()) == {parity.NETWORK_ID_REASONS["staging_key_for_a_line_with_no_id"]}
+
+
+def test_parity_does_not_call_a_staging_key_what_a_line_with_a_globalid_publishes():
+    """A positional id beside an id of any other form is TL05's GlobalID case, never the staging key's."""
+    line = [[0.0, 0.0], [1.0, 1.0]]
+    reasons = parity._network_id_reasons(
+        {"features": [_line("s:generated-0", "A", line)]},
+        {"features": [_line("s:{0742349B-6D9A-3D7C-C353-F7E8F7EE3C9B}", "A", line)]},
+    )
+    assert set(reasons.values()) == {parity.NETWORK_ID_REASONS["globalid_in_any_case"]}
 
 
 def test_parity_compares_a_sketch_features_parts_as_a_set():

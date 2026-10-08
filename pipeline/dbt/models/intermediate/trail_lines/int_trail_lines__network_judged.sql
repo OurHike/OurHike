@@ -18,12 +18,26 @@
 --
 -- `trail_line_id` is `{source_key}:{id}` (TL05, lib/feature_id.py): the
 -- first non-null of GlobalID, OBJECTID and Socrata's `_socrata_id`, else
--- `generated-<n>` (`layer_position` below). The Python reads `GlobalID` in
--- exactly that case and then the GeoJSON feature's `id`, which is not
--- landed; dlt lowercases every column, so case cannot be matched here. That
--- an ArcGIS feature's `id` always equals its OBJECTID is Reasoned from the
--- REST API's GeoJSON output and @unvalidated: one live fetch comparing the
--- two on each registered ArcGIS layer settles it.
+-- `generated-<n>` (`layer_position` below), else the row's staging key. The
+-- Python reads `GlobalID` in exactly that case and then the GeoJSON
+-- feature's `id`, which is not landed; dlt lowercases every column, so case
+-- cannot be matched here. That an ArcGIS feature's `id` always equals its
+-- OBJECTID is Reasoned from the REST API's GeoJSON output and @unvalidated:
+-- one live fetch comparing the two on each registered ArcGIS layer settles
+-- it.
+--
+-- THE STAGING KEY, WHERE THE LAYER GIVES NO ID AND ITS ROWS NO ORDER. The
+-- Python numbers such a line by its place in the fetched file, and only a
+-- stg model carrying `source_row` (the two NYNJTC layers) keeps that place.
+-- Every other such layer is published under decision 40's staging key, as
+-- every club line is (int_trail_lines__club_published): unique in its
+-- layer, and the same id for the same row in the next release, where a
+-- place names another line once anything above it moves. Its last fallback
+-- had been the row's rank in staging-key order, which matched no id
+-- today's exporter publishes: on monthly run 30 it named another line than
+-- today's on every one of cotrex_trails' 96,895 and nc_mst_trail's 327
+-- (refresh-reference.yml 37772454847; both layers' object id is `FID`,
+-- which neither writer reads, read from their metadata 2026-10-08).
 --
 -- `trail_status` (TL10) is 'open' or 'closed' from the status column, and
 -- `closure_kind` 'long_term' where the steward marked a line closed. A
@@ -136,16 +150,9 @@ read_fields as (
         -- The feature's place in its layer, for `generated-<n>`, every row
         -- counted as the Python counts them: `source_row`, the raw table's
         -- order and so the fetched file's (Reasoned, stg_nynjtc__long_path),
-        -- which only the two NYNJTC layers with no id field carry; any
-        -- other layer reaching this fallback is numbered in staging-key
-        -- order.
-        coalesce(
-            unioned.source_row,
-            row_number() over (
-                partition by unioned.source_key
-                order by unioned.trail_segment_key
-            ) - 1
-        ) as layer_position
+        -- which only the two NYNJTC layers with no id field carry. Null on
+        -- every other layer, whose row then takes its staging key (above).
+        unioned.source_row as layer_position
     from unioned
     inner join sources on unioned.source_key = sources.source_key
     left join boundaries on unioned.source_key = boundaries.source_key
@@ -369,7 +376,9 @@ select
     duplicate_of,
     dropped_because,
     source_key || ':'
-    || coalesce(upstream_id, 'generated-' || layer_position) as trail_line_id,
+    || coalesce(
+        upstream_id, 'generated-' || layer_position, trail_segment_key
+    ) as trail_line_id,
     case
         when name_constant is not null then name_constant
         when is_placeholder then null

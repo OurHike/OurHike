@@ -435,12 +435,15 @@ NETWORK_ID_REASONS = {
         "geometry and not its GeoJSON id, so a layer whose only id is that one is numbered by its place in the file"
     ),
     "staging_key_for_a_line_with_no_id": (
-        "an improvement (TL05): a line whose layer gives no GlobalID, object id (OBJECTID or FID) or Socrata row "
-        "id, and whose staging model keeps no raw-table order, is published under its staging key, as every club "
-        "line is: decision 40's key, unique in its layer and the same for the same row next release. Today's "
-        "exporter numbers such a line `generated-<n>` by its place in the file, an id that names another line once "
-        "the file's order moves. No line of monthly run 30 reaches this case: every ArcGIS network layer whose "
-        "metadata answered on 2026-10-08 names its object id OBJECTID or FID, or has a GLOBALID read first"
+        "an improvement over numbering by place (TL05): a line with none of the ids the SQL reads (a GlobalID, an "
+        "object id named OBJECTID or FID, a Socrata row id) and no raw-table order in its staging model is published "
+        "under its staging key, as every club line is: decision 40's key, unique in its layer and the same for the "
+        "same row next release. Today's exporter numbers such a line `generated-<n>` by its place in a file whose "
+        "features carry no GeoJSON id, an id that names another line once the file's order moves. On an ArcGIS "
+        "layer's own fetch it would publish the layer's object id instead, so a layer whose object id has a third "
+        "name, and no GlobalID, lands here in the SQL alone, which one read of the layer's metadata shows. No line "
+        "of monthly run 30 reaches this case: every ArcGIS network layer whose metadata answered on 2026-10-08 names "
+        "its object id OBJECTID or FID, or has a GLOBALID read first"
     ),
 }
 

@@ -44,7 +44,7 @@ class Hike(Base):
     # before the row is written.
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    user_id = Column(String, ForeignKey("profiles.id"), nullable=False)
+    user_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
 
     # Deliberate MVP minimalism (not a `Trail` table/foreign key) - see the
     # module docstring above.

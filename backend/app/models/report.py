@@ -150,7 +150,7 @@ class Report(Base):
     # profile.py for why a native enum is the harder one to change later,
     # and for what this really renders as on Postgres (a bare VARCHAR: the
     # values are enforced in Python, not by the database).
-    type = Column(Enum(ReportType, native_enum=False, length=20), nullable=False)
+    type = Column(Enum(ReportType, native_enum=False, length=20), nullable=False, index=True)
 
     # Location reference: either poi_id (a soft reference, see module
     # docstring) or a dropped/GPS pin (lat/lon) - never both required,
@@ -259,7 +259,7 @@ class Report(Base):
     # mis-prioritises it and a `bad_hikers` timeline is distorted. The client
     # supplies it via `ReportCreate.authored_at`; the server falls back to now
     # when it is absent, and refuses a future-dated claim outright.
-    timestamp = Column(DateTime, nullable=False, default=utc_now)
+    timestamp = Column(DateTime, nullable=False, default=utc_now, index=True)
 
     # When the server actually received it - always server truth, never the
     # client's claim. Keeping both is what lets a genuinely three-day-old
@@ -366,5 +366,5 @@ class Report(Base):
     # Optional attribution for a `thanks` (SAYING_THANKS.md). Both may be
     # empty: "someone cleared forty blowdowns and I have no idea who" is a
     # complete thanks, resolved by location instead of being refused.
-    maintainer_id = Column(String, ForeignKey("profiles.id"), nullable=True)
-    club_id = Column(String, ForeignKey("clubs.id"), nullable=True)
+    maintainer_id = Column(String, ForeignKey("profiles.id"), nullable=True, index=True)
+    club_id = Column(String, ForeignKey("clubs.id"), nullable=True, index=True)

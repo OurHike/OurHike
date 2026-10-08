@@ -291,6 +291,26 @@ describe("the page, state by state", () => {
     expect(items[1].sentence).toBe("The check could not run, so this went unchecked at this build.");
   });
 
+  it("charts the worst entry's own history, never another check's on the same table", () => {
+    // A failed dbt test names no metric, so nothing in the file is its
+    // history; the table's row count belongs to a different check, and the
+    // volume entry below it is the one with a history.
+    const file = examples.monthlyWithWarnings();
+    file.needs_a_look.unshift({
+      kind: "dbt_tests",
+      table: "trail_lines",
+      column: "id",
+      status: "fail",
+      value: null,
+      expected_min: null,
+      expected_max: null,
+      since: null,
+    });
+    file.series.unshift({ ...file.series[0], table: "trail_lines" });
+    const { chart } = page(read(file, "monthly"), MISSING).sections;
+    expect(chart.table).toBe("preview_fixture__trails");
+  });
+
   it("prints a value bare when the file does not say what it measures", () => {
     const file = examples.monthlyWithWarnings();
     const { metric, ...unnamed } = file.needs_a_look[1];

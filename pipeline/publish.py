@@ -1699,6 +1699,16 @@ DETAIL_FAMILY_KEY = "suggested_hikes_detail_{number}.json"
 #: The objects DETAIL_FAMILY_KEY names, so that an exporter's are dropped
 #: once dbt owns the family (with_dbt_phone_files()).
 DETAIL_FAMILY_PATTERN = re.compile(r"^suggested_hikes_detail_\d+\.json$")
+#: The exposure `meta` key that makes a dbt writer's file build metadata, a
+#: sidecar as SIDECARS' are, rather than a phone file: the data-quality page's
+#: two files (decision 102, models/publish/_publish__data_quality.yml says
+#: why). A sidecar never causes a version and is uploaded only beside one, so
+#: a file whose bytes change every build (its `built_at`) cannot stage a
+#: release folder on its own, and it is in no manifest's `artifacts`, which
+#: check_deployment.py, smoke_published.py, verify_release.py and the phone
+#: walk. publish() stages each with the release folder a version stages, a
+#: `conditions/` one excepted (lib/releases.is_release_artifact).
+DBT_SIDECAR_META = "sidecar"
 #: Where the cut writes the objects, inside the writers' processed_dir.
 DETAIL_CUT_DIRNAME = "suggested_hikes_detail"
 
@@ -1785,6 +1795,9 @@ class DbtPhoneFiles:
     `owned` is every key a dbt writer's exposure names, written or kept.
     `failed` is the kept keys whose writer failed this run, which publish
     only under BUILD_PARTIAL_ENV_VAR (collect_dbt_phone_files()).
+    `sidecars` is the files a writer wrote whose exposure says they are build
+    metadata (DBT_SIDECAR_META), in SIDECARS' entry shape: publish() uploads
+    each beside a new version and never lets one cause a version.
     """
 
     artifacts: dict[str, dict] = field(default_factory=dict)
@@ -1793,6 +1806,7 @@ class DbtPhoneFiles:
     held: dict[str, str] = field(default_factory=dict)
     owned: set[str] = field(default_factory=set)
     failed: dict[str, str] = field(default_factory=dict)
+    sidecars: dict[str, dict] = field(default_factory=dict)
 
 
 #: A run result that is a failure, as build_marts.py's FAILED_STATUSES reads one.
@@ -1935,6 +1949,8 @@ def collect_dbt_phone_files(
             paired = check_contract_versions.keys_by_writer(exposure, nodes)
         except ValueError as exc:
             raise RuntimeError(f"{exposure_id}: {exc}") from exc
+        exposure_meta = (exposure.get("config") or {}).get("meta") or exposure.get("meta") or {}
+        is_sidecar = exposure_meta.get(DBT_SIDECAR_META) is True
         for writer_id, keys in paired.items():
             config = nodes[writer_id].get("config") or {}
             when_empty = (config.get("meta") or {}).get("when_empty", "fail")
@@ -2008,6 +2024,10 @@ def collect_dbt_phone_files(
             if size == 0:
                 raise RuntimeError(f"{path} is empty; a phone file is never published empty ({writer_id}).")
             entry = {"path": to_manifest_path(path), "sha256": sha256_file(path), "size_bytes": size}
+            if is_sidecar:
+                # SIDECARS' shape: a path and a hash, never a size, which only an artifact's entry carries.
+                found.sidecars.update({key: {"path": entry["path"], "sha256": entry["sha256"]} for key in keys})
+                continue
             for key in keys:
                 if key == DETAIL_FAMILY_KEY:
                     cut = cut_suggested_hike_details(path, processed_dir)
@@ -2952,6 +2972,8 @@ def main(argv: list[str] | None = None) -> dict:
     artifacts = collect_artifacts()
     kept_everything = False
     held: dict[str, str] = {}
+    # None: publish() collects SIDECARS itself, as it always has.
+    sidecars: dict[str, dict] | None = None
     if source == PHONE_FILES_FROM_DBT:
         dbt = collect_dbt_phone_files()
         artifacts = with_dbt_phone_files(artifacts, dbt)
@@ -2962,6 +2984,10 @@ def main(argv: list[str] | None = None) -> dict:
             print(f"  KEPT: {key} carries the bucket's last good file forward - {why}.")
         if dbt.live:
             print(f"  Not published here, by design: {sorted(dbt.live)} - `publish.py --live` puts those in place.")
+        if dbt.sidecars:
+            # Build metadata (DBT_SIDECAR_META): beside a new version only, and never the cause of one.
+            sidecars = {**collect_sidecars(), **dbt.sidecars}
+            print(f"  Build metadata from the dbt writers, uploaded only beside a new version: {sorted(dbt.sidecars)}.")
         # Writers that ran and chose to write nothing are an answer, not the
         # broken handoff the refusal below is for: the run results say they ran.
         kept_everything = not artifacts and bool(dbt.kept)
@@ -3018,7 +3044,7 @@ def main(argv: list[str] | None = None) -> dict:
     where = data_env.prefix_for(environment) or "the bucket root"
     print(f"Publishing to the {environment} environment ({where}).")
 
-    result = publish(artifacts, environment=environment)
+    result = publish(artifacts, sidecars=sidecars, environment=environment)
     if result["version_written"]:
         print(f"Published version {result['version']}: uploaded {result['uploaded']}, skipped {result['skipped']}.")
         if result["sidecars"]:

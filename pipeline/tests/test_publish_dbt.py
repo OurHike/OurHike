@@ -112,7 +112,13 @@ class Project:
         # given in `extra_exposures`, as the eight POI writers share one.
         exposures = {
             f"exposure.ourhike.{node_id.split('.')[-1]}_json": {
-                "config": {"meta": {"r2_keys": spec["keys"], "format": "json"}},
+                "config": {
+                    "meta": {
+                        "r2_keys": spec["keys"],
+                        "format": "json",
+                        **({publish.DBT_SIDECAR_META: True} if spec.get("sidecar") else {}),
+                    }
+                },
                 "depends_on": {"nodes": ["model.ourhike.sources", node_id]},
             }
             for node_id, spec in writers.items()
@@ -656,6 +662,103 @@ def test_the_podcast_list_is_never_in_the_manifest_or_a_release(project, s3_clie
 
     assert not any("podcasts/" in key for key in _keys(s3_client))
     assert "podcasts/episodes.json" not in _json_at(s3_client, "latest.json")["artifacts"]
+
+
+# --- build metadata from a dbt writer: the data-quality page's files -----------
+
+# The two writers decision 102 adds, in their shapes (models/publish/_publish__data_quality.yml): each exposure's
+# meta says `sidecar`, and the hourly one's key is under conditions/.
+QUALITY_WRITERS = {
+    "model.ourhike.pub_stewards": WRITERS["model.ourhike.pub_stewards"],
+    "model.ourhike.pub_data_quality": {
+        "location": "data_quality.json",
+        "when_empty": "fail",
+        "keys": ["data_quality.json"],
+        "sidecar": True,
+    },
+    "model.ourhike.pub_conditions_data_quality": {
+        "location": "conditions_data_quality.json",
+        "when_empty": "fail",
+        "keys": ["conditions/data_quality.json"],
+        "sidecar": True,
+    },
+}
+
+
+def _write_quality(project: Project, built_at: str, stewards: str = "first") -> None:
+    project.write("stewards.json", json.dumps({"stewards": [stewards]}))
+    for location, lane in (("data_quality.json", "monthly"), ("conditions_data_quality.json", "hourly")):
+        project.write(location, json.dumps({"format": "ourhike-data-quality/1", "lane": lane, "built_at": built_at}))
+
+
+def test_a_writer_whose_exposure_says_sidecar_is_build_metadata_and_never_a_phone_file(project):
+    _write_quality(project, "2026-10-08T07:12:00Z")
+    project.build(writers=QUALITY_WRITERS)
+
+    found = project.collect()
+
+    assert sorted(found.artifacts) == ["stewards.json"]
+    assert sorted(found.sidecars) == ["conditions/data_quality.json", "data_quality.json"]
+    assert set(found.sidecars["data_quality.json"]) == {"path", "sha256"}, "SIDECARS' shape: no size"
+    assert {"data_quality.json", "conditions/data_quality.json"} <= found.owned
+
+
+def test_the_data_quality_files_go_up_beside_a_new_version_and_only_the_monthly_one_into_its_release(project, s3_client):
+    """The page reads releases/<DATA_RELEASE>/data_quality.json and conditions/data_quality.json (decision 102). As
+    build metadata, neither is in latest.json's or a release manifest's artifacts, the lists check_deployment.py,
+    smoke_published.py, verify_release.py and the phone walk; latest.json's `sidecars` names both."""
+    _write_quality(project, "2026-10-08T07:12:00Z")
+    project.build(writers=QUALITY_WRITERS)
+    found = project.collect()
+
+    result = publish.publish(found.artifacts, sidecars=found.sidecars, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    keys = _keys(s3_client)
+    release = result["release"]
+    assert sorted(result["sidecars"]) == ["conditions/data_quality.json", "data_quality.json"]
+    assert _json_at(s3_client, "data_quality.json")["lane"] == "monthly"
+    assert _json_at(s3_client, f"releases/{release}/data_quality.json")["lane"] == "monthly"
+    assert _json_at(s3_client, "conditions/data_quality.json")["lane"] == "hourly"
+    assert not [key for key in keys if key.startswith(releases.RELEASES_PREFIX) and "conditions/" in key]
+    latest = _json_at(s3_client, "latest.json")
+    assert {"data_quality.json", "conditions/data_quality.json"} <= set(latest["sidecars"])
+    assert not {"data_quality.json", "conditions/data_quality.json"} & set(latest["artifacts"])
+    assert "data_quality.json" not in _folder(s3_client, release)["artifacts"]
+
+
+def test_a_data_quality_file_that_changed_alone_writes_no_version_and_uploads_nothing(project, s3_client):
+    """Every build stamps a new built_at, so as a phone file the monthly one would stage a release folder on every
+    publish; as build metadata it waits for a version something else causes ("never a no-op bump")."""
+    _write_quality(project, "2026-10-08T07:12:00Z")
+    project.build(writers=QUALITY_WRITERS)
+    found = project.collect()
+    publish.publish(found.artifacts, sidecars=found.sidecars, photos={}, s3_client=s3_client, bucket=BUCKET)
+    before = _json_at(s3_client, "data_quality.json")
+
+    _write_quality(project, "2026-10-08T09:12:00Z")
+    project.build(writers=QUALITY_WRITERS)
+    found = project.collect()
+    second = publish.publish(found.artifacts, sidecars=found.sidecars, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["version_written"] is False and second["uploaded"] == []
+    assert _json_at(s3_client, "data_quality.json") == before
+
+
+def test_with_the_switch_on_main_uploads_the_writers_build_metadata_beside_the_version(monkeypatch, s3_client, project):
+    _write_quality(project, "2026-10-08T07:12:00Z")
+    project.build(writers=QUALITY_WRITERS)
+    monkeypatch.setattr(publish, "collect_artifacts", dict)
+    monkeypatch.setattr(publish, "DBT_MANIFEST_PATH", project.target / "manifest.json")
+    monkeypatch.setattr(publish, "DBT_RUN_RESULTS_PATH", project.target / "run_results.json")
+    monkeypatch.setenv(publish.DBT_PROCESSED_DIR_ENV_VAR, str(project.out))
+    monkeypatch.setenv(publish.PHONE_FILES_ENV_VAR, publish.PHONE_FILES_FROM_DBT)
+    _main_env(monkeypatch, s3_client)
+
+    result = publish.main()
+
+    assert result["uploaded"] == ["stewards.json"]
+    assert result["sidecars"] == ["conditions/data_quality.json", "data_quality.json"]
+    assert f"releases/{result['release']}/data_quality.json" in _keys(s3_client)
 
 
 # --- a v2 file: its release folder is its only home -------------------------

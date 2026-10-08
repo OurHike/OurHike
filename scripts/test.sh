@@ -525,6 +525,8 @@ if selected_has dbt; then
     step "dbt club layers absent" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_club_tables_absent_builds.py
     # Notice source freshness from the run log (decision 100), as CI's dbt job runs it.
     step "dbt notice freshness"  env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_freshness_runs.py
+    # The data-quality page's two files from Elementary-shaped tables (decision 102), as CI's dbt job runs it.
+    step "dbt data-quality files" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_data_quality_builds.py
     for family in podcasts:podcasts_episodes stewards:stewards registry:registry; do
       step "dbt parity ${family%%:*}" env -C pipeline "$PY" parity.py "${family%%:*}" --new "$dbt_tmp/processed/${family#*:}.json"
     done

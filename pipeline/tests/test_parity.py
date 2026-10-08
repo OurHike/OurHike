@@ -96,6 +96,21 @@ def test_a_duplicate_difference_names_the_repeated_key_and_every_field_its_copie
     assert parity.changed_fields("duplicate properties.id w1", None, twice) == ["properties.id"]
 
 
+def test_keys_of_digits_alone_list_in_number_order_before_every_other_key():
+    """Monthly run 30's trail_graph list opened on `edge_index 1000000` because its keys sorted as text, while the first
+    edge that differed was 595,379. Numbers list by number; any other key follows, as text."""
+    family = Family(old=lambda: {}, records="edges", key="edge_index", ordered=False)
+    old = {"edges": [{"edge_index": index, "to": 0} for index in (2, 10, 999999, 1000000)] + [{"edge_index": "x", "to": 0}]}
+    new = {"edges": [{**edge, "to": 1} for edge in old["edges"]]}
+    assert [what for what, _, _ in parity.differences(old, new, family)] == [
+        "edge_index 2",
+        "edge_index 10",
+        "edge_index 999999",
+        "edge_index 1000000",
+        "edge_index x",
+    ]
+
+
 def test_the_cli_exits_1_on_a_difference(tmp_path, monkeypatch, capsys):
     monkeypatch.setitem(parity.FAMILIES, "fake", Family(old=lambda: _document(A), records="episodes", key="spotify_id"))
     new = tmp_path / "new.json"

@@ -5,8 +5,13 @@
 -- them, and the node each answer is (build_trail_graph.py's _node_id(), TN06
 -- of pipeline/ELT.md's ledger): each piece's start and end, piece by piece
 -- in routable_lines()' part order and step_node_lines' piece order, then the
--- two points of each weld (a joined line end and where it lands), in
--- int_trail_network__cuts' order.
+-- two points of each weld (a joined line end and where it lands), in the
+-- order node_lines() makes the welds: each landing's weld_rank, which
+-- step_node_lines writes from node_lines()' own STRtree. Not
+-- int_trail_network__cuts' cut_order, which takes a part's higher partners
+-- in part order where STRtree hands them over in its own: a weld point that
+-- makes a node changes which node a later point finds, so asking in
+-- cut_order renumbered monthly run 30's graph from edge 595,379 on.
 --
 -- THE GRID, _node_id()'s own rule, which is first come, first served rather
 -- than nearest: a point is an existing node's when that node lies within
@@ -59,10 +64,15 @@
 -- with build_trail_graph._node_id()'s answer.
 --
 -- `node_raw` is the node's number in _node_id()'s `points`, before the
--- welds merge any (int_trail_network__raw_edges). A weld's point that makes
--- a node of its own is the one place the cut order reaches the graph
--- (int_trail_network__cuts says why its order is not STRtree's): `makes_node`
--- on a weld row says so, and the warn test on it names any.
+-- welds merge any (int_trail_network__raw_edges). A weld's point can make a
+-- node of its own (`makes_node` on a weld row): _split_all makes no piece
+-- of 0.5 m or less, so a run of cuts each closer than that to the next
+-- leaves no piece end inside it, and a landing in the run more than 0.5 m
+-- from both its ends is near no piece's end: it makes a node unless an
+-- earlier landing near it made one (Reasoned from build_trail_graph.py's
+-- _split_all). 137 weld points made a node on monthly run 30's inputs, in
+-- either order (measured 2026-10-08 in the sandbox). That is why the welds
+-- are asked in node_lines()' order, above.
 --
 -- Squares are pow(x, 2), the C library's pow(), which Python's `** 2` on a
 -- float also calls.
@@ -83,7 +93,7 @@ piece_count as (
 welds as (
     select
         cuts.cut_key,
-        row_number() over (order by cuts.cut_order) - 1 as weld_rank,
+        row_number() over (order by landings.weld_rank) - 1 as weld_rank,
         st_geomfromtext(cuts.end_point_wkt) as end_point,
         landings.geom as landing_point
     from {{ ref('int_trail_network__cuts') }} as cuts

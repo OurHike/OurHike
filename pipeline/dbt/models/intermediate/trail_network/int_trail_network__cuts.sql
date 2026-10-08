@@ -50,9 +50,10 @@
 -- `cut_order` is node_lines()' loop order where SQL can follow it: the lower
 -- part, then the higher, then the lower part's two ends against the higher
 -- and the higher's against the lower, each start before end. STRtree hands
--- the higher parts in tree order, not in this one; the order reaches the
--- graph only where a weld creates a node of its own
--- (int_trail_network__node_lookups says when).
+-- the higher parts in tree order, not in this one, so the welds are not
+-- asked of the node grid in cut_order: step_node_lines ranks each landing in
+-- node_lines()' own order from its own STRtree (`weld_rank`), and
+-- int_trail_network__node_lookups asks in that.
 -- ONE PIECE AT A TIME. Each routable part is tested against the others a
 -- piece at a time: consecutive runs of at most trail_network_piece_segments
 -- segments (dbt_project.yml), each sharing its end vertex with the next, so

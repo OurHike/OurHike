@@ -668,6 +668,25 @@ SAMPLE_CACHE_PATH = ELEVATION_INDEX_PATH.parent / SAMPLE_CACHE_NAME
 # and above the 0.1 ft the record is rounded to. Nobody has seen a collision;
 # at 25 m spacing they need a graph point and a trail sample to agree to six
 # decimal places.
+#
+# WHAT MONTHLY RUN 30 MEASURED AGAINST THE TWO PARAGRAPHS ABOVE. The bound is
+# on the wrong distance: the read is nearest-neighbour, so a point answered
+# with the next pixel's value is off by the step between two pixels about 10 m
+# apart, not by the ground's rise across 0.11 m. And collisions happen. Within
+# one run: that run's parity, today's exporters on a cold cache, answered 304
+# graph points from keys the A.T. profile had asked (its log). Between runs:
+# run 30's dbt build (refresh-reference.yml 37772454847) answered all
+# 22,000,918 of its points from a cache earlier runs wrote, and 133 samples on
+# 123 junction-graph edges carried the neighbouring pixel's value, up to 19 ft
+# on one sample and 15 ft on one edge's gain, in both directions (Measured
+# 2026-10-08 by reading those samples cold: every one's key box crosses a
+# pixel edge, and the value published is the other pixel's).
+# step_dem_sampling.py now reads every such key again at the run's own first
+# point. This sampler's callers do not, so today's exporters, on the cache
+# publish-vector-data.yml carries between runs, can publish the same
+# substitution (Reasoned from the same cache and rule; no production file was
+# measured). Keying the cache on the point itself would end it everywhere, and
+# would change what today's exporters publish, so it is the maintainer's call.
 CACHE_KEY_DECIMALS = 6
 
 

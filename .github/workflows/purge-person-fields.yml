@@ -1,0 +1,144 @@
+# Decision 56's purge (pipeline/ELT.md): every stored copy of a person field
+# that loaded before the extract stopped reading them. 15 loaded layers carried
+# staff names in Creator, Editor, created_user and last_edited_user, and Alaska
+# Trails' DataOwner held a person's e-mail address on 31 rows, until aafa7296
+# (2026-10-03). Monthly runs since run 16 re-read every layer without them
+# (Reasoned from those runs in ELT.md's ledger; step 1 below is the first
+# read of the tables themselves), and the maintainer decided the purge runs
+# after that re-read. It lives here because only a workflow holds the raw
+# store's key (decision 43).
+#
+#   gh workflow run purge-person-fields.yml --ref <branch> -f delete=false
+#
+# GitHub takes a dispatch only for a workflow whose file is on the default
+# branch, and runs the file at the ref it was dispatched on: PR #1827 - Add
+# dispatch-only build-reference.yml and purge-person-fields.yml placeholders to
+# main - put a placeholder there with this file's one input, so the same
+# dispatch is valid against either.
+#
+# WHAT A RUN DOES (pipeline/purge_person_fields.py's docstring has the why of
+# each step):
+#   1. Proves the current tables clean: each lane's newest committed load of
+#      each table a build reads. Every listed field a current table holds is
+#      printed with its rows and how many carry a value, never a value.
+#   2. Reads every other object in the raw bucket by its own schema or keys
+#      (Parquet footers, DuckDB catalogs, JSON keys), never by its date, and
+#      lists each that holds a field, with the field's name and counts.
+#   3. delete=false stops there. delete=true deletes exactly what step 2
+#      listed, a pin, stored warehouse, served copy or row-history save whole
+#      and its record first, printing each key; it refuses, deleting nothing,
+#      while a current table still holds a field or any object could not be
+#      read.
+# The field list is the extract's own: PERSON_FIELDS, each table's
+# sources.json person_fields (where the layers' editFieldsInfo names are
+# recorded), and the podcast and conditions readers' own lists.
+#
+# BEFORE ANYONE DISPATCHES delete=true, read a delete=false run's log, or its
+# summary: section 1 must say "Clean" for every lane; section 2 is what will be
+# deleted, and its "Pins:" line names the newest pin kept; section 3 lists what
+# was not read, by key; section 5 must be empty. A pin deleted here cannot be
+# built from or promoted again, so if the raw_run UA serves is among them, the
+# next promotion needs a fresh UA build: a refresh-reference.yml run first.
+#
+# ONE RUN AT A TIME WITH THE MONTHLY LANE: refresh-reference.yml and
+# build-reference.yml write the monthly prefix and the step cache under this
+# group, so a purge never reads a pin half made or deletes under a build. The
+# group keeps one waiting run, so a dispatch of this file while one of theirs
+# waits cancels theirs, and the other way round (refresh-reference.yml's
+# header). The hourly writers, extract-notices.yml and publish-conditions.yml,
+# are in other groups: they write new keys, and this deletes only keys that
+# hold a field, which their current tables do not (step 1), so the two never
+# touch the same object (Reasoned).
+name: Purge person fields
+
+on:
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: "false lists every stored object holding a person field; true deletes them"
+        type: boolean
+        default: false
+
+concurrency:
+  group: raw-lake-monthly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  # dlt's telemetry is on by default and would send from a job holding the raw
+  # store's key (the dlt skill, rule 3).
+  RUNTIME__DLTHUB_TELEMETRY: "false"
+
+jobs:
+  purge:
+    name: List, or delete, every stored copy of a person field
+    runs-on: ubuntu-latest
+    # @unvalidated: nobody has listed the raw bucket, so its object count and
+    # bytes are unknown (ELT.md: "The raw store's size after the first monthly
+    # run is @unvalidated"). What bounds it: a Parquet footer is a few reads;
+    # 56 resources write an as-landed GeoJSON file (counted with discover(),
+    # 2026-10-08), read once per load and once per distinct pinned copy; the
+    # JSON key pattern ran at 48 to 69 MB/s on a synthetic 116 MB file
+    # (2026-10-08); and each stored warehouse is downloaded whole to read its
+    # catalog. A delete=false run prints its timings, which settle this figure.
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements-extract.txt
+
+      # The raw store's names, as refresh-reference.yml's extract and pin jobs
+      # read them. No public-bucket key, and no environment: nothing here
+      # writes anything a phone reads.
+      - name: Name every secret this job needs, and stop if one is missing
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          R2_RAW_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          R2_RAW_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+        run: |
+          missing=()
+          for name in R2_ENDPOINT_URL R2_RAW_BUCKET R2_RAW_ACCESS_KEY_ID R2_RAW_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Raw store secrets missing::${missing[*]} not set; nothing was read or deleted."
+            exit 1
+          fi
+
+      # The extract's own pins: dlt with s3fs, pyarrow and duckdb, which is
+      # everything the purge reads the store with.
+      - name: Install the extract's own pins
+        run: |
+          python -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+
+      # The input reaches the script through env, the rule
+      # .github/tests/test_run_steps_take_inputs_through_env.py holds.
+      - name: List every stored copy of a person field, and with delete=true delete them
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          # `auto` is R2's documented region, as every raw-store step sets it.
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+          DELETE: ${{ inputs.delete }}
+        run: |
+          flags=()
+          if [ "$DELETE" = "true" ]; then
+            flags+=(--delete)
+          fi
+          "$RUNNER_TEMP/extract/bin/python" purge_person_fields.py --raw-bucket "$R2_RAW_BUCKET" \
+            --pipelines-dir "$RUNNER_TEMP/dlt" --scratch "$RUNNER_TEMP/purge" \
+            --summary "$GITHUB_STEP_SUMMARY" "${flags[@]}"

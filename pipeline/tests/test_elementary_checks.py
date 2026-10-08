@@ -16,6 +16,7 @@ it), so nothing here runs dbt:
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -316,3 +317,50 @@ def test_elementarys_training_and_detection_settings_are_its_defaults_written_wh
     }
     assert "min_training_set_size" not in variables
     assert variables["test_sample_row_count"] == 0, "no failing row is kept (decision 102's rules)"
+
+
+#: The anomaly-test arguments that would let a check fire before its window holds the 11 points
+#: macros/data_quality.sql's `learning.needed` derives from the project's anomaly_sensitivity: a lower sensitivity
+#: (either spelling), a zero that fails on sight, or a training set that leaves the scored point out of its own.
+EARLIER_FIRING = ("anomaly_sensitivity", "sensitivity", "fail_on_zero", "exclude_detection_period_from_training")
+
+
+def test_no_check_and_no_project_var_changes_how_many_builds_an_anomaly_check_waits_for():
+    """learning.needed is one number for the whole file, worked out from the project's vars alone, so no check may
+    carry its own (0.26.0's get_test_argument() would let a check's argument or its model's config win)."""
+    variables = yaml.safe_load((DBT / "dbt_project.yml").read_text())["vars"]
+    assert [name for name in EARLIER_FIRING[2:] if variables.get(name)] == []
+    own = [
+        f"{where}: {name} {field}"
+        for where, name, body in EVERY_TEST
+        if name.startswith("elementary.")
+        for field in EARLIER_FIRING
+        if field in (body.get("arguments") or {}) or field in body
+    ]
+    assert own == []
+    models = [
+        f"{path.relative_to(MODELS)}: {model['name']}"
+        for path, document in DOCUMENTS
+        for model in document.get("models") or []
+        if "elementary" in ((model.get("config") or {}).get("meta") or {}) or "elementary" in (model.get("meta") or {})
+    ]
+    assert models == [], "a model's own elementary config would set these for every check on it"
+
+
+def test_no_test_asks_elementary_for_its_failing_rows():
+    """dbt_project.yml's test_sample_row_count 0 is the only word on samples: 0.26.0's handle_dbt_test() takes a
+    test's own meta test_sample_row_count over the var, and nothing else it reads raises the limit."""
+    asking = []
+    for where, name, body in EVERY_TEST:
+        config = body.get("config") or {}
+        meta = {**(body.get("meta") or {}), **(config.get("meta") or {})}
+        if "test_sample_row_count" in meta:
+            asking.append(f"{where}: {name}")
+    singular = [
+        str(path.relative_to(DBT))
+        for path in sorted((DBT / "tests").rglob("*.sql"))
+        if "test_sample_row_count" in path.read_text()
+    ]
+    assert (asking, singular) == ([], [])
+    project = yaml.safe_load((DBT / "dbt_project.yml").read_text())
+    assert "test_sample_row_count" not in json.dumps(project.get("data_tests") or {})

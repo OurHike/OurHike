@@ -103,12 +103,28 @@
       `dbt_tests`.
     - `learning`: `builds`, the check runs (one per build: build_marts.py runs
       Elementary's checks once) the lane's history holds anomaly results
-      from, this build's included; `needed`, Elementary's
-      min_training_set_size (0.26.0's get_config_var.sql: 7, unless the
-      project's vars set it). @unvalidated whether a check's own
-      min_training_set_size, if one is ever set per test, should win: 0.26.0
-      does not store it in a result's test_params (Measured 2026-10-08, a
-      scratch project), so it cannot be read back here.
+      from, this build's included; `needed`, how many points a check's window
+      must hold, its newest among them, before that newest can score past the
+      project's anomaly_sensitivity: the least n whose (n - 1) / sqrt(n) is
+      above it, 11 at the project's 3. Measured 2026-10-08 in a scratch
+      project on dbt 2.0.6, Elementary 0.26.0 and DuckDB: a row count 1,000
+      times its usual after 9 equal builds scored 2.846 and passed, and after
+      10 scored 3.015 and warned. Reasoned from 0.26.0's SQL, why: a point is
+      scored against a training set that includes it
+      (get_anomaly_scores_query(), "rows between unbounded preceding and
+      current row", with exclude_detection_period_from_training unset), and
+      the deviation is DuckDB's stddev, the sample one, so no point of n lies
+      further than (n - 1) / sqrt(n) deviations from their mean: 2.85 at 10,
+      3.02 at 11. Not Elementary's min_training_set_size (7), which 0.26.0
+      takes as an argument of every anomaly test and reads nowhere
+      (get_anomalies_test_configuration.sql). A check with no timestamp
+      column, every check the monthly lane runs, adds one point a build, so
+      `needed` counts builds; a freshness_anomalies check on an hourly or
+      daily source adds one a day (its bucket), which no lane runs while
+      build_marts.py's HOURLY_LANE_CHECKS is off. The number assumes every
+      check takes the project's vars: tests/test_elementary_checks.py holds
+      that no check sets its own sensitivity, fail_on_zero or
+      exclude_detection_period_from_training, any of which would change it.
     - `needs_a_look`: every counted check whose status is not pass, worst
       first (error, fail, warn), then by kind, table, column and test, each
       {kind, table, column, status, value, expected_min, expected_max, since,
@@ -169,14 +185,16 @@
       Elementary's own readers keep it, the newest series_points of them,
       each {at, value, expected_min, expected_max}, values whole for the
       whole_metrics below and rates to 3 places, as needs_a_look's are. A
-      point's band is the one a run of the series' check gave that bucket in
-      test_result_rows, and null where none is held. The lane history
-      restores data_monitoring_metrics and elementary_test_results between
-      builds but not test_result_rows (decision 102 step 3, row_history.py),
-      so as it stands only this build's buckets carry a band: an earlier
-      point's null says no kept run scored it, not that Elementary had yet to
-      learn. Keeping test_result_rows too would band every point. A table
-      Elementary does not measure has no series.
+      point's band is the one the newest run of the series' check gave that
+      bucket in test_result_rows, this build's run or a kept one, and null
+      where none is held. A run stores a band for every bucket of its window
+      it could score, which is all of them but the oldest, whose training set
+      is that one value (measured 2026-10-08: build k's run stored k - 1);
+      row_history.py keeps the newest band of each bucket between builds
+      ("THE BANDS"), so the oldest point a series charts carries the band an
+      earlier run gave it, and a point with none is one no run in the history
+      scored, such as the first its check ever measured. A table Elementary
+      does not measure has no series.
       @unvalidated: series_points, 168, is a file-size choice, not a finding
       about what a reader needs: 7 days of an hourly lane, against about
       84 KB measured 2026-10-08 for a heavy invented hourly file while the
@@ -200,7 +218,9 @@
     min_metric_value, max_metric_value, is_anomalous), keyed by its
     elementary_test_results id, with test_sample_row_count 0; a check's status
     is pass, warn, fail or error; and data_monitoring_metrics names a table
-    DATABASE.SCHEMA.TABLE in capitals.
+    DATABASE.SCHEMA.TABLE in capitals. A kept row from an earlier build
+    carries only row_history.py's BAND_FIELDS, so its metric_value and
+    is_anomalous read as null and false here, and only `bands` uses it.
 -#}
 {% macro data_quality_document(lane) -%}
     {%- if lane not in ('monthly', 'hourly') -%}
@@ -209,7 +229,21 @@
     {#- Each guard reads false under SQLFluff's jinja templater, which lints
         the stand-in; dbt always renders the first branch. -#}
     {%- set started = env_var('OURHIKE_BUILD_STARTED_AT', '') if env_var is defined else '' -%}
-    {%- set needed = elementary.get_config_var('min_training_set_size') if elementary is defined else 7 -%}
+    {#- `needed`, the least number of points whose newest can score past the
+        project's anomaly_sensitivity (the header, "learning"): the least n
+        with (n - 1) / sqrt(n) above it, compared squared, as both sides are
+        positive. -#}
+    {%- set sensitivity = (elementary.get_config_var('anomaly_sensitivity') if elementary is defined else 3) | float -%}
+    {%- set reachable = [] -%}
+    {%- for points in range(2, 1000) -%}
+        {%- if (points - 1) * (points - 1) > sensitivity * sensitivity * points -%}
+            {%- do reachable.append(points) -%}
+        {%- endif -%}
+    {%- endfor -%}
+    {%- if not reachable -%}
+        {{ exceptions.raise_compiler_error("data_quality_document: no window under 1,000 points lets a point score past an anomaly_sensitivity of " ~ sensitivity) }}
+    {%- endif -%}
+    {%- set needed = reachable | first -%}
     {%- if run_started_at is defined -%}
         {%- set built_at = run_started_at.strftime('%Y-%m-%dT%H:%M:%SZ') -%}
     {%- else -%}

@@ -195,7 +195,7 @@ OURHIKE_BUILT_BY, the git commit and workflow run, which each snapshot
 version records as `_built_by` (never hashed), so a reader can tell a change
 upstream from a change to this project's rules.
 ELEMENTARY'S HISTORY RIDES IN THE SAME TWO COMMANDS (decision 102;
-row_history.py, "ELEMENTARY'S HISTORY"): the restore puts its four kept
+row_history.py, "ELEMENTARY'S HISTORY"): the restore puts its five kept
 tables back before "Elementary's own tables" builds, so their incremental
 models add this build to them, and the save writes them out with the
 snapshots, keeping ELEMENTARY_KEEP_DAYS of the lane's builds (--keep-days).
@@ -603,8 +603,9 @@ HISTORY_STORES = PIPELINE_DIR / "row_history_stores.toml"
 RESTORE_LABEL, SAVE_LABEL = "restore the row history", "save the row history"
 #: How many days of Elementary's history each lane's save keeps (row_history.py's docstring, "RETENTION"), as
 #: --keep-days: the training window its checks read back, plus a margin. Monthly: 400 days, plus 30; ELT.md gives that
-#: lane a window of about 400 ("Memory between runs"), so that the 7 earlier builds an anomaly check waits for, one a
-#: month, fall inside it. Hourly: Elementary's default days_back of 14, plus 7. Reasoned from Elementary 0.26.0: a
+#: lane a window of about 400 ("Memory between runs"), so that the 10 earlier builds an anomaly check waits for beside
+#: its own (11 points: dbt_project.yml's ELEMENTARY'S TRAINING AND DETECTION), one a month, fall inside it.
+#: Hourly: Elementary's default days_back of 14, plus 7. Reasoned from Elementary 0.26.0: a
 #: check reads back from its days_back before now, moved to the start of that day and then of its bucket
 #: (get_trunc_min_bucket_start_expr()), and the save before a build ran earlier than the build, so a margin of 30
 #: days covers buckets of up to four weeks and 7 days buckets of up to six. A lane whose checks take a longer

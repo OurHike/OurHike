@@ -9,7 +9,8 @@ raw tables publish, three are held, one is OurHike's own registry, and one is
 a step's derived table. Then the two writers are built, with Elementary on,
 and each file is read field by field: what counts, what is named, the order of
 what needs a look, since when, which series are charted, their window and
-their cap, the learning count, and that no row value, sample, coordinate,
+their cap, the bands an earlier build's kept run gives them (row_history.py's
+"THE BANDS"), the learning count, and that no row value, sample, coordinate,
 check message or held table's name reaches either. A second warehouse holds no
 result at all.
 
@@ -28,6 +29,8 @@ from pathlib import Path
 
 import duckdb
 import pytest
+
+import row_history
 
 PIPELINE_DIR = Path(__file__).resolve().parent.parent
 DBT_DIR = PIPELINE_DIR / "dbt"
@@ -236,12 +239,22 @@ def _result(
     }
 
 
-def _anomaly_row(result_id: str, bucket: str, value: float, low: float | None, high: float | None, anomalous: bool, **extra):
+def _anomaly_row(
+    result_id: str,
+    bucket: str,
+    value: float,
+    low: float | None,
+    high: float | None,
+    anomalous: bool,
+    at: str | None = None,
+    **extra,
+):
+    """A scored bucket as a run stores it; `at` is when the run stored it, which is the bucket's own time unless said."""
     return {
         "elementary_test_results_id": result_id,
         "test_type": "anomaly_detection",
-        "created_at": bucket,
-        "detected_at": bucket,
+        "created_at": at or bucket,
+        "detected_at": at or bucket,
         "row_index": 0,
         "result_row": json.dumps(
             {
@@ -259,6 +272,21 @@ def _anomaly_row(result_id: str, bucket: str, value: float, low: float | None, h
                 "training_set_size": 2,
             }
         ),
+    }
+
+
+def _kept_band(result_id: str, bucket: str, low: float, high: float, at: str) -> dict:
+    """A scored bucket as row_history.py restores it from an earlier build: its band fields alone (BAND_FIELDS)."""
+    band = {"metric_name": "row_count", "column_name": None, "bucket_end": bucket.replace(" ", "T")}
+    band |= {"min_metric_value": low, "max_metric_value": high}
+    assert tuple(band) == row_history.BAND_FIELDS
+    return {
+        "elementary_test_results_id": result_id,
+        "test_type": "anomaly_detection",
+        "created_at": at,
+        "detected_at": at,
+        "row_index": 1,
+        "result_row": json.dumps(band),
     }
 
 
@@ -295,6 +323,17 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
             results.append(passed)
             if invocation == "b2-checks":
                 rows.append(_anomaly_row(passed["id"], B2, value, low, high, False, metric=metric))
+    # The trail_lines mart's check ran in build 2 too, and row_history.py kept two of that run's bands, its fields alone:
+    # one for the oldest hour this build's series keeps, which this build's run did not score, and one for an hour
+    # both runs scored, where this build's newer band wins.
+    earlier = _result(
+        "volume_mart", invocation="b2-checks", at=B2, status="pass", test_type="anomaly_detection", sub_type="row_count"
+    )
+    results.append(earlier)
+    rows += [
+        _kept_band(earlier["id"], _hours_before(B3, 167), 1100.0, 1300.0, at=B2),
+        _kept_band(earlier["id"], _hours_before(B3, 30), 980.0, 1020.0, at=B2),
+    ]
 
     # This build: stage A, a retry of one of its tests, and the checks' pass.
     a, retry, checks = "b3-stage-a", "b3-retry", "b3-checks"
@@ -433,6 +472,7 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         _anomaly_row(volume["id"], B2, 5262.0, 5100.0, 5400.0, False),
         _anomaly_row(volume["id"], B3, 4118.0, 5231.3, 5292.7, True),
         _anomaly_row(secret["id"], B3, 12.0, 100.0, 120.0, True),
+        _anomaly_row(mart_volume["id"], _hours_before(B3, 30), 1030.0, 985.0, 1015.0, False, at=B3),
         _anomaly_row(mart_volume["id"], B3, 1000.0, 990.0, 1010.0, False),
         _anomaly_row(closures_rows["id"], B3, 40.0, 50.0, 60.0, True),
         _anomaly_row(closures_fresh["id"], B3, 90000.0, 0.0, 86400.0, True, metric="freshness"),
@@ -759,12 +799,18 @@ COLUMN_SERIES = [
 ]
 
 
+#: The trail_lines mart's bands, by hours before this build's bucket: the oldest hour the series keeps from build 2's
+#: kept run, which alone scored it; the hour both runs scored from this build's, the newer; and this build's own.
+TRAIL_LINES_BANDS = {167: (1100.0, 1300.0), 30: (985.0, 1015.0), 0: (990.0, 1010.0)}
+
+
 def _trail_lines_series() -> dict:
-    """The trail_lines mart's newest 168 hourly points of the 200 it has, oldest first, scored at this build's alone."""
+    """The trail_lines mart's newest 168 hourly points of the 200 it has, oldest first, each banded by the newest run
+    that scored it, kept or this build's, and unbanded where none did."""
     points = []
     for hours in range(167, -1, -1):
         at = (datetime.fromisoformat(B3) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        low, high = (990.0, 1010.0) if hours == 0 else (None, None)
+        low, high = TRAIL_LINES_BANDS.get(hours, (None, None))
         points.append({"at": at, "value": 1000 + hours, "expected_min": low, "expected_max": high})
     return {
         "table": "trail_lines_v1",
@@ -789,8 +835,26 @@ def test_the_series_are_every_marts_row_count_and_each_entrys_metric_the_newest_
     assert [len(entry["points"]) for entry in series] == [3, 3, 3, 3, 3, 3, 168]
 
 
-def test_learning_counts_the_builds_whose_anomaly_checks_the_history_holds(files):
-    assert files["monthly"]["learning"] == {"builds": 3, "needed": 7}
+def test_a_point_this_builds_run_did_not_score_takes_the_band_row_history_kept_and_a_rescored_one_the_newest(files):
+    """row_history.py keeps each bucket's newest band, its BAND_FIELDS alone ("THE BANDS"): the oldest hour the
+    trail_lines series keeps is banded by build 2's kept run, and the hour both runs scored by this build's."""
+    (trail_lines,) = [entry for entry in files["monthly"]["series"] if entry["table"] == "trail_lines_v1" and not entry["column"]]
+    banded = {
+        point["at"]: (point["expected_min"], point["expected_max"])
+        for point in trail_lines["points"]
+        if point["expected_min"] is not None
+    }
+    assert banded == {
+        "2026-10-01T08:05:00Z": (1100.0, 1300.0),
+        "2026-10-07T01:05:00Z": (985.0, 1015.0),
+        "2026-10-08T07:05:00Z": (990.0, 1010.0),
+    }
+
+
+def test_learning_counts_the_builds_and_needs_the_11_points_anomaly_sensitivity_3_takes(files):
+    """needed: the least n whose (n - 1) / sqrt(n) is above dbt_project.yml's anomaly_sensitivity of 3, so the
+    least window in which a point can score past it (macros/data_quality.sql's header, "learning")."""
+    assert files["monthly"]["learning"] == {"builds": 3, "needed": 11}
 
 
 def test_by_mart_counts_the_marts_own_models_intermediates_and_singular_tests(files):
@@ -871,5 +935,5 @@ def test_a_lane_whose_history_holds_no_result_writes_zeros_and_empty_lists(empty
 
     assert document["totals"] == _counts(0, 0, 0, 0, 0)
     assert [kind["checks"] for kind in document["kinds"]] == [0, 0, 0, 0, 0]
-    assert document["learning"] == {"builds": 0, "needed": 7}
+    assert document["learning"] == {"builds": 0, "needed": 11}
     assert (document["needs_a_look"], document["series"], document["by_mart"]) == ([], [], [])

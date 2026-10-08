@@ -195,10 +195,12 @@ def test_a_store_url_that_is_not_a_directory_file_or_s3_is_refused():
 
 # --- Elementary's history (row_history.py's docstring, "ELEMENTARY'S HISTORY") ---
 #
-# Each warehouse below holds Elementary 0.26.0's four kept tables with the columns row_history.py reads and one value,
+# Each warehouse below holds Elementary 0.26.0's five kept tables with the columns row_history.py reads and one value,
 # filled the way Elementary fills them: a check with no timestamp column adds one metric row a build, bucket_end the
 # build's start; a check with one appends buckets it already has again under the same `id` with a later `updated_at`
 # (handle_tests_results.sql's insert_data_monitoring_metrics(); get_anomaly_scores_query.sql reads the newest).
+# test_result_rows holds what a run stored of its scored buckets, one JSON row each with the keys a scratch project's
+# rows carried on dbt 2.0.6 (2026-10-08), and the rows the save must never keep beside them.
 
 BUILD_1, BUILD_2 = datetime(2026, 10, 1, 6, 0), datetime(2026, 10, 2, 6, 0)
 ELEMENTARY_TABLES = {
@@ -209,6 +211,8 @@ ELEMENTARY_TABLES = {
     "elementary_test_results": "id varchar, test_unique_id varchar, status varchar, invocation_id varchar, "
     "detected_at timestamp, created_at timestamp",
     "dbt_invocations": "invocation_id varchar, command varchar, created_at timestamp",
+    "test_result_rows": "elementary_test_results_id varchar, result_row varchar, detected_at timestamp, "
+    "created_at timestamp, row_index integer, test_type varchar",
 }
 
 
@@ -456,20 +460,207 @@ def test_under_degrade_a_refused_elementary_save_still_saves_the_snapshots(tmp_p
     assert _elementary_pointer(store)["save_id"] == good
 
 
-def test_only_the_four_kept_tables_are_restored_dropped_or_saved_never_elementarys_others(tmp_path):
+def test_only_the_five_kept_tables_are_restored_dropped_or_saved_never_elementarys_others(tmp_path):
     store, warehouse = tmp_path / "store", tmp_path / "w.duckdb"
     restore(str(store), warehouse, cold_start=True)
     _elementary_tables(warehouse)
     _elementary_build(warehouse, BUILD_1, "inv1")
     with duckdb.connect(str(warehouse)) as con:
         con.execute("create table elementary.dbt_run_results as select 'model.x' as unique_id")
-        con.execute("create table elementary.test_result_rows as select 'a failing row' as result_row")
     save(str(store), warehouse, keep_days=21, now=BUILD_1)
 
     assert set(_elementary_pointer(store)["tables"]) == set(row_history.KEPT)
     restore(str(store), warehouse, cold_start=False)
     assert _elementary_rows(warehouse, "dbt_run_results") == [("model.x",)]
-    assert _elementary_rows(warehouse, "test_result_rows") == [("a failing row",)]
+
+
+# --- test_result_rows (row_history.py's docstring, "THE BANDS") ---
+
+#: Planted wherever a stored row could carry something other than a band: none may reach the store.
+NOT_A_BAND = ("SECRET-DESCRIPTION", "SECRET-VALUE", "SECRET-CLUB", "SECRET-PERSON", "41.0123", "secret_column")
+
+
+def _scored(con, result, bucket, band, *, at, index, metric="row_count", column=None, dimension=None):
+    """One scored bucket as an anomaly check's run stores it: every key Elementary 0.26.0 writes, its band among them,
+    and the ones the save must drop (a description, the anomalous value, the training figures)."""
+    low, high = band
+    row = {
+        "id": f"{result}.{bucket}",
+        "metric_id": f"{metric}.{bucket}",
+        "test_unique_id": "test.x.volume",
+        "full_table_name": "W.MARTS.THINGS",
+        "column_name": column,
+        "metric_name": metric,
+        "bucket_end": bucket.isoformat(),
+        "metric_value": 100.0,
+        "min_metric_value": low,
+        "max_metric_value": high,
+        "anomaly_score": 0.5,
+        "is_anomalous": False,
+        "training_avg": 99.5,
+        "training_stddev": 1.2,
+        "training_set_size": 4,
+        "dimension": dimension,
+        "dimension_value": "SECRET-CLUB" if dimension else None,
+        "anomalous_value": "SECRET-VALUE",
+        "anomaly_description": "SECRET-DESCRIPTION",
+    }
+    con.execute(
+        "insert into elementary.test_result_rows values (?, ?, ?, ?, ?, 'anomaly_detection')",
+        [result, json.dumps(row), at, at, index],
+    )
+
+
+def _not_bands(con, at):
+    """What a build could also leave in test_result_rows, none of it a band: a dbt test's failing row (a row of the
+    tested table, a person's name and a coordinate in it), a schema change, and a bucket stored without a range."""
+    con.execute(
+        "insert into elementary.elementary_test_results values ('inv1.not_null', 'not_null', 'warn', 'inv1', ?, ?)", [at, at]
+    )
+    con.executemany(
+        "insert into elementary.test_result_rows values (?, ?, ?, ?, ?, ?)",
+        [
+            ("inv1.not_null", json.dumps({"reporter_name": "SECRET-PERSON", "lat": 41.0123}), at, at, 1, "dbt_test"),
+            ("inv1.schema", json.dumps({"column_name": "secret_column", "data_type": "varchar"}), at, at, 1, "schema_change"),
+            (
+                "inv1.volume",
+                json.dumps({"metric_name": "row_count", "bucket_end": "2026-09-30T06:00:00"}),
+                at,
+                at,
+                9,
+                "anomaly_detection",
+            ),
+        ],
+    )
+
+
+def _saved_test_result_rows(store):
+    """The saved test_result_rows file, each row's band as a dict, oldest bucket first."""
+    entry = _elementary_pointer(store)["tables"]["test_result_rows"]
+    with duckdb.connect() as con:
+        rows = con.execute(
+            "select elementary_test_results_id, result_row, row_index from read_parquet(?)", [str(store / entry["file"])]
+        ).fetchall()
+    return sorted(((result, json.loads(row), index) for result, row, index in rows), key=lambda each: each[1]["bucket_end"])
+
+
+def _every_saved_value(store):
+    """Every value of every file Elementary's part of the store holds, as text."""
+    with duckdb.connect() as con:
+        values = []
+        for path in (store / row_history.ELEMENTARY_SAVES).rglob("*.parquet"):
+            values += [
+                str(value) for row in con.execute("select * from read_parquet(?)", [str(path)]).fetchall() for value in row
+            ]
+    return " ".join(values)
+
+
+def test_test_result_rows_keeps_each_scored_buckets_band_in_five_fields_and_no_other_row(tmp_path):
+    store, warehouse = tmp_path / "store", tmp_path / "w.duckdb"
+    restore(str(store), warehouse, cold_start=True)
+    _elementary_tables(warehouse)
+    _elementary_build(warehouse, BUILD_1, "inv1")
+    with duckdb.connect(str(warehouse)) as con:
+        _scored(con, "inv1.volume", BUILD_1 - timedelta(hours=12), (95.0, 105.0), at=BUILD_1, index=1)
+        _scored(con, "inv1.volume", BUILD_1, (96.0, 104.5), at=BUILD_1, index=2)
+        # A dimension's rows name a value of its column: never kept, though they carry a band.
+        _scored(con, "inv1.volume", BUILD_1, (1.0, 9.0), at=BUILD_1, index=3, metric="dimension", dimension="club")
+        _not_bands(con, BUILD_1)
+
+    save(str(store), warehouse, keep_days=21, now=BUILD_1)
+
+    assert _saved_test_result_rows(store) == [
+        (
+            "inv1.volume",
+            {
+                "metric_name": "row_count",
+                "column_name": None,
+                "bucket_end": (BUILD_1 - timedelta(hours=12)).isoformat(),
+                "min_metric_value": 95.0,
+                "max_metric_value": 105.0,
+            },
+            1,
+        ),
+        (
+            "inv1.volume",
+            {
+                "metric_name": "row_count",
+                "column_name": None,
+                "bucket_end": BUILD_1.isoformat(),
+                "min_metric_value": 96.0,
+                "max_metric_value": 104.5,
+            },
+            2,
+        ),
+    ]
+    saved = _every_saved_value(store)
+    for planted in NOT_A_BAND:
+        assert planted not in saved, planted
+
+
+def test_a_band_an_earlier_run_gave_the_oldest_bucket_is_restored_and_a_rescored_bucket_keeps_the_newest(tmp_path):
+    """Build 2's run scores every bucket of its window but the oldest, which it cannot (one value has no spread):
+    that bucket's band is the one build 1's run gave it, and it is restored. The bucket both runs scored keeps build
+    2's band, the newest, and build 1's row for it is dropped."""
+    oldest, both = BUILD_1 - timedelta(days=1), BUILD_1
+    store, first = tmp_path / "store", tmp_path / "first.duckdb"
+    restore(str(store), first, cold_start=True)
+    _elementary_tables(first)
+    _elementary_build(first, BUILD_1, "inv1")
+    with duckdb.connect(str(first)) as con:
+        _scored(con, "inv1.volume", oldest, (90.0, 110.0), at=BUILD_1, index=1)
+        _scored(con, "inv1.volume", both, (95.0, 105.0), at=BUILD_1, index=2)
+    save(str(store), first, keep_days=21, now=BUILD_1)
+
+    second = _next_build(tmp_path, store)
+    _elementary_build(second, BUILD_2, "inv2")
+    with duckdb.connect(str(second)) as con:
+        _scored(con, "inv2.volume", both, (97.0, 103.0), at=BUILD_2, index=1)
+        _scored(con, "inv2.volume", BUILD_2, (98.0, 102.0), at=BUILD_2, index=2)
+    save(str(store), second, keep_days=21, now=BUILD_2)
+
+    assert [
+        (result, row["bucket_end"], row["min_metric_value"], row["max_metric_value"])
+        for result, row, _ in _saved_test_result_rows(store)
+    ] == [
+        ("inv1.volume", oldest.isoformat(), 90.0, 110.0),
+        ("inv2.volume", both.isoformat(), 97.0, 103.0),
+        ("inv2.volume", BUILD_2.isoformat(), 98.0, 102.0),
+    ]
+    third = _next_build(tmp_path, store, "third.duckdb")
+    assert len(_elementary_rows(third, "test_result_rows")) == 3
+    assert "Elementary's history: saved" in save(str(store), third, keep_days=21, now=BUILD_2), (
+        "every restored band is still in the warehouse, so the guard by key lets the next save through"
+    )
+
+
+def test_a_store_saved_before_the_bands_were_kept_restores_without_them_and_saves_them_from_then_on(tmp_path):
+    store, _ = _first_build(tmp_path)
+    pointer = _elementary_pointer(store)
+    del pointer["tables"]["test_result_rows"]
+    (store / row_history.ELEMENTARY_POINTER).write_text(json.dumps(pointer))
+    second = _next_build(tmp_path, store)
+    _elementary_build(second, BUILD_2, "inv2")
+    with duckdb.connect(str(second)) as con:
+        _scored(con, "inv2.volume", BUILD_2, (98.0, 102.0), at=BUILD_2, index=1)
+
+    save(str(store), second, keep_days=21, now=BUILD_2)
+
+    assert [result for result, _, _ in _saved_test_result_rows(store)] == ["inv2.volume"]
+
+
+def test_a_band_older_than_keep_days_goes_with_its_result(tmp_path):
+    store, _ = _first_build(tmp_path)
+    second = _next_build(tmp_path, store)
+    later = BUILD_1 + timedelta(days=30)
+    _elementary_build(second, later, "inv2")
+    with duckdb.connect(str(second)) as con:
+        _scored(con, "inv1.volume", BUILD_1, (95.0, 105.0), at=BUILD_1, index=1)
+        _scored(con, "inv2.volume", later, (96.0, 104.0), at=later, index=1)
+
+    save(str(store), second, keep_days=21, now=later)
+
+    assert [result for result, _, _ in _saved_test_result_rows(store)] == ["inv2.volume"], "inv1 is 30 days old"
 
 
 def test_elementarys_saves_beyond_keep_saves_go_from_its_own_folder_and_share_the_snapshots_save_ids(tmp_path, monkeypatch):

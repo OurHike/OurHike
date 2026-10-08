@@ -104,7 +104,16 @@ data_tests:
 vars:
   # Elementary keeps up to 5 failing rows per test by default (0.26.0's
   # get_config_var.sql); none here, because the hourly lane carries hikers'
-  # own reports and no row ever leaves the warehouse (decision 102).
+  # own reports and no row ever leaves the warehouse (decision 102). It limits
+  # a dbt test's failing rows alone (handle_dbt_test()): an anomaly check
+  # stores its scored buckets whatever it says (store_anomaly_test_results()),
+  # and did at 0 (measured 2026-10-08 in a scratch project on dbt 2.0.6). On
+  # dbt 2.0.6 it is a guard and no more: at 5, a test failing on 5 whole rows
+  # stored none, because Elementary's test materialization, which reads them,
+  # does not run there (the same day). row_history.py keeps no such row
+  # either ("THE BANDS"). No test overrides it in its meta, which
+  # handle_dbt_test() would obey: the pipeline suite's
+  # test_no_test_asks_elementary_for_its_failing_rows holds that.
   test_sample_row_count: 0
   # Elementary's end-of-run hook re-reads every node of the project into its
   # artifact tables after each dbt command, by default. build_marts.py builds
@@ -130,11 +139,17 @@ vars:
   #   keeps its check warning for about 48 builds after it (Reasoned from
   #   0.26.0's get_read_anomaly_scores_query()).
   # - anomaly_sensitivity: 3 standard deviations. The newest point is inside
-  #   its own training set (0.26.0's anomaly scores, "rows between unbounded
-  #   preceding and current row"), so with n points no score passes
-  #   (n - 1) / sqrt(n): 2.85 at 10 points, 3.02 at 11. No check can warn on
-  #   an anomaly before its window holds 11 points (measured 2026-10-08 on
-  #   DuckDB 1.5.5, that window over n - 1 equal points and one outlier).
+  #   its own training set (0.26.0's get_anomaly_scores_query(), "rows between
+  #   unbounded preceding and current row", while no check sets
+  #   exclude_detection_period_from_training), and the deviation is DuckDB's
+  #   stddev, the sample one, so with n points no score passes
+  #   (n - 1) / sqrt(n): 2.85 at 10 points, 3.02 at 11. No check can warn
+  #   before its window holds 11 points, this build's among them. Measured
+  #   2026-10-08 in a scratch project on dbt 2.0.6, Elementary 0.26.0 and
+  #   DuckDB: a row count 1,000 times its usual after 9 equal builds scored
+  #   2.846 and passed, and after 10 scored 3.015 and warned.
+  #   macros/data_quality.sql derives `learning.needed` from this var, so the
+  #   page's "Learning, 3 of 11 builds" moves with it.
   # min_training_set_size is not set: 0.26.0 takes it as an argument of every
   # anomaly test and reads it nowhere (get_anomalies_test_configuration.sql),
   # so its default of 7 gates nothing. The 11 points above are the real wait.

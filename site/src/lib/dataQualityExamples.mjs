@@ -14,12 +14,14 @@
 // to make a wrong-format file without touching the next test's copy.
 //
 // TWO SHAPES OF FILE. The light examples are the contract's first shape: no
-// `in_needs_a_look`, no `metric` on most entries, a series only behind a
-// volume or freshness entry - what an older file looks like, which the page
-// still reads whole. monthlyManyProblems and hourlyManyProblems are the
-// shape the maintainer's round-3 choice asked for (2026-10-08): a series for
-// every mart's row count and for every entry with a history, each flagged
-// `in_needs_a_look`, every entry naming its metric, hourly series a week long.
+// `in_needs_a_look`, no `metric` on most entries, no `mart` on a series, a
+// series only behind a volume or freshness entry - what an older file looks
+// like, which the page still reads whole. monthlyManyProblems and
+// hourlyManyProblems are the shape the maintainer's round-3 choice asked for
+// (2026-10-08): a series for every mart's row count and for every entry with
+// a history, each flagged `in_needs_a_look` and naming its `mart`, every
+// entry naming its metric, a failed dbt test its failing rows, hourly series
+// a week long.
 
 export const MONTHLY_BUILT_AT = "2026-10-07T06:12:00Z";
 export const HOURLY_BUILT_AT = "2026-10-07T23:05:00Z";
@@ -35,19 +37,30 @@ export const EXAMPLE_NOW = "2026-10-08T00:05:00Z";
 const MONTHLY_ROWS = [5231, 5240, 5236, 5252, 5249, 5261, 5270, 5268, 5279, 5285, 5292, 4118];
 
 /**
- * The band Elementary would draw at each point: the mean of the points before
- * it, plus or minus three standard deviations, once seven came before it
- * (Elementary 0.26.0's defaults, pipeline/ELT.md "What the spike measured").
- * Computed rather than typed, so the example's band and its last entry's
- * expected range agree.
+ * How many builds a check needs before it can fire, at Elementary's three
+ * standard deviations: 11, this build among them. What the pipeline writes
+ * as `learning.needed` (pipeline/dbt/macros/data_quality.sql derives it, and
+ * pipeline/dbt/dbt_project.yml has the measurement).
  */
-function bands(values, needed = 7, sigmas = 3, round = Math.round) {
+export const NEEDED = 11;
+
+/**
+ * The band Elementary 0.26.0 draws at each point: the mean of that point and
+ * every one before it, plus or minus three of their sample standard
+ * deviations (get_anomaly_scores_query(): "rows between unbounded preceding
+ * and current row", and DuckDB's stddev), its lower edge no lower than 0, as
+ * Elementary floors a count's. None at the first point, whose one value has
+ * no spread. A point counts toward its own band, so none can fall outside
+ * its band before the NEEDED-th. Computed rather than typed, so the
+ * example's band and its last entry's expected range agree.
+ */
+function bands(values, sigmas = 3, round = Math.round) {
   return values.map((_, i) => {
-    const prior = values.slice(0, i);
-    if (prior.length < needed) return [null, null];
-    const mean = prior.reduce((a, b) => a + b, 0) / prior.length;
-    const sd = Math.sqrt(prior.reduce((a, b) => a + (b - mean) ** 2, 0) / prior.length);
-    return [round(mean - sigmas * sd), round(mean + sigmas * sd)];
+    const seen = values.slice(0, i + 1);
+    if (seen.length < 2) return [null, null];
+    const mean = seen.reduce((a, b) => a + b, 0) / seen.length;
+    const sd = Math.sqrt(seen.reduce((a, b) => a + (b - mean) ** 2, 0) / (seen.length - 1));
+    return [Math.max(0, round(mean - sigmas * sd)), round(mean + sigmas * sd)];
   });
 }
 
@@ -118,7 +131,7 @@ export function monthlyWithWarnings() {
     built_at: MONTHLY_BUILT_AT,
     totals: totalOf(byKind),
     kinds: byKind,
-    learning: { builds: 12, needed: 7 },
+    learning: { builds: 12, needed: NEEDED },
     needs_a_look: [
       {
         kind: "volume",
@@ -172,7 +185,7 @@ export function monthlyAllGreen() {
     built_at: MONTHLY_BUILT_AT,
     totals: totalOf(byKind),
     kinds: byKind,
-    learning: { builds: 12, needed: 7 },
+    learning: { builds: 12, needed: NEEDED },
     needs_a_look: [],
     series: [],
     by_mart: marts(MONTHLY_MARTS.map(([mart, checks]) => [mart, checks])),
@@ -181,7 +194,7 @@ export function monthlyAllGreen() {
 
 /** The third monthly build: everything passes, because the anomaly checks cannot fire yet. */
 export function monthlyLearning() {
-  return { ...monthlyAllGreen(), learning: { builds: 3, needed: 7 } };
+  return { ...monthlyAllGreen(), learning: { builds: 3, needed: NEEDED } };
 }
 
 const HOURLY_MARTS = [
@@ -204,7 +217,7 @@ export function hourlyWithWarning() {
     built_at: HOURLY_BUILT_AT,
     totals: totalOf(byKind),
     kinds: byKind,
-    learning: { builds: 7, needed: 7 },
+    learning: { builds: 168, needed: NEEDED },
     needs_a_look: [
       {
         kind: "freshness",
@@ -269,7 +282,7 @@ function history({ level, last, n, end, step, seed, jitter = 0.006, places = 0 }
   const sway = Math.max(level * jitter, 2 / 10 ** places);
   const values = Array.from({ length: n - 1 }, (_, i) => round(level + sway * Math.sin(i * 1.7 + phase)));
   values.push(last);
-  const band = bands(values, 7, 3, round);
+  const band = bands(values, 3, round);
   const endMs = Date.parse(end);
   return values.map((value, i) => ({
     at: new Date(endMs - (n - 1 - i) * step * 1000).toISOString().replace(".000Z", "Z"),
@@ -281,6 +294,16 @@ function history({ level, last, n, end, step, seed, jitter = 0.006, places = 0 }
 
 function entry(kind, table, status, extra = {}) {
   return { kind, table, column: null, metric: null, status, value: null, expected_min: null, expected_max: null, since: null, ...extra };
+}
+
+/**
+ * The mart a table is, as the file's `mart` names it, or null for a table that
+ * is no mart's. These examples name a mart's table as its folder, where the
+ * pipeline's file names it by version (`trail_lines_v1`); the page joins By
+ * mart on `mart` either way.
+ */
+function martOf(table) {
+  return [...MANY_MONTHLY_MARTS, ...MANY_HOURLY_MARTS].some(([mart]) => mart === table) ? table : null;
 }
 
 /** An entry with the history behind it: the entry's figures are its history's last point. */
@@ -295,7 +318,7 @@ function withHistory(kind, table, status, { column = null, metric, points, since
       expected_max: last.expected_max,
       since,
     }),
-    series: { table, column, metric, in_needs_a_look: true, points },
+    series: { table, column, metric, mart: martOf(table), in_needs_a_look: true, points },
   };
 }
 
@@ -317,6 +340,7 @@ function martRowCounts(rows, series, { end, step, n, seed }) {
       table: mart,
       column: null,
       metric: "row_count",
+      mart,
       in_needs_a_look: false,
       points: history({ level, last: Math.round(level * 1.002), n, end, step, seed: seed + i }),
     }));
@@ -352,8 +376,8 @@ export function monthlyManyProblems() {
     series.push(own);
   };
 
-  items.push(entry("dbt_tests", "trail_lines", "fail", { column: "id", since: at }));
-  items.push(entry("dbt_tests", "points_of_interest", "fail", { column: "mile", since: earlier }));
+  items.push(entry("dbt_tests", "trail_lines", "fail", { column: "id", value: 2, since: at }));
+  items.push(entry("dbt_tests", "points_of_interest", "fail", { column: "mile", value: 13, since: earlier }));
   add(
     withHistory("anomalies", "trail_lines", "fail", {
       column: "trail_status",
@@ -372,11 +396,11 @@ export function monthlyManyProblems() {
     ["preview_fixture_03__trails", 5260, 4118],
     ["preview_fixture_12__shelters", 1246, 1904],
     ["preview_fixture_15__parking", 309, 233],
-    ["preview_fixture_21__trailheads", 96, 77],
-    ["preview_fixture_04__viewpoints", 45, 61],
+    ["preview_fixture_21__trailheads", 96, 70],
+    ["preview_fixture_04__viewpoints", 45, 70],
     ["preview_fixture_09__trails", 14120, 12882],
     ["preview_fixture_18__water_sources", 534, 412],
-    ["trail_lines", 94140, 91204],
+    ["trail_lines", 94140, 88012],
     ["points_of_interest", 46510, 48977],
     ["preview_fixture_26__shelters", 60, 0],
     ["preview_fixture_11__trails", 2570, 2210],
@@ -417,7 +441,7 @@ export function monthlyManyProblems() {
   [
     ["trail_lines", "surface", "null_percent", 0.6, 4.2, 1],
     ["elevation", "gain_ft", "max", 2750, 9812, 0],
-    ["places", "name", "min_length", 3.5, 0, 0],
+    ["places", "name", "null_count", 3, 41, 0],
     ["points_of_interest", "water_distance_mi", "null_percent", 4, 12.5, 1],
     ["suggested_hikes", "duration_min", "average", 200, 412, 0],
     ["trail_network", "miles", "average", 2.6, 1.1, 2],
@@ -446,7 +470,7 @@ export function monthlyManyProblems() {
     built_at: at,
     totals: totalOf(byKind),
     kinds: byKind,
-    learning: { builds: 12, needed: 7 },
+    learning: { builds: 12, needed: NEEDED },
     needs_a_look: items,
     series,
     by_mart: byMart(MANY_MONTHLY_MARTS, items),
@@ -465,7 +489,7 @@ const MANY_HOURLY_MARTS = [
 export function hourlyManyProblems() {
   const at = HOURLY_BUILT_AT;
   const week = (level, last, seed, extra = {}) => history({ level, last, n: 168, end: at, step: HOUR, seed, ...extra });
-  const items = [entry("dbt_tests", "closures", "fail", { column: "closed_until", since: at })];
+  const items = [entry("dbt_tests", "closures", "fail", { column: "closed_until", value: 1, since: at })];
   const series = [];
   const add = ({ entry: one, series: own }) => {
     items.push(one);
@@ -506,7 +530,7 @@ export function hourlyManyProblems() {
     built_at: at,
     totals: totalOf(byKind),
     kinds: byKind,
-    learning: { builds: 168, needed: 7 },
+    learning: { builds: 168, needed: NEEDED },
     needs_a_look: items,
     series,
     by_mart: byMart(MANY_HOURLY_MARTS, items),

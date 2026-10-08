@@ -137,7 +137,7 @@ class FieldNote(Base):
     # When the hiker was there - their claim, bounded at the future end by
     # the schema, unbounded into the past because being off-grid for two
     # weeks is ordinary on a thru-hike.
-    observed_at = Column(DateTime, nullable=False, default=utc_now)
+    observed_at = Column(DateTime, nullable=False, default=utc_now, index=True)
 
     # When it reached this server - always server truth, never the claim.
     posted_at = Column(DateTime, nullable=False, default=utc_now)

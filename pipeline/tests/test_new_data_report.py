@@ -187,3 +187,80 @@ def test_a_warehouse_without_the_publication_model_exits_2(tmp_path):
     path = tmp_path / "empty.duckdb"
     duckdb.connect(str(path)).close()
     assert new_data_report.main(["--warehouse", str(path), "--out", str(tmp_path / "out")]) == 2
+
+
+# --- The monthly lane's split: the build job writes the warehouse's counts, parity-report the report ---
+
+
+def test_facts_out_then_facts_with_parity_writes_the_report_one_run_with_both_writes(warehouse, parity_dir, tmp_path):
+    """build-reference.yml's build job holds the warehouse and its parity-report job every group's results, never both
+    at once; the two halves together must say exactly what one run with both says."""
+    facts = tmp_path / "facts" / "new_data_facts.json"
+    split, whole = tmp_path / "split", tmp_path / "whole"
+
+    assert new_data_report.main(["--warehouse", str(warehouse), "--facts-out", str(facts)]) == 0
+    assert not split.exists(), "--facts-out writes the counts and no report"
+    assert new_data_report.main(["--facts", str(facts), "--parity-dir", str(parity_dir), "--out", str(split)]) == 0
+    assert new_data_report.main(["--warehouse", str(warehouse), "--parity-dir", str(parity_dir), "--out", str(whole)]) == 0
+
+    assert (split / "new_data_report.md").read_text() == (whole / "new_data_report.md").read_text()
+    assert json.loads((split / "new_data_report.json").read_text()) == json.loads((whole / "new_data_report.json").read_text())
+
+
+def test_the_facts_file_holds_no_dispersed_campsite_location_and_no_person_field(warehouse, tmp_path):
+    """The facts travel between jobs as a workflow artifact, which a public repository's readers can download."""
+    facts = tmp_path / "new_data_facts.json"
+    assert new_data_report.main(["--warehouse", str(warehouse), "--facts-out", str(facts)]) == 0
+    text = facts.read_text()
+    for leaked in ("44.123456", "71.654321", DISPERSED["name"], PERSON["photo_author"], PERSON["email"], "EMAIL"):
+        assert leaked not in text, leaked
+    assert json.loads(text)["format"] == new_data_report.FACTS_FORMAT
+
+
+def test_a_facts_file_carrying_a_location_or_not_written_by_facts_out_is_refused_with_exit_2(warehouse, tmp_path):
+    facts = tmp_path / "new_data_facts.json"
+    assert new_data_report.main(["--warehouse", str(warehouse), "--facts-out", str(facts)]) == 0
+    tampered = json.loads(facts.read_text())
+    tampered["source_lines"][0]["lat"] = DISPERSED["lat"]
+    facts.write_text(json.dumps(tampered))
+    out = tmp_path / "out"
+
+    assert new_data_report.main(["--facts", str(facts), "--out", str(out)]) == 2
+    assert not out.exists(), "nothing is written from a facts file that carries a location"
+    facts.write_text(json.dumps({"format": "something-else/1"}))
+    assert new_data_report.main(["--facts", str(facts), "--out", str(out)]) == 2
+    assert new_data_report.main(["--facts", str(tmp_path / "missing.json"), "--out", str(out)]) == 2
+
+
+def test_facts_out_refuses_the_flags_that_belong_to_a_report(warehouse, parity_dir, tmp_path):
+    facts = str(tmp_path / "new_data_facts.json")
+    for extra in (["--parity-dir", str(parity_dir)], ["--summary", str(tmp_path / "summary.md")], ["--out", str(tmp_path)]):
+        with pytest.raises(SystemExit) as refused:
+            new_data_report.main(["--warehouse", str(warehouse), "--facts-out", facts, *extra])
+        assert refused.value.code == 2, extra
+    with pytest.raises(SystemExit):
+        new_data_report.main(["--warehouse", str(warehouse)])  # neither --out nor --facts-out
+
+
+def test_summary_appends_the_headline_counts_after_what_the_page_already_held(warehouse, parity_dir, tmp_path):
+    summary = tmp_path / "step_summary.md"
+    summary.write_text("| family | status |\n")  # parity_lane.py --join writes its table to the same page first
+
+    report = ["--warehouse", str(warehouse), "--parity-dir", str(parity_dir), "--out", str(tmp_path / "out")]
+    assert new_data_report.main([*report, "--summary", str(summary)]) == 0
+
+    page = summary.read_text()
+    assert page.startswith("| family | status |\n### New-data review (decision 31)\n")
+    assert "- 11 mart rows across 5 marts." in page  # 4 points, 1 closure, 1 warning, 1 line, 4 sources rows
+    assert "- 4 layers in `int_sources__publication`: 3 may publish, 1 may not." in page
+    assert "- 5 closure, warning, water and shelter sources; **4 not seen in today's compared files**." in page
+    for leaked in ("44.123456", DISPERSED["name"], PERSON["email"]):
+        assert leaked not in page, leaked
+
+
+def test_without_parity_results_the_headline_counts_sources_not_measured_never_not_seen(warehouse):
+    (_, _, sources) = new_data_report.headline(new_data_report.build_report(warehouse, None))
+    assert sources == (
+        "- 5 closure, warning, water and shelter sources; **0 not seen in today's compared files**, "
+        "5 not measured (no parity results were read)."
+    )

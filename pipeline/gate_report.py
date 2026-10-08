@@ -1,10 +1,12 @@
 """gate_report: one answer for every R2 key today's pipeline publishes, from the shadow run's parity results.
 
     python gate_report.py --parity-dir <dir> --out <dir> [--dbt-manifest dbt/target/manifest.json] [--strict]
+        [--summary <file>]
 
 Exits 0 once both files are written, whatever they say; 1 with --strict when
 any key blocks go (KeyRow.blocks_go); 2 when there are no parity results or
-no dbt manifest to read.
+no dbt manifest to read. --summary appends the counts to a file, the run's
+step summary in build-reference.yml's parity-report job.
 
 Decision 30's go/no-go gate (pipeline/ELT.md, "The go/no-go gate") needs
 "every existing R2 key comes out byte-equal, or is listed with a reviewed
@@ -835,6 +837,24 @@ def build_report(parity_dir: Path, dbt_manifest: Path) -> dict:
     }
 
 
+def summary_markdown(report: dict) -> str:
+    """The report's counts under a heading of their own, for a run's step summary; the per-key list stays in the files."""
+    counts = ", ".join(f"{count} {verdict}" for verdict, count in report["counts"].items())
+    return (
+        "\n".join(
+            [
+                "### The gate's per-key report (decision 30)",
+                "",
+                f"- {sum(report['counts'].values())} keys today's pipeline publishes: {counts}.",
+                f"- **{len(report['blocking'])} block go** on this report's own reading of decision 30, for the "
+                "maintainer to confirm.",
+                "",
+            ]
+        )
+        + "\n"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--parity-dir", type=Path, required=True, help="where parity.py --json-dir wrote its <family>.json files")
@@ -844,6 +864,9 @@ def main(argv: list[str] | None = None) -> int:
         "--strict",
         action="store_true",
         help="exit 1 when any key blocks go (KeyRow.blocks_go); without it, a written report exits 0 whatever it says",
+    )
+    parser.add_argument(
+        "--summary", type=Path, default=None, help="a file the headline counts are appended to, such as $GITHUB_STEP_SUMMARY"
     )
     args = parser.parse_args(argv)
     try:
@@ -855,6 +878,9 @@ def main(argv: list[str] | None = None) -> int:
     markdown = report.pop("markdown")
     (args.out / "gate_report.md").write_text(markdown, encoding="utf-8")
     (args.out / "gate_report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    if args.summary is not None:
+        with args.summary.open("a", encoding="utf-8") as page:
+            page.write(summary_markdown(report))
     counts = ", ".join(f"{count} {verdict}" for verdict, count in report["counts"].items())
     print(
         f"gate_report: {sum(report['counts'].values())} keys: {counts}; {len(report['blocking'])} block go; "

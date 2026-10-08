@@ -355,6 +355,15 @@ def test_main_writes_both_files_and_exits_2_without_results(tmp_path, capsys):
     assert gate_report.main([*arguments, "--strict"]) == 1
     assert gate_report.main(arguments) == 0, "without --strict a written report exits 0 whatever it says"
 
+    summary = tmp_path / "step_summary.md"
+    summary.write_text("| family | status |\n")  # parity_lane.py --join writes its table to the same page first
+    assert gate_report.main([*arguments, "--summary", str(summary)]) == 0
+    report = json.loads((tmp_path / "out" / "gate_report.json").read_text())
+    page = summary.read_text()
+    assert page.startswith("| family | status |\n### The gate's per-key report (decision 30)\n")
+    assert f"- {len(report['keys'])} keys today's pipeline publishes: 1 differs, 0 not_compared, " in page
+    assert "- **1 block go** on this report's own reading of decision 30, for the maintainer to confirm." in page
+
 
 def test_a_record_from_a_source_todays_exporters_never_read_is_listed_once_as_new_data():
     """Decision 31's new data: parity explains it, and the report lists it by reason, with no field called changed and

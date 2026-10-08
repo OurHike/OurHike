@@ -157,10 +157,24 @@ models:
       in (PL09), a trailhead or parking area with no line near it dropped
       (PL10), and no miles anywhere when nothing was measured (PL11).
       Must-match numbers are JSON text, which the places mart casts back.
+    data_tests:
+      # Warns: dbt prints only a row count, so the model's post-hook logs
+      # the rows, and int_places__final leaves them out (macros/storable_text.sql).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "broken_text is null"
+          config:
+            severity: warn
     columns:
       - name: place_id
-        description: The published `id`.
-        data_tests: [not_null, unique]
+        description: The published `id`; null only on a row whose id DuckDB could not store (broken_text).
+        data_tests:
+          - not_null:
+              config:
+                where: "broken_text is null"
+          - unique:
+              config:
+                where: "broken_text is null"
       - name: place_order
         description: The row's place in places.json, by kind, then name, then id.
         data_tests: [not_null, unique]
@@ -196,6 +210,13 @@ models:
         description: The row's registry key.
       - name: _loaded_at
         description: When the extract loaded the row's source.
+      - name: broken_text
+        description: >
+          Each text column of the row that DuckDB could not store, as
+          `column=` and the column's first 60 bytes in hex, joined with `; `;
+          null on every row it could store (macros/storable_text.sql, after
+          monthly runs 26 and 27). The column itself is null on such a row,
+          and int_places__final leaves the place out.
   - name: int_places__final
     description: >
       The places mart's rows before their row dates (decision 57):

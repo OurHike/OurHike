@@ -1,4 +1,8 @@
-{{ config(materialized='table', tags=['builds_alone']) }}
+{{ config(
+    materialized='table',
+    tags=['builds_alone'],
+    post_hook="{{ log_broken_text(this, ['place_id', 'kind', 'source_key']) }}",
+) }}
 -- builds_alone: Out of Memory Error here in monthly run 20 (37296900535).
 -- Not enough: alone in monthly run 21 (37323395441) it ran out at 12.4 GiB.
 {#- The disc's radius in metres, multiplied as doubles, the way Python's
@@ -10,6 +14,12 @@
     times one polygon is halved ("MEMORY" below). -#}
 {%- set piece_vertices = var('places_piece_vertices') %}
 {%- set piece_halvings = 32 %}
+{#- The text columns this model writes, each checked as DuckDB would store it
+    ("TEXT DuckDB CANNOT STORE", below). -#}
+{%- set text_columns = [
+    'place_id', 'kind', 'name', 'poi_id', 'category', 'state', 'within_park',
+    'source', 'club', 'source_key',
+] %}
 -- Every row places.json publishes, measured, in file order:
 -- export_places.py's load_named_trails(), measure() and the end of
 -- build_output() (PL07-PL11). The places mart is this, typed.
@@ -621,32 +631,70 @@ kept as (
             and all_places.kind in ('trailhead', 'parking')
             and all_places.metres = 0
         )
+),
+
+resolved_rows as (
+    select
+        place_id,
+        row_number() over (order by kind, name, place_id) as place_order,
+        kind,
+        name,
+        poi_id,
+        category,
+        state,
+        within_park,
+        cast(to_json(lon) as varchar) as lon,
+        cast(to_json(lat) as varchar) as lat,
+        cast(to_json(bbox) as varchar) as bbox,
+        case when measured then metres end as trail_metres,
+        case
+            when measured
+                then
+                    cast(
+                        to_json(
+                            cast(printf('%.1f', metres / 1609.344) as double)
+                        )
+                        as varchar
+                    )
+        end as trail_miles,
+        measured as trail_miles_measured,
+        source,
+        club,
+        source_key,
+        _loaded_at
+    from kept
+),
+
+-- TEXT DuckDB CANNOT STORE (macros/storable_text.sql): every text column is
+-- written through storable_text(), and a row holding one it could not store
+-- keeps that column null and names it, with its bytes, in broken_text.
+-- int_places__final leaves such a place out rather than publish what it
+-- held, and the post-hook logs it.
+checked as (
+    select
+        *,
+        {{ broken_text_report(text_columns) }} as broken_text
+    from resolved_rows
 )
 
 select
-    place_id,
-    row_number() over (order by kind, name, place_id) as place_order,
-    kind,
-    name,
-    poi_id,
-    category,
-    state,
-    within_park,
-    cast(to_json(lon) as varchar) as lon,
-    cast(to_json(lat) as varchar) as lat,
-    cast(to_json(bbox) as varchar) as bbox,
-    case when measured then metres end as trail_metres,
-    case
-        when measured
-            then
-                cast(
-                    to_json(cast(printf('%.1f', metres / 1609.344) as double))
-                    as varchar
-                )
-    end as trail_miles,
-    measured as trail_miles_measured,
-    source,
-    club,
-    source_key,
-    _loaded_at
-from kept
+    {{ storable_text('place_id') }} as place_id,
+    place_order,
+    {{ storable_text('kind') }} as kind,
+    {{ storable_text('name') }} as name,
+    {{ storable_text('poi_id') }} as poi_id,
+    {{ storable_text('category') }} as category,
+    {{ storable_text('state') }} as state,
+    {{ storable_text('within_park') }} as within_park,
+    lon,
+    lat,
+    bbox,
+    trail_metres,
+    trail_miles,
+    trail_miles_measured,
+    {{ storable_text('source') }} as source,
+    {{ storable_text('club') }} as club,
+    {{ storable_text('source_key') }} as source_key,
+    _loaded_at,
+    broken_text
+from checked

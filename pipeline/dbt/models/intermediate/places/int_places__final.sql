@@ -48,4 +48,8 @@ select
     resolved._loaded_at
 from resolved
 inner join publication on resolved.source_key = publication.source_key
-where publication.may_publish
+where
+    publication.may_publish
+    -- a place holding text DuckDB could not store (int_places__resolved's
+    -- broken_text) is left out, never published with a column it lost
+    and resolved.broken_text is null

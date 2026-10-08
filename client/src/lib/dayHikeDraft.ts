@@ -120,7 +120,12 @@ export const OFF_NETWORK_REFUSAL =
  * same sentence also covers a tap in a cell whose routing half has not
  * landed yet - App.tsx asks that before it asks this module - and a cell
  * the bucket refused for good, which the console names and the door does
- * not.
+ * not. Since #1828 (cells from two releases were merged by node number) it
+ * also covers a cell left out because it is from another release than the
+ * graph this session built (lib/useTrailGraph.ts):
+ * held only from an older release with no signal to refetch it, which a
+ * connection cures, or arrived from a newer release mid-session, which only
+ * a restart does. The console names both.
  */
 export const NETWORK_STILL_ARRIVING =
   "OurHike hasn't got this area's trail lines yet, so it can't tell what you tapped. Try again in a moment."

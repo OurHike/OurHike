@@ -52,16 +52,29 @@
 // hash, no version - and its `MAX_CACHED_BYTES = 2 * 1024 * 1024` would
 // silently delete a 7.5 MB graph on every write.
 //
-// WHY THE MANIFEST VERSION IS RECORDED
+// WHY THE MANIFEST VERSION IS RECORDED, AND WHAT READS IT NOW (#1828)
 //
 // `lib/dayHikes.ts` refuses to persist a `GraphPoint.edgeIndex` because
 // `build_trail_graph.py` renumbers edges between publishes - and since the
 // cells, because the merged graph's positions depend on which cells landed in
-// which order. A cached cell inherits that hazard: the version is what lets a
-// phone tell "the cells I hold" from "the graph my saved hike was priced
-// against". Recorded rather than acted on. What it enables - a card that can
-// say its cached figures were computed against a different release - is a
-// change to what a screen SAYS, which wants its own before-and-after.
+// which order. A cached cell inherits that hazard, one level down: each cell
+// names its nodes and edges by their number in the WHOLE graph it was cut
+// from (`node_ids`, `edge_ids`), and lib/trailGraphData.ts joins two cells by
+// those numbers. Node 4,102 of one release can be a different junction from
+// node 4,102 of the next, so a cell stored from one release and a cell
+// fetched from the next must never be joined.
+//
+// The version was recorded and nothing read it until #1828 - "a phone merges
+// trail-graph cells from two releases by node number, and a new release
+// renumbers them". It is read now: lib/trailGraphData.ts hands a stored cell
+// back only when its version is the release the graph is being built from,
+// and {@link newestStoredGraphVersion} below is how a phone with no signal
+// picks that release - the maintainer's choice by poll on 2026-10-08, refuse
+// mixed releases rather than join cells by coordinates or clear the store.
+//
+// Still not acted on: a card saying its cached figures were computed
+// against a different release. That is a change to what a screen SAYS, which
+// wants its own before-and-after.
 
 import { del, get, keys, set } from 'idb-keyval'
 
@@ -76,8 +89,9 @@ export interface StoredGraphArtifact {
   /** The release version the manifest carried then, or null when it named
    *  none. See the header for what this is for and what it is not. */
   version: string | null
-  /** Epoch ms. For a screen that wants to say how old this copy is - nothing
-   *  in this module reads it, and nothing decides anything on it. */
+  /** Epoch ms. Read by {@link newestStoredGraphVersion}, which is the one
+   *  decision made on it: which stored release a phone with no signal builds
+   *  its graph from. */
   fetchedAt: number
 }
 
@@ -228,6 +242,50 @@ async function graphCellStoreKeys(): Promise<string[]> {
   } catch {
     return []
   }
+}
+
+/**
+ * The manifest version of the newest routing half this phone holds for any of
+ * `names`, or null when it holds none of them (#1828).
+ *
+ * WHAT "NEWEST" MEANS HERE, because the version cannot say it. A version is
+ * `str(uuid.uuid4())` (pipeline/publish.py), so two of them cannot be put in
+ * order. `fetchedAt` can: of two copies, the one written later came from the
+ * release this phone fetched more recently, and a build only ever fetches the
+ * release it pins (lib/dataRelease.ts's DATA_RELEASE), so that is the newer
+ * build's release. Reasoned from the code, not measured on a phone. A phone
+ * clock set backwards between two fetches would order them wrongly, and
+ * nothing here can see that.
+ *
+ * AMONG THE CELLS ASKED FOR, NOT THE WHOLE STORE. A phone that stored a
+ * stretch's cells before an update and then fetched one cell at home after it
+ * holds two releases, and the stretch's cells still agree with each other.
+ * Read across the whole store, the home cell would make every stretch cell
+ * unusable at the trailhead - the failure #1050 fixed ("a day hike cannot be
+ * built or followed offline"), brought back by one cell the hiker is not
+ * using. Read across the cells a graph is being built from, a newer release
+ * wins exactly where two releases would otherwise meet.
+ *
+ * ROUTING HALVES ONLY. The other three halves line up with a routing half and
+ * are held to its release by lib/trailGraphData.ts, so they say nothing about
+ * which release a graph should be built from.
+ *
+ * Wrapped in an object so that "nothing held" (null) and "held from a manifest
+ * that named no version" (`{ version: null }`) stay two answers.
+ */
+export async function newestStoredGraphVersion(
+  names: readonly string[],
+): Promise<{ version: string | null } | null> {
+  let newest: StoredGraphArtifact | null = null
+  for (const name of new Set(names)) {
+    const stored = await readStoredGraph(graphCellStoreKey(name, 'graph'))
+    // Strictly later, so a tie keeps the first name asked about and the
+    // answer depends on nothing but what is stored and what was asked.
+    if (stored !== null && (newest === null || stored.fetchedAt > newest.fetchedAt)) {
+      newest = stored
+    }
+  }
+  return newest === null ? null : { version: newest.version }
 }
 
 /**

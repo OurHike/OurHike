@@ -123,6 +123,14 @@ group, `extract-notices`, and never `publish-data`:
 |---|---|
 | `extract-notices.yml` | every club's and agency's closures and warnings notices into the private raw store, every 4 hours with up to an hour to read (`pipeline/ELT.md` decision 61), then a write-once copy of what a build reads, which `publish-conditions.yml`'s hourly dbt path adds to its warehouse → `extract`, one leg per environment, production from `main` only. Writes no phone file |
 
+And one only ever removes from the raw store, holding the monthly lane's
+group, `raw-lake-monthly`, so it never runs beside `refresh-reference.yml` or
+`build-reference.yml`:
+
+| | |
+|---|---|
+| `purge-person-fields.yml` | decision 56's purge (`pipeline/ELT.md`): proves the raw store's current tables hold no person field, lists every other stored object that still holds one, by key with each field's name and counts and never a value, and with `delete=true` deletes exactly those → `purge`. Dispatch-only, its one input the boolean `delete`, default `false`, which `main`'s placeholder carries too (**PR #1827 — Add dispatch-only build-reference.yml and purge-person-fields.yml placeholders to main**). Holds the raw store's key and nothing else. A delete it refuses deletes nothing; one it makes can take the pin UA serves, after which the next promotion needs a fresh UA build |
+
 `publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
 both run under the `production` environment whenever they will actually
 write, which is what makes RELEASING.md §12 — only the maintainer ships — a

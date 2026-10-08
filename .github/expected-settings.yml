@@ -67,14 +67,15 @@ settings:
       The private raw store, `our-hike-raw` (pipeline/ELT.md, decision 43:
       one private bucket for raw and the step cache, one key). dlt lands every
       extract there under raw/, the step cache sits under steps/, and the
-      builds read it back; no phone reads it. Four workflows need it, and
+      builds read it back; no phone reads it. Five workflows need it, and
       each stops by name when it is missing: the monthly lane's two,
       refresh-reference.yml's extract and pin jobs and build-reference.yml's
       build and parity jobs (the maintainer's choice B split them,
       2026-10-08), extract-notices.yml's (decision 61's notices legs, every
-      4 hours), and publish-conditions.yml's dbt path, which its UA leg runs
+      4 hours), publish-conditions.yml's dbt path, which its UA leg runs
       on the schedule since decision 92 (its production leg, today's bake,
-      does not read it until the cutover). REQUIRED: FALSE until the
+      does not read it until the cutover), and purge-person-fields.yml,
+      decision 56's purge, dispatched by hand. REQUIRED: FALSE until the
       maintainer has minted the key and stored the three R2_RAW_* secrets
       (ELT.md, "Secrets and buckets: a maintainer action"), so
       settings-configured.yml's weekly live check stays green until then;
@@ -85,10 +86,10 @@ settings:
     required: false
     why: >-
       Half of the one read-and-write key to the raw store's bucket (decision
-      43). Held by the extract, pin, build and parity jobs, never beside the
-      public bucket's keys. The cost the maintainer accepted with it: an R2 key
-      covers a whole bucket, so a job that only needs to read raw could
-      overwrite it. Required: false for R2_RAW_BUCKET's reason.
+      43). Held by the extract, pin, build, parity and purge jobs, never
+      beside the public bucket's keys. The cost the maintainer accepted with
+      it: an R2 key covers a whole bucket, so a job that only needs to read
+      raw could overwrite it. Required: false for R2_RAW_BUCKET's reason.
 
   R2_RAW_SECRET_ACCESS_KEY:
     where: secret

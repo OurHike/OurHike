@@ -33,11 +33,12 @@
 -- every club line is (int_trail_lines__club_published): unique in its
 -- layer, and the same id for the same row in the next release, where a
 -- place names another line once anything above it moves. Its last fallback
--- had been the row's rank in staging-key order, which matched no id
--- today's exporter publishes: on monthly run 30 it named another line than
--- today's on every one of cotrex_trails' 96,895 and nc_mst_trail's 327
--- (refresh-reference.yml 37772454847; both layers' object id is `FID`,
--- which neither writer reads, read from their metadata 2026-10-08).
+-- had been the row's rank in staging-key order, an order today's exporter
+-- does not number in: monthly run 30's parity found the two files holding
+-- another line, or none, under 96,895 of cotrex_trails' `generated-<n>`
+-- keys and 327 of nc_mst_trail's (refresh-reference.yml 37772454847; both
+-- layers' object id is `FID`, which neither writer reads, read from their
+-- metadata 2026-10-08).
 --
 -- `trail_status` (TL10) is 'open' or 'closed' from the status column, and
 -- `closure_kind` 'long_term' where the steward marked a line closed. A

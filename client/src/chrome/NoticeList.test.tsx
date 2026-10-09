@@ -519,6 +519,60 @@ describe('and is honest about what it is not', () => {
   })
 })
 
+// NoticeList's `plannedNoticesMissing` (option A of the maintainer's poll of
+// 2026-10-09): a hike is planned and this phone holds no copy of
+// conditions/notices.json, so a club's closure on that hike cannot be in this
+// list. The list opens by saying so, in the maintainer's words, and is headed
+// as what the phone has; the rows below are today's, unchanged.
+describe('when a planned hike’s notices are not on this phone', () => {
+  const WARNING =
+    'This phone has no notices for your planned hikes yet. Connect once to get them. Until then, a closure on your hike will not show here.'
+  const HEADING = 'Trail notices this phone has'
+
+  it(`opens with the warning, then the heading "${HEADING}", then every row as before`, () => {
+    renderList({ plannedNoticesMissing: true })
+
+    const list = screen.getByRole('dialog', { name: HEADING })
+    const warning = within(list).getByText(WARNING)
+    const heading = within(list).getByRole('heading', { name: HEADING })
+    expect(
+      warning.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // The first thing in the sheet, above the heading and its Close button.
+    expect(list.firstElementChild).toBe(warning)
+    expect(entries()).toHaveLength(5)
+    expect(
+      heading.compareDocumentPosition(entries()[0]) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // The rest of today's sheet is still there: its note and its age lines.
+    expect(screen.getByText(/never their notice in full/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /last checked Appalachian Trail Conservancy’s notices on August 12, 2026/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the warning and the heading when this phone holds no notice at all', () => {
+    // A first run with no signal holds neither ATC's file nor NYNJTC's.
+    renderList({ notices: [], plannedNoticesMissing: true })
+
+    expect(screen.getByText(WARNING)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: HEADING })).toBeInTheDocument()
+    expect(screen.getByText('OurHike is holding no trail notices.')).toBeInTheDocument()
+  })
+
+  it('says nothing of the kind without it, and keeps the counted heading', () => {
+    renderList()
+
+    expect(screen.queryByText(WARNING)).toBeNull()
+    expect(
+      screen.getByRole('dialog', { name: 'Every trail notice OurHike holds' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '5 trail notices' })).toBeInTheDocument()
+  })
+})
+
 describe('closing it', () => {
   it('reports the close, and does not close itself', () => {
     // The shell owns whether this is open, like every other sheet on the map

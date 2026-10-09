@@ -5,7 +5,8 @@
 // the read waits for the first frame anyway, so its checking code need not
 // be parsed before it. The fetch, the cache and the refusals are
 // lib/publishedConditions.ts's `fetchPublished`, the same path every other
-// conditions file takes.
+// conditions file takes (its `readPublished`, which also says whether an
+// empty answer means the bucket serves no such file).
 //
 // ONLY ONCE A HIKE IS PLANNED (decision 77, the maintainer's poll of
 // 2026-10-05): the file was 24,966,662 bytes, 6,203,870 gzipped, on soak run
@@ -36,12 +37,14 @@
 import {
   fetchPublished,
   PUBLISHED_NOTICES_KEY,
+  readPublished,
   type NoticeHazard,
   type NoticeMatchedPage,
   type NoticePlace,
   type NoticeStateArea,
   type OrgNotice,
   type PublishedConditions,
+  type PublishedRead,
   type PublishedReadOptions,
 } from './publishedConditions'
 import type { NoticeGeometryValue } from './noticeGeometry'
@@ -311,18 +314,31 @@ export async function fetchPublishedNotices(
   signal?: AbortSignal,
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<OrgNotice> | null> {
-  const [published, states] = await Promise.all([
-    fetchPublished<unknown>(PUBLISHED_NOTICES_KEY, 'notices', signal, options),
+  return (await readNotices(signal, options)).published
+}
+
+/** `fetchPublishedNotices`, with lib/publishedConditions.ts's `notServed`
+ *  for notices.json itself (the states' file has no say in it). */
+async function readNotices(
+  signal?: AbortSignal,
+  options?: PublishedReadOptions,
+): Promise<PublishedRead<OrgNotice>> {
+  const [read, states] = await Promise.all([
+    readPublished<unknown>(PUBLISHED_NOTICES_KEY, 'notices', signal, options),
     fetchPublished<unknown>(PUBLISHED_NOTICE_STATES_KEY, 'states', signal, options),
   ])
-  if (published === null) return null
+  const { published } = read
+  if (published === null) return { published: null, notServed: read.notServed }
   const items: OrgNotice[] = []
   for (const row of published.items) {
     const notice = validNotice(row)
     if (notice !== null) items.push(notice)
   }
   const areas = (states?.items ?? []).flatMap((row) => validStateArea(row) ?? [])
-  return { ...published, items: withStateAreas(items, areas) }
+  return {
+    published: { ...published, items: withStateAreas(items, areas) },
+    notServed: false,
+  }
 }
 
 /**
@@ -399,6 +415,18 @@ export async function noticesListed(): Promise<boolean> {
  * `listed` is the bucket's answer to a HEAD, asked only with signal. With a
  * hike planned, a file that arrives says it is listed too.
  *
+ * `missing` is true only for a planned hike's read that ended with no copy
+ * on this phone, for a reason a connection can change: no signal, so no
+ * request (a first run, or a file over lib/conditionsCache.ts's ceiling
+ * relaunched offline); a download that failed, answered an error other than
+ * 404, brought bytes this build cannot read, or passed
+ * NOTICES_DOWNLOAD_TIMEOUT_MS. chrome/noticesPanel.tsx says so to the hiker
+ * (option A of the maintainer's poll of 2026-10-09). False on a 404 or with
+ * no bucket configured: there is no file for a connection to bring, as on
+ * the exporters' bucket, where the panel stays as it was. False with nothing
+ * planned, which downloads nothing. And no answer at all until the read
+ * settles: a download in flight is neither.
+ *
  * conditions/hazard_areas.json is not read here. lib/useConditions.ts reads
  * it beside this, with `fetchPublishedHazardAreas`, on a promise of its own:
  * neither this download nor the HEAD may hold the hazard areas back.
@@ -406,15 +434,23 @@ export async function noticesListed(): Promise<boolean> {
 export async function readPublishedNotices(
   hikePlanned: boolean,
   options: PublishedReadOptions,
-): Promise<{ published: PublishedConditions<OrgNotice> | null; listed: boolean }> {
+): Promise<{
+  published: PublishedConditions<OrgNotice> | null
+  listed: boolean
+  missing: boolean
+}> {
   if (hikePlanned) {
     const { signal, clear } = deadline(NOTICES_DOWNLOAD_TIMEOUT_MS)
-    const published = await fetchPublishedNotices(signal, options).finally(clear)
-    return { published, listed: published !== null }
+    const { published, notServed } = await readNotices(signal, options).finally(clear)
+    return {
+      published,
+      listed: published !== null,
+      missing: published === null && !notServed,
+    }
   }
   const [published, listed] = await Promise.all([
     fetchPublishedNotices(undefined, { online: false }),
     options.online === false ? false : noticesListed(),
   ])
-  return { published, listed }
+  return { published, listed, missing: false }
 }

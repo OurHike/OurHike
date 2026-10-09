@@ -162,6 +162,21 @@ export interface Conditions {
    */
   clubNoticesListed: boolean
   /**
+   * Whether a hike is planned and this phone holds no copy of
+   * conditions/notices.json, settled: the last planned-hike read ended with
+   * nothing, for a reason a connection can change (lib/publishedNotices.ts's
+   * `readPublishedNotices` lists them; never a 404). What
+   * chrome/noticesPanel.tsx says to the hiker, in option A of the
+   * maintainer's poll of 2026-10-09.
+   *
+   * FALSE UNTIL A READ SETTLES, so a phone whose first download is in flight
+   * keeps today's panel, with no wording of its own for that state. Once
+   * true it stays true while a retry is in flight, which is still the truth
+   * (the phone holds no copy yet), and the warning does not flicker off and
+   * on again. False whenever `clubNotices` holds a list.
+   */
+  clubNoticesMissing: boolean
+  /**
    * Decision 67's hunting areas, shooting sites and burned areas, from
    * conditions/hazard_areas.json (decision 84), read whatever is planned,
    * or null when that file has not reached this phone. Like `clubNotices`,
@@ -241,6 +256,7 @@ export function useConditions(
     null,
   )
   const [clubNoticesListed, setClubNoticesListed] = useState(false)
+  const [clubNoticesMissing, setClubNoticesMissing] = useState(false)
   const [hazardFile, setHazardFile] = useState<PublishedConditions<OrgNotice> | null>(
     null,
   )
@@ -468,10 +484,15 @@ export function useConditions(
     void reader
       .then(({ readPublishedNotices }) => readPublishedNotices(hikePlanned, { online }))
       .then(
-        ({ published, listed }) => {
+        ({ published, listed, missing }) => {
           if (cancelled) return
           if (published !== null) setClubNotices(published)
           if (listed) setClubNoticesListed(true)
+          // Every settled read answers it, and only a settled one: a read
+          // in flight leaves the last answer standing (see the field). If
+          // publishedNotices.ts's chunk cannot load, the rejection handler
+          // below sets nothing, so the panel keeps the last answer too.
+          setClubNoticesMissing(missing)
         },
         () => undefined,
       )
@@ -567,6 +588,7 @@ export function useConditions(
     clubNotices: clubNotices?.items ?? null,
     clubNoticesGeneratedAt: clubNotices?.generatedAt ?? null,
     clubNoticesListed,
+    clubNoticesMissing: clubNotices === null && clubNoticesMissing,
     hazardFile,
     drought,
     droughtWeek,

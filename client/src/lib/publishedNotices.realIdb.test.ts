@@ -146,6 +146,75 @@ describe('a planned hike’s notices.json on a relaunch with no signal', () => {
   })
 })
 
+// readPublishedNotices's `missing`: the legend row "Notices for your planned
+// hikes: not on this phone yet" and the warning at the top of the list it
+// opens (option A of the maintainer's poll of 2026-10-09). True only when a
+// hike is planned, this phone kept no copy, and the read could not bring one
+// for a reason a connection can change. A 404 is not that reason: the
+// exporters' bucket serves no notices.json, and connecting brings nothing.
+describe('readPublishedNotices’s missing, for a planned hike with no copy on this phone', () => {
+  it('is true offline with nothing kept, and no request is made', async () => {
+    const fetched = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response('', { status: 404 }))
+    const read = await readPublishedNotices(true, { online: false })
+    expect(read).toEqual({ published: null, listed: false, missing: true })
+    expect(fetched).not.toHaveBeenCalled()
+  })
+
+  it('is false offline when this phone kept a copy', async () => {
+    await rememberPublished(PUBLISHED_NOTICES_KEY, KEPT_NOTICES)
+    const read = await readPublishedNotices(true, { online: false })
+    expect(read.missing).toBe(false)
+    expect(read.published?.items.map((notice) => notice.notice_id)).toEqual([
+      'club_page:footbridge',
+    ])
+  })
+
+  it('is true when the download fails with nothing kept', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+    const read = await readPublishedNotices(true, { online: true })
+    expect(read).toEqual({ published: null, listed: false, missing: true })
+  })
+
+  it('is true when the bucket answers 503, or a page that is not JSON, with nothing kept', async () => {
+    const fetched = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response('', { status: 503 }))
+    expect((await readPublishedNotices(true, { online: true })).missing).toBe(true)
+
+    // A captive portal's sign-in page, served with a 200 in the file's place.
+    fetched.mockImplementation(
+      async () => new Response('<!doctype html><title>Sign in</title>', { status: 200 }),
+    )
+    expect((await readPublishedNotices(true, { online: true })).missing).toBe(true)
+  })
+
+  it('is false on a 404, as the exporters’ bucket answers, so the panel stays today’s', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => new Response('', { status: 404 }),
+    )
+    const read = await readPublishedNotices(true, { online: true })
+    expect(read).toEqual({ published: null, listed: false, missing: false })
+  })
+
+  it('is false once the file arrives', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) =>
+      String(input) === NOTICES_URL
+        ? new Response(JSON.stringify(KEPT_NOTICES), { status: 200 })
+        : new Response('', { status: 404 }),
+    )
+    const read = await readPublishedNotices(true, { online: true })
+    expect(read.missing).toBe(false)
+    expect(read.published?.items).toHaveLength(1)
+  })
+
+  it('is false with no hike planned, which downloads nothing', async () => {
+    const read = await readPublishedNotices(false, { online: false })
+    expect(read).toEqual({ published: null, listed: false, missing: false })
+  })
+})
+
 describe('a request that never answers', () => {
   it('reads the HEAD about notices.json as not said once MANIFEST_READ_TIMEOUT_MS passes', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -184,6 +253,26 @@ describe('a request that never answers', () => {
       ]),
     )
     expect(read?.published?.generatedAt.toISOString()).toBe('2026-10-07T06:00:00.000Z')
+  })
+
+  it('says a planned hike’s notices are missing only once NOTICES_DOWNLOAD_TIMEOUT_MS passes with nothing kept', async () => {
+    // The panel says nothing while the first download is in flight (the
+    // maintainer's poll of 2026-10-09): `readPublishedNotices` has no answer
+    // until the deadline aborts the request, and then it is "missing".
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) =>
+      unanswered(init),
+    )
+    let read: Awaited<ReturnType<typeof readPublishedNotices>> | undefined
+    void readPublishedNotices(true, { online: true }).then((answer) => {
+      read = answer
+    })
+
+    await vi.advanceTimersByTimeAsync(NOTICES_DOWNLOAD_TIMEOUT_MS - 1)
+    expect(read).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.waitFor(() => expect(read?.missing).toBe(true))
+    expect(read?.published).toBeNull()
   })
 
   it('answers the hazard areas from the kept copy once MANIFEST_READ_TIMEOUT_MS passes', async () => {

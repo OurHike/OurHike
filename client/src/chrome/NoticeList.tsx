@@ -92,8 +92,21 @@ export interface NoticeListProps {
   extent: MileExtent | null
   /** The shell's clock, so "posted today" moves with it. */
   now: Date
+  /**
+   * Whether a hike is planned and this phone holds no copy of
+   * conditions/notices.json, where that hike's notices come from
+   * (chrome/noticesPanel.tsx says when). Set, the list opens with the
+   * maintainer's warning and is headed as what this phone has (option A of
+   * the poll of 2026-10-09), because a club's closure on the hike cannot be
+   * in it. The rows, the note and the age lines are the same either way.
+   */
+  plannedNoticesMissing?: boolean
   onClose: () => void
 }
+
+/** The heading, and the dialog's name, while a planned hike's notices are
+ *  not on this phone: the maintainer's words (option A, 2026-10-09). */
+const MISSING_HEADING = 'Trail notices this phone has'
 
 /** The extent of a notice that has one, or null. Only `at_miles` carries a
  *  mile, which is why this narrows rather than taking two numbers. */
@@ -178,6 +191,7 @@ export function NoticeList({
   stewards,
   extent,
   now,
+  plannedNoticesMissing = false,
   onClose,
 }: NoticeListProps) {
   const [showEverything, setShowEverything] = useState(false)
@@ -210,10 +224,24 @@ export function NoticeList({
     <div
       className="atc-notices"
       role="dialog"
-      aria-label="Every trail notice OurHike holds"
+      aria-label={
+        plannedNoticesMissing ? MISSING_HEADING : 'Every trail notice OurHike holds'
+      }
     >
+      {/* FIRST, ABOVE THE HEADING: the list below holds ATC's and NYNJTC's
+          notices only, and a hiker reading it for their planned hike has to
+          know before the first row that a club's closure on that hike is not
+          in it. The maintainer's three sentences, word for word. */}
+      {plannedNoticesMissing && (
+        <p className="atc-notices__missing">
+          This phone has no notices for your planned hikes yet. Connect once to get them.
+          Until then, a closure on your hike will not show here.
+        </p>
+      )}
       <div className="legend__head">
-        <h2 className="legend__title">{heading}</h2>
+        <h2 className="legend__title">
+          {plannedNoticesMissing ? MISSING_HEADING : heading}
+        </h2>
         <button type="button" className="legend__close" onClick={onClose}>
           <span className="visually-hidden">Close</span>
           <span aria-hidden="true">×</span>

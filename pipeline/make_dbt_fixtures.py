@@ -48,6 +48,7 @@ import json
 import math
 import struct
 from pathlib import Path
+from urllib.parse import quote
 
 from load_raw import RAW_DIR
 
@@ -420,21 +421,32 @@ def _oprhp_park_polygons_layer():
 
 
 def _nynjtc_long_path_layer():
-    """The measured field list, 2026-08-24. Blaze is the lowercase 'aqua'
-    all 43 real rows read - a plain string with no coded domain, which is
-    why nothing decodes it here or downstream."""
+    """The measured field list, 2026-08-24, and FID, the layer's object id
+    field, which its metadata names and the 2026-08-24 list left out (read
+    2026-10-09; the live FIDs run from 1 to 85). Blaze is the lowercase
+    'aqua' all 43 real rows read - a plain string with no coded domain,
+    which is why nothing decodes it here or downstream."""
     common = {"Trail_Name": "Long Path", "Blaze": "aqua", "Maintainer": "NYNJTC", "Source": "NYNJTC"}
     return _features(
         [
-            {**common, "Mileage": 3.2, "Comments": "fixture row", "LP_Section": "1", "GuideURL": "https://example.invalid/lp/1"},
-            {**common, "Mileage": 2.7, "Comments": None, "LP_Section": "2", "GuideURL": "https://example.invalid/lp/2"},
+            {
+                "FID": 1,
+                **common,
+                "Mileage": 3.2,
+                "Comments": "fixture row",
+                "LP_Section": "1",
+                "GuideURL": "https://example.invalid/lp/1",
+            },
+            {"FID": 2, **common, "Mileage": 2.7, "Comments": None, "LP_Section": "2", "GuideURL": "https://example.invalid/lp/2"},
         ],
         _line,
     )
 
 
 def _nynjtc_highlands_trail_layer():
-    """Trail_Name/Section_Name/Source/MapOrder, measured 2026-08-24.
+    """Trail_Name/Section_Name/Source/MapOrder, measured 2026-08-24, and
+    OBJECTID, the layer's object id field, which its metadata names (read
+    2026-10-09, when the first two live OBJECTIDs were 4 and 6).
 
     NO BLAZE KEY, and that absence is the fixture's point: sources.json
     records that this layer publishes no blaze at all, and the staging model
@@ -443,8 +455,8 @@ def _nynjtc_highlands_trail_layer():
     """
     return _features(
         [
-            {"Trail_Name": "Highlands", "Section_Name": "NJ 2", "Source": "NYNJTC", "MapOrder": 2},
-            {"Trail_Name": "Highlands", "Section_Name": "NJ 3", "Source": "NYNJTC", "MapOrder": 3},
+            {"OBJECTID": 4, "Trail_Name": "Highlands", "Section_Name": "NJ 2", "Source": "NYNJTC", "MapOrder": 2},
+            {"OBJECTID": 6, "Trail_Name": "Highlands", "Section_Name": "NJ 3", "Source": "NYNJTC", "MapOrder": 3},
         ],
         _line,
     )
@@ -3062,11 +3074,13 @@ NOTICE_RSS = "application/rss+xml; charset=UTF-8"
 FIXTURE_DAY = "September 21, 2026"
 
 
-def _notice_page(h1: str, dated: str | None = f"Updated {FIXTURE_DAY}", region: str = "main") -> str:
-    """An HTML page shaped like the live one: the notice in `region`, a menu and a footer the reader leaves out."""
+def _notice_page(h1: str, dated: str | None = f"Updated {FIXTURE_DAY}", region: str = "main", items: tuple[str, ...] = ()) -> str:
+    """An HTML page shaped like the live one: the notice in `region`, a menu and a footer the reader leaves out, and
+    `items` as one <li> each, for a page read with PageNotice's `items` (the Empire State Trail's closures page)."""
     date_line = f"<p>{dated}</p>" if dated else ""
     title = f"<title>{h1}</title>"
-    inner = f"<h1>{h1}</h1>{date_line}<p>Fixture notice: a trail section is closed for repairs.</p>"
+    listed = f"<ul>{''.join(f'<li>{item}</li>' for item in items)}</ul>" if items else ""
+    inner = f"<h1>{h1}</h1>{date_line}<p>Fixture notice: a trail section is closed for repairs.</p>{listed}"
     if region == "main":
         body = f"<nav>Fixture menu</nav><main>{inner}</main><footer>Fixture footer</footer>"
     elif region == "article":
@@ -3121,6 +3135,40 @@ USFS_ALERT_UNITS = (
     "r09/whitemountain", "r09/gmfl", "r02/psicc", "r02/blackhills", "r04/uinta-wasatch-cache", "r10/chugach",
     "r01/dpg", "r05/lospadres",
 )  # fmt: skip
+#: Registry key -> the park its Maricopa County Parks news feed names (review page 02, held in _shared/maricopa_parks).
+MARICOPA_NEWS_FEEDS = {
+    "maricopa_adobe_dam_news": "Adobe Dam Regional Park",
+    "maricopa_buckeye_hills_news": "Buckeye Hills Regional Park",
+    "maricopa_cave_creek_news": "Cave Creek Regional Park",
+    "maricopa_desert_outdoor_center_news": "Desert Outdoor Center at Lake Pleasant",
+    "maricopa_estrella_mountain_news": "Estrella Mountain Regional Park",
+    "maricopa_hassayampa_river_news": "Hassayampa River Preserve",
+    "maricopa_lake_pleasant_news": "Lake Pleasant Regional Park",
+    "maricopa_maricopa_trail_news": "Maricopa Trail",
+    "maricopa_mcdowell_mountain_news": "McDowell Mountain Regional Park",
+    "maricopa_san_tan_mountain_news": "San Tan Mountain Regional Park",
+    "maricopa_spur_cross_ranch_news": "Spur Cross Ranch Conservation Area",
+    "maricopa_usery_mountain_news": "Usery Mountain Regional Park",
+    "maricopa_vulture_mountains_news": "Vulture Mountains Recreation Area",
+    "maricopa_white_tank_mountain_news": "White Tank Mountain Regional Park",
+}
+
+
+def _one_item_feed(site: str, title: str, creator: bool) -> str:
+    """RSS 2.0 with one item as the live feed shapes it: a guid, a link, a pubDate and prose that never lands, and a
+    dc:creator where the live feed names its author (the Olympic Discovery Trail's does, Maricopa's do not)."""
+    author = "<dc:creator><![CDATA[Fixture Person]]></dc:creator>" if creator else ""
+    item = (
+        f"<item><title>{title}</title><link>https://{site}/fixture-notice/</link>{author}"
+        f'<pubDate>Mon, 21 Sep 2026 14:00:00 +0000</pubDate><guid isPermaLink="false">https://{site}/?p=9101</guid>'
+        "<description><![CDATA[<p>Fixture prose.</p>]]></description></item>"
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        f"<channel><title>Fixture Feed</title><link>https://{site}/</link>{item}</channel></rss>"
+    )
+
+
 #: Registry key -> the OTA section page's WordPress id (ota/closures.py's SECTION_PAGES).
 OTA_SECTION_PAGES = {
     "ota_current_river_conditions": 42254, "ota_upper_current_river_conditions": 42332, "ota_eleven_point_conditions": 2678,
@@ -3163,10 +3211,19 @@ def _notice_pages_n_to_z() -> dict[str, tuple[str, str, str]]:
             "https://dec.ny.gov/things-to-do/hiking/adirondack-backcountry/backcountry-information-for-adirondack-park",
             _notice_page("Fixture Backcountry Information", "New this week (9/21/2026)"),
         ),
-        # The <h1> is the live page's own: the resource's expect_title is 'Trail Closures'.
+        # The <h1> is the live page's own: the resource's expect_title is 'Trail Closures'. Its closures are one <li>
+        # each, as live (read 2026-10-09), because the resource reads them with items="li" (decision 128).
         "oprhp_est_trail_closures_page": (
             "https://empiretrail.ny.gov/trail-closures",
-            _notice_page("Trail Closures", f"Updated {FIXTURE_DAY}"),
+            _notice_page(
+                "Trail Closures",
+                f"Updated {FIXTURE_DAY}",
+                items=(
+                    "<strong>Fixture Town, Fixture County:</strong> The trail is closed between Fixture Road and "
+                    "Fixture Street for repairs.",
+                    "<strong>Fixture City, Fixture County:</strong> Fixture work beside the trail; expect flaggers.",
+                ),
+            ),
         ),
         "palmetto_trail_closures": (
             "https://www.palmettotrail.org/updates/post/trail-closures-updated-2-5-26",
@@ -3291,6 +3348,50 @@ def _notice_pages_n_to_z() -> dict[str, tuple[str, str, str]]:
         NOTICE_HTML,
         _notice_page("Canalway Trail Alerts", None),
     )
+    # Review page 02's stewards (decision 122, 2026-10-09), held in _shared/: each page's own title, which its
+    # expect_title holds, and each feed as one item.
+    pages["il_dnr_closures_page"] = (
+        "https://dnr.illinois.gov/closures/currentclosuresofdnrsitesandareas.html",
+        NOTICE_HTML,
+        _notice_page("Current Closures of DNR Sites and Areas", "Last updated 9/21/26"),
+    )
+    pages["eastern_trail_conditions"] = (
+        "https://www.easterntrail.org/wp-json/wp/v2/pages/62",
+        NOTICE_REST,
+        _wp_rest_page(62, "Trail Conditions"),
+    )
+    pages["maine_huts_trail_conditions"] = (
+        "https://mainehuts.org/wp-json/wp/v2/pages/1851",
+        NOTICE_REST,
+        _wp_rest_page(1851, "Trail Conditions and Updates"),
+    )
+    for key, path, trail in (
+        ("rctc_rachel_carson_trail_alerts", "rachel-carson-trail", "Rachel Carson Trail"),
+        ("rctc_baker_trail_alerts", "baker-trail", "Baker Trail"),
+        ("rctc_harmony_trail_alerts", "harmony-trail", "Harmony Trail"),
+    ):
+        pages[key] = (f"https://www.rachelcarsontrails.org/trails/{path}", NOTICE_HTML, _notice_page(trail, None))
+    pages["tpwd_caprock_canyons_alerts"] = (
+        "https://tpwd.texas.gov/state-parks/caprock-canyons/alert",
+        NOTICE_HTML,
+        _notice_page("Park Alert", None),
+    )
+    pages["wsprc_alerts_page"] = (
+        "https://parks.wa.gov/about/news-announcements/alerts",
+        NOTICE_HTML,
+        _notice_page("Alerts", None),
+    )
+    pages["odt_trail_alerts_feed"] = (
+        "https://olympicdiscoverytrail.org/feed/?post_type=trailalerts",
+        NOTICE_RSS,
+        _one_item_feed("olympicdiscoverytrail.org", "Fixture Trail Alert", creator=True),
+    )
+    for key, park in MARICOPA_NEWS_FEEDS.items():
+        pages[key] = (
+            f"https://www.maricopacountyparks.net/rss/parks.aspx?Park={quote(park)}&ParkNews=1",
+            NOTICE_RSS,
+            _one_item_feed("www.maricopacountyparks.net", f"Fixture {park} Notice", creator=False),
+        )
     return pages
 
 
@@ -4888,6 +4989,28 @@ NOTICE_LAYERS = {
             "FROM_MEAS": 261.6,
         },
     ),
+    # Review page 02 (decision 122, 2026-10-09): the NorthEast Texas Trail Coalition's damaged bridges, held.
+    "nett_damaged_bridges": (
+        _point,
+        {
+            "OBJECTID": 1,
+            "OID_": 208,
+            "Name": "Fixture Bridge (collapsed)",
+            "FolderPath": "Fixture Trail/Bridges",
+            "SymbolID": 14,
+            "AltMode": -1,
+            "Base": 0,
+            "Snippet": " ",
+            "PopupInfo": "Fixture note.",
+            "HasLabel": -1,
+            "LabelID": 1,
+            "LONGXE2": -95.0,
+            "LATYN7": 33.5,
+            "GlobalID": "fixture-nett-damaged-bridges-1",
+            "CreationDate": FIXTURE_DATE_MS,
+            "EditDate": FIXTURE_DATE_MS,
+        },
+    ),
 }
 
 
@@ -5188,6 +5311,9 @@ def _network_rows() -> dict[str, list[dict]]:
             {
                 "type": "Feature",
                 "properties": {
+                    # The layer's object id, as _nynjtc_long_path_layer's rows carry
+                    # it: 83 to 85, where the live FIDs end (read 2026-10-09).
+                    "FID": 80 + section,
                     **long_path,
                     "Mileage": 20.7,
                     "LP_Section": str(section),
@@ -5217,17 +5343,22 @@ def _trail_lines_network_fixtures(files: dict[str, dict | str | bytes]) -> dict[
     - oprhp_trail_closures' NETWORK_CLOSED_AREAS, after its own triangle, so
       parity reaches every branch of apply_area_closures().
     - each network line feature's own `id`, which the live servers write and
-      the builders above leave off: an ArcGIS layer's is its OBJECTID, where
-      the fixture carries one, and a Socrata layer's is the row id
-      lib/socrata.py promotes onto the feature, `row-<n>` in the order
-      extract/_fixtures.py's adapter numbers them. lib/feature_id.py falls
-      back to that `id` where a layer has no `GlobalID`, so without it every
-      such row's published id would be positional. That ArcGIS's GeoJSON
-      `id` is the OBJECTID is Reasoned from the REST API and @unvalidated
-      here; one live fetch comparing the two settles it.
+      the builders above leave off: an ArcGIS layer's is its object id,
+      OBJECTID or else FID where the fixture carries one (the two names the
+      registered network layers use, and the order
+      int_trail_lines__network_judged reads them in), and a Socrata layer's
+      is the row id lib/socrata.py promotes onto the feature, `row-<n>` in
+      the order extract/_fixtures.py's adapter numbers them.
+      lib/feature_id.py falls back to that `id` where a layer has no
+      `GlobalID`, so without it every such row's published id would be
+      positional. That ArcGIS's GeoJSON `id` is the layer's object id is
+      measured: equal on 34 of 34 features of 18 registered layers, one per
+      host, on-premises servers among them, and on all 43 and 12 features of
+      the two NYNJTC layers (read live 2026-10-09).
 
-    The extract lands none of these ids (its rows are a feature's properties
-    and geometry), so the warehouse is unchanged by them.
+    The extract lands none of these ids as an `id` (its rows are a feature's
+    properties and geometry), so the warehouse is unchanged by them; an
+    ArcGIS layer's object id lands as its own column.
     """
     registry = json.loads((Path(__file__).parent / "sources.json").read_text(encoding="utf-8"))
     kinds = {entry["key"]: entry.get("kind") for entry in registry["sources"]}
@@ -5276,10 +5407,11 @@ def _trail_lines_network_fixtures(files: dict[str, dict | str | bytes]) -> dict[
             continue
         for index, feature in enumerate(out[name]["features"]):
             properties = feature.setdefault("properties", {})
+            object_id = next((properties[name] for name in ("OBJECTID", "FID") if properties.get(name) is not None), None)
             if kinds[key] == "socrata_geojson_layer":
                 feature["id"] = f"row-{index}"
-            elif properties.get("OBJECTID") is not None:
-                feature["id"] = properties["OBJECTID"]
+            elif object_id is not None:
+                feature["id"] = object_id
             # A field the registry declares and no builder above writes (#1778's
             # builder writes the name column alone, and two of its layers have
             # since declared a blaze field). The exporter refuses a layer missing
@@ -8405,6 +8537,18 @@ CLUB_POINT_FIXTURES = {
             "Condition": ("Good", "Fair"),
         },
     ),
+    # Review page 02 (decision 122, 2026-10-09): the NorthEast Texas Trail Coalition's trail features, held.
+    "external/nett_trail_pois.geojson": (
+        ("OBJECTID", "TYPE", "NOTES", "GlobalID", "CreationDate", "Creator", "EditDate", "Editor"),
+        {
+            "OBJECTID": (1, 2),
+            "GlobalID": ("{fixture-nett-trail-pois-0}", "{fixture-nett-trail-pois-1}"),
+            "TYPE": ("WF", "TH"),
+            "NOTES": ("Fixture note", None),
+            "Creator": ("fixture person", "fixture person"),
+            "Editor": ("fixture person", "fixture person"),
+        },
+    ),
 }
 
 
@@ -9157,6 +9301,59 @@ def _gis_file_documents() -> dict[str, dict]:
                         _feature({"OBJECTID": 1, "SURFACE": "Ungroomed", "Shape_Length": 0.01}, _line(10), 1),
                         _feature({"OBJECTID": 2, "SURFACE": "Snowmobile", "Shape_Length": 0.01}, _line(11), 2),
                         _feature({"OBJECTID": 3, "SURFACE": "Snowmobile", "Shape_Length": 0.01}, _line(11), 3),
+                    ]
+                ),
+                "application/geo+json",
+            )
+        ),
+        # Review page 02 (decision 122, 2026-10-09): the Baker Trail's file, held in _shared/rctc. The live file's
+        # property names on a route line, a shelter and a parking point.
+        "rctc_baker_trail_geojson": _files(
+            (
+                "https://www.rachelcarsontrails.org/gis/bt-geojson",
+                _geojson_text(
+                    [
+                        _feature(
+                            {
+                                "id": "1",
+                                "name": "Fixture Route 1",
+                                "type": "route",
+                                "length": 1.2,
+                                "distance": 0.0,
+                                "ascending": 30.0,
+                                "descending": 20.0,
+                                "routeid_ref": "20",
+                                "popup": "<p>Fixture</p>",
+                                "style": "{}",
+                            },
+                            _line(13),
+                        ),
+                        _feature(
+                            {
+                                "id": "2",
+                                "name": "Fixture Shelter",
+                                "type": "shelter",
+                                "length": 0,
+                                "distance": 1.0,
+                                "routeid_ref": "20",
+                                "popup": "<p>Fixture</p>",
+                                "style": "{}",
+                            },
+                            _point(17),
+                        ),
+                        _feature(
+                            {
+                                "id": "3",
+                                "name": "Fixture Parking",
+                                "type": "parking",
+                                "length": 0,
+                                "distance": 2.0,
+                                "routeid_ref": "20",
+                                "popup": "<p>Fixture</p>",
+                                "style": "{}",
+                            },
+                            _point(18),
+                        ),
                     ]
                 ),
                 "application/geo+json",

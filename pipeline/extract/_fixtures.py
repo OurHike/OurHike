@@ -107,7 +107,7 @@ import requests
 from requests.structures import CaseInsensitiveDict
 
 import export_conditions
-from extract import _content, _json_apis, _kinds, _notices, _pages_content
+from extract import _content, _json_apis, _kinds, _notices, _pages_content, _robots
 from extract._contract import all_resources, discover, discover_shared
 from extract._gis_files import GisFile
 from extract._kinds import (
@@ -637,6 +637,8 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     # The notice readers' per-host gate (extract/_notices.py's polite()) waits out each host's Crawl-delay in
     # _pause (up to 60 s, wta.org's and bmta.org's); with no host asked, it would only slow the build.
     real_pause, _notices._pause = _notices._pause, lambda seconds: None
+    # No host's robots.txt is asked either (extract/_robots.py): every origin answers as a 404 would, no rules.
+    real_robots, _robots.read_robots_txt = _robots.read_robots_txt, _robots.no_rules
     # The NPS readers refuse to run without a key (Unavailable). No request leaves
     # the process here, so a placeholder stands in when the environment has none.
     os.environ.setdefault(_json_apis.NPS_API_KEY_ENV, FIXTURE_NPS_KEY)
@@ -660,6 +662,8 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
         _kinds.HIKEFINDER_THROTTLE_SECONDS = real_throttle
         _json_apis.POLITE_GAP_SECONDS = polite_gap
         _notices._pause = real_pause
+        _robots.read_robots_txt = real_robots
+        _robots.forget()
         if nps_key_was is None:
             os.environ.pop(_json_apis.NPS_API_KEY_ENV, None)
         if postgres is not None:

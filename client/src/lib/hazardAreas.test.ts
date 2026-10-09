@@ -7,6 +7,7 @@ import {
   hazardDates,
   hazardFeatureCollection,
   hazardsAt,
+  longDay,
 } from './hazardAreas'
 import type { TrailNotice } from './notices'
 import { buildTrailIndex } from './trailPosition'
@@ -134,21 +135,63 @@ describe('the advisory on a tapped stretch', () => {
 })
 
 describe('the dates on an area', () => {
-  it('prints a hunting area’s own season where its layer gives one', () => {
+  const ORG = 'Fixture Parks'
+
+  it('prints a hunting area’s own season in long dates, credited to its publisher', () => {
     expect(
-      hazardDates({ ...crossed, starts_on: '2026-11-15', ends_on: '2026-12-13' }),
-    ).toBe('From 2026-11-15 to 2026-12-13, as the layer states.')
+      hazardDates({ ...crossed, starts_on: '2026-11-15', ends_on: '2026-12-13' }, ORG),
+    ).toBe('From November 15, 2026 to December 13, 2026, according to Fixture Parks.')
   })
 
-  it('says a hunting layer gives no season rather than inventing one', () => {
-    expect(hazardDates(crossed)).toBe(
-      'The layer gives no season dates, so check the season before you go.',
+  it('prints a start or an end alone when the publisher gives only one', () => {
+    expect(hazardDates({ ...crossed, starts_on: '2026-11-15' }, ORG)).toBe(
+      'From November 15, 2026, according to Fixture Parks.',
+    )
+    expect(hazardDates({ ...crossed, ends_on: '2026-12-13' }, ORG)).toBe(
+      'Until December 13, 2026, according to Fixture Parks.',
+    )
+  })
+
+  it('says a hunting area’s publisher gives no season rather than inventing one', () => {
+    expect(hazardDates(crossed, ORG)).toBe(
+      'Fixture Parks gives no season dates. Check hunting seasons before you go.',
+    )
+  })
+
+  it('says a shooting site’s publisher gives no end date when it gives none', () => {
+    expect(hazardDates({ ...crossed, hazard: 'shooting' as const }, ORG)).toBe(
+      'Fixture Parks gives no end date.',
     )
   })
 
   it('reads a burned area’s date as the fire’s start, not the danger’s', () => {
     const burned = { ...crossed, hazard: 'burned_area' as const, starts_on: '2026-08-26' }
-    expect(hazardDates(burned)).toContain('The fire started 2026-08-26')
-    expect(hazardDates(burned)).toContain('while the agency’s layer lists the area')
+    expect(hazardDates(burned, ORG)).toBe(
+      'The fire started August 26, 2026, according to Fixture Parks. Shown while Fixture Parks lists this area.',
+    )
+    expect(hazardDates({ ...burned, starts_on: null }, ORG)).toBe(
+      'Shown while Fixture Parks lists this area.',
+    )
+  })
+})
+
+describe('longDay', () => {
+  it('reads "2026-10-01" as October 1, 2026, the calendar day, in every zone', () => {
+    expect(longDay('2026-10-01')).toBe('October 1, 2026')
+    expect(longDay('2026-12-31')).toBe('December 31, 2026')
+  })
+
+  it('shows a date that is not an ISO day as the source wrote it, never "Invalid Date"', () => {
+    expect(longDay('late October')).toBe('late October')
+    expect(longDay('2026-13-45')).toBe('2026-13-45')
+  })
+
+  it('shows "2026-04-31" as written, never as May 1, 2026, the day V8 rolls it over to', () => {
+    // Measured 2026-10-09 in Node 22: new Date('2026-04-31T00:00:00Z') is
+    // 2026-05-01, and '2026-02-30' is 2026-03-02. A closure's end date one
+    // day off is worse than the source's own string.
+    expect(longDay('2026-04-31')).toBe('2026-04-31')
+    expect(longDay('2026-02-29')).toBe('2026-02-29')
+    expect(longDay('2028-02-29')).toBe('February 29, 2028')
   })
 })

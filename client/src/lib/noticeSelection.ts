@@ -107,7 +107,8 @@ export const SEEN_WATERMARK = ':seen'
  * shown notices with an `updated_at` of their own as lib/notices.ts's
  * `newNoticesSince` counts them, and those without one from when OurHike
  * first saw them, where `firstSeenAt` (decision 87's rule) says that counts.
- * Worded "seen" when any of those is counted (`NewNotices.seen`).
+ * Worded with no verb, never "issued", when any of those is counted
+ * (`NewNotices.seen`).
  *
  * ONE COUNT, THROUGH THE ONE FUNCTION, WITH A WATERMARK OF ITS OWN. A
  * first-seen notice is handed to `newNoticesSince` dated by when OurHike
@@ -139,13 +140,20 @@ export function newClubNotices(
   const found = newNoticesSince(counted, now, silencedThrough)
   if (found === null) return null
   const seen = (key: string) => key.endsWith(SEEN_WATERMARK)
-  const sourceKeys = found.sourceKeys.map((key) =>
-    seen(key) ? key.slice(0, -SEEN_WATERMARK.length) : key,
-  )
+  const sourceOf = (key: string) =>
+    seen(key) ? key.slice(0, -SEEN_WATERMARK.length) : key
+  const sourceKeys = found.sourceKeys.map(sourceOf)
+  // The providers by the source's own key, which is what the banner names
+  // an organization by; a seen watermark's key is only this module's.
+  const providers = new Map<string, string>()
+  for (const [key, provider] of found.providers ?? []) {
+    if (!providers.has(sourceOf(key))) providers.set(sourceOf(key), provider)
+  }
   return {
     ...found,
     sourceKeys: [...new Set(sourceKeys)],
     seen: found.sourceKeys.some(seen),
+    providers,
   }
 }
 

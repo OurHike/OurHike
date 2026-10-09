@@ -22,8 +22,9 @@
 // written here.
 
 import { longDate } from '../lib/atcNoticeText'
-import { HAZARD_ADVISORIES } from '../lib/hazardAreas'
+import { HAZARD_ADVISORIES, longDay } from '../lib/hazardAreas'
 import { noticeOrgLabel, noticeUpdatedAt, type TrailNotice } from '../lib/notices'
+import type { NoticeMatchedPage } from '../lib/publishedConditions'
 import type { PlannedHikeNotices, PlannedNotices } from '../lib/plannedNotices'
 import { isSafeLink } from '../lib/safeLink'
 import { possessive, type Stewards } from '../lib/stewards'
@@ -69,7 +70,11 @@ function sameWords(a: string, b: string): boolean {
 
 /**
  * The notice's own category, for the line under its title (decision 78), or
- * null where there is nothing to add.
+ * null where there is nothing to add. The row prints it quoted, after
+ * "Listed as" (`Listed as “Closed”`): a bare source word such as "Unknown" or
+ * "Unreachable" under a campground's name does not say what it describes,
+ * and the quotes say the word is the source's (the word-choice review of
+ * #1805, 2026-10-09).
  *
  * The source's word and never OurHike's: USFS's recreation sites send their
  * `openstatus` as it stands ("closed", "temporarily closed", "unreachable",
@@ -109,6 +114,39 @@ function allOf(notice: TrailNotice): string {
   return `All of ${names.length === 1 ? last : `${names.slice(0, -1).join(', ')} and ${last}`}`
 }
 
+/**
+ * Decision 128 (the maintainer's poll of 2026-10-09, w6-ptny-closures.html's
+ * frame A, the two lines in its dashed box, word for word): a closed section
+ * that a person matched to an item on the trail's dated closures page says
+ * where it was confirmed and links there. Parks & Trails New York's layer
+ * dates nothing, so the page's day is the only date such a row has, and it is
+ * printed as the page's, under the organization's line and never on it.
+ * "The trail's closures page" and not a publisher's name: the page names no
+ * publisher (pipeline/sources.json's oprhp_est_trail_closures_page notes).
+ */
+function MatchedPage({ page }: { page: NoticeMatchedPage }) {
+  const day = page.updated_on === null ? null : new Date(page.updated_on)
+  return (
+    <>
+      <p className="closure-sheet__meta">
+        {day === null || Number.isNaN(day.getTime())
+          ? 'On the trail’s closures page'
+          : `On the trail’s closures page — updated ${longDate(day)}`}
+      </p>
+      {isSafeLink(page.url) && (
+        <a
+          className="closure-sheet__link"
+          href={page.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Read the trail’s closures page
+        </a>
+      )}
+    </>
+  )
+}
+
 function Row({ notice, org }: { notice: TrailNotice; org: string }) {
   const { text, warn } = tag(notice)
   const title = notice.title || `${org} notice`
@@ -118,9 +156,11 @@ function Row({ notice, org }: { notice: TrailNotice; org: string }) {
     notice.hazard === null || notice.hazard === undefined
       ? null
       : HAZARD_ADVISORIES[notice.hazard]
+  // The notice's own dates in long form ("from October 1, 2026"), the style
+  // the meta line under it already prints, never the file's "2026-10-01".
   const own = [
-    notice.starts_on && `from ${notice.starts_on}`,
-    notice.ends_on && `until ${notice.ends_on}`,
+    notice.starts_on && `from ${longDay(notice.starts_on)}`,
+    notice.ends_on && `until ${longDay(notice.ends_on)}`,
   ]
     .filter(Boolean)
     .join(' ')
@@ -142,16 +182,19 @@ function Row({ notice, org }: { notice: TrailNotice; org: string }) {
         </span>{' '}
         <span className="atc-notices__title">{title}</span>
       </p>
-      {category !== null && <p className="planned-notices__category">{category}</p>}
+      {category !== null && (
+        <p className="planned-notices__category">{`Listed as “${category}”`}</p>
+      )}
       {hazard !== null && <p className="closure-sheet__range">{hazard.heading}</p>}
       {where.length > 0 && <p className="closure-sheet__range">{where.join(' · ')}</p>}
       <p className="closure-sheet__meta">
         {updatedAt === null ? org : `${org} — updated ${longDate(updatedAt)}`}
       </p>
+      {notice.matched_page && <MatchedPage page={notice.matched_page} />}
       {notice.carried_since && (
         <p className="atc-notices__offmap">
-          OurHike couldn’t re-read {possessive(org)} notices since{' '}
-          {longDate(new Date(notice.carried_since))}, so this is the last it read.
+          OurHike hasn’t been able to read {possessive(org)} notices since{' '}
+          {longDate(new Date(notice.carried_since))}. This is the last version it saw.
         </p>
       )}
       {notice.source_url !== null && isSafeLink(notice.source_url) && (
@@ -194,12 +237,12 @@ function Hike({
       {!stretch.routeResolved && (
         <p className="atc-notices__offmap">
           {stretch.kind === 'day_hike'
-            ? 'The trail network for this hike isn’t on this phone yet, so notices are matched to the points you tapped, joined by straight lines.'
-            : 'The trail line isn’t loaded yet, so only notices placed by mile are matched.'}
+            ? 'This hike’s trails aren’t on this phone yet, so notices were matched to straight lines between your tapped points, not to the trails.'
+            : 'The trail line hasn’t loaded yet, so notices tied to a place on the map may be missing. Notices given by A.T. mile are included.'}
         </p>
       )}
       {count === 0 ? (
-        <p className="atc-notices__empty">No notices touch this hike.</p>
+        <p className="atc-notices__empty">OurHike found no notices for this hike.</p>
       ) : (
         <>
           {onRoute.length > 0 && (
@@ -219,8 +262,8 @@ function Hike({
           {fromClubs.length > 0 && (
             <>
               <p className="atc-notices__section-note">
-                From the clubs that look after these trails. Not placed on the map, so
-                read where each one applies.
+                From the clubs that look after these trails. These aren’t on the map, so
+                check each one for where it applies.
               </p>
               <ul className="atc-notices__list" aria-label="From the clubs on your route">
                 {fromClubs.map((notice) => (
@@ -249,7 +292,7 @@ export function PlannedNoticeList({
       aria-label="Notices for your planned hikes"
     >
       <div className="legend__head">
-        <h2 className="legend__title">Notices for your hikes</h2>
+        <h2 className="legend__title">Notices for your planned hikes</h2>
         <button type="button" className="legend__close" onClick={onClose}>
           <span className="visually-hidden">Close</span>
           <span aria-hidden="true">×</span>
@@ -257,9 +300,9 @@ export function PlannedNoticeList({
       </div>
 
       <p className="closure-sheet__limit" role="note">
-        Notices that touch a hike you plan to start in the next 7 days, from the clubs and
-        agencies that look after the trails. OurHike carries each one’s facts and a link,
-        never the notice in full.
+        Notices for hikes you’ve planned for the next 7 days, from the clubs and agencies
+        that look after the trails. Each shows the key facts and, where there is one, a
+        link to the full notice.
       </p>
 
       {planned.empty !== null ? (

@@ -259,6 +259,7 @@ jobs:
             pipeline/tests/test_dbt_row_dates_builds.py
             pipeline/tests/test_dbt_notice_tables_absent_builds.py
             pipeline/tests/test_dbt_notice_source_held_for_its_rows_builds.py
+            pipeline/tests/test_dbt_page_matched_sections_builds.py
             pipeline/tests/test_dbt_club_tables_absent_builds.py
             pipeline/tests/test_dbt_notice_source_freshness_runs.py
             pipeline/tests/test_dbt_data_quality_builds.py
@@ -652,6 +653,18 @@ jobs:
         run: |
           # The fixture load imports dlt, which only the extract venv holds.
           OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_held_for_its_rows_builds.py
+
+      # Decision 128 end to end: a Parks & Trails New York section reaches the
+      # closures mart and conditions/notices.json only while a person's match
+      # of it to an item on the trail's closures page stands. Three builds in
+      # one fixture warehouse, the history on: the empty join as the seed
+      # ships, one match written as an approving session writes it, then the
+      # page's read without that item.
+      - name: A section drawn only while its page match stands (tests/test_dbt_page_matched_sections_builds.py)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          # The fixture load imports dlt, which only the extract venv holds.
+          OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_page_matched_sections_builds.py
 
       # A monthly layer that never landed is a missing raw table: one the
       # extract refused on its first run (extract/_run.py's ISOLATING_LANES),

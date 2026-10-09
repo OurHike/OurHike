@@ -130,9 +130,20 @@
  * job read a 404. Measured 2026-10-03: UA's `releases/2026-10-03/manifest.json`
  * answers 200 with 2,875 artifacts, none of them elevation or profile cells
  * (the refill ran without the elevation leg, as every publish before it did);
- * production answers 404. So pages.yml's guard refuses a production deploy
- * until the release train promotes the folder, the order DATA_RELEASES.md §4
- * asks for, and pr-preview.yml previews UA for this pin (#1374).
+ * production answers 404. So pages.yml's guard refuses a production deploy,
+ * and pr-preview.yml previews UA for this pin (#1374 — One pathway from first
+ * run to a walk finished: the front-end rebuild from the ClaudeDesign flow
+ * review). No promotion can fix that: under decision 44 (DATA_RELEASES.md §4,
+ * amended 2026-10-02) a promotion is a channels.json commit and a
+ * `publish.py --channels` dispatch, which refuses unless the release's
+ * manifest is in that environment's own tree, and a release id is the date
+ * of the publish that wrote it (pipeline/lib/releases.py's `next_release_id`).
+ * Production needs a publish of its own, and a pin both environments hold.
+ * Measured 2026-10-09, it holds no release at all: data.ourhike.org's
+ * `latest.json` lists 8 `conditions/` files, and `releases/index.json`,
+ * `channels.json` and `releases/2026-09-24-2/manifest.json` answer 404 -
+ * decision 43's bucket move, which copied nothing by the maintainer's choice
+ * ("No need to copy that data over"; OurHike has no users yet).
  *
  * THEN TO 2026-10-03-2, the same day, because 2026-10-03 had no climb and
  * flow-data's nine elevation tests failed on it. publish-vector-data.yml run

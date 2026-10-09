@@ -312,21 +312,19 @@ jobs:
     # inside this one. client/src/lib/noticeSelection.ts's SAME_BUILD_MS is
     # this number by its own reasoning, and moved with it.
     timeout-minutes: 15
-    # A SECOND GROUP, EACH LEG'S OWN, BESIDE THE WORKFLOW'S publish-data,
-    # which still holds the whole run (a job's group is added to its
-    # workflow's, never in place of it: Reasoned from GitHub's "Using
-    # concurrency", where each is described on its own; @unvalidated until a
-    # leg is seen waiting on it). check-conditions.yml's leg holds the same
-    # group (decision 110): this leg restores and saves its history store,
-    # history/conditions_<leg>, and the checks of the build before restore
-    # and save Elementary's history in it too, each refusing to save over a
-    # save it did not restore (row_history.py). So a leg whose last build's
-    # checks are still running waits for them instead of racing their save.
-    # The two legs' groups differ, so neither can cancel the other's pending
-    # slot, which is what keeps publish-data at the workflow level above.
-    concurrency:
-      group: conditions-history-${{ matrix.data_environment }}
-      cancel-in-progress: false
+    # NO GROUP OF THE LEG'S OWN beside the workflow's publish-data, which
+    # holds the whole run. From decision 110 each leg held
+    # conditions-history-<leg> with check-conditions.yml's leg, so a build
+    # waited for the last build's checks; but GitHub keeps one pending run per
+    # group, so a checks run arriving while a leg waited there took its slot
+    # and cancelled that hour's publish with nothing red, and this run held
+    # publish-data all the while it waited (#1513 - A queued publish is
+    # silently cancelled when another one joins publish-data, and it looks
+    # like a green build; review of PR #1805, finding 3). The checks hold
+    # conditions-checks-<leg> now, and the two runs' saves to the leg's
+    # history store no longer wait on each other: row_history.py's "TWO
+    # WRITERS, ONE POINTER" says what each does when the other saved after it
+    # restored, and hand_off.py what a take does when a later put lands.
     # One run per data environment, because this is the source where sharing
     # hurts most: closures and reports are baked from a *database*, so a single
     # bake would put whichever database it read in front of both audiences at

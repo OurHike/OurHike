@@ -7,6 +7,10 @@ _shared/, and tx_tamers/ carries the `via` notes naming it (decision 34).
   and Feb. 19-24).
 - `tpwd_mckinney_falls_alerts`: https://tpwd.texas.gov/state-parks/mckinney-falls/alert (a burn ban
   from Aug. 11, 2026).
+- `tpwd_caprock_canyons_alerts`: https://tpwd.texas.gov/state-parks/caprock-canyons/alert, the park that
+  holds the Caprock Canyons State Park Trailway (burn ban, bison safety, lake and park closures, 2026-10-09).
+  Held, unlike the two above: decision 122 (the maintainer's poll, 2026-10-09) loads a candidate steward's
+  layers held until its trail_orgs.json row is approved (decision 121), and this one came with that review.
 
 Each is one PageNotice (extract/_notices.py), read live under our agent on 2026-10-03 after
 tpwd.texas.gov's robots.txt (/tours/, /files/, /API/ and search paths disallowed, nothing matching
@@ -21,5 +25,5 @@ each row. Another park is another registry row.
 from extract._kinds import page_notice
 
 TYPE = "closures"
-CLAIMS = ("tpwd_davis_mountains_alerts", "tpwd_mckinney_falls_alerts")
+CLAIMS = ("tpwd_davis_mountains_alerts", "tpwd_mckinney_falls_alerts", "tpwd_caprock_canyons_alerts")
 RESOURCES = [page_notice(key) for key in CLAIMS]

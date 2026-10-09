@@ -70,6 +70,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from extract._run import (
+    AS_LANDED_INDEX,
     AS_LANDED_PREFIX,
     INCOMPLETE,
     ISOLATED_OUTCOME,
@@ -93,10 +94,33 @@ from extract._run import (
     table_files,
     table_listing,
 )
+from lib.store_names import StoreNameRefused, quote_identifier, relative_path, table_name
 
 
 class BuildRefused(RuntimeError):
-    """A table the run log says exists has no committed file to read."""
+    """A table the run log says exists has no committed file to read, or the store names one this repository never
+    writes."""
+
+
+# NAMES READ BACK FROM THE STORE are checked before one becomes SQL or a path (lib/store_names.py): the run log's
+# table names, a pin's, a served copy's and an as-landed index's paths. Each check refuses the build, as a missing
+# file does: a name no run of this repository writes is not evidence of anything a build should read.
+
+
+def _stored_table(name: object, where: str) -> str:
+    """`name`, a table name read back from the store, or BuildRefused (lib/store_names.py's table_name())."""
+    try:
+        return table_name(name, where)
+    except StoreNameRefused as refused:
+        raise BuildRefused(str(refused)) from refused
+
+
+def _stored_path(path: object, where: str) -> str:
+    """`path`, a path read back from the store, or BuildRefused when it could leave where it is joined on."""
+    try:
+        return relative_path(path, where)
+    except StoreNameRefused as refused:
+        raise BuildRefused(str(refused)) from refused
 
 
 # dlt data types -> DuckDB, for a proven-empty table created from its hints.
@@ -139,6 +163,7 @@ def _create_proven_empty(con, schema: str, table: str, hints: dict, pipeline) ->
     not yet loaded (not_yet_loaded()), which load_warehouse() names in a
     `::warning` annotation.
     """
+    _stored_table(table, "the store's record of a table to create empty")
     naming = _naming(pipeline)
     columns = {
         naming.normalize_identifier(name): DUCKDB_TYPES.get(hint.get("data_type"), "VARCHAR") for name, hint in hints.items()
@@ -148,8 +173,10 @@ def _create_proven_empty(con, schema: str, table: str, hints: dict, pipeline) ->
     # dlt 1.30.0, filesystem destination, Parquet). An empty closures table is
     # a normal state, so its type must not differ from a full one's.
     columns.update({"_loaded_at": "TIMESTAMPTZ", "_dlt_load_id": "VARCHAR", "_dlt_id": "VARCHAR"})
-    body = ", ".join(f'"{name}" {type_}' for name, type_ in columns.items())
-    con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{table}" ({body})')
+    # Every column quoted too: sql_ci_v1 reduces a hint's name to [a-z0-9_], but _naming() takes whatever naming the
+    # stored schema declares, so nothing here leans on that.
+    body = ", ".join(f"{quote_identifier(name)} {type_}" for name, type_ in columns.items())
+    con.execute(f"CREATE OR REPLACE TABLE {quote_identifier(schema)}.{quote_identifier(table)} ({body})")
 
 
 def committed_tables(
@@ -235,13 +262,17 @@ def load_warehouse(
     hour's.
     """
     client = _client(pipeline)
-    con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    con.execute(f"CREATE SCHEMA IF NOT EXISTS {quote_identifier(schema)}")
     loaded = {}
     log = run_log_rows(pipeline) if log is None else log
     if tables is not None:
         log = [row for row in log if row["table_name"] in tables]
     log_rows = {(row["table_name"], row.get("load_id")): row for row in log}
     committed = committed_tables(pipeline, log=log)
+    # Every name before any is read or created (the note above _stored_table()): the monthly lane passes no `tables`,
+    # so the run log's own names are all there is.
+    for table in committed:
+        _stored_table(table, "the run log (_extract_runs)")
     listing = table_listing(pipeline, list(committed))
 
     def read(item: tuple[str, str]):
@@ -262,7 +293,7 @@ def load_warehouse(
                 continue
             raise BuildRefused(f"{table}: no committed file from load {load_id}; refusing rather than reading it as empty")
         con.register("_committed", arrow)
-        con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{table}" AS SELECT * FROM _committed')
+        con.execute(f"CREATE OR REPLACE TABLE {quote_identifier(schema)}.{quote_identifier(table)} AS SELECT * FROM _committed")
         con.unregister("_committed")
         loaded[table] = arrow.num_rows
     # NOT YET LOADED IS NOT A REFUSAL OF EVERYONE ELSE. A table with no
@@ -279,7 +310,7 @@ def load_warehouse(
         loaded[table] = 0
     if log:
         con.register("_runs", pa.Table.from_pylist(log))
-        con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{RUNS_TABLE}" AS SELECT * FROM _runs')
+        con.execute(f"CREATE OR REPLACE TABLE {quote_identifier(schema)}.{quote_identifier(RUNS_TABLE)} AS SELECT * FROM _runs")
         con.unregister("_runs")
     return loaded
 
@@ -494,7 +525,8 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str], run_log_cache
         """The copy before's run log, verified, read once and only when a table is carried from it."""
         if not previous_log:
             runs = previous[1]["extract_runs"]
-            path = f"{served_root(bucket_url)}/{previous[0]}/{runs['file']}"
+            file = _stored_path(runs["file"], f"served copy {previous[0]}'s {SERVED_MANIFEST}")
+            path = f"{served_root(bucket_url)}/{previous[0]}/{file}"
             previous_log.append(pq.read_table(io.BytesIO(_verified_bytes(fs, path, runs["sha256"]))))
         return previous_log[0]
 
@@ -512,7 +544,7 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str], run_log_cache
             arrow = pa.concat_tables([pq.read_table(fs.open(path)) for path in files], promote_options="permissive")
         if arrow is None or arrow.num_rows != row.get("rows"):
             return row, arrow, None
-        relative = f"tables/{table}.parquet"
+        relative = f"tables/{_stored_table(table, 'the run log (_extract_runs)')}.parquet"
         with fs.open(f"{root}/{relative}", "wb") as handle:
             pq.write_table(arrow, handle, compression="zstd")
         return (
@@ -541,7 +573,8 @@ def write_served_copy(pipeline, bucket_url: str, tables: set[str], run_log_cache
             problems.append(f"{why}; no copy before this one can give it, so it is left out")
             continue
         if carried.get("file"):
-            fs.copy(f"{served_root(bucket_url)}/{previous[0]}/{carried['file']}", f"{root}/{carried['file']}")
+            file = _stored_path(carried["file"], f"served copy {previous[0]}'s {SERVED_MANIFEST}")
+            fs.copy(f"{served_root(bucket_url)}/{previous[0]}/{file}", f"{root}/{file}")
         entries[table] = dict(carried, carried_from=previous[0])
         carried_logs.add(table)
         problems.append(f"{why}; carried from copy {previous[0]}, its last good rows and their run log rows")
@@ -600,8 +633,11 @@ def _read_served(fs, bucket_url: str, run_id: str, tables: set[str]) -> tuple[di
     root = f"{served_root(bucket_url)}/{run_id}"
     with fs.open(f"{root}/{SERVED_MANIFEST}", "r") as handle:
         manifest = json.load(handle)
+    # Only the leg's own table names are used (`tables`, from discover()), so only the manifest's paths are read
+    # back; one that could leave the copy makes the copy one that will not read (SERVED_READ_ERRORS).
+    where = f"served copy {run_id}'s {SERVED_MANIFEST}"
     wanted = sorted(
-        (table, entry["file"], entry["sha256"])
+        (table, _stored_path(entry["file"], where), entry["sha256"])
         for table, entry in manifest["tables"].items()
         if table in tables and entry.get("file")
     )
@@ -612,7 +648,7 @@ def _read_served(fs, bucket_url: str, run_id: str, tables: set[str]) -> tuple[di
 
     arrows = {item[0]: arrow for item, arrow in windowed(read, wanted, LEG_READERS)}
     runs = manifest["extract_runs"]
-    log = pq.read_table(io.BytesIO(_verified_bytes(fs, f"{root}/{runs['file']}", runs["sha256"])))
+    log = pq.read_table(io.BytesIO(_verified_bytes(fs, f"{root}/{_stored_path(runs['file'], where)}", runs["sha256"])))
     log = log.filter(pc.is_in(log["table_name"], value_set=pa.array(sorted(tables), pa.string())))
     return manifest, arrows, log
 
@@ -677,14 +713,14 @@ def load_served(
     if found is None:
         raise BuildRefused("no served copy could be read: " + "; ".join(problems))
     run_id, newest, manifest, arrows, log = found
-    con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    con.execute(f"CREATE SCHEMA IF NOT EXISTS {quote_identifier(schema)}")
     loaded: dict[str, int] = {}
     for table, entry in sorted(manifest["tables"].items()):
         if table not in tables:
             continue
         if table in arrows:
             con.register("_served", arrows[table])
-            con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{table}" AS SELECT * FROM _served')
+            con.execute(f"CREATE OR REPLACE TABLE {quote_identifier(schema)}.{quote_identifier(table)} AS SELECT * FROM _served")
             con.unregister("_served")
             loaded[table] = arrows[table].num_rows
             continue
@@ -701,8 +737,9 @@ def load_served(
         # conditions leg's lands through Python rows (load_warehouse()), so a
         # column null on every row there is INTEGER, which DuckDB widens to
         # this one's type.
-        union = f'SELECT * FROM "{schema}"."{RUNS_TABLE}" UNION ALL BY NAME ' if exists else ""
-        con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{RUNS_TABLE}" AS {union}SELECT * FROM _runs')
+        runs_table = f"{quote_identifier(schema)}.{quote_identifier(RUNS_TABLE)}"
+        union = f"SELECT * FROM {runs_table} UNION ALL BY NAME " if exists else ""
+        con.execute(f"CREATE OR REPLACE TABLE {runs_table} AS {union}SELECT * FROM _runs")
         con.unregister("_runs")
     return ServedRead(run_id, newest, loaded, problems)
 
@@ -900,7 +937,11 @@ def pin_raw_inputs(
         raise BuildRefused(f"run {raw_run} ended {', '.join(ended)}; a run the checks did not pass is never pinned")
     by_load = {(row["table_name"], row.get("load_id")): row for row in log}
     tables: dict[str, dict] = {}
-    for table, load_id in sorted(committed_tables(pipeline, as_of=raw_run).items()):
+    committed = committed_tables(pipeline, as_of=raw_run)
+    # Every name before anything is listed or written (the note above _stored_table()): each becomes a store path.
+    for table in committed:
+        _stored_table(table, "the run log (_extract_runs)")
+    for table, load_id in sorted(committed.items()):
         files = table_files(pipeline, table, load_id)
         if not files:
             row = by_load.get((table, load_id)) or {}
@@ -927,6 +968,8 @@ def pin_raw_inputs(
         path = _landed_path(fs, bucket_url, table, entry["load_id"], indexes, landed_tables)
         if path is None:
             continue
+        # Read under <bucket>/as_landed/<load_id>/ and written under the pin's as_landed/: neither may be left.
+        _stored_path(f"{entry['load_id']}/{path}", f"load {entry['load_id']}'s as-landed {AS_LANDED_INDEX}")
         target = f"{root}/{AS_LANDED_PREFIX}/{path}"
         fs.makedirs(os.path.dirname(target), exist_ok=True)
         fs.copy(f"{fs_path(bucket_url)}/{AS_LANDED_PREFIX}/{entry['load_id']}/{path}", target)
@@ -968,7 +1011,15 @@ def load_pinned(con: duckdb.DuckDBPyConnection, pipeline, steps_url: str, raw_ru
     manifest = read_pin(pipeline, steps_url, raw_run)
     fs = _client(pipeline).fs_client
     root = raw_inputs_root(steps_url, raw_run)
-    con.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    # Every name and path before anything is read or created (the note above _stored_table()).
+    where = f"pin {raw_run}'s {PIN_MANIFEST}"
+    for table, entry in manifest["tables"].items():
+        _stored_table(table, where)
+        if entry.get("file") is not None:
+            _stored_path(entry["file"], where)
+    runs = manifest["extract_runs"]
+    _stored_path(runs["file"], where)
+    con.execute(f"CREATE SCHEMA IF NOT EXISTS {quote_identifier(schema)}")
     loaded: dict[str, int] = {}
     for table, entry in sorted(manifest["tables"].items()):
         if entry.get("file") is None:
@@ -978,14 +1029,13 @@ def load_pinned(con: duckdb.DuckDBPyConnection, pipeline, steps_url: str, raw_ru
         path = _verified(fs, f"{root}/{entry['file']}", entry["sha256"])
         arrow = pq.read_table(fs.open(path))
         con.register("_pinned", arrow)
-        con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{table}" AS SELECT * FROM _pinned')
+        con.execute(f"CREATE OR REPLACE TABLE {quote_identifier(schema)}.{quote_identifier(table)} AS SELECT * FROM _pinned")
         con.unregister("_pinned")
         loaded[table] = arrow.num_rows
-    runs = manifest["extract_runs"]
     arrow = pq.read_table(fs.open(_verified(fs, f"{root}/{runs['file']}", runs["sha256"])))
     if arrow.num_rows:
         con.register("_runs", arrow)
-        con.execute(f'CREATE OR REPLACE TABLE "{schema}"."{RUNS_TABLE}" AS SELECT * FROM _runs')
+        con.execute(f"CREATE OR REPLACE TABLE {quote_identifier(schema)}.{quote_identifier(RUNS_TABLE)} AS SELECT * FROM _runs")
         con.unregister("_runs")
     return loaded
 
@@ -995,6 +1045,9 @@ def materialize_pinned(pipeline, steps_url: str, raw_run: str, raw_dir: Path) ->
     manifest = read_pin(pipeline, steps_url, raw_run)
     fs = _client(pipeline).fs_client
     root = raw_inputs_root(steps_url, raw_run)
+    # Every path before any file is written, so a pin naming one that leaves raw_dir writes nothing at all.
+    for path in manifest["as_landed"]:
+        _stored_path(path, f"pin {raw_run}'s {PIN_MANIFEST}")
     written = []
     for path, entry in sorted(manifest["as_landed"].items()):
         source = _verified(fs, f"{root}/{AS_LANDED_PREFIX}/{path}", entry["sha256"])
@@ -1016,11 +1069,16 @@ def materialize_committed(
     """
     fs = _client(pipeline).fs_client
     indexes: dict[str, dict] = {}
-    written = []
+    # Every path before any file is written (as materialize_pinned()): read under <bucket>/as_landed/<load_id>/ and
+    # written under raw_dir, neither of which it may leave.
+    found = []
     for table, load_id in sorted(committed_tables(pipeline, as_of=raw_run).items()):
         path = _landed_path(fs, bucket_url, table, load_id, indexes, landed_tables)
-        if path is None:
-            continue
+        if path is not None:
+            _stored_path(f"{load_id}/{path}", f"load {load_id}'s as-landed {AS_LANDED_INDEX}")
+            found.append((load_id, path))
+    written = []
+    for load_id, path in found:
         target = raw_dir / path
         target.parent.mkdir(parents=True, exist_ok=True)
         fs.get_file(f"{fs_path(bucket_url)}/{AS_LANDED_PREFIX}/{load_id}/{path}", str(target))
@@ -1029,9 +1087,11 @@ def materialize_committed(
 
 
 def _step_key(key: str) -> str:
-    if not key or key.startswith("/") or ".." in key.split("/"):
-        raise ValueError(f"{key!r} is not a step-cache key")
-    return key
+    """`key`, or ValueError: lib/store_names.py's relative_path(), the rule that began here."""
+    try:
+        return relative_path(key, "the step-cache key")
+    except StoreNameRefused as refused:
+        raise ValueError(f"{key!r} is not a step-cache key") from refused
 
 
 def store_once(pipeline, bucket_url: str, steps_url: str, key: str, files: list[Path]) -> list[str]:

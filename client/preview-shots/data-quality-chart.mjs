@@ -15,6 +15,15 @@
 // outside it unflagged; 7 Feb 2026 does (5,252 against 5,222 to 5,249), too
 // close to see at this scale, and "The numbers behind the chart" lists it.
 //
+// RE-WORDED SINCE by the word-choice review of #1805 (2026-10-09): the key
+// calls the band "Usual range", the rows' word for it, where it said
+// "Expected range"; the triangle's label says "4,118 rows, flagged as low",
+// the verdict's one wording on the page, where it said "below the range";
+// and the caption says the band is "the usual range, from the monthly builds
+// before each point", where it said "the range Elementary expected ... which
+// does not count the point itself", the wording the maintainer called
+// jargony in the rows on 2026-10-09.
+//
 // WHY A RECIPE OF ITS OWN. data-quality-needs-a-look.mjs stops at the chart's
 // key, and data-quality.mjs and data-quality-by-mart-phone.mjs never reach
 // the chart, so until this one no frame showed the band.
@@ -33,7 +42,7 @@ import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 export const caption =
   "ourhike.org/data/quality/'s chart on a laptop, from INVENTED example files (no release carries the file yet): each point drawn against the band from the builds before it, so the band stays level where the rows fall to 4,118, and a triangle on the point Elementary flagged. Nothing in this frame was measured."
 export const alt =
-  'The data quality page at desktop width, scrolled to a white card. A dashed amber pill says the figures are invented. Under it the serif title "Rows in preview_fixture__trails, one point per monthly build", a grey line "Charted from Needs a look · preview_fixture__trails · Back to the row", and a key: a dark line "Rows at each point", a pale green swatch "Expected range" and an amber triangle "Flagged by Elementary". The chart\'s axis runs from 4,000 to 5,500. A dark line holds level near 5,250 from Nov 2025 to Sep 2026 inside a thin pale green band that starts at Jan 2026, then drops steeply to an amber triangle at Oct 2026 labelled "4,118 rows, below the range", while the band carries on level above it to the right edge. Under the chart a grey paragraph begins "12 monthly builds, from 5,231 on 7 Nov 2025 to 4,118 on 7 Oct 2026. Elementary flagged 1 of them in its latest checks. The shaded band at each point is the range Elementary expected from the monthly builds before it", and a closed "The numbers behind the chart" sits below it.'
+  'The data quality page at desktop width, scrolled to a white card. A dashed amber pill says the figures are invented. Under it the serif title "Rows in preview_fixture__trails, one point per monthly build", a grey line "Charted from Needs a look · preview_fixture__trails · Back to the row", and a key: a dark line "Rows at each point", a pale green swatch "Usual range" and an amber triangle "Flagged by Elementary". The chart\'s axis runs from 4,000 to 5,500. A dark line holds level near 5,250 from Nov 2025 to Sep 2026 inside a thin pale green band that starts at Jan 2026, then drops steeply to an amber triangle at Oct 2026 labelled "4,118 rows, flagged as low", while the band carries on level above it to the right edge. Under the chart a grey paragraph begins "12 monthly builds, from 5,231 on 7 Nov 2025 to 4,118 on 7 Oct 2026. Elementary flagged 1 of them in its latest checks. The shaded band is the usual range, from the monthly builds before each point", and a closed "The numbers behind the chart" sits below it.'
 
 export const desktop = true
 

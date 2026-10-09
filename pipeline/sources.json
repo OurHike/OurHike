@@ -826,7 +826,7 @@
       "discovered_date": "2026-10-08",
       "notes": "9 polylines (returnCountOnly), 10 fields, maxRecordCount 2,000, last edited 2026-09-28 15:11 UTC (editingInfo, read 2026-10-08). A view of Parks & Trails New York's Empire State Trail layer that shows only closed segments: trail_stat is 'Closed' on all 9, from a domain of Open, Under Construction, Improvements Planned and Closed. trail_type (the surface) Paved 6, Stone Dust 2, On Road 1; trail_name is a single space on 7 rows and 'Shoreline Trail' and 'Shoreline Trail (On Road)' on the other 2, whose ownership is 'City of Buffalo' (a single space on the 7). So 7 of the 9 have no title, and seeds/notice_source_fields.csv names trail_name all the same rather than putting words in the layer's mouth. No date, reason or link field: the reasons are on the trail's own closures page (oprhp_est_trail_closures_page). The flags ECT, HVGT, CVT and CCT name the corridor (ECT '1' on all 9). Extent in EPSG:4326: lat 42.88 to 43.13, lon -78.90 to -75.21. Statistics fingerprint: count(OBJECTID) 9, max(OBJECTID) 425. KEY: no field but the server's own is unique and the view does not serve GlobalID; OBJECTID is distinct on 9 of them and the geometry is distinct on 9 of 9 (read 2026-10-08), so the generated base model keys on OBJECTID with the geometry.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-08): the layer states no date for any of its nine closures and no reason, so whether each is still in force cannot be read from it, and a reopened section drawn closed would be a closure nobody stands behind. seeds/notice_status_values.csv reads its 'Closed' as closing the trail, so the rule is in place. Settled by comparing the nine lines with the trail's own closures page (oprhp_est_trail_closures_page), item by item, and recording which the page confirms."
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-08): the layer states no date for any of its nine closures and no reason, so whether each is still in force cannot be read from it, and a reopened section drawn closed would be a closure nobody stands behind. seeds/notice_status_values.csv reads its 'Closed' as closing the trail, so the rule is in place. Settled section by section by decision 128 (the maintainer's poll, 2026-10-09): a section draws only while a person's match of it to an item on the trail's own closures page (oprhp_est_trail_closures_page) stands, each match a row of dbt/seeds/notice_page_matches.csv that the maintainer approves in chat before it is written, and int_closures__club_notices holds every other section. This stays false while that file holds no match, so that stewards.json does not list Parks & Trails New York as a source of a map that carries none of its data; the commit that writes the first approved match sets it true, and tests/test_notice_page_matches_seed.py holds the two together."
     },
     {
       "key": "oprhp_est_trail_closures_page",
@@ -935,6 +935,8 @@
       "owns_route_names": [
         "Long Path"
       ],
+      "not_person_fields": ["Maintainer"],
+      "not_person_fields_comment": "extract/_kinds.py's person-shaped backstop reads `maintainer` as a person's field since 2026-10-09. Here it is the trail's maintaining club, 'NYNJTC' on all 43 rows when this row was measured (2026-08-24, the notes below), and stg_nynjtc__long_path stages it.",
       "discovered_via": "pipeline/NYC_SOURCE_SURVEY.md §4's verdict - 'register the Long Path and Highlands Trail services now' - acted on under #950. From NYNJTC's public AGOL org 'nynjtc' (org id G1WTEJ6UVRUTvh9C). Registered by hand: discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
       "discovered_date": "2026-08-24",
       "notes": "43 polyline segments, measured live 2026-08-24 - the same count and the same field list NYC_SOURCE_SURVEY.md §4 read on 2026-08-18, so the shelf has not moved under the survey. Fields Trail_Name/Blaze/Maintainer/Mileage/Source/Comments/LP_Section/GuideURL; all 43 rows read Trail_Name 'Long Path', Maintainer 'NYNJTC' and Source 'NYNJTC'. THE BLAZE FIELD IS A PLAIN STRING WITH NO CODED DOMAIN, and reads the lowercase 'aqua' on all 43 rows (measured 2026-08-24) - unlike side_trails' and oprhp_trails' coded fields, which is why export_nearby_trails.py sends it straight to reference/blaze_mapping.json's reviewed table instead of decoding a domain first. NYNJTC updates the same service in place each season - the layer inside is named Long_Path_2025Sep - which is the property a registry URL wants. dataLastEditDate verified live 2026-08-24, then reading 2026-08-04T17:36:44Z. capabilities are Query only, with no Extract or Sync, unlike OPRHP's. The trail runs north past the Catskills toward Albany, which is the open northern cut NYC_SOURCE_SURVEY.md §1 leaves to the maintainer rather than deciding.",
@@ -3423,6 +3425,8 @@
         "CreatedBy"
       ],
       "person_fields_comment": "Read off the layer's live field list in the decision 53 phase A inventory (2026-10-03): each names or reaches a person (an editor account, an e-mail address, a phone number, a named team member), so the extract leaves it out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "not_person_fields": ["FullName"],
+      "not_person_fields_comment": "extract/_kinds.py's person-shaped backstop reads `full_name` as a person's name since 2026-10-09. Here it is each closure's name: seeds/notice_source_fields.csv reads it as the notice's title, and the phase A inventory that read this layer's field list (2026-10-03) named CreatedBy alone as a person's. Reasoned, not measured: FullName's values were not read for this, and the row stays held until a person reads IsPublic and IsVisible, which is the read that would settle it too.",
       "id_field": "GlobalID",
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
@@ -3862,6 +3866,8 @@
       "date_fields_comment": "The layer's esriFieldTypeDate fields, read off its metadata on 2026-10-03 by decision 54's wave 1 trail-line read. They land as epoch milliseconds (extract/_kinds.py's ESRI_TYPES), and the base model casts each to a UTC timestamp.",
       "person_fields": ["CREATEUSER", "EDITUSER"],
       "person_fields_comment": "CREATEUSER and EDITUSER are this layer's editor tracking (its editFieldsInfo names them): the account behind each row. extract/_kinds.py drops editFieldsInfo's fields on every layer; listed here too so this row says which of its own columns never load.",
+      "not_person_fields": ["MAINTAINER"],
+      "not_person_fields_comment": "extract/_kinds.py's person-shaped backstop reads `maintainer` as a person's field since 2026-10-09. Here it holds land-holder classes (Private 1,506 of the 2,006 rows, read 2026-10-03, the notes below), not people.",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED trail_lines row for tota (coverage audit 2026-10-01), then read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (services1.arcgis.com's robots.txt answered 403, which RFC 9309 reads as no rules) and 2 s or more between requests to one host: the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, one statistics query, the item's licenseInfo, and every row's attributes for the key (every vertex too where no attribute is unique).",
       "discovered_date": "2026-10-03",
       "notes": "2,006 polylines (returnCountOnly), 56 fields, served in EPSG:104145, maxRecordCount 2,000, hasZ true, dataLastEditDate 2026-09-17, all read 2026-10-03. Extent in EPSG:4326 (returnExtentOnly): lat 33.78 to 38.00, lon -95.12 to -83.38, outside the eastern box of dbt/macros/lands_outside_its_region.sql, inside its `national` box. Statistics fingerprint, one query: count(OBJECTID) 2,006, max(OBJECTID) 2,006, sum(Shape__Length) 83.9029 in the layer's own units. TRALTNAME names 21 routes, among them Water Route 536 segments, Northern Route 408, Roundup Route 268 and Benge Route 228. MAINTAINER holds land-holder classes (Private 1,506), not people. TRTYPE is not evidence that a segment is walkable (coverage audit, finding 2).",
@@ -4227,6 +4233,8 @@
       "id_field": "GEOMETRYID",
       "name_field": "POINAME",
       "type_field": "POITYPE",
+      "not_person_fields": ["MAINTAINER"],
+      "not_person_fields_comment": "extract/_kinds.py's person-shaped backstop reads `maintainer` as a person's field since 2026-10-09. Here ORIGINATOR and MAINTAINER name bodies, not people (read 2026-10-03, the notes below).",
       "freshness": {
         "kind": "arcgis_max_field",
         "field": "EDITDATE",
@@ -5964,6 +5972,8 @@
       "name_field": "full_name",
       "id_field": "full_name",
       "id_comment": "`full_name` is unique and non-null on all 54 rows read 2026-10-03.",
+      "not_person_fields": ["full_name"],
+      "not_person_fields_comment": "extract/_kinds.py's person-shaped backstop reads `full_name` as a person's name since 2026-10-09. Here it is each state park's name, this row's `name_field` and `id_field`, unique and non-null on all 54 rows (read 2026-10-03), and the generated base model keys every row on it.",
       "place_kind_comment": "No `place_kind`, deliberately: this layer maps onto none of the places mart's five kinds (park, town, trailhead, parking, trail); `notes`' MART says why.",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states and p08_persist (wmc)), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
       "discovered_date": "2026-10-03",
@@ -9017,8 +9027,8 @@
       "date_fields_comment": "The layer's esriFieldTypeDate fields, read off its metadata on 2026-10-03 by decision 54's wave 1 trail-line read. They land as epoch milliseconds (extract/_kinds.py's ESRI_TYPES), and the base model casts each to a UTC timestamp.",
       "person_fields": ["created_user", "last_edited_user"],
       "person_fields_comment": "created_user and last_edited_user are this layer's editor tracking (one holds a staff e-mail address): never loaded.",
-      "not_person_fields": ["last_edited_date"],
-      "not_person_fields_comment": "last_edited_date is the layer's editor-tracking edit date, typed esriFieldTypeDate (the trail-line read's metadata, 2026-10-03), never the editor, who is last_edited_user. The type rule (extract/_kinds.py's NEVER_PERSON_TYPES) already keeps it on a live read; fixture mode types a field by its values, where an epoch millisecond reads as an integer, so it is named here too, for the base model that casts it (sources.json `date_fields`).",
+      "not_person_fields": ["last_edited_date", "managedBy"],
+      "not_person_fields_comment": "last_edited_date is the layer's editor-tracking edit date, typed esriFieldTypeDate (the trail-line read's metadata, 2026-10-03), never the editor, who is last_edited_user. The type rule (extract/_kinds.py's NEVER_PERSON_TYPES) already keeps it on a live read; fixture mode types a field by its values, where an epoch millisecond reads as an integer, so it is named here too, for the base model that casts it (sources.json `date_fields`). managedBy, which the person-shaped backstop reads as a person's since 2026-10-09 by its word `by`, names the managing body: NPS 54, USACE 52, Hall County 31 (grouped 2026-10-03, the notes below).",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED trail_lines row for usace (coverage audit 2026-10-01), then read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (services2.arcgis.com's robots.txt answered 403, which RFC 9309 reads as no rules) and 2 s or more between requests to one host: the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, one statistics query, the item's licenseInfo, and every row's attributes for the key (every vertex too where no attribute is unique).",
       "discovered_date": "2026-10-03",
       "notes": "149 polylines (returnCountOnly), 24 fields, served in EPSG:4326, maxRecordCount 2,000, hasZ false, dataLastEditDate 2026-01-13, all read 2026-10-03. Extent in EPSG:4326 (returnExtentOnly): lat 33.63 to 34.33, lon -84.10 to -82.19, inside the eastern box. Statistics fingerprint, one query: count(OBJECTID) 149, max(OBJECTID) 305, sum(Shape__Length) 1.5774 in the layer's own units. A view. recreationTrailIdpk groups lines into trails (Bowmans Island 54, Highlands to Islands 29); managedBy: NPS 54, USACE 52, Hall County 31.",
@@ -11723,7 +11733,7 @@
       "date_fields": ["CREATED_DATE", "MODIFIED_DATE", "CreationDate", "EditDate"],
       "date_fields_comment": "The layer's esriFieldTypeDate fields, read off its metadata on 2026-10-03 by decision 54's wave 1 trail-line read. They land as epoch milliseconds (extract/_kinds.py's ESRI_TYPES), and the base model casts each to a UTC timestamp.",
       "person_fields": ["CREATED_BY", "MODIFIED_BY", "Creator", "Editor"],
-      "person_fields_comment": "CREATED_BY and MODIFIED_BY hold the city's editor accounts, copied in with PARD's schema, and Creator and Editor are this layer's own editor tracking: never loaded. MODIFIED_BY is not person-shaped by the backstop's word list, so it is listed.",
+      "person_fields_comment": "CREATED_BY and MODIFIED_BY hold the city's editor accounts, copied in with PARD's schema, and Creator and Editor are this layer's own editor tracking: never loaded. MODIFIED_BY was not person-shaped by the backstop's word list when this row was written, so it is listed; the backstop reads it as a person's since 2026-10-09.",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED trail_lines row for austin-trail (coverage audit 2026-10-01), then read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (services7.arcgis.com's robots.txt answered 403, which RFC 9309 reads as no rules) and 2 s or more between requests to one host: the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, one statistics query, the item's licenseInfo, and every row's attributes for the key (every vertex too where no attribute is unique).",
       "discovered_date": "2026-10-03",
       "notes": "237 polylines (returnCountOnly), 68 fields, served in EPSG:3857, maxRecordCount 2,000, hasZ false, dataLastEditDate 2025-03-12, all read 2026-10-03. Extent in EPSG:4326 (returnExtentOnly): lat 30.24 to 30.28, lon -97.77 to -97.71, outside the eastern box of dbt/macros/lands_outside_its_region.sql, inside its `national` box. Statistics fingerprint, one query: count(OBJECTID) 237, max(OBJECTID) 246, sum(Shape__Length) 83,010.2199 in the layer's own units. Built from Austin PARD's trail data and edited apart since: 96 of its 127 ASSET_MGMT_IDs are PARD's (austin_pard_trails), its rows split them into 237 segments, and GlobalID_2 is its own. GLOBALID, the copied PARD column, is one value on every row, so it is not a key.",
@@ -11854,6 +11864,8 @@
       "date_fields_comment": "The layer's esriFieldTypeDate fields, read off its metadata on 2026-10-03 by decision 54's wave 1 trail-line read. They land as epoch milliseconds (extract/_kinds.py's ESRI_TYPES), and the base model casts each to a UTC timestamp.",
       "person_fields": ["Creator", "Editor"],
       "person_fields_comment": "Creator and Editor are this layer's editor tracking (its editFieldsInfo names them), holding volunteers' accounts: never loaded. Maintainer holds organisations (Shenandoah National Park, PATC, CVATC), so it loads.",
+      "not_person_fields": ["Maintainer"],
+      "not_person_fields_comment": "extract/_kinds.py's person-shaped backstop reads `maintainer` as a person's field since 2026-10-09. Here it holds organisations (Shenandoah National Park, PATC, CVATC, read 2026-10-03, person_fields_comment above), so it loads as that reading decided.",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED trail_lines row for patc (coverage audit 2026-10-01), then read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (services7.arcgis.com's robots.txt answered 403, which RFC 9309 reads as no rules) and 2 s or more between requests to one host: the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, one statistics query, the item's licenseInfo, and every row's attributes for the key (every vertex too where no attribute is unique).",
       "discovered_date": "2026-10-03",
       "notes": "2,101 polylines (returnCountOnly), 23 fields, served in EPSG:3857, maxRecordCount 2,000, hasZ false, dataLastEditDate 2026-10-02, all read 2026-10-03. Extent in EPSG:4326 (returnExtentOnly): lat 37.55 to 40.40, lon -79.50 to -76.99, inside the eastern box. Statistics fingerprint, one query: count(OBJECTID) 2,101, max(OBJECTID) 2,580, sum(Shape__Length) 4,558,578.8817 in the layer's own units. Current: dataLastEditDate 2026-10-02. TrailName is null on 960 of 2,101; Appalachian Trail 197 segments, Tuscarora Trail 41. Comments carries 'Hidden from Map L by request of WV State Parks; 2026 map edition' on 53 rows, a publisher's own withholding that dbt should honour. Older editions on the same organization (PATC_Trails_2022, PATC_All_Trails_2020) are superseded by this view and not registered.",
@@ -18077,7 +18089,7 @@
         "LocationBy",
         "AssetOwner"
       ],
-      "person_fields_comment": "Read off the layer's live field list on 2026-10-09: CREATED_BY and MODIFIED_BY are the editor fields the layer's editFieldsInfo names (filled on all 37); LocationBy (null on all 37) names who located a point; AssetOwner is a coded small integer (filled on 37) that the PERSON_SHAPED backstop reads as a person's by its word 'owner', never fetched. Each is left out of the fields asked for and never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). The extract's backstop does not read 'LocationBy' as a person's, which is why it is named here.",
+      "person_fields_comment": "Read off the layer's live field list on 2026-10-09: CREATED_BY and MODIFIED_BY are the editor fields the layer's editFieldsInfo names (filled on all 37); LocationBy (null on all 37) names who located a point; AssetOwner is a coded small integer (filled on 37) that the PERSON_SHAPED backstop reads as a person's by its word 'owner', never fetched. Each is left out of the fields asked for and never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). The extract's backstop did not read 'LocationBy' as a person's when this row was registered, which is why it is named here; it does since its widening later on 2026-10-09.",
       "id_field": "GlobalID",
       "id_comment": "`GlobalID`: distinct on 37 of 37 rows, none null, read 2026-10-09. Name is distinct on 37 too.",
       "name_field": "Name",
@@ -18107,7 +18119,7 @@
         "Creator",
         "Editor"
       ],
-      "person_fields_comment": "Read off the layer's live field list on 2026-10-09: `updatedBy` (alias INSPECTED_BY) holds the names of the people who inspected each trailhead, filled on 64 of 64 rows from a domain of personal names, and Creator and Editor are editor tracking's accounts. Each is left out of the fields asked for and never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). The extract's PERSON_SHAPED backstop does not read 'updatedBy' as a person's (it knows edited_by and created_by, not updated_by), which is why it is named here; this registration's own first read printed the values in a scratch file before that was noticed, and the copy was scrubbed the same hour.",
+      "person_fields_comment": "Read off the layer's live field list on 2026-10-09: `updatedBy` (alias INSPECTED_BY) holds the names of the people who inspected each trailhead, filled on 64 of 64 rows from a domain of personal names, and Creator and Editor are editor tracking's accounts. Each is left out of the fields asked for and never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). The extract's PERSON_SHAPED backstop did not read 'updatedBy' as a person's when this row was registered (it knew edited_by and created_by, not updated_by), which is why it is named here, and reads it since its widening later on 2026-10-09; this registration's own first read printed the values in a scratch file before that was noticed, and the copy was scrubbed the same hour.",
       "id_field": "GlobalID",
       "id_comment": "`GlobalID`: distinct on 64 of 64 rows, none null, read 2026-10-09. `name` (the trailhead's) is distinct on 64 too.",
       "name_field": "name",
@@ -18224,6 +18236,8 @@
         "COMMENTS"
       ],
       "person_fields_comment": "Read off the layer's live field list on 2026-10-09: EDITOR and CREATOR are editor accounts (filled on 89 of 89); HUNTING_NARRATIVE carries a phone-shaped string on 60 of 89 rows (counted, never kept), which decision 59 leaves out as it does a post body with a phone number; COMMENTS (filled on 3) is free text that may name a person. Each is left out of the fields asked for and never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8).",
+      "not_person_fields": ["FULL_NAME"],
+      "not_person_fields_comment": "extract/_kinds.py's person-shaped backstop reads `full_name` as a person's name since 2026-10-09. Here it is the park's ('Mayer State Park' on 13 of the 89 rows, read 2026-10-09, the notes below), and seeds/notice_source_fields.csv reads it as each notice's title.",
       "id_field": "GlobalID",
       "id_comment": "`GlobalID`, the enterprise geodatabase's own id: distinct on 89 of 89 rows, none null, read 2026-10-09.",
       "freshness": {
@@ -18450,6 +18464,732 @@
       "notes": "One row: the page's notice (extract/_notices.py's PageNotice), keyed by `url`. Read 2026-10-09: HTTP 200, 56,502 bytes, <title> 'Canalway Trail Alerts | NYS Canals', its <h1> 'Canalway Trail Alerts', which expect_title holds; the extract's own reader, run over the saved page, picks <main> and finds no stated date the reader knows, so the row carries none. The coverage audit read a full closure on it (Utica, Harbor Lock Road to Barnes Road, July 22 to December 31, 2026, with a signed detour) and a 'View alerts for segments owned by others' link (2026-10-01). No e-mail- or phone-shaped string in its main region.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): NYS Canal Corporation has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its website's terms restrict reproduction, which decision 55 answers for a notice's facts and a link. Settled by the approved row."
+    },
+    {
+      "key": "il_dnr_closures_page",
+      "title": "Current Closures of DNR Sites and Areas (Illinois DNR)",
+      "provider": "Illinois DNR",
+      "kind": "published_notices",
+      "url": "https://dnr.illinois.gov/closures/currentclosuresofdnrsitesandareas.html",
+      "trust": "authoritative",
+      "steward": "Illinois Department of Natural Resources",
+      "steward_contact": "https://dnr.illinois.gov/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). No terms page was found: the triage read the site's robots.txt and home page (2026-10-08) and found none linked. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Illinois Department of Natural Resources",
+      "terms": "None found: dnr.illinois.gov's home page links no terms page (read 2026-10-08).",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://dnr.illinois.gov/closures/currentclosuresofdnrsitesandareas.html",
+        "notes": "extract/_notices.py's PageNotice: no validator trusted (the page answered no ETag and a Last-Modified of 04:15:36 GMT that day when read at 10:28Z, which is not shown to be the page's own), so every notices run reads it, one request, and FRESH only when the landed row hashes as the last load's."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's il-dnr closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: dnr.illinois.gov's robots.txt answered 200 with 23 Disallow lines and no Crawl-delay, and allows the page; the page once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "One HTML page, 113,357 bytes on 2026-10-09. The extract's reader, run over the saved page, picks <main> (20,410 characters of text), its <h1> 'Current Closures of DNR Sites and Areas' and the newest date the page states, 'Last updated10/2/26' (2026-10-02, the date the row lands). The page states one 'Last updated' per region (the coverage audit read 9/28/26, 1/26/26, 9/25/2026 and 8/17/2026 on 2026-10-01). The region holds 8 phone-shaped strings, site offices' numbers, none of which lands: a page notice lands its title, date, link and a hash. The page also states water at the Hennepin Canal's locks ('The wells at Lock 22 are not working pending repairs and water tests', the audit), which reaches a hiker only as this page's link. The resource's expect_title 'Closures' refuses a page that turned into something else.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Illinois DNR has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
+    },
+    {
+      "key": "nett_damaged_bridges",
+      "title": "Northeast Texas Trail damaged bridges (NETT, NET_KML_Damaged_Bridges)",
+      "provider": "NETT",
+      "kind": "club_arcgis_layer",
+      "url": "https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services/NET_KML_Damaged_Bridges/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "NorthEast Texas Trail Coalition",
+      "steward_contact": "https://netexastrail.org/",
+      "licence": "STATED BY THE ORGANIZATION: the item behind this layer, 8529e46255084dbe90ee37c0a953d5aa ('NET_KML_Damaged_Bridges', public, on the coalition's ArcGIS Online organisation), states its terms in its licenseInfo, quoted verbatim in `terms` (read 2026-10-09): 'Public Domain'. They bar nothing and ask for no credit; `attribution` names the coalition. Its accessInformation and snippet name people, so neither is copied here.",
+      "licence_basis": "stated_by_org",
+      "attribution": "NorthEast Texas Trail Coalition",
+      "terms": "Public Domain",
+      "terms_source": "The item's licenseInfo, https://www.arcgis.com/home/item.html?id=8529e46255084dbe90ee37c0a953d5aa, read 2026-10-09. netexastrail.org's home page links no terms page (the triage, 2026-10-08).",
+      "person_fields": [
+        "Creator",
+        "Editor"
+      ],
+      "person_fields_comment": "Read off the layer's live field list on 2026-10-09: Creator and Editor are editor tracking's account names (filled on 3 of 3), so the extract leaves each out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59).",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID`: distinct on 3 of 3 rows, none null, read 2026-10-09. OID_ and Name are distinct on 3 too.",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's nett closures row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: services2.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key, each person field left out of every request. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "3 points on 2026-10-09 (returnCountOnly), layer 0 'NET_KML_DAMAGED_BRIDGES', converted from the coalition's Google data: 'Bridge #o - Sulfur River (collapsed)', 'Bridge #q - Collapsed Double Arch' and 'Annona Burned Bridge'. Name is the title and states each bridge's damage. PopupInfo (free text, up to 254 characters, no e-mail- or phone-shaped string) holds the dated notes the coverage audit read (12/16/2014, 4/10/2016, 1/14/2017), so no field is a start date; EditDate is 2017-05-25 on all 3 and the layer was last edited 2018-04-05 (editingInfo). The newest note is nine years old, so a bridge since repaired or replaced is not reflected, and nothing on the layer says any of the three is current.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The NorthEast Texas Trail Coalition has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its item states 'Public Domain', which bars nothing. Settled by the approved row; the triage's reading is that it publishes only with each note's date shown, since the newest is from 2017."
+    },
+    {
+      "key": "nett_trail_pois",
+      "title": "Northeast Texas Trail points of interest (NETT, NET_Trail)",
+      "provider": "NETT",
+      "kind": "club_arcgis_layer",
+      "url": "https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services/NET_Trail/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "NorthEast Texas Trail Coalition",
+      "steward_contact": "https://netexastrail.org/",
+      "licence": "STATED BY THE ORGANIZATION: the item behind this layer, 4a65325dc6984671b080c5bc10b7af1f ('NET Trail Map', public, on the coalition's ArcGIS Online organisation), states its terms in its licenseInfo, quoted verbatim in `terms` (read 2026-10-09): 'For Public Use'. They bar nothing and ask for no credit; `attribution` names the coalition. Its accessInformation and snippet name people, so neither is copied here.",
+      "licence_basis": "stated_by_org",
+      "attribution": "NorthEast Texas Trail Coalition",
+      "terms": "For Public Use",
+      "terms_source": "The item's licenseInfo, https://www.arcgis.com/home/item.html?id=4a65325dc6984671b080c5bc10b7af1f, read 2026-10-09. netexastrail.org's home page links no terms page (the triage, 2026-10-08).",
+      "person_fields": [
+        "Creator",
+        "Editor"
+      ],
+      "person_fields_comment": "Read off the layer's live field list on 2026-10-09: Creator and Editor are editor tracking's account names (filled on 167 of 167), so the extract leaves each out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59).",
+      "id_field": "GlobalID",
+      "id_comment": "`GlobalID`: distinct on 167 of 167 rows, none null, read 2026-10-09.",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's nett points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: services2.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key, each person field left out of every request. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "167 points on 2026-10-09 (returnCountOnly), layer 0 'Points of Interest' of NET_Trail, typed by TYPE's TrailFacility domain: Trail Head 44, Info Sign 31, Other 27, Parking 16, Historic Marker 10, Furniture 8, Bridge 8, Restroom 7, Art 5, Undeveloped Area 4, Future Area 4, Water Fountain 2, and null on 1 (the domain's Camping, RV Parking and Equestrian are on none). NOTES is free text (143 distinct values, up to 97 characters, no e-mail- or phone-shaped string). Last edited 2020-01-22. 8 of the 167 lie outside north-east Texas (2 at Austin, 6 near Redlands, California): test or misplaced points, which must never be drawn on this trail.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The NorthEast Texas Trail Coalition has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its item states 'For Public Use', which bars nothing. Settled by the approved row.",
+      "meta": {
+        "cadence": "monthly"
+      }
+    },
+    {
+      "key": "eastern_trail_conditions",
+      "title": "Eastern Trail conditions (Eastern Trail Alliance)",
+      "provider": "Eastern Trail Alliance",
+      "kind": "published_notices",
+      "url": "https://www.easterntrail.org/trail-conditions/",
+      "trust": "authoritative",
+      "steward": "Eastern Trail Alliance",
+      "steward_contact": "https://www.easterntrail.org/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). No terms page was found; the site's footer reads 'Copyright © 2026. All Rights Reserved' (the triage, 2026-10-08). NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Eastern Trail Alliance",
+      "terms": "'Copyright © 2026. All Rights Reserved', the site's footer (the triage, 2026-10-08); no terms page is linked.",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.easterntrail.org/wp-json/wp/v2/pages/62",
+        "notes": "extract/_notices.py's PageNotice through the WordPress REST route (wp_page=62): no validator trusted (a REST answer carried neither ETag nor Last-Modified on 2026-10-09), so every notices run reads it, one request, and FRESH only when the landed row hashes as the last load's."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's eastern-trail closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.easterntrail.org's robots.txt answered 200 with 19 Disallow lines (all of them event listings') and no Crawl-delay, and allows the page and its REST route; the REST route's page by its slug once, which is page 62 ('Trail Conditions'), two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "One WordPress page, id 62, 'Trail Conditions', read through /wp-json/wp/v2/pages?slug=trail-conditions on 2026-10-09: created 2026-03-19, modified 2026-08-29, 812 characters of text, no e-mail- or phone-shaped string. It states 'August 29, 2026', which the reader lands as the row's date (2026-08-29). It lists alerts by area ('All Areas: Updated August 29, 2026 All clear!', the coverage audit, 2026-10-01). The resource's expect_title 'Trail Conditions' refuses a reused page id. The site's /rules-guidelines/ page carries a standing hunting warning ('Hunting occurs on lands adjacent to the trail between August – December', the audit), not loaded: a page of rules, not of notices.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The Eastern Trail Alliance has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its site's footer reserves its rights to its own content, and decision 53 publishes a steward's notices as facts and a link, copying no wording. Settled by the approved row."
+    },
+    {
+      "key": "maine_huts_trail_conditions",
+      "title": "Trail Conditions and Updates (Maine Huts & Trails)",
+      "provider": "Maine Huts & Trails",
+      "kind": "published_notices",
+      "url": "https://mainehuts.org/trail-conditions-and-updates/",
+      "trust": "authoritative",
+      "steward": "Maine Huts & Trails",
+      "steward_contact": "https://mainehuts.org/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). No terms page was found: the triage read the site's robots.txt and home page (2026-10-08) and found none linked. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maine Huts & Trails",
+      "terms": "None found: the site links no terms page from its home page (read 2026-10-08).",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://mainehuts.org/wp-json/wp/v2/pages/1851",
+        "notes": "extract/_notices.py's PageNotice through the WordPress REST route (wp_page=1851): no validator trusted (a REST answer carried neither ETag nor Last-Modified on 2026-10-09), so every notices run reads it, one request, and FRESH only when the landed row hashes as the last load's."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maine-huts closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: mainehuts.org's robots.txt answered 200 with 7 Disallow lines and no Crawl-delay, and allows the page and its REST route; the REST route's page by its slug once, which is page 1851 ('Trail Conditions and Updates'), two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "One WordPress page, id 1851, 'Trail Conditions and Updates', read through /wp-json/wp/v2/pages?slug=trail-conditions-and-updates on 2026-10-09: created 2024-10-07, modified 2026-09-30 (modified_gmt, the row's date: the text states none the reader finds), 1,419 characters of text, no e-mail- or phone-shaped string. The coverage audit read closures on it (2026-10-01): 'Big Eddy Trailhead to Grand Falls: Many bridges washed out, trail is closed.' and 'West Forks Trailhead to Grand Falls Hut: Trailhead, trail, and hut are closed.' The resource's expect_title 'Trail Conditions' refuses a reused page id.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maine Huts & Trails has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
+    },
+    {
+      "key": "rctc_rachel_carson_trail_alerts",
+      "title": "Rachel Carson Trail alerts (Rachel Carson Trails Conservancy)",
+      "provider": "RCTC",
+      "kind": "published_notices",
+      "url": "https://www.rachelcarsontrails.org/trails/rachel-carson-trail",
+      "trust": "authoritative",
+      "steward": "Rachel Carson Trails Conservancy",
+      "steward_contact": "https://www.rachelcarsontrails.org/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). No terms page was found: the triage read the site's robots.txt and home page (2026-10-08) and found none linked. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Rachel Carson Trails Conservancy",
+      "terms": "None found: the site links no terms page from its home page (read 2026-10-08).",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.rachelcarsontrails.org/trails/rachel-carson-trail",
+        "notes": "extract/_notices.py's PageNotice: no validator trusted (the site's ETag is its CMS's own, the same string on all three trail pages read 2026-10-09, and it sends no Last-Modified), so every notices run reads it, one request, and FRESH only when the landed row hashes as the last load's."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's rctc closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.rachelcarsontrails.org's robots.txt answered 200 with 13 Disallow lines, one of them every URL with a query string ('Disallow: /*?'), and no Crawl-delay; it allows every path read here, none of which has a query string; the trail page once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The Rachel Carson Trail's page, 43,307 bytes on 2026-10-09. The extract's reader, run over the saved page, picks <main> (16,838 characters of text); with no <h1> inside it, the title is the page's og:title 'Rachel Carson Trail', which the resource's expect_title holds. Its 'Trail Alerts' section is an <h2> and a list with no element of its own, so the region is the whole trail page and an edit anywhere on it reads as a new version of the notice. Each alert dates itself in parentheses, day first ('(14 August 2026)'), which the reader's DATE does not read, so the row lands no date. The region holds 1 e-mail-shaped string, which never lands. Read on it: the trail's reroutes (the coverage audit, 2026-10-01) and 'extensive truck activity … where the trail crosses Burtner Road (11 March 2026)'.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The Rachel Carson Trails Conservancy has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
+    },
+    {
+      "key": "rctc_baker_trail_alerts",
+      "title": "Baker Trail alerts (Rachel Carson Trails Conservancy)",
+      "provider": "RCTC",
+      "kind": "published_notices",
+      "url": "https://www.rachelcarsontrails.org/trails/baker-trail",
+      "trust": "authoritative",
+      "steward": "Rachel Carson Trails Conservancy",
+      "steward_contact": "https://www.rachelcarsontrails.org/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). No terms page was found: the triage read the site's robots.txt and home page (2026-10-08) and found none linked. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Rachel Carson Trails Conservancy",
+      "terms": "None found: the site links no terms page from its home page (read 2026-10-08).",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.rachelcarsontrails.org/trails/baker-trail",
+        "notes": "extract/_notices.py's PageNotice: no validator trusted (the site's ETag is its CMS's own, the same string on all three trail pages read 2026-10-09, and it sends no Last-Modified), so every notices run reads it, one request, and FRESH only when the landed row hashes as the last load's."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's rctc closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.rachelcarsontrails.org's robots.txt answered 200 with 13 Disallow lines, one of them every URL with a query string ('Disallow: /*?'), and no Crawl-delay; it allows every path read here, none of which has a query string; the trail page once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The Baker Trail's page, 32,908 bytes on 2026-10-09. The extract's reader, run over the saved page, picks <main> (10,889 characters of text); with no <h1> inside it, the title is the page's og:title 'Baker Trail', which the resource's expect_title holds. Its 'Trail Alerts' section is an <h2> and a list with no element of its own, so the region is the whole trail page and an edit anywhere on it reads as a new version of the notice. Each alert dates itself in parentheses, day first ('(14 August 2026)'), which the reader's DATE does not read, so the row lands no date. The region holds 1 e-mail-shaped string, which never lands. Read on it: 'southern terminus has been moved to Schenley … (14 August 2026)', a detour between SGL 74 and Summerville Drive, the closed Kiski bridge section and 'The Idaho shelter has been removed (May 2024)' (the coverage audit, 2026-10-01).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The Rachel Carson Trails Conservancy has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
+    },
+    {
+      "key": "rctc_harmony_trail_alerts",
+      "title": "Harmony Trail alerts (Rachel Carson Trails Conservancy)",
+      "provider": "RCTC",
+      "kind": "published_notices",
+      "url": "https://www.rachelcarsontrails.org/trails/harmony-trail",
+      "trust": "authoritative",
+      "steward": "Rachel Carson Trails Conservancy",
+      "steward_contact": "https://www.rachelcarsontrails.org/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). No terms page was found: the triage read the site's robots.txt and home page (2026-10-08) and found none linked. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Rachel Carson Trails Conservancy",
+      "terms": "None found: the site links no terms page from its home page (read 2026-10-08).",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.rachelcarsontrails.org/trails/harmony-trail",
+        "notes": "extract/_notices.py's PageNotice: no validator trusted (the site's ETag is its CMS's own, the same string on all three trail pages read 2026-10-09, and it sends no Last-Modified), so every notices run reads it, one request, and FRESH only when the landed row hashes as the last load's."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's rctc closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.rachelcarsontrails.org's robots.txt answered 200 with 13 Disallow lines, one of them every URL with a query string ('Disallow: /*?'), and no Crawl-delay; it allows every path read here, none of which has a query string; the trail page once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The Harmony Trail's page, 28,819 bytes on 2026-10-09. The extract's reader, run over the saved page, picks <main> (7,865 characters of text); with no <h1> inside it, the title is the page's og:title 'Harmony Trail', which the resource's expect_title holds. Its 'Trail Alerts' section is an <h2> and a list with no element of its own, so the region is the whole trail page and an edit anywhere on it reads as a new version of the notice. Each alert dates itself in parentheses, day first ('(14 August 2026)'), which the reader's DATE does not read, so the row lands no date. The region holds 2 e-mail-shaped strings, which never land. Read on it: 'Coyotes have been sighted near the trail … (14 February 2024)' (the coverage audit's skeptic, 2026-10-01).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The Rachel Carson Trails Conservancy has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
+    },
+    {
+      "key": "rctc_baker_trail_geojson",
+      "title": "Baker Trail GIS file: route, spurs, parking and shelters (RCTC, GeoJSON)",
+      "provider": "RCTC",
+      "kind": "gis_file",
+      "url": "https://www.rachelcarsontrails.org/gis/bt-geojson",
+      "file_format": "geojson",
+      "trust": "authoritative",
+      "steward": "Rachel Carson Trails Conservancy",
+      "steward_contact": "https://www.rachelcarsontrails.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the conservancy's own GIS file, served anonymously on a public URL its Baker Trail page's map reads, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication.",
+      "licence_basis": "public_gis",
+      "attribution": "Rachel Carson Trails Conservancy",
+      "terms": "None found: the site links no terms page from its home page (the triage, 2026-10-08); robots.txt allows the file.",
+      "freshness": {
+        "kind": "per_file_validator",
+        "url": "https://www.rachelcarsontrails.org/gis/bt-geojson",
+        "notes": "A HEAD of the URL answered 200 on 2026-10-09 with Last-Modified Tue, 01 Sep 2026 20:59:23 GMT and neither an ETag nor a Content-Length, so the change check finds no validator of the file's own and answers UNKNOWN (extract/_gis_files.py's _validator): the file is read whole each month, 259,229 bytes."
+      },
+      "name_field": "name",
+      "key_fields": [
+        "geometry"
+      ],
+      "key_comment": "The geometry alone: unique on 106 of 106 (measured 2026-10-09). `name` is unique too; `id` repeats once (105 values).",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's rctc points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.rachelcarsontrails.org's robots.txt answered 200 with 13 Disallow lines, one of them every URL with a query string ('Disallow: /*?'), and no Crawl-delay; it allows every path read here, none of which has a query string; a HEAD and one GET of the file, two seconds or more apart, every feature parsed with extract/_gis_files.py for the count, the columns and the key. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "106 features, read 2026-10-09: 71 lines (type 'route' 47, 'spur' 24) and 35 points ('parking' 24, 'shelter' 8, 'feature' 3, the campgrounds the coverage audit names), 259,229 bytes. The GET was redirected to a dated file (/gis/20/20-20260814-geojson), so a new version moves the address the stable URL points to. The 8 shelters are the Baker Trail's (Maple Creek, Strohm, Summerville, Langville, Milo Weaver, Atwood, Pine Run and Crooked Creek, the audit); the trail page says 'The Idaho shelter has been removed (May 2024)'. `popup` is HTML prose on every feature, never parsed for a fact. The Rachel Carson Trail's own file (/gis/rct-geojson) holds its line and 21 parking points and no shelter or water, so it waits for the rest of the conservancy's layers.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The Rachel Carson Trails Conservancy has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 21a's presumption would publish its own file. Settled by the approved row.",
+      "meta": {
+        "cadence": "monthly"
+      }
+    },
+    {
+      "key": "odt_trail_alerts_feed",
+      "title": "Olympic Discovery Trail alerts (Peninsula Trails Coalition, RSS)",
+      "provider": "Peninsula Trails Coalition",
+      "kind": "published_notices",
+      "url": "https://olympicdiscoverytrail.org/feed/?post_type=trailalerts",
+      "trust": "authoritative",
+      "steward": "Peninsula Trails Coalition",
+      "steward_contact": "https://olympicdiscoverytrail.org/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). No terms page was found: the triage read the site's robots.txt and home page (2026-10-08) and found none linked. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Peninsula Trails Coalition",
+      "terms": "None found: the site links no terms page from its home page (read 2026-10-08).",
+      "person_fields": [
+        "dc:creator",
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Each of the 4 items names its author in dc:creator; no description held an e-mail- or phone-shaped string on 2026-10-09.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://olympicdiscoverytrail.org/feed/?post_type=trailalerts",
+        "notes": "No validator trusted: a WordPress feed's ETag and Last-Modified are site-wide (extract/_notices.py's FeedNotices), so every run reads the feed (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's peninsula-trails closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: olympicdiscoverytrail.org's robots.txt answered 200 with 13 Disallow lines, none for a query string, and no Crawl-delay, and allows the feed; /wp-json/wp/v2/types once (it lists no trail-alerts type, so the post type has no REST route) and the feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The site's 'Trail Alerts' post type as RSS (the page is /explore/trail-alerts/): 4 items on 2026-10-09, 'Gossett Road Section of ODT' (2026-09-24), 'Sequim Bay to Barker Road' (2026-09-03), 'Anderson Lake State Park Closure' (2026-04-22) and 'New Trails Not Open Yet' (2026-04-10); 5,839 bytes, no ETag, Last-Modified Thu, 24 Sep 2026 22:16:47 GMT. Through FeedNotices that answer lands 4 rows, `item_id` from the guid and distinct on 4 of 4: the key. The proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero, and every row carries `listing = 'window'`. A WordPress feed carries its newest 10 items unless the site changed that (Reasoned), so 4 is the post type's whole list today; the coverage audit read the same 4 titles on 2026-10-01.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The Peninsula Trails Coalition has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
+    },
+    {
+      "key": "maricopa_adobe_dam_news",
+      "title": "Adobe Dam Regional Park news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Adobe%20Dam%20Regional%20Park&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Adobe%20Dam%20Regional%20Park&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Adobe Dam Regional Park, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 3 items on 2026-10-09, systemwide notices only. Through FeedNotices that answer lands 3 rows, `item_id` from the guid and distinct on 3 of 3: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_buckeye_hills_news",
+      "title": "Buckeye Hills Regional Park news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Buckeye%20Hills%20Regional%20Park&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Buckeye%20Hills%20Regional%20Park&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Buckeye Hills Regional Park, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 5 items on 2026-10-09, 'No Primitive Camping Available at Buckeye Hills Regional Park' (2018). Through FeedNotices that answer lands 5 rows, `item_id` from the guid and distinct on 5 of 5: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_cave_creek_news",
+      "title": "Cave Creek Regional Park news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Cave%20Creek%20Regional%20Park&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Cave%20Creek%20Regional%20Park&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Cave Creek Regional Park, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 8 items on 2026-10-09, the annual fire ban (May 1 to September 30). Through FeedNotices that answer lands 8 rows, `item_id` from the guid and distinct on 8 of 8: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_desert_outdoor_center_news",
+      "title": "Desert Outdoor Center at Lake Pleasant news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Desert%20Outdoor%20Center%20at%20Lake%20Pleasant&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Desert%20Outdoor%20Center%20at%20Lake%20Pleasant&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Desert Outdoor Center at Lake Pleasant, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 8 items on 2026-10-09, 'LAKE PLEASANT: Annual Bald Eagle Closure - Agua Fria Arm - December 15 thru June 15'. Through FeedNotices that answer lands 8 rows, `item_id` from the guid and distinct on 8 of 8: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_estrella_mountain_news",
+      "title": "Estrella Mountain Regional Park news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Estrella%20Mountain%20Regional%20Park&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Estrella%20Mountain%20Regional%20Park&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Estrella Mountain Regional Park, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 9 items on 2026-10-09, 'ESTRELLA - Storm Damage Update and Temporary Closures' (2026-10-05). Through FeedNotices that answer lands 9 rows, `item_id` from the guid and distinct on 9 of 9: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_hassayampa_river_news",
+      "title": "Hassayampa River Preserve news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Hassayampa%20River%20Preserve&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Hassayampa%20River%20Preserve&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Hassayampa River Preserve, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 5 items on 2026-10-09, systemwide notices only. Through FeedNotices that answer lands 5 rows, `item_id` from the guid and distinct on 5 of 5: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_lake_pleasant_news",
+      "title": "Lake Pleasant Regional Park news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Lake%20Pleasant%20Regional%20Park&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Lake%20Pleasant%20Regional%20Park&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Lake Pleasant Regional Park, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 16 items on 2026-10-09, 'LAKE PLEASANT: Pipeline Trailhead temporarily closed November 10, 2026 - March 10, 2027' (2026-10-08). Through FeedNotices that answer lands 16 rows, `item_id` from the guid and distinct on 16 of 16: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_maricopa_trail_news",
+      "title": "Maricopa Trail news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Maricopa%20Trail&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Maricopa%20Trail&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Maricopa Trail, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 5 items on 2026-10-09, 'MARICOPA TRAIL: Temporary Closure - Segment 12 - Oct 8, 2025 - Sept 2026' and 'MARICOPA TRAIL - Temporary construction at Skunk Creek Crossing' (2026-08-25). Through FeedNotices that answer lands 5 rows, `item_id` from the guid and distinct on 5 of 5: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_mcdowell_mountain_news",
+      "title": "McDowell Mountain Regional Park news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=McDowell%20Mountain%20Regional%20Park&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=McDowell%20Mountain%20Regional%20Park&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of McDowell Mountain Regional Park, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 8 items on 2026-10-09, the annual fire ban. Through FeedNotices that answer lands 8 rows, `item_id` from the guid and distinct on 8 of 8: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_san_tan_mountain_news",
+      "title": "San Tan Mountain Regional Park news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=San%20Tan%20Mountain%20Regional%20Park&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=San%20Tan%20Mountain%20Regional%20Park&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of San Tan Mountain Regional Park, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 6 items on 2026-10-09, the annual fire ban. Through FeedNotices that answer lands 6 rows, `item_id` from the guid and distinct on 6 of 6: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_spur_cross_ranch_news",
+      "title": "Spur Cross Ranch Conservation Area news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Spur%20Cross%20Ranch%20Conservation%20Area&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Spur%20Cross%20Ranch%20Conservation%20Area&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Spur Cross Ranch Conservation Area, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 5 items on 2026-10-09, systemwide notices only. Through FeedNotices that answer lands 5 rows, `item_id` from the guid and distinct on 5 of 5: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_usery_mountain_news",
+      "title": "Usery Mountain Regional Park news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Usery%20Mountain%20Regional%20Park&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Usery%20Mountain%20Regional%20Park&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Usery Mountain Regional Park, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 8 items on 2026-10-09, the annual fire ban. Through FeedNotices that answer lands 8 rows, `item_id` from the guid and distinct on 8 of 8: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_vulture_mountains_news",
+      "title": "Vulture Mountains Recreation Area news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Vulture%20Mountains%20Recreation%20Area&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=Vulture%20Mountains%20Recreation%20Area&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of Vulture Mountains Recreation Area, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 5 items on 2026-10-09, systemwide notices only. Through FeedNotices that answer lands 5 rows, `item_id` from the guid and distinct on 5 of 5: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "maricopa_white_tank_mountain_news",
+      "title": "White Tank Mountain Regional Park news (Maricopa County Parks, RSS)",
+      "provider": "Maricopa County Parks",
+      "kind": "published_notices",
+      "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=White%20Tank%20Mountain%20Regional%20Park&ParkNews=1",
+      "trust": "authoritative",
+      "steward": "Maricopa County Parks and Recreation Department",
+      "steward_contact": "https://www.maricopacountyparks.net/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). The site's Legal Information page (https://www.maricopacountyparks.net/legal-information/) was read by the triage on 2026-10-08 and restricts nothing it read. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Maricopa County Parks and Recreation",
+      "terms": "Nothing restrictive found: the site's Legal Information page was read by the triage on 2026-10-08.",
+      "person_fields": [
+        "description"
+      ],
+      "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). Listed because a notice body can name a contact; on 2026-10-09 none of the 14 park feeds' items carried an author element, an e-mail- or a phone-shaped string.",
+      "reader": "FeedNotices",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.maricopacountyparks.net/rss/parks.aspx?Park=White%20Tank%20Mountain%20Regional%20Park&ParkNews=1",
+        "notes": "No validator trusted: the feed sends no ETag and a Last-Modified equal to the time of the request (read 2026-10-09), so every run reads it (one request) and is FRESH only when the rows that would land hash as the last committed load did."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maricopa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: www.maricopacountyparks.net's robots.txt answered 200 with 6 Disallow lines, none for a query string, and no Crawl-delay, and allows every feed; the site's /rss/ page once, which lists an events feed and a news feed for each of 14 parks, then each park's news feed once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The park news feed of White Tank Mountain Regional Park, one of the 14 the site's /rss/ page lists (each park's events feed is not a notice and is not loaded): 9 items on 2026-10-09, 'WHITE TANK: Trailhead Staging Closed 4/13/26 - 9/30/26'. Through FeedNotices that answer lands 9 rows, `item_id` from the guid and distinct on 9 of 9: the key, and the proof is the item count of the same answer (`feed_items`), so an empty feed is a proven zero; every row carries `listing = 'window'`. The county posts a systemwide notice into every park's feed, so the 14 feeds' 110 items are 24 distinct guids: one notice lands in several tables, and which park a notice concerns is which feeds carry it. Each feed mixes notices with news (a camping promotion beside a closure).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maricopa County Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its Legal Information page restricts nothing the triage read, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row; each feed mixes news with notices, so every item would publish as a warning nobody reviewed (decision 7)."
+    },
+    {
+      "key": "tpwd_caprock_canyons_alerts",
+      "title": "Caprock Canyons State Park & Trailway alerts",
+      "provider": "TPWD",
+      "kind": "published_notices",
+      "url": "https://tpwd.texas.gov/state-parks/caprock-canyons/alert",
+      "trust": "authoritative",
+      "steward": "Texas Parks and Wildlife Department",
+      "steward_contact": "https://tpwd.texas.gov/",
+      "licence": "Facts and a link only, on decision 55 (poll, 2026-10-03): TPWD's terms restrict copying and reuse but not reading, so its notices publish as facts in OurHike's own words and a link, and no reader carries the page's wording into a published column. NOT a grant from TPWD; its terms are quoted verbatim in `terms`. Decision 55 names TPWD among the clubs it covers. tpwd.texas.gov's robots.txt, read 2026-10-09 under our agent, disallows search paths (/s?) among its 12 Disallow lines, none matching the page, with no Crawl-delay.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Texas Parks and Wildlife Department",
+      "terms": "https://tpwd.texas.gov/site/policies/copyright-policy, as decision 53's inventory quoted it (batch 2, 2026-10-03): \"No part of this work may be copied, reproduced, or translated in any form or medium without the prior written consent of Texas Parks Wildlife Department except where specifically noted. Permission is granted to republish, in whole or in part, the news releases on the TPWD site.\"",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://tpwd.texas.gov/state-parks/caprock-canyons/alert",
+        "notes": "extract/_notices.py's PageNotice: no validator trusted (TPWD's ETag is its CMS's stamp, never the page's own, as decision 53 measured on its other alert pages), so every notices run reads it, one request, and FRESH only when the landed row hashes as the last load's."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's tpwd closures rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: tpwd.texas.gov's robots.txt answered 200 with 12 Disallow lines and no Crawl-delay, and allows the page; the page once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The alert page of the park that holds the Caprock Canyons State Park Trailway, the candidate trail TPWD is registered for (trail_candidates.json): 52,711 bytes on 2026-10-09. The extract's reader picks <main> (1,052 characters of text), its <h1> 'Park Alert', and no stated date: each item dates itself in its own words (the coverage audit read a hunt closure of the park on December dates and 'April 10, 2026 - The boat ramp, fishing pier and swimming area are closed due to the low lake level'). Its sections today: Burn Ban, Bison Safety, Lake Closures and Park Closures. Whether a hunt closure covers the trailway as well as the park is not stated (the audit). Lands beside TPWD's two alert pages that decision 63 already ships.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): TPWD has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its copyright policy restricts copying, which decision 55 answers with facts and a link. Settled by the approved row."
+    },
+    {
+      "key": "wsprc_alerts_page",
+      "title": "Washington State Parks alerts",
+      "provider": "WA State Parks",
+      "kind": "published_notices",
+      "url": "https://parks.wa.gov/about/news-announcements/alerts",
+      "trust": "authoritative",
+      "steward": "Washington State Parks and Recreation Commission",
+      "steward_contact": "https://parks.wa.gov/",
+      "licence": "MAINTAINER AUTHORISATION on decision 53 (facts and a link, 2026-10-03): a steward's own notices, extracted and published as facts plus a link, copying no wording (features/ORG_NOTICES.md section 7). No terms page was found: the triage read the site's robots.txt and home page (2026-10-08) and found none linked. NOT A LICENCE FROM THEM.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Washington State Parks",
+      "terms": "None found: parks.wa.gov's home page links no terms page (read 2026-10-08).",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://parks.wa.gov/about/news-announcements/alerts",
+        "notes": "extract/_notices.py's PageNotice: no validator trusted (a Drupal page's weak ETag and Last-Modified are its page cache's, which nothing here has shown to follow the alerts), so every notices run reads it, one request, and FRESH only when the landed row hashes as the last load's."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's wa-parks closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: parks.wa.gov's robots.txt answered 200 with 34 Disallow lines and no Crawl-delay, and allows the page; the page once, two seconds or more between requests to one host. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "The commission's alerts listing (a Drupal view), one page, 351,396 bytes on 2026-10-09: the extract's reader picks <main> (57,491 characters of text), its <h1> 'Alerts' and no stated date; each park is an accordion section (Alta Lake State Park: 'Burn Ban Level 2'; Anderson Lake State Park: a burn ban, a water closure and a notification). The coverage audit counted 234 alerts on 2026-10-01, among them the Palouse to Cascades trestle at Revere closed for repairs, and found no feed and no JSON ('?_format=json' 406, '/alerts/feed' 404), so the page is the source and the whole page is one notice: any alert's edit reads as a new version of it. The region holds 6 e-mail- and 8 phone-shaped strings, which never land.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Washington State Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
     }
   ],
   "usdm_licence": {
@@ -19164,6 +19904,34 @@
       "NYS Canal Corporation": {
         "state": "not_asked",
         "note": "Not asked. Registered for the Canalway Trail's water fountains, surface condition and alerts page on 2026-10-09, at reaches_hikers: false, held under decision 122 - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Illinois DNR": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "NETT": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail's damaged bridges and points of interest (nett_damaged_bridges, nett_trail_pois) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Eastern Trail Alliance": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Maine Huts & Trails": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "RCTC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its three trail pages' alerts and the Baker Trail's GIS file (rctc_rachel_carson_trail_alerts, rctc_baker_trail_alerts, rctc_harmony_trail_alerts, rctc_baker_trail_geojson) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Peninsula Trails Coalition": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
+      "Maricopa County Parks": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       }
     },
     "claim_vocabulary": {
@@ -20244,6 +21012,48 @@
         "state": "NY",
         "name": "New York State Canal Corporation",
         "note": "The state authority that runs the New York State Canal System and the Canalway Trail along it (canals.ny.gov). Registered for the trail's water fountains, surface condition and alerts page (nys_canal_water_fountains, nys_canal_trail_condition, nys_canal_trail_alerts_page) on 2026-10-09, at reaches_hikers: false, held under decision 122 until its trail_orgs.json row is approved (decision 121)."
+      },
+      "org:ildnr": {
+        "provider": "Illinois DNR",
+        "state": "IL",
+        "name": "Illinois Department of Natural Resources",
+        "note": "Illinois's natural resources agency, which runs the state's parks and the Grand Illinois Trail's state segments (dnr.illinois.gov). Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+      },
+      "org:nett": {
+        "provider": "NETT",
+        "state": "TX",
+        "name": "NorthEast Texas Trail Coalition",
+        "note": "The non-profit that manages the Northeast Texas Trail, a rail trail from Farmersville to New Boston (netexastrail.org). Registered for its trail's damaged bridges and points of interest (nett_damaged_bridges, nett_trail_pois) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+      },
+      "org:easterntrail": {
+        "provider": "Eastern Trail Alliance",
+        "state": "ME",
+        "name": "Eastern Trail Alliance",
+        "note": "The non-profit that builds and maintains the Eastern Trail from Kittery to South Portland, Maine (easterntrail.org). Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+      },
+      "org:mainehuts": {
+        "provider": "Maine Huts & Trails",
+        "state": "ME",
+        "name": "Maine Huts & Trails",
+        "note": "The non-profit that runs the Maine Hut Trail and its huts in Maine's western mountains (mainehuts.org). Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+      },
+      "org:rctc": {
+        "provider": "RCTC",
+        "state": "PA",
+        "name": "Rachel Carson Trails Conservancy",
+        "note": "The non-profit that maintains the Rachel Carson Trail, the Baker Trail and the Harmony Trail in western Pennsylvania (rachelcarsontrails.org). Registered for its three trail pages' alerts and the Baker Trail's GIS file (rctc_rachel_carson_trail_alerts, rctc_baker_trail_alerts, rctc_harmony_trail_alerts, rctc_baker_trail_geojson) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+      },
+      "org:peninsulatrails": {
+        "provider": "Peninsula Trails Coalition",
+        "state": "WA",
+        "name": "Peninsula Trails Coalition",
+        "note": "The volunteer coalition building the Olympic Discovery Trail from Port Townsend to La Push, Washington (olympicdiscoverytrail.org). Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+      },
+      "org:maricopaparks": {
+        "provider": "Maricopa County Parks",
+        "state": "AZ",
+        "name": "Maricopa County Parks and Recreation Department",
+        "note": "Maricopa County's parks department, steward of the Maricopa Trail around the Phoenix area and its regional parks (maricopacountyparks.net). Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
       }
     }
   },
@@ -26738,6 +27548,323 @@
               "date": "2026-10-01"
             },
             "note": "the coverage audit's count (2026-10-01) of the Canal Corporation's 2022 field-survey layer Erie_TrailAccessPoint/63, not re-read for this registration: access points, not all of them trailheads."
+          }
+        }
+      },
+      "Illinois DNR": {
+        "probed_date": "2026-10-09",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its closures page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 345 IDNR site points (2019) on its ArcGIS Online organisation, which the rest of its layers' load reads."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its closures page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 345 IDNR site points (2019) on its ArcGIS Online organisation, which the rest of its layers' load reads."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its closures page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 345 IDNR site points (2019) on its ArcGIS Online organisation, which the rest of its layers' load reads."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its closures page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 345 IDNR site points (2019) on its ArcGIS Online organisation, which the rest of its layers' load reads."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its closures page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 345 IDNR site points (2019) on its ArcGIS Online organisation, which the rest of its layers' load reads."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its closures page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 345 IDNR site points (2019) on its ArcGIS Online organisation, which the rest of its layers' load reads."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its closures page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 345 IDNR site points (2019) on its ArcGIS Online organisation, which the rest of its layers' load reads."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its closures page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 345 IDNR site points (2019) on its ArcGIS Online organisation, which the rest of its layers' load reads."
+          }
+        }
+      },
+      "NETT": {
+        "probed_date": "2026-10-09",
+        "note": "Registered for its trail's damaged bridges and points of interest (nett_damaged_bridges, nett_trail_pois) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Counts are of what the source publishes, not of what a hiker would see.",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "nett_trail_pois holds no value of this type (read value by value, 2026-10-09), but only that source was read for this registration and the organization's other publications were not, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "nett_trail_pois holds no value of this type (read value by value, 2026-10-09), but only that source was read for this registration and the organization's other publications were not, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "water": {
+            "status": "available",
+            "source_key": "nett_trail_pois",
+            "measured": {
+              "features": 2,
+              "date": "2026-10-09",
+              "values": {
+                "WF Water Fountain": 2
+              }
+            },
+            "note": "TYPE of nett_trail_pois, read 2026-10-09 (167 points, 8 of them outside north-east Texas). A plumbed fountain by its type's name; whether it runs in winter is not on the layer."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "nett_trail_pois holds no value of this type (read value by value, 2026-10-09), but only that source was read for this registration and the organization's other publications were not, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "nett_trail_pois holds no value of this type (read value by value, 2026-10-09), but only that source was read for this registration and the organization's other publications were not, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "available",
+            "source_key": "nett_trail_pois",
+            "measured": {
+              "features": 16,
+              "date": "2026-10-09",
+              "values": {
+                "P Parking": 16
+              }
+            },
+            "note": "TYPE of nett_trail_pois, read 2026-10-09 (167 points, 8 of them outside north-east Texas)."
+          },
+          "privy": {
+            "status": "available",
+            "source_key": "nett_trail_pois",
+            "measured": {
+              "features": 7,
+              "date": "2026-10-09",
+              "values": {
+                "RR Restroom": 7
+              }
+            },
+            "note": "TYPE of nett_trail_pois, read 2026-10-09 (167 points, 8 of them outside north-east Texas)."
+          },
+          "trailhead": {
+            "status": "available",
+            "source_key": "nett_trail_pois",
+            "measured": {
+              "features": 44,
+              "date": "2026-10-09",
+              "values": {
+                "TH Trail Head": 44
+              }
+            },
+            "note": "TYPE of nett_trail_pois, read 2026-10-09 (167 points, 8 of them outside north-east Texas)."
+          }
+        }
+      },
+      "Eastern Trail Alliance": {
+        "probed_date": "2026-10-09",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 17 parking points on its Google My Map; its FAQ says water 'is not guaranteed or maintained for public use'."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 17 parking points on its Google My Map; its FAQ says water 'is not guaranteed or maintained for public use'."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 17 parking points on its Google My Map; its FAQ says water 'is not guaranteed or maintained for public use'."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 17 parking points on its Google My Map; its FAQ says water 'is not guaranteed or maintained for public use'."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 17 parking points on its Google My Map; its FAQ says water 'is not guaranteed or maintained for public use'."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 17 parking points on its Google My Map; its FAQ says water 'is not guaranteed or maintained for public use'."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 17 parking points on its Google My Map; its FAQ says water 'is not guaranteed or maintained for public use'."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 17 parking points on its Google My Map; its FAQ says water 'is not guaranteed or maintained for public use'."
+          }
+        }
+      },
+      "Maine Huts & Trails": {
+        "probed_date": "2026-10-09",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found its 4 huts, the trail's shelters, and 7 trailheads only as pages with no coordinates, which a page reader would need."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found its 4 huts, the trail's shelters, and 7 trailheads only as pages with no coordinates, which a page reader would need."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found its 4 huts, the trail's shelters, and 7 trailheads only as pages with no coordinates, which a page reader would need."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found its 4 huts, the trail's shelters, and 7 trailheads only as pages with no coordinates, which a page reader would need."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found its 4 huts, the trail's shelters, and 7 trailheads only as pages with no coordinates, which a page reader would need."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found its 4 huts, the trail's shelters, and 7 trailheads only as pages with no coordinates, which a page reader would need."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found its 4 huts, the trail's shelters, and 7 trailheads only as pages with no coordinates, which a page reader would need."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its conditions page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found its 4 huts, the trail's shelters, and 7 trailheads only as pages with no coordinates, which a page reader would need."
+          }
+        }
+      },
+      "RCTC": {
+        "probed_date": "2026-10-09",
+        "note": "Registered for its three trail pages' alerts and the Baker Trail's GIS file (rctc_rachel_carson_trail_alerts, rctc_baker_trail_alerts, rctc_harmony_trail_alerts, rctc_baker_trail_geojson) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Counts are of what the source publishes, not of what a hiker would see.",
+        "types": {
+          "shelter": {
+            "status": "available",
+            "source_key": "rctc_baker_trail_geojson",
+            "measured": {
+              "features": 8,
+              "date": "2026-10-09",
+              "values": {
+                "shelter": 8
+              }
+            },
+            "note": "The `type` of rctc_baker_trail_geojson's points, read 2026-10-09 (35 points on the Baker Trail). The Baker Trail's 8 Adirondack shelters by the audit's names; the Idaho shelter was removed in May 2024 (the trail page)."
+          },
+          "campsite": {
+            "status": "available",
+            "source_key": "rctc_baker_trail_geojson",
+            "measured": {
+              "features": 3,
+              "date": "2026-10-09",
+              "values": {
+                "feature": 3
+              }
+            },
+            "note": "The `type` of rctc_baker_trail_geojson's points, read 2026-10-09 (35 points on the Baker Trail). Campgrounds by the coverage audit's reading of the 3 'feature' points; not read point by point."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "rctc_baker_trail_geojson holds no value of this type (read value by value, 2026-10-09), but only that source was read for this registration and the organization's other publications were not, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "rctc_baker_trail_geojson holds no value of this type (read value by value, 2026-10-09), but only that source was read for this registration and the organization's other publications were not, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "rctc_baker_trail_geojson holds no value of this type (read value by value, 2026-10-09), but only that source was read for this registration and the organization's other publications were not, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "available",
+            "source_key": "rctc_baker_trail_geojson",
+            "measured": {
+              "features": 24,
+              "date": "2026-10-09",
+              "values": {
+                "parking": 24
+              }
+            },
+            "note": "The `type` of rctc_baker_trail_geojson's points, read 2026-10-09 (35 points on the Baker Trail). The Rachel Carson Trail's own file holds 21 more, not loaded yet."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "rctc_baker_trail_geojson holds no value of this type (read value by value, 2026-10-09), but only that source was read for this registration and the organization's other publications were not, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "rctc_baker_trail_geojson holds no value of this type (read value by value, 2026-10-09), but only that source was read for this registration and the organization's other publications were not, so `unprobed` is the literal state, not a finding that it publishes none."
+          }
+        }
+      },
+      "Peninsula Trails Coalition": {
+        "probed_date": "2026-10-09",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its trail alerts feed and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found Clallam County's access points layer (29, a `Water` field) and RideWithGPS route points, neither of them the coalition's own."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its trail alerts feed and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found Clallam County's access points layer (29, a `Water` field) and RideWithGPS route points, neither of them the coalition's own."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its trail alerts feed and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found Clallam County's access points layer (29, a `Water` field) and RideWithGPS route points, neither of them the coalition's own."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its trail alerts feed and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found Clallam County's access points layer (29, a `Water` field) and RideWithGPS route points, neither of them the coalition's own."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its trail alerts feed and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found Clallam County's access points layer (29, a `Water` field) and RideWithGPS route points, neither of them the coalition's own."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its trail alerts feed and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found Clallam County's access points layer (29, a `Water` field) and RideWithGPS route points, neither of them the coalition's own."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its trail alerts feed and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found Clallam County's access points layer (29, a `Water` field) and RideWithGPS route points, neither of them the coalition's own."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its trail alerts feed and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found Clallam County's access points layer (29, a `Water` field) and RideWithGPS route points, neither of them the coalition's own."
+          }
+        }
+      },
+      "Maricopa County Parks": {
+        "probed_date": "2026-10-09",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its parks' news feeds and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 34 Maricopa Trail trailheads (restrooms on 10) and 263 park amenities on the county's PNR/ParkAndTrail MapServer, which the rest of its layers' load reads."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its parks' news feeds and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 34 Maricopa Trail trailheads (restrooms on 10) and 263 park amenities on the county's PNR/ParkAndTrail MapServer, which the rest of its layers' load reads."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its parks' news feeds and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 34 Maricopa Trail trailheads (restrooms on 10) and 263 park amenities on the county's PNR/ParkAndTrail MapServer, which the rest of its layers' load reads."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its parks' news feeds and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 34 Maricopa Trail trailheads (restrooms on 10) and 263 park amenities on the county's PNR/ParkAndTrail MapServer, which the rest of its layers' load reads."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its parks' news feeds and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 34 Maricopa Trail trailheads (restrooms on 10) and 263 park amenities on the county's PNR/ParkAndTrail MapServer, which the rest of its layers' load reads."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its parks' news feeds and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 34 Maricopa Trail trailheads (restrooms on 10) and 263 park amenities on the county's PNR/ParkAndTrail MapServer, which the rest of its layers' load reads."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its parks' news feeds and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 34 Maricopa Trail trailheads (restrooms on 10) and 263 park amenities on the county's PNR/ParkAndTrail MapServer, which the rest of its layers' load reads."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its parks' news feeds and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 34 Maricopa Trail trailheads (restrooms on 10) and 263 park amenities on the county's PNR/ParkAndTrail MapServer, which the rest of its layers' load reads."
           }
         }
       }

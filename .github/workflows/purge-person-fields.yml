@@ -22,13 +22,14 @@
 #      each table a build reads. Every listed field a current table holds is
 #      printed with its rows and how many carry a value, never a value.
 #   2. Reads every other object in the raw bucket by its own schema or keys
-#      (Parquet footers, DuckDB catalogs, JSON keys), never by its date, and
-#      lists each that holds a field, with the field's name and counts.
+#      (Parquet footers, DuckDB catalogs, the hourly hand-off's gzipped one
+#      among them, JSON keys), never by its date, and lists each that holds a
+#      field, with the field's name and counts.
 #   3. delete=false stops there. delete=true deletes exactly what step 2
-#      listed, a pin, stored warehouse, served copy or row-history save whole
-#      and its record first, printing each key; it refuses, deleting nothing,
-#      while a current table still holds a field or any object could not be
-#      read.
+#      listed, a pin, stored warehouse, served copy, row-history save or
+#      hourly hand-off whole and its record first, printing each key; it
+#      refuses, deleting nothing, while a current table still holds a field or
+#      any object could not be read.
 # The field list is the extract's own: PERSON_FIELDS, each table's
 # sources.json person_fields (where the layers' editFieldsInfo names are
 # recorded), and the podcast and conditions readers' own lists.
@@ -48,7 +49,12 @@
 # header). The hourly writers, extract-notices.yml and publish-conditions.yml,
 # are in other groups: they write new keys, and this deletes only keys that
 # hold a field, which their current tables do not (step 1), so the two never
-# touch the same object (Reasoned).
+# touch the same object (Reasoned). The one key they write again is
+# publish-conditions.yml's hourly hand-off (history/conditions_<leg>/checks/,
+# hand_off.py), overwritten by each build: a delete that lands between a
+# build's two writes there costs that hour's check-conditions.yml run, which
+# then finds nothing handed off or a pointer to a warehouse gone, never a
+# person field (Reasoned from hand_off.py's `take`).
 name: Purge person fields
 
 on:

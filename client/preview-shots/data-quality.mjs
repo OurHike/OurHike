@@ -14,14 +14,22 @@
 // site/src/lib/dataQualityExamples.mjs and this frame changes with it.
 //
 // WHAT CHANGED SINCE, AND IS IN THIS FRAME: two kinds' notes. Decision 130
-// (the maintainer's poll of 2026-10-09) makes "its expected range" on a
-// kind's card the range expected from the builds before, the one its row
-// quotes, so a card names a side of it only where that range gives the side
-// Elementary flagged, and otherwise says "flagged by Elementary". The light
-// files hold no history for the freshness or the anomalies entry, so
-// Freshness now reads "26 hours between updates, flagged by Elementary." and
-// Anomalies "Null rate: 4.2%, flagged by Elementary.", where each said "above
-// its expected range"; Volume's note is as it was.
+// (the maintainer's poll of 2026-10-09) makes "its usual range" on a kind's
+// card the range expected from the builds before, the one its row quotes, so
+// a card names a side of it only where that range gives the side Elementary
+// flagged, and otherwise says which side Elementary flagged. The light files
+// hold no history for the freshness or the anomalies entry, so Freshness
+// reads "26 hours between updates, flagged as high." and Anomalies "Null
+// rate: 4.2%, flagged as high.", where each said "above its expected range".
+//
+// AND THE WORD-CHOICE REVIEW OF #1805 (2026-10-09), in this frame: the
+// monthly card's line starts "Release 2026-10-03-2", not "Made release";
+// Volume's note says "below its usual range", not "its expected range"; the
+// two notes above say "flagged as high" where they said "flagged by
+// Elementary", the verdict's one wording on the page now; and dbt tests,
+// the one kind with nothing to look at, says what it covers in a visitor's
+// words: "Unique IDs, required values filled in, links between tables, and
+// each finished table's promised columns."
 //
 // FROM THE TABS DOWN, because the site's nav above them is every page's and
 // is not what this pull request changed; the chart and the per-mart table are

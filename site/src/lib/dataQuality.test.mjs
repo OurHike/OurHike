@@ -207,11 +207,11 @@ describe("the page, state by state", () => {
     expect(examples.NEEDED).toBe(11);
     expect(view.cards[0].learning.text).toBe("Learning, 3 of 11 builds");
     expect(view.cards[0].learning.detail).toBe(
-      "Its anomaly checks compare each build with the ones before it, and need 11 builds, this one included, before any can fire. Until then they pass without being able to.",
+      "Its anomaly checks compare each build with the ones before it, and can't flag anything until they have 11 builds, this one included. Until then they pass even if something is wrong.",
     );
     for (const id of ["freshness", "volume", "anomalies"]) {
       expect(tile(view, id).learning).toBe(
-        "Learning, 3 of 11 monthly builds: until then a pass may only mean an anomaly check cannot fire yet.",
+        "Learning, 3 of 11 monthly builds: until then its anomaly checks can't flag anything.",
       );
     }
     expect(tile(view, "schema").learning).toBeNull();
@@ -258,7 +258,7 @@ describe("the page, state by state", () => {
       ]);
       expect(tile(view, "volume").note).toEqual([
         { code: volume.table },
-        ": 4,118 rows, below its expected range.",
+        ": 4,118 rows, below its usual range.",
         "",
       ]);
     });
@@ -271,15 +271,15 @@ describe("the page, state by state", () => {
         ["Freshness", "preview_fixture__alerts", null, "Hourly"],
       ]);
       const [rows, nulls, columns, late] = view.sections.items.map((item) => item.sentence);
-      expect(rows).toBe("4,118 rows at this build, below the usual 5,199 to 5,322.");
+      expect(rows).toBe("4,118 rows in this build, below the usual 5,199 to 5,322.");
       // The light files carry no history for these two entries (the contract's first shape), so neither row has a
       // range from the builds before to quote; each says so and keeps Elementary's verdict.
       expect(nulls).toBe(
-        "Null rate: 4.2% at this build, flagged as high. No earlier range to compare it with.",
+        "Null rate: 4.2% in this build, flagged as high. No earlier range to compare it with.",
       );
-      expect(columns).toBe("Its columns no longer match what Elementary expected.");
+      expect(columns).toBe("Its columns changed since the last build.");
       expect(late).toBe(
-        "26 hours between updates at this build, flagged as high. No earlier range to compare it with.",
+        "26 hours between updates in this build, flagged as high. No earlier range to compare it with.",
       );
       expect(view.sections.items.map((item) => item.since)).toEqual([
         "Since this build",
@@ -304,9 +304,9 @@ describe("the page, state by state", () => {
         NO_RANGE,
         NO_RANGE,
         ...stored.slice(1, -2).map(range),
-        `${range(stored.at(-2))}, flagged below`,
+        `${range(stored.at(-2))}, flagged as low`,
       ]);
-      expect(chart.rows.at(-1)).toMatchObject({ when: "7 Oct 2026", value: "4,118", where: "Flagged below the range" });
+      expect(chart.rows.at(-1)).toMatchObject({ when: "7 Oct 2026", value: "4,118", where: "Flagged as low" });
       expect(chart.summary).toBe(
         "12 monthly builds, from 5,231 on 7 Nov 2025 to 4,118 on 7 Oct 2026. Elementary flagged 1 of them in its latest checks.",
       );
@@ -325,11 +325,11 @@ describe("the page, state by state", () => {
       expect(chart.points[3].outside).toBeNull();
     });
 
-    it('says the band is the range expected from the builds before each point, and a triangle is Elementary\'s verdict ("No range" without one)', () => {
+    it('says the band is the usual range from the builds before each point, and a triangle is Elementary\'s verdict ("No range" without one)', () => {
       const { chart } = view.sections;
       expect(NO_RANGE).toBe("No range");
       expect(chart.caption).toBe(
-        "The shaded band at each point is the range Elementary expected from the monthly builds before it: the band it worked out at the point before, which does not count the point itself. A triangle marks a point Elementary flagged. Elementary judges a point against a band that does count it, so a point can sit outside the shaded band without a triangle, and none can be flagged before its check has 11 monthly builds. A point with no band is this chart's first, or comes after one no run scored, such as a check's first.",
+        "The shaded band is the usual range, from the monthly builds before each point. A triangle marks a value Elementary flagged. Elementary judges each value against a range worked out with that value included, so a point can sit outside the band with no triangle. Nothing can be flagged before a check has 11 monthly builds. A point with no band has no earlier range.",
       );
     });
 
@@ -360,7 +360,7 @@ describe("the page, state by state", () => {
     const items = page(read(monthly, "monthly"), read(hourly, "hourly")).sections.items;
     expect(items.map((item) => item.status).slice(0, 3)).toEqual(["Failed", "Could not run", "Warned"]);
     expect(items[0]).toMatchObject({ tone: "bad", sentence: "A dbt test on it failed.", since: null });
-    expect(items[1].sentence).toBe("The check could not run, so this went unchecked at this build.");
+    expect(items[1].sentence).toBe("The check could not run, so this went unchecked in this build.");
   });
 
   it("charts the worst entry's own history, never another check's on the same table", () => {
@@ -383,7 +383,7 @@ describe("the page, state by state", () => {
     expect(chart.table).toBe("preview_fixture__trails");
   });
 
-  it("words a dbt test's value as the rows it failed or warned on, and a phone file's columns that do not match", () => {
+  it("words a dbt test's value as the rows it failed or warned on, and an app file's columns that do not match", () => {
     // `value` is a dbt test's failures, the rows its query returned (macros/data_quality.sql), never a measurement.
     const file = examples.monthlyWithWarnings();
     const base = { column: "id", expected_min: null, expected_max: null, since: null, metric: null };
@@ -396,15 +396,15 @@ describe("the page, state by state", () => {
     ];
     const view = page(read(file, "monthly"), MISSING);
     expect(view.sections.items.map((item) => item.sentence)).toEqual([
-      "A dbt test on it failed on 13 rows at this build.",
+      "A dbt test on it failed on 13 rows in this build.",
       "A dbt test on it failed.",
-      "A dbt test on it warned on 1 row at this build.",
-      "A dbt test on it warned on 1,204 rows at this build.",
-      "2 columns a phone file reads are missing or not the type it declares, at this build.",
+      "A dbt test on it warned on 1 row in this build.",
+      "A dbt test on it warned on 1,204 rows in this build.",
+      "2 columns an app file reads are missing or not the type it declares, in this build.",
     ]);
     expect(view.sections.items.some((item) => item.sentence.includes("Measured"))).toBe(false);
     expect(tile(view, "dbt_tests").note).toEqual([{ code: "trail_lines" }, ": a dbt test failed on 13 rows.", " And 3 more below."]);
-    expect(tile(view, "schema").note).toEqual([{ code: "trail_lines_v2" }, ": 2 columns a phone file reads do not match.", ""]);
+    expect(tile(view, "schema").note).toEqual([{ code: "trail_lines_v2" }, ": 2 columns an app file reads do not match.", ""]);
   });
 
   it("prints a value bare when the file does not say what it measures", () => {
@@ -415,7 +415,7 @@ describe("the page, state by state", () => {
     const [item] = page(read(file, "monthly"), MISSING).sections.items;
     // An entry that names no metric has no history to take a range from the builds before out of.
     expect(item.sentence).toBe(
-      "Measured 12 at this build, flagged as high. No earlier range to compare it with.",
+      "Measured 12 in this build, flagged as high. No earlier range to compare it with.",
     );
   });
 
@@ -513,9 +513,9 @@ describe("Needs a look, listed and folded (round 3's option D)", () => {
 describe("the Show menu", () => {
   const optionLabels = (group) => group.options.map((option) => option.label);
 
-  it("lists the entries' histories under Needs a look, worst first, then every other mart under Every mart, in By mart's order", () => {
+  it("lists the entries' histories under Needs a look, worst first, then every other finished table under Every finished table, in By finished table's order", () => {
     const { menu, chart } = manyView().sections;
-    expect(menu.map((group) => group.label)).toEqual(["Needs a look", "Every mart"]);
+    expect(menu.map((group) => group.label)).toEqual(["Needs a look", "Every finished table"]);
     const [look, marts] = menu;
     expect(look.options[0]).toEqual({ key: chart.key, label: "Null rate of trail_status in trail_lines · Monthly" });
     expect(optionLabels(look).slice(1, 3)).toEqual([
@@ -571,7 +571,7 @@ describe("the Show menu", () => {
     const { chart, menu, items } = page(read(quiet, "monthly"), MISSING).sections;
     expect(items).toEqual([]);
     expect(chart.table).toBe("trail_network");
-    expect(menu.map((group) => group.label)).toEqual(["Every mart"]);
+    expect(menu.map((group) => group.label)).toEqual(["Every finished table"]);
   });
 });
 
@@ -593,8 +593,8 @@ describe("the band and the triangles on the heavy files (decision 118)", () => {
   it("names the hourly lane's runs in an hourly chart's caption", () => {
     const { charts } = manyView().sections;
     const hourly = [...charts.values()].find((chart) => chart.lane === "hourly");
-    expect(hourly.caption).toContain("the range Elementary expected from the hourly runs before it");
-    expect(hourly.caption).toContain("none can be flagged before its check has 11 hourly runs.");
+    expect(hourly.caption).toContain("the usual range, from the hourly runs before each point");
+    expect(hourly.caption).toContain("Nothing can be flagged before a check has 11 hourly runs.");
   });
 });
 
@@ -612,10 +612,10 @@ describe("the range a Needs a look row quotes (decision 130)", () => {
     const [entry] = examples.monthlyWithWarnings().needs_a_look;
     expect([entry.expected_min, entry.expected_max]).toEqual([4174, 6156]);
     const { items, chart } = view.sections;
-    expect(items[0].sentence).toBe("4,118 rows at this build, below the usual 5,199 to 5,322.");
+    expect(items[0].sentence).toBe("4,118 rows in this build, below the usual 5,199 to 5,322.");
     expect(chart.points.at(-1)).toMatchObject({ value: 4118, min: 5199, max: 5322, outside: "below" });
-    expect(chart.rows.at(-1).expected).toBe("5,199 to 5,322, flagged below");
-    expect(tile(view, "volume").note).toEqual([{ code: "preview_fixture__trails" }, ": 4,118 rows, below its expected range.", ""]);
+    expect(chart.rows.at(-1).expected).toBe("5,199 to 5,322, flagged as low");
+    expect(tile(view, "volume").note).toEqual([{ code: "preview_fixture__trails" }, ": 4,118 rows, below its usual range.", ""]);
   });
 
   it("quotes, on every heavy-file row with a history, the band its chart draws at the point Elementary flagged", () => {
@@ -637,10 +637,10 @@ describe("the range a Needs a look row quotes (decision 130)", () => {
     const [row] = view.sections.items;
     expect(row.chart).toBeNull();
     expect(row.sentence).toBe(
-      `4,118 rows at this build, flagged as low. ${NO_RANGE_BEFORE}`,
+      `4,118 rows in this build, flagged as low. ${NO_RANGE_BEFORE}`,
     );
-    // The card names no side against a range the page cannot show.
-    expect(tile(view, "volume").note[1]).toBe(": 4,118 rows, flagged by Elementary.");
+    // The card names Elementary's side, and none against a range the page cannot show.
+    expect(tile(view, "volume").note[1]).toBe(": 4,118 rows, flagged as low.");
   });
 
   it('says "No earlier range to compare it with" when the entry\'s history holds no point with its value and range', () => {
@@ -649,7 +649,7 @@ describe("the range a Needs a look row quotes (decision 130)", () => {
     const [row] = view.sections.items;
     expect(row.chart).not.toBeNull();
     expect(row.sentence).toBe(
-      `4,117 rows at this build, flagged as low. ${NO_RANGE_BEFORE}`,
+      `4,117 rows in this build, flagged as low. ${NO_RANGE_BEFORE}`,
     );
   });
 
@@ -660,20 +660,20 @@ describe("the range a Needs a look row quotes (decision 130)", () => {
       before.expected_max = null;
     });
     const { items, chart } = view.sections;
-    expect(chart.rows.at(-1).expected).toBe(`${NO_RANGE}, flagged below`);
-    expect(items[0].sentence).toBe(`4,118 rows at this build, flagged as low. ${NO_RANGE_BEFORE}`);
+    expect(chart.rows.at(-1).expected).toBe(`${NO_RANGE}, flagged as low`);
+    expect(items[0].sentence).toBe(`4,118 rows in this build, flagged as low. ${NO_RANGE_BEFORE}`);
   });
 
   it('says "inside the usual 4,000 to 5,322, but flagged as low" for a value Elementary flagged inside the range from the builds before', () => {
     const view = lightPage((file) => (file.series[0].points.at(-2).expected_min = 4000));
     const { items, chart } = view.sections;
     expect(items[0].sentence).toBe(
-      "4,118 rows at this build, inside the usual 4,000 to 5,322, but flagged as low.",
+      "4,118 rows in this build, inside the usual 4,000 to 5,322, but flagged as low.",
     );
     // The row and its triangle are still Elementary's verdict.
     expect(items[0].status).toBe("Warned");
     expect(chart.points.at(-1)).toMatchObject({ min: 4000, max: 5322, outside: "below" });
-    expect(tile(view, "volume").note[1]).toBe(": 4,118 rows, flagged by Elementary.");
+    expect(tile(view, "volume").note[1]).toBe(": 4,118 rows, flagged as low.");
   });
 
   it("ends with Elementary's side, \"but flagged as low\", when the range from the builds before puts the value past its other edge", () => {
@@ -683,9 +683,9 @@ describe("the range a Needs a look row quotes (decision 130)", () => {
       before.expected_max = 4000;
     });
     expect(view.sections.items[0].sentence).toBe(
-      "4,118 rows at this build, above the usual 3,000 to 4,000, but flagged as low.",
+      "4,118 rows in this build, above the usual 3,000 to 4,000, but flagged as low.",
     );
-    expect(tile(view, "volume").note[1]).toBe(": 4,118 rows, flagged by Elementary.");
+    expect(tile(view, "volume").note[1]).toBe(": 4,118 rows, flagged as low.");
   });
 });
 
@@ -805,7 +805,7 @@ describe("the menu and the buttons, in step", () => {
     const mart = s.marts.find((row) => row.mart === "trail_network");
     expect(chartControls(s, initialChart(s))).toMatchObject({
       pressed: [mart.id],
-      charted: { from: "By mart", table: "trail_network", row: mart.id },
+      charted: { from: "By finished table", table: "trail_network", row: mart.id },
     });
     const unmatched = examples.monthlyWithWarnings();
     unmatched.needs_a_look = [];
@@ -844,12 +844,12 @@ describe("the menu and the buttons, in step", () => {
     expect(shown.charted).toBeNull();
   });
 
-  it("press a mart's row from By mart, and the row of the series the page opened on when its own button is pressed", () => {
+  it("press a mart's row from By finished table, and the row of the series the page opened on when its own button is pressed", () => {
     const s = sections();
     const mart = s.marts.find((row) => row.mart === "trail_network");
     expect(chartControls(s, chooseFromRow(s, mart.id))).toMatchObject({
       pressed: [mart.id],
-      charted: { from: "By mart", table: "trail_network", row: mart.id },
+      charted: { from: "By finished table", table: "trail_network", row: mart.id },
     });
     const opening = s.items.find((item) => item.chart === s.chart.key);
     const shown = chartControls(s, chooseFromRow(s, opening.id));

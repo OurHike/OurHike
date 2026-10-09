@@ -31,6 +31,7 @@ import {
   GRAPH_STORE_HEADROOM_BYTES,
   graphCellStoreKey,
   LEGACY_GRAPH_STORE_KEYS,
+  newestStoredGraphVersion,
   readStoredGraph,
   storedGraphBytes,
   writeStoredGraph,
@@ -297,5 +298,63 @@ describe('what a screen can ask it', () => {
     expect(vi.mocked(del)).toHaveBeenCalledTimes(LEGACY_GRAPH_STORE_KEYS.length + 2)
     expect(vi.mocked(del)).toHaveBeenCalledWith(GRAPH)
     expect(vi.mocked(del)).toHaveBeenCalledWith(GEOMETRY)
+  })
+})
+
+// #1828 - A phone merges trail-graph cells from two releases by node number,
+// and a new release renumbers them. The version recorded beside each stored
+// cell is how a phone with no signal picks the one release it builds from.
+describe('which stored release is newest (#1828)', () => {
+  const EAST_GRAPH = graphCellStoreKey('n41w074', 'graph')
+  const NORTH_GRAPH = graphCellStoreKey('n42w075', 'graph')
+
+  /** Routing halves by store key: the release each was fetched under, and when. */
+  function holding(
+    records: Record<string, { version: string | null; fetchedAt: number }>,
+  ) {
+    vi.mocked(get).mockImplementation((key) => {
+      const record = records[String(key)]
+      return Promise.resolve(
+        record === undefined
+          ? undefined
+          : { bytes: new Blob(['{}']), hash: 'h', ...record },
+      )
+    })
+  }
+
+  it('newestStoredGraphVersion answers the version of the routing half fetched last among the cells asked about', async () => {
+    holding({
+      [GRAPH]: { version: 'release-9', fetchedAt: 1_000 },
+      [EAST_GRAPH]: { version: 'release-10', fetchedAt: 2_000 },
+    })
+
+    expect(await newestStoredGraphVersion(['n41w075', 'n41w074'])).toEqual({
+      version: 'release-10',
+    })
+  })
+
+  it('newestStoredGraphVersion ignores a newer cell it was not asked about', async () => {
+    // A cell fetched at home after an update must not decide which release a
+    // stretch stored before it is read from.
+    holding({
+      [GRAPH]: { version: 'release-9', fetchedAt: 1_000 },
+      [NORTH_GRAPH]: { version: 'release-10', fetchedAt: 3_000 },
+    })
+
+    expect(await newestStoredGraphVersion(['n41w075'])).toEqual({ version: 'release-9' })
+  })
+
+  it('newestStoredGraphVersion keeps "nothing held" (null) apart from "held under no version"', async () => {
+    holding({ [GRAPH]: { version: null, fetchedAt: 1_000 } })
+
+    expect(await newestStoredGraphVersion(['n41w075'])).toEqual({ version: null })
+    expect(await newestStoredGraphVersion(['n41w074'])).toBeNull()
+  })
+
+  it('newestStoredGraphVersion reads only the routing half, never a geometry record of the same cell', async () => {
+    holding({ [GEOMETRY]: { version: 'release-10', fetchedAt: 9_000 } })
+
+    expect(await newestStoredGraphVersion(['n41w075'])).toBeNull()
+    expect(vi.mocked(get).mock.calls.map(([key]) => key)).toEqual([GRAPH])
   })
 })

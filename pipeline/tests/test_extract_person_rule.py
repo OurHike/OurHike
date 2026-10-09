@@ -16,7 +16,9 @@ Every server is mocked: conftest.py's socket guard stays on.
 
 from __future__ import annotations
 
+import csv
 import json
+import re
 
 import pytest
 
@@ -398,3 +400,127 @@ def test_a_field_name_written_with_spaces_never_lands_from_any_reader_whose_name
         landed = {name.lower() for name in row}
         assert "facility name" in landed, "a field that is nobody's still lands"
         assert not landed & never, f"{sorted(landed & never)} landed"
+
+
+# --- the backstop widened on 2026-10-09 -----------------------------------------------------------------------------
+
+#: Field names PERSON_SHAPED let load until 2026-10-09, each a person's by its shape: the three decision 54's wave 6
+#: found on D&L Corridor's trailheads and Montour Trail's access areas (both rows list them by hand), the 23 that
+#: PR #1805's security review listed that night, the same shapes run together, cut to a shapefile's ten characters or
+#: plural, as registry rows already list them by hand (OWNERNAME, entityphone, created_us), and the Buckeye Trail's
+#: "Section supervisor", a volunteer's name on each section page.
+NEWLY_PERSON_SHAPED = (
+    *("updatedBy", "LocationBy", "MODIFIED_BY"),
+    *("LastModifiedBy", "reviewed_by", "ReportedBy", "submitted_by", "approved_by", "inspected_by", "assigned_to"),
+    *("CollectedBy", "MappedBy", "GPS_By", "RangerName", "first_name", "LastName", "full_name", "reporter"),
+    *("submitter", "inspector", "volunteer", "overseer", "adopter", "maintainer", "mobile", "cell"),
+    *("UPDATEDBY", "Round1QAQCBy", "OWNERNAME", "OWNERNME1", "MAINTAINERNAME", "created_us", "LAST_EDITE"),
+    *("entityphone", "entityemail", "MGRPHONE", "contacts", "TELNO", "FAXNUMBER", "DataEntryPerson", "COLLECTOR"),
+    *("TrailAdopter", "volunteers", "Section Supervisor"),
+)
+
+
+@pytest.mark.parametrize("name", NEWLY_PERSON_SHAPED)
+def test_person_shaped_leaves_out_a_name_the_2026_10_06_word_list_let_load(name):
+    assert _kinds.PersonRule().left_out([name]) == {name.lower(): _kinds.SHAPED}
+
+
+#: Names beside the new shapes that are nobody's and still load: a ranger district, a reporter's type, PA DCNR's
+#: MOBILE_FAC, a grid's cell_size, a shelter's capacity in persons, a count of volunteer hours, GMC's SHtype_Mgr and
+#: an edit date named like an editor's field.
+STILL_LOADS = (
+    *("RANGER_DISTRICT", "reporter_type", "MOBILE_FAC", "cell_size", "persons", "Volunteer_Hours", "SHtype_Mgr"),
+    "LocationDate",
+)
+
+
+@pytest.mark.parametrize("name", STILL_LOADS)
+def test_person_shaped_still_loads_a_name_beside_the_new_shapes_that_is_nobodys(name):
+    assert _kinds.PersonRule().left_out([name]) == {}
+
+
+def test_a_layer_whose_row_lists_none_of_wave_6s_three_names_never_asks_for_them(registry, requests_mock, monkeypatch):
+    """D&L Corridor's `updatedBy` and Montour Trail's `MODIFIED_BY` and `LocationBy` on a row whose `person_fields` name
+    none of them: the backstop alone keeps them out of outFields, so no value crosses the wire."""
+    staff = {"updatedBy": "A. Person", "MODIFIED_BY": "a.person", "LocationBy": "A. Person"}
+    monkeypatch.setitem(globals(), "upstream_fields", lambda **extra: {KEPT: "Fixture Trailhead", **staff, **extra})
+
+    rows = arcgis(requests_mock, monkeypatch)
+
+    asked = {name for r in requests_mock.request_history if "outfields" in r.qs for name in r.qs["outfields"][0].split(",")}
+    assert asked and not asked & {name.lower() for name in staff}, "never asked for, not only dropped"
+    assert rows and all(set(row) == {"OBJECTID", KEPT, "geometry"} for row in rows), rows
+
+
+#: Columns PERSON_SHAPED reads as a person's since 2026-10-09 that name a place or a body, each cleared in its own
+#: sources.json row's `not_person_fields`: four a model reads (stg_nynjtc__long_path's `maintainer`, the generated
+#: base model's key `full_name`, and two titles seeds/notice_source_fields.csv names), and four whose rows record what
+#: they hold.
+CLEARED_FOR_THE_WIDENED_BACKSTOP = [
+    ("nynjtc_long_path", "Maintainer"),
+    ("ugrc_state_park_points", "full_name"),
+    ("oprd_hunting_areas", "FULL_NAME"),
+    ("nps_seki_closures", "FullName"),
+    ("patc_trails_master", "Maintainer"),
+    ("nps_points_of_interest", "MAINTAINER"),
+    ("nps_trail_of_tears_nht", "MAINTAINER"),
+    ("usace_mobile_trails", "managedBy"),
+]
+
+
+@pytest.mark.parametrize(("key", "field"), CLEARED_FOR_THE_WIDENED_BACKSTOP)
+def test_an_organisation_column_the_widened_backstop_reads_as_a_persons_still_loads_where_its_row_clears_it(key, field):
+    layer = _kinds.ArcgisLayer(key=key, club="testclub", type="points_of_interest")
+
+    assert _kinds.PersonRule().shaped(field), "the backstop alone leaves it out, so the row's clearance is what keeps it"
+    assert layer.dropped_fields({"fields": [{"name": field, "type": "esriFieldTypeString"}]}) == {}
+
+
+#: The columns notice_field() reads for each notice source (seeds/notice_source_fields.csv), the date columns aside.
+NOTICE_SEED_COLUMNS = ("title", "category", "status", "starts", "ends", "rescinded", "link", "locality")
+#: Declared fields the person rule leaves out today, each with why it stands. fta_fnst_closed_segments' `Manager_Na`
+#: is the notice seed's locality, and the backstop has read it as a person's since `manager` joined the word list
+#: (review finding EXD-3, 02a53b22, 2026-10-05), so that notice's locality reads null. Whether it names a person or
+#: the land's managing body is unread: a person reading its values settles it, then clears it in the row, or the seed
+#: stops naming it.
+KNOWN_LEFT_OUT = {("fta_fnst_closed_segments", "Manager_Na")}
+
+
+def declared_fields() -> list[tuple[str, str]]:
+    """(row key, field) for every field a sources.json row or a seed names for a model to read."""
+    from extract._contract import PIPELINE_DIR
+
+    declared = []
+    for row in json.loads((PIPELINE_DIR / "sources.json").read_text())["sources"]:
+        for name, value in row.items():
+            if name.endswith(("_field", "_fields")) and name not in ("person_fields", "not_person_fields"):
+                declared += [(row["key"], field) for field in (value if isinstance(value, list) else [value])]
+    for path in sorted((PIPELINE_DIR / "dbt" / "seeds").glob("*.csv")):
+        with path.open(newline="") as handle:
+            reader = csv.DictReader(handle)
+            names = reader.fieldnames or []
+            columns = NOTICE_SEED_COLUMNS if path.name == "notice_source_fields.csv" else [n for n in names if n == "field"]
+            if "source_key" in names:
+                declared += [(line["source_key"], line[column]) for line in reader for column in columns if line[column]]
+    return [(key, field) for key, field in declared if isinstance(field, str) and field != "geometry"]
+
+
+def test_no_field_a_registry_row_or_a_seed_names_for_a_model_is_one_the_person_rule_leaves_out():
+    """A generated base model reads a row's name_field, key_fields and the like by name, and the notice models read the
+    notice seed's columns through notice_field(), which answers null for a column that never landed rather than
+    failing. So a backstop widened past one of them nulls a notice's title in silence, as the 2026-10-09 widening
+    would have done to oprd_hunting_areas' and nps_seki_closures' titles had their rows not cleared them. A date
+    column named like an editor's is left aside: a live ArcGIS read keeps it by its type (NEVER_PERSON_TYPES)."""
+    from extract._contract import PIPELINE_DIR
+
+    rows = {row["key"]: row for row in json.loads((PIPELINE_DIR / "sources.json").read_text())["sources"]}
+    declared = declared_fields()
+
+    left_out = {
+        (key, field)
+        for key, field in declared
+        if not re.search(r"(^|_)date($|_)", _kinds._name_words(field)) and _kinds.PersonRule.of(rows.get(key)).left_out([field])
+    }
+
+    assert len(declared) > 1000, "the registry and the seeds were read"
+    assert left_out == KNOWN_LEFT_OUT, sorted(left_out - KNOWN_LEFT_OUT)

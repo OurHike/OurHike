@@ -27,6 +27,21 @@
 // cell, exactly as dayHikeDraft.ts records it already does for the geometry
 // half, and the console says which - a per-cell reason on the door is a
 // change to what a screen SAYS, which wants its own before-and-after.
+//
+// ONE RELEASE PER SESSION'S GRAPH (#1828 - a phone merges trail-graph cells
+// from two releases by node number, and a new release renumbers them). The
+// first cell to merge decides
+// which release this session's graph is - the manifest's with signal, the
+// newest this phone stored without (lib/trailGraphData.ts's header has the
+// rule and the maintainer's choice behind it) - and every later cell is asked
+// for that release. A cell this phone holds only from another release is
+// treated as not held, and the console says so once. A cell that arrives
+// from another release - signal came back, and the manifest's release is not
+// the one the graph was built from - is left out until the app restarts,
+// because a live draft holds positions in this graph and a graph rebuilt
+// from the other release would move every one of them. Both look, to a
+// hiker, like any cell that has not arrived: the same "hasn't got this
+// area's trail lines yet".
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DATA_CONFIGURED } from './config'
@@ -37,11 +52,13 @@ import {
   isSettledAbsence,
   loadGraphShard,
   mergeGraphShard,
+  sameRelease,
+  type GraphRelease,
   type MergedGraph,
   type TrailNetworkAbsence,
   type TrailNetworkState,
 } from './trailGraphData'
-import { forgetWholeGraph } from './trailGraphStore'
+import { forgetWholeGraph, newestStoredGraphVersion } from './trailGraphStore'
 
 export interface TrailGraphInputs {
   online: boolean
@@ -78,6 +95,11 @@ function namesKey(cells: readonly CoverageCell[]): string {
   return [...new Set(cells.map((cell) => cell.name))].sort().join(' ')
 }
 
+/** A release as the console names it. */
+function releaseName(release: GraphRelease): string {
+  return release.version ?? 'a release that named no version'
+}
+
 export function useTrailGraph({
   online,
   gate,
@@ -96,6 +118,16 @@ export function useTrailGraph({
    *  not asked again until a retry, which is the rule isSettledAbsence
    *  carries for the whole graph. */
   const settled = useRef(new Map<string, TrailNetworkAbsence>())
+  /** The release this session's graph is built from, once a cell has merged
+   *  (#1828). Never changes after that - see the header. */
+  const building = useRef<GraphRelease | null>(null)
+  /** Cells that arrived from another release than `building`, by the release
+   *  they came from. Not asked again this session, retry included: asking
+   *  cannot change which release the graph is. */
+  const otherRelease = useRef(new Map<string, GraphRelease>())
+  /** Cells the console has already been told this phone holds from another
+   *  release - said once, not on every re-ask. */
+  const heldElsewhereSaid = useRef(new Set<string>())
 
   // The whole-file copies earlier releases stored, deleted once per launch -
   // lib/trailGraphStore.ts says what they cost.
@@ -117,6 +149,7 @@ export function useTrailGraph({
       (cell, position, all) =>
         !asked.current.has(cell.name) &&
         !settled.current.has(cell.name) &&
+        !otherRelease.current.has(cell.name) &&
         all.findIndex((other) => other.name === cell.name) === position,
     )
     if (missing.length === 0) return
@@ -128,20 +161,60 @@ export function useTrailGraph({
     for (const cell of missing) askedCells.add(cell.name)
 
     void (async () => {
+      // NEWEST WINS, until something has merged (#1828). Of the cells this
+      // run asks for, the release this phone stored one from most recently
+      // is the one a stored copy must be from; once a cell has merged, its
+      // release is. Read across these cells and not the whole store -
+      // lib/trailGraphStore.ts's newestStoredGraphVersion says why.
+      const newest =
+        building.current === null
+          ? await newestStoredGraphVersion(missing.map((cell) => cell.name))
+          : null
+      if (!live) return
       // One at a time rather than all at once: the densest cell is 12.7 MB of
       // JSON, and a phone parsing four of those together is the frozen page
       // this whole cut exists to prevent, one artifact further down.
       for (const cell of missing) {
-        const load = await loadGraphShard(cell, controller.signal, online)
+        const load = await loadGraphShard(
+          cell,
+          controller.signal,
+          online,
+          building.current ?? newest ?? undefined,
+        )
         if (!live) return
         if (load.kind === 'shard') {
+          const graphRelease = building.current
+          if (graphRelease !== null && !sameRelease(graphRelease, load.release)) {
+            // Signal came back, and the manifest's release is not the one
+            // this session's graph was built from. Joining would invent
+            // junctions (#1828); swapping the graph would move a live
+            // draft's taps. Left out until the app restarts.
+            askedCells.delete(cell.name)
+            otherRelease.current.set(cell.name, load.release)
+            console.warn(
+              `Junction graph cell ${cell.name} arrived from release ${releaseName(load.release)}, and this session's graph is ${releaseName(graphRelease)}: left out until the app restarts (lib/useTrailGraph.ts)`,
+            )
+            continue
+          }
+          building.current = load.release
           landedCells.add(cell.name)
           setMerged((current) =>
-            mergeGraphShard(current ?? emptyMergedGraph(), cell.name, load.shard),
+            mergeGraphShard(
+              current ?? emptyMergedGraph(),
+              cell.name,
+              load.shard,
+              load.release,
+            ),
           )
           continue
         }
         askedCells.delete(cell.name)
+        if (load.heldRelease !== undefined && !heldElsewhereSaid.current.has(cell.name)) {
+          heldElsewhereSaid.current.add(cell.name)
+          console.warn(
+            `Junction graph cell ${cell.name} is held from release ${releaseName(load.heldRelease)}, not the one this graph is built from: not used, and fetched again with signal (lib/useTrailGraph.ts)`,
+          )
+        }
         if (isSettledAbsence(load.because)) {
           settled.current.set(cell.name, load.because)
           console.warn(

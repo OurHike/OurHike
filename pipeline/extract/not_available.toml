@@ -5394,8 +5394,11 @@ NEEDS A KEY OURHIKE DOES NOT HOLD: a photo's licence is per photo, and Flickr st
 its API's `license` field (flickr.people.getPublicPhotos with `extras=license`), which needs a
 Flickr API key, issued by Flickr at https://www.flickr.com/services/apps/create/. No FLICKR_API_KEY
 is in the extract's environment (checked 2026-10-04), so no Flickr reader is written; an account's
-licence is never a photo's (the round brief's item 2). With a key, the reader reads it from the
-environment and answers UNKNOWN without it, as NPS_API_KEY does (extract/_json_apis.py)."""
+licence is never a photo's (the round brief's item 2). OurHike will hold no
+key: Flickr issues API keys only to paid accounts (the maintainer, 2026-10-09, amending decision
+74), and its keyless public feed (photos_public.gne) is no way round: www.flickr.com's and
+api.flickr.com's robots.txt end `User-agent: *` / `Disallow: /`, which covers OurHike's agent (read
+2026-10-09). So this stays a note, by the maintainer's poll of 2026-10-09."""
 checked = [
     '(the coverage audit, 2026-10-01) Flickr `https://www.flickr.com/photos/66217818@N04/`: 1,538 photos. All 25 sampled on page 1 carry `"license":4`, which is CC BY 2.0.',
 ]
@@ -10192,8 +10195,11 @@ NEEDS A KEY OURHIKE DOES NOT HOLD: a photo's licence is per photo, and Flickr st
 its API's `license` field (flickr.people.getPublicPhotos with `extras=license`), which needs a
 Flickr API key, issued by Flickr at https://www.flickr.com/services/apps/create/. No FLICKR_API_KEY
 is in the extract's environment (checked 2026-10-04), so no Flickr reader is written; an account's
-licence is never a photo's (the round brief's item 2). With a key, the reader reads it from the
-environment and answers UNKNOWN without it, as NPS_API_KEY does (extract/_json_apis.py)."""
+licence is never a photo's (the round brief's item 2). OurHike will hold no
+key: Flickr issues API keys only to paid accounts (the maintainer, 2026-10-09, amending decision
+74), and its keyless public feed (photos_public.gne) is no way round: www.flickr.com's and
+api.flickr.com's robots.txt end `User-agent: *` / `Disallow: /`, which covers OurHike's agent (read
+2026-10-09). So this stays a note, by the maintainer's poll of 2026-10-09."""
 checked = [
     "(the coverage audit, 2026-10-01) Flickr `https://www.flickr.com/photos/nycstreets/`: `realname` \"New York City Department of Transportation\", `photoCount` 30,005. Licence id 16 on all 25 photos rendered, which is CC BY-NC-ND 4.0 in Flickr's licence table.",
 ]
@@ -10516,8 +10522,11 @@ NEEDS A KEY OURHIKE DOES NOT HOLD: a photo's licence is per photo, and Flickr st
 its API's `license` field (flickr.people.getPublicPhotos with `extras=license`), which needs a
 Flickr API key, issued by Flickr at https://www.flickr.com/services/apps/create/. No FLICKR_API_KEY
 is in the extract's environment (checked 2026-10-04), so no Flickr reader is written; an account's
-licence is never a photo's (the round brief's item 2). With a key, the reader reads it from the
-environment and answers UNKNOWN without it, as NPS_API_KEY does (extract/_json_apis.py). DEC's own
+licence is never a photo's (the round brief's item 2). OurHike will hold no
+key: Flickr issues API keys only to paid accounts (the maintainer, 2026-10-09, amending decision
+74), and its keyless public feed (photos_public.gne) is no way round: www.flickr.com's and
+api.flickr.com's robots.txt end `User-agent: *` / `Disallow: /`, which covers OurHike's agent (read
+2026-10-09). So this stays a note, by the maintainer's poll of 2026-10-09. DEC's own
 pages sampled All Rights Reserved on every photo (75 of 75, the coverage audit), which a per-photo
 read would record photo by photo. dop/dop_campground's Campsites layer (6,125 points, photo
 attachments) is an ArcGIS layer with no sources.json row, wave 1's format, named in section C's
@@ -10623,8 +10632,11 @@ NEEDS A KEY OURHIKE DOES NOT HOLD: a photo's licence is per photo, and Flickr st
 its API's `license` field (flickr.people.getPublicPhotos with `extras=license`), which needs a
 Flickr API key, issued by Flickr at https://www.flickr.com/services/apps/create/. No FLICKR_API_KEY
 is in the extract's environment (checked 2026-10-04), so no Flickr reader is written; an account's
-licence is never a photo's (the round brief's item 2). With a key, the reader reads it from the
-environment and answers UNKNOWN without it, as NPS_API_KEY does (extract/_json_apis.py).
+licence is never a photo's (the round brief's item 2). OurHike will hold no
+key: Flickr issues API keys only to paid accounts (the maintainer, 2026-10-09, amending decision
+74), and its keyless public feed (photos_public.gne) is no way round: www.flickr.com's and
+api.flickr.com's robots.txt end `User-agent: *` / `Disallow: /`, which covers OurHike's agent (read
+2026-10-09). So this stays a note, by the maintainer's poll of 2026-10-09.
 
 ParkPoints/0's `ImageLink` (214 of 262 rows, the coverage audit) is an ArcGIS layer with no
 sources.json row: wave 1's format, named in section C's hand-back for the lead to route; its images
@@ -16073,8 +16085,11 @@ NEEDS A KEY OURHIKE DOES NOT HOLD: a photo's licence is per photo, and Flickr st
 its API's `license` field (flickr.people.getPublicPhotos with `extras=license`), which needs a
 Flickr API key, issued by Flickr at https://www.flickr.com/services/apps/create/. No FLICKR_API_KEY
 is in the extract's environment (checked 2026-10-04), so no Flickr reader is written; an account's
-licence is never a photo's (the round brief's item 2). With a key, the reader reads it from the
-environment and answers UNKNOWN without it, as NPS_API_KEY does (extract/_json_apis.py). The no-key
+licence is never a photo's (the round brief's item 2). OurHike will hold no
+key: Flickr issues API keys only to paid accounts (the maintainer, 2026-10-09, amending decision
+74), and its keyless public feed (photos_public.gne) is no way round: www.flickr.com's and
+api.flickr.com's robots.txt end `User-agent: *` / `Disallow: /`, which covers OurHike's agent (read
+2026-10-09). So this stays a note, by the maintainer's poll of 2026-10-09. The no-key
 public feed (photos_public.gne) returns the newest 20 uploads only (the coverage audit), and RIDB's
 `/media` sits behind its own key (401, the audit). The coverage audit listed this cell three times
 (batches b6 and its skeptic), one dataset.

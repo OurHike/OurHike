@@ -72,6 +72,18 @@ records it (ELT.md's eighth snapshot trap). The committed-load reads
 (extract/_warehouse.py) are what keep a failed load out of the warehouse, and
 KEEP_SAVES is the way back if one gets through.
 
+NAMES READ BACK. history.json and elementary.json name tables and files, and
+anyone holding the store's key can write them as a save does. So a restore
+refuses, before it downloads anything, a snapshot table name that is not
+lib/store_names.py's `[a-z0-9_]+` ending in SUFFIX, and a file path that is
+empty, absolute or climbs out with `..`; Elementary's tables are restored by
+KEPT's own names alone. A save refuses a warehouse snapshot table whose name
+breaks the same rule, since each name becomes a file name inside a quoted
+COPY ... TO. Measured 2026-10-09 on the code before this rule: a history.json
+naming its table `../<…>/escaped` made a restore write escaped.parquet
+outside the temporary directory it downloads into, and report success (review
+finding of PR #1805 — dlt → dbt re-platform as one go/no-go change).
+
 ELEMENTARY'S HISTORY (decision 102, pipeline/ELT.md "Memory between runs").
 Each lane builds its warehouse from nothing, so without it an anomaly check
 would never see an earlier build and a schema check never an earlier column.
@@ -198,17 +210,45 @@ build left. The build restored and saved both parts; the checks run then
 build's own Elementary rows back, retention's cut aside, and gives the
 warehouse a receipt that names that save, then `save --elementary-only`s
 what its checks added. Both leave the snapshot tables, history.json and
-saves/ alone, and the row history's receipt with them. Every guard of
-Elementary's part holds as in a whole save: the receipt's URL, every
-restored row's key, and elementary.json still naming the restored save, so
-the next hourly build, which waits for the checks run (the two share a
-concurrency group, conditions-history-<leg>), builds on the checks' save
-rather than racing it. Under degrade every failure of either command,
+saves/ alone, and the row history's receipt with them. The receipt's URL
+and every restored row's key are guarded as in a whole save; what
+elementary.json must still name is TWO WRITERS, ONE POINTER's, below. Under
+degrade every failure of either command,
 reaching the store included, is ELEMENTARY_DEGRADED_EXIT: a restore drops
 the kept tables and writes a receipt saying so, which the save then answers
 by saving nothing. Each save takes a new save id under elementary/, so with
 a build and its checks each saving every hour, KEEP_SAVES Elementary folders
 hold about half as many hours as the row history's do (Reasoned).
+
+TWO WRITERS, ONE POINTER (#1513 — A queued publish is silently cancelled
+when another one joins publish-data, and it looks like a green build). The
+checks run and the next hourly build share no concurrency group. When they
+shared conditions-history-<leg>, a checks run dispatched while a build's leg
+waited there took the group's one pending slot and cancelled that hour's
+publish with nothing red, and the build held publish-data all the while it
+waited. So their two saves of Elementary's history can overlap, and each
+reads elementary.json before its upload and again just before writing it:
+  - still naming the save this warehouse restored: it writes;
+  - a checks run finding another (a build has saved since): it writes
+    nothing, removes the folder it uploaded, and says so in a ::warning,
+    exit 0. That run's checks still reach the data-quality page, and are
+    left out of the history;
+  - a build finding a checks run's save (`elementary_only`) while
+    history.json, which only a build writes, still names the save it
+    restored: it writes over it, records `saved_over`, and says so in a
+    ::warning, exit 0. That checks run's hour is left out of the history,
+    and the build's own rows are kept;
+  - anything else is refused, as before.
+In either order one checks run's hour is lost, never a build's save or a
+hiker's row dates, and neither run turns red for it. Two gaps are left, both
+Reasoned. A read and a write are two steps on R2, so two saves landing within
+one read-and-write of each other can both write, the later winning; a
+conditional PUT (`If-Match` on elementary.json's ETag) would close it, and
+whether R2 honours one through s3fs is not measured. And a checks run that
+starts after the next build has saved restores that build's save into the
+older build's warehouse, so that hour's data-quality page counts the later
+build's results too; recording each build's save id in its warehouse, and
+restoring by it, would close that.
 
 ITS FAILURES ARE THE ROW HISTORY'S, and one more thing the conditions legs
 need. Under the default --elementary-on-failure fail, a failure of
@@ -243,6 +283,10 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import duckdb
+
+# _quote() lived here; it moved to lib/store_names.py so extract/_warehouse.py quotes with the same function.
+from lib.store_names import StoreNameRefused, relative_path, table_name
+from lib.store_names import quote_identifier as _quote
 
 #: The warehouse schema dbt's snapshots are built in (dbt_project.yml's `snapshots: +schema`), which they share
 #: with the intermediate models, so a snapshot table is the one whose name ends in SUFFIX (int_<mart>__history).
@@ -505,8 +549,27 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _quote(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
+def _snapshot_name(name: object, where: str) -> str:
+    """`name`, a snapshot table's name read back from the store or the warehouse, or Refused: lib/store_names.py's
+    rule, and ending in SUFFIX, since a save writes nothing else (the module docstring, "NAMES READ BACK")."""
+    try:
+        table_name(name, where)
+    except StoreNameRefused as refused:
+        raise Refused(str(refused)) from refused
+    if not name.endswith(SUFFIX):
+        raise Refused(
+            f"{where} names a table {name!r}, which is not a snapshot table (int_<mart>{SUFFIX}), the only kind a save "
+            "writes; refused rather than created beside the intermediate models"
+        )
+    return name
+
+
+def _stored_file(path: object, where: str, refusal: type[Refused] = Refused) -> str:
+    """`path`, a file a pointer names under the store, or `refusal` when it could leave the store (lib/store_names.py)."""
+    try:
+        return relative_path(path, where)
+    except StoreNameRefused as refused:
+        raise refusal(str(refused)) from refused
 
 
 def _tables(con: duckdb.DuckDBPyConnection, schema: str) -> list[str]:
@@ -624,6 +687,11 @@ def _restore_rows(store: Store, url: str, con: duckdb.DuckDBPyConnection, cold_s
     pointer = json.loads(text)
     if pointer.get("format") != FORMAT:
         raise Refused(f"{url}/{POINTER} is format {pointer.get('format')!r}; this file reads format {FORMAT}")
+    # Every name before any download (the module docstring, "NAMES READ BACK"): each becomes a file name in the
+    # scratch directory and a table in the warehouse.
+    for table, entry in pointer["tables"].items():
+        _snapshot_name(table, f"{url}/{POINTER}")
+        _stored_file(entry["file"], f"{url}/{POINTER}")
     restored = {}
     with tempfile.TemporaryDirectory() as scratch:
         for table, entry in sorted(pointer["tables"].items()):
@@ -661,8 +729,11 @@ def _restore_elementary(store: Store, url: str, con: duckdb.DuckDBPyConnection, 
             f"{url}/{ELEMENTARY_POINTER} is format {pointer.get('format')!r}; this file reads format {ELEMENTARY_FORMAT}"
         )
     restored = {}
-    # A table a later version of this file keeps and this one does not is left in the store, not restored.
+    # A table a later version of this file keeps and this one does not is left in the store, not restored. KEPT's own
+    # names are the only ones used, so only each file's path is read back (the module docstring, "NAMES READ BACK").
     tables = sorted(name for name in pointer["tables"] if name in KEPT)
+    for table in tables:
+        _stored_file(pointer["tables"][table]["file"], f"{url}/{ELEMENTARY_POINTER}", ElementaryRefused)
     if tables:
         con.execute(f"create schema if not exists {ELEMENTARY_SCHEMA}")
     with tempfile.TemporaryDirectory() as scratch:
@@ -766,9 +837,57 @@ class _RowsSave:
 
 
 @dataclass(frozen=True)
+class _PointerVerdict:
+    """What a save of Elementary's history may do with elementary.json as it reads now (the module docstring, "TWO
+    WRITERS, ONE POINTER"): `write` it, `saved_over` naming the checks run's save it replaces, or leave it alone; `note`
+    is the ::warning that says why, when there is one."""
+
+    write: bool
+    saved_over: str | None = None
+    note: str | None = None
+
+
+@dataclass(frozen=True)
 class _ElementarySave:
     tables: list[str]
     restored_save: str | None
+    #: The checks run's save of Elementary's history alone (save_elementary()), rather than a build's (save()).
+    alone: bool = False
+    verdict: _PointerVerdict = _PointerVerdict(True)
+
+
+def _pointer_verdict(store: Store, url: str, restored_save: str | None, alone: bool) -> _PointerVerdict:
+    """Whether this save may write elementary.json, as it reads now (the module docstring, "TWO WRITERS, ONE POINTER").
+
+    Still naming the save this warehouse restored: write it. Naming another, for a checks run (`alone`): leave it, and
+    say this run's checks are left out. Naming a checks run's save, for a build: write over it, and say that checks
+    run's hour is left out; save() has already found history.json, which only a build writes, still naming the save
+    this warehouse restored, so no other build has saved since. Anything else is ElementaryRefused, as before.
+    """
+    text = store.read_text(ELEMENTARY_POINTER)
+    current = json.loads(text) if text is not None else None
+    current_save = current.get("save_id") if current else None
+    if current_save == restored_save:
+        return _PointerVerdict(True)
+    moved = f"{url}/{ELEMENTARY_POINTER} names save {current_save}, and this warehouse restored {restored_save}"
+    if alone:
+        return _PointerVerdict(
+            False,
+            note=f"::warning title=Elementary's history not saved::{moved}: a build saved Elementary's history after "
+            "this checks run restored it. This run's checks are left out of the history rather than saved over that "
+            "build's save, and the next checks run builds on it.",
+        )
+    if current is not None and current.get("elementary_only") is True:
+        return _PointerVerdict(
+            True,
+            saved_over=current_save,
+            note=f"::warning title=A checks run's history was saved over::{moved}, a checks run's save of Elementary's "
+            "history alone, made after this build restored. This build's save replaces it, so that checks run's hour "
+            "is left out of the history and this build's own rows are kept.",
+        )
+    raise ElementaryRefused(
+        f"{moved}: another run saved Elementary's history in between. Not saving over it; rerun to build on that save."
+    )
 
 
 def _check_rows_save(store: Store, url: str, con: duckdb.DuckDBPyConnection, warehouse: Path) -> _RowsSave:
@@ -784,6 +903,9 @@ def _check_rows_save(store: Store, url: str, con: duckdb.DuckDBPyConnection, war
     restored_save = receipt[0][1]
     restored = {table: rows for _, _, table, rows in receipt if table is not None}
     tables = _snapshot_tables(con)
+    # Each becomes a file name inside COPY ... TO '<scratch>/<table>.parquet', so it is held to the restore's rule too.
+    for table in tables:
+        _snapshot_name(table, f"the warehouse {warehouse}'s {SCHEMA} schema")
     counts = {table: _count(con, table) for table in tables}
     if lost := sorted(set(restored) - set(counts)):
         raise Refused(f"snapshot tables restored and now gone: {', '.join(lost)}. History only grows; not saving")
@@ -800,9 +922,12 @@ def _check_rows_save(store: Store, url: str, con: duckdb.DuckDBPyConnection, war
     return _RowsSave(tables, counts, restored_save)
 
 
-def _check_elementary_save(store: Store, url: str, con: duckdb.DuckDBPyConnection, warehouse: Path) -> _ElementarySave | None:
+def _check_elementary_save(
+    store: Store, url: str, con: duckdb.DuckDBPyConnection, warehouse: Path, alone: bool = False
+) -> _ElementarySave | None:
     """What Elementary's part will save, None when its restore restored nothing (the module docstring, "ITS FAILURES
-    ARE THE ROW HISTORY'S"), or Refused (the module docstring, "ELEMENTARY REWRITES ITS RECENT METRIC BUCKETS")."""
+    ARE THE ROW HISTORY'S"), or Refused (the module docstring, "ELEMENTARY REWRITES ITS RECENT METRIC BUCKETS").
+    `alone` for the checks run's save; the plan's verdict says what elementary.json allows (_pointer_verdict())."""
     if ELEMENTARY_RECEIPT not in _tables(con, RECEIPT_SCHEMA):
         raise ElementaryRefused(
             f"{warehouse} has no restore receipt for Elementary's history ({RECEIPT_SCHEMA}.{ELEMENTARY_RECEIPT}): "
@@ -841,14 +966,7 @@ def _check_elementary_save(store: Store, url: str, con: duckdb.DuckDBPyConnectio
             "appends to these tables, and a rewritten metric bucket keeps its id, so these were lost in this run; "
             "not saving"
         )
-    current = store.read_text(ELEMENTARY_POINTER)
-    current_save = json.loads(current)["save_id"] if current is not None else None
-    if current_save != restored_save:
-        raise ElementaryRefused(
-            f"{url}/{ELEMENTARY_POINTER} names save {current_save}, and this warehouse restored {restored_save}: "
-            "another run saved Elementary's history in between. Not saving over it; rerun to build on that save."
-        )
-    return _ElementarySave(tables, restored_save)
+    return _ElementarySave(tables, restored_save, alone, _pointer_verdict(store, url, restored_save, alone))
 
 
 def _write_rows(store: Store, url: str, con: duckdb.DuckDBPyConnection, plan: _RowsSave, save_id: str) -> str:
@@ -889,8 +1007,13 @@ def _write_elementary(
     save_id: str,
     cutoff: datetime,
     keep_days: int,
-) -> str:
-    """Each kept table's RETENTION as zstd Parquet, then elementary.json. save() prunes once both pointers are written."""
+) -> tuple[bool, str]:
+    """Each kept table's RETENTION as zstd Parquet, then elementary.json. save() prunes once both pointers are written.
+
+    Returns (whether elementary.json was written, what was done, for the log). elementary.json is read again just
+    before it is written (the module docstring, "TWO WRITERS, ONE POINTER"), so a save that landed while these files
+    went up is answered as one that landed before them; a save that then writes nothing removes the folder it made.
+    """
     started = time.monotonic()
     literal = f"timestamp '{cutoff:%Y-%m-%d %H:%M:%S.%f}'"
     version = None
@@ -916,11 +1039,22 @@ def _write_elementary(
                 "oldest": _instant(oldest),
                 "newest": _instant(newest),
             }
+    try:
+        verdict = _pointer_verdict(store, url, plan.restored_save, plan.alone)
+    except ElementaryRefused:
+        store.remove_save(save_id, ELEMENTARY_SAVES)
+        raise
+    if not verdict.write:
+        store.remove_save(save_id, ELEMENTARY_SAVES)
+        return False, verdict.note
     pointer = {
         "format": ELEMENTARY_FORMAT,
         "save_id": save_id,
         "saved_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "previous_save_id": plan.restored_save,
+        # A checks run's save of Elementary's history alone, which the next build may save over (_pointer_verdict()).
+        "elementary_only": plan.alone,
+        **({"saved_over": verdict.saved_over} if verdict.saved_over else {}),
         "keep_days": keep_days,
         "kept_since": _instant(cutoff),
         "elementary_version": version,
@@ -929,10 +1063,11 @@ def _write_elementary(
     store.write_text(ELEMENTARY_POINTER, json.dumps(pointer, indent=2, sort_keys=True) + "\n")
     each = ", ".join(f"{table} {entry['rows']} ({entry['bytes']} bytes)" for table, entry in sorted(entries.items()))
     total = sum(entry["bytes"] for entry in entries.values())
-    return (
+    line = (
         f"Elementary's history: saved {each or 'no table'}, {total} bytes in all, to {url} as save {save_id}, keeping "
         f"{keep_days} days (since {_instant(cutoff)}), in {time.monotonic() - started:.2f} s"
     )
+    return True, line + (f"\n{verdict.note}" if verdict.note else "")
 
 
 def save(
@@ -979,8 +1114,8 @@ def save(
         written = False
         if elementary is not None:
             try:
-                lines.append(_write_elementary(store, url, con, elementary, save_id, cutoff, keep_days))
-                written = True
+                written, line = _write_elementary(store, url, con, elementary, save_id, cutoff, keep_days)
+                lines.append(line)
             except Exception as error:  # noqa: BLE001 - as above
                 if elementary_on_failure != "degrade":
                     raise
@@ -1012,9 +1147,10 @@ def save_elementary(
 ) -> str:
     """Write the warehouse's Elementary kept tables to the store as a save of Elementary's history alone, then point
     elementary.json at it, and leave history.json and every snapshot save as they are (the module docstring,
-    "ELEMENTARY'S HISTORY ALONE"). save()'s guards on Elementary's part all hold: a receipt from this URL, every
-    restored row's key still in the warehouse, and elementary.json still naming the save the warehouse restored.
-    Returns what it did, for the log; raises ElementaryDegraded under `elementary_on_failure` degrade."""
+    "ELEMENTARY'S HISTORY ALONE"). save()'s guards on Elementary's part all hold: a receipt from this URL, and every
+    restored row's key still in the warehouse. When elementary.json no longer names the save the warehouse restored,
+    because a build saved since, nothing is saved and a ::warning says so (the module docstring, "TWO WRITERS, ONE
+    POINTER"). Returns what it did, for the log; raises ElementaryDegraded under `elementary_on_failure` degrade."""
     if elementary_on_failure not in ELEMENTARY_ON_FAILURE:
         raise ValueError(f"elementary_on_failure is one of {ELEMENTARY_ON_FAILURE}, not {elementary_on_failure!r}")
     if keep_days < 1:
@@ -1027,14 +1163,16 @@ def save_elementary(
         store = Store(url)
         store.check_reachable()
         with duckdb.connect(str(warehouse)) as con:
-            plan = _check_elementary_save(store, url, con, warehouse)
+            plan = _check_elementary_save(store, url, con, warehouse, alone=True)
             if plan is None:
                 return (
                     "Elementary's history: not restored in this run, so none of it is saved, and "
                     f"{ELEMENTARY_POINTER} keeps naming the last good save"
                 )
+            if not plan.verdict.write:
+                return plan.verdict.note
             save_id = _new_save_id()
-            line = _write_elementary(store, url, con, plan, save_id, cutoff, keep_days)
+            written, line = _write_elementary(store, url, con, plan, save_id, cutoff, keep_days)
     except Exception as error:  # noqa: BLE001 - every failure here is answered by the policy
         if elementary_on_failure != "degrade":
             raise
@@ -1042,6 +1180,8 @@ def save_elementary(
             "",
             f"{_failure(error)}. Elementary's history was not saved, and {ELEMENTARY_POINTER} keeps naming its last good save.",
         ) from error
+    if not written:
+        return line
     try:
         _prune(store, ELEMENTARY_SAVES, save_id, plan.restored_save)
     except Exception as error:  # noqa: BLE001 - as above
@@ -1051,6 +1191,13 @@ def save_elementary(
             line, f"{_failure(error)}: Elementary's history was saved, and its oldest saves are not all removed."
         ) from error
     return line
+
+
+def _print_lines(message: str) -> None:
+    """Each line of what a command did: a GitHub annotation (`::warning ...`) as it is, so Actions shows it, and every
+    other line after `row_history: `."""
+    for line in message.splitlines():
+        print(line if line.startswith("::") else f"row_history: {line}", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1097,11 +1244,9 @@ def main(argv: list[str] | None = None) -> int:
             message = save_elementary(args.url, args.warehouse, args.keep_days, args.elementary_on_failure)
         else:
             message = save(args.url, args.warehouse, args.keep_days, args.elementary_on_failure)
-        for line in message.splitlines():
-            print(f"row_history: {line}", flush=True)
+        _print_lines(message)
     except ElementaryDegraded as degraded:
-        for line in degraded.done.splitlines():
-            print(f"row_history: {line}", flush=True)
+        _print_lines(degraded.done)
         done = "restored" if args.command == "restore" else "saved"
         print(f"::error title=Elementary's history not {done}::{degraded.failure}", flush=True)
         return ELEMENTARY_DEGRADED_EXIT

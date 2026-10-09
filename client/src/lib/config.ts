@@ -634,8 +634,8 @@ export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
  * no partial list. Measured over the 201 records published on 2026-09-15,
  * `description` was 58.1% of the bytes and `directions` another 6.6%: prose
  * the shelf and the finder never read. The shelf is 176,303 B now - 877.1 B
- * a record against 8,477, so ~2,391 hikes fit under the ceiling where 247
- * did.
+ * a record against 8,477, so ~2,391 hikes fit under that 2 MB ceiling where
+ * 247 did (the ceiling is the 32 MiB launch budget since 2026-10-09).
  *
  * ONE OBJECT PER HIKE, not a shard, because a hiker opens one walk. The SHELF
  * is what gets cut into 1-degree coverage cells, being the artifact that

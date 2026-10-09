@@ -40,20 +40,29 @@ IN THIS ORDER, AND NOTHING DELETED BEFORE ALL OF IT HAS RUN:
      nothing, since a pin made tomorrow would copy it again: the lane's next read of that table lands it without
      the field, and the purge runs after that.
   2. EVERY OTHER OBJECT IN THE BUCKET, read by its own schema or keys and never judged by its date: a Parquet
-     file's schema, a DuckDB file's catalog (downloaded, attached read-only), a JSON file's keys (streamed, each key
-     found by a byte pattern, and of each value only whether it is empty). What holds a field is listed with each
-     field's counts.
+     file's schema, a DuckDB file's catalog (downloaded, attached read-only; a gzipped one, hand_off.py's, unpacked
+     first), a JSON file's keys (streamed, each key found by a byte pattern, and of each value only whether it is
+     empty). What holds a field is listed with each field's counts.
   3. WITH --delete, exactly what step 2 listed, each key printed as it goes. Then the bucket is listed again and
      every deleted key checked gone.
 
 A UNIT GOES WHOLE. A pin (`steps/raw_inputs/<raw_run>/`), a stored warehouse (`steps/dbt_warehouse/<env>/<raw_run>/`),
-a notices leg's served copy (`raw/dlt/<leg>/served/<run_id>/`) and a row-history save (`history/<store>/saves/<id>/`)
-are each written and read as one: half a pin still answers has_pin() and then fails its build on a missing file. So
-a unit with one holding object is deleted whole, its record first (a pin's raw_inputs.json, a served copy's
-manifest.json, a stored warehouse's own file), so a delete cut short leaves nothing that reads as finished. Its other
-objects are not read: they go with it either way. Every other object stands alone: an as-landed file under
-`raw/dlt/<lane>/as_landed/<load_id>/`, an older or uncommitted file in a lane's dataset, a frozen table a leg no
-longer reads.
+a notices leg's served copy (`raw/dlt/<leg>/served/<run_id>/`), a row-history save (`history/<store>/saves/<id>/`)
+and an hourly hand-off (`history/conditions_<leg>/checks/`, hand_off.py's) are each written and read as one: half a
+pin still answers has_pin() and then fails its build on a missing file. So a unit with one holding object is deleted
+whole, its record first (a pin's raw_inputs.json, a served copy's manifest.json, a stored warehouse's own file, a
+hand-off's hand_off.json, without which check-conditions.yml's `take` finds nothing handed off rather than a torn
+upload), so a delete cut short leaves nothing that reads as finished. Its other objects are not read: they go with it
+either way. Every other object stands alone: an as-landed file under `raw/dlt/<lane>/as_landed/<load_id>/`, an older
+or uncommitted file in a lane's dataset, a frozen table a leg no longer reads.
+
+THE HOURLY HAND-OFF IS READ, NOT PASSED OVER. Its `checks/warehouse.duckdb.gz` holds every raw table its leg read,
+gzipped, and is overwritten by each hourly build. Until PR #1805's security review found it on 2026-10-09, this file
+listed it under NOT READ, and an unread object never refuses a delete, so a purge could report done while the last
+hand-off still held a field. It is unpacked to the scratch directory and read as every other DuckDB file is, rather
+than deleted on every purge for being transient: the listing then says whether it held a field, and a delete removes
+it only if it did, the rule every other object is under. A hand-off built after the current tables are clean holds
+none (Reasoned: hand_off.py's `put` uploads the warehouse the leg's build made from those tables).
 
 WHAT HOLDS ONE. An object with a value in a listed field: anything but a null or an empty string, in a column its
 schema names or under a key its rows carry. A column with no value in it is not a copy of anybody, and it is what
@@ -90,9 +99,11 @@ and the newest pin it keeps.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -129,6 +140,8 @@ from extract._run import (
     run_log_rows,
 )
 from extract._warehouse import PIN_MANIFEST, RAW_INPUTS_PREFIX, SERVED_MANIFEST, SERVED_PREFIX, committed_tables
+from hand_off import FOLDER as HAND_OFF_FOLDER
+from hand_off import POINTER as HAND_OFF_POINTER
 from row_history import ELEMENTARY_POINTER, ELEMENTARY_SAVES, POINTER, SAVES
 
 #: Where the workflows keep each store in the raw bucket, beside dlt's own prefix (RAW_STORE_PREFIX):
@@ -150,6 +163,8 @@ DBT_RECORDS = frozenset({"manifest.json", "run_results.json"})
 #: bookkeeping, or a format this script does not read).
 PARQUET, DUCKDB, JSON_ROWS, RECORD, DLT, UNREAD = "parquet", "duckdb", "json", "record", "dlt", "unread"
 JSON_SUFFIXES = (".json", ".geojson", ".jsonl", ".ndjson")
+#: A DuckDB file gzipped, as hand_off.py uploads the hourly warehouse: unpacked before it is read (read_duckdb()).
+DUCKDB_GZ_SUFFIX = ".duckdb.gz"
 
 #: Every key in a JSON byte stream, and whether its value is empty. A quoted string followed by a colon is a key by
 #: JSON's grammar; `n` is the only first byte a null can have, and `""` is the empty string. An escaped quote is
@@ -294,7 +309,7 @@ def _kind(name: str) -> str:
     lower = name.lower()
     if lower.endswith(".parquet"):
         return PARQUET
-    if lower.endswith(".duckdb"):
+    if lower.endswith((".duckdb", DUCKDB_GZ_SUFFIX)):
         return DUCKDB
     if lower.endswith(JSON_SUFFIXES):
         return JSON_ROWS
@@ -348,6 +363,11 @@ def place(key: str, path: str, size: int) -> Stored:
             stored.kind = RECORD
         elif parts[2] in (SAVES, ELEMENTARY_SAVES) and len(parts) >= 5:
             stored.unit = "/".join(parts[:4]) + "/"
+        elif parts[2] == HAND_OFF_FOLDER and len(parts) >= 4:
+            # hand_off.py's hourly hand-off: its pointer goes first, so a checks run finds nothing handed off.
+            stored.unit = "/".join(parts[:3]) + "/"
+            if "/".join(parts[2:]) == HAND_OFF_POINTER:
+                stored.kind, stored.first = RECORD, True
     return stored
 
 
@@ -356,6 +376,8 @@ def _unit_name(unit: str) -> str:
         return "a pin"
     if unit.startswith(f"{STEPS_PREFIX}/{WAREHOUSE_PREFIX}/"):
         return "a stored warehouse"
+    if re.fullmatch(f"{HISTORY_PREFIX}/[^/]+/{HAND_OFF_FOLDER}/", unit):
+        return "an hourly hand-off"
     if unit.startswith(f"{HISTORY_PREFIX}/"):
         return "a row-history save"
     return "a served copy"
@@ -527,13 +549,22 @@ def read_duckdb(store: Store, stored: Stored, rules: FieldRules, scratch: Path) 
     """The listed fields in a DuckDB file's tables: downloaded whole, attached read-only, its catalog read.
 
     A table in the `raw` schema is judged by its own table's rule, every other table by PERSON_FIELDS (FieldRules).
-    A view stores no rows, so only base tables are read. The download is deleted before the next one starts.
+    A view stores no rows, so only base tables are read. The download is deleted before the next one starts. A
+    gzipped file, hand_off.py's hourly hand-off, is downloaded beside it and unpacked into it, and the packed copy
+    deleted before the file is attached.
     """
     handle, name = tempfile.mkstemp(suffix=".duckdb", dir=scratch)
     os.close(handle)
     local = Path(name)
+    packed = local.with_name(local.name + ".gz")
     try:
-        store.fs.get_file(stored.path, str(local))
+        if stored.key.lower().endswith(DUCKDB_GZ_SUFFIX):
+            store.fs.get_file(stored.path, str(packed))
+            with gzip.open(packed, "rb") as source, local.open("wb") as target:
+                shutil.copyfileobj(source, target, 1 << 20)
+            packed.unlink()
+        else:
+            store.fs.get_file(stored.path, str(local))
         with duckdb.connect() as con:
             con.execute(f"ATTACH {_literal(str(local))} AS stored (READ_ONLY)")
             columns = con.execute(
@@ -550,6 +581,7 @@ def read_duckdb(store: Store, stored: Stored, rules: FieldRules, scratch: Path) 
                     ).fetchone()
                     stored.fields[f"{schema}.{table}.{column}"] = Holding(listed, rows, with_value)
     finally:
+        packed.unlink(missing_ok=True)
         local.unlink(missing_ok=True)
         local.with_name(local.name + ".wal").unlink(missing_ok=True)
 

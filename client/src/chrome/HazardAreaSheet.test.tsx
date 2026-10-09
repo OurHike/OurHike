@@ -5,7 +5,7 @@ import type { TrailNotice } from '../lib/notices'
 import type { Stewards } from '../lib/stewards'
 
 // Decision 67's card (#1805): the kind of area, an Advisory, what to do, and
-// that the trail stays open - the mock's option A - then whose layer it is.
+// that the trail stays open - the mock's option A - then who published it.
 
 const STEWARDS: Stewards = [
   {
@@ -61,21 +61,51 @@ describe('HazardAreaSheet', () => {
     expect(sheet.textContent).not.toMatch(/this stretch/i)
   })
 
-  it('names whose layer it is from the registry, and its facts', () => {
+  it('says "From Ice Age Trail Alliance", the registry’s name, and the area’s facts', () => {
     render(
       <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
     )
-    expect(screen.getByText('Ice Age Trail Alliance’s layer')).toBeTruthy()
+    expect(screen.getByText('From Ice Age Trail Alliance')).toBeTruthy()
     expect(
       screen.getByText('Fixture Preserve · Open for public hunting · Fixture County'),
     ).toBeTruthy()
   })
 
-  it('says the layer gives no season rather than inventing one', () => {
+  it('says the publisher gives no season dates rather than inventing one', () => {
     render(
       <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
     )
-    expect(screen.getByText(/gives no season dates/)).toBeTruthy()
+    expect(
+      screen.getByText(
+        'Ice Age Trail Alliance gives no season dates. Check hunting seasons before you go.',
+      ),
+    ).toBeTruthy()
+  })
+
+  // The note under the card keeps both of its caveats: the advice is
+  // OurHike's, and nobody from OurHike has been to the area.
+  it('says who drew the area, that the advice is OurHike’s and that nobody checked the ground', () => {
+    render(
+      <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
+    )
+    expect(screen.getByRole('note').textContent).toBe(
+      'Ice Age Trail Alliance drew this area; the advice is OurHike’s. OurHike hasn’t checked it on the ground.',
+    )
+  })
+
+  it('never calls the publisher’s data a "layer", the GIS word a hiker does not use', () => {
+    render(
+      <HazardAreaSheet
+        notice={{ ...HUNTING, starts_on: '2026-11-15', ends_on: '2026-12-13' }}
+        stewards={STEWARDS}
+        onClose={() => undefined}
+      />,
+    )
+    const sheet = screen.getByRole('dialog', { name: 'Hunting allowed' })
+    expect(sheet.textContent).toContain(
+      'From November 15, 2026 to December 13, 2026, according to Ice Age Trail Alliance.',
+    )
+    expect(sheet.textContent).not.toMatch(/\blayer\b/i)
   })
 
   it('draws nothing for a notice that is not a hazard area', () => {

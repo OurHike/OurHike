@@ -908,8 +908,10 @@ class TestTheRegistryTheConsoleReads:
         # its view of the Empire State Trail's closed sections. 134 since decision 122 (the maintainer's poll,
         # 2026-10-09) registered the first batch of 12 candidate stewards, every layer held while each one's
         # trail_orgs.json row waits for the maintainer's review. 135 since the same day registered the NYS Canal
-        # Corporation (org:nyscanal), held like the rest.
-        assert len(orgs) == 135
+        # Corporation (org:nyscanal), held like the rest. 142 since review page 02's held loads registered 7 more
+        # candidate stewards (Illinois DNR, NETT, the Eastern Trail Alliance, Maine Huts & Trails, RCTC, the
+        # Peninsula Trails Coalition and Maricopa County Parks).
+        assert len(orgs) == 142
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -1047,6 +1049,14 @@ class TestTheRegistryTheConsoleReads:
             "org:tahoepyramid",
             "org:vtrans",
             "org:nyscanal",
+            # Review page 02 (decision 122, 2026-10-09): 7 more candidate stewards, every layer held.
+            "org:ildnr",
+            "org:nett",
+            "org:easterntrail",
+            "org:mainehuts",
+            "org:rctc",
+            "org:peninsulatrails",
+            "org:maricopaparks",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

@@ -2372,7 +2372,7 @@ unit_tests:
               'https://empiretrail.ny.gov/trail-closures' as url,
               'Trail Closures' as title,
               '2026-10-01' as date,
-              '[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' as item_sha256s
+              '["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' as item_sha256s
       - input: ref('int_sources__publication')
         rows:
           - {source_key: 'oprhp_est_trail_closures_page', may_publish: true}

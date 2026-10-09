@@ -92,16 +92,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from urllib.parse import urlsplit
-from urllib.robotparser import RobotFileParser
 
 import requests
 
-from extract import _kinds
+from extract import _kinds, _robots
 from extract._contract import Resource, Unavailable
+from extract._notices import polite
 from lib.freshness_state import Freshness
 from lib.geofabrik import AT_STATES, extract_name, looks_like_pbf
-from lib.http_retry import download_with_retry, request_with_retry
+from lib.http_retry import download_with_retry
 from lib.raw_keys import validate_raw_key
 from lib.user_agent import USER_AGENT
 
@@ -262,31 +261,13 @@ class Robots:
     said: str
 
 
-def read_robots(http: requests.Session, base_url: str) -> Robots:
-    """robots.txt for `base_url`'s host, under our agent, through lib/http_retry.py's retry. A 4xx other than 429 is no
-    rules (RFC 9309, 2.3.1.3); a 5xx, a 429 or no answer is a host that cannot be read, which refuses everything
-    (2.3.1.4)."""
-    parts = urlsplit(base_url)
-    url = f"{parts.scheme}://{parts.netloc}/robots.txt"
-    try:
-        response = request_with_retry(url, session=http, timeout=60, label="robots.txt")
-    except requests.HTTPError as error:
-        status = error.response.status_code if error.response is not None else None
-        if status is not None and 400 <= status < 500 and status != 429:
-            return Robots(lambda target: True, MIN_HOST_GAP_SECONDS, f"{url} answered {status}: no rules")
-        return Robots(lambda target: False, MIN_HOST_GAP_SECONDS, f"{url} answered {status}, read as disallow")
-    except requests.RequestException as error:
-        return Robots(
-            lambda target: False, MIN_HOST_GAP_SECONDS, f"{url} gave no answer ({type(error).__name__}), read as disallow"
-        )
-    rules = RobotFileParser()
-    rules.parse(response.text.splitlines())
-    delay = rules.crawl_delay(USER_AGENT)
-    return Robots(
-        lambda target: rules.can_fetch(USER_AGENT, target),
-        max(MIN_HOST_GAP_SECONDS, float(delay or 0)),
-        f"{url} read ({len(response.text)} bytes, Crawl-delay {delay if delay is not None else 'none'})",
-    )
+def read_robots(base_url: str) -> Robots:
+    """robots.txt for `base_url`'s host as this run reads it, once for every reader of the host (extract/_robots.py):
+    under our agent, through lib/http_retry.py's retry, a 4xx other than 429 being no rules (RFC 9309, 2.3.1.3) and a
+    5xx, a 429 or no answer a host that cannot be read, which refuses everything (2.3.1.4). The gap is its Crawl-delay,
+    never less than MIN_HOST_GAP_SECONDS."""
+    read = _robots.robots_for(base_url)
+    return Robots(read.allows, max(MIN_HOST_GAP_SECONDS, read.delay), read.said)
 
 
 # --- The resource -----------------------------------------------------------------------------
@@ -438,11 +419,12 @@ class GeofabrikExtracts(Resource):
         The index is written after each state, so a run that dies part way
         keeps every copy it finished.
         """
-        http = _kinds.session()
-        robots = read_robots(http, self.base_url())
+        # The host's gate keeps robots.txt's Crawl-delay, never less than MIN_HOST_GAP_SECONDS, before every download,
+        # the first counted from the robots.txt fetch (extract/_notices.py's polite(), extract/_robots.py).
+        http = polite(_kinds.session(), MIN_HOST_GAP_SECONDS)
+        robots = read_robots(self.base_url())
         print(f"  {self.key}: {robots.said}")
         deadline = time.monotonic() + DOWNLOAD_BUDGET_SECONDS
-        last_request = time.monotonic()
         read, errors = set(), {}
         for state in states:
             url = self.url(state)
@@ -452,16 +434,12 @@ class GeofabrikExtracts(Resource):
             if time.monotonic() > deadline:
                 errors[state] = f"not started: the run's {DOWNLOAD_BUDGET_SECONDS // 60}-minute download budget was spent"
                 continue
-            if (wait := robots.delay - (time.monotonic() - last_request)) > 0:
-                time.sleep(wait)
             try:
                 entry = self._download(fs, root, state, url, http)
             except (requests.RequestException, OSError, ValueError) as error:
                 errors[state] = f"{type(error).__name__}: {error}"
                 print(f"::warning title={self.key}: {state} kept its last copy::{errors[state]}")
                 continue
-            finally:
-                last_request = time.monotonic()
             index[self.path(state)] = entry
             write_index(fs, root, index)
             read.add(state)

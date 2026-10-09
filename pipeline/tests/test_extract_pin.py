@@ -573,3 +573,144 @@ def test_the_report_json_names_the_raw_run_and_says_refused_when_the_run_refused
         )
 
     assert json.loads(path.read_text())["outcome"] == "refused"
+
+
+# --- Names read back from the store (lib/store_names.py) ----------------------------------------------------------
+#
+# Each crafted file below is what anyone holding the raw store's key could write: a pin, a load's as-landed index or a
+# run log file whose table name or path is not one this repository writes. The review of PR #1805 measured the first
+# running a smuggled COPY on duckdb 1.5.5; each test fails on the code before lib/store_names.py.
+
+
+def _pin_root(steps: str, raw_run: str) -> Path:
+    from urllib.parse import urlparse
+
+    return Path(urlparse(steps).path) / _warehouse.RAW_INPUTS_PREFIX / raw_run
+
+
+def _smuggling(table_end: str, target: Path) -> str:
+    """A table name that ends its quoted identifier, runs a COPY writing `target`, and leaves valid SQL behind it."""
+    return f"x\"{table_end}; COPY (SELECT 'smuggled' AS b) TO '{target}'; CREATE TABLE \"y"
+
+
+def _sha256(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
+
+
+def test_load_pinned_refuses_a_table_name_that_ends_its_quoted_identifier_and_runs_none_of_it(
+    registry, store, steps, requests_mock, tmp_path
+):
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    report = run(store, lines())
+    pin_raw_inputs(pipeline_of(store), store["bucket_url"], steps, report.run_id)
+    smuggled = tmp_path / "smuggled.csv"
+    manifest_path = _pin_root(steps, report.run_id) / _warehouse.PIN_MANIFEST
+    manifest = json.loads(manifest_path.read_text())
+    manifest["tables"][_smuggling(" AS SELECT 1 AS a", smuggled)] = manifest["tables"].pop("raw_testclub__trails")
+    manifest_path.write_text(json.dumps(manifest))
+
+    with pytest.raises(BuildRefused, match="names a table"):
+        load_pinned(duckdb.connect(), pipeline_of(store), steps, report.run_id)
+    assert not smuggled.exists(), "the pin's table name ran a COPY of its own in the build job"
+
+
+def test_a_proven_empty_table_whose_run_log_name_ends_its_quoted_identifier_refuses_the_build_and_runs_none_of_it(
+    registry, store, requests_mock, tmp_path
+):
+    """The monthly lane's load_warehouse() reads every run log row's table name, and a proven zero has no file, so its
+    name went straight into the CREATE that _create_proven_empty() builds from its hints."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    FakeLayer(requests_mock, CLOSURES_URL, [])
+    run(store, closures())
+    pipeline = pipeline_of(store)
+    (logged,) = _run.table_files(pipeline, _run.RUNS_TABLE)
+    arrow = pq.read_table(logged)
+    (row,) = arrow.to_pylist()
+    smuggled = tmp_path / "smuggled.csv"
+    row["table_name"] = _smuggling(" (a VARCHAR)", smuggled)
+    crafted = Path(logged).with_name(f"{row['load_id']}.crafted.parquet")
+    pq.write_table(pa.Table.from_pylist([row], schema=arrow.schema), crafted)
+
+    with pytest.raises(BuildRefused, match="names a table"):
+        load_warehouse(duckdb.connect(), pipeline)
+    assert not smuggled.exists(), "the run log's table name ran a COPY of its own in the build job"
+
+
+def test_load_pinned_refuses_a_file_path_that_climbs_out_of_its_pin(registry, store, steps, requests_mock):
+    """The table's own file, copied one level up, still matches the sha256 the crafted pin keeps beside it."""
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    report = run(store, lines())
+    pin_raw_inputs(pipeline_of(store), store["bucket_url"], steps, report.run_id)
+    root = _pin_root(steps, report.run_id)
+    manifest = json.loads((root / _warehouse.PIN_MANIFEST).read_text())
+    entry = manifest["tables"]["raw_testclub__trails"]
+    (root.parent / "elsewhere.parquet").write_bytes((root / entry["file"]).read_bytes())
+    entry["file"] = "../elsewhere.parquet"
+    (root / _warehouse.PIN_MANIFEST).write_text(json.dumps(manifest))
+
+    with pytest.raises(BuildRefused, match="names a path"):
+        load_pinned(duckdb.connect(), pipeline_of(store), steps, report.run_id)
+
+
+def _a_script_beside_raw_dir(tmp_path: Path) -> tuple[Path, Path]:
+    """(raw_dir, the script two levels above it), as a workflow's checkout lays out pipeline/data/raw/."""
+    script = tmp_path / "pipeline" / "build_marts.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("# the script the next step runs\n")
+    return tmp_path / "pipeline" / "data" / "raw", script
+
+
+def test_materialize_pinned_refuses_an_as_landed_path_that_climbs_out_of_raw_dir_and_writes_nothing(
+    registry, store, steps, requests_mock, tmp_path
+):
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    report = run(store, lines(), as_landed=True)
+    pin_raw_inputs(pipeline_of(store), store["bucket_url"], steps, report.run_id)
+    root = _pin_root(steps, report.run_id)
+    manifest = json.loads((root / _warehouse.PIN_MANIFEST).read_text())
+    climbing, planted = "../../build_marts.py", b"print('not the build')\n"
+    # The crafted pin holds the file its path names, where that path reaches, under that file's sha256.
+    (root / _run.AS_LANDED_PREFIX / climbing).write_bytes(planted)
+    manifest["as_landed"] = {climbing: {**manifest["as_landed"]["trails.geojson"], "sha256": _sha256(planted)}}
+    (root / _warehouse.PIN_MANIFEST).write_text(json.dumps(manifest))
+    raw_dir, script = _a_script_beside_raw_dir(tmp_path)
+
+    with pytest.raises(BuildRefused, match="names a path"):
+        _warehouse.materialize_pinned(pipeline_of(store), steps, report.run_id, raw_dir)
+    assert script.read_text() == "# the script the next step runs\n", "the pin overwrote a script outside raw_dir"
+
+
+def test_materialize_committed_refuses_an_as_landed_index_path_that_climbs_out_of_raw_dir_and_writes_nothing(
+    registry, store, requests_mock, tmp_path
+):
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    report = run(store, lines(), as_landed=True)
+    root = landed_root(store) / report.load_id
+    climbing = "../../build_marts.py"
+    (root / climbing).write_text("print('not the build')\n")
+    (root / _run.AS_LANDED_INDEX).write_text(json.dumps({"raw_testclub__trails": climbing}))
+    raw_dir, script = _a_script_beside_raw_dir(tmp_path)
+
+    with pytest.raises(BuildRefused, match="names a path"):
+        _warehouse.materialize_committed(pipeline_of(store), store["bucket_url"], report.run_id, raw_dir)
+    assert script.read_text() == "# the script the next step runs\n", "the index overwrote a script outside raw_dir"
+
+
+def test_pin_raw_inputs_refuses_an_as_landed_index_path_that_climbs_out_of_the_pins_own_folder(
+    registry, store, steps, requests_mock
+):
+    """pin_raw_inputs() copies each as-landed file to <pin>/as_landed/<path>: a climbing path would write elsewhere in
+    the step cache, outside the pin a promotion reads."""
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    report = run(store, lines(), as_landed=True)
+    root = landed_root(store) / report.load_id
+    climbing = "../../../steps-elsewhere.geojson"
+    (root / climbing).write_text("{}")
+    (root / _run.AS_LANDED_INDEX).write_text(json.dumps({"raw_testclub__trails": climbing}))
+
+    with pytest.raises(BuildRefused, match="names a path"):
+        pin_raw_inputs(pipeline_of(store), store["bucket_url"], steps, report.run_id)

@@ -50,12 +50,15 @@ decision 102's "no row leaves the warehouse" reaches it. The history store
 is private, and already holds the snapshots of every mart row.
 
 ONE COPY A LEG, OVERWRITTEN EACH BUILD, so nothing piles up. The checks run
-waits for nothing to be uploaded: publish-conditions.yml's leg and
-check-conditions.yml's share the concurrency group conditions-history-<leg>,
-so the next hourly build's `put` cannot land while a checks run is still
-reading; a checks run that starts after a later build has put its own finds
+waits for nothing to be uploaded, and shares no concurrency group with the
+build (row_history.py, "TWO WRITERS, ONE POINTER"; #1513 — A queued publish
+is silently cancelled when another one joins publish-data, and it looks like
+a green build), so the next hourly build's `put` can land at any point of a
+take. A checks run that starts after a later build has put its own finds
 that build's run in hand_off.json and stops, exit NOT_HANDED_OFF, rather than
-checking the wrong hour.
+checking the wrong hour; and one whose download no longer matches
+hand_off.json reads it again, and stops the same way when it now names a
+later put, so a replacement is never reported as a torn upload.
 
 EXITS. 0 when the warehouse moved and both sha256s matched; NOT_HANDED_OFF (4)
 from `take` when nothing at the store is the asked run's, or it is but
@@ -144,6 +147,21 @@ def _unpack(packed: Path, target: Path) -> None:
         shutil.copyfileobj(raw, out, CHUNK)
 
 
+def _refuse_if_replaced(store: Store, url: str, run: str, pointer: dict) -> None:
+    """NotHandedOff when hand_off.json no longer names the put this take began from: a later build's put landed while
+    it downloaded (the module docstring, "ONE COPY A LEG"). Returns when it still does, which is an upload that tore.
+
+    Read once, straight after the download: a put writes hand_off.json just after its upload, and the take's download
+    and hash outlast that gap (Reasoned; neither time is measured on R2)."""
+    text = store.read_text(POINTER)
+    now = json.loads(text) if text is not None else {}
+    if str(now.get("run")) != str(run) or now.get("gzip_sha256") != pointer.get("gzip_sha256"):
+        raise NotHandedOff(
+            f"{url}/{FOLDER}/ now holds run {now.get('run')}'s warehouse, put at {now.get('put_at')}: a later build "
+            f"replaced run {run}'s while this take was downloading it, so nothing is checked this hour"
+        )
+
+
 def take(url: str, warehouse: Path, run: str, commit: str | None = None) -> str:
     """Download the warehouse `run` put, into `warehouse`: the upload checked against its size and sha256 before it is
     unpacked, and the warehouse after. Returns what it did, for the log; raises NotHandedOff when no warehouse at the store is `run`'s, or when it was built from a commit
@@ -171,6 +189,7 @@ def take(url: str, warehouse: Path, run: str, commit: str | None = None) -> str:
         packed = Path(scratch) / "warehouse.duckdb.gz"
         store.get(WAREHOUSE, packed, POINTER)
         if (size := packed.stat().st_size) != pointer["gzip_bytes"] or _sha256(packed) != pointer["gzip_sha256"]:
+            _refuse_if_replaced(store, url, run, pointer)
             raise Refused(
                 f"{url}/{WAREHOUSE} is {size} bytes, and {POINTER} says {pointer['gzip_bytes']} with sha256 "
                 f"{pointer['gzip_sha256']}: a later build's upload landed, or this one tore. Nothing was checked."

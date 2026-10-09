@@ -71,6 +71,28 @@ def test_take_answers_nothing_handed_off_with_its_own_exit_and_a_torn_upload_wit
     assert not taken.exists(), "nothing torn is left where the checks would read it"
 
 
+def test_a_later_builds_put_landing_while_take_downloads_is_nothing_to_check_rather_than_a_torn_upload(
+    tmp_path, monkeypatch, capsys
+):
+    """check-conditions.yml shares no concurrency group with publish-conditions.yml any more (#1513 — A queued publish is
+    silently cancelled when another one joins publish-data, and it looks like a green build), so the next build's put
+    can land between a take's read of hand_off.json and its download: that hour is not checked, and nothing goes red."""
+    store, taken = tmp_path / "store", tmp_path / "checks.duckdb"
+    hand_off.put(str(store), _warehouse(tmp_path / "first.duckdb", rows=3), "7")
+    real_get = hand_off.Store.get
+
+    def get_after_a_later_put(self, relative, local, pointer=hand_off.POINTER):
+        hand_off.put(str(store), _warehouse(tmp_path / "second.duckdb", rows=5), "8")
+        real_get(self, relative, local, pointer)
+
+    monkeypatch.setattr(hand_off.Store, "get", get_after_a_later_put)
+    code = hand_off.main(["take", "--url", str(store), "--warehouse", str(taken), "--run", "7"])
+
+    assert code == hand_off.NOT_HANDED_OFF
+    assert "replaced run 7's while this take was downloading it" in capsys.readouterr().out
+    assert not taken.exists(), "nothing of either build is left where the checks would read it"
+
+
 def test_take_refuses_an_upload_whose_own_hash_matches_but_whose_warehouse_does_not(tmp_path, capsys):
     """Both are checked: the upload before it is unpacked, the warehouse after, so a pointer naming another
     warehouse's size and hash stops the checks rather than letting them read the wrong hour."""

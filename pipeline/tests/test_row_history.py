@@ -193,6 +193,75 @@ def test_a_store_url_that_is_not_a_directory_file_or_s3_is_refused():
         row_history.Store("https://example.org/history")
 
 
+# --- Names read back from the store (lib/store_names.py) ----------------------------------------------------------
+#
+# history.json and elementary.json are written by a save, and could be by anyone else holding the store's key. The
+# review of PR #1805 measured a crafted table name writing a file outside restore's temporary directory; each test
+# below fails on the code before lib/store_names.py.
+
+
+@pytest.mark.parametrize(
+    "crafted",
+    [
+        "../../escaped__history",  # climbs out of the temporary directory restore downloads into
+        'int_things" (n int); --__history',  # ends its quoted identifier
+        "Int_Things__History",  # a name no dbt snapshot here has
+        "int_things__final",  # not a snapshot table: an intermediate model beside them
+    ],
+)
+def test_restore_refuses_a_history_json_table_that_is_not_a_snapshot_name_and_writes_no_file_outside(
+    tmp_path, monkeypatch, crafted
+):
+    store, _ = _cold_then_saved(tmp_path)
+    pointer = json.loads((store / POINTER).read_text())
+    pointer["tables"][crafted] = pointer["tables"].pop("int_things__history")
+    (store / POINTER).write_text(json.dumps(pointer))
+    # restore's TemporaryDirectory is made under tmp_path/tmp, so the climbing name reaches tmp_path, never `/`.
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setattr(row_history.tempfile, "tempdir", str(tmp_path / "tmp"))
+
+    with pytest.raises(Refused, match="names a table"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+    assert not (tmp_path / "escaped__history.parquet").exists(), "history.json's name wrote outside the scratch directory"
+
+
+def test_restore_refuses_a_history_json_file_that_climbs_out_of_the_store(tmp_path):
+    """The snapshot's own file, copied beside the store, still matches the sha256 the crafted pointer keeps."""
+    store, _ = _cold_then_saved(tmp_path)
+    pointer = json.loads((store / POINTER).read_text())
+    entry = pointer["tables"]["int_things__history"]
+    (tmp_path / "beside-the-store.parquet").write_bytes((store / entry["file"]).read_bytes())
+    entry["file"] = "../beside-the-store.parquet"
+    (store / POINTER).write_text(json.dumps(pointer))
+
+    with pytest.raises(Refused, match="names a path"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+
+
+def test_restore_refuses_an_elementary_json_file_that_climbs_out_of_the_store(tmp_path):
+    store, _ = _first_build(tmp_path)
+    pointer = _elementary_pointer(store)
+    entry = pointer["tables"]["dbt_invocations"]
+    (tmp_path / "beside-the-store.parquet").write_bytes((store / entry["file"]).read_bytes())
+    entry["file"] = "../beside-the-store.parquet"
+    (store / row_history.ELEMENTARY_POINTER).write_text(json.dumps(pointer))
+
+    with pytest.raises(row_history.ElementaryRefused, match="names a path"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+
+
+def test_save_refuses_a_snapshot_table_whose_name_would_end_the_copy_statements_file_name(tmp_path):
+    """save() writes each snapshot table to `<scratch>/<table>.parquet` inside a quoted COPY ... TO, so a quote in a
+    warehouse's table name is refused before anything is written, wherever the table came from."""
+    store, warehouse = tmp_path / "store", tmp_path / "w.duckdb"
+    restore(str(store), warehouse, cold_start=True)
+    _snapshot(warehouse, table='"int_o\'brien__history"')
+
+    with pytest.raises(Refused, match="names a table"):
+        save(str(store), warehouse)
+    assert not (store / POINTER).exists(), "nothing is written when a save is refused"
+
+
 # --- Elementary's history (row_history.py's docstring, "ELEMENTARY'S HISTORY") ---
 #
 # Each warehouse below holds Elementary 0.26.0's five kept tables with the columns row_history.py reads and one value,
@@ -723,17 +792,89 @@ def test_the_checks_run_restores_elementarys_history_alone_and_saves_its_checks_
     assert _elementary_rows(after, "dbt_invocations", "invocation_id") == [("inv1",), ("inv2",), ("inv3",)]
 
 
-def test_the_checks_runs_save_refuses_when_a_build_saved_after_its_restore(tmp_path):
-    """The next hourly build waits for the checks run (their shared concurrency group); were it not to, this is the
-    refusal that keeps the checks from saving over its history."""
+# --- Two writers, no shared group (row_history.py's docstring, "TWO WRITERS, ONE POINTER") ------------------------
+#
+# check-conditions.yml no longer shares a concurrency group with publish-conditions.yml (#1513 — A queued publish is
+# silently cancelled when another one joins publish-data, and it looks like a green build), so a checks run's save of
+# Elementary's history and the next hourly build's can overlap. In either order the checks run's hour is the one left
+# out of the history, the build's save and its row dates never are, and neither run goes red for it.
+
+
+def _folders(store) -> list[str]:
+    return sorted(path.name for path in (store / row_history.ELEMENTARY_SAVES).iterdir())
+
+
+def test_the_checks_runs_save_is_skipped_and_said_when_a_build_saved_after_its_restore(tmp_path, capsys):
+    store, warehouse, _ = _hourly_build(tmp_path)
+    row_history.restore_elementary(str(store), warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    later = _next_build(tmp_path, store, "later.duckdb")
+    save(str(store), later, keep_days=21, now=CHECKS_AT)
+    builds, folders = _elementary_pointer(store), _folders(store)
+
+    message = row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    code = row_history.main(["save", "--url", str(store), "--warehouse", str(warehouse), "--elementary-only"])
+
+    assert "::warning title=Elementary's history not saved::" in message and "left out" in message
+    assert code == 0 and "::warning title=Elementary's history not saved::" in capsys.readouterr().out
+    assert _elementary_pointer(store) == builds, "elementary.json keeps naming the later build's save"
+    assert _folders(store) == folders, "a skipped save leaves no folder behind"
+
+
+def test_a_builds_save_lands_over_a_checks_save_made_after_its_restore_and_says_so(tmp_path):
+    """The other order: the next build restored the build's save, and then the checks run saved on top of it."""
+    store, warehouse, build_save = _hourly_build(tmp_path)
+    later = _next_build(tmp_path, store, "later.duckdb")
+    row_history.restore_elementary(str(store), warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    checks_save = _elementary_pointer(store)["save_id"]
+    _elementary_build(later, CHECKS_AT.replace(hour=8), "inv4")
+
+    message = save(str(store), later, keep_days=21, now=CHECKS_AT.replace(hour=8))
+
+    pointer = _elementary_pointer(store)
+    assert "::warning title=A checks run's history was saved over::" in message and checks_save in message
+    assert pointer["save_id"] == json.loads((store / POINTER).read_text())["save_id"], "one save id for both parts"
+    assert (pointer["previous_save_id"], pointer["saved_over"]) == (build_save, checks_save)
+    after = _next_build(tmp_path, store, "after.duckdb")
+    assert _elementary_rows(after, "dbt_invocations", "invocation_id") == [("inv1",), ("inv2",), ("inv4",)], (
+        "the build's own rows are kept, and only the checks run's hour, inv3, is left out"
+    )
+
+
+def test_a_checks_runs_pointer_says_it_saved_elementarys_history_alone_and_a_builds_says_it_did_not(tmp_path):
+    """What lets a build tell a checks run's save, which it may save over, from another build's, which it may not."""
+    store, warehouse, _ = _hourly_build(tmp_path)
+    assert _elementary_pointer(store)["elementary_only"] is False
+
+    row_history.restore_elementary(str(store), warehouse)
+    row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+
+    assert _elementary_pointer(store)["elementary_only"] is True
+
+
+def test_a_checks_run_that_meets_a_builds_save_while_uploading_writes_no_pointer_and_removes_its_folder(tmp_path, monkeypatch):
+    """The check before the upload passed, and a build saved while the checks run's files went up: the pointer is read
+    again just before it is written, which narrows the window to that one read and write."""
     store, warehouse, _ = _hourly_build(tmp_path)
     row_history.restore_elementary(str(store), warehouse)
     later = _next_build(tmp_path, store, "later.duckdb")
-    save(str(store), later, keep_days=21, now=CHECKS_AT)
+    real_put, landed = row_history.Store.put, []
 
-    with pytest.raises(row_history.ElementaryRefused, match="another run saved Elementary's history in between"):
-        row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
-    assert row_history.main(["save", "--url", str(store), "--warehouse", str(warehouse), "--elementary-only"]) == 1
+    def put_while_a_build_saves(self, local, relative):
+        real_put(self, local, relative)
+        if not landed:  # the build's own puts pass straight through once this is set
+            landed.append(relative)
+            save(str(store), later, keep_days=21, now=CHECKS_AT)
+
+    monkeypatch.setattr(row_history.Store, "put", put_while_a_build_saves)
+    message = row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    builds = json.loads((store / POINTER).read_text())["save_id"]
+
+    assert landed and "::warning title=Elementary's history not saved::" in message
+    assert _elementary_pointer(store)["save_id"] == builds, "elementary.json names the build's save, not the checks'"
+    assert landed[0].split("/")[1] not in _folders(store), "the checks run's uploaded folder is removed"
 
 
 def test_under_degrade_a_checks_run_whose_restore_fails_checks_with_no_history_and_saves_none(tmp_path, capsys):

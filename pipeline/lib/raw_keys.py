@@ -15,8 +15,10 @@ as something else).
 First used by extract/_geofabrik.py's `current/` copies (#1652 — Download
 OSM's Geofabrik extracts at most once a month, into a private raw bucket
 that outlives the 7-day Actions cache). INCREMENTAL.md means it to serve the
-step cache's keys too; extract/_warehouse.py's `_step_key()` still checks
-its own three cases and has not moved onto it.
+step cache's keys too; extract/_warehouse.py's `_step_key()` has not moved
+onto it, and checks lib/store_names.py's relative_path() instead (not empty,
+not absolute, no `..` segment), the rule every path read back from a store
+is held to.
 """
 
 from __future__ import annotations

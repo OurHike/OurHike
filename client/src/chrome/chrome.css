@@ -2756,6 +2756,25 @@
   color: var(--fg-2);
 }
 
+/* The list's first line while a planned hike's notices are not on the phone
+   (NoticeList's `plannedNoticesMissing`): the warning box of option A in the
+   maintainer's poll of 2026-10-09. The caution surface under `--fg-1`, the
+   pair .planned-notices__category below already holds in both themes
+   (design-system/tokens/contrast.test.ts), with the warn notice's orange
+   rule down its left edge (chrome/notice.css's .notice--warn). Full body
+   weight, never dimmed, for .atc-notices__offmap's reason: this is the
+   caveat the rows under it depend on. */
+.atc-notices__missing {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-left: 4px solid var(--accent-blaze-orange);
+  border-radius: 8px;
+  background: var(--surface-warning);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
 /* ---------- Notices for your planned hikes (#1805, decision 66) ---------- */
 
 /* One section per hike planned in the next 7 days, its name and days as the

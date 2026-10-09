@@ -31,6 +31,16 @@
 // bucket the exporters still publish - everything above is exactly as it
 // was. The map's A.T. bands and dots come from ATC's own file either way.
 //
+// A PLANNED HIKE WHOSE FILE IS NOT ON THE PHONE SAYS SO (option A of the
+// maintainer's poll of 2026-10-09). A hike is planned, and lib/useConditions.ts
+// has settled that this phone holds no copy of notices.json for a reason a
+// connection can change (`clubNoticesMissing`: a first run with no signal, a
+// file over lib/conditionsCache.ts's ceiling relaunched offline, a download
+// that failed). The legend row reads "Notices for your planned hikes: not on
+// this phone yet", and today's list of ATC's and NYNJTC's notices opens under
+// a warning that a closure on the hike will not show here. While the first
+// download is in flight, or after a 404, the panel is today's, unchanged.
+//
 // All of it used to live in App.tsx as three `useState`s, five `useMemo`s, one
 // `useCallback` and about forty lines of JSX inside the `<MapScreen>` call -
 // at roughly lines 640, 1,490 and 4,440 of a 4,706-line file, each block
@@ -216,6 +226,16 @@ export interface NoticesInput {
    */
   clubNoticesListed?: boolean
   /**
+   * Whether lib/useConditions.ts has settled that this phone holds no copy
+   * of conditions/notices.json for a planned hike, for a reason a connection
+   * can change (its `clubNoticesMissing`). With a hike planned and the file
+   * absent, the legend row and the top of today's list then say so, in the
+   * words the maintainer chose (option A of the poll of 2026-10-09); the
+   * list itself is today's. Counts for nothing once the file is here, or
+   * with nothing planned.
+   */
+  clubNoticesMissing?: boolean
+  /**
    * conditions/hazard_areas.json (decision 84), read whatever is planned,
    * or null when it has not reached this phone. Decision 67's areas draw
    * from it, or from `clubNotices` when that file is the newer of the two
@@ -249,6 +269,7 @@ export function useNoticesPanel({
   clubNotices = null,
   clubNoticesGeneratedAt = null,
   clubNoticesListed = false,
+  clubNoticesMissing = false,
   hazardFile = null,
   trips = NO_TRIPS,
   dayHikes = NO_DAY_HIKES,
@@ -379,11 +400,14 @@ export function useNoticesPanel({
    */
   const [selection, setSelection] = useState<NoticeSelection | null>(loadedSelection)
 
+  const hikePlanned = anyHikePlanned(trips, dayHikes)
   /** Whether the panel is decision 66's: conditions/notices.json is on the
    *  phone, whether or not its rule has finished loading - or the bucket
    *  serves it and nothing is planned, so decision 77 downloaded nothing. */
-  const clubMode =
-    clubNotices !== null || (clubNoticesListed && !anyHikePlanned(trips, dayHikes))
+  const clubMode = clubNotices !== null || (clubNoticesListed && !hikePlanned)
+  /** Whether today's list is shown to a hiker with a hike planned whose
+   *  notices this phone does not hold, and has to say so first. */
+  const plannedMissing = clubNotices === null && hikePlanned && clubNoticesMissing
 
   // Also for the hazard areas' own file alone (decision 84): a phone with
   // nothing planned and no notices.json still draws them. An import that
@@ -604,11 +628,17 @@ export function useNoticesPanel({
       newNoticeCount: newNotices?.count ?? 0,
       newNoticeLabel:
         newNotices === null ? undefined : newNoticeLabel(newNotices, stewards),
-      noticeRowLabel: !clubMode
-        ? undefined
-        : allNotices.length === 0
-          ? 'Notices for your planned hikes'
-          : `Notices for your planned hikes (${allNotices.length})`,
+      // The maintainer's words for a planned hike's missing notices (option
+      // A of the poll of 2026-10-09): set, the legend shows the row however
+      // few notices the phone holds, so a first run with no signal still
+      // reaches the sentence saying why.
+      noticeRowLabel: plannedMissing
+        ? 'Notices for your planned hikes: not on this phone yet'
+        : !clubMode
+          ? undefined
+          : allNotices.length === 0
+            ? 'Notices for your planned hikes'
+            : `Notices for your planned hikes (${allNotices.length})`,
       hazardAreas,
       onSelectHazardArea: setSelectedHazardId,
       hazardAreaSheet:
@@ -636,6 +666,7 @@ export function useNoticesPanel({
           stewards={stewards}
           extent={extent}
           now={now}
+          plannedNoticesMissing={plannedMissing}
           onClose={() => setNoticesOpen(false)}
         />
       ),
@@ -656,6 +687,7 @@ export function useNoticesPanel({
       drawnIds,
       planned,
       clubMode,
+      plannedMissing,
       hazardAreas,
       selectedHazard,
       clubNoticesGeneratedAt,

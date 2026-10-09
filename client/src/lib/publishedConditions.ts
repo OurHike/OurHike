@@ -124,31 +124,67 @@ export interface PublishedReadOptions {
  */
 export async function fetchPublished<T>(
   key: string,
-  field:
-    | 'closures'
-    | 'reports'
-    | 'atc_updates'
-    | 'drought'
-    | 'notes'
-    | 'work_projects'
-    | 'disputes'
-    | 'nynjtc_alerts'
-    | 'notices'
-    | 'states',
+  field: PublishedField,
   signal?: AbortSignal,
   options: PublishedReadOptions = {},
 ): Promise<PublishedConditions<T> | null> {
-  if (!DATA_CONFIGURED) return null
+  return (await readPublished<T>(key, field, signal, options)).published
+}
+
+/** The payload a published document holds, named as the document names it. */
+type PublishedField =
+  | 'closures'
+  | 'reports'
+  | 'atc_updates'
+  | 'drought'
+  | 'notes'
+  | 'work_projects'
+  | 'disputes'
+  | 'nynjtc_alerts'
+  | 'notices'
+  | 'states'
+
+/** `fetchPublished`'s answer, and whether no answer means there is no file. */
+export interface PublishedRead<T> {
+  published: PublishedConditions<T> | null
+  /**
+   * True when `published` is null because there is no file to get: no bucket
+   * was configured at build time, or the bucket answered 404 and this phone
+   * kept no copy. False whenever a copy came back, and when none did because
+   * the request was not made (no signal), failed, timed out, answered any
+   * other error, or brought bytes this build cannot read: on those a later
+   * connection may bring the file. lib/publishedNotices.ts's
+   * `readPublishedNotices` is the reader that needs the difference.
+   */
+  notServed: boolean
+}
+
+/**
+ * `fetchPublished` with the reason a read came back empty: one path, so
+ * that the two can never disagree about what a 404 or a dead spot returns.
+ */
+export async function readPublished<T>(
+  key: string,
+  field: PublishedField,
+  signal?: AbortSignal,
+  options: PublishedReadOptions = {},
+): Promise<PublishedRead<T>> {
+  if (!DATA_CONFIGURED) return { published: null, notServed: true }
 
   // Offline, nothing is asked for: vite.config.ts precaches the app shell and
   // the glyph ranges and nothing else, so the request cannot be served from
   // anywhere and App.trailData.test.tsx asserts it is not fired. What CAN be
   // served is the copy this phone kept last time it had signal (#447).
-  if (options.online === false) return recalled<T>(key, field)
+  if (options.online === false) {
+    return { published: await recalled<T>(key, field), notServed: false }
+  }
 
   try {
     const response = await fetch(dataUrl(key), { signal })
-    if (!response.ok) return recalled<T>(key, field)
+    if (!response.ok) {
+      const kept = await recalled<T>(key, field)
+      return { published: kept, notServed: kept === null && response.status === 404 }
+    }
 
     const document = (await response.json()) as Record<string, unknown>
     const parsed = parsePublished<T>(document, field)
@@ -156,13 +192,13 @@ export async function fetchPublished<T>(
     // give the next offline session a copy that fails the same way, with the
     // previous good one overwritten to do it.
     if (parsed !== null) void rememberPublished(key, document)
-    return parsed ?? (await recalled<T>(key, field))
+    return { published: parsed ?? (await recalled<T>(key, field)), notServed: false }
   } catch {
     // Includes the abort case, which is not an error worth distinguishing:
     // a cancelled read has no baseline to offer either. It does not exclude
     // the kept copy, though - a dead spot mid-fetch is exactly the state
     // this whole path exists for.
-    return recalled<T>(key, field)
+    return { published: await recalled<T>(key, field), notServed: false }
   }
 }
 
@@ -172,17 +208,7 @@ export async function fetchPublished<T>(
  *  shape this one refuses, and the refusal has to be the same refusal. */
 async function recalled<T>(
   key: string,
-  field:
-    | 'closures'
-    | 'reports'
-    | 'atc_updates'
-    | 'drought'
-    | 'notes'
-    | 'work_projects'
-    | 'disputes'
-    | 'nynjtc_alerts'
-    | 'notices'
-    | 'states',
+  field: PublishedField,
 ): Promise<PublishedConditions<T> | null> {
   const cached = await recallPublished(key)
   if (cached === null) return null
@@ -197,17 +223,7 @@ async function recalled<T>(
  */
 function parsePublished<T>(
   document: Record<string, unknown>,
-  field:
-    | 'closures'
-    | 'reports'
-    | 'atc_updates'
-    | 'drought'
-    | 'notes'
-    | 'work_projects'
-    | 'disputes'
-    | 'nynjtc_alerts'
-    | 'notices'
-    | 'states',
+  field: PublishedField,
 ): PublishedConditions<T> | null {
   if (typeof document?.generated_at !== 'string') return null
   const items = document[field]

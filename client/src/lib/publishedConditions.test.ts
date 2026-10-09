@@ -453,6 +453,21 @@ describe('fetchPublishedNotices', () => {
 
     expect(await fetchPublishedNotices()).toBeNull()
   })
+
+  it('is never missing for a planned hike on a build with no bucket configured', async () => {
+    // readPublishedNotices's `missing` says a connection could bring the
+    // file. With no bucket there is no file to bring, so the planned-hike
+    // warning ("not on this phone yet") must not show on such a build.
+    const fetchSpy = mockResponse(A_NOTICES_DOCUMENT)
+    const { readPublishedNotices } = await loadWithBase(undefined)
+
+    expect(await readPublishedNotices(true, { online: true })).toEqual({
+      published: null,
+      listed: false,
+      missing: false,
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
 })
 
 // Decision 76: a state-wide notice names its states, and

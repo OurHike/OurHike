@@ -129,6 +129,112 @@ describe('conditions/notices.json and a planned hike (decision 77)', () => {
   })
 })
 
+// `clubNoticesMissing` is what chrome/noticesPanel.tsx turns into the legend
+// row "Notices for your planned hikes: not on this phone yet" and the warning
+// at the top of the list (option A of the maintainer's poll of 2026-10-09).
+// It is set only when a read SETTLES: while a planned hike's first download
+// is in flight the panel stays today's, with no wording of its own.
+describe('clubNoticesMissing, for a planned hike with no copy of notices.json on this phone', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  /** A bucket whose notices.json download fails, as in a dead spot. */
+  function deadSpot(): MockInstance<typeof fetch> {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input) === NOTICES_URL) throw new TypeError('Failed to fetch')
+      return new Response('', { status: 404 })
+    })
+  }
+
+  it('is true once a planned hike’s download fails with nothing kept', async () => {
+    deadSpot()
+    const { result } = renderHook(() => useConditions(true, true, true))
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+    expect(result.current.clubNotices).toBeNull()
+  })
+
+  it('is true offline with a hike planned and nothing kept, and asks the radio for nothing', async () => {
+    const spy = bucket({ serves: true })
+    const { result } = renderHook(() => useConditions(false, true, true))
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+    expect(noticeRequests(spy)).toEqual([])
+  })
+
+  it('stays false while a planned hike’s first download is in flight', async () => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) =>
+        String(input) === NOTICES_URL
+          ? new Promise<Response>(() => undefined)
+          : new Response('', { status: 404 }),
+      )
+    const { result } = renderHook(() => useConditions(true, true, true))
+    await waitFor(() => expect(noticeRequests(spy)).toEqual(['GET']))
+    expect(result.current.clubNoticesMissing).toBe(false)
+  })
+
+  it('goes back to false when the file arrives', async () => {
+    const spy = bucket({ serves: true })
+    const { result, rerender } = renderHook(
+      ({ online }) => useConditions(online, true, true),
+      { initialProps: { online: false } },
+    )
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+
+    rerender({ online: true })
+    await waitFor(() => expect(result.current.clubNotices).toHaveLength(1))
+    expect(result.current.clubNoticesMissing).toBe(false)
+    expect(noticeRequests(spy)).toEqual(['GET'])
+  })
+
+  it('stays true while a retry is in flight after a read that failed, so the warning does not flicker', async () => {
+    // Offline with nothing kept, then signal on a link that never answers:
+    // the phone still holds no notices, which is what the warning says.
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) =>
+        String(input) === NOTICES_URL
+          ? new Promise<Response>(() => undefined)
+          : new Response('', { status: 404 }),
+      )
+    const { result, rerender } = renderHook(
+      ({ online }) => useConditions(online, true, true),
+      { initialProps: { online: false } },
+    )
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+
+    rerender({ online: true })
+    await waitFor(() => expect(noticeRequests(spy)).toEqual(['GET']))
+    expect(result.current.clubNoticesMissing).toBe(true)
+  })
+
+  it('goes back to false when the bucket answers 404, as the exporters’ bucket does', async () => {
+    // Offline the phone cannot tell a bucket without the file from one it
+    // cannot reach. Once it can ask, a 404 says there is no file to bring.
+    bucket({ serves: false })
+    const { result, rerender } = renderHook(
+      ({ online }) => useConditions(online, true, true),
+      { initialProps: { online: false } },
+    )
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+
+    rerender({ online: true })
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(false))
+    expect(result.current.clubNotices).toBeNull()
+  })
+
+  it('goes back to false when no hike is planned any more', async () => {
+    bucket({ serves: true })
+    const { result, rerender } = renderHook(
+      ({ planned }) => useConditions(false, true, planned),
+      { initialProps: { planned: true } },
+    )
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+
+    rerender({ planned: false })
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(false))
+  })
+})
+
 describe('conditions/hazard_areas.json, read at launch whatever is planned (decision 84)', () => {
   const HAZARD_URL = 'https://data.example/conditions/hazard_areas.json'
 

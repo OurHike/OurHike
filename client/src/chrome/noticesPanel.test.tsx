@@ -1,5 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import type { FeatureCollection } from 'geojson'
 import { useNoticesPanel } from './noticesPanel'
 import { ATC_SOURCE_KEY, noticeSilenceKey, type TrailNotice } from '../lib/notices'
@@ -407,6 +415,116 @@ describe('with conditions/notices.json (#1805, decision 66)', () => {
     const { result } = listedPanel([dayHike(TODAY)])
     expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
     expect(result.current.mapScreen.noticeCount).toBe(2)
+  })
+
+  // Option A of the maintainer's poll of 2026-10-09: a hike is planned and
+  // lib/useConditions.ts has settled that this phone holds no copy of
+  // conditions/notices.json (`clubNoticesMissing`) - a first run with no
+  // signal, a file over lib/conditionsCache.ts's ceiling relaunched offline,
+  // or a download that failed. The approved words, all three of them:
+  const MISSING_ROW = 'Notices for your planned hikes: not on this phone yet'
+  const MISSING_WARNING =
+    'This phone has no notices for your planned hikes yet. Connect once to get them. Until then, a closure on your hike will not show here.'
+  const MISSING_HEADING = 'Trail notices this phone has'
+
+  function missingPanel(
+    dayHikes: readonly DayHike[],
+    {
+      clubNotices = null,
+      clubNoticesListed = true,
+    }: { clubNotices?: readonly TrailNotice[] | null; clubNoticesListed?: boolean } = {},
+  ) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [update()],
+        orgNotices: [orgNotice()],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: NOW,
+        clubNotices,
+        clubNoticesGeneratedAt: clubNotices === null ? null : NOW,
+        clubNoticesListed,
+        clubNoticesMissing: true,
+        dayHikes,
+      }),
+    )
+  }
+
+  it(`labels the legend row "${MISSING_ROW}" when a planned hike's notices.json is missing`, () => {
+    const { result } = missingPanel([dayHike(TODAY)])
+    expect(result.current.mapScreen.noticeRowLabel).toBe(MISSING_ROW)
+    // The list it opens is ATC's and NYNJTC's, as today's is, so the count
+    // and the new-notices dot still count those two.
+    expect(result.current.mapScreen.noticeCount).toBe(2)
+    expect(result.current.mapScreen.newNoticeCount).toBe(2)
+  })
+
+  it(`opens ATC's and NYNJTC's list under the warning and the heading "${MISSING_HEADING}"`, async () => {
+    const { result } = missingPanel([dayHike(TODAY)])
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    render(<>{result.current.mapScreen.noticeList}</>)
+
+    // NoticeList arrives through import() (screens/deferred.ts), so the
+    // dialog is waited for rather than read straight after the render.
+    const list = await screen.findByRole(
+      'dialog',
+      { name: MISSING_HEADING },
+      { timeout: 5_000 },
+    )
+    const warning = within(list).getByText(MISSING_WARNING)
+    const heading = within(list).getByRole('heading', { name: MISSING_HEADING })
+    const rows = within(list).getAllByRole('listitem')
+    // The warning first, then the heading, then the rows.
+    expect(
+      warning.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      heading.compareDocumentPosition(rows[0]) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // ATC's and NYNJTC's rows, exactly as today's list draws them.
+    expect(rows).toHaveLength(2)
+    expect(within(list).getByText('Harpers Ferry: Footbridge Closure')).toBeVisible()
+    expect(within(list).getByText('A.T. Detour at Harriman State Park')).toBeVisible()
+    // Opening it is still reading those two, which silences their dot.
+    expect(result.current.mapScreen.newNoticeCount).toBe(0)
+  })
+
+  it('keeps the planned-hike panel and its counted row when notices.json is on this phone', async () => {
+    const { result } = missingPanel([dayHike(TODAY)], { clubNotices: [orgNotice()] })
+    await waitFor(() =>
+      expect(result.current.mapScreen.noticeRowLabel).toBe(
+        'Notices for your planned hikes (1)',
+      ),
+    )
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    await waitFor(() => expect(result.current.mapScreen.noticeList).not.toBeNull())
+    const list = result.current.mapScreen.noticeList as {
+      type: { displayName?: string }
+    }
+    expect(list.type.displayName).toBe('Deferred(PlannedNoticeList)')
+  })
+
+  it('keeps the "no hike planned" panel with nothing planned, on a bucket that serves notices.json', () => {
+    const { result } = missingPanel([])
+    expect(result.current.mapScreen.noticeRowLabel).toBe('Notices for your planned hikes')
+    expect(result.current.mapScreen.noticeCount).toBe(0)
+  })
+
+  it('keeps today’s "Read all" row with nothing planned, on a bucket that has not said it serves notices.json', async () => {
+    const { result } = missingPanel([], { clubNoticesListed: false })
+    expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
+    expect(result.current.mapScreen.noticeCount).toBe(2)
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    render(<>{result.current.mapScreen.noticeList}</>)
+    const list = await screen.findByRole(
+      'dialog',
+      { name: 'Every trail notice OurHike holds' },
+      { timeout: 5_000 },
+    )
+    expect(within(list).queryByText(MISSING_WARNING)).toBeNull()
+    expect(within(list).getByRole('heading', { name: '2 trail notices' })).toBeVisible()
   })
 })
 

@@ -1534,6 +1534,7 @@ function App() {
     clubNotices,
     clubNoticesGeneratedAt,
     clubNoticesListed,
+    clubNoticesMissing,
     hazardFile,
     drought,
     droughtWeek,
@@ -3467,6 +3468,10 @@ function App() {
     clubNotices,
     clubNoticesGeneratedAt,
     clubNoticesListed,
+    // Option A of the maintainer's poll of 2026-10-09: a planned hike whose
+    // notices.json this phone does not hold says so on the legend row and
+    // at the top of the list.
+    clubNoticesMissing,
     // Decision 84: the hazard areas from their own file, read whatever is
     // planned, so a phone with no hike planned still draws them.
     hazardFile,

@@ -495,16 +495,88 @@ cell from the next invent a junction where the numbers collide and drop a trail 
 the other release already used. So every merged graph is built from one release, the manifest
 `version` its cells were verified against, and `mergeGraphShard` refuses a cell from any other:
 
-- **With signal, the manifest's release.** A stored copy stands in for a failed fetch only when
-  its hash is the one the manifest publishes for that cell now. Any other stored copy is
-  refetched, never merged.
-- **Without signal, the newest release stored among the cells being built from**, by when each
-  was fetched. Read across those cells rather than the whole store, so one cell fetched at home
-  after an update cannot make a whole stretch stored before it unusable at the trailhead. A
-  stored cell of another release is treated as not stored.
+- **With signal, the manifest's release, when any of it arrives.** A stored copy stands in for
+  a failed fetch as the manifest's release when its hash is the one the manifest publishes for
+  that cell now. But one bar of signal reads the manifest and fails the multi-MB cells, so a run
+  in which no cell's fetch got through builds what a phone with no signal would build, and a
+  graph already built from another release takes stored copies of its own release (#1828
+  review). A release whose manifest cannot be read is read the same way, whether it does not
+  answer 2xx or answers 2xx with something that is not a manifest, such as a captive portal's
+  sign-in page: measured 2026-10-09, data.ourhike.org answered 404 for the release this build
+  pins - its manifest, its cell index and both Harriman cells asked - and a stored copy of the
+  release being built now stands in. Any other stored copy is refetched, never merged.
+- **Without signal, the newest release that holds every cell being built from** (#1837, below),
+  counting the older copy kept beside a refreshed cell, and ranked by when each copy was
+  fetched. Where no release holds them all, the newest release stored among those cells, which
+  was the whole rule before #1837 (`releaseToBuildFromStore` in `lib/trailGraphStore.ts`). Read
+  across those cells rather than the whole store, so one cell fetched at home after an update
+  cannot make a whole stretch stored before it unusable at the trailhead. A stored cell of
+  another release is treated as not stored.
 - **Once a session has merged a cell, that release until the app restarts.** A live draft holds
   edge positions in the merged graph, so a cell fetched mid-session from another release is
   left out rather than joined, and the next launch builds from the manifest's release.
+
+**A cell a later release publishes byte-identical is a copy of both releases.** Measured
+2026-10-09 against UA's manifests: releases 2026-10-03, 2026-10-03-2 and 2026-10-08 carry three
+different versions and publish all 779 routing halves and all 779 geometry halves byte-identical.
+So a stored copy whose hash a later manifest names is recorded as that release's copy too
+(`alsoPublishedIn` in `lib/trailGraphStore.ts`) and is not rewritten under it. Rewritten, it left
+the release it was stored under, and a stored hike whose other cells were from that release was
+refused offline. A geometry, elevation or profile half lines up with any release in which its
+cell's stored routing half is the same bytes, because the halves are index-aligned per cell. The
+routing half is refetched whenever its cell is wanted; the other halves are refetched only while
+a day hike is open.
+
+**A cell a later release changed keeps its older copy until nothing stored is of that release
+any more** (#1837 — After a data release changes one piece of a saved hike, the phone strands the
+rest of the hike offline until every piece is refreshed; the maintainer's choice by poll,
+2026-10-09: *"Keep the older copy until every piece of the hike is refreshed, and offline route
+from the newest release that holds every piece"*). A hike stored from release 9, one of whose
+cells was refetched at home from a release 10 that renumbered it, used to hold no release with
+both cells: the refetch wrote over the release-9 copy, and at the trailhead the newest release
+stored among the hike's cells held one of them. Measured in
+`lib/trailGraphReleases.realIdb.test.ts`: one cell, so no route across the seam. Now:
+
+- **Kept.** `writeStoredGraph` keeps the copy it replaces, under
+  `ourhike:trail-graph-cell:<half>:<name>:older`, when that copy is another release's bytes and
+  some stored cell's current routing half is still a copy of that release. Every half is kept
+  this way, so a day hike open at home, which refetches the geometry and elevation too, leaves
+  the older release's halves to line up with the older routing half.
+- **Dropped.** Every write forgets each older copy whose release no stored cell's current routing
+  half is a copy of any more. The store has no notion of which cells make up a hike, and this
+  adds none, so the rule errs both ways: one release-9 cell of any other hike keeps every
+  release-9 copy until it is refreshed too, and a hike whose cells were refreshed under two
+  different later releases, one cell under each, loses the release they last shared and builds
+  as before #1837.
+- **One older copy per half, at most.** A cell refreshed under two later releases keeps the
+  earlier copy a stored cell is still current at, the newer if both are. Each further copy would
+  cost up to one more multiple of the graph bytes the phone holds.
+- **Never at a current copy's expense.** A write with no room forgets every older copy before it
+  declines, and keeps none on that write.
+- **Only the cells of the session's first run choose.** Once a cell has merged, every later cell
+  is asked for its release (the third bullet above). When a refreshed cell under the fix or the
+  camera merges alone, before the hike's other cells are wanted, it merges from the newer release,
+  and a hike cell held only from the older one is left out as before. Reasoned from `App.tsx`'s
+  `graphWanted`, not measured on a phone.
+
+**What it costs: one more copy of each refreshed half, about the size of the current one.** A
+renumbering changes the ids, not how many there are (Reasoned, not measured: UA's last three
+releases publish every cell half they share byte-identical — all 3,116 of `2026-10-08`'s in
+`2026-10-03-2` — so no renumbered pair is published to compare). Measured 2026-10-09 against
+UA's release `2026-10-08` manifest, `size_bytes` of its 779 cells:
+
+| one refreshed cell keeps, decoded bytes | median cell | 90th percentile | largest | Harriman `n41w075` | `n41w074` |
+|---|---|---|---|---|---|
+| routing half (the cell browsed) | 27,443 | 1,652,897 | 29,993,542 (`n37w108`) | 15,316,435 | 936,230 |
+| + geometry and elevation (a day hike open) | 172,466 | 3,667,306 | 48,530,699 (`n39w106`) | 22,542,751 | 4,500,150 |
+| all four halves (a chart open too) | 207,346 | 4,062,243 | 52,258,577 (`n39w106`) | 23,985,345 | 4,773,092 |
+
+The worst case is every half the phone holds kept twice — double the graph bytes it keeps — when
+every stored cell has been refreshed but one, and that one's release keeps every older copy. No
+copy is kept over `LAUNCH_ARTIFACT_BUDGET_BYTES` (32 MiB), older or current, and every write still
+needs its own size plus `GRAPH_STORE_HEADROOM_BYTES` (50 MiB) free. The Downloads window's row for
+day hikes sums every record under the prefix, older copies included, so the figure a hiker sees
+is still what the phone holds.
 
 A hiker sees a cell left out the way they see any cell not on the phone: a tap there gets
 *"hasn't got this area's trail lines yet… Try again in a moment"*, and the console says which
@@ -521,11 +593,13 @@ right sentence, and the same collapse that paragraph already records: it cannot 
 still arriving from one the bucket refused for good. The console says which; the door does not.
 
 **What a phone keeps is the cells it loaded, four halves each** (`lib/trailGraphStore.ts`):
-graph, geometry, elevation, profile, under `ourhike:trail-graph-cell:<half>:<name>`, stored
-verified exactly as the whole files were. A cell loaded once with signal routes at the trailhead
-without it — the promise of the section above, kept at the cell's grain. The four whole-file
-records earlier releases wrote are deleted at every launch; nothing reads them, and a phone
-that fetched 2026-09-07's graph before the budget existed is still holding 78.6 MB of it.
+graph, geometry, elevation, profile, under `ourhike:trail-graph-cell:<half>:<name>` — and,
+beside a half a later release changed, its older copy under the same key with `:older` on the
+end (#1837, above) — stored verified exactly as the whole files were. A cell loaded once with
+signal routes at the trailhead without it — the promise of the section above, kept at the cell's
+grain. The four whole-file records earlier releases wrote are deleted at every launch; nothing
+reads them, and a phone that fetched 2026-09-07's graph before the budget existed is still
+holding 78.6 MB of it.
 
 | | wire-free measure (decoded bytes, 2026-09-08) |
 |---|---|

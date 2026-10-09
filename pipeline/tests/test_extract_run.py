@@ -14,8 +14,10 @@ empty answer without that proof is refused and the last good rows stay what
 the warehouse reads; a table that halves is refused.
 """
 
+import errno
 import hashlib
 import json
+import pickle
 import shutil
 import tempfile
 import threading
@@ -28,6 +30,8 @@ from urllib.parse import parse_qs, urlsplit
 import duckdb
 import pytest
 import requests
+from dlt.common.storages.load_package import ParsedLoadJobFileName
+from dlt.normalize.exceptions import NormalizeJobFailed
 from dlt.pipeline.exceptions import PipelineStepFailed
 
 from extract import _kinds, _notices, _run
@@ -606,8 +610,10 @@ def monthly_points():
     return ArcgisLayer(key="closures_layer", club="otherclub", type="points_of_interest")
 
 
-def month(store, *resources):
-    return run_pipeline("monthly", store["bucket_url"], resources=list(resources), pipelines_dir=store["pipelines_dir"])
+def month(store, *resources, **options):
+    return run_pipeline(
+        "monthly", store["bucket_url"], resources=list(resources), pipelines_dir=store["pipelines_dir"], **options
+    )
 
 
 def monthly_counts(store):
@@ -676,6 +682,100 @@ def test_a_monthly_table_the_run_check_refuses_keeps_its_rows_while_the_others_l
     assert "below the 50% floor" in report.isolated["raw_testclub__trails"]
     assert report.rows == {"raw_otherclub__closures_layer": 2}
     assert monthly_counts(store) == {"raw_testclub__trails": 6, "raw_otherclub__closures_layer": 2}
+
+
+def normalize_on_a_worker(monkeypatch, fails=None) -> list[list[str]]:
+    """dlt's normalize, its failure carried back as a ProcessPoolExecutor worker's is: pickled, its cause left behind.
+
+    refresh-reference.yml normalizes the monthly lane on --normalize-workers 4
+    processes. A worker's exception comes back through
+    concurrent.futures.process's _ExceptionWithTraceback: the exception
+    pickled, its cause and context dropped, and only its traceback's text
+    attached as a _RemoteTraceback. This does exactly that in one process, so
+    the case is the same on every Python the suite runs on, without forking
+    (pipeline-tests.yml's pytest job on Python 3.14 lost a worker of a real
+    pool, run 37214263752; extract/_run.py's MONTHLY_NORMALIZE_WORKERS).
+
+    `fails(files, load_id)`, when given, may raise in the worker in place of
+    normalizing; `files` maps each table the worker was handed to its job
+    file. Returns the tables each call was handed, one list per call.
+    """
+    from concurrent.futures.process import _ExceptionWithTraceback
+
+    from dlt.normalize import normalize as dlt_normalize
+
+    real, calls = dlt_normalize.w_normalize_files, []
+
+    def worker(*args, **kwargs):
+        files = {ParsedLoadJobFileName.parse(path).table_name: path for path in args[5]}
+        calls.append(sorted(files))
+        try:
+            if fails is not None:
+                fails(files, args[4])
+            return real(*args, **kwargs)
+        except Exception as failure:  # noqa: BLE001 - every worker failure crosses the boundary
+            sent = pickle.dumps(_ExceptionWithTraceback(failure, failure.__traceback__))
+        raise pickle.loads(sent)
+
+    monkeypatch.setattr(dlt_normalize, "w_normalize_files", worker)
+    return calls
+
+
+def capacity_feature(oid, capacity):
+    """feature(), its CAPACITY (hinted bigint from the layer's own esriFieldTypeInteger) set to `capacity`."""
+    made = feature(oid)
+    return {**made, "properties": {**made["properties"], "CAPACITY": capacity}}
+
+
+def test_a_monthly_value_that_no_longer_fits_its_columns_type_refuses_that_layer_only_when_a_worker_normalizes_it(
+    registry, store, requests_mock, monkeypatch
+):
+    """dlt's `data_type: freeze` refuses a value retyped under an unchanged hint at normalize, and on the monthly lane's
+    worker processes the refusal comes back as NormalizeJobFailed with its cause left behind. contract_breach() found
+    it only on one process: on four, the whole month failed with no raw_run and no pin, and every rerun failed the
+    same way (the review of the extract layer against dlt 1.30.0, 2026-10-09)."""
+    normalize_on_a_worker(monkeypatch)
+    trails = FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    points = FakeLayer(requests_mock, CLOSURES_URL, [capacity_feature(10, 4)])
+    month(store, monthly_lines(), monthly_points())
+
+    trails.features, trails.etag = [feature(1), feature(2), feature(3)], "v2"
+    points.features, points.etag = [capacity_feature(10, "four bunks")], "v2"
+    report = month(store, monthly_lines(), monthly_points())
+
+    assert set(report.isolated) == {"raw_otherclub__closures_layer"}
+    assert "schema contract" in report.isolated["raw_otherclub__closures_layer"]
+    assert "data_type" in report.isolated["raw_otherclub__closures_layer"], "dlt's own words, from the worker"
+    assert report.rows == {"raw_testclub__trails": 3}
+    assert _run.exit_status(report) == _run.PARTIAL_EXIT
+    assert monthly_counts(store) == {"raw_testclub__trails": 3, "raw_otherclub__closures_layer": 1}
+
+
+def test_a_monthly_normalize_a_worker_fails_for_any_other_reason_ends_the_run_red_and_leaves_no_layer_out(
+    registry, store, requests_mock, monkeypatch
+):
+    """A full disk or a bug is not a refusal of one layer, though its NormalizeJobFailed names one layer's job: the run
+    stops red as it did, rather than leaving that layer out on a guess, and it does not go round again."""
+    trails = FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    points = FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])
+    month(store, monthly_lines(), monthly_points())
+
+    def disk_full(files, load_id):
+        job = ParsedLoadJobFileName.parse(files["raw_otherclub__closures_layer"]).job_id()
+        try:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        except OSError as error:
+            raise NormalizeJobFailed(load_id, job, str(error), []) from error
+
+    calls = normalize_on_a_worker(monkeypatch, disk_full)
+    trails.features, trails.etag = [feature(1), feature(2), feature(3)], "v2"
+    points.features, points.etag = [feature(10), feature(11)], "v2"
+    with pytest.raises(PipelineStepFailed, match="No space left on device") as failed:
+        month(store, monthly_lines(), monthly_points())
+
+    assert failed.value.report.isolated == {}
+    assert len(calls) == 1, "normalized once: nothing was left out and tried again"
+    assert monthly_counts(store) == {"raw_testclub__trails": 2, "raw_otherclub__closures_layer": 1}
 
 
 def test_a_spooled_monthly_layer_lands_the_rows_its_reader_made(registry, store, requests_mock, tmp_path, monkeypatch):

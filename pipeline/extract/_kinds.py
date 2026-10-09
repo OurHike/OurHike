@@ -580,11 +580,14 @@ class ArcgisLayer(PersonRuled, Resource):
 
     @property
     def schema_contract(self) -> dict:
-        """New columns are welcome; a column whose type changes is refused at normalize.
+        """New columns are welcome; a column whose type changes is refused.
 
-        Without `freeze`, a mistyped value splits into a variant column
-        (`code__v_text`) that no staging model reads (ELT.md, measured on the
-        #1363 spike).
+        At extract when the layer's metadata retypes the field (its hint
+        changes), and at normalize when a value no longer fits the type its
+        hint keeps; extract/_run.py's contract_breach() finds both, on any
+        number of normalize workers. Without `freeze`, a mistyped value
+        splits into a variant column (`code__v_text`) that no staging model
+        reads (ELT.md, measured on the #1363 spike).
         """
         return {"columns": "evolve", "data_type": "freeze"}
 

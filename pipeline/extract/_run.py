@@ -98,6 +98,7 @@ import dlt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 from dlt.common.schema.exceptions import DataValidationError  # noqa: E402
 from dlt.common.storages.fsspec_filesystem import glob_files  # noqa: E402
+from dlt.normalize.exceptions import NormalizeJobFailed  # noqa: E402
 from dlt.pipeline.exceptions import PipelineStepFailed  # noqa: E402
 
 from extract import _geofabrik, _kinds  # noqa: E402
@@ -773,12 +774,48 @@ def read_each(
     return kept, read_rows
 
 
-def contract_breach(failure: BaseException) -> DataValidationError | None:
-    """The schema-contract refusal behind a failed dlt step, or None. A retyped ArcGIS field raises one at extract."""
+@dataclass(frozen=True)
+class Breach:
+    """A table dlt's schema contract refused (contract_breach()): the table, and dlt's own words."""
+
+    table_name: str
+    message: str
+
+    def __str__(self) -> str:
+        return self.message
+
+
+#: How a worker process's traceback names a DataValidationError: Python's traceback module writes `module.Class: words`.
+WORKER_BREACH_LINE = f"{DataValidationError.__module__}.{DataValidationError.__qualname__}: "
+
+
+def contract_breach(failure: BaseException) -> Breach | None:
+    """The schema-contract refusal behind a failed dlt step, or None.
+
+    `data_type: freeze` refuses at either step: at extract when a column's
+    hint changes type (an ArcGIS field its metadata retyped), and at normalize
+    when a value no longer fits its column's type under an unchanged hint.
+    In one process the DataValidationError is in the chain. On several
+    (--normalize-workers, MONTHLY_NORMALIZE_WORKERS) normalize raises it in a
+    worker, and what comes back is NormalizeJobFailed with the cause left
+    behind and only the worker's traceback text attached (concurrent.futures'
+    _RemoteTraceback). Measured 2026-10-09 on dlt 1.30.0, before this read
+    the text: on four workers (the review's probe) and on two (a real pool
+    running tests/test_extract_run.py's case by hand), no breach was found and
+    the whole monthly run failed. So a NormalizeJobFailed is a breach when
+    that text names a DataValidationError, of the table its job id begins with.
+
+    Anything else, a full disk or a bug, is None, and the run stops red as it
+    did: no table is left out on a guess, and nothing is tried again.
+    """
     seen = set()
     while failure is not None and id(failure) not in seen:
         if isinstance(failure, DataValidationError):
-            return failure
+            return Breach(failure.table_name, str(failure))
+        if isinstance(failure, NormalizeJobFailed) and failure.__cause__ is not None:
+            if any(line.startswith(WORKER_BREACH_LINE) for line in str(failure.__cause__).splitlines()):
+                # A job id is `<table>.<file id>.<format>`; no table name holds a dot (dlt's ParsedLoadJobFileName).
+                return Breach(failure.job_id.split(".", 1)[0], failure.failed_message)
         seen.add(id(failure))
         failure = failure.__cause__ or failure.__context__
     return None
@@ -1924,7 +1961,8 @@ def _extract_and_load(
             with timed(report, "normalize"):
                 pipeline.normalize(workers=normalize_workers)
         except PipelineStepFailed as failure:
-            # On a leg, a table dlt's schema contract refuses is left out like one the run check refuses.
+            # On a leg or the monthly lane, a table dlt's schema contract refuses, at extract or at normalize
+            # (contract_breach()), is left out like one the run check refuses.
             breach = contract_breach(failure) if read is not None else None
             items = [item for item in to_run if breach is not None and item.resource.table == breach.table_name]
             if not items or any(stops_the_leg(item.resource) for item in items):

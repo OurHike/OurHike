@@ -688,7 +688,68 @@ function countSentences(item) {
   return null;
 }
 
-function itemSentence(item) {
+/**
+ * WHERE AN ENTRY'S VALUE SITS, for its Needs a look row and its kind's card
+ * (decision 130, itemSentence): `before`, the range expected from the builds
+ * before - the band the chart draws at the entry's own point (bandBefore) -
+ * or null where the page has none; `side`, the value against that range
+ * ("below", "above" or "inside"), null without one; and `flagged`, the side
+ * of its own range Elementary flagged the value on, for a check that warned
+ * or failed (FLAGGING_STATUSES), else null. `series` is every series the
+ * page holds.
+ */
+function placement(item, series) {
+  const own = seriesOf(item, series);
+  const at = own === null ? -1 : pointOf(item, own);
+  const before = at === -1 ? null : bandBefore(own.points, at);
+  const scored = FLAGGING_STATUSES.has(item.status) && item.value !== null && item.min !== null && item.max !== null;
+  const flagged = scored ? sideOf(item.value, item.min, item.max) : null;
+  return {
+    before,
+    side: before === null ? null : sideOf(item.value, before.min, before.max),
+    flagged: flagged === "inside" ? null : flagged,
+  };
+}
+
+/**
+ * A ROW'S SENTENCE. For a measured value, the range it quotes is the one the
+ * maintainer chose by poll on 2026-10-09 (decision 130): the range expected
+ * from the builds before, the band the chart draws at the entry's own point
+ * (bandBefore), so the page shows one range per point. "4,118 rows at this
+ * build, below the 5,199 to 5,322 expected from the builds before" on the
+ * invented monthly file, where the row quoted 4,174 to 6,156 until then: the
+ * range Elementary scored the value against, which counts the value itself
+ * and fans out to meet it.
+ *
+ * THE ROW IS STILL ELEMENTARY'S VERDICT. It is there, with its pill, because
+ * a check warned or failed, as a triangle is. So where the range from the
+ * builds before does not put the value on the side Elementary flagged it -
+ * the value is inside that range, or beyond its other edge - a second
+ * sentence says which side of its own range Elementary flagged it on.
+ * Rare: when one run scored both points over one training window, a value
+ * Elementary flags is outside the band before it too, on the same side.
+ * Reasoned: take the m points before it, their mean, their sample deviation
+ * s, and the value's distance d from that mean. Counting the value leaves it
+ * d·m/(m + 1) from the new mean, on the same side as before, and nine times
+ * the new sample variance is 9((m - 1)s² + d²m/(m + 1))/m. A value inside
+ * the band before has d at most 3s, so that is at least
+ * d²((m - 1)/m + 9/(m + 1)), which is at least d²: the value is inside its
+ * own band too, and nothing Elementary flags can be. The two can differ in a
+ * file whose band before came from another run's window, and by a hair where
+ * the file's rounding moves an edge.
+ *
+ * WHERE THE PAGE HAS NO RANGE FROM THE BUILDS BEFORE, the row quotes none
+ * and says so, rather than falling back on Elementary's own range, which is
+ * the range decision 130 turned down; Elementary's side goes in the second
+ * sentence. That is an entry with no history in the files, one whose
+ * history holds no point of it (a series two checks report on carries one
+ * check's bands: flaggedPoints), and one whose point before carries no band,
+ * where the chart's table says NO_RANGE too. A file the pipeline writes gives
+ * every entry that carries a range a history (data_quality.sql's `series`),
+ * so the first is a file from before histories, as the light examples are,
+ * and the other two are corners (Reasoned from that header).
+ */
+function itemSentence(item, series) {
   if (item.status === "error") return "The check could not run, so this went unchecked at this build.";
   const counted = countSentences(item);
   if (counted) return counted.long;
@@ -696,34 +757,39 @@ function itemSentence(item) {
   if (item.value !== null) {
     const fmt = metricFormat(metric);
     const what = `${fmt.value(item.value)} at this build`;
-    if (item.min !== null && item.max !== null) {
-      const range = fmt.range(item.min, item.max);
-      if (item.value < item.min) return `${what}, below the ${range} Elementary expected.`;
-      if (item.value > item.max) return `${what}, above the ${range} Elementary expected.`;
-      return `${what}. Elementary expected ${range}.`;
-    }
-    return `${what}.`;
+    if (item.min === null || item.max === null) return `${what}.`;
+    const { before, side, flagged } = placement(item, series);
+    const against =
+      before === null
+        ? `${what}, with no range from the builds before to compare it with.`
+        : `${what}, ${side} the ${fmt.range(before.min, before.max)} expected from the builds before.`;
+    if (flagged === null || flagged === side) return against;
+    return `${against} Elementary flagged it ${flagged} its own range, which counts this build.`;
   }
   if (item.kind === "schema") return "Its columns no longer match what Elementary expected.";
   if (item.kind === "dbt_tests") return item.status === "fail" ? "A dbt test on it failed." : "A dbt test on it warned.";
   return item.status === "fail" ? "Elementary's check on it failed." : "Elementary's check on it warned.";
 }
 
-function shortSentence(item) {
+/**
+ * A kind's card names its first row in short. "Its expected range" there is
+ * the row's range from the builds before (decision 130), so the card names a
+ * side only where that range gives the side Elementary flagged; anywhere else
+ * it says the value was flagged, and the row below says the rest.
+ */
+function shortSentence(item, series) {
   if (item.status === "error") return "could not run.";
   const counted = countSentences(item);
   if (counted) return counted.short;
   const metric = item.metric ?? DEFAULT_METRIC[item.kind] ?? null;
   if (item.value !== null) {
     const fmt = metricFormat(metric);
-    const where =
-      item.min !== null && item.max !== null
-        ? item.value < item.min
-          ? ", below its expected range"
-          : item.value > item.max
-            ? ", above its expected range"
-            : ""
-        : "";
+    let where = "";
+    if (item.min !== null && item.max !== null) {
+      const { side, flagged } = placement(item, series);
+      if (flagged !== null && flagged !== side) where = ", flagged by Elementary";
+      else if (side === "below" || side === "above") where = `, ${side} its expected range`;
+    }
     return `${fmt.value(item.value)}${where}.`;
   }
   if (item.kind === "schema") return "its columns changed.";
@@ -750,7 +816,7 @@ function itemView(item, index, series) {
     table: item.table,
     column: item.column,
     lane: LANE_LABEL[item.lane],
-    sentence: itemSentence(item),
+    sentence: itemSentence(item, series),
     since: item.since === null ? null : sameBuild ? "Since this build" : `Since ${formatWhen(item.since)}`,
     chart: own ? seriesKey(own) : null,
     chartName: own ? buttonName(own) : null,
@@ -779,7 +845,7 @@ function learningNote(read) {
   return `Learning, ${parts.join(" and ")}: until then a pass may only mean an anomaly check cannot fire yet.`;
 }
 
-function tile(kind, read, items, learning) {
+function tile(kind, read, items, learning, series) {
   const c = sumCounts(read.map((file) => file.kinds[kind.id]));
   let pills;
   if (c.checks === 0) pills = [{ tone: "neutral", text: "None ran" }];
@@ -792,7 +858,7 @@ function tile(kind, read, items, learning) {
   }
   const own = items.filter((item) => item.kind === kind.id);
   const note = own.length
-    ? [code(own[0].table), `: ${shortSentence(own[0])}`, own.length > 1 ? ` And ${own.length - 1} more below.` : ""]
+    ? [code(own[0].table), `: ${shortSentence(own[0], series)}`, own.length > 1 ? ` And ${own.length - 1} more below.` : ""]
     : [kind.about];
   return {
     id: kind.id,
@@ -992,14 +1058,45 @@ function flaggedPoints(series, items) {
   for (const item of items) {
     if (!FLAGGING_STATUSES.has(item.status) || seriesOf(item, [series]) === null) continue;
     if (item.value === null || item.min === null || item.max === null) continue;
-    const side = item.value < item.min ? "below" : item.value > item.max ? "above" : null;
-    if (side === null) continue;
-    const at = series.points.findLastIndex(
-      (point) => point.value === item.value && point.min === item.min && point.max === item.max,
-    );
+    const side = sideOf(item.value, item.min, item.max);
+    if (side === "inside") continue;
+    const at = pointOf(item, series);
     if (at !== -1) flagged.set(at, side);
   }
   return flagged;
+}
+
+/** Where `value` sits against the range `min` to `max`: "below", "above", or "inside", edges included. */
+function sideOf(value, min, max) {
+  if (value < min) return "below";
+  if (value > max) return "above";
+  return "inside";
+}
+
+/**
+ * The index of `item`'s own point in `series`, or -1: the newest point
+ * holding the entry's value and the range Elementary scored it against
+ * (flaggedPoints says why that point is the entry's). An entry without all
+ * three numbers, or whose numbers are no point's, cannot be placed.
+ */
+function pointOf(item, series) {
+  if (item.value === null || item.min === null || item.max === null) return -1;
+  return series.points.findLastIndex(
+    (point) => point.value === item.value && point.min === item.min && point.max === item.max,
+  );
+}
+
+/**
+ * THE RANGE EXPECTED FROM THE BUILDS BEFORE point `i` of a series' points
+ * (decision 118): `{min, max}`, the band stored at the point before it, or
+ * null where there is none - at the first point, and after a point no run in
+ * the history scored. The chart draws this at every point (chartView), and a
+ * Needs a look row quotes it at its entry's point (decision 130, itemSentence),
+ * so the row and the chart cannot quote two ranges for one point.
+ */
+function bandBefore(points, i) {
+  const before = i > 0 ? points[i - 1] : null;
+  return before !== null && before.min !== null && before.max !== null ? { min: before.min, max: before.max } : null;
 }
 
 function chartView(series, read) {
@@ -1019,17 +1116,16 @@ function chartView(series, read) {
   // is an anomaly we would want to use the last value of the metric (lag),
   // otherwise visually the expectations would look out of bounds", read
   // 2026-10-09); the chart takes the band before at every point, one rule
-  // for the whole line. The first point has no point before it here, so no
-  // band. `outside` is Elementary's verdict (flaggedPoints), not this band's
-  // geometry.
+  // for the whole line (bandBefore, which a Needs a look row quotes too). The
+  // first point has no point before it here, so no band. `outside` is
+  // Elementary's verdict (flaggedPoints), not this band's geometry.
   const points = series.points.map((point, i) => {
-    const before = i > 0 ? series.points[i - 1] : null;
-    const banded = before !== null && before.min !== null && before.max !== null;
+    const band = bandBefore(series.points, i);
     return {
       at: point.at,
       value: point.value,
-      min: banded ? before.min : null,
-      max: banded ? before.max : null,
+      min: band === null ? null : band.min,
+      max: band === null ? null : band.max,
       outside: flagged.get(i) ?? null,
     };
   });
@@ -1193,7 +1289,7 @@ function sectionsView(lanes, read) {
 
   return {
     scope: scopeLine(lanes, read),
-    tiles: KINDS.map((kind) => tile(kind, read, merged, learning)),
+    tiles: KINDS.map((kind) => tile(kind, read, merged, learning, series)),
     items,
     look: lookView(items),
     quiet,

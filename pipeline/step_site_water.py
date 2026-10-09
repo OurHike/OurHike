@@ -103,7 +103,15 @@ def read_sites(con: duckdb.DuckDBPyConnection, relation: str = SITES) -> dict[st
 
 
 def offline_elevations(path: Path):
-    """fetch_trail_water.elevation_ft's lookup against a file alone: a point it does not hold has no elevation."""
+    """fetch_trail_water.elevation_ft's lookup against a file alone: a point it does not hold has no elevation.
+
+    Keyed "lat,lon" at 6 dp, as make_dbt_fixtures.py writes the answers, where
+    fetch_trail_water.py's own cache has keyed each point exactly since
+    decision 131 (ELEVATION_CACHE_KEYS). The file stands in for EPQS, not for
+    the cache: it holds one invented answer per place a scenario names, and a
+    point computed from geometry may differ from that place in a double's last
+    bits, which an exact key would turn into no answer at all.
+    """
     answers = json.loads(path.read_text(encoding="utf-8"))
 
     def elevation_ft(lat: float, lon: float) -> float | None:

@@ -13,6 +13,16 @@
 // Everything is drawn from the files: change one count in
 // site/src/lib/dataQualityExamples.mjs and this frame changes with it.
 //
+// WHAT CHANGED SINCE, AND IS IN THIS FRAME: two kinds' notes. Decision 130
+// (the maintainer's poll of 2026-10-09) makes "its expected range" on a
+// kind's card the range expected from the builds before, the one its row
+// quotes, so a card names a side of it only where that range gives the side
+// Elementary flagged, and otherwise says "flagged by Elementary". The light
+// files hold no history for the freshness or the anomalies entry, so
+// Freshness now reads "26 hours between updates, flagged by Elementary." and
+// Anomalies "Null rate: 4.2%, flagged by Elementary.", where each said "above
+// its expected range"; Volume's note is as it was.
+//
 // FROM THE TABS DOWN, because the site's nav above them is every page's and
 // is not what this pull request changed; the chart and the per-mart table are
 // further down the same page.

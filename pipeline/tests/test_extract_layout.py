@@ -20,14 +20,19 @@ empty, the full rule holds and the list goes.
 """
 
 import ast
+import inspect
+import json
 import re
 import sys
+import textwrap
 from collections import Counter
 from datetime import date
 from pathlib import Path
 
 import pytest
+from requests_mock import ANY
 
+from extract import _kinds
 from extract._contract import (
     CADENCES,
     EXTRACT_DIR,
@@ -51,6 +56,7 @@ from extract._contract import (
 from extract._kinds import ORGS_TABLE, CatalogueRow, ConditionsQuery, NwsAlerts, _registry, _trail_orgs
 from extract._run import CONDITIONS_JOB, HOURLY_JOB_TABLES, LANES, LEGS, NOTICES_JOB, job_of, lane_resources, leg_tables
 from lib.socrata import dataset_url
+from tests.test_extract_zero_proofs import KINDS, ZERO_KEY
 
 REGISTRY_PATH = PIPELINE_DIR / "sources.json"
 TRAIL_ORGS_PATH = PIPELINE_DIR / "reference" / "trail_orgs.json"
@@ -450,6 +456,96 @@ def test_raw_table_names_keep_the_double_underscore():
     assert raw_table("atc", "reference/water_distance.json") == "raw_atc__water_distance"
     assert raw_table("atc", "reference/challenges/atc") == "raw_atc__challenges_atc"
     assert raw_table("registry", "sources.json") == "raw_registry__sources"
+
+
+#: WHETHER EACH READER KIND'S ROWS CARRY A `geometry` COLUMN, which the dlt
+#: skill's rule 1 holds to a JSON hint: dlt creates no column it never saw a
+#: value for, so a geometry null on every row of a first load lands no column
+#: and the base model reading it fails (measured on SocrataDataset,
+#: 2026-10-09). Every kind is named, so a new one is refused until somebody
+#: says, as tests/test_extract_zero_proofs.py's READS_UPSTREAM_COUNT refuses one.
+YIELDS_GEOMETRY = {
+    "ArcgisLayer": True,
+    "AtcTrailUpdatePages": False,
+    "BucketListing": False,
+    "CatalogueRow": False,
+    "ClubPdf": False,
+    "ConditionsQuery": False,  # a closure's endpoints and a report's place land as lat and lon columns
+    "ContentPages": False,
+    "ContentPdf": False,
+    "DcnrParkAdvisories": False,
+    "FeedNotices": False,
+    "GeofabrikExtracts": False,
+    "GisFile": True,
+    "GuidePages": False,
+    "HydrographyWatch": False,  # its `geometry` is the envelope it asks 3DHP about, a request parameter
+    "JsonFeatures": True,
+    "MediawikiAnnouncements": False,
+    "MediawikiTemplatePages": False,
+    "MyMapsPlacemarks": True,
+    "NpsAlerts": False,  # no alert carries geometry: a park code is the place
+    "NpsContent": False,
+    "NpsRoadEvents": True,
+    "NwsAlerts": True,
+    "OgcFeatures": True,
+    "OpentrailFeed": True,
+    "PageNotice": False,
+    "PagePoints": True,
+    "PdfPoints": True,
+    "PodcastEpisodes": False,
+    "PodcastFeed": False,
+    "PublishedHikes": False,  # a hike's track lands as the GPX it was served as, in `gpx`
+    "ReviewedDir": False,  # a reviewed file's rows are its own, and none carries one (read 2026-10-09)
+    "ReviewedFile": False,
+    "SheetCsvSegments": False,
+    "SiteTerms": False,
+    "SocrataDataset": True,
+    "UsgsElevatedVolcanoes": False,
+    "WordpressChildPages": False,
+    "WordpressPosts": False,
+    "WordpressTerms": False,
+}
+
+
+@pytest.fixture
+def zero_key_registry(tmp_path, monkeypatch):
+    """A sources.json holding ZERO_KEY alone, in place of the real one, so every kind can be built on it."""
+    path = tmp_path / "sources.json"
+    path.write_text(json.dumps({"sources": [{"key": ZERO_KEY, "url": "https://example.org/zero/"}]}))
+    monkeypatch.setattr(_kinds, "REGISTRY_PATH", path)
+    _kinds._registry.cache_clear()
+    yield
+    _kinds._registry.cache_clear()
+
+
+def test_every_reader_kind_says_whether_its_rows_carry_a_geometry_column():
+    assert {kind.__name__ for kind in KINDS} == set(YIELDS_GEOMETRY), "add the kind to YIELDS_GEOMETRY"
+
+
+@pytest.mark.usefixtures("zero_key_registry")
+@pytest.mark.parametrize("kind", [kind for kind in KINDS if YIELDS_GEOMETRY.get(kind.__name__)], ids=lambda kind: kind.__name__)
+def test_every_kind_whose_rows_carry_a_geometry_column_hints_it_as_json(kind, requests_mock):
+    requests_mock.get(ANY, json={"fields": []})  # ArcgisLayer reads its hints from the layer's metadata
+    hints = kind(key=ZERO_KEY, club="testclub", type="points_of_interest").column_hints()
+    assert hints.get("geometry") == {"data_type": "json"}, f"{kind.__name__} yields `geometry` and does not hint it"
+
+
+@pytest.mark.parametrize(
+    "kind", [kind for kind in KINDS if not YIELDS_GEOMETRY.get(kind.__name__)], ids=lambda kind: kind.__name__
+)
+def test_a_kind_whose_own_code_sets_a_rows_geometry_is_one_that_yields_it(kind):
+    """The table's backstop, for the commonest way to yield one: `row["geometry"] = …` in the kind's own class. A kind
+    that builds its rows in its module's functions is the table's to answer for."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(kind)))
+    sets = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Subscript)
+        and isinstance(node.ctx, ast.Store)
+        and isinstance(node.slice, ast.Constant)
+        and node.slice.value == "geometry"
+    ]
+    assert not sets, f"{kind.__name__} sets a row's `geometry`: mark it in YIELDS_GEOMETRY and hint it as json"
 
 
 def test_a_club_file_never_names_a_url_to_fetch():

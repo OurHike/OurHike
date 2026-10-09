@@ -906,6 +906,15 @@ class SocrataDataset(PersonRuled, Resource):
     def zero_proof(self) -> str:
         return "the portal's count(*) under the entry's own where (count())"
 
+    def column_hints(self) -> dict:
+        """The two columns every row gets, so each exists even where a first load holds no value for it.
+
+        The dlt skill's rule 1: unhinted, a geometry null on every row of a
+        first load landed no `geometry` column at all (measured 2026-10-09,
+        tests/test_extract_run.py), which the base model reads.
+        """
+        return {"geometry": {"data_type": "json"}, "_socrata_id": {"data_type": "text"}}
+
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """`count(*)` and `max(:updated_at)` under the entry's own `where`, with the `where` text kept.
 

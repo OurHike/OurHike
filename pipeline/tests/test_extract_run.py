@@ -1537,8 +1537,8 @@ def test_an_unchanged_podcast_feed_answers_304_and_is_fresh(registry, requests_m
 class FakeSocrata:
     """One Socrata dataset: `count(*)` and `max(:updated_at)` under a `where`, and GeoJSON pages ordered on `:id`."""
 
-    def __init__(self, requests_mock, rows, *, updated="2026-09-16T20:43:14.951Z", count=None):
-        self.rows, self.updated, self.count = rows, updated, count
+    def __init__(self, requests_mock, rows, *, updated="2026-09-16T20:43:14.951Z", count=None, geometry=True):
+        self.rows, self.updated, self.count, self.geometry = rows, updated, count, geometry
         requests_mock.get(SOCRATA + ".json", json=self.soql)
         requests_mock.get(SOCRATA + ".geojson", json=self.pages)
 
@@ -1554,7 +1554,7 @@ class FakeSocrata:
             {
                 "type": "Feature",
                 "properties": {"segmentid": n, ":id": f"row-{n}"},
-                "geometry": {"type": "Point", "coordinates": [-73.9, 40.7]},
+                "geometry": {"type": "Point", "coordinates": [-73.9, 40.7]} if self.geometry else None,
             }
             for n in self.rows[offset : offset + limit]
         ]
@@ -1574,6 +1574,24 @@ def test_a_socrata_dataset_lands_its_filtered_rows_with_the_portals_count_as_pro
     assert ":id" not in rows[0]
     assert proofs["raw_testclub__greenways"] == 3
     assert all(r.headers["User-Agent"] == USER_AGENT for r in requests_mock.request_history)
+
+
+def test_a_socrata_first_load_whose_every_geometry_is_null_still_lands_its_geometry_column(registry, store, requests_mock):
+    """The dlt skill's rule 1. dlt creates no column it never saw a value for, so with no hint a first load of rows
+    whose geometry is null on every one landed no `geometry` column, and the base model reading it would fail."""
+    FakeSocrata(requests_mock, [1, 2], geometry=False)
+
+    month(store, greenways())
+
+    with duckdb.connect() as con:
+        load_warehouse(con, make_pipeline("monthly", store["bucket_url"], store["pipelines_dir"]))
+        columns = dict(
+            con.execute(
+                "select column_name, data_type from information_schema.columns where table_name = 'raw_testclub__greenways'"
+            ).fetchall()
+        )
+    assert "geometry" in columns, sorted(columns)
+    assert columns["_socrata_id"] == "VARCHAR"
 
 
 def test_a_socrata_read_shorter_than_the_portals_count_raises(registry, requests_mock):

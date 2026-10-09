@@ -70,11 +70,17 @@ page_reads as (
     select
         'oprhp_est_trail_closures_page' as page_source_key,
         page.url as page_url,
+        -- to_json(page) is the whole row, so a missing column reads as
+        -- null; the linters read the alias as a column, hence the noqa.
         try_cast(
-            json_extract_string(to_json(page), '$.date') as date
+            json_extract_string(
+                to_json(page), '$.date'  -- noqa: RF03
+            ) as date
         ) as page_updated_on,
         try_cast(
-            json_extract_string(to_json(page), '$.item_sha256s') as json
+            json_extract_string(
+                to_json(page), '$.item_sha256s'  -- noqa: RF03
+            ) as json
         ) as item_sha256s
     from {{ ref('base_nysparks__oprhp_est_trail_closures_page') }} as page
 ),

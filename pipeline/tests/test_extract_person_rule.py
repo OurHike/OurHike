@@ -480,9 +480,9 @@ def test_an_organisation_column_the_widened_backstop_reads_as_a_persons_still_lo
 NOTICE_SEED_COLUMNS = ("title", "category", "status", "starts", "ends", "rescinded", "link", "locality")
 #: Declared fields the person rule leaves out today, each with why it stands. fta_fnst_closed_segments' `Manager_Na`
 #: is the notice seed's locality, and the backstop has read it as a person's since `manager` joined the word list
-#: (review finding EXD-3, 2026-10-06), so that notice's locality reads null. Whether it names a person or the land's
-#: managing body is unread: a person reading its values settles it, then clears it in the row, or the seed stops
-#: naming it.
+#: (review finding EXD-3, 02a53b22, 2026-10-05), so that notice's locality reads null. Whether it names a person or
+#: the land's managing body is unread: a person reading its values settles it, then clears it in the row, or the seed
+#: stops naming it.
 KNOWN_LEFT_OUT = {("fta_fnst_closed_segments", "Manager_Na")}
 
 

@@ -125,13 +125,13 @@ models:
       - name: notices
         description: >
           Every club notice, by source_key and then notice_id, each an object
-          of exactly these keys: notice_id, source_key, club, provider, title,
-          category, locality, place, hazard, obstructs_trail, starts_on,
-          ends_on, updated_at, checked_at, first_seen_at, changed_at,
-          carried_since, source_url and review_state, and `states` on the rows
-          of a source seeds/notice_states.csv names (decision 76). No other
-          field of a source, its person fields or its prose among them, can
-          reach it.
+          of exactly these keys: notice_id, source_key, club, provider,
+          steward_kind, title, category, locality, place, hazard,
+          obstructs_trail, starts_on, ends_on, updated_at, checked_at,
+          first_seen_at, changed_at, carried_since, source_url and
+          review_state, and `states` on the rows of a source
+          seeds/notice_states.csv names (decision 76). No other field of a
+          source, its person fields or its prose among them, can reach it.
         data_type: json
 
   - name: pub_conditions_hazard_areas

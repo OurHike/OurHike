@@ -575,6 +575,8 @@ if selected_has dbt; then
     step "dbt notice freshness"  env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_freshness_runs.py
     # The data-quality page's two files from Elementary-shaped tables (decision 102), as CI's dbt job runs it.
     step "dbt data-quality files" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_data_quality_builds.py
+    # Every exceptions-seed row names a resource the parsed project has, as CI's dbt job checks it.
+    step "dbt exceptions live"   env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_evaluator_exceptions.py
     for family in podcasts:podcasts_episodes stewards:stewards registry:registry; do
       step "dbt parity ${family%%:*}" env -C pipeline "$PY" parity.py "${family%%:*}" --new "$dbt_tmp/processed/${family#*:}.json"
     done

@@ -262,6 +262,7 @@ jobs:
             pipeline/tests/test_dbt_club_tables_absent_builds.py
             pipeline/tests/test_dbt_notice_source_freshness_runs.py
             pipeline/tests/test_dbt_data_quality_builds.py
+            pipeline/tests/test_dbt_evaluator_exceptions.py
             pipeline/tests/conftest.py
             pipeline/pyproject.toml
             pipeline/requirements-dev.txt
@@ -691,6 +692,16 @@ jobs:
       - name: The data-quality files (tests/test_dbt_data_quality_builds.py)
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_data_quality_builds.py
+
+      # Every row of the evaluator's exceptions seed names a resource the
+      # parsed project has, named as the evaluator names it, so a row left
+      # behind by a rename or a version suppresses nothing in advance. The
+      # test's docstring says what that can and cannot catch. It parses the
+      # project into a directory of its own. Measured 2026-10-09 in a
+      # sandbox: 6 passed in 27 s, most of it the parse.
+      - name: Exceptions rows name live resources (tests/test_dbt_evaluator_exceptions.py)
+        if: steps.scope.outputs.run == 'true'
+        run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_evaluator_exceptions.py
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by

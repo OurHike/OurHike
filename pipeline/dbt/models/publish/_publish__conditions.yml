@@ -128,12 +128,10 @@ models:
           of exactly these keys: notice_id, source_key, club, provider, title,
           category, locality, place, hazard, obstructs_trail, starts_on,
           ends_on, updated_at, checked_at, first_seen_at, changed_at,
-          carried_since, source_url and review_state, `states` on the rows
-          of a source seeds/notice_states.csv names (decision 76), and
-          `matched_page` (the page's url and its own `updated_on` day) on a
-          row a person matched to an item on a page whose match stands
-          (decision 128, int_closures__page_matches). No other field of a
-          source, its person fields or its prose among them, can reach it.
+          carried_since, source_url and review_state, and `states` on the rows
+          of a source seeds/notice_states.csv names (decision 76). No other
+          field of a source, its person fields or its prose among them, can
+          reach it.
         data_type: json
 
   - name: pub_conditions_hazard_areas
@@ -368,8 +366,6 @@ unit_tests:
           - {table_name: raw_usfs__usfs_baer_assessments, outcome: refused, checked_at: '2026-10-04 10:00:00+00'}
           - {table_name: raw_a__club_page, outcome: loaded, checked_at: '2026-10-04 06:00:00+00'}
           - {table_name: raw_a__club_page, outcome: skipped, checked_at: '2026-10-04 09:00:00+00'}
-      - input: ref('int_closures__page_matches')
-        rows: []
     expect:
       rows:
         - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","states":["ID","MT"]}]'}
@@ -439,8 +435,6 @@ unit_tests:
       - input: ref('base_extract__runs')
         rows:
           - {table_name: raw_iata__iata_lands_hunting_regs, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
-      - input: ref('int_closures__page_matches')
-        rows: []
     expect:
       rows:
         - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.50126,44.5],[-89.44975,44.49911],[-89.44876,44.51018],[-89.50025,44.51089],[-89.50126,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
@@ -559,8 +553,6 @@ unit_tests:
       - input: ref('base_extract__runs')
         rows:
           - {table_name: raw_a__club_ok, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
-      - input: ref('int_closures__page_matches')
-        rows: []
     expect:
       rows: []
 
@@ -625,78 +617,9 @@ unit_tests:
       - input: ref('base_extract__runs')
         rows:
           - {table_name: raw_a__club_ok, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
-      - input: ref('int_closures__page_matches')
-        rows: []
     expect:
       rows:
         - {notices: '[{"notice_id":"club_ok:1","source_key":"club_ok","club":"a","provider":"Fixture Club A","steward_kind":"club","title":"Fixture bridge out","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
-
-  - name: pub_conditions_notices_puts_its_pages_link_and_date_on_a_page_matched_closure
-    model: pub_conditions_notices
-    description: >
-      Decision 128 (w6-ptny-closures.html's frame A): a closed section a
-      person matched to an item on the trail's closures page carries
-      `matched_page`, the page's link and the page's own date, which the
-      phone prints under the organization's line. Its `updated_at` stays the
-      source's own, null for Parks & Trails New York, which dates nothing,
-      and a match that does not stand this build puts nothing on any row.
-    overrides:
-      macros:
-        python_run_stamp: "'2026-10-09T12:00:00Z'"
-        when_row_history_is_off: ""
-    given:
-      - input: ref('closures', v=1)
-        format: sql
-        rows: |
-          select
-              'ptny_est_closures:416' as closure_id,
-              'nysparks' as club,
-              'ptny_est_closures' as source_key,
-              true as obstructs_trail,
-              'org_published' as review_state,
-              'Fixture Shoreline Trail' as title,
-              cast(null as varchar) as category,
-              cast(null as json) as states,
-              cast(null as varchar) as locality,
-              cast(null as varchar) as closure_reason,
-              cast(null as varchar) as closure_place,
-              cast(null as double) as mile_start,
-              cast(null as double) as mile_end,
-              cast(null as date) as starts_on,
-              cast(null as date) as ends_on,
-              cast(null as varchar) as updated_at,
-              cast(null as varchar) as source_url,
-              cast(null as varchar) as geom_geojson,
-              cast('2026-10-09 00:00:00+00' as timestamptz) as _first_seen_at,
-              cast('2026-10-09 00:00:00+00' as timestamptz) as _changed_at,
-              cast(null as timestamptz) as carried_since
-      - input: ref('warnings', v=1)
-        rows: []
-      - input: ref('notice_readers')
-        rows:
-          - {source_key: ptny_est_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__ptny_est_closures, staged_by: stg_nysparks__ptny_est_closures, steward_kind: agency}
-      - input: ref('stg_registry__sources')
-        rows:
-          - {source_key: ptny_est_closures, provider: PTNY, title: 'Fixture Empire State Trail closures'}
-      - input: ref('notice_hazard_areas')
-        rows: []
-      - input: ref('notice_states')
-        rows: []
-      - input: ref('int_closures__nynjtc_checked')
-        rows: []
-      - input: ref('int_closures__gate')
-        rows:
-          - {source_key: ptny_est_closures, passed: true, may_publish: true, rows_total: 9}
-      - input: ref('base_extract__runs')
-        rows:
-          - {table_name: raw_nysparks__ptny_est_closures, outcome: loaded, checked_at: '2026-10-09 10:00:00+00'}
-      - input: ref('int_closures__page_matches')
-        rows:
-          - {notice_id: 'ptny_est_closures:416', page_url: 'https://empiretrail.ny.gov/trail-closures', page_updated_on: '2026-10-01', held_because: null}
-          - {notice_id: 'ptny_est_closures:425', page_url: 'https://empiretrail.ny.gov/trail-closures', page_updated_on: '2026-10-01', held_because: 'Fixture: no longer carried'}
-    expect:
-      rows:
-        - {notices: '[{"notice_id":"ptny_est_closures:416","source_key":"ptny_est_closures","club":"nysparks","provider":"PTNY","steward_kind":"agency","title":"Fixture Shoreline Trail","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-09T10:00:00Z","first_seen_at":"2026-10-09T00:00:00Z","changed_at":"2026-10-09T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","matched_page":{"url":"https://empiretrail.ny.gov/trail-closures","updated_on":"2026-10-01"}}]'}
 
   - name: pub_conditions_notice_states_writes_each_shape_with_its_margin_and_the_files_own_date
     model: pub_conditions_notice_states

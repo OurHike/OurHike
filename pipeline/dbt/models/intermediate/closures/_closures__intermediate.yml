@@ -285,10 +285,8 @@ models:
         description: >
           Why the notice may not publish as current, in words for the job log:
           its own end date has passed, its own order was rescinded, its own
-          start has not come, its own status says not current, or (rule 7,
-          decision 128) its source draws a row only while it is matched to an
-          item on a page and this row's match does not stand. Null where it
-          may.
+          start has not come, or its own status says not current. Null where
+          it may.
       - name: key_versions
         description: >
           How many different raw rows share the notice's key, counted by its
@@ -298,57 +296,6 @@ models:
         description: The source's own geometry, in OGC:CRS84 as GeoJSON, or null where it gives none.
       - name: updated_at
         description: The source's own edit stamp, ISO 8601 UTC, or null where it gives none; never the load time.
-
-  - name: int_closures__page_matches
-    description: >
-      Decision 128 (the maintainer's poll of 2026-10-09): one row per match
-      in seeds/notice_page_matches.csv of a notice row to an item on its
-      page, with whether it stands this build. A match stands while its
-      source and page are a pair seeds/notice_confirming_pages.csv names, the
-      page may publish, this warehouse holds a read of the page that states
-      its own date, that read still carries the item, by the sha256 the
-      match recorded, and the source's rows here still serve the line with
-      the raw key the match names (not judged where this warehouse holds no
-      row of the source). int_closures__club_notices holds every row of a
-      confirming source whose match does not stand, and
-      int_closures__held_carried carries none; pub_conditions_notices puts
-      the page's link and date on the rest. Empty until the maintainer
-      approves a match.
-    data_tests:
-      # A match that stopped standing on a page this build did read: its
-      # item left the page or was reworded, the page stopped stating a date
-      # or may no longer publish, or PTNY reloaded or redrew the line. Each
-      # needs a person to look again, so the log names it; a warning,
-      # because the section is already held.
-      - dbt_utils.expression_is_true:
-          arguments:
-            expression: held_because is null or not page_read
-          config:
-            severity: warn
-    columns:
-      - name: notice_id
-        description: The matched notice, as the marts key it.
-        data_tests: [not_null, unique]
-      - name: source_row_key
-        description: The raw row key the match names; the notice must still have it for the match to hold.
-        data_tests: [not_null]
-      - name: page_url
-        description: The page's link, from its latest read; null where this warehouse holds no read of it.
-      - name: page_updated_on
-        description: The page's own stated date on its latest read, which the card prints; never the row's.
-      - name: page_read
-        description: Whether this warehouse holds a read of the page.
-      - name: item_on_page
-        description: Whether that read still carries the matched item, compared by sha256.
-      - name: row_served
-        description: >
-          Whether the source's rows in this warehouse still serve the matched
-          line: its notice id with the raw key the match names. Null where
-          this warehouse holds no row of the source, so nothing is judged.
-      - name: held_because
-        description: >
-          Why the match does not stand this build, in words for the job log;
-          null where it stands.
 
   - name: int_closures__window_carried
     description: >
@@ -378,10 +325,7 @@ models:
       that carried it. Only a source the extract declares a notice resource
       for, and only where int_sources__publication lets it publish: a
       publication hold is a decision, never a failed read. A notice
-      int_closures__window_carried carries is left to it. A row of a source
-      that confirms by page (seeds/notice_confirming_pages.csv) is carried
-      only while its match stands this build (decision 128,
-      int_closures__page_matches).
+      int_closures__window_carried carries is left to it.
       int_closures__final and int_warnings__final add these rows back.
     columns:
       - name: notice_id
@@ -508,14 +452,6 @@ models:
           export_work_projects.py treat as no failure (each writes nothing and
           exits 0). The writer selects no row, as for any hold, and publish.py
           does not fail the run for this one.
-        data_tests: [not_null]
-      - name: confirms_by_page
-        description: >
-          Whether seeds/notice_confirming_pages.csv names the source (decision
-          128): its rows draw only while a person's match of each to an item
-          on a page stands (int_closures__club_notices' rule 7), so
-          int_closures__held_carried carries none of its rows without one. Not
-          a hold of the source.
         data_tests: [not_null]
 
   - name: int_closures__work_projects_checked
@@ -968,8 +904,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 2, rows_invalid: 1, passed: false, held_because: '1 of 2 rows cannot publish, and a partial set of safety notices is worse than none'}
@@ -1054,8 +988,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, reviewed_at: '  ', passed: false, held_because: 'reference/atc_updates.json has no reviewed_at, so nobody has checked it against ATC''s page', awaiting_review: true}
@@ -1141,8 +1073,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 0, reviewed_at: '2026-08-24', passed: true, held_because: null}
@@ -1222,8 +1152,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: '`updates` is missing or is not a list'}
@@ -1313,8 +1241,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: false, held_because: 'reference/atc_updates.json lists 1 updates and 2 landed as rows, so the two landings are of different files'}
@@ -1395,8 +1321,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, may_publish: true, passed: true, held_because: null}
@@ -1492,8 +1416,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 1, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
@@ -1575,8 +1497,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: true, held_because: null, awaiting_review: false}
@@ -1664,8 +1584,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, rows_total: 0, passed: true, held_because: null}
@@ -1748,8 +1666,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: true, held_because: null}
@@ -2099,10 +2015,6 @@ unit_tests:
           - {source_key: 'utah_ffsl_fire_restrictions', status_value: 'Superseded', reads_as: 'not_current', why: 'As above'}
           - {source_key: 'ptny_est_closures', status_value: 'Closed', reads_as: 'closes_trail', why: 'trail_stat ''Closed'' 9 of 9 (the row''s notes, read live 2026-10-08): a view that shows only the Empire State Trail''s closed sections'}
           - {source_key: 'ptny_est_closures', status_value: 'Open', reads_as: 'not_current', why: 'One of trail_stat''s four domain values (the row''s notes); the view serves none, and an open section tells a hiker nothing'}
-      - input: ref('notice_confirming_pages')
-        rows: []
-      - input: ref('int_closures__page_matches')
-        rows: []
     expect:
       rows:
         - {notice_id: 'usfs_r06_fire_closure_lines:g01', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own end date, 2001-06-01, has passed', title: 'Fixture Fire Area Closure', locality: null, geom_geojson: null, updated_at: null}
@@ -2151,10 +2063,6 @@ unit_tests:
         rows: []
       - input: ref('notice_hazard_areas')
         rows: []
-      - input: ref('notice_confirming_pages')
-        rows: []
-      - input: ref('int_closures__page_matches')
-        rows: []
     expect:
       rows:
         - {notice_id: 'usfs_r03_forest_orders:ends_yesterday', held_because: null}
@@ -2165,230 +2073,6 @@ unit_tests:
         - {notice_id: 'usfs_r03_forest_orders:rescinded_yesterday', held_because: 'its own order was rescinded on 2026-10-04'}
         - {notice_id: 'usfs_r03_forest_orders:rescinded_today', held_because: null}
         - {notice_id: 'usfs_r03_forest_orders:rescinded_tomorrow', held_because: null}
-
-  - name: int_closures__club_notices_draws_a_confirming_sources_row_only_while_its_page_match_stands
-    description: >
-      Rule 7 (decision 128, the maintainer's poll of 2026-10-09): Parks &
-      Trails New York's closed sections say 'Closed' with no date, so each
-      draws only while a person's match of it to an item on the trail's
-      closures page stands. A matched section whose match stands closes the
-      trail; one whose match stopped standing (its item left the page) is
-      held with that reason; one nobody matched is held; and one whose raw
-      key is no longer the one its match names (PTNY redrew it) is held,
-      even where the match itself reads as standing. Another source's
-      closure is untouched.
-      With no match at all, as the seed ships, every section is held: the
-      empty join draws nothing.
-    model: int_closures__club_notices
-    given:
-      - input: ref('int_closures__club_notices_unioned')
-        rows:
-          - {notice_key: 'k416', source_key: 'ptny_est_closures', club: 'nysparks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-09 00:00:00+00', source_id: '416', title: 'Fixture Shoreline Trail', status: 'Closed'}
-          - {notice_key: 'k425', source_key: 'ptny_est_closures', club: 'nysparks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-09 00:00:00+00', source_id: '425', title: null, status: 'Closed'}
-          - {notice_key: 'k230', source_key: 'ptny_est_closures', club: 'nysparks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-09 00:00:00+00', source_id: '230', title: null, status: 'Closed'}
-          - {notice_key: 'k417-redrawn', source_key: 'ptny_est_closures', club: 'nysparks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-09 00:00:00+00', source_id: '417', title: 'Fixture Shoreline Trail (On Road)', status: 'Closed'}
-          - {notice_key: 'g02', source_key: 'usfs_r06_fire_closure_lines', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: '2999-12-31 07:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-09 00:00:00+00', source_id: 'g02', title: 'Fixture Fire Area Closure', status: 'Active'}
-      - input: ref('notice_status_values')
-        rows:
-          - {source_key: 'ptny_est_closures', status_value: 'Closed', reads_as: 'closes_trail', why: 'Fixture'}
-          - {source_key: 'usfs_r06_fire_closure_lines', status_value: 'Active', reads_as: 'closes_trail', why: 'Fixture'}
-      - input: ref('notice_hazard_areas')
-        rows: []
-      - input: ref('notice_confirming_pages')
-        rows:
-          - {source_key: 'ptny_est_closures', page_source_key: 'oprhp_est_trail_closures_page', evidence: 'Fixture'}
-      - input: ref('int_closures__page_matches')
-        rows:
-          - {notice_id: 'ptny_est_closures:416', source_row_key: 'k416', held_because: null}
-          - {notice_id: 'ptny_est_closures:425', source_row_key: 'k425', held_because: 'the latest read of its page, oprhp_est_trail_closures_page (updated 2026-10-01), no longer carries the item it was matched to on 2026-10-09: gone, or reworded'}
-          - {notice_id: 'ptny_est_closures:417', source_row_key: 'k417', held_because: null}
-    expect:
-      rows:
-        - {notice_id: 'ptny_est_closures:416', obstructs_trail: true, review_state: 'org_published', held_because: null}
-        - {notice_id: 'ptny_est_closures:425', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its match no longer stands: the latest read of its page, oprhp_est_trail_closures_page (updated 2026-10-01), no longer carries the item it was matched to on 2026-10-09: gone, or reworded'}
-        - {notice_id: 'ptny_est_closures:230', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'nobody has matched it to an item on its page yet (decision 128: seeds/notice_page_matches.csv names no match for this row)'}
-        - {notice_id: 'ptny_est_closures:417', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its match names another drawing of this line (raw row key k417), so it does not stand for this one'}
-        - {notice_id: 'usfs_r06_fire_closure_lines:g02', obstructs_trail: true, review_state: 'org_published', held_because: null}
-
-  - name: int_closures__page_matches_stands_only_while_the_pages_latest_read_carries_the_item
-    description: >
-      Decision 128: a match stands while the page's latest read still
-      carries its item, compared by the sha256 the match recorded; the
-      card's date is the page's own. A match whose item is not on the read
-      (gone, or reworded in any word) does not stand, and nor does a match
-      for a source and page that seeds/notice_confirming_pages.csv does not
-      pair.
-    model: int_closures__page_matches
-    given:
-      - input: ref('notice_page_matches')
-        rows:
-          - {notice_id: 'ptny_est_closures:416', source_row_key: 'k416', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture Town, Fixture County: The trail is closed', page_item_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-          - {notice_id: 'ptny_est_closures:425', source_row_key: 'k425', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture City, Fixture County: Closed for repairs', page_item_sha256: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-          - {notice_id: 'other_club_closures:1', source_row_key: 'k1', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture Town, Fixture County: The trail is closed', page_item_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-      - input: ref('notice_confirming_pages')
-        rows:
-          - {source_key: 'ptny_est_closures', page_source_key: 'oprhp_est_trail_closures_page', evidence: 'Fixture'}
-      # As SQL, so the fixture is the same whether or not this warehouse holds
-      # the page's raw table (test_dbt_notice_tables_absent_builds.py drops it).
-      - input: ref('base_nysparks__oprhp_est_trail_closures_page')
-        format: sql
-        rows: |
-          select
-              'https://empiretrail.ny.gov/trail-closures' as url,
-              'Trail Closures' as title,
-              '2026-10-01' as date,
-              '["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"]' as item_sha256s
-      - input: ref('int_sources__publication')
-        rows:
-          - {source_key: 'oprhp_est_trail_closures_page', may_publish: true}
-      # The matched lines, as PTNY serves them this build (condition 5).
-      - input: ref('int_closures__club_notices_unioned')
-        rows:
-          - {notice_key: 'k416', source_key: 'ptny_est_closures', source_id: '416'}
-          - {notice_key: 'k425', source_key: 'ptny_est_closures', source_id: '425'}
-    expect:
-      rows:
-        - {notice_id: 'ptny_est_closures:416', page_url: 'https://empiretrail.ny.gov/trail-closures', page_updated_on: '2026-10-01', page_read: true, item_on_page: true, held_because: null}
-        - {notice_id: 'ptny_est_closures:425', page_url: 'https://empiretrail.ny.gov/trail-closures', page_updated_on: '2026-10-01', page_read: true, item_on_page: false, held_because: 'the latest read of its page, oprhp_est_trail_closures_page (updated 2026-10-01), no longer carries the item it was matched to on 2026-10-09: gone, or reworded'}
-        - {notice_id: 'other_club_closures:1', page_url: 'https://empiretrail.ny.gov/trail-closures', page_updated_on: '2026-10-01', page_read: true, item_on_page: true, held_because: 'seeds/notice_confirming_pages.csv does not name oprhp_est_trail_closures_page as the page of other_club_closures'}
-
-  - name: int_closures__page_matches_stands_on_no_page_this_warehouse_cannot_read
-    description: >
-      With no read of the page in this warehouse (a notices table absent
-      from the hourly warehouse, decision 61), nothing says the item is
-      still on it, so no match stands, and int_closures__held_carried
-      carries none of its sections either: toward held.
-    model: int_closures__page_matches
-    given:
-      - input: ref('notice_page_matches')
-        rows:
-          - {notice_id: 'ptny_est_closures:416', source_row_key: 'k416', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture Town, Fixture County: The trail is closed', page_item_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-      - input: ref('notice_confirming_pages')
-        rows:
-          - {source_key: 'ptny_est_closures', page_source_key: 'oprhp_est_trail_closures_page', evidence: 'Fixture'}
-      - input: ref('base_nysparks__oprhp_est_trail_closures_page')
-        format: sql
-        rows: |
-          select cast(null as varchar) as url
-          where false
-      - input: ref('int_sources__publication')
-        rows:
-          - {source_key: 'oprhp_est_trail_closures_page', may_publish: true}
-      # The matched lines, as PTNY serves them this build (condition 5).
-      - input: ref('int_closures__club_notices_unioned')
-        rows:
-          - {notice_key: 'k416', source_key: 'ptny_est_closures', source_id: '416'}
-    expect:
-      rows:
-        - {notice_id: 'ptny_est_closures:416', page_url: null, page_read: false, item_on_page: false, held_because: 'no read of its page, oprhp_est_trail_closures_page, is in this warehouse, so nothing says its item is still on it'}
-
-  - name: int_closures__page_matches_needs_the_pages_own_date_and_its_leave_to_publish
-    description: >
-      The card prints the page's own date (decision 128's frame A), so a read
-      that states none cannot stand behind a match; and a page
-      int_sources__publication holds back cannot either, whatever it
-      carries.
-    model: int_closures__page_matches
-    given:
-      - input: ref('notice_page_matches')
-        rows:
-          - {notice_id: 'ptny_est_closures:416', source_row_key: 'k416', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture Town, Fixture County: The trail is closed', page_item_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-      - input: ref('notice_confirming_pages')
-        rows:
-          - {source_key: 'ptny_est_closures', page_source_key: 'oprhp_est_trail_closures_page', evidence: 'Fixture'}
-      - input: ref('base_nysparks__oprhp_est_trail_closures_page')
-        format: sql
-        rows: |
-          select
-              'https://empiretrail.ny.gov/trail-closures' as url,
-              'Trail Closures' as title,
-              cast(null as varchar) as date,
-              '["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' as item_sha256s
-      - input: ref('int_sources__publication')
-        rows:
-          - {source_key: 'oprhp_est_trail_closures_page', may_publish: true}
-      # The matched lines, as PTNY serves them this build (condition 5).
-      - input: ref('int_closures__club_notices_unioned')
-        rows:
-          - {notice_key: 'k416', source_key: 'ptny_est_closures', source_id: '416'}
-    expect:
-      rows:
-        - {notice_id: 'ptny_est_closures:416', page_read: true, item_on_page: true, held_because: 'the latest read of its page, oprhp_est_trail_closures_page, states no date of its own, so the card could not carry one'}
-
-  - name: int_closures__page_matches_stands_on_no_page_that_may_not_publish
-    model: int_closures__page_matches
-    description: A page int_sources__publication holds back stands behind no match, whatever its read carries.
-    given:
-      - input: ref('notice_page_matches')
-        rows:
-          - {notice_id: 'ptny_est_closures:416', source_row_key: 'k416', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture Town, Fixture County: The trail is closed', page_item_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-      - input: ref('notice_confirming_pages')
-        rows:
-          - {source_key: 'ptny_est_closures', page_source_key: 'oprhp_est_trail_closures_page', evidence: 'Fixture'}
-      - input: ref('base_nysparks__oprhp_est_trail_closures_page')
-        format: sql
-        rows: |
-          select
-              'https://empiretrail.ny.gov/trail-closures' as url,
-              'Trail Closures' as title,
-              '2026-10-01' as date,
-              '["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' as item_sha256s
-      - input: ref('int_sources__publication')
-        rows:
-          - {source_key: 'oprhp_est_trail_closures_page', may_publish: false}
-      # The matched lines, as PTNY serves them this build (condition 5).
-      - input: ref('int_closures__club_notices_unioned')
-        rows:
-          - {notice_key: 'k416', source_key: 'ptny_est_closures', source_id: '416'}
-    expect:
-      rows:
-        - {notice_id: 'ptny_est_closures:416', item_on_page: true, held_because: 'its page, oprhp_est_trail_closures_page, may not publish (int_sources__publication)'}
-
-  - name: int_closures__page_matches_stands_only_while_the_source_still_serves_the_matched_line
-    description: >
-      Condition 5: a match is for one line as PTNY served it, by its notice
-      id and its raw key. A line PTNY redrew (the same id, a new key), or
-      renumbered or removed (its id gone, as a layer reload mints new
-      OBJECTIDs), is no longer the line a person matched, so its match does
-      not stand and the warn test names it. A confirming source with no row
-      in this warehouse at all (its table absent) is not judged, so its
-      sections can still be carried while the page carries their items.
-    model: int_closures__page_matches
-    given:
-      - input: ref('notice_page_matches')
-        rows:
-          - {notice_id: 'ptny_est_closures:416', source_row_key: 'k416', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture Town, Fixture County: The trail is closed', page_item_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-          - {notice_id: 'ptny_est_closures:417', source_row_key: 'k417', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture Town, Fixture County: The trail is closed', page_item_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-          - {notice_id: 'ptny_est_closures:425', source_row_key: 'k425', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture Town, Fixture County: The trail is closed', page_item_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-          - {notice_id: 'unread_confirming_closures:1', source_row_key: 'k1', page_source_key: 'oprhp_est_trail_closures_page', page_item: 'Fixture Town, Fixture County: The trail is closed', page_item_sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', matched_on: '2026-10-09', reviewed_in: 'Fixture', evidence: 'Fixture'}
-      - input: ref('notice_confirming_pages')
-        rows:
-          - {source_key: 'ptny_est_closures', page_source_key: 'oprhp_est_trail_closures_page', evidence: 'Fixture'}
-          - {source_key: 'unread_confirming_closures', page_source_key: 'oprhp_est_trail_closures_page', evidence: 'Fixture'}
-      - input: ref('base_nysparks__oprhp_est_trail_closures_page')
-        format: sql
-        rows: |
-          select
-              'https://empiretrail.ny.gov/trail-closures' as url,
-              'Trail Closures' as title,
-              '2026-10-01' as date,
-              '["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' as item_sha256s
-      - input: ref('int_sources__publication')
-        rows:
-          - {source_key: 'oprhp_est_trail_closures_page', may_publish: true}
-      # 416 as matched; 417 redrawn; 425 gone, and a line 502 PTNY added
-      # since; and no row at all of unread_confirming_closures.
-      - input: ref('int_closures__club_notices_unioned')
-        rows:
-          - {notice_key: 'k416', source_key: 'ptny_est_closures', source_id: '416'}
-          - {notice_key: 'k417-redrawn', source_key: 'ptny_est_closures', source_id: '417'}
-          - {notice_key: 'k502', source_key: 'ptny_est_closures', source_id: '502'}
-    expect:
-      rows:
-        - {notice_id: 'ptny_est_closures:416', row_served: true, held_because: null}
-        - {notice_id: 'ptny_est_closures:417', row_served: false, held_because: 'the latest read of ptny_est_closures draws ptny_est_closures:417 differently from the line matched on 2026-10-09 (its raw row key changed)'}
-        - {notice_id: 'ptny_est_closures:425', row_served: false, held_because: 'the latest read of ptny_est_closures serves no row ptny_est_closures:425, so its line was removed or renumbered after it was matched on 2026-10-09'}
-        - {notice_id: 'unread_confirming_closures:1', row_served: null, held_because: null}
 
   - name: int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log
     description: >
@@ -2541,8 +2225,6 @@ unit_tests:
             ('club_never_run', 'raw_a__club_never_run'),
             ('club_table_absent', 'raw_a__club_table_absent')
           ) as tables (source_key, raw_table)
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, club: atc, passed: true, held_because: null}
@@ -2657,8 +2339,6 @@ unit_tests:
         format: sql
         rows: |
           select cast(null as varchar) as source_key, cast(null as varchar) as raw_table, cast(null as boolean) as is_present where false
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: true, held_because: null}
@@ -2756,8 +2436,6 @@ unit_tests:
       - input: ref('int_closures__window_carried')
         rows:
           - {mart: closures, notice_id: 'feed_held:item-1', source_key: feed_held}
-      - input: ref('int_closures__page_matches')
-        rows: []
     expect:
       rows:
         - {mart: closures, notice_id: 'atc_trail_updates:bridge', club: atc, notice_kind: atc_trail_update, obstructs_trail: true, review_state: reviewed, atc_id: bridge, title: 'Fixture footbridge out', category: Closure, trail_id: AT, mile_start_text: '1650.45', mile_end_text: '1651.0', updated_at: '2026-09-30', list_position: 3, locality: null}
@@ -2789,8 +2467,6 @@ unit_tests:
         rows:
           - {source_key: club_held, club: a, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_a__club_held, staged_by: stg_a__club_held}
       - input: ref('int_closures__window_carried')
-        rows: []
-      - input: ref('int_closures__page_matches')
         rows: []
     expect:
       rows:
@@ -2839,53 +2515,10 @@ unit_tests:
           - {source_key: club_held, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_held, staged_by: stg_a__club_held}
       - input: ref('int_closures__window_carried')
         rows: []
-      - input: ref('int_closures__page_matches')
-        rows: []
     expect:
       rows:
         - {notice_id: 'club_held:ended_yesterday', obstructs_trail: true}
         - {notice_id: 'club_held:no_end', obstructs_trail: true}
-
-  - name: int_closures__held_carried_carries_a_confirming_sources_row_only_while_its_page_match_stands
-    description: >
-      Rule 7 (decision 128) reaches a carried row too: while Parks & Trails
-      New York's layer cannot be read, a section the last build drew is
-      carried only while its match to the trail's closures page stands this
-      build, matched to its own raw key. One whose item has left the page is
-      dropped, and so is one whose match was taken out of the seed, although
-      the layer that would say anything else cannot be read.
-    model: int_closures__held_carried
-    given:
-      - input: ref('stg_row_history__closures')
-        rows:
-          - {history_row_key: h1, dbt_scd_id: s1, closure_id: 'ptny_est_closures:416', source_key: ptny_est_closures, dbt_valid_to: null, row_json: '{"club": "nysparks", "notice_kind": "club_arcgis_layer", "obstructs_trail": true, "review_state": "org_published", "title": "Fixture Shoreline Trail", "source_row_key": "k416"}'}
-          - {history_row_key: h2, dbt_scd_id: s2, closure_id: 'ptny_est_closures:425', source_key: ptny_est_closures, dbt_valid_to: null, row_json: '{"club": "nysparks", "notice_kind": "club_arcgis_layer", "obstructs_trail": true, "review_state": "org_published", "title": null, "source_row_key": "k425"}'}
-          - {history_row_key: h3, dbt_scd_id: s3, closure_id: 'ptny_est_closures:230', source_key: ptny_est_closures, dbt_valid_to: null, row_json: '{"club": "nysparks", "notice_kind": "club_arcgis_layer", "obstructs_trail": true, "review_state": "org_published", "title": null, "source_row_key": "k230"}'}
-      - input: ref('stg_row_history__warnings')
-        format: sql
-        rows: |
-          select
-              cast(null as varchar) as warning_id,
-              cast(null as varchar) as warning_kind,
-              cast(null as varchar) as source_key,
-              cast(null as timestamp) as dbt_valid_to,
-              cast(null as json) as row_json
-          where false
-      - input: ref('int_closures__gate')
-        rows:
-          - {source_key: ptny_est_closures, passed: false, may_publish: true, confirms_by_page: true}
-      - input: ref('notice_readers')
-        rows:
-          - {source_key: ptny_est_closures, club: nysparks, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_nysparks__ptny_est_closures, staged_by: stg_nysparks__ptny_est_closures}
-      - input: ref('int_closures__window_carried')
-        rows: []
-      - input: ref('int_closures__page_matches')
-        rows:
-          - {notice_id: 'ptny_est_closures:416', source_row_key: 'k416', held_because: null}
-          - {notice_id: 'ptny_est_closures:425', source_row_key: 'k425', held_because: 'the latest read of its page, oprhp_est_trail_closures_page (updated 2026-10-01), no longer carries the item it was matched to on 2026-10-09: gone, or reworded'}
-    expect:
-      rows:
-        - {notice_id: 'ptny_est_closures:416', title: 'Fixture Shoreline Trail', obstructs_trail: true}
 
   - name: int_closures__gate_holds_a_source_whose_row_leaks_its_wording_or_lands_outside_its_region
     description: >
@@ -3000,8 +2633,6 @@ unit_tests:
         rows:
           - {source_key: club_outside, row_id: 'club_outside:1', region: eastern}
           - {source_key: nws_alerts, row_id: 'nws_alerts:urn:x', region: us_and_territories}
-      - input: ref('notice_confirming_pages')
-        rows: []
     expect:
       rows:
         - {source_key: atc_trail_updates, passed: true, held_because: null}

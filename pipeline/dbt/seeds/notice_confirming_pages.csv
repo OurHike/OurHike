@@ -1,2 +1,0 @@
-source_key,page_source_key,evidence
-ptny_est_closures,oprhp_est_trail_closures_page,"Decision 128 (the maintainer's poll, 2026-10-09, shown w6-ptny-closures.html, frame A): Parks & Trails New York's view states trail_stat 'Closed' on all 9 of its lines and no date, reason or link (sources.json's ptny_est_closures notes, read 2026-10-08), so a section may draw as closed only once it is matched to an item on the trail's own closures page, which states its own 'Updated' date (oprhp_est_trail_closures_page's notes); an unmatched section stays held"

@@ -37,12 +37,6 @@
 -- carried (its start was within the margin when it was read), and its
 -- rescission day cannot be checked: rescinded_on does not reach the marts,
 -- so the history holds none to carry.
--- And rule 7 (decision 128): a row of a source
--- seeds/notice_confirming_pages.csv names is carried only while its match
--- to an item on its page stands this build (int_closures__page_matches), so
--- a section whose item has left the page is dropped although its own layer
--- cannot be read, and so is one whose page this build cannot read either.
--- That rounds toward held, as int_closures__page_matches' header says why.
 --
 -- WHAT IT DOES NOT DO. With OURHIKE_ROW_HISTORY=off, or on a cold start, the
 -- history is empty and nothing is carried, and so for a source held on every
@@ -95,35 +89,16 @@ window_carried as (
     select notice_id from {{ ref('int_closures__window_carried') }}
 ),
 
--- Rule 7's matches that stand this build; which sources confirm by page is
--- the gate's `confirms_by_page`.
-standing_matches as (
-    select
-        notice_id,
-        source_row_key
-    from {{ ref('int_closures__page_matches') }}
-    where held_because is null
-),
-
 carried as (
     select saved.*
     from saved
     inner join gate on saved.source_key = gate.source_key
     inner join notice_sources on saved.source_key = notice_sources.source_key
     left join window_carried on saved.notice_id = window_carried.notice_id
-    left join standing_matches
-        on
-            saved.notice_id = standing_matches.notice_id
-            and json_extract_string(saved.row_json, '$.source_row_key')
-            = standing_matches.source_row_key
     where
         not gate.passed
         and gate.may_publish
         and window_carried.notice_id is null
-        and (
-            not coalesce(gate.confirms_by_page, false)
-            or standing_matches.notice_id is not null
-        )
 ),
 
 read_back as (

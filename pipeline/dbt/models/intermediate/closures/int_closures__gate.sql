@@ -258,15 +258,6 @@ outside_region as (
     group by source_key
 ),
 
--- Decision 128's sources: those whose rows draw only while a person's match
--- of each to an item on a page stands (int_closures__club_notices' rule 7).
--- Not a hold here; `confirms_by_page` says it, so int_closures__held_carried
--- can hold a carried row to the same match.
-confirming as (
-    select distinct source_key
-    from {{ ref('notice_confirming_pages') }}
-),
-
 -- Whether each source's raw tables are all in this warehouse.
 notice_tables as (
     select
@@ -552,15 +543,13 @@ judged as (
 )
 
 select
-    judged.source_key,
-    judged.club,
-    judged.rows_total,
-    judged.rows_invalid,
-    judged.may_publish,
-    judged.reviewed_at,
-    judged.held_because is null as passed,
-    judged.held_because,
-    judged.awaiting_review,
-    confirming.source_key is not null as confirms_by_page
+    source_key,
+    club,
+    rows_total,
+    rows_invalid,
+    may_publish,
+    reviewed_at,
+    held_because is null as passed,
+    held_because,
+    awaiting_review
 from judged
-left join confirming on judged.source_key = confirming.source_key

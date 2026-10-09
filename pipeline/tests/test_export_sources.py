@@ -905,8 +905,11 @@ class TestTheRegistryTheConsoleReads:
         # (section B, 2026-10-04) registered the U.S. Census Bureau (org:census), for the TIGER/Line state
         # boundaries a state-wide notice is placed by. Recounted from the merged registry 2026-10-05.
         # 122 since decision 54's wave 6 (2026-10-08) registered Parks & Trails New York (org:ptny), for
-        # its view of the Empire State Trail's closed sections.
-        assert len(orgs) == 122
+        # its view of the Empire State Trail's closed sections. 134 since decision 122 (the maintainer's poll,
+        # 2026-10-09) registered the first batch of 12 candidate stewards, every layer held while each one's
+        # trail_orgs.json row waits for the maintainer's review. 135 since the same day registered the NYS Canal
+        # Corporation (org:nyscanal), held like the rest.
+        assert len(orgs) == 135
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -1030,6 +1033,20 @@ class TestTheRegistryTheConsoleReads:
             "org:wmc",
             "org:wsprc",
             "org:wta",
+            # Decision 122 (2026-10-09): batch 01's candidate stewards, every layer held.
+            "org:dlnhc",
+            "org:flstateparks",
+            "org:gap",
+            "org:idpr",
+            "org:midnr",
+            "org:montourtrail",
+            "org:mostateparks",
+            "org:ngpc",
+            "org:oprd",
+            "org:r2r",
+            "org:tahoepyramid",
+            "org:vtrans",
+            "org:nyscanal",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

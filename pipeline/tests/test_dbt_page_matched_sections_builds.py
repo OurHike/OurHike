@@ -63,6 +63,7 @@ def _ok(arguments: list[str], cwd: Path, env: dict) -> None:
 
 def _rows(warehouse: Path, sql: str, parameters: list | None = None) -> list[tuple]:
     with duckdb.connect(str(warehouse), read_only=True) as con:
+        con.execute("load spatial")  # the base models are views that cast their geometry
         return con.execute(sql, parameters or []).fetchall()
 
 

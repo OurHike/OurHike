@@ -27,9 +27,11 @@
 // decision 67's `hazard`, written by pipeline/dbt's
 // pub_conditions_hazard_areas. Decision 77 left a phone with nothing planned
 // without notices.json, and so without the hunting areas, shooting sites and
-// burned areas the map draws from it. `readPublishedNotices` reads this file
-// on every call, planned or not, as every phone read notices.json before
-// decision 77; its key is here for the reason the states' key is.
+// burned areas the map draws from it. `fetchPublishedHazardAreas` reads this
+// file, and lib/useConditions.ts calls it on every read, planned or not, as
+// every phone read notices.json before decision 77, on a promise of its own
+// so that nothing about notices.json holds it back; its key is here for the
+// reason the states' key is.
 
 import {
   fetchPublished,
@@ -44,6 +46,37 @@ import {
 } from './publishedConditions'
 import type { NoticeGeometryValue } from './noticeGeometry'
 import { DATA_CONFIGURED, dataUrl } from './config'
+import { MANIFEST_READ_TIMEOUT_MS } from './dataManifest'
+
+/**
+ * How long a planned hike's download of conditions/notices.json may take
+ * before the copy this phone kept answers instead.
+ *
+ * @unvalidated - three times lib/dataManifest.ts's MANIFEST_READ_TIMEOUT_MS,
+ * the 20 s this file's other two requests wait, for that constant's reason: a
+ * request with no deadline hangs on a captive portal or one bar rather than
+ * failing, and until it fails `fetchPublished` cannot reach the kept copy.
+ * Three times, because this request carries a body: UA's file gzips to
+ * 2,139,070 bytes (level 6, measured 2026-10-09), which 20 s would cut on any
+ * link slower than 856 kbps, and a minute lets through above 285 kbps. Longer
+ * lets a slow link bring a first copy; shorter shows a phone stuck on a
+ * captive portal its kept copy sooner. What would settle it: timings of this
+ * download at trailheads, which nothing records.
+ */
+export const NOTICES_DOWNLOAD_TIMEOUT_MS = 3 * MANIFEST_READ_TIMEOUT_MS
+
+/**
+ * A signal that aborts after `ms`, and the clear that stops its timer once
+ * the request is over. Not `AbortSignal.timeout()`: Safari 16 is the first
+ * with it (MDN's compatibility table), and the iOS shell deploys to iOS 15
+ * (client/ios/App/App.xcodeproj's IPHONEOS_DEPLOYMENT_TARGET), where calling
+ * it throws.
+ */
+function deadline(ms: number): { signal: AbortSignal; clear: () => void } {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  return { signal: controller.signal, clear: () => clearTimeout(timer) }
+}
 
 /** The shapes of the states a state-wide notice names (decision 76): written
  *  by pipeline/dbt's pub_conditions_notice_states, on the dbt path only, so
@@ -269,7 +302,10 @@ export function validNotice(value: unknown): OrgNotice | null {
  * Null is the ordinary state on a bucket the exporters still publish: no
  * exporter writes this file, so it 404s, and lib/useConditions.ts keeps
  * reading ATC's and NYNJTC's own files. Offline it is the copy this phone
- * kept (#447), dated by its own `generated_at`, like every file here.
+ * kept (#447), if it kept one: the last file that arrived whole, up to
+ * lib/conditionsCache.ts's ceiling, dated by its own `generated_at` like
+ * every file here. A phone that never downloaded it, such as a first run
+ * with no signal, holds none and reads null.
  */
 export async function fetchPublishedNotices(
   signal?: AbortSignal,
@@ -298,16 +334,22 @@ export async function fetchPublishedNotices(
  * Null on a bucket without the file, which on a 404 or in a dead spot is the
  * copy this phone kept (#447) if it kept one, as every file here: the caller
  * reads null as "no answer", never as "no hazard area".
+ *
+ * Within MANIFEST_READ_TIMEOUT_MS, for NOTICES_DOWNLOAD_TIMEOUT_MS's reason:
+ * a request that hangs holds the kept copy back. UA's file gzips to 235,202
+ * bytes (level 6, measured 2026-10-09), which 20 s lets through above
+ * 94 kbps.
  */
 export async function fetchPublishedHazardAreas(
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<OrgNotice> | null> {
+  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS)
   const published = await fetchPublished<unknown>(
     PUBLISHED_HAZARD_AREAS_KEY,
     'notices',
-    undefined,
+    signal,
     options,
-  )
+  ).finally(clear)
   if (published === null) return null
   const items: OrgNotice[] = []
   for (const row of published.items) {
@@ -333,39 +375,46 @@ export async function fetchPublishedHazardAreas(
  * headers for this, and the bucket answers HEAD with the same CORS headers
  * as GET (measured on data.ourhike.org from https://ourhike.org: 200 on
  * UA's file, 404 on production's, both with access-control-allow-origin).
+ *
+ * Within MANIFEST_READ_TIMEOUT_MS, for that constant's reason: a HEAD that
+ * never answers is not said.
  */
 export async function noticesListed(): Promise<boolean> {
   if (!DATA_CONFIGURED) return false
+  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS)
   try {
-    return (await fetch(dataUrl(PUBLISHED_NOTICES_KEY), { method: 'HEAD' })).ok
+    return (await fetch(dataUrl(PUBLISHED_NOTICES_KEY), { method: 'HEAD', signal })).ok
   } catch {
     return false
+  } finally {
+    clear()
   }
 }
 
 /**
  * conditions/notices.json as decision 77 has a phone read it: downloaded
- * only while `hikePlanned`. With nothing planned it is the copy this phone
- * kept, read with no request (lib/conditionsCache.ts keeps one only under
- * its size ceiling), and `listed` is the bucket's answer to a HEAD, asked
- * only with signal. With a hike planned, a file that arrives says it is
- * listed too.
+ * only while `hikePlanned`, within NOTICES_DOWNLOAD_TIMEOUT_MS. With nothing
+ * planned it is the copy this phone kept, read with no request
+ * (lib/conditionsCache.ts keeps one only under its size ceiling), and
+ * `listed` is the bucket's answer to a HEAD, asked only with signal. With a
+ * hike planned, a file that arrives says it is listed too.
  *
- * `hazards` is conditions/hazard_areas.json (decision 84), read on every
- * call whether or not a hike is planned, with signal as `options` says.
+ * conditions/hazard_areas.json is not read here. lib/useConditions.ts reads
+ * it beside this, with `fetchPublishedHazardAreas`, on a promise of its own:
+ * neither this download nor the HEAD may hold the hazard areas back.
  */
 export async function readPublishedNotices(
   hikePlanned: boolean,
   options: PublishedReadOptions,
-): Promise<{
-  published: PublishedConditions<OrgNotice> | null
-  listed: boolean
-  hazards: PublishedConditions<OrgNotice> | null
-}> {
-  const [published, listed, hazards] = await Promise.all([
-    fetchPublishedNotices(undefined, hikePlanned ? options : { online: false }),
-    hikePlanned || options.online === false ? false : noticesListed(),
-    fetchPublishedHazardAreas(options),
+): Promise<{ published: PublishedConditions<OrgNotice> | null; listed: boolean }> {
+  if (hikePlanned) {
+    const { signal, clear } = deadline(NOTICES_DOWNLOAD_TIMEOUT_MS)
+    const published = await fetchPublishedNotices(signal, options).finally(clear)
+    return { published, listed: published !== null }
+  }
+  const [published, listed] = await Promise.all([
+    fetchPublishedNotices(undefined, { online: false }),
+    options.online === false ? false : noticesListed(),
   ])
-  return { published, listed: listed || (hikePlanned && published !== null), hazards }
+  return { published, listed }
 }

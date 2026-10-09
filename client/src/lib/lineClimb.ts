@@ -45,7 +45,9 @@
 //                can fix.
 //   none         this phone has no climb figures at all: a release published
 //                without them (the elevation leg is opt-in), or a graph cell
-//                that carries no elevation half.
+//                that carries no elevation half. Also edges that run past the
+//                line they were matched to (OVERRUN_TOLERANCE), whose figures
+//                are some other line's.
 //
 // HOW `partial` IS DETECTED WITHOUT A NEW ARTIFACT. The tapped feature
 // carries the published line's own length (`lengthMiles`, written by
@@ -98,6 +100,44 @@ const METRES_PER_MILE = 1609.344
  * artifacts the pipeline already writes and nobody has run.
  */
 export const COVERAGE_TOLERANCE = 0.08
+
+/**
+ * How far PAST the steward's published length the edges matched to a line
+ * may run before they are taken for some other line's, and the answer is
+ * `none`.
+ *
+ * WHY IT CAN HAPPEN. The match is by id alone, and a phone can hold tile
+ * cells from one month and graph cells from another. Where an id is
+ * positional, as NYNJTC's `generated-<source_row>` is
+ * (int_trail_lines__network_judged.sql), the same id can name one line in the
+ * tile and another in the graph, and the sheet would print the other line's
+ * climb as this one's, on the figure a hiker uses to judge daylight.
+ *
+ * Reasoned, from what the shortfall allows and from decisions 90 and 97.
+ * Within one release both lengths are geodesic on WGS84 and measure one line:
+ * `length_miles` is the published 1 m line's (`published_length_m` in
+ * int_trail_lines__network_published.sql), and the edges are pieces of that
+ * published line (build_trail_graph.py reads nearby_trails.geojson). So the
+ * edges run long only by the disagreements COVERAGE_TOLERANCE already
+ * absorbs, which point either way, and the same 8% is allowed here. Across
+ * releases, a phone can hold one side in EPSG:5070 metres (production's
+ * graph until #1822 — Production's trail_graph.json measures every edge in
+ * EPSG:5070, up to 29% off outside the lower 48, until decision 90's lengths
+ * are published and promoted): decision 97 measured that change moving a
+ * lower-48 line's `length_miles` by at most 1.24% and an Alaskan one's by up
+ * to 20.8% (UA's release 2026-10-03-2, 2026-10-07). The first fits inside 8%;
+ * the second does not, and such a line answers with no climb, the cautious
+ * side: a figure withheld rather than one that may be another trail's.
+ *
+ * @unvalidated as the 8% is: settled by the same per-line distribution
+ * COVERAGE_TOLERANCE names, read for the upper tail.
+ */
+export const OVERRUN_TOLERANCE = COVERAGE_TOLERANCE
+
+/** Half the hundredth of a mile `length_miles` is published to
+ *  (export_nearby_trails.records_to_geojson rounds it to 2 places): a 0.054 mi
+ *  line is published as 0.05, and its own edges would overrun 8% of that. */
+const PUBLISHED_ROUNDING_MILES = 0.005
 
 /** What this phone can honestly say about a line's climb. */
 export type LineClimb =
@@ -157,11 +197,14 @@ export function edgesOfLine(graph: TrailGraph, id: string): GraphEdge[] {
  * What to say about a tapped line's climb.
  *
  * ORDER MATTERS AND IS THE DESIGN. `none` first, because a phone with no
- * elevation at all must not be told to download a cell it already has.
- * `unmeasured` before `partial`, because a DEM hole is a fact about the
- * world that downloading more cells cannot fix, and offering the download
- * would be the wrong instruction. `partial` last, so it is only ever reached
- * when every edge this phone holds does have a figure.
+ * elevation at all must not be told to download a cell it already has. Then
+ * `none` again for edges that run past the line (OVERRUN_TOLERANCE): they
+ * are not this line's, so nothing summed from them, the unmeasured miles
+ * included, is about this trail. `unmeasured` before `partial`, because a
+ * DEM hole is a fact about the world that downloading more cells cannot fix,
+ * and offering the download would be the wrong instruction. `partial` last,
+ * so it is only ever reached when every edge this phone holds does have a
+ * figure.
  */
 export function lineClimb(
   graph: TrailGraph | null,
@@ -219,6 +262,17 @@ export function lineClimb(
     measuredMetres += edge.length_m
   }
 
+  const published = line.lengthMiles
+  const hasPublished =
+    typeof published === 'number' && Number.isFinite(published) && published > 0
+  if (
+    hasPublished &&
+    (measuredMetres + unmeasuredMetres) / METRES_PER_MILE >
+      published * (1 + OVERRUN_TOLERANCE) + PUBLISHED_ROUNDING_MILES
+  ) {
+    return { kind: 'none' }
+  }
+
   if (unmeasuredMetres > 0) {
     return {
       kind: 'unmeasured',
@@ -228,7 +282,6 @@ export function lineClimb(
   }
 
   const heldMiles = measuredMetres / METRES_PER_MILE
-  const published = line.lengthMiles
 
   // Nothing to compare against, so this phone cannot tell a whole trail from
   // part of one. It reports what it summed and over how far, rather than
@@ -238,7 +291,7 @@ export function lineClimb(
   // publish, and a phone reads whatever release it downloaded. A build that
   // ships before the exporter's next production run sees no `length_miles` on
   // any line, and a source that publishes none would land here permanently.
-  if (typeof published !== 'number' || !Number.isFinite(published) || published <= 0) {
+  if (!hasPublished) {
     return {
       kind: 'unverified',
       gainFt: Math.round(gainFt),

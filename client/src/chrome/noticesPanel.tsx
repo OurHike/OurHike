@@ -386,19 +386,24 @@ export function useNoticesPanel({
     clubNotices !== null || (clubNoticesListed && !anyHikePlanned(trips, dayHikes))
 
   // Also for the hazard areas' own file alone (decision 84): a phone with
-  // nothing planned and no notices.json still draws them.
+  // nothing planned and no notices.json still draws them. An import that
+  // fails (a stale precache, no signal) is asked for again when the next
+  // notices or hazard file lands: App holds this hook for the app's life.
   const wantsSelection = clubMode || hazardFile !== null
   useEffect(() => {
     if (!wantsSelection || selection !== null) return
     let live = true
-    void import('../lib/noticeSelection').then((module) => {
-      loadedSelection = module
-      if (live) setSelection(module)
-    })
+    void import('../lib/noticeSelection').then(
+      (module) => {
+        loadedSelection = module
+        if (live) setSelection(module)
+      },
+      () => undefined,
+    )
     return () => {
       live = false
     }
-  }, [wantsSelection, selection])
+  }, [wantsSelection, selection, clubNotices, hazardFile])
 
   const today = localDay(now)
   const view = useMemo(

@@ -586,7 +586,10 @@ const NO_HAZARD_AREAS: readonly HazardArea[] = []
 
 /** map/hazardAreaTaps.ts, imported the first time an area is drawn or a tap
  *  on one is wired, and kept: most phones never cross one, so it stays out of
- *  the launch bytes (features/LAUNCH_BUDGET.md §3). */
+ *  the launch bytes (features/LAUNCH_BUDGET.md §3). A failed import is not
+ *  kept - a precache a service-worker update left stale fails it with no
+ *  signal - so the next area to draw asks again, as lib/deferredScreen.tsx's
+ *  screens do. */
 type HazardAreaTaps = typeof import('./hazardAreaTaps')
 let hazardAreaTaps: Promise<HazardAreaTaps> | null = null
 
@@ -595,7 +598,10 @@ let hazardAreaTaps: Promise<HazardAreaTaps> | null = null
 function attachHazardLazily(attach: (taps: HazardAreaTaps) => () => void): () => void {
   let detach: (() => void) | null = null
   let detached = false
-  hazardAreaTaps ??= import('./hazardAreaTaps')
+  hazardAreaTaps ??= import('./hazardAreaTaps').catch((error: unknown) => {
+    hazardAreaTaps = null
+    throw error
+  })
   void hazardAreaTaps.then(
     (taps) => {
       if (!detached) detach = attach(taps)

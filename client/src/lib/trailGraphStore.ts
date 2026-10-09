@@ -49,8 +49,8 @@
 //
 // It is NOT `lib/conditionsCache.ts`'s shape, which #1050's own comment names
 // as the template. That module stores `{document, storedAt}` - no bytes, no
-// hash, no version - and its `MAX_CACHED_BYTES = 2 * 1024 * 1024` would
-// silently delete a 7.5 MB graph on every write.
+// hash, no version - and its `MAX_CACHED_BYTES`, 2 MiB until 2026-10-09,
+// would have silently deleted a 7.5 MB graph on every write.
 //
 // WHY THE MANIFEST VERSION IS RECORDED
 //

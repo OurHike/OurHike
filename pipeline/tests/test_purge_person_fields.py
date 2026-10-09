@@ -24,6 +24,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+import hand_off
 import purge_person_fields as purge
 from extract import _kinds
 from extract._kinds import ArcgisLayer, ConditionsQuery, PodcastFeed
@@ -395,6 +396,56 @@ def test_a_table_a_leg_no_longer_reads_is_listed_alone_and_does_not_refuse(tmp_p
     assert frozen.startswith(f"raw/dlt/notices_ua/raw/{TRAILS}/{report.load_id}.")
 
 
+#: Where publish-conditions.yml's UA leg hands its warehouse to check-conditions.yml (hand_off.py's FOLDER, under the
+#: leg's history store).
+HAND_OFF = f"history/conditions_ua/{hand_off.FOLDER}/"
+
+
+def hand_off_a_warehouse(bucket: Bucket, ranger: str | None) -> None:
+    """An hourly build's warehouse, handed off by hand_off.py's own `put`: one raw table whose `ranger` is `ranger`."""
+    local = bucket.tmp_path / "hourly-build" / "warehouse.duckdb"
+    local.parent.mkdir()
+    with duckdb.connect(str(local)) as con:
+        con.execute("create schema raw")
+        con.execute(f"create table raw.{TRAILS} (objectid integer, ranger varchar)")
+        con.execute(f"insert into raw.{TRAILS} values (1, ?), (2, null)", [ranger])
+    hand_off.put(f"{bucket.url}/history/conditions_ua", local, run="593")
+
+
+def test_an_hourly_hand_off_holding_a_field_is_unpacked_read_and_deleted_whole_pointer_first(reread, capsys):
+    """hand_off.py's checks/warehouse.duckdb.gz holds every raw table its leg read, gzipped. Before PR #1805's security
+    review of 2026-10-09 the purge listed it under "NOT READ", which never refuses a delete, so a purge could end
+    "Deleted ... 0 problems" with the field still in the last hand-off."""
+    hand_off_a_warehouse(reread, SENTINEL)
+
+    answer = reread.find()
+    status = reread.run("--delete")
+
+    out = lines_of(capsys)
+    packed = {stored.key: stored for stored in answer.store.objects}[f"{HAND_OFF}warehouse.duckdb.gz"]
+    assert (packed.kind, packed.read) == (purge.DUCKDB, True), "read as a DuckDB file, not passed over"
+    assert packed.fields[f"raw.{TRAILS}.ranger"].with_value == 1
+    assert f"{HAND_OFF} (an hourly hand-off, 2 objects" in out
+    deleted = [line.removeprefix("deleted ") for line in out.splitlines() if line.startswith("deleted ")]
+    assert status == 0
+    assert deleted.index(f"{HAND_OFF}hand_off.json") < deleted.index(f"{HAND_OFF}warehouse.duckdb.gz"), (
+        "the pointer first, so a checks run cut in finds nothing handed off rather than a torn upload"
+    )
+    assert not {key for key in reread.keys() if key.startswith(HAND_OFF)}
+
+
+def test_an_hourly_hand_off_built_from_clean_tables_is_read_and_kept(reread):
+    """A build after the re-read hands off the field's column empty, as every re-read table keeps it: read, and kept."""
+    hand_off_a_warehouse(reread, None)
+
+    answer = reread.find()
+
+    packed = {stored.key: stored for stored in answer.store.objects}[f"{HAND_OFF}warehouse.duckdb.gz"]
+    assert packed.read and not packed.holds and packed.empty_columns
+    assert not [stored.key for stored in answer.doomed if stored.key.startswith(HAND_OFF)]
+    assert answer.complete
+
+
 @pytest.mark.parametrize("chunk", [7, 64, 1 << 20])
 def test_every_key_is_counted_once_however_the_stream_is_cut(monkeypatch, chunk):
     """json_keys() reads JSON_CHUNK at a time; a key cut by a chunk's edge is found once, from the carry."""
@@ -454,6 +505,9 @@ def test_the_prefixes_are_the_ones_the_workflows_write():
     assert f'--key "{purge.WAREHOUSE_PREFIX}/ua/$RAW_RUN"' in build
     assert f'--history-url "s3://$R2_RAW_BUCKET/{purge.HISTORY_PREFIX}/monthly"' in build
     assert f'--history-url "s3://$R2_RAW_BUCKET/{purge.HISTORY_PREFIX}/conditions_$ENVIRONMENT"' in conditions
+    assert re.search(
+        rf'hand_off\.py put\s+--url "s3://\$R2_RAW_BUCKET/{purge.HISTORY_PREFIX}/conditions_\$ENVIRONMENT"', conditions
+    )
     assert '--bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly"' in refresh
 
 
@@ -478,3 +532,7 @@ def test_place_puts_each_kind_of_object_where_the_code_writes_it():
     assert purge.place("history/monthly/saves/s/x.parquet", "", 0).unit == "history/monthly/saves/s/"
     assert purge.place("history/monthly/history.json", "", 0).kind == purge.RECORD
     assert purge.place("browse/ourhike.duckdb", "", 0).kind == purge.DUCKDB
+    packed = purge.place("history/conditions_ua/checks/warehouse.duckdb.gz", "", 0)
+    assert (packed.kind, packed.unit, packed.first) == (purge.DUCKDB, "history/conditions_ua/checks/", False)
+    pointer = purge.place("history/conditions_ua/checks/hand_off.json", "", 0)
+    assert (pointer.kind, pointer.unit, pointer.first) == (purge.RECORD, "history/conditions_ua/checks/", True)

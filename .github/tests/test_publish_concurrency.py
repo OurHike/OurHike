@@ -37,9 +37,9 @@ PUBLISH_GROUP = "publish-data"
 #: involve it, and each holds a group of its own instead, named here with why.
 SIDECAR_ONLY = {
     # Decision 110: the hourly lane's checks put conditions/data_quality.json in place after the build has published,
-    # holding conditions-history-<leg> with publish-conditions.yml's leg. In publish-data, every checks run would be an
-    # entrant that cancels a publisher queued there (#1513 - A queued publish is silently cancelled when another one
-    # joins publish-data, and it looks like a green build).
+    # holding conditions-checks-<leg>, a group no publisher holds. In publish-data, or in any group a publisher holds,
+    # every checks run would be an entrant that cancels a publisher queued there (#1513 - A queued publish is silently
+    # cancelled when another one joins publish-data, and it looks like a green build).
     ("check-conditions.yml", "check"),
 }
 
@@ -79,15 +79,25 @@ def test_the_rule_has_something_to_check():
     assert len(publishing_jobs()) >= 5
 
 
+def _groups(workflow: dict, job: dict) -> set[str]:
+    """The concurrency groups a job holds, its own and its workflow's, each written as a mapping or a bare string."""
+    found = set()
+    for holder in (job, workflow):
+        concurrency = holder.get("concurrency")
+        group = concurrency if isinstance(concurrency, str) or concurrency is None else concurrency.get("group")
+        if group:
+            found.add(group)
+    return found
+
+
 def test_every_publisher_shares_the_group():
-    """At the job's level or its workflow's. A job may hold a group of its own beside its workflow's, as
-    publish-conditions.yml's legs hold conditions-history-<leg> with check-conditions.yml (decision 110): the
-    workflow's group holds the whole run whatever its jobs' own groups are, so either level holding publish-data is
-    the job holding it."""
+    """At the job's level or its workflow's. A job may hold a group of its own beside its workflow's: the workflow's
+    group holds the whole run whatever its jobs' own groups are, so either level holding publish-data is the job
+    holding it."""
     for name, job_id, workflow, job in publishing_jobs():
         if (name, job_id) in SIDECAR_ONLY:
             continue
-        groups = {(job.get("concurrency") or {}).get("group"), (workflow.get("concurrency") or {}).get("group")}
+        groups = _groups(workflow, job)
         assert PUBLISH_GROUP in groups, (
             f"{name}:{job_id} runs publish.py outside concurrency group "
             f"{PUBLISH_GROUP!r} - see #645 for what two concurrent writers "
@@ -105,5 +115,20 @@ def test_a_sidecar_only_job_runs_publish_py_with_sidecar_alone_and_holds_no_publ
         workflow, job = jobs[key]
         lines = _publish_lines(job)
         assert lines and all(line.startswith("python publish.py --sidecar ") for line in lines), (key, lines)
-        groups = {(job.get("concurrency") or {}).get("group"), (workflow.get("concurrency") or {}).get("group")}
-        assert PUBLISH_GROUP not in groups, f"{key} holds {PUBLISH_GROUP}: take it out of SIDECAR_ONLY"
+        assert PUBLISH_GROUP not in _groups(workflow, job), f"{key} holds {PUBLISH_GROUP}: take it out of SIDECAR_ONLY"
+
+
+def test_no_publisher_shares_any_concurrency_group_with_a_sidecar_only_job():
+    """#1513's cancellation is not publish-data's alone: GitHub keeps one pending run per group, so a SIDECAR_ONLY job
+    in any group a publisher also holds can take the slot that publisher waits in and cancel it, with nothing red.
+    check-conditions.yml's legs shared conditions-history-<leg> with publish-conditions.yml's until the review of
+    PR #1805 found exactly that (finding 3)."""
+    jobs = {(name, job_id): (workflow, job) for name, job_id, workflow, job in publishing_jobs()}
+    sidecars = {key: _groups(*jobs[key]) for key in sorted(SIDECAR_ONLY) if key in jobs}
+    assert sidecars, "SIDECAR_ONLY names no job that runs publish.py, so this checked nothing"
+    for (name, job_id), (workflow, job) in sorted(jobs.items()):
+        if (name, job_id) in SIDECAR_ONLY:
+            continue
+        for key, groups in sidecars.items():
+            shared = sorted(_groups(workflow, job) & groups)
+            assert not shared, f"{name}:{job_id} shares {shared} with {key}, which can cancel its queued run"

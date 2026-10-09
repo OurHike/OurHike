@@ -792,17 +792,89 @@ def test_the_checks_run_restores_elementarys_history_alone_and_saves_its_checks_
     assert _elementary_rows(after, "dbt_invocations", "invocation_id") == [("inv1",), ("inv2",), ("inv3",)]
 
 
-def test_the_checks_runs_save_refuses_when_a_build_saved_after_its_restore(tmp_path):
-    """The next hourly build waits for the checks run (their shared concurrency group); were it not to, this is the
-    refusal that keeps the checks from saving over its history."""
+# --- Two writers, no shared group (row_history.py's docstring, "TWO WRITERS, ONE POINTER") ------------------------
+#
+# check-conditions.yml no longer shares a concurrency group with publish-conditions.yml (#1513 — A queued publish is
+# silently cancelled when another one joins publish-data, and it looks like a green build), so a checks run's save of
+# Elementary's history and the next hourly build's can overlap. In either order the checks run's hour is the one left
+# out of the history, the build's save and its row dates never are, and neither run goes red for it.
+
+
+def _folders(store) -> list[str]:
+    return sorted(path.name for path in (store / row_history.ELEMENTARY_SAVES).iterdir())
+
+
+def test_the_checks_runs_save_is_skipped_and_said_when_a_build_saved_after_its_restore(tmp_path, capsys):
+    store, warehouse, _ = _hourly_build(tmp_path)
+    row_history.restore_elementary(str(store), warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    later = _next_build(tmp_path, store, "later.duckdb")
+    save(str(store), later, keep_days=21, now=CHECKS_AT)
+    builds, folders = _elementary_pointer(store), _folders(store)
+
+    message = row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    code = row_history.main(["save", "--url", str(store), "--warehouse", str(warehouse), "--elementary-only"])
+
+    assert "::warning title=Elementary's history not saved::" in message and "left out" in message
+    assert code == 0 and "::warning title=Elementary's history not saved::" in capsys.readouterr().out
+    assert _elementary_pointer(store) == builds, "elementary.json keeps naming the later build's save"
+    assert _folders(store) == folders, "a skipped save leaves no folder behind"
+
+
+def test_a_builds_save_lands_over_a_checks_save_made_after_its_restore_and_says_so(tmp_path):
+    """The other order: the next build restored the build's save, and then the checks run saved on top of it."""
+    store, warehouse, build_save = _hourly_build(tmp_path)
+    later = _next_build(tmp_path, store, "later.duckdb")
+    row_history.restore_elementary(str(store), warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    checks_save = _elementary_pointer(store)["save_id"]
+    _elementary_build(later, CHECKS_AT.replace(hour=8), "inv4")
+
+    message = save(str(store), later, keep_days=21, now=CHECKS_AT.replace(hour=8))
+
+    pointer = _elementary_pointer(store)
+    assert "::warning title=A checks run's history was saved over::" in message and checks_save in message
+    assert pointer["save_id"] == json.loads((store / POINTER).read_text())["save_id"], "one save id for both parts"
+    assert (pointer["previous_save_id"], pointer["saved_over"]) == (build_save, checks_save)
+    after = _next_build(tmp_path, store, "after.duckdb")
+    assert _elementary_rows(after, "dbt_invocations", "invocation_id") == [("inv1",), ("inv2",), ("inv4",)], (
+        "the build's own rows are kept, and only the checks run's hour, inv3, is left out"
+    )
+
+
+def test_a_checks_runs_pointer_says_it_saved_elementarys_history_alone_and_a_builds_says_it_did_not(tmp_path):
+    """What lets a build tell a checks run's save, which it may save over, from another build's, which it may not."""
+    store, warehouse, _ = _hourly_build(tmp_path)
+    assert _elementary_pointer(store)["elementary_only"] is False
+
+    row_history.restore_elementary(str(store), warehouse)
+    row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+
+    assert _elementary_pointer(store)["elementary_only"] is True
+
+
+def test_a_checks_run_that_meets_a_builds_save_while_uploading_writes_no_pointer_and_removes_its_folder(tmp_path, monkeypatch):
+    """The check before the upload passed, and a build saved while the checks run's files went up: the pointer is read
+    again just before it is written, which narrows the window to that one read and write."""
     store, warehouse, _ = _hourly_build(tmp_path)
     row_history.restore_elementary(str(store), warehouse)
     later = _next_build(tmp_path, store, "later.duckdb")
-    save(str(store), later, keep_days=21, now=CHECKS_AT)
+    real_put, landed = row_history.Store.put, []
 
-    with pytest.raises(row_history.ElementaryRefused, match="another run saved Elementary's history in between"):
-        row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
-    assert row_history.main(["save", "--url", str(store), "--warehouse", str(warehouse), "--elementary-only"]) == 1
+    def put_while_a_build_saves(self, local, relative):
+        real_put(self, local, relative)
+        if not landed:  # the build's own puts pass straight through once this is set
+            landed.append(relative)
+            save(str(store), later, keep_days=21, now=CHECKS_AT)
+
+    monkeypatch.setattr(row_history.Store, "put", put_while_a_build_saves)
+    message = row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    builds = json.loads((store / POINTER).read_text())["save_id"]
+
+    assert landed and "::warning title=Elementary's history not saved::" in message
+    assert _elementary_pointer(store)["save_id"] == builds, "elementary.json names the build's save, not the checks'"
+    assert landed[0].split("/")[1] not in _folders(store), "the checks run's uploaded folder is removed"
 
 
 def test_under_degrade_a_checks_run_whose_restore_fails_checks_with_no_history_and_saves_none(tmp_path, capsys):

@@ -7,7 +7,7 @@ build". What is held here is what keeps that workflow out of a hiker's way and i
   and check-conditions.yml placeholders to main), since a dispatch is taken only for a file main holds;
 - publish-conditions.yml starts it once both legs have published, on the legs that ran, with `actions: write` on that
   job alone and every word of the command through env;
-- each leg shares its concurrency group with publish-conditions.yml's leg, and neither holds publish-data for it;
+- each leg holds a concurrency group of its own, which no publisher holds, and neither holds publish-data for it;
 - it writes one object, conditions/data_quality.json, through `publish.py --sidecar`, after the checks succeeded;
 - the warehouse crosses through the leg's history store, never an Actions artifact;
 - the caps of a build and its checks add to less than the hour between two runs.
@@ -242,15 +242,33 @@ def test_a_dispatch_that_fails_turns_only_its_own_job_red_and_leaves_the_command
 # --- what the checks may touch ------------------------------------------------------------------------------------
 
 
-def test_each_leg_shares_its_concurrency_group_with_the_bakes_leg_and_neither_takes_publish_data_for_it():
-    """So the next hourly build of a leg waits for its checks instead of racing their history save, and a checks run is
-    never an entrant that cancels a publisher queued in publish-data (#1513)."""
-    checks, bake = _load(CHECKS), _load(BAKE)
-    group = {"group": "conditions-history-${{ matrix.data_environment }}", "cancel-in-progress": False}
+def _group(holder: dict) -> str | None:
+    """The concurrency group a workflow or a job holds, written as a mapping or as the bare string GitHub also takes."""
+    concurrency = holder.get("concurrency")
+    return concurrency if isinstance(concurrency, str) or concurrency is None else concurrency.get("group")
 
-    assert checks["jobs"]["check"]["concurrency"] == group == bake["jobs"]["publish"]["concurrency"]
+
+def test_each_checks_leg_holds_a_group_of_its_own_that_no_publisher_and_no_other_workflow_holds():
+    """#1513 — A queued publish is silently cancelled when another one joins publish-data, and it looks like a green
+    build. While each checks leg shared conditions-history-<leg> with the bake's leg, a checks run arriving while that
+    leg waited took the group's one pending slot and cancelled the hour's publish with nothing red, and the bake held
+    publish-data all the while it waited (review of PR #1805, finding 3). row_history.py's "TWO WRITERS, ONE POINTER"
+    is what keeps the two runs' saves of Elementary's history apart now, and hand_off.py's take answers a later put."""
+    checks, bake = _load(CHECKS), _load(BAKE)
+
+    assert checks["jobs"]["check"]["concurrency"] == {
+        "group": "conditions-checks-${{ matrix.data_environment }}",
+        "cancel-in-progress": False,
+    }
     assert "concurrency" not in checks, "a workflow-level group would hold both legs, and could not name the leg"
-    assert bake["concurrency"]["group"] == "publish-data", "the bake's whole run still holds publish-data"
+    assert "concurrency" not in bake["jobs"]["publish"], "a leg's own group is one a checks run could join again"
+    assert _group(bake) == "publish-data", "the bake's whole run still holds publish-data"
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        if path == CHECKS:
+            continue
+        workflow = _load(path)
+        holders = [workflow, *(workflow.get("jobs") or {}).values()]
+        assert not [group for group in map(_group, holders) if str(group or "").startswith("conditions-checks-")], path.name
 
 
 def test_the_one_object_the_checks_write_is_conditions_data_quality_json_after_the_checks_succeeded():
@@ -324,8 +342,10 @@ HOUR = 60
 
 def test_a_build_and_its_checks_each_at_their_caps_still_end_inside_the_hour():
     """The bake's publish job, its dispatch job and a checks leg, one after the other, each at its timeout: so even a
-    run whose every job ran to its cap is done before the next hour's build would wait on it (Reasoned from the caps;
-    the measured times are far under them, build_marts.py's docstring)."""
+    run whose every job ran to its cap has saved its checks' history before the next hour's build starts and restores
+    it. Nothing makes that build wait any more, and a checks save that lands after its restore is the one way an hour
+    of checks is lost (row_history.py, "TWO WRITERS, ONE POINTER"). Reasoned from the caps and the cron alone; the
+    measured times are far under the caps (build_marts.py's docstring)."""
     bake, checks = _load(BAKE)["jobs"], _load(CHECKS)["jobs"]
     total = bake["publish"]["timeout-minutes"] + bake["checks"]["timeout-minutes"] + checks["check"]["timeout-minutes"]
 

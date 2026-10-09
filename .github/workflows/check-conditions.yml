@@ -54,20 +54,27 @@
 # handed off nothing leaves the bucket's last copy, whose `built_at` says
 # how old it is.
 #
-# EACH LEG SHARES ITS CONCURRENCY GROUP WITH publish-conditions.yml'S LEG,
-# conditions-history-<leg>, at the job level on both sides, because the two
-# restore and save one store: the build both histories, these checks
-# Elementary's alone, each refusing to save over a save it did not restore
-# (row_history.py). So the next hourly build of a leg waits for its checks
-# instead of racing their save. NOT publish-data: this writes neither
-# latest.json nor any object another publisher writes, and joining that
-# group would make every checks run an entrant that cancels a publisher
-# waiting there (#1513 - A queued publish is silently cancelled when another
-# one joins publish-data, and it looks like a green build). The cost of the
-# per-leg group is the same rule inside it: a run of this file dispatched by
-# hand while a publish-conditions.yml leg waits on that leg's group takes the
-# waiting slot and cancels that hour's publish, so dispatch it by hand only
-# when no publish-conditions.yml run is queued.
+# EACH LEG HOLDS A CONCURRENCY GROUP OF ITS OWN, conditions-checks-<leg>,
+# which no publisher holds (.github/tests/test_publish_concurrency.py).
+# GitHub keeps one pending run per group and cancels it for a newer one, so a
+# group shared with a publisher lets a checks run cancel a queued publish
+# with nothing red (#1513 - A queued publish is silently cancelled when
+# another one joins publish-data, and it looks like a green build). That is
+# why this is not publish-data, and why it is no longer the
+# conditions-history-<leg> group publish-conditions.yml's legs held with it:
+# a checks run dispatched while a leg waited there cancelled that hour's
+# publish, and the bake held publish-data all the while it waited (review of
+# PR #1805, finding 3). With no shared group the checks and the next hourly
+# build can overlap on the leg's history store, and two things keep that
+# safe. row_history.py's "TWO WRITERS, ONE POINTER": a checks run whose save
+# would land over a later build's leaves its hour out of Elementary's
+# history, and a build saves over a checks run's save; each says so in a
+# warning and neither goes red. And hand_off.py's take answers a later
+# build's put landing mid-download as nothing to check, exit 4, not as a torn
+# upload. Inside the group, a third checks run of one leg arriving while one
+# runs and one waits cancels the waiting one: that hour is not checked, and
+# conditions/data_quality.json keeps its last copy, whose built_at says how
+# old it is. A dispatch by hand is safe whenever it is made.
 #
 # BUILD PLUS CHECKS FITS THE HOUR. The caps add to 45 minutes: the publish
 # job's 15, its `checks` job's 5 and this job's 25, against the 60 between
@@ -119,10 +126,10 @@ jobs:
     # The header's sum: 25 of the hour's 60, beside the build's 15 and the
     # dispatch's 5. The checks step's own cap is 20 of them.
     timeout-minutes: 25
-    # The header's "EACH LEG SHARES ITS CONCURRENCY GROUP": the same group
-    # publish-conditions.yml's `publish` job holds for this leg.
+    # The header's "EACH LEG HOLDS A CONCURRENCY GROUP OF ITS OWN": one that
+    # no publisher holds, so no checks run can cancel a queued publish.
     concurrency:
-      group: conditions-history-${{ matrix.data_environment }}
+      group: conditions-checks-${{ matrix.data_environment }}
       cancel-in-progress: false
     # publish-conditions.yml's two locks on its production leg, here too: the
     # matrix leaves production out unless the ref is main and the dispatch

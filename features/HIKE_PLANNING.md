@@ -454,9 +454,9 @@ So taking everything costs about **2% on top of a corridor package that is alrea
 
 **The store is `{bytes, sha256, manifest version, fetchedAt}`, verified on write.** A phone offline cannot reach `latest.json`, so it cannot re-derive what the bytes it holds should hash to — it has to trust a hash recorded at write time, which is safe because nothing is written that did not match the manifest when it was fetched. The template is `lib/nearbyTrailData.ts`, which already stores a 7.3 MB artifact against its published hash. It is **not** `lib/conditionsCache.ts`, which #1050's own comment names: that module stores `{document, storedAt}` — no bytes, no hash, no version — and its `MAX_CACHED_BYTES = 2 MB` would silently delete a 7.5 MB graph on every write.
 
-**Two things the store does that nothing else in the client did.** It records the **manifest version**, which is what lets a phone tell *the graph I hold* from *the graph my saved hike was priced against* — the same hazard `lib/dayHikes.ts` refuses to persist an `edgeIndex` over, one level up. It is recorded rather than acted on: what it enables is a card that can say its cached figures came from a different release, and that is a change to what a screen **says**, which wants its own before-and-after. And it **checks for room before writing**, which nothing in this codebase did for a vector artifact. A quota error is caught either way, so this is not about correctness — it is about not letting a browser under pressure evict a hiker's 314 MB downloaded map to make room for a routing graph.
+**Two things the store does that nothing else in the client did.** It records the **manifest version**, which is what lets a phone tell *the graph I hold* from *the graph my saved hike was priced against* — the same hazard `lib/dayHikes.ts` refuses to persist an `edgeIndex` over, one level up. It was recorded and not acted on until **#1828 — A phone merges trail-graph cells from two releases by node number, and a new release renumbers them**, which reads it to keep every merged graph to one release ("One release per graph" below). What it also enables, a card that can say its cached figures came from a different release, is still a change to what a screen **says**, which wants its own before-and-after. And it **checks for room before writing**, which nothing in this codebase did for a vector artifact. A quota error is caught either way, so this is not about correctness — it is about not letting a browser under pressure evict a hiker's 314 MB downloaded map to make room for a routing graph.
 
-The edge-count check is not skipped for stored bytes, and it matters **more** offline than online: a phone can hold a graph from one release and a geometry file from the next, edge 40 drawn from edge 41's vertices is a route on the wrong trail, and offline there is no fresh copy coming to correct it.
+The edge-count check is not skipped for stored bytes, and it matters **more** offline than online: a phone can hold a graph from one release and a geometry file from the next, edge 40 drawn from edge 41's vertices is a route on the wrong trail, and offline there is no fresh copy coming to correct it. Since #1828 a stored half is also held to the release of the graph it lines up with, because two releases can give a cell the same number of edges in a different order and the count passes them.
 
 ## The graph a phone keeps is the cells it planned in (#1257 stage 3, 2026-09-08)
 
@@ -486,6 +486,31 @@ already merged keeps its position, unseen ones go on the end, and the seam edge 
 carry is merged once — which is what lets a `GraphPoint.edgeIndex` in a draft survive a cell
 landing mid-build. Measured on the production graph, 2026-09-08: 466,966 edges become 530,190
 placements across 502 cells, 13.5% seam duplication.
+
+**One release per graph** (#1828, the maintainer's choice by poll, 2026-10-08). A cell names
+its nodes and edges by their number in the whole graph it was cut from, and
+`build_trail_graph.py` numbers afresh on every build, so node 4,102 of one release can be a
+different junction from node 4,102 of the next. Merged by number, a cell from one release and a
+cell from the next invent a junction where the numbers collide and drop a trail whose edge id
+the other release already used. So every merged graph is built from one release, the manifest
+`version` its cells were verified against, and `mergeGraphShard` refuses a cell from any other:
+
+- **With signal, the manifest's release.** A stored copy stands in for a failed fetch only when
+  its hash is the one the manifest publishes for that cell now. Any other stored copy is
+  refetched, never merged.
+- **Without signal, the newest release stored among the cells being built from**, by when each
+  was fetched. Read across those cells rather than the whole store, so one cell fetched at home
+  after an update cannot make a whole stretch stored before it unusable at the trailhead. A
+  stored cell of another release is treated as not stored.
+- **Once a session has merged a cell, that release until the app restarts.** A live draft holds
+  edge positions in the merged graph, so a cell fetched mid-session from another release is
+  left out rather than joined, and the next launch builds from the manifest's release.
+
+A hiker sees a cell left out the way they see any cell not on the phone: a tap there gets
+*"hasn't got this area's trail lines yet… Try again in a moment"*, and the console says which
+release the cell was from. Every release folder `pipeline/publish.py` stages carries a fresh
+version, so two releases always read as two; a folder staged by `pipeline/stage_release.py`
+carries none, and two of those would read as one (no workflow runs it yet).
 
 **The door answers from the index, not from a load.** *"A day hike"* on the Plan door used to
 open when the whole graph's parse finished; it opens now on `trail_graph_cells.json` — 166,721

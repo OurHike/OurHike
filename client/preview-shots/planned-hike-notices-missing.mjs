@@ -143,7 +143,9 @@ export default async function drive(page) {
   // comment says the camera could not take this shot, unless the row says
   // them.
   await page
-    .getByRole('button', { name: 'Notices for your planned hikes: not on this phone yet' })
+    .getByRole('button', {
+      name: 'Notices for your planned hikes: not on this phone yet',
+    })
     .click()
   const list = page.getByRole('dialog', { name: 'Trail notices this phone has' })
   await list.waitFor()

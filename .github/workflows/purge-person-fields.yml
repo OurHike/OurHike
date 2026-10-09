@@ -1,0 +1,38 @@
+# A placeholder, so decision 56's purge can be dispatched before the pull
+# request that builds it merges.
+#
+# GitHub accepts a workflow_dispatch only for a workflow whose file exists on
+# the default branch, and the run then uses the file at the ref it was
+# dispatched on. PR #1805 - dlt -> dbt re-platform as one go/no-go change
+# builds the purge in this file on claude/intelligent-feynman-sw3ewm (decision
+# 56 in pipeline/ELT.md on that branch): it lists, and on request deletes,
+# every stored copy of the person fields that loaded before the extract
+# stopped reading them. Only a workflow holds the raw store's keys. This file
+# is only what lets
+#
+#   gh workflow run purge-person-fields.yml --ref claude/intelligent-feynman-sw3ewm -f delete=false
+#
+# be accepted (#1826). The input matches the branch's file so the same
+# dispatch is valid against either. Dispatched on main it does nothing: no
+# checkout, no secret, no write, no schedule. That pull request replaces it
+# with the purge.
+name: Purge person fields (placeholder)
+
+on:
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: "false lists every stored object holding a person field; true deletes them"
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Say what this is
+        run: |
+          echo "Placeholder. The purge is purge-person-fields.yml on the branch of PR #1805; dispatch it with --ref that branch."

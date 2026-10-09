@@ -1,0 +1,42 @@
+# A placeholder, so the hourly lane's checks can be dispatched before the pull
+# request that builds them merges.
+#
+# GitHub accepts a workflow_dispatch only for a workflow whose file exists on
+# the default branch, and the run then uses the file at the ref it was
+# dispatched on. PR #1805 - dlt -> dbt re-platform as one go/no-go change
+# runs every Elementary check on the hourly lane in this file on
+# claude/intelligent-feynman-sw3ewm, in a workflow of its own that
+# publish-conditions.yml starts once its build has finished (decision 110 in
+# pipeline/ELT.md on that branch). This file is only what lets
+#
+#   gh workflow run check-conditions.yml --ref claude/intelligent-feynman-sw3ewm -f data_environment=ua -f build_run=<run id>
+#
+# be accepted (#1826). The inputs match the branch's file so the same
+# dispatch is valid against either. Dispatched on main it does nothing: no
+# checkout, no secret, no write, no schedule. That pull request replaces it
+# with the checks.
+name: Check the hourly conditions build (placeholder)
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_environment:
+        description: "Which legs' builds to check: both (production and UA; from main only) or ua alone"
+        type: choice
+        options: [both, ua]
+        default: both
+      build_run:
+        description: "The publish-conditions.yml run whose build these checks read"
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Say what this is
+        run: |
+          echo "Placeholder. The hourly checks are check-conditions.yml on the branch of PR #1805; dispatch it with --ref that branch."

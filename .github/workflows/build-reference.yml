@@ -1,0 +1,37 @@
+# A placeholder, so the monthly lane's build can be dispatched before the pull
+# request that builds it merges.
+#
+# GitHub accepts a workflow_dispatch only for a workflow whose file exists on
+# the default branch, and the run then uses the file at the ref it was
+# dispatched on. PR #1805 - dlt -> dbt re-platform as one go/no-go change
+# splits the monthly lane in two on claude/intelligent-feynman-sw3ewm
+# (decision 105 in pipeline/ELT.md on that branch): refresh-reference.yml
+# extracts and pins, then dispatches this file to build from that pin. This
+# file is only what lets
+#
+#   gh workflow run build-reference.yml --ref claude/intelligent-feynman-sw3ewm -f raw_run=<pin>
+#
+# be accepted (#1826). The input matches the branch's file so the same
+# dispatch is valid against either. Dispatched on main it does nothing: no
+# checkout, no secret, no write, no schedule. That pull request replaces it
+# with the build.
+name: Build reference data from a pin (placeholder)
+
+on:
+  workflow_dispatch:
+    inputs:
+      raw_run:
+        description: "The pinned raw_run to build from, as refresh-reference.yml names it"
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Say what this is
+        run: |
+          echo "Placeholder. The monthly build is build-reference.yml on the branch of PR #1805; dispatch it with --ref that branch."

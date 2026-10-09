@@ -241,7 +241,7 @@ export function renderChartFigure(chart, { tableOpen = false } = {}) {
 <div class="dq-key" aria-hidden="true">
 <span><i class="dq-key__line"></i>${chart.format.label} at each point</span>
 <span><i class="dq-key__band"></i>Expected range</span>
-<span><svg class="dq-key__out" viewBox="0 0 16 16"><path d="M8 1.5 15 14H1z"></path></svg>Outside it</span>
+<span><svg class="dq-key__out" viewBox="0 0 16 16"><path d="M8 1.5 15 14H1z"></path></svg>Flagged by Elementary</span>
 </div>
 <div class="dq-chart" data-chart tabindex="0" role="group" aria-label="The chart, point by point: use the left and right arrow keys">
 <div class="dq-chart__svg" data-chart-svg></div>
@@ -475,7 +475,9 @@ export function renderChart(chart, width) {
     }
   });
 
-  // The one direct label: the latest point outside the range, named in words.
+  // The one direct label: the latest point Elementary flagged, named in words.
+  // Its side is Elementary's verdict (dataQuality.mjs, flaggedPoints), never
+  // where the point sits against the band drawn here.
   const flagged = chart.points.findLastIndex((point, i) => point.outside && ys[i] !== null);
   if (flagged !== -1) {
     const point = chart.points[flagged];

@@ -2,7 +2,7 @@
 // reads: that a name from a file is escaped wherever it lands, that the page
 // prints no name the file does not hold, that every state's card and body
 // carry their words, and the chart's geometry - its ticks, its band, the
-// triangle and label on a point outside the band, and axis labels that never
+// triangle and label on the point Elementary flagged, and axis labels that never
 // collide (the first render at 1280 px put "Sep 2026" and "Oct 2026" a pixel
 // apart). And that every class the markup uses has a rule in site.css, the
 // org pages' own guard (siteCss.test.mjs) applied to this page.
@@ -245,24 +245,31 @@ describe("the chart", () => {
     }
   });
 
-  it("draws a point outside the band as a triangle, and names it in words", () => {
+  it("draws the point Elementary flagged as a triangle and names it, and the unflagged 7 Feb 2026 above its band as a dot", () => {
     const { markup } = renderChart(chart(), 900);
     expect(markup.match(/class="dq-chart__out"/g)).toHaveLength(1);
+    expect(markup.match(/class="dq-chart__dot"/g)).toHaveLength(11);
     expect(markup).toContain("4,118 rows, below the range");
     expect(markup).toContain(`aria-label="${chart().summary}"`);
+    expect(renderChartFigure(chart())).toContain("</svg>Flagged by Elementary</span>");
   });
 
-  it("bands only the points Elementary had enough history to expect, and a lone one as a bar", () => {
+  it("bands each point with the band stored at the point before it, and a lone one as a bar", () => {
     const { markup } = renderChart(chart(), 900);
     expect(markup.match(/<path class="dq-chart__band"/g)).toHaveLength(1);
     const file = examples.monthlyWithWarnings();
     file.series[0].points = file.series[0].points.map((point, i, all) =>
-      i === all.length - 1 ? point : { ...point, expected_min: null, expected_max: null },
+      i === all.length - 2 ? point : { ...point, expected_min: null, expected_max: null },
     );
     const lone = view(lane(file, "monthly"), MISSING).sections.chart;
+    expect(lone.points.map((point) => point.min !== null)).toEqual([...Array(11).fill(false), true]);
     const drawn = renderChart(lone, 900).markup;
     expect(drawn).not.toContain('<path class="dq-chart__band"');
     expect(drawn.match(/<rect class="dq-chart__band"/g)).toHaveLength(1);
+  });
+
+  it("keeps the band at the outlier to the builds before it, so the axis stops at 5,500 rather than at the fanned-out 7,000", () => {
+    expect(chartLayout(chart(), 900).ticks.map((tick) => tick.value)).toEqual([4000, 4500, 5000, 5500]);
   });
 
   it("never lets two axis labels touch, at any width from a small phone to a laptop", () => {

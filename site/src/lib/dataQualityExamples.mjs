@@ -45,14 +45,17 @@ const MONTHLY_ROWS = [5231, 5240, 5236, 5252, 5249, 5261, 5270, 5268, 5279, 5285
 export const NEEDED = 11;
 
 /**
- * The band Elementary 0.26.0 draws at each point: the mean of that point and
- * every one before it, plus or minus three of their sample standard
- * deviations (get_anomaly_scores_query(): "rows between unbounded preceding
- * and current row", and DuckDB's stddev), its lower edge no lower than 0, as
- * Elementary floors a count's. None at the first point, whose one value has
- * no spread. A point counts toward its own band, so none can fall outside
- * its band before the NEEDED-th. Computed rather than typed, so the
- * example's band and its last entry's expected range agree.
+ * The band Elementary 0.26.0 stores at each point, the one it scored that
+ * point against: the mean of that point and every one before it, plus or
+ * minus three of their sample standard deviations
+ * (get_anomaly_scores_query(): "rows between unbounded preceding and current
+ * row", and DuckDB's stddev), its lower edge no lower than 0, as Elementary
+ * floors a count's. None at the first point, whose one value has no spread.
+ * A point counts toward its own band, so none can fall outside its band
+ * before the NEEDED-th. The page draws each point against the band stored at
+ * the point before it (decision 118), so an early point can sit outside the
+ * band drawn there, as 7 Feb 2026's does here. Computed rather than typed, so
+ * the example's band and its last entry's expected range agree.
  */
 function bands(values, sigmas = 3, round = Math.round) {
   return values.map((_, i) => {
@@ -271,8 +274,10 @@ function seeded(seed) {
  * `n` points ending at `end`, `step` seconds apart, swaying gently around
  * `level` by up to `jitter` of it, the last one `last`, banded as `bands`
  * bands them. A sway rather than random noise, so no point but the last falls
- * outside its band and each chart has the one finding its entry names.
- * `places` rounds each value, for a rate rather than a count.
+ * outside its own stored band and each chart has the one finding its entry
+ * names; an early point can still sit outside the narrower band the page
+ * draws from the points before it. `places` rounds each value, for a rate
+ * rather than a count.
  */
 function history({ level, last, n, end, step, seed, jitter = 0.006, places = 0 }) {
   const phase = seeded(seed)() * 2 * Math.PI;

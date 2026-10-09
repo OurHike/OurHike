@@ -377,6 +377,8 @@ GIS_AND_GEO_API_ROWS = {
     "raw_mtsg__mtsg_map_locations": 3,
     "raw_nps__nps_api_places": 3,
     "raw_nps__nps_api_campgrounds": 2,
+    # Review page 02 (decision 122, 2026-10-09): the Baker Trail's GeoJSON, held in extract/_shared/rctc/.
+    "raw_rctc__rctc_baker_trail_geojson": 3,
 }
 
 

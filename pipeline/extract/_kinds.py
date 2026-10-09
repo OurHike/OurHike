@@ -645,21 +645,21 @@ class ArcgisLayer(PersonRuled, Resource):
         on a phone. ELT.md's per-page conditional read, which would let such a
         layer skip, is not built yet.
 
-        OFF THE MONTHLY CADENCE, FRESH ONLY BESIDE EDIT TRACKING'S OWN DATE.
-        A maintained date sees an attribute-only edit only if its publisher
+        FRESH ONLY BESIDE EDIT TRACKING'S OWN DATE, ON ANY CADENCE. A
+        maintained date sees an attribute-only edit only if its publisher
         moves it with every edit, and the server promises that only of the
         date its editor tracking keeps (`editFieldsInfo.editDateField` in the
-        metadata read here). So on an hourly or daily layer an unchanged
-        fingerprint on any other date answers UNKNOWN, and the layer is read
-        every run. Read 2026-10-09: five of the eight such hourly layers name
-        a date their server does not (wi_dnr_fire_danger, wa_dnr_ifpl,
-        mi_dnr_burn_permits, and two MapServers reporting no editFieldsInfo at
-        all); their registry notes count 83 burn permits and 26 Katy Trail
-        trailheads, and the other three were not counted. The monthly lane
-        keeps FRESH on the fingerprint alone, by its cost: none of its 17 such
-        layers names its date as edit tracking's (read the same day), and how
-        often an edit there goes unseen for a month is @unvalidated, settled
-        by comparing a FRESH layer's table with a full read of it.
+        metadata read here). So an unchanged fingerprint on any other date
+        answers UNKNOWN, and the layer is read every run. FRESH would hold for
+        as long as the fingerprint did not move, so on the monthly lane an
+        edit to a lean-to or a campsite could go unseen indefinitely, not for
+        one month. Read 2026-10-09: of the 25 on-prem layers that declare a
+        maintained date, 3 name editor tracking's (all hourly) and keep
+        FRESH. The other 22, whose metadata reports no editFieldsInfo at all,
+        are read every run: five hourly (wi_dnr_fire_danger, wa_dnr_ifpl,
+        mi_dnr_burn_permits, mo_state_parks_katy_trailheads,
+        odfw_orham_alert_areas) and all 17 monthly. The statistics are still
+        asked, so the run log keeps whether the fingerprint moved.
         """
         date_field = (self.entry.get("freshness") or {}).get("field")
         if not date_field:
@@ -696,7 +696,7 @@ class ArcgisLayer(PersonRuled, Resource):
             return Freshness.STALE, marker
         verdict = compare_marker(_canonical(recorded), _canonical(marker))
         tracked = ((metadata.get("editFieldsInfo") or {}).get("editDateField") or "").lower()
-        if verdict is Freshness.FRESH and self.cadence != "monthly" and tracked != date_field.lower():
+        if verdict is Freshness.FRESH and tracked != date_field.lower():
             return Freshness.UNKNOWN, marker
         return verdict, marker
 

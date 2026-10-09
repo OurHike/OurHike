@@ -1256,6 +1256,12 @@ def test_turning_return_z_on_reads_a_layer_again_and_leaves_every_other_digest_a
     assert _run.definition_digest(z_centerline()) != digest_before_return_z(z_centerline())
 
 
+#: Two `editFieldsInfo` answers for onprem_dated, whose freshness.field is UPDATED: editor tracking keeping another
+#: date, and keeping UPDATED. An unchanged on-prem fingerprint is FRESH only beside the second (_onprem_check()).
+ANOTHER_DATE = {"editDateField": "LAST_EDITED_DATE", "editorField": "LAST_EDITED_USER"}
+ITS_OWN_DATE = {"editDateField": "updated", "editorField": "editor"}
+
+
 def test_an_onprem_layer_with_no_maintained_date_is_always_read(registry, requests_mock):
     resource = ArcgisLayer(key="onprem_undated", club="testclub", type="trail_lines")
     assert resource.platform == "onprem"
@@ -1263,7 +1269,7 @@ def test_an_onprem_layer_with_no_maintained_date_is_always_read(registry, reques
 
 
 def test_an_onprem_fingerprint_sees_a_delete_that_the_edit_date_alone_would_miss(registry, requests_mock):
-    requests_mock.get(ONPREM_URL, json={"objectIdField": "OBJECTID"})
+    requests_mock.get(ONPREM_URL, json={"objectIdField": "OBJECTID", "editFieldsInfo": ITS_OWN_DATE})
     answer = {"features": [{"attributes": {"n": 315, "max_oid": 900, "max_date": 1790000000000}}]}
     requests_mock.get(ONPREM_URL + "/query", json=answer)
     resource = ArcgisLayer(key="onprem_dated", club="testclub", type="points_of_interest")
@@ -1277,13 +1283,16 @@ def test_an_onprem_fingerprint_sees_a_delete_that_the_edit_date_alone_would_miss
 
 
 def test_an_onprem_fingerprint_sees_a_redrawn_line_that_count_ids_and_the_date_all_miss(registry, requests_mock):
-    """A line moved in place, its maintained date kept by hand: only the summed length moves (the dlt skill's rule 4)."""
+    """A line moved in place under an unchanged edit date: only the summed length moves (the dlt skill's rule 4).
+
+    Even editor tracking's own date can stay put: tracking can be switched off for a bulk edit (Reasoned; not seen on
+    a registered layer)."""
     fields = [
         {"name": "OBJECTID", "type": "esriFieldTypeOID"},
         {"name": "UPDATED", "type": "esriFieldTypeDate"},
         {"name": "Shape_Length", "type": "esriFieldTypeDouble"},
     ]
-    requests_mock.get(ONPREM_URL, json={"objectIdField": "OBJECTID", "fields": fields})
+    requests_mock.get(ONPREM_URL, json={"objectIdField": "OBJECTID", "fields": fields, "editFieldsInfo": ITS_OWN_DATE})
     asked = []
     answer = {"features": [{"attributes": {"n": 40, "max_oid": 40, "max_date": 1790000000000, "sum_measure": 81234.5}}]}
 
@@ -1308,24 +1317,29 @@ def test_an_onprem_fingerprint_sees_a_redrawn_line_that_count_ids_and_the_date_a
     ("type_", "edit_fields", "unchanged"),
     [
         ("warnings", None, Freshness.UNKNOWN),
-        ("warnings", {"editDateField": "LAST_EDITED_DATE", "editorField": "LAST_EDITED_USER"}, Freshness.UNKNOWN),
-        ("warnings", {"editDateField": "updated", "editorField": "editor"}, Freshness.FRESH),
-        ("points_of_interest", None, Freshness.FRESH),
+        ("warnings", ANOTHER_DATE, Freshness.UNKNOWN),
+        ("warnings", ITS_OWN_DATE, Freshness.FRESH),
+        ("points_of_interest", None, Freshness.UNKNOWN),
+        ("points_of_interest", ANOTHER_DATE, Freshness.UNKNOWN),
+        ("points_of_interest", ITS_OWN_DATE, Freshness.FRESH),
     ],
     ids=[
         "hourly, the server names no edit tracking",
         "hourly, edit tracking keeps another date",
         "hourly, the date is edit tracking's own",
-        "monthly, kept by cost",
+        "monthly, the server names no edit tracking",
+        "monthly, edit tracking keeps another date",
+        "monthly, the date is edit tracking's own",
     ],
 )
-def test_an_unchanged_onprem_fingerprint_is_fresh_on_an_hourly_layer_only_beside_edit_trackings_own_date(
+def test_an_unchanged_onprem_fingerprint_is_fresh_only_beside_edit_trackings_own_date_on_any_cadence(
     registry, requests_mock, type_, edit_fields, unchanged
 ):
-    """A fire rating or burn restriction edited in place moves no count, id or length, and moves a maintained date
-    only when its publisher moves it; the server promises that only of the date its editor tracking keeps
-    (`editFieldsInfo.editDateField`). Read 2026-10-09: wi_dnr_fire_danger's LAST_CHANGED_DATE, wa_dnr_ifpl's EDIT_DT
-    and mi_dnr_burn_permits' PullStamp are dates their servers name as no such thing (the dlt skill's rule 4)."""
+    """A burn restriction or a lean-to's capacity edited in place moves no count, id or length, and moves a maintained
+    date only when its publisher moves it; the server promises that only of the date its editor tracking keeps
+    (`editFieldsInfo.editDateField`). An unchanged fingerprint is FRESH for as long as it stays unchanged, so on the
+    monthly lane such an edit could go unseen indefinitely. Read 2026-10-09: five of the eight hourly on-prem layers
+    with a maintained date, and all 17 monthly ones, name a date their servers do not (the dlt skill's rule 4)."""
     metadata = {"objectIdField": "OBJECTID", "fields": [{"name": "OBJECTID", "type": "esriFieldTypeOID"}]}
     requests_mock.get(ONPREM_URL, json={**metadata, "editFieldsInfo": edit_fields} if edit_fields else metadata)
     answer = {"features": [{"attributes": {"n": 83, "max_oid": 83, "max_date": 1791496200000}}]}
@@ -1377,7 +1391,8 @@ def test_an_onprem_fingerprint_asks_for_the_layers_own_id_field_when_its_metadat
     verdict, marker = resource.change_check(None)
 
     assert verdict is Freshness.STALE and marker == {"n": "843", "max_oid": "842", "max_date": "1790000000000"}
-    assert resource.change_check(marker) == (Freshness.FRESH, marker)
+    # Unchanged, so not STALE; and read anyway, since CAJO's metadata names no editor-tracking date.
+    assert resource.change_check(marker) == (Freshness.UNKNOWN, marker)
 
 
 @pytest.mark.parametrize(

@@ -377,11 +377,12 @@ cannot see it (measured 2026-10-01). So:
 - On-prem ArcGIS ETags hash the response body, so a service-metadata ETag
   never moves when the data does: USFS read `"1a7709d0"` on both 2026-09-02 and
   2026-10-01 (measured). Use the statistics fingerprint instead: `count`,
-  `max(OID)`, `sum(Shape_Length)` and the maintained date. On an hourly or
-  daily layer an unchanged fingerprint is FRESH only when that date is the one
-  the layer's `editFieldsInfo.editDateField` names, since only editor
-  tracking's date is promised to move on every edit; otherwise it is UNKNOWN
-  and the layer is read every run (five layers, read 2026-10-09).
+  `max(OID)`, `sum(Shape_Length)` and the maintained date. On any cadence an
+  unchanged fingerprint is FRESH only when that date is the one the layer's
+  `editFieldsInfo.editDateField` names, since only editor tracking's date is
+  promised to move on every edit; otherwise it is UNKNOWN and the layer is read
+  every run. Read 2026-10-09: 22 of the 25 layers that declare a date are read
+  every run, all 17 monthly ones among them (100,012 features in 110 pages).
 - `max(edit date)` alone cannot see a deleted row, and neither can a cursor
   (Reasoned: a deleted row has no edit date left to read).
 - WordPress feed validators are site-wide (measured 2026-10-01), so they never

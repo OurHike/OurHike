@@ -189,6 +189,55 @@ def test_the_long_path_guide_lands_one_row_per_page_its_index_links(fixtures):
     )
 
 
+def test_the_landed_guide_reads_back_as_the_sections_its_pages_parse_to(fixtures):
+    """parity.py's old side reads the guide from this table, which is all a monthly pin carries of it: the rows dlt
+    landed are fetch_nynjtc_long_path_guide.py's sections.json for the same pages, in the index's order."""
+    import parity
+    from lib import nynjtc_long_path_guide as guide
+
+    root, _ = fixtures
+    folder = root / "raw" / "guide_pages" / guide.SOURCE_KEY
+    files = json.loads((folder / "pages.json").read_text())
+    parsed = [
+        guide.parse_section((folder / files[url]).read_text(), url, expected_number=number).to_dict()
+        for number, url in guide.parse_index((folder / files[guide.INDEX_URL]).read_text())
+    ]
+    assert parity._landed_guide_sections(root / "warehouse.duckdb") == parsed
+
+
+def test_the_landed_hikes_read_back_as_the_cache_their_pages_make(fixtures, tmp_path):
+    """parity.py's old side reads the Hike Finder from this table, which is all a monthly pin carries of it: the rows
+    dlt landed are fetch_hikefinder.py's cache for the same pages (parse_hike(), as_cache_entry(), and a track stored
+    where the page publishes one that parse_gpx() reads a point from), the fetch's own clock aside."""
+    from urllib.parse import urljoin
+
+    import parity
+    from lib.hikefinder import DETAIL_PATH, SOURCE_KEY, as_cache_entry, listing_ids, parse_gpx, parse_hike
+    from lib.source_registry import find_source, load_registry
+
+    root, _ = fixtures
+    folder = root / "raw" / "hikefinder"
+    landed_dir, expected_dir = tmp_path / "landed", tmp_path / "expected"
+    landed_dir.mkdir()
+    expected_dir.mkdir()
+    landed = parity._landed_hikes(root / "warehouse.duckdb", landed_dir)
+
+    base = find_source(load_registry(Path(parity.__file__).parent / "sources.json"), SOURCE_KEY)["url"].rstrip("/") + "/"
+    expected = {}
+    for hike_id in listing_ids((folder / "hikes.html").read_text()):
+        url = urljoin(base, DETAIL_PATH.format(id=hike_id))
+        hike = parse_hike((folder / f"hike-{hike_id}.html").read_text(), hike_id, url)
+        entry = {**as_cache_entry(hike, landed[str(hike_id)]["fetched_at"]), "gpx_file": None}
+        track = folder / f"track-{hike_id}.gpx"
+        if hike.has_published_route and track.exists() and parse_gpx(track.read_text()) is not None:
+            (expected_dir / f"{hike_id}.gpx").write_text(track.read_text())
+            entry["gpx_file"] = f"{hike_id}.gpx"
+        expected[str(hike_id)] = entry
+    assert landed == expected
+    assert sorted(path.name for path in landed_dir.iterdir()) == sorted(path.name for path in expected_dir.iterdir())
+    assert any(entry["gpx_file"] for entry in landed.values()), "the fixture publishes at least one track"
+
+
 def test_the_hourly_lanes_other_upstreams_land_from_their_conditions_answers(fixtures):
     """NWS, NYNJTC's WordPress and OurHike's Postgres, each served from make_dbt_fixtures.py's conditions/ files."""
     root, counts = fixtures

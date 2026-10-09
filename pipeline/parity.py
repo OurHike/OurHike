@@ -426,15 +426,31 @@ def _network_old(name: str) -> dict:
 #: a unit-test row where the two answer that way, so none outlives its reason.
 NETWORK_ID_REASONS = {
     "globalid_in_any_case": (
-        "an improvement (TL05): the SQL reads a layer's GlobalID whatever its case, then its OBJECTID, then "
-        "Socrata's row id, where resolve_feature_id() matches only 'GlobalID' and falls back to the feature's "
-        "server row id or to its place in the file"
+        "an improvement (TL05): the SQL reads a layer's GlobalID whatever its case, then its object id (OBJECTID or "
+        "FID), then Socrata's row id, where resolve_feature_id() matches only 'GlobalID' and falls back to the "
+        "feature's server row id or to its place in the file"
     ),
     "feature_id_not_landed": (
         "expected by TL05's ledger row until the extract lands it: the extract lands a feature's properties and "
         "geometry and not its GeoJSON id, so a layer whose only id is that one is numbered by its place in the file"
     ),
+    "staging_key_for_a_line_with_no_id": (
+        "an improvement over numbering by place (TL05): a line with none of the ids the SQL reads (a GlobalID, an "
+        "object id named OBJECTID or FID, a Socrata row id) and no raw-table order in its staging model is published "
+        "under its staging key, as every club line is: decision 40's key, unique in its layer and the same for the "
+        "same row next release. Today's exporter numbers such a line `generated-<n>` by its place in a file whose "
+        "features carry no GeoJSON id, an id that names another line once the file's order moves. On an ArcGIS "
+        "layer's own fetch it would publish the layer's object id instead, so a layer whose object id has a third "
+        "name, and no GlobalID, lands here in the SQL alone, which one read of the layer's metadata shows. No line "
+        "of monthly run 30 reaches this case: every ArcGIS network layer whose metadata answered on 2026-10-08 names "
+        "its object id OBJECTID or FID, or has a GLOBALID read first"
+    ),
 }
+
+#: A staging key as int_trail_lines__network_judged publishes it after the layer's key: dbt_utils'
+#: generate_surrogate_key(), an md5 in 32 lowercase hex digits. No GlobalID, OBJECTID or Socrata row id the network
+#: publishes has that form (run 30's nearby_trails.geojson: GlobalIDs carry hyphens, the rest are digits or `row-`).
+STAGING_KEY = re.compile(r"[0-9a-f]{32}")
 
 
 #: Why a line today's file publishes more than once is published once by the
@@ -449,14 +465,34 @@ NETWORK_COPY_REASON = (
     "differing only in Socrata's row id"
 )
 
+#: Why a line the old side numbers by its place carries its layer's object id in the dbt file. Not one of
+#: NETWORK_ID_REASONS either: on a feature that has its GeoJSON id the SQL and resolve_feature_id() answer alike
+#: (the unit-test row sql::an_object_id_named_fid_is_the_id), and what differs is the old side's input, so
+#: tests/test_dbt_trail_lines_network_parity.py holds it to a pair of files.
+AS_LANDED_ID_REASON = (
+    "expected, from the old side's input and not from either writer (TL05): today's fetcher writes each ArcGIS "
+    "feature's GeoJSON id, which ArcGIS sets to the layer's object id, and resolve_feature_id() publishes it where "
+    "the layer has no field named exactly 'GlobalID'; the SQL publishes the same object id from its landed column, "
+    "OBJECTID or FID. The file the old side reads has no GeoJSON id (the extract's as-landed copy drops it, and "
+    "make_dbt_fixtures.py writes its ArcGIS lines without one), so there today's exporter numbers the line by its "
+    "place in the file. Explained only for a line equal in both files on every other property and on geometry, its "
+    "old ids all positional and its new ids all whole numbers. Read on 2026-10-08: of the 24 ArcGIS network layers "
+    "whose metadata answered, the object id field is OBJECTID on 20 and FID on 3 (cotrex_trails, nc_mst_trail, "
+    "nynjtc_long_path), and cotrex_trails, nc_mst_trail and both NYNJTC layers each gave two features a GeoJSON id "
+    "equal to it"
+)
+
 
 def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     """The `properties.id` differences that are only a line's id, each with its reason.
 
     A line is the same line in both files when its source, other properties and geometry are, and every id such a line
     carries differently is explained by the case its ids show. Two positional ids for one line are never explained:
-    both writers number a layer with no id in its file's order (int_trail_lines__network_judged), so a line they
-    number differently is a defect.
+    where the dbt writer publishes one, it numbers the layer in its raw table's order, the fetched file's
+    (int_trail_lines__network_judged's `source_row`), as today's exporter does, so a line they number differently is
+    a defect. A layer whose staging model keeps no such order is published under its staging key (STAGING_KEY). A line
+    the old side numbers by place and the dbt writer by its object id, a whole number, is the old side's input
+    (AS_LANDED_ID_REASON).
     """
 
     def line(feature: dict) -> str:
@@ -472,6 +508,12 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     def positional(feature_id: str) -> bool:
         return ":generated-" in feature_id
 
+    def staging_key(feature_id: str) -> bool:
+        return STAGING_KEY.fullmatch(feature_id.partition(":")[2]) is not None
+
+    def object_id(feature_id: str) -> bool:
+        return feature_id.partition(":")[2].isdigit()
+
     old_ids, new_ids = ids(old), ids(new)
     reasons: dict[str, str] = {}
     for shared in old_ids.keys() & new_ids.keys():
@@ -486,7 +528,16 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
             continue
         if all(positional(feature_id) for feature_id in was + now):
             continue
-        case = "feature_id_not_landed" if all(positional(feature_id) for feature_id in now) else "globalid_in_any_case"
+        if all(positional(feature_id) for feature_id in was) and all(object_id(feature_id) for feature_id in now):
+            for feature_id in set(was) | set(now):
+                reasons[f"properties.id {feature_id}"] = AS_LANDED_ID_REASON
+            continue
+        if all(positional(feature_id) for feature_id in was) and all(staging_key(feature_id) for feature_id in now):
+            case = "staging_key_for_a_line_with_no_id"
+        elif all(positional(feature_id) for feature_id in now):
+            case = "feature_id_not_landed"
+        else:
+            case = "globalid_in_any_case"
         for feature_id in set(was) | set(now):
             reasons[f"properties.id {feature_id}"] = NETWORK_ID_REASONS[case]
     return reasons
@@ -512,15 +563,91 @@ def _club_line_reasons(old: dict, new: dict, family_key: str, key_of: Callable[[
     return reasons
 
 
+#: Why a line that swallowed another layer's copies of it can carry another name in each file (TL18).
+INHERITED_NAME_REASON = (
+    "expected by int_trail_lines__network_deduplicated's header, which says so: a line with no name of its own takes "
+    "the name of the first named copy it swallows (lib/duplicates.py's merge()), and the SQL takes the copies in "
+    "staging-key order where today's exporter takes them in file order. A Socrata layer's file order is its `:id` "
+    "order, which a replacement of the dataset mints again (ELT.md, 'Stable upstream keys'), so today's name can "
+    "change with no change on the ground and the staging key's cannot. Explained only where the line is in both files, "
+    "has swallowed the same layer's copies in both, and differs in its name alone. Monthly run 30's two, rebuilt from "
+    "NYC Open Data's live rows on 2026-10-08: nyc_parks_trails:row-2fd6-t8ys~mjm7 swallows two nyc_cscl_paths "
+    "segments, 'BROOKFIELD PARK WEST OUTER LOOP' first in file order and 'BROOKFIELD PARK BLUE TRAIL' first by key; "
+    "row-7cmw.ec29~bksa swallows five greenway segments, 'CUNNINGHAM PARK GREENWAY' first in file order and "
+    "'VANDERBILT MOTOR PARKWAY' first by key"
+)
+
+
+def _inherited_name_reasons(old: dict, new: dict) -> dict[str, str]:
+    """INHERITED_NAME_REASON for each line both files hold that names the same swallowed layer (`duplicate_of`) in both
+    and differs from its twin in `properties.name` and nothing else."""
+    new_by_id = {str(feature["properties"]["id"]): feature for feature in new.get("features") or []}
+
+    def unnamed(feature: dict) -> str:
+        return canonical({**feature, "properties": {**feature["properties"], "name": None}})
+
+    reasons: dict[str, str] = {}
+    for feature in old.get("features") or []:
+        line_id = str(feature["properties"]["id"])
+        twin = new_by_id.get(line_id)
+        if twin is None or feature["properties"].get("name") == twin["properties"].get("name"):
+            continue
+        swallowed = feature["properties"].get("duplicate_of")
+        if swallowed and swallowed == twin["properties"].get("duplicate_of") and unnamed(feature) == unnamed(twin):
+            reasons[f"properties.id {line_id}"] = INHERITED_NAME_REASON
+    return reasons
+
+
 def _nearby_trails_reasons(old: dict, new: dict) -> dict[str, str]:
-    """nearby_trails' two explained kinds: a line whose id alone differs, and decision 64's club lines."""
+    """nearby_trails' three explained kinds: a line whose id alone differs, a name inherited in another order, and
+    decision 64's club lines."""
     club = _club_line_reasons(old, new, "properties.id", lambda feature: str(feature["properties"]["id"]))
-    return {**_network_id_reasons(old, new), **club}
+    return {**_network_id_reasons(old, new), **_inherited_name_reasons(old, new), **club}
+
+
+#: Why a sketch group of today's draws a part more often than the dbt writer's (_overview_copy_reasons()).
+OVERVIEW_COPY_REASON = (
+    "expected by decision 40, as NETWORK_COPY_REASON is for the lines: write_overview() draws a part for each line "
+    "of a group, so today's sketch draws a line export_nearby_trails.py publishes twice, an exact copy, twice, where "
+    "staging keeps one copy and the dbt writer draws it once. Explained only where the two groups draw the same "
+    "parts and today's draws some of them more often. Monthly run 30's two: alaska_trails' 7 exact copies, 2 of "
+    "Haessler-Norris Sled Dog, a through route with a group of its own, and 5 of lines no through route names (S "
+    "Turns, Stairway to Heaven twice, 264 and Moose Hill). write_overview() over the dbt writer's alaska_trails "
+    "lines, once as published and once with a second copy of each, changes those two groups and no other, by 2 "
+    "and 1 repeats of parts each already draws (2026-10-08; the copies below the seam's floor draw nothing)"
+)
+
+
+def _overview_copy_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The sketch groups whose parts, as a set, are the dbt writer's, where today's draws some of them more often
+    (OVERVIEW_COPY_REASON). A part either side draws that the other does not, any other property, and a group one side
+    lacks are not explained here."""
+
+    def parts(feature: dict) -> Counter:
+        return Counter(canonical(part) for part in (feature.get("geometry") or {}).get("coordinates") or [])
+
+    def once_each(feature: dict) -> str:
+        geometry = feature.get("geometry") or {}
+        return canonical({**feature, "geometry": {**geometry, "coordinates": sorted(parts(feature))}})
+
+    new_by_key = {_overview_key(feature): feature for feature in new.get("features") or []}
+    reasons: dict[str, str] = {}
+    for feature in old.get("features") or []:
+        key = _overview_key(feature)
+        twin = new_by_key.get(key)
+        if twin is None or once_each(feature) != once_each(twin):
+            continue
+        was, now = parts(feature), parts(twin)
+        if was != now and not now - was:
+            reasons[f"properties (source, name, blaze_color, trail_status) {key}"] = OVERVIEW_COPY_REASON
+    return reasons
 
 
 def _network_overview_reasons(old: dict, new: dict) -> dict[str, str]:
-    """network_overview's one explained kind: decision 64's club groups, after every network group."""
-    return _club_line_reasons(old, new, "properties (source, name, blaze_color, trail_status)", _overview_key)
+    """network_overview's two explained kinds: a group today's draws some parts of more often, and decision 64's club
+    groups, after every network group."""
+    club = _club_line_reasons(old, new, "properties (source, name, blaze_color, trail_status)", _overview_key)
+    return {**_overview_copy_reasons(old, new), **club}
 
 
 #: Why a place can be in the dbt writer's places.json and not in today's. tests/test_dbt_places_parity.py holds it to
@@ -568,7 +695,75 @@ def _places_reasons(old: dict, new: dict) -> dict[str, str]:
     kept = [record["id"] for record in new.get("places") or [] if f"id {record['id']}" not in reasons]
     if reasons and kept == old_ids:
         reasons["order"] = PLACES_REASONS["new_source"]
+    return {**reasons, **_copied_trail_miles_reasons(old, new)}
+
+
+#: Why a long trail's `trailMiles` can be shorter in the dbt writer's places.json than in today's.
+#: tests/test_dbt_places_parity.py holds it to a network file with a copy in it.
+PLACES_COPY_REASON = (
+    "expected by decision 40: staging keeps one of a layer's exact copies, where today's network file draws every "
+    "copy, and export_places.load_named_trails() sums a long trail's miles over every line drawn under its name. "
+    "Explained only for a `trail:` place in both files that differs in `trailMiles` alone, where today's network file "
+    "draws a line of that source and name more than once with one geometry, and export_places' own measure of those "
+    "lines gives today's miles with every line counted and the dbt writer's with each geometry counted once, both to "
+    "the tenth. Monthly run 30's one, measured 2026-10-08 with pyproj on UA's run 30 files: "
+    "trail:alaska_trails:Haessler-Norris Sled Dog, 85.3 miles over its 58 lines in the dbt writer's file, two of "
+    "which (alaska_trails:448, 0.52 mi, and alaska_trails:97, 0.27 mi) today's draws twice, so 86.1 with the copies "
+    "(today's own figure is withheld by --keys-only)"
+)
+
+
+def _copied_trail_miles_reasons(old: dict, new: dict) -> dict[str, str]:
+    """PLACES_COPY_REASON for each `trail:` place both files hold whose `trailMiles` alone differs, where today's
+    network file, measured as export_places measures it, gives today's figure counting every line and the dbt
+    writer's counting each of that trail's geometries once."""
+    old_by_id = {record["id"]: record for record in old.get("places") or []}
+    changed: dict[tuple[str, str], tuple[str, float, float]] = {}
+    for record in new.get("places") or []:
+        before = old_by_id.get(record["id"])
+        if before is None or not str(record["id"]).startswith("trail:"):
+            continue
+        if {name for name in before.keys() | record.keys() if before.get(name) != record.get(name)} != {"trailMiles"}:
+            continue
+        changed[(record.get("source"), record.get("name"))] = (record["id"], before["trailMiles"], record["trailMiles"])
+    if not changed:
+        return {}
+    miles = _trail_miles_counting_copies(set(changed))
+    reasons: dict[str, str] = {}
+    for key, (place_id, was, now) in changed.items():
+        every, once = miles.get(key, (None, None))
+        if every is not None and every != once and round(every, 1) == was and round(once, 1) == now:
+            reasons[f"id {place_id}"] = PLACES_COPY_REASON
     return reasons
+
+
+def _trail_miles_counting_copies(keys: set[tuple[str, str]]) -> dict[tuple[str, str], tuple[float, float]]:
+    """{(source, name): (miles over every line, miles over each geometry once)} for those trails, over today's
+    network file (_published_network()), loaded and measured as export_places.load_lines() and
+    load_named_trails() load and measure a long trail."""
+    import duckdb
+
+    import export_places
+    from lib.corridor import METERS_PER_MILE
+    from lib.source_registry import load_registry
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    shipped = export_places.shipped_line_source_keys(load_registry(export_places.SOURCES_PATH))
+    export_places.load_lines(con, [_published_network()], shipped)
+    con.execute("CREATE TEMP TABLE wanted (source VARCHAR, name VARCHAR)")
+    con.executemany("INSERT INTO wanted VALUES (?, ?)", sorted(keys))
+    rows = con.execute(f"""
+        SELECT source, name, sum(metres), sum(metres) FILTER (WHERE copy = 1)
+        FROM (
+            SELECT lines.source, lines.name, {export_places._geodesic_metres("lines.g")} AS metres,
+                   row_number() OVER (PARTITION BY lines.source, lines.name, ST_AsWKB(lines.geom)) AS copy
+            FROM lines INNER JOIN wanted ON lines.source = wanted.source AND lines.name = wanted.name
+        )
+        GROUP BY source, name
+    """).fetchall()
+    con.close()
+    return {(source, name): (every / METERS_PER_MILE, once / METERS_PER_MILE) for source, name, every, once in rows}
 
 
 def _places_old() -> dict:
@@ -844,47 +1039,106 @@ def _club_sections_old() -> dict:
 
 
 # The suggested_hikes family: export_suggested_hikes.py's shelf (the
-# suggested-hikes list) and details, and export_highlights.py's file. The Hike
-# Finder's pages are not in git, so fixture mode builds the warehouse from
-# make_dbt_fixtures.py's copies under <raw-dir>/hikefinder/, and the old side
-# runs those same pages through what a publish runs: fetch_hikefinder.py's
-# parse into its cache, route_hikefinder.py's build_results(), and
-# export_suggested_hikes.py's build_document(). Both sides route over the
-# warehouse's graph (beside <raw-dir>, as CI lays it out), written as
-# route_hikefinder.py's three files by step_form_route.graph_files() and read
-# by route_hikefinder.load_graph(), as trail_graph.json reaches it today.
+# suggested-hikes list) and details, and export_highlights.py's file. The old
+# side reads the hikes the extract landed (HIKE_FINDER_TABLE), which is the
+# dbt side's input too, as fetch_hikefinder.py's cache (_landed_hikes()), then
+# runs what a publish runs on that cache: route_hikefinder.py's
+# build_results() and export_suggested_hikes.py's build_document(). Both sides
+# route over the warehouse's graph (beside <raw-dir>, as CI and the monthly
+# parity job lay it out), written as route_hikefinder.py's three files by
+# step_form_route.graph_files() and read by route_hikefinder.load_graph(), as
+# trail_graph.json reaches it today.
+
+#: Where the extract lands NYNJTC's two page-read sources (pipeline/extract/nynjtc/), in the warehouse's `raw` schema:
+#: the tables the dbt sources `raw_nynjtc__nynjtc_hike_finder` and `raw_nynjtc__nynjtc_long_path_guide` name. A monthly
+#: pin carries them (extract/_warehouse.py's load_pinned()), and so does the warehouse fixture mode loads in CI.
+#: Spelled here because parity.py runs on requirements.txt, which has no dlt to ask extract/ for a table's name;
+#: tests/test_parity_landed_pages.py holds both to the dbt sources.
+HIKE_FINDER_TABLE = "raw.raw_nynjtc__nynjtc_hike_finder"
+GUIDE_TABLE = "raw.raw_nynjtc__nynjtc_long_path_guide"
+
+#: The cache entry's values that are lists or objects (lib/hikefinder.py's as_cache_entry(): ParsedHike.to_dict()'s
+#: nested values and hike_problems()' list), which the extract lands as JSON text (max_table_nesting 0), each with
+#: what an entry holds where the landed value is null. tests/test_parity_landed_pages.py holds the names to
+#: as_cache_entry()'s nested keys.
+HIKE_JSON_FIELDS = {
+    "start": None,
+    "features": [],
+    "directions": [],
+    "description": [],
+    "public_transport": [],
+    "raw_fields": {},
+    "problems": [],
+}
 
 
-def _hikefinder_cache(folder: Path, gpx_dir: Path) -> dict:
-    """fetch_hikefinder.py's cache for the pages fixture mode served: parse_hike(), as_cache_entry(), and a GPX
-    stored as store_gpx() stores one, only where it parses to a track point."""
-    from urllib.parse import urljoin
+def _landed_rows(warehouse: Path, table: str, order_by: str) -> list[dict] | None:
+    """Every row of `table` in the warehouse as {column: value}, in `order_by` order, rows that differ only in dlt's
+    own row id (`_dlt_id`) read once, as decision 40's staging dedupe keeps one of them; None where the warehouse or
+    the table does not exist."""
+    import duckdb
 
-    import export_suggested_hikes
-    from lib.hikefinder import DETAIL_PATH, SOURCE_KEY, as_cache_entry, listing_ids, parse_gpx, parse_hike
-    from lib.source_registry import find_source, load_registry
+    if not warehouse.exists():
+        return None
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        try:
+            columns = [row[0] for row in con.execute(f"describe {table}").fetchall()]
+        except duckdb.CatalogException:
+            return None
+        kept = ", ".join(f'"{name}"' for name in columns if name != "_dlt_id")
+        cursor = con.execute(f"select distinct {kept} from {table} order by {order_by}")
+        names = [column[0] for column in cursor.description]
+        return [dict(zip(names, values, strict=True)) for values in cursor.fetchall()]
 
-    base = find_source(load_registry(export_suggested_hikes.SOURCES_PATH), SOURCE_KEY)["url"].rstrip("/") + "/"
-    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+def _landed_hikes(warehouse: Path, gpx_dir: Path) -> dict[str, dict]:
+    """fetch_hikefinder.py's cache for the hikes the extract landed (HIKE_FINDER_TABLE), each track stored in
+    `gpx_dir` as store_gpx() stores one; {} where the warehouse holds no such table, as on a run that fetched none.
+
+    The published_hikes kind (extract/_kinds.py's PublishedHikes) lands one row per hike as lib/hikefinder.py's
+    parse_hike() and as_cache_entry() read its page, which is the entry fetch_hikefinder.py caches, and `gpx`, the
+    track as served where the hike has a published route and parse_gpx() reads a point from it, null otherwise:
+    exactly where store_gpx() writes a file and the entry names it in `gpx_file`. So this is the fetcher's cache
+    for the pages the extract read, with no page fetched again. In hike number order, the listing's
+    (listing_ids()).
+
+    WHY NOT THE PAGES. Until monthly run 30 the old side parsed make_dbt_fixtures.py's copies of the pages under
+    data/raw/hikefinder/, which only CI writes: a monthly pin carries the landed table and no page, so run 30
+    (refresh-reference.yml 37772454847) could compare neither suggested_hikes file. Reading the export again would
+    cost the host another 83 minutes at the 10-second crawl delay its robots.txt asks (extract/_kinds.py's
+    HIKEFINDER_THROTTLE_SECONDS) and would not be the pages the dbt side read."""
+    import dataclasses
+
+    from lib.hikefinder import ParsedHike
+
+    rows = _landed_rows(warehouse, HIKE_FINDER_TABLE, "id")
+    if not rows:
+        return {}
+    fields = [field.name for field in dataclasses.fields(ParsedHike)] + ["fetched_at", "problems"]
     hikes: dict[str, dict] = {}
-    for hike_id in listing_ids((folder / "hikes.html").read_text(encoding="utf-8")):
-        page = (folder / f"hike-{hike_id}.html").read_text(encoding="utf-8")
-        hike = parse_hike(page, hike_id, urljoin(base, DETAIL_PATH.format(id=hike_id)))
-        if hike is None:
+    tracks: dict[str, str | None] = {}
+    for row in rows:
+        entry = {name: row.get(name) for name in fields}
+        for name, empty in HIKE_JSON_FIELDS.items():
+            value = entry[name]
+            entry[name] = json.loads(value) if isinstance(value, str) else (empty if value is None else value)
+        key, track = str(entry["id"]), row.get("gpx") if entry["has_published_route"] else None
+        if key in hikes:
+            if hikes[key] != entry or tracks[key] != track:
+                raise SystemExit(f"{HIKE_FINDER_TABLE} lands hike {key} twice, differently: there is no one cache entry for it")
             continue
-        entry = as_cache_entry(hike, stamp)
+        hikes[key], tracks[key] = entry, track
+    for key, entry in hikes.items():
         entry["gpx_file"] = None
-        track = folder / f"track-{hike_id}.gpx"
-        if hike.has_published_route and track.exists() and parse_gpx(track.read_text(encoding="utf-8")) is not None:
-            (gpx_dir / f"{hike_id}.gpx").write_text(track.read_text(encoding="utf-8"), encoding="utf-8")
-            entry["gpx_file"] = f"{hike_id}.gpx"
-        hikes[str(hike_id)] = entry
+        if tracks[key]:
+            (gpx_dir / f"{key}.gpx").write_text(tracks[key], encoding="utf-8")
+            entry["gpx_file"] = f"{key}.gpx"
     return hikes
 
 
 def _suggested_hikes_old(part: str, raw_dir: Path) -> dict | None:
     """export_suggested_hikes.py's shelf (`part` "shelf") or every detail ("details"), or None where its main()
-    writes no file: a source that does not reach hikers, an export with no hike, or no hike that ships."""
+    writes no file: a source that does not reach hikers, no hike landed, or no hike that ships."""
     import tempfile
 
     import duckdb
@@ -899,14 +1153,15 @@ def _suggested_hikes_old(part: str, raw_dir: Path) -> dict | None:
     if source is None or not source.get("reaches_hikers"):
         return None
     steward = source.get("steward") or source.get("attribution")
+    warehouse = raw_dir.parent / "warehouse.duckdb"
     with tempfile.TemporaryDirectory() as scratch:
         graph_dir, gpx_dir = Path(scratch) / "graph", Path(scratch) / "gpx"
         graph_dir.mkdir()
         gpx_dir.mkdir()
-        cache = _hikefinder_cache(raw_dir / "hikefinder", gpx_dir)
+        cache = _landed_hikes(warehouse, gpx_dir)
         if not cache:
             return None
-        with duckdb.connect(str(raw_dir.parent / "warehouse.duckdb"), read_only=True) as con:
+        with duckdb.connect(str(warehouse), read_only=True) as con:
             step_form_route.graph_files(con, graph_dir)
         starts = [(hike["start"]["lon"], hike["start"]["lat"]) for hike in cache.values() if hike.get("start")]
         graph = route_hikefinder.load_graph(graph_dir, starts)
@@ -1112,6 +1367,21 @@ POI_REASONS = {
         "(int_points_of_interest__cautioned); only a record today's file lacks, of a layer whose taps "
         "layer_rules names plumbed_water, at low confidence with that caution"
     ),
+    "exact_copy_site": (
+        "expected by decision 40, as an exact copy staging removes is: the POI is in both files and only its site "
+        "differs, by exactly what lib/poi_sites.py's group_place_sites() makes of today's records once the copies "
+        "staging removed are gone. Today's file folds a privy or fountain and its exact copy, same name and same "
+        "spot, into one site (the copy riding the other's pin); with the copy gone the site is gone, and site_id, "
+        "site_role and site_name are null. Monthly run 30: NYC's Heckscher Playground and Ancient Playground "
+        "restrooms, each listed twice by NYC Parks (2 pairs of the 975 operational rows, read 2026-10-08)"
+    ),
+    "whole_number": (
+        "not a difference in any value: one number written two ways. Today's exporter passes a coordinate through as "
+        "the layer gave it, and a layer can give a whole number of degrees as an integer (NYC's Socrata restrooms: "
+        "Bensonhurst Park's longitude, -74, read 2026-10-08), where the dbt writer prints every coordinate as a "
+        "double (-74.0). JSON.parse reads both as the number -74, so a phone holds the same value. Explained only "
+        "where the two records are equal once every whole-number double is read as the integer it equals"
+    ),
 }
 
 
@@ -1120,33 +1390,99 @@ def _row_id_order(value) -> tuple:
     return (0, value, "") if isinstance(value, int | float) and not isinstance(value, bool) else (1, 0, str(value))
 
 
-def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
+def _removed_copies(old: dict, new: dict) -> set[str]:
     """The POIs today's file publishes and the dbt writer's does not, each an exact copy of one it does.
 
-    A copy is a feature of the same layer that agrees with another on its geometry and every property but `id` and
-    `source_feature_id` (the server's own row id); the copy with the lowest id is kept, as the staging dedupe keeps
-    the lowest OBJECTID. A missing feature is explained only when the kept copy is in the new file; anything else the
-    new file lacks, or has extra, is still a difference.
+    A copy is a feature of the same layer that agrees with another on its geometry and every property but `id`,
+    `source_feature_id` (the server's own row id) and the site properties, which today's exporter derives from the
+    copies themselves (_copy_site_reasons()); the copy with the lowest id is kept, as the staging dedupe keeps the
+    lowest OBJECTID or Socrata row id. A missing feature counts only when the kept copy is in the new file.
     """
 
     def body(feature: dict) -> tuple[str, str]:
-        properties = {name: value for name, value in feature["properties"].items() if name not in ("id", "source_feature_id")}
+        ignored = ("id", "source_feature_id", *SITE_PROPERTIES)
+        properties = {name: value for name, value in feature["properties"].items() if name not in ignored}
         return feature["properties"]["source"], canonical({"geometry": feature["geometry"], "properties": properties})
 
     new_ids = {_poi_id(feature) for feature in new.get("features") or []}
     copies: dict[tuple[str, str], list[dict]] = {}
     for feature in old.get("features") or []:
         copies.setdefault(body(feature), []).append(feature)
-    reasons: dict[str, str] = {}
+    removed: set[str] = set()
     for group in copies.values():
         if len(group) < 2:
             continue
         kept, *dropped = sorted(group, key=lambda feature: _row_id_order(feature["properties"]["source_feature_id"]))
-        if _poi_id(kept) not in new_ids:
+        if _poi_id(kept) in new_ids:
+            removed |= {_poi_id(feature) for feature in dropped if _poi_id(feature) not in new_ids}
+    return removed
+
+
+def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
+    """POI_REASONS["exact_copy"] for each of _removed_copies(); anything else the new file lacks, or has extra, is
+    still a difference."""
+    return {f"properties.id {poi_id}": POI_REASONS["exact_copy"] for poi_id in _removed_copies(old, new)}
+
+
+def _without_site(feature: dict) -> str:
+    """A feature's canonical JSON with its site properties left out."""
+    properties = {name: value for name, value in feature["properties"].items() if name not in SITE_PROPERTIES}
+    return canonical({**feature, "properties": properties})
+
+
+def _copy_site_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The POIs in both files that differ only in their site, where the new file's site is the one
+    lib/poi_sites.group_place_sites() makes of today's records less _removed_copies(): the site the copies made.
+
+    group_place_sites() and site_properties() are called as export_nearby_poi.py's main() calls them, on today's
+    records without the removed copies and without the site properties main() wrote onto them. A POI whose site the
+    new file draws otherwise, a POI that differs in anything else, and a POI one file lacks are not explained here.
+    """
+    from lib.poi_sites import group_place_sites, site_properties
+
+    removed = _removed_copies(old, new)
+    if not removed:
+        return {}
+    remaining = [
+        {name: value for name, value in feature["properties"].items() if name not in SITE_PROPERTIES}
+        for feature in old.get("features") or []
+        if _poi_id(feature) not in removed
+    ]
+    sites = site_properties(group_place_sites(remaining))
+    new_by_id = {_poi_id(feature): feature for feature in new.get("features") or []}
+    reasons: dict[str, str] = {}
+    for feature in old.get("features") or []:
+        poi_id = _poi_id(feature)
+        twin = new_by_id.get(poi_id)
+        if twin is None or canonical(feature) == canonical(twin) or _without_site(feature) != _without_site(twin):
             continue
-        for feature in dropped:
-            if _poi_id(feature) not in new_ids:
-                reasons[f"properties.id {_poi_id(feature)}"] = POI_REASONS["exact_copy"]
+        expected = sites.get(poi_id, {})
+        if all(twin["properties"].get(name) == expected.get(name) for name in SITE_PROPERTIES):
+            reasons[f"properties.id {poi_id}"] = POI_REASONS["exact_copy_site"]
+    return reasons
+
+
+def _whole_numbers(value):
+    """`value` with every double that is a whole number written as the integer it equals, as JSON.parse reads both."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_whole_numbers(inner) for inner in value]
+    if isinstance(value, dict):
+        return {name: _whole_numbers(inner) for name, inner in value.items()}
+    return value
+
+
+def _whole_number_reasons(old: dict, new: dict) -> dict[str, str]:
+    """POI_REASONS["whole_number"] for each POI in both files that differs only in how a whole number is written."""
+    new_by_id = {_poi_id(feature): feature for feature in new.get("features") or []}
+    reasons: dict[str, str] = {}
+    for feature in old.get("features") or []:
+        twin = new_by_id.get(_poi_id(feature))
+        if twin is None or canonical(feature) == canonical(twin):
+            continue
+        if canonical(_whole_numbers(feature)) == canonical(_whole_numbers(twin)):
+            reasons[f"properties.id {_poi_id(feature)}"] = POI_REASONS["whole_number"]
     return reasons
 
 
@@ -1202,9 +1538,16 @@ def _seasonal_tap_reasons(old: dict, new: dict) -> dict[str, str]:
 
 
 def _nearby_poi_reasons(old: dict, new: dict) -> dict[str, str]:
-    """nearby_poi's three explained kinds: an exact copy staging removed, decision 31's new data, and decision 65's
-    seasonal taps from a layer today's exporter reads."""
-    return {**_exact_copy_reasons(old, new), **_seasonal_tap_reasons(old, new), **_new_source_reasons(old, new)}
+    """nearby_poi's five explained kinds: an exact copy staging removed, the site its removal dissolves, a whole
+    number written two ways, decision 31's new data, and decision 65's seasonal taps from a layer today's exporter
+    reads."""
+    return {
+        **_exact_copy_reasons(old, new),
+        **_copy_site_reasons(old, new),
+        **_whole_number_reasons(old, new),
+        **_seasonal_tap_reasons(old, new),
+        **_new_source_reasons(old, new),
+    }
 
 
 #: export_poi.py's CSI_WATER_SOURCE: the source a synthesized water point publishes under.
@@ -1470,40 +1813,74 @@ def _walk_ends(records: list[dict]) -> list[tuple[float, float]]:
     ]
 
 
-def _guide_sections_old() -> Path:
-    """A folder holding sections.json as fetch_nynjtc_long_path_guide.py writes it, parsed from the fixture's guide pages.
+#: The Long Path guide's columns as the guide_pages kind lands them: lib/nynjtc_long_path_guide.Section.to_dict()'s
+#: keys, the three blocks and the notes as JSON text (max_table_nesting 0), each with what a section holds where the
+#: landed value is null. tests/test_parity_landed_pages.py holds the names to to_dict()'s.
+GUIDE_JSON_FIELDS = {"parking": [], "camping": [], "description": [], "notes": {}}
+GUIDE_FIELDS = ("number", "title", "distance_miles", "parks", "url", *GUIDE_JSON_FIELDS)
 
-    The fetcher reads NYNJTC's forty pages, which CI may not. The fixture's pages (make_dbt_fixtures.py's
-    guide_pages/nynjtc_long_path_guide/) are parsed here in the index's order by lib/nynjtc_long_path_guide.py's own
-    parse_index() and parse_section(), the functions the guide_pages kind calls. With no fixture pages the folder holds
-    nothing, as on a run that never fetched the guide.
+
+def _landed_guide_sections(warehouse: Path) -> list[dict] | None:
+    """The Long Path guide's sections as the extract landed them (GUIDE_TABLE), each in the shape
+    fetch_nynjtc_long_path_guide.py writes into sections.json (Section.to_dict()), in section number order; None where
+    the warehouse holds no such table.
+
+    The guide_pages kind (extract/_kinds.py's GuidePages) lands each section page as lib/nynjtc_long_path_guide.py's
+    parse_section() reads it, the parse the fetcher writes into sections.json, with the page's sha256 beside it; so
+    this is the fetcher's cache for the pages the extract read. Section number order is the index's: the guide's index
+    links sections 1 to 40 in number order (read live 2026-10-08 by parse_index()), and it is the order
+    step_long_path_guide reads them in, so build_records()' dedupe, which keeps the earliest of two records of one
+    place, keeps the same one on both sides."""
+    rows = _landed_rows(warehouse, GUIDE_TABLE, "number")
+    if rows is None:
+        return None
+    sections: list[dict] = []
+    for row in rows:
+        section = {name: row.get(name) for name in GUIDE_FIELDS}
+        for name, empty in GUIDE_JSON_FIELDS.items():
+            value = section[name]
+            section[name] = json.loads(value) if isinstance(value, str) else (empty if value is None else value)
+        if sections and sections[-1]["number"] == section["number"]:
+            if sections[-1] != section:
+                raise SystemExit(
+                    f"{GUIDE_TABLE} lands section {section['number']} twice, differently: there is no one page to read"
+                )
+            continue
+        sections.append(section)
+    return sections
+
+
+def _guide_sections_old() -> Path:
+    """A folder holding sections.json as fetch_nynjtc_long_path_guide.py writes it, from the sections the extract
+    landed (_landed_guide_sections()), or holding nothing where the warehouse has no guide table, as on a run that
+    never fetched the guide.
+
+    The fetcher reads NYNJTC's forty pages, which CI may not, and a monthly pin carries the landed table and no page.
+    In CI the table is make_dbt_fixtures.py's guide pages, which fixture mode served the extract; in a monthly run it
+    is the pin's. Monthly run 30 (refresh-reference.yml 37772454847) parsed the fixture's pages here, which a pin does
+    not carry, so its old side placed no guide waypoint, and its nearby_poi parity named all 271 the dbt writer
+    published, and places' the 109 guide places among them. Today's guide_records() over the guide and Long Path
+    layer read live on 2026-10-08 places the same 271, every one equal to the dbt writer's in run 30, property for
+    property.
     """
     import tempfile
 
-    from lib import nynjtc_long_path_guide as guide
-
     folder = Path(tempfile.mkdtemp(prefix="parity-guide-"))
-    pages_dir = RAW_DIR / "guide_pages" / guide.SOURCE_KEY
-    if not (pages_dir / "pages.json").exists():
-        return folder
-    files = json.loads((pages_dir / "pages.json").read_text(encoding="utf-8"))
-    index = (pages_dir / files[guide.INDEX_URL]).read_text(encoding="utf-8")
-    sections = [
-        guide.parse_section((pages_dir / files[url]).read_text(encoding="utf-8"), url, expected_number=number).to_dict()
-        for number, url in guide.parse_index(index)
-    ]
-    (folder / "sections.json").write_text(json.dumps(sections), encoding="utf-8")
+    sections = _landed_guide_sections(_warehouse())
+    if sections is not None:
+        (folder / "sections.json").write_text(json.dumps(sections), encoding="utf-8")
     return folder
 
 
 def _nearby_poi_old() -> dict:
     """export_nearby_poi.py's nearby_poi.geojson, by its own functions in main()'s order.
 
-    main() cannot run on the fixtures: it reads the guide's cache from data/raw/nynjtc_long_path_guide/, which no
-    fixture writes. So this calls main()'s functions in its order: each registered layer's build_records() in
-    poi_sources()'s order; guide_records() over the fixture guide's parsed sections (_guide_sections_old()) and the
-    layer's own Long Path lines, appended because the guide reaches hikers; the network ring and closed-trailhead mark
-    against the published network (_published_network()); and the place sites.
+    main() reads the guide's cache from data/raw/nynjtc_long_path_guide/, which neither CI nor a monthly pin writes.
+    So this calls main()'s functions in its order: each registered layer's build_records() in poi_sources()' order;
+    guide_records() over the guide's landed sections (_guide_sections_old()) and the layer's own Long Path lines,
+    appended where the guide reaches hikers, and refused as main() refuses it where it reaches hikers and nothing
+    landed; the network ring and closed-trailhead mark against the published network (_published_network()); and the
+    place sites.
     """
     import export_nearby_poi as nearby
 
@@ -1513,11 +1890,12 @@ def _nearby_poi_old() -> dict:
     for source in sources:
         features = json.loads((nearby.RAW_DIR / f"{source['key']}.geojson").read_text(encoding="utf-8")).get("features", [])
         records.extend(nearby.build_records(source, features)[0])
-    sections = _guide_sections_old()
-    if (sections / "sections.json").exists():
-        guide, stats = nearby.guide_records(registry, raw_dir=sections, lines_dir=nearby.RAW_DIR)
-        if stats is not None and stats.get("reaches_hikers"):
-            records.extend(guide)
+    try:
+        guide, stats = nearby.guide_records(registry, raw_dir=_guide_sections_old(), lines_dir=nearby.RAW_DIR)
+    except FileNotFoundError as missing:
+        raise SystemExit(f"export_nearby_poi.py refuses this input: {missing}") from missing
+    if stats is not None and stats.get("reaches_hikers"):
+        records.extend(guide)
     network = _published_network()
     records, _ = nearby.clip_to_network(records, network, nearby.boundary_paths_for(sources))
     nearby.mark_closed_trailheads(records, network)

@@ -1340,6 +1340,84 @@ def test_a_seasonal_tap_of_a_layer_todays_exporter_reads_is_explained_by_decisio
     assert "oprhp_facilities" in parity._plumbed_water_sources()
 
 
+def _restroom(row_id: str, name: str, lon, lat: float) -> dict:
+    """An NYC restroom as export_nearby_poi.build_records() makes it from NYC Parks' Socrata row."""
+    return {
+        "id": f"nyc_public_restrooms:{row_id}",
+        "poi_type": "privy",
+        "trail_id": "NYCPARKS",
+        "source": "nyc_public_restrooms",
+        "source_feature_id": row_id,
+        "name": name,
+        "lat": lat,
+        "lon": lon,
+        "confidence": "high",
+    }
+
+
+def _with_sites(records: list[dict]) -> dict:
+    """nearby_poi.geojson for `records`, each carrying the site main() folds it into (group_place_sites())."""
+    records = [dict(record) for record in records]
+    sites = poi_sites.site_properties(export_nearby_poi.group_place_sites(records))
+    for record in records:
+        record.update(sites.get(record["id"], {}))
+    return export_nearby_poi.records_to_geojson(records)
+
+
+def test_monthly_run_30s_restrooms_are_a_removed_copy_its_dissolved_site_and_a_whole_number():
+    """Monthly run 30's five NYC restroom differences, rebuilt from NYC Parks' rows as read 2026-10-08.
+
+    Heckscher Playground is listed twice at one spot, so today's file folds the two into one site, the lower row id
+    its anchor; staging keeps that one copy, whose site is then gone. Bensonhurst Park's longitude is a whole -74,
+    which today's file writes as the integer the layer gave and the dbt writer as -74.0. Each is explained, by the
+    reason that is its own, and nothing else is."""
+    kept = _restroom("row-23sh~w2ra_8a88", "Heckscher Playground", -73.9771, 40.76837)
+    copy = _restroom("row-r5j3-f32v~9j7x", "Heckscher Playground", -73.9771, 40.76837)
+    whole = _restroom("row-uw3s_3qyb-64az", "Bensonhurst Park", -74, 40.59787)
+    other = _restroom("row-other", "Hilton White Playground", -73.9075, 40.82291)
+    old = _with_sites([kept, copy, whole, other])
+    new = _with_sites([kept, {**whole, "lon": -74.0}, other])
+    assert old["features"][0]["properties"]["site_role"] == "anchor"
+    assert old["features"][1]["properties"]["site_role"] == "member"
+
+    found = {what for what, _, _ in parity.differences(old, new, parity.FAMILIES["nearby_poi"])}
+    reasons = parity._nearby_poi_reasons(old, new)
+
+    assert found == set(reasons)
+    assert reasons == {
+        f"properties.id {copy['id']}": parity.POI_REASONS["exact_copy"],
+        f"properties.id {kept['id']}": parity.POI_REASONS["exact_copy_site"],
+        f"properties.id {whole['id']}": parity.POI_REASONS["whole_number"],
+    }
+
+
+def test_a_site_the_dbt_writer_draws_otherwise_than_the_copys_removal_leaves_is_not_explained():
+    """The kept copy's site is explained only as group_place_sites() redraws it without the copy: a site field the
+    new file sets otherwise is still a difference, and so is any other property."""
+    kept = _restroom("row-a", "Heckscher Playground", -73.9771, 40.76837)
+    copy = _restroom("row-b", "Heckscher Playground", -73.9771, 40.76837)
+    old = _with_sites([kept, copy])
+    wrong_site = export_nearby_poi.records_to_geojson([{**kept, "site_id": kept["id"], "site_role": "anchor", "site_name": "x"}])
+    renamed = export_nearby_poi.records_to_geojson([{**kept, "name": "Heckscher Playground restroom"}])
+
+    assert parity._nearby_poi_reasons(old, wrong_site) == {f"properties.id {copy['id']}": parity.POI_REASONS["exact_copy"]}
+    assert f"properties.id {kept['id']}" not in parity._nearby_poi_reasons(old, renamed)
+
+
+def test_a_number_written_otherwise_is_explained_only_where_it_is_the_same_number():
+    """-74 and -74.0 are one number to JSON.parse; -74 and -74.5 are not, and neither is a whole number beside a
+    changed name."""
+    whole = _restroom("row-w", "Bensonhurst Park", -74, 40.59787)
+    old = export_nearby_poi.records_to_geojson([whole])
+
+    assert parity._whole_number_reasons(old, export_nearby_poi.records_to_geojson([{**whole, "lon": -74.0}])) == {
+        f"properties.id {whole['id']}": parity.POI_REASONS["whole_number"]
+    }
+    assert parity._whole_number_reasons(old, export_nearby_poi.records_to_geojson([{**whole, "lon": -74.5}])) == {}
+    renamed = export_nearby_poi.records_to_geojson([{**whole, "lon": -74.0, "name": "Bensonhurst"}])
+    assert parity._whole_number_reasons(old, renamed) == {}
+
+
 def test_no_wave_1_point_layer_is_one_export_nearby_poi_reads():
     """The new-data reason reaches only layers today's exporter never reads: no wave 1 row carries `poi_type` or sits
     in TYPED_LAYERS, which is what would put it in export_nearby_poi.py's export."""

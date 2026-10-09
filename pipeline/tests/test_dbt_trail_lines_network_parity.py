@@ -12,8 +12,8 @@ by running the Python over each dbt unit test's own rows, one test per model:
   normalize_identifier() (TL01, TL08, TL09);
 - int_trail_lines__network_judged: keep_reason(), declared_name(),
   load_boundary() and lib/feature_id.py (TL04-TL07, TL10, TL11, TL13, TL05),
-  where DELIBERATE_IDS holds the two id rows that differ on purpose and
-  parity.py's NETWORK_ID_REASONS has to name the same two cases;
+  where DELIBERATE_IDS holds the three id rows that differ on purpose and
+  parity.py's NETWORK_ID_REASONS has to name the same three cases;
 - int_trail_lines__network_counts: count_problems();
 - int_trail_lines__network_deduplicated: deduplicate(), publication first;
 - int_trail_lines__network_area_closures: apply_area_closures(), NYS Parks'
@@ -310,6 +310,7 @@ JUDGED = "int_trail_lines__network_judged_answers_what_keep_reason_answers"
 DELIBERATE_IDS = {
     "sql::a_globalid_in_capitals_is_still_the_id": "globalid_in_any_case",
     "sql::a_feature_id_the_extract_does_not_land": "feature_id_not_landed",
+    "sql::a_line_with_no_id_and_no_file_order_takes_its_staging_key": "staging_key_for_a_line_with_no_id",
 }
 
 #: What the Python's feature carried that the warehouse does not: the
@@ -360,7 +361,9 @@ def test_keep_reason_declared_name_and_the_id_chain_answer_what_the_unit_test_ex
         hints = PYTHON_FEATURES.get(key, {})
         if "globalid" in properties:
             properties[hints.get("globalid", "GlobalID")] = properties.pop("globalid")
-        feature_id = hints.get("feature_id", landed.get("objectid"))
+        # The GeoJSON `id` today's fetch writes is the layer's object id, under whichever of its two names it lands.
+        object_id = next((landed[name] for name in ("objectid", "fid") if landed.get(name) is not None), None)
+        feature_id = hints.get("feature_id", object_id)
         geometry = shapely.from_wkt(row["geom"]) if row.get("geom") else None
         boundary, refused = boundaries[row["source_key"]]
         want = expected[key]
@@ -760,6 +763,121 @@ def test_parity_never_explains_two_positional_ids_that_name_different_lines():
     new = {"features": [_line("s:generated-0", "A", b), _line("s:generated-1", "A", a)]}
     assert parity.differences(old, new, family)
     assert family.explained(old, new) == {}
+
+
+KEY_A, KEY_B = "0742349b6d9a3d7cc353f7e8f7ee3c9b", "f746a29a5bd0688e72a3d564723a3b5e"
+
+
+def test_parity_explains_a_positional_id_the_dbt_writer_publishes_as_the_lines_staging_key():
+    """A layer with no GlobalID, no object id named OBJECTID or FID and no Socrata row id (no line of monthly run 30):
+    today's `generated-<place in the file>` beside the dbt writer's staging key, two equal lines included, is
+    NETWORK_ID_REASONS' staging-key case for every id."""
+    family = parity.FAMILIES["nearby_trails"]
+    a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]
+    old = {"features": [_line("s:generated-0", "A", a), _line("s:generated-1", "B", b), _line("s:generated-2", "B", b)]}
+    new = {
+        "features": [
+            _line(f"s:{KEY_A}", "B", b),
+            _line(f"s:{KEY_B}", "B", b),
+            _line("s:0123456789abcdef0123456789abcdef", "A", a),
+        ]
+    }
+
+    reasons = family.explained(old, new)
+
+    assert {what for what, _, _ in parity.differences(old, new, family)} == set(reasons)
+    assert set(reasons.values()) == {parity.NETWORK_ID_REASONS["staging_key_for_a_line_with_no_id"]}
+
+
+def test_parity_explains_a_place_in_the_as_landed_copy_beside_the_layers_object_id_and_nothing_else():
+    """Monthly run 30's cotrex_trails and nc_mst_trail lines once FID is read: the old side numbers each by its place
+    in the as-landed copy, which has no GeoJSON id, and the dbt writer publishes its FID, two equal lines included.
+    A line that differs in anything but its id is still a difference."""
+    family = parity.FAMILIES["nearby_trails"]
+    a, b, c = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]], [[4.0, 4.0], [5.0, 5.0]]
+    old = {
+        "features": [
+            _line("s:generated-0", "A", a),
+            _line("s:generated-1", "B", b),
+            _line("s:generated-3", "B", b),
+            _line("s:generated-4", "C", c),
+        ]
+    }
+    new = {"features": [_line("s:1", "A", a), _line("s:2", "B", b), _line("s:4", "B", b), _line("s:5", "C renamed", c)]}
+
+    found = {what for what, _, _ in parity.differences(old, new, family)}
+    reasons = family.explained(old, new)
+
+    explained = {f"properties.id s:{n}" for n in ("generated-0", "generated-1", "generated-3", 1, 2, 4)}
+    assert set(reasons) == explained
+    assert set(reasons.values()) == {parity.AS_LANDED_ID_REASON}
+    assert found - explained == {"properties.id s:generated-4", "properties.id s:5"}
+
+
+def test_parity_does_not_call_a_staging_key_what_a_line_with_a_globalid_publishes():
+    """A positional id beside an id of any other form is TL05's GlobalID case, never the staging key's."""
+    line = [[0.0, 0.0], [1.0, 1.0]]
+    reasons = parity._network_id_reasons(
+        {"features": [_line("s:generated-0", "A", line)]},
+        {"features": [_line("s:{0742349B-6D9A-3D7C-C353-F7E8F7EE3C9B}", "A", line)]},
+    )
+    assert set(reasons.values()) == {parity.NETWORK_ID_REASONS["globalid_in_any_case"]}
+
+
+def test_parity_explains_a_name_a_line_inherits_from_another_swallowed_copy_and_nothing_else():
+    """Run 30's nyc_parks_trails:row-2fd6-t8ys~mjm7: no name of its own, two named nyc_cscl_paths copies swallowed, the
+    first in file order today and the first by staging key in SQL. Only a name, and only on a line that swallowed the
+    same layer's copies on both sides, is explained."""
+    family = parity.FAMILIES["nearby_trails"]
+    path = [[0.0, 0.0], [1.0, 1.0]]
+
+    def survivor(line_id: str, name: str, swallowed: str | None = "nyc_cscl_paths", **changed) -> dict:
+        feature = _line(line_id, name, path)
+        feature["properties"].update({"duplicate_of": swallowed, **changed} if swallowed else changed)
+        return feature
+
+    old = {
+        "features": [
+            survivor("p:1", "BROOKFIELD PARK WEST OUTER LOOP"),
+            survivor("p:2", "Named once", swallowed=None),
+            survivor("p:3", "Old name", length_miles=1.0),
+            survivor("p:4", "Old name"),
+        ]
+    }
+    new = {
+        "features": [
+            survivor("p:1", "BROOKFIELD PARK BLUE TRAIL"),
+            survivor("p:2", "Named twice", swallowed=None),
+            survivor("p:3", "New name", length_miles=2.0),
+            survivor("p:4", "New name", swallowed="nyc_dot_greenways"),
+        ]
+    }
+
+    assert family.explained(old, new) == {"properties.id p:1": parity.INHERITED_NAME_REASON}
+
+
+def test_parity_explains_a_sketch_group_today_draws_a_copied_part_of_twice_and_nothing_else():
+    """Run 30's alaska_trails groups: today's exporter draws an exact copy's part once per copy, the dbt writer once.
+    A group with a part only one side draws, or with the dbt writer drawing one more often, is still a difference."""
+    family = parity.FAMILIES["network_overview"]
+    one, two, three = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]], [[4.0, 4.0], [5.0, 5.0]]
+
+    def sketch(name: str, *parts) -> dict:
+        return {
+            "type": "Feature",
+            "properties": {"source": "alaska_trails", "name": name, "blaze_color": "Unknown", "trail_status": "open"},
+            "geometry": {"type": "MultiLineString", "coordinates": list(parts)},
+        }
+
+    old = {"features": [sketch("Copied", one, two, one), sketch("Lost", one, two), sketch("Doubled by dbt", one, two)]}
+    new = {"features": [sketch("Copied", two, one), sketch("Lost", one, three), sketch("Doubled by dbt", one, two, two)]}
+
+    found = {what for what, _, _ in parity.differences(old, new, family)}
+    reasons = family.explained(old, new)
+
+    copied = 'properties (source, name, blaze_color, trail_status) ["alaska_trails","Copied","Unknown","open"]'
+    assert copied in found
+    assert reasons == {copied: parity.OVERVIEW_COPY_REASON}
 
 
 def test_parity_compares_a_sketch_features_parts_as_a_set():

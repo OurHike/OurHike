@@ -115,8 +115,11 @@ models:
       - name: trail_line_id
         description: >
           The published id, `{source_key}:{id}` (TL05): the layer's GlobalID
-          in any case, else its OBJECTID, else Socrata's row id, else
-          `generated-<n>` by staging-key order. Unique among the rows that ship.
+          in any case, else its object id (OBJECTID, or FID where the layer
+          names it so), else Socrata's row id, else `generated-<n>` by the
+          raw table's order where the stg model carries it (`source_row`:
+          the two NYNJTC layers), else the row's staging key, as a club
+          line's is. Unique among the rows that ship.
         data_tests:
           - not_null
           - unique:
@@ -829,6 +832,8 @@ unit_tests:
           - {"trail_segment_key": "test_lib_feature_id::test_the_synthetic_id_is_unique_within_a_source[1]", "source_key": "mohonk_trails", "properties": "{\"name\": \"F\"}", "geom": "LINESTRING (-74.1 41.25, -74.06 41.29)", "source_row": 1}
           - {"trail_segment_key": "sql::a_globalid_in_capitals_is_still_the_id", "source_key": "mohonk_trails", "properties": "{\"name\": \"G\", \"globalid\": \"{CAPS-1}\", \"objectid\": 9}", "geom": "LINESTRING (-74.1 41.25, -74.06 41.29)"}
           - {"trail_segment_key": "sql::a_feature_id_the_extract_does_not_land", "source_key": "mohonk_trails", "properties": "{\"name\": \"H\"}", "geom": "LINESTRING (-74.1 41.25, -74.06 41.29)", "source_row": 3}
+          - {"trail_segment_key": "sql::a_line_with_no_id_and_no_file_order_takes_its_staging_key", "source_key": "mohonk_trails", "properties": "{\"name\": \"I\"}", "geom": "LINESTRING (-74.1 41.25, -74.06 41.29)"}
+          - {"trail_segment_key": "sql::an_object_id_named_fid_is_the_id", "source_key": "mohonk_trails", "properties": "{\"name\": \"J\", \"fid\": 17}", "geom": "LINESTRING (-74.1 41.25, -74.06 41.29)"}
       - input: ref('int_trail_lines__network_sources')
         format: sql
         rows: |
@@ -934,6 +939,8 @@ unit_tests:
         - {"trail_segment_key": "test_lib_feature_id::test_the_synthetic_id_is_unique_within_a_source[1]", "dropped_because": null, "trail_line_id": "mohonk_trails:generated-1", "name": "F", "trail_status": "open", "trail_status_basis": "default_without_status_column", "closure_kind": null, "boundary_missing": false}
         - {"trail_segment_key": "sql::a_globalid_in_capitals_is_still_the_id", "dropped_because": null, "trail_line_id": "mohonk_trails:{CAPS-1}", "name": "G", "trail_status": "open", "trail_status_basis": "default_without_status_column", "closure_kind": null, "boundary_missing": false}
         - {"trail_segment_key": "sql::a_feature_id_the_extract_does_not_land", "dropped_because": null, "trail_line_id": "mohonk_trails:generated-3", "name": "H", "trail_status": "open", "trail_status_basis": "default_without_status_column", "closure_kind": null, "boundary_missing": false}
+        - {"trail_segment_key": "sql::a_line_with_no_id_and_no_file_order_takes_its_staging_key", "dropped_because": null, "trail_line_id": "mohonk_trails:sql::a_line_with_no_id_and_no_file_order_takes_its_staging_key", "name": "I", "trail_status": "open", "trail_status_basis": "default_without_status_column", "closure_kind": null, "boundary_missing": false}
+        - {"trail_segment_key": "sql::an_object_id_named_fid_is_the_id", "dropped_because": null, "trail_line_id": "mohonk_trails:17", "name": "J", "trail_status": "open", "trail_status_basis": "default_without_status_column", "closure_kind": null, "boundary_missing": false}
   - name: int_trail_lines__network_sources_answers_what_the_registry_checks_answer
     description: >
       Which registry entries are network line sources (TL01), the fields

@@ -4,16 +4,14 @@
 -- every sample of it, then each junction-graph edge by its place in
 -- trail_graph.json (edge_index), each edge's samples from its start.
 --
--- WHY THE ORDER IS PART OF THE ANSWER. export_elevation.ElevationSampler
--- answers a second point within 0.11 m of a first with the first's pixel
--- ("whoever asked first", export_elevation.CACHE_KEY_DECIMALS), and the
--- cache beside the tile index carries from one exporter to the next.
--- publish-vector-data.yml runs export_elevation.py, then
--- export_network_elevation.py, which asks for every edge's points in one
--- call in edge order, then export_network_profile.py, which asks for the
--- same points again. So on a cold cache the A.T. is read at its own points,
--- and an edge point that shares an A.T. point's cache key takes the A.T.'s
--- answer; ask_order keeps both true.
+-- THE ORDER DECIDES NO ANSWER. Since decision 115 the sampler's cache keys
+-- each point on its exact coordinates (export_elevation.SAMPLE_CACHE_KEYS),
+-- so every point is answered at its own pixel whoever asked first. Until
+-- then a 6-decimal key gave a point the pixel of whichever point within
+-- about 0.11 m was asked first, and this order was what made the dbt lane's
+-- first asker today's. ask_order stays the order step_dem_sampling reads
+-- the rows in, so the same rows ask the same questions in the same order
+-- and a cold run writes the same cache file.
 --
 -- line_id is 'AT' for the A.T. and the edge's edge_id for an edge, and
 -- sample_index is the A.T.'s walk position or the edge's own sample index:

@@ -201,9 +201,9 @@ def _graph_companions_old(raw_dir: Path, warehouse: Path) -> tuple[list, list]:
     """export_network_elevation.build and export_network_profile.build over the build's own graph.
 
     Run in publish-vector-data.yml's order on one cold copy of the tile index (_cold_index()): export_elevation.py's
-    A.T. profile, then the climbs, then the profiles. The A.T. profile fills the sampler's cache first, so an edge point
-    sharing an A.T. point's cache key gets the A.T.'s pixel here, as step_dem_sampling's single query gives it on the
-    dbt side."""
+    A.T. profile, then the climbs, then the profiles. Since decision 115 the sampler's cache keys each point exactly
+    (export_elevation.SAMPLE_CACHE_KEYS), so every point here is read at its own pixel, as step_dem_sampling reads it
+    on the dbt side whatever the dbt side's cache already held."""
     import export_elevation
     import export_network_elevation
     import export_network_profile

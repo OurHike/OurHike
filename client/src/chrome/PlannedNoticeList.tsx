@@ -24,6 +24,7 @@
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES } from '../lib/hazardAreas'
 import { noticeOrgLabel, noticeUpdatedAt, type TrailNotice } from '../lib/notices'
+import type { NoticeMatchedPage } from '../lib/publishedConditions'
 import type { PlannedHikeNotices, PlannedNotices } from '../lib/plannedNotices'
 import { isSafeLink } from '../lib/safeLink'
 import { possessive, type Stewards } from '../lib/stewards'
@@ -109,6 +110,39 @@ function allOf(notice: TrailNotice): string {
   return `All of ${names.length === 1 ? last : `${names.slice(0, -1).join(', ')} and ${last}`}`
 }
 
+/**
+ * Decision 128 (the maintainer's poll of 2026-10-09, w6-ptny-closures.html's
+ * frame A, the two lines in its dashed box, word for word): a closed section
+ * that a person matched to an item on the trail's dated closures page says
+ * where it was confirmed and links there. Parks & Trails New York's layer
+ * dates nothing, so the page's day is the only date such a row has, and it is
+ * printed as the page's, under the organization's line and never on it.
+ * "The trail's closures page" and not a publisher's name: the page names no
+ * publisher (pipeline/sources.json's oprhp_est_trail_closures_page notes).
+ */
+function MatchedPage({ page }: { page: NoticeMatchedPage }) {
+  const day = page.updated_on === null ? null : new Date(page.updated_on)
+  return (
+    <>
+      <p className="closure-sheet__meta">
+        {day === null || Number.isNaN(day.getTime())
+          ? 'On the trail’s closures page'
+          : `On the trail’s closures page — updated ${longDate(day)}`}
+      </p>
+      {isSafeLink(page.url) && (
+        <a
+          className="closure-sheet__link"
+          href={page.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Read the trail’s closures page
+        </a>
+      )}
+    </>
+  )
+}
+
 function Row({ notice, org }: { notice: TrailNotice; org: string }) {
   const { text, warn } = tag(notice)
   const title = notice.title || `${org} notice`
@@ -148,6 +182,7 @@ function Row({ notice, org }: { notice: TrailNotice; org: string }) {
       <p className="closure-sheet__meta">
         {updatedAt === null ? org : `${org} — updated ${longDate(updatedAt)}`}
       </p>
+      {notice.matched_page && <MatchedPage page={notice.matched_page} />}
       {notice.carried_since && (
         <p className="atc-notices__offmap">
           OurHike couldn’t re-read {possessive(org)} notices since{' '}

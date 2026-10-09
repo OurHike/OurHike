@@ -1304,6 +1304,42 @@ def test_an_onprem_fingerprint_sees_a_redrawn_line_that_count_ids_and_the_date_a
     assert resource.change_check(marker)[0] is Freshness.STALE
 
 
+@pytest.mark.parametrize(
+    ("type_", "edit_fields", "unchanged"),
+    [
+        ("warnings", None, Freshness.UNKNOWN),
+        ("warnings", {"editDateField": "LAST_EDITED_DATE", "editorField": "LAST_EDITED_USER"}, Freshness.UNKNOWN),
+        ("warnings", {"editDateField": "updated", "editorField": "editor"}, Freshness.FRESH),
+        ("points_of_interest", None, Freshness.FRESH),
+    ],
+    ids=[
+        "hourly, the server names no edit tracking",
+        "hourly, edit tracking keeps another date",
+        "hourly, the date is edit tracking's own",
+        "monthly, kept by cost",
+    ],
+)
+def test_an_unchanged_onprem_fingerprint_is_fresh_on_an_hourly_layer_only_beside_edit_trackings_own_date(
+    registry, requests_mock, type_, edit_fields, unchanged
+):
+    """A fire rating or burn restriction edited in place moves no count, id or length, and moves a maintained date
+    only when its publisher moves it; the server promises that only of the date its editor tracking keeps
+    (`editFieldsInfo.editDateField`). Read 2026-10-09: wi_dnr_fire_danger's LAST_CHANGED_DATE, wa_dnr_ifpl's EDIT_DT
+    and mi_dnr_burn_permits' PullStamp are dates their servers name as no such thing (the dlt skill's rule 4)."""
+    metadata = {"objectIdField": "OBJECTID", "fields": [{"name": "OBJECTID", "type": "esriFieldTypeOID"}]}
+    requests_mock.get(ONPREM_URL, json={**metadata, "editFieldsInfo": edit_fields} if edit_fields else metadata)
+    answer = {"features": [{"attributes": {"n": 83, "max_oid": 83, "max_date": 1791496200000}}]}
+    requests_mock.get(ONPREM_URL + "/query", json=answer)
+    resource = ArcgisLayer(key="onprem_dated", club="testclub", type=type_)
+
+    verdict, marker = resource.change_check(None)
+    assert verdict is Freshness.STALE
+
+    assert resource.change_check(marker) == (unchanged, marker)
+    answer["features"][0]["attributes"]["n"] = 82
+    assert resource.change_check(marker)[0] is Freshness.STALE, "a fingerprint that moved still reads as moved"
+
+
 def test_an_onprem_point_layer_fingerprints_without_a_measure(registry, requests_mock):
     """A point layer has no length or area field, so its statistics stay the three they were."""
     requests_mock.get(

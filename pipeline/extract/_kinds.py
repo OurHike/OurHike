@@ -644,6 +644,22 @@ class ArcgisLayer(PersonRuled, Resource):
         run: a false-stale costs a read, a false-fresh keeps a rerouted line
         on a phone. ELT.md's per-page conditional read, which would let such a
         layer skip, is not built yet.
+
+        OFF THE MONTHLY CADENCE, FRESH ONLY BESIDE EDIT TRACKING'S OWN DATE.
+        A maintained date sees an attribute-only edit only if its publisher
+        moves it with every edit, and the server promises that only of the
+        date its editor tracking keeps (`editFieldsInfo.editDateField` in the
+        metadata read here). So on an hourly or daily layer an unchanged
+        fingerprint on any other date answers UNKNOWN, and the layer is read
+        every run. Read 2026-10-09: five of the eight such hourly layers name
+        a date their server does not (wi_dnr_fire_danger, wa_dnr_ifpl,
+        mi_dnr_burn_permits, and two MapServers reporting no editFieldsInfo at
+        all); their registry notes count 83 burn permits and 26 Katy Trail
+        trailheads, and the other three were not counted. The monthly lane
+        keeps FRESH on the fingerprint alone, by its cost: none of its 17 such
+        layers names its date as edit tracking's (read the same day), and how
+        often an edit there goes unseen for a month is @unvalidated, settled
+        by comparing a FRESH layer's table with a full read of it.
         """
         date_field = (self.entry.get("freshness") or {}).get("field")
         if not date_field:
@@ -678,7 +694,11 @@ class ArcgisLayer(PersonRuled, Resource):
         marker = {name: str(value) for name, value in marker.items()}
         if recorded is None:
             return Freshness.STALE, marker
-        return compare_marker(_canonical(recorded), _canonical(marker)), marker
+        verdict = compare_marker(_canonical(recorded), _canonical(marker))
+        tracked = ((metadata.get("editFieldsInfo") or {}).get("editDateField") or "").lower()
+        if verdict is Freshness.FRESH and self.cadence != "monthly" and tracked != date_field.lower():
+            return Freshness.UNKNOWN, marker
+        return verdict, marker
 
     def dropped_fields(self, metadata: dict) -> dict[str, str]:
         """Every field of the layer that is never asked for or kept, lower-cased, with the rule that drops it.

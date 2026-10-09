@@ -1075,20 +1075,39 @@ HIKE_JSON_FIELDS = {
 def _landed_rows(warehouse: Path, table: str, order_by: str) -> list[dict] | None:
     """Every row of `table` in the warehouse as {column: value}, in `order_by` order, rows that differ only in dlt's
     own row id (`_dlt_id`) read once, as decision 40's staging dedupe keeps one of them; None where the warehouse or
-    the table does not exist."""
+    the table does not exist.
+
+    A TIMESTAMP WITH TIME ZONE column (dlt lands `_loaded_at` so, and an ISO string such as the hike finder's
+    `fetched_at`) is read as naive UTC in SQL and given UTC here: DuckDB's Python client needs pytz to return one,
+    and the dbt job's venv has none (pipeline-tests.yml run 37917337235, on 834487bd, stopped here, reading the Long
+    Path guide's landed rows). The value is the same instant, and its isoformat() the same string, as the client
+    gives where pytz is installed (Measured 2026-10-09 on the fixture warehouse: the guide's and the hike finder's
+    landed rows, 23 such values, read identically with and without pytz)."""
+    from datetime import UTC
+
     import duckdb
 
     if not warehouse.exists():
         return None
     with duckdb.connect(str(warehouse), read_only=True) as con:
         try:
-            columns = [row[0] for row in con.execute(f"describe {table}").fetchall()]
+            described = con.execute(f"describe {table}").fetchall()
         except duckdb.CatalogException:
             return None
-        kept = ", ".join(f'"{name}"' for name in columns if name != "_dlt_id")
+        aware = {name for name, kind, *_ in described if kind == "TIMESTAMP WITH TIME ZONE"}
+        kept = ", ".join(
+            f'timezone(\'UTC\', "{name}") as "{name}"' if name in aware else f'"{name}"'
+            for name, *_ in described
+            if name != "_dlt_id"
+        )
         cursor = con.execute(f"select distinct {kept} from {table} order by {order_by}")
         names = [column[0] for column in cursor.description]
-        return [dict(zip(names, values, strict=True)) for values in cursor.fetchall()]
+        rows = [dict(zip(names, values, strict=True)) for values in cursor.fetchall()]
+    for row in rows:
+        for name in aware:
+            if row[name] is not None:
+                row[name] = row[name].replace(tzinfo=UTC)
+    return rows
 
 
 def _landed_hikes(warehouse: Path, gpx_dir: Path) -> dict[str, dict]:

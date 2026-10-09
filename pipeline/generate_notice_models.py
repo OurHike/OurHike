@@ -48,8 +48,10 @@ WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
   tagged NOTICES_JOB_TAG, which publish-conditions.yml's freshness step
   selects after it has published.
 - Elementary's checks (decision 102), each at warn and tagged
-  `elementary_check`, which build_marts.py runs after the writers (in CI's
-  fixture build, and in the hourly lane once its HOURLY_LANE_CHECKS is on):
+  `elementary_check`, which build_marts.py runs after the writers in CI's
+  fixture build (on a pull request, only those its change reaches, decision
+  111) and, for the hourly lane, in a run of their own after its build has
+  published (HOURLY_LANE_CHECKS, decision 110; check-conditions.yml):
   every raw table's from make_dbt_staging.py's raw_table_checks(), and on each
   staging model whose source dates its notices, event_freshness_check().
 And once: dbt/seeds/notice_readers.csv (every closures and warnings resource,

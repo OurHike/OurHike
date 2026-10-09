@@ -36,8 +36,10 @@ def test_a_warehouse_put_by_one_run_is_taken_by_the_checks_of_that_run_whole(tmp
 
     pointer = json.loads((store / hand_off.POINTER).read_text())
     assert (pointer["run"], pointer["attempt"], pointer["bytes"]) == ("37800000001", "2", built.stat().st_size)
+    assert pointer["gzip_bytes"] == (store / hand_off.WAREHOUSE).stat().st_size < pointer["bytes"], "the upload is gzipped"
     assert "handed run 37800000001.2's warehouse" in put and "took run 37800000001.2's warehouse" in taken
     assert _closures(tmp_path / "checks" / "warehouse.duckdb") == 3
+    assert (tmp_path / "checks" / "warehouse.duckdb").read_bytes() == built.read_bytes(), "the same file, byte for byte"
 
 
 def test_each_build_overwrites_the_last_so_the_checks_of_an_older_run_find_nothing_of_theirs(tmp_path):
@@ -50,7 +52,7 @@ def test_each_build_overwrites_the_last_so_the_checks_of_an_older_run_find_nothi
     hand_off.take(str(store), tmp_path / "now.duckdb", "2")
 
     assert not (tmp_path / "late.duckdb").exists() and _closures(tmp_path / "now.duckdb") == 5
-    assert sorted(path.name for path in (store / hand_off.FOLDER).iterdir()) == ["hand_off.json", "warehouse.duckdb"]
+    assert sorted(path.name for path in (store / hand_off.FOLDER).iterdir()) == ["hand_off.json", "warehouse.duckdb.gz"]
 
 
 def test_take_answers_nothing_handed_off_with_its_own_exit_and_a_torn_upload_with_1(tmp_path, capsys):
@@ -67,6 +69,19 @@ def test_take_answers_nothing_handed_off_with_its_own_exit_and_a_torn_upload_wit
     assert hand_off.main(args) == 1
     assert "::error title=Warehouse not handed off::" in capsys.readouterr().out
     assert not taken.exists(), "nothing torn is left where the checks would read it"
+
+
+def test_take_refuses_an_upload_whose_own_hash_matches_but_whose_warehouse_does_not(tmp_path, capsys):
+    """Both are checked: the upload before it is unpacked, the warehouse after, so a pointer naming another
+    warehouse's size and hash stops the checks rather than letting them read the wrong hour."""
+    store = tmp_path / "store"
+    taken = tmp_path / "checks.duckdb"
+    hand_off.put(str(store), _warehouse(tmp_path / "build.duckdb"), "7")
+    pointer = json.loads((store / hand_off.POINTER).read_text())
+    (store / hand_off.POINTER).write_text(json.dumps({**pointer, "sha256": "0" * 64}))
+
+    assert hand_off.main(["take", "--url", str(store), "--warehouse", str(taken), "--run", "7"]) == 1
+    assert "the warehouse unpacked from" in capsys.readouterr().out and not taken.exists()
 
 
 def test_the_checks_of_a_build_take_its_warehouse_only_from_the_commit_their_checkout_is(tmp_path, capsys):

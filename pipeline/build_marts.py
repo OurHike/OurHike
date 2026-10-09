@@ -363,8 +363,11 @@ different workflow that kicks off after the actual build";
 HOURLY_LANE_CHECKS). Its 1,053 checks cost about 360 to 385 s of CPU by the
 figures above, 7.2 to 10.6 minutes on a runner that pays Elementary 1.2 to
 1.65 times what the sandbox did (ELT.md, "What step 1 measured"), where
-decision 103 gives the whole build step 10 minutes and the build already
-takes about 263 to 303 s of them (Reasoned from those figures). So `--lane
+decision 103 gives the whole build step 10 minutes and the build took 244.6 s
+of them on a runner (Measured from the log's timestamps of
+publish-conditions.yml run 593, 37855544935, its UA leg on 2026-10-08, 13.8 s
+of it the data-quality pass), which leaves about 5.9 minutes for checks that
+need 7.2 to 10.6 (Reasoned). So `--lane
 hourly` builds, writes, saves its history and publishes with none of them,
 and writes no data-quality file, and `--lane hourly --checks-only` is the
 run that does both, over the warehouse the build left: check-conditions.yml,
@@ -391,7 +394,16 @@ restored with its own results added, to the checks, which then restore and
 save nothing either: the build's inputs were short, so neither part joins
 the training set. The checks run never touches a phone file, and its exits
 are the build's: PARTIAL_EXIT when Elementary's history was held back and
-the file written, and 1 when the file was not.
+the file written, and 1 when the file was not. Measured 2026-10-09 on the
+fixtures in the shared 4-core sandbox, one run of each: the hourly build took
+202.8 s and left a 257,699,840-byte warehouse holding its record, and the
+checks run over it took 362.8 s: Elementary's history restored from the
+build's save in 1.0 s, its tables with the checks' switch in 58.5 s, 1,041
+checks in 278.6 s, every one passing (the lane's own, less those on the 4
+raw tables the fixtures lack), the data-quality file in 23.2 s, counting
+1,801 checks, the build's own tests with them, and Elementary's history
+saved in 0.6 s, 418,698 bytes, its pointer naming the build's save as the
+one before.
 
 THE DATA-QUALITY FILE IS WRITTEN LAST (decision 102, step 4): the lane's
 DATA_QUALITY_WRITERS entry, pub_data_quality or pub_conditions_data_quality,

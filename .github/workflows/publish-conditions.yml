@@ -31,6 +31,14 @@
 # warehouse before the build, so the closures and warnings marts carry every
 # club's notices hourly, at the age that job last read them.
 #
+# THE dbt PATH'S ELEMENTARY CHECKS RUN AFTERWARDS, IN check-conditions.yml
+# (decision 110, 2026-10-08). Each leg hands its build's warehouse over
+# through its history store once it has published, and the `checks` job at
+# the end of this file starts check-conditions.yml, which runs every check
+# of the lane and writes conditions/data_quality.json. Nothing here waits
+# for the checks or reads what they find, so they can neither delay nor
+# change what a hiker downloads.
+#
 # HOURLY since 2026-08-15 (#720), where this used to be daily on the
 # maintainer's "a closure can be latent by a day" from 2026-08-08. What
 # changed is that the client now re-reads on the same clock, so the shorter
@@ -1488,11 +1496,14 @@ jobs:
       # say they found nothing to check.
       #
       # ONE MINUTE, which the job's budget leaves
-      # (.github/tests/test_conditions_build_budget.py), @unvalidated: the
-      # warehouse's size over R2 decides it, and this step's log line gives
-      # both. build_marts.py writes the build's record into the warehouse last
-      # (its docstring, "THE HOURLY LANE'S CHECKS RUN APART"), so what crosses
-      # is the whole of what the checks need.
+      # (.github/tests/test_conditions_build_budget.py). The upload is
+      # gzipped (hand_off.py, "GZIPPED"): the fixtures' hourly warehouse,
+      # 257,699,840 bytes, went up as 6,074,023 in 1.72 s to a local
+      # directory (Measured 2026-10-09 in a sandbox). A real leg's holds more
+      # geometry, so its size and R2's rate are @unvalidated until this
+      # step's log line gives both. build_marts.py writes the build's record
+      # into the warehouse last (its docstring, "THE HOURLY LANE'S CHECKS RUN
+      # APART"), so what crosses is the whole of what the checks need.
       - name: Hand this build's warehouse to its checks (dbt path)
         if: ${{ !cancelled() && env.PHONE_FILES == 'dbt' && steps.build.outcome == 'success' && (steps.publish.outcome == 'success' || steps.publish.outcome == 'failure') }}
         continue-on-error: true

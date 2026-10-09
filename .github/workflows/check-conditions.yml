@@ -7,9 +7,10 @@
 # WHY A WORKFLOW OF ITS OWN. The lane's 1,053 checks take about 7.2 to 10.6
 # minutes on a runner (build_marts.py's docstring, "THE HOURLY LANE'S CHECKS
 # RUN APART", Reasoned from the sandbox's times), and decision 103 gives the
-# whole hourly build step 10 minutes, which its build already takes about
-# 263 to 303 s of. Run here, after the publish, they can neither delay what
-# a hiker downloads nor turn it red.
+# whole hourly build step 10 minutes, of which the build took 244.6 s on a
+# runner (Measured: publish-conditions.yml run 593's UA leg, 2026-10-08),
+# leaving about 5.9. Run here, after the publish, they can neither delay
+# what a hiker downloads nor turn it red.
 #
 # STARTED BY publish-conditions.yml, never by a schedule. Its `checks` job
 # runs once its legs have built and published, and dispatches this file on
@@ -72,8 +73,14 @@
 # job's 15, its `checks` job's 5 and this job's 25, against the 60 between
 # two hourly runs, so even a run whose every job ran to its cap leaves 15
 # (Reasoned from the caps; .github/tests/test_check_conditions.py holds the
-# sum). Measured on the fixtures in a sandbox the times are far under the
-# caps (this job's own steps' summaries settle a runner's).
+# sum). A usual hour takes about 16 to 22 of them and leaves about 40,
+# Reasoned: the publish job's 5 to 7 minutes (the 30 green soak dispatches
+# from run 532 to 569 took 288 to 383 s, Measured 2026-10-06, and run 593
+# about 7), half a minute to dispatch, and this job's checks step (8.5 to
+# 12 minutes, its comment below) with about a minute of setup (run 585's)
+# and the take. On the fixtures in a sandbox the build took 202.8 s and its
+# checks run 362.8 s (Measured 2026-10-09; build_marts.py's docstring). This
+# job's step summaries settle a runner's.
 name: Check the hourly conditions build
 
 # The build each run checked, in the run list.
@@ -289,9 +296,11 @@ jobs:
       # checkout, which a push since the build makes the branch's newest
       # (hand_off.py, "THE CHECKS RUN THE BUILD'S OWN COMMIT, OR NONE").
       # Said, and the leg ends green with nothing checked; a store that
-      # cannot be read, or a torn upload, is red. Three minutes,
-      # @unvalidated: the warehouse's size over R2 decides it (the
-      # hand-off's log line gives both).
+      # cannot be read, or a torn upload, is red. Three minutes: the
+      # fixtures' 6,074,023-byte upload came back and unpacked in 1.02 s
+      # from a local directory (Measured 2026-10-09 in a sandbox); a real
+      # leg's size and R2's rate are @unvalidated until this step's log line
+      # gives both.
       - name: Take the warehouse this leg's build handed off
         id: take
         if: steps.wanted.outputs.run == 'true'
@@ -327,10 +336,13 @@ jobs:
       # exit 5, and the last step turns the run red. Any other exit stops the
       # leg red before the publish: 1 when the file was not written.
       #
-      # TWENTY MINUTES, Reasoned: 7.2 to 10.6 minutes of checks on a runner,
-      # plus Elementary's own tables with the checks' switch and the file,
-      # about 86 s and 36 s in the sandbox, at 1.2 to 1.65 times that on a
-      # runner. The step's summary line settles it.
+      # TWENTY MINUTES, Reasoned: the checks' 7.2 to 10.6 minutes on a
+      # runner; Elementary's own tables with the checks' switch, about 58 s
+      # (run 593's 31.8 s without it, times the 86 s against 47 s the
+      # sandbox measured with and without it); the data-quality pass, 13.8 s
+      # in run 593; and Elementary's history, restored in 1.45 s there and
+      # saved in a few: 8.5 to 12 minutes in all. The step's summary line
+      # settles it.
       - name: Run every check of the hourly lane, and write the data-quality file
         id: checks
         if: steps.take.outputs.taken == 'true'

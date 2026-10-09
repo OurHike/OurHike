@@ -11,11 +11,22 @@ between them here. `put`, after the build's publish, writes it under the
 leg's history store, the private raw store's history/conditions_<leg>/, which
 both jobs already hold the key to:
 
-    checks/warehouse.duckdb   the newest build's warehouse, overwritten by each build
-    checks/hand_off.json      which run put it, from which commit, its size and sha256: written last
+    checks/warehouse.duckdb.gz  the newest build's warehouse, gzipped, overwritten by each build
+    checks/hand_off.json        which run put it, from which commit, the sizes and sha256s of both: written last
 
 and `take`, in the checks run, reads it back for the run it was asked to
-check, refusing a warehouse another run put.
+check, refusing a warehouse another run put, and checking the upload's
+sha256 before it unpacks it and the warehouse's after.
+
+GZIPPED, at level 1, because most of a warehouse's bytes are the unused
+part of DuckDB's blocks, a few per table. Measured 2026-10-09 in the shared
+sandbox on the fixtures' hourly warehouse (701 raw tables, 11,446 raw rows,
+built by `build_marts.py --lane hourly`): 257,699,840 bytes went to
+6,074,009 in 0.65 s and came back in 0.51 s (level 6: 4,518,816 in 1.48 s).
+A real leg reads 276 raw tables (run 593's log: 12, 263 and the registry's
+1) and much more geometry, which compresses less, so its upload is larger
+than the fixtures' and its size is @unvalidated until this file's own log
+line on the first dispatch says it.
 
 THE CHECKS RUN THE BUILD'S OWN COMMIT, OR NONE. check-conditions.yml is
 dispatched on a branch, and GitHub runs it from that branch's newest commit,
@@ -46,7 +57,7 @@ reading; a checks run that starts after a later build has put its own finds
 that build's run in hand_off.json and stops, exit NOT_HANDED_OFF, rather than
 checking the wrong hour.
 
-EXITS. 0 when the warehouse moved and its sha256 matched; NOT_HANDED_OFF (4)
+EXITS. 0 when the warehouse moved and both sha256s matched; NOT_HANDED_OFF (4)
 from `take` when nothing at the store is the asked run's, or it is but
 from another commit, which check-conditions.yml reads as "this leg's build
 left nothing to check" (an exporters-path leg, a build that failed before
@@ -58,6 +69,7 @@ a write-ahead log.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import shutil
 import sys
@@ -71,9 +83,12 @@ import duckdb
 from row_history import Refused, Store, _sha256
 
 FOLDER = "checks"
-WAREHOUSE = f"{FOLDER}/warehouse.duckdb"
+WAREHOUSE = f"{FOLDER}/warehouse.duckdb.gz"
 POINTER = f"{FOLDER}/hand_off.json"
 FORMAT = 1
+#: The module docstring, "GZIPPED": the fastest level, which already takes the empty blocks out.
+GZIP_LEVEL = 1
+CHUNK = 1 << 20
 #: `take`'s exit when no warehouse at the store is the asked run's: something to say, not a failure of this file's.
 NOT_HANDED_OFF = 4
 
@@ -83,8 +98,8 @@ class NotHandedOff(Exception):
 
 
 def put(url: str, warehouse: Path, run: str, attempt: str = "1", commit: str | None = None) -> str:
-    """Checkpoint the warehouse, so the one file is the whole database, upload it, then write hand_off.json naming
-    `run` and the `commit` it was built from. Returns what it did, for the log."""
+    """Checkpoint the warehouse, so the one file is the whole database, upload it gzipped, then write hand_off.json
+    naming `run` and the `commit` it was built from. Returns what it did, for the log."""
     started = time.monotonic()
     if not warehouse.is_file():
         raise Refused(f"there is no warehouse at {warehouse} to hand off")
@@ -96,7 +111,11 @@ def put(url: str, warehouse: Path, run: str, attempt: str = "1", commit: str | N
     store = Store(url)
     store.check_reachable()
     size, digest = warehouse.stat().st_size, _sha256(warehouse)
-    store.put(warehouse, WAREHOUSE)
+    with tempfile.TemporaryDirectory(dir=warehouse.parent) as scratch:
+        packed = Path(scratch) / "warehouse.duckdb.gz"
+        _pack(warehouse, packed)
+        packed_size, packed_digest = packed.stat().st_size, _sha256(packed)
+        store.put(packed, WAREHOUSE)
     pointer = {
         "format": FORMAT,
         "run": run,
@@ -104,15 +123,30 @@ def put(url: str, warehouse: Path, run: str, attempt: str = "1", commit: str | N
         "commit": commit,
         "bytes": size,
         "sha256": digest,
+        "gzip_bytes": packed_size,
+        "gzip_sha256": packed_digest,
         "put_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     store.write_text(POINTER, json.dumps(pointer, indent=2, sort_keys=True) + "\n")
-    return f"handed run {run}.{attempt}'s warehouse, {size} bytes, to {url}/{FOLDER}/, in {time.monotonic() - started:.2f} s"
+    return (
+        f"handed run {run}.{attempt}'s warehouse, {size} bytes, {packed_size} gzipped, to {url}/{FOLDER}/, in "
+        f"{time.monotonic() - started:.2f} s"
+    )
+
+
+def _pack(source: Path, packed: Path) -> None:
+    with source.open("rb") as raw, gzip.GzipFile(packed, "wb", compresslevel=GZIP_LEVEL, mtime=0) as out:
+        shutil.copyfileobj(raw, out, CHUNK)
+
+
+def _unpack(packed: Path, target: Path) -> None:
+    with gzip.open(packed, "rb") as raw, target.open("wb") as out:
+        shutil.copyfileobj(raw, out, CHUNK)
 
 
 def take(url: str, warehouse: Path, run: str, commit: str | None = None) -> str:
-    """Download the warehouse `run` put, into `warehouse`, checked against its size and sha256. Returns what it did,
-    for the log; raises NotHandedOff when no warehouse at the store is `run`'s, or when it was built from a commit
+    """Download the warehouse `run` put, into `warehouse`: the upload checked against its size and sha256 before it is
+    unpacked, and the warehouse after. Returns what it did, for the log; raises NotHandedOff when no warehouse at the store is `run`'s, or when it was built from a commit
     other than `commit`, the checkout's (the module docstring, "THE CHECKS RUN THE BUILD'S OWN COMMIT, OR NONE")."""
     started = time.monotonic()
     store = Store(url)
@@ -134,18 +168,26 @@ def take(url: str, warehouse: Path, run: str, commit: str | None = None) -> str:
         )
     warehouse.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=warehouse.parent) as scratch:
+        packed = Path(scratch) / "warehouse.duckdb.gz"
+        store.get(WAREHOUSE, packed, POINTER)
+        if (size := packed.stat().st_size) != pointer["gzip_bytes"] or _sha256(packed) != pointer["gzip_sha256"]:
+            raise Refused(
+                f"{url}/{WAREHOUSE} is {size} bytes, and {POINTER} says {pointer['gzip_bytes']} with sha256 "
+                f"{pointer['gzip_sha256']}: a later build's upload landed, or this one tore. Nothing was checked."
+            )
         local = Path(scratch) / warehouse.name
-        store.get(WAREHOUSE, local, POINTER)
+        _unpack(packed, local)
         if (size := local.stat().st_size) != pointer["bytes"] or (digest := _sha256(local)) != pointer["sha256"]:
             raise Refused(
-                f"{url}/{WAREHOUSE} is {size} bytes, and {POINTER} says {pointer['bytes']} with sha256 "
-                f"{pointer['sha256']}: a later build's upload landed, or this one tore. Nothing was checked."
+                f"the warehouse unpacked from {url}/{WAREHOUSE} is {size} bytes, and {POINTER} says {pointer['bytes']} "
+                f"with sha256 {pointer['sha256']}. Nothing was checked."
             )
         warehouse.unlink(missing_ok=True)
         shutil.move(str(local), str(warehouse))
     return (
-        f"took run {run}.{pointer.get('attempt')}'s warehouse, {pointer['bytes']} bytes, sha256 {digest}, put at "
-        f"{pointer.get('put_at')}, from {url}/{FOLDER}/, in {time.monotonic() - started:.2f} s"
+        f"took run {run}.{pointer.get('attempt')}'s warehouse, {pointer['bytes']} bytes from {pointer['gzip_bytes']} "
+        f"gzipped, sha256 {digest}, put at {pointer.get('put_at')}, from {url}/{FOLDER}/, in "
+        f"{time.monotonic() - started:.2f} s"
     )
 
 

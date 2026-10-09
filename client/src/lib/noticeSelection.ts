@@ -139,13 +139,20 @@ export function newClubNotices(
   const found = newNoticesSince(counted, now, silencedThrough)
   if (found === null) return null
   const seen = (key: string) => key.endsWith(SEEN_WATERMARK)
-  const sourceKeys = found.sourceKeys.map((key) =>
-    seen(key) ? key.slice(0, -SEEN_WATERMARK.length) : key,
-  )
+  const sourceOf = (key: string) =>
+    seen(key) ? key.slice(0, -SEEN_WATERMARK.length) : key
+  const sourceKeys = found.sourceKeys.map(sourceOf)
+  // The providers by the source's own key, which is what the banner names
+  // an organization by; a seen watermark's key is only this module's.
+  const providers = new Map<string, string>()
+  for (const [key, provider] of found.providers ?? []) {
+    if (!providers.has(sourceOf(key))) providers.set(sourceOf(key), provider)
+  }
   return {
     ...found,
     sourceKeys: [...new Set(sourceKeys)],
     seen: found.sourceKeys.some(seen),
+    providers,
   }
 }
 

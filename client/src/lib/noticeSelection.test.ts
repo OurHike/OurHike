@@ -8,6 +8,7 @@ import {
 } from './noticeSelection'
 import {
   newNoticeLabel,
+  newNoticesSince,
   readNoticeSilence,
   silenceNewNotices,
   type TrailNotice,
@@ -199,5 +200,87 @@ describe('the banner and a notice with no date of its own (decision 87)', () => 
       updated_at: '2026-10-04T20:00:00Z',
     })
     expect(count([...file, dated])?.count).toBe(1)
+  })
+})
+
+// H13 of the word-choice review of #1805 (2026-10-09): the banner's sentence
+// named its organizations through orgLabelFrom alone, which falls back to the
+// raw key for a key no steward claims, while every other notice surface reads
+// the row's own `provider` first (lib/notices.ts's noticeOrgLabel, the
+// maintainer's choice of 2026-10-05). UA's stewards.json named none of
+// decision 67's hazard sources then, so a hunting area on a planned hike
+// would have been announced as "oprhp_hunting_areas · ...".
+describe('the banner names a source no steward claims through the row’s provider', () => {
+  afterEach(() => localStorage.clear())
+
+  const PARKS_NAME =
+    'New York State Office of Parks, Recreation and Historic Preservation'
+  const WITH_PARKS: Stewards = [
+    ...STEWARDS,
+    {
+      provider: 'NYS OPRHP',
+      name: PARKS_NAME,
+      trust: null,
+      licence: null,
+      attribution: null,
+      terms: null,
+      termsSource: null,
+      layers: [],
+      // Its closures key only: the hunting areas' key is the one UA's
+      // stewards.json did not list.
+      keys: ['oprhp_trail_closures'],
+      support: null,
+      store: null,
+    },
+  ]
+  const hunting = (id: string, first: string, extra: Partial<TrailNotice> = {}) =>
+    row(`oprhp_hunting_areas:${id}`, first, { provider: 'NYS OPRHP', ...extra })
+
+  it('names a dated notice’s organization by its provider’s steward, never by the key oprhp_hunting_areas', () => {
+    const found = newNoticesSince(
+      [hunting('1', '2026-10-03T20:24:05Z', { updated_at: '2026-10-04T12:00:00Z' })],
+      NOW,
+      readNoticeSilence,
+    )
+    expect(newNoticeLabel(found!, WITH_PARKS)).toBe(`${PARKS_NAME} · New notice issued`)
+  })
+
+  it('names a notice counted from when OurHike first saw it the same way (decision 87)', () => {
+    const found = count([
+      hunting('1', '2026-10-03T20:24:05Z'),
+      hunting('2', '2026-10-04T22:01:56Z'),
+    ])
+    expect(found?.seen).toBe(true)
+    expect(newNoticeLabel(found!, WITH_PARKS)).toBe(`${PARKS_NAME} · New notice seen`)
+  })
+
+  it('falls back to the provider as the row gives it, "BLM", where no steward lists that provider', () => {
+    const found = newNoticesSince(
+      [
+        row('blm_shooting_points:1', '2026-10-03T20:24:05Z', {
+          provider: 'BLM',
+          updated_at: '2026-10-04T12:00:00Z',
+        }),
+      ],
+      NOW,
+      readNoticeSilence,
+    )
+    expect(newNoticeLabel(found!, STEWARDS)).toBe('BLM · New notice issued')
+  })
+
+  it('names two organizations by their stewards when one of them is known only by its provider', () => {
+    const found = newNoticesSince(
+      [
+        row('nps_grca_closures:9', '2026-10-03T20:24:05Z', {
+          updated_at: '2026-10-04T12:00:00Z',
+        }),
+        hunting('1', '2026-10-03T20:24:05Z', { updated_at: '2026-10-04T13:00:00Z' }),
+      ],
+      NOW,
+      readNoticeSilence,
+    )
+    expect(newNoticeLabel(found!, WITH_PARKS)).toBe(
+      `2 new trail notices · National Park Service and ${PARKS_NAME}`,
+    )
   })
 })

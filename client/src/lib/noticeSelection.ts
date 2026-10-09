@@ -107,7 +107,8 @@ export const SEEN_WATERMARK = ':seen'
  * shown notices with an `updated_at` of their own as lib/notices.ts's
  * `newNoticesSince` counts them, and those without one from when OurHike
  * first saw them, where `firstSeenAt` (decision 87's rule) says that counts.
- * Worded "seen" when any of those is counted (`NewNotices.seen`).
+ * Worded with no verb, never "issued", when any of those is counted
+ * (`NewNotices.seen`).
  *
  * ONE COUNT, THROUGH THE ONE FUNCTION, WITH A WATERMARK OF ITS OWN. A
  * first-seen notice is handed to `newNoticesSince` dated by when OurHike

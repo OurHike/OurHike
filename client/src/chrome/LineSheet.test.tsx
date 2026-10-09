@@ -170,7 +170,7 @@ describe('adding a point to a day hike (#979)', () => {
 
     expect(screen.getByRole('note')).toHaveTextContent(`Club line ${CLUB_LINE_SENTENCE}`)
     expect(CLUB_LINE_SENTENCE).toBe(
-      'Shown on the map. Not used for routes or distances until it is checked against the lines already there.',
+      'Shown, but not yet used for routes or distances: it may repeat a trail already on the map.',
     )
     expect(screen.queryByRole('button', { name: /day hike/i })).not.toBeInTheDocument()
   })

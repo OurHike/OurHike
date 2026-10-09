@@ -1189,13 +1189,18 @@ export function PoiCard({
 
      "Out of season" rather than the mock's "in winter": a fixed season is a
      guess that flips wrong in the South, which is the alternative the poll
-     turned down. "Its publisher" rather than "the agency", because two of
-     the layers are clubs' (NCTA's and FLTC's), not agencies'. */
+     turned down. "Its listing" rather than "the agency", because two of
+     the layers are clubs' (NCTA's and FLTC's), not agencies'; and rather
+     than "its publisher", which did not say who, or "its source", which on
+     a tap reads as the water's own supply. "The next water" for the same
+     reason: "the next source" meant a water point in one sentence and a
+     publisher in the line before it (the word-choice review of #1805,
+     2026-10-09). */
   const seasonCautionLine =
     shown.type === 'water' && shown.waterCaution === 'no_shutoff_season' ? (
       <p className="poi-card__season-caution" role="note">
-        Plumbed water. Its publisher does not say when it is shut off, and taps like this
-        are often off out of season. Carry enough to reach the next source.
+        Tap water. Its listing doesn’t say when it’s turned off for the season, and taps
+        like this are often off out of season. Carry enough to reach the next water.
       </p>
     ) : null
 

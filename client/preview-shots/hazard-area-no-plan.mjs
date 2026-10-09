@@ -22,8 +22,11 @@
 //  2. The area's sheet, opened by a tap inside it: "Hunting allowed", the
 //     Advisory tag, the invented title, and the sentence that the trail
 //     stays open. Never barrier tape and never a closure. The sheet names
-//     the layer "New York State Office of Parks, Recreation and Historic
-//     Preservation's layer" (the preview of 6fca5e91). UA's stewards.json
+//     its publisher, "From New York State Office of Parks, Recreation and
+//     Historic Preservation", where it said "...Preservation's layer" (the
+//     preview of 6fca5e91) until the word-choice review of #1805
+//     (2026-10-09) took "layer", a GIS word, off the card; its dates line
+//     says that publisher gives no season dates. UA's stewards.json
 //     still names none of the hazard sources' keys (release 2026-10-03-2,
 //     read 2026-10-07: not oprhp_hunting_areas, iata_lands_hunting_regs,
 //     usace_garrison_hunting_restrictions, blm_shooting_points or
@@ -168,7 +171,7 @@ export const caption =
   'A hunting area drawn over the A.T. at Bear Mountain with no hike planned, from conditions/hazard_areas.json, and its sheet: hunting allowed, the trail stays open (decision 84, #1805). The area is an invented example.'
 
 export const alt =
-  'The map screen over Bear Mountain State Park at zoom 13, with an invented hunting area drawn around the summit as a pale square with a dashed orange edge, under the red trail lines, and over the lower part of the map a sheet headed "Hunting allowed" with an Advisory tag, the title "Bear Mountain hunting area (example)" and a sentence saying the trail stays open. No hike is planned.'
+  'The map screen over Bear Mountain State Park at zoom 13, with an invented hunting area drawn around the summit as a pale square with a dashed orange edge, under the red trail lines, and over the lower part of the map a sheet headed "Hunting allowed" with an Advisory tag, the title "Bear Mountain hunting area (example)", a sentence saying the trail stays open, a line saying the publisher gives no season dates, and "From" with the publisher’s name. No hike is planned.'
 
 /** Vector tiles and the trail data over a park at z13, the allowance
  *  long-term-closures.mjs makes at this camera. */

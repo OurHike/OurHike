@@ -207,7 +207,7 @@ describe('PoiCard', () => {
     waterCaution: 'no_shutoff_season',
   }
   const SEASON_CAUTION =
-    'Plumbed water. Its publisher does not say when it is shut off, and taps like this are often off out of season. Carry enough to reach the next source.'
+    'Tap water. Its listing doesn’t say when it’s turned off for the season, and taps like this are often off out of season. Carry enough to reach the next water.'
 
   it('says on the peek that a plumbed tap may be shut off, apart from the unverified line', () => {
     renderPeek(TAP)
@@ -225,11 +225,11 @@ describe('PoiCard', () => {
 
   it('never cautions about a season on water nobody marked plumbed, or on a waypoint that is not water', () => {
     renderCard({ ...TAP, waterCaution: undefined })
-    expect(screen.queryByText(/shut off/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/turned off for the season/)).not.toBeInTheDocument()
     cleanup()
 
     renderCard({ ...TAP, type: 'shelter' })
-    expect(screen.queryByText(/shut off/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/turned off for the season/)).not.toBeInTheDocument()
   })
 
   it('never says it of a waypoint that is not a trailhead, whatever it carries', () => {

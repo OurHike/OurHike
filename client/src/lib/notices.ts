@@ -472,7 +472,7 @@ export interface NewNotices {
    *  lib/noticeSelection.ts's `newClubNotices` names. */
   newestBySource: Map<string, Date>
   /** True when a counted notice gave no date of its own and is counted from
-   *  when OurHike first saw it (decision 87): the banner then says "seen",
+   *  when OurHike first saw it (decision 87): the banner then names no verb,
    *  never "issued", since nobody said when it was issued. */
   seen?: boolean
   /** The registry provider a counted organization's rows carry
@@ -577,14 +577,17 @@ export function newNoticeLabel(newNotices: NewNotices, stewards: Stewards): stri
     label(key, newNotices.providers?.get(key)),
   )
   const { count } = newNotices
-  // Decision 87: "seen" when any counted notice is new only because OurHike
-  // first saw it, the weaker sentence that is true of every one counted.
-  const verb = newNotices.seen === true ? 'seen' : 'issued'
+  // Decision 87: no verb when any counted notice is new only because OurHike
+  // first saw it - "issued" would claim a date nobody gave, and "New notice"
+  // alone is true of every one counted. It said "seen" until the word-choice
+  // review of #1805 (2026-10-09), which read as "you saw it", the opposite
+  // of what the line is for.
+  const verb = newNotices.seen === true ? '' : ' issued'
 
   if (names.length === 1) {
     return count === 1
-      ? `${names[0]} · New notice ${verb}`
-      : `${names[0]} · ${count} new notices ${verb}`
+      ? `${names[0]} · New notice${verb}`
+      : `${names[0]} · ${count} new notices${verb}`
   }
 
   const who = names.length === 2 ? names.join(' and ') : `${names.length} organizations`

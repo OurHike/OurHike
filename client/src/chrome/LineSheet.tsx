@@ -30,9 +30,14 @@ import type { LineDetail } from '../lib/lineDetail'
  * offers no day-hike point on it, rather than letting a tap promise a walk the
  * builder will then refuse. Here rather than in lib/lineDetail.ts, which the
  * launch loads, because this sheet is deferred (screens/deferred.ts).
+ *
+ * The sentence names the reason, a repeat of a trail already drawn, rather
+ * than the check that looks for one: "until it is checked against the lines
+ * already there" told a hiker a step was pending without saying why it
+ * mattered (the word-choice review of #1805, 2026-10-09).
  */
 export const CLUB_LINE_SENTENCE =
-  'Shown on the map. Not used for routes or distances until it is checked against the lines already there.'
+  'Shown, but not yet used for routes or distances: it may repeat a trail already on the map.'
 
 /**
  * The steward's own marker for a line lib/trails.ts does not name, fetched

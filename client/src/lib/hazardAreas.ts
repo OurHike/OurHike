@@ -223,12 +223,42 @@ export function hazardFeatureCollection(
 }
 
 /**
- * The area's own season, in words, where its layer gives one - and the honest
- * line where it does not. Never a season OurHike supplied: none of the four
- * hunting layers carries dates (pipeline/dbt/seeds/notice_source_fields.csv),
- * so today every hunting card says so.
+ * "October 1, 2026" from a notice's `starts_on` or `ends_on`, an ISO day such
+ * as "2026-10-01", read as the calendar day it names - the same words
+ * lib/atcNoticeText.ts's `longDate` gives a stamp, so a sheet that prints both
+ * prints one date style, never "2026-10-01" beside "October 5, 2026".
+ * Anything that is not an ISO day is shown as the source wrote it, never as
+ * "Invalid Date": publishedNotices.ts reads both fields as plain text.
+ *
+ * Here rather than beside `longDate` because the panel and the area's card
+ * already import this module, and an import of atcNoticeText.ts from here
+ * would tie lib/noticeSelection.ts's chunk to the sheets' (that module's
+ * header gives the launch budget's reason).
  */
-export function hazardDates(notice: TrailNotice): string {
+export function longDay(day: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day
+  const at = new Date(`${day}T00:00:00Z`)
+  if (Number.isNaN(at.getTime())) return day
+  return at.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/**
+ * The area's own season, in words, where its publisher gives one - and the
+ * honest line where it does not. Never a season OurHike supplied: none of the
+ * four hunting layers carries dates (pipeline/dbt/seeds/notice_source_fields.csv),
+ * so today every hunting card says so.
+ *
+ * `org` is the publisher as the card names it (lib/notices.ts's
+ * `noticeOrgLabel`), so the sentence says who gave the dates rather than "the
+ * layer", a GIS word a hiker does not use (the word-choice review of #1805,
+ * 2026-10-09).
+ */
+export function hazardDates(notice: TrailNotice, org: string): string {
   const from = notice.starts_on ?? null
   const to = notice.ends_on ?? null
   // A burned area's only date is the fire's start (BAER's `ig_date`, which
@@ -236,14 +266,16 @@ export function hazardDates(notice: TrailNotice): string {
   // fire, never a date the danger began or ends.
   if (notice.hazard === 'burned_area') {
     return from === null
-      ? 'Shown while the agency’s layer lists the area.'
-      : `The fire started ${from}, as the layer states. Shown while the agency’s layer lists the area.`
+      ? `Shown while ${org} lists this area.`
+      : `The fire started ${longDay(from)}, according to ${org}. Shown while ${org} lists this area.`
   }
-  if (from !== null && to !== null) return `From ${from} to ${to}, as the layer states.`
-  if (from !== null) return `From ${from}, as the layer states.`
-  if (to !== null) return `Until ${to}, as the layer states.`
+  if (from !== null && to !== null) {
+    return `From ${longDay(from)} to ${longDay(to)}, according to ${org}.`
+  }
+  if (from !== null) return `From ${longDay(from)}, according to ${org}.`
+  if (to !== null) return `Until ${longDay(to)}, according to ${org}.`
   if (notice.hazard === 'hunting') {
-    return 'The layer gives no season dates, so check the season before you go.'
+    return `${org} gives no season dates. Check hunting seasons before you go.`
   }
-  return 'The layer gives no end date.'
+  return `${org} gives no end date.`
 }

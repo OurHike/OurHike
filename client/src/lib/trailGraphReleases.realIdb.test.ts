@@ -356,6 +356,22 @@ const R10_FILES: ReleaseFiles = {
   },
 }
 
+/** A release that renamed the east cell's own trail and touched nothing
+ *  else: the west cell is byte-identical, the east cell's routing half is
+ *  not. */
+const R10_EAST_RENAMED: ReleaseFiles = {
+  ...R9_FILES,
+  [EAST.name]: {
+    ...R9_FILES[EAST.name],
+    graph: JSON.stringify({
+      nodes: [P[1], P[2], P[3]],
+      node_ids: [1, 2, 3],
+      edges: [edge(0, 1), { ...edge(1, 2), name: 'Pine Meadow Trail (relocated)' }],
+      edge_ids: [1, 2],
+    }),
+  },
+}
+
 const NORTH_FILES: ReleaseFiles = { [NORTH.name]: { graph: NORTH_SHARD } }
 
 const keyOf = (name: string, half: Half) => trailGraphCellKey(name, half)
@@ -443,6 +459,93 @@ function inputs(overrides: Partial<Inputs>): Inputs {
     ...overrides,
   }
 }
+
+describe('one bar of signal: the manifest answers and every cell fetch fails (#1828 review)', () => {
+  it('useTrailGraph merges both release-9 cells of a hike stored whole after release 10 renumbered them, as with no signal at all', async () => {
+    // Before the review: each stored cell's hash was not release 10's, so
+    // each was refused and nothing merged - where the same phone with no
+    // signal merged both.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await publishing(RELEASE_10, R10_FILES)
+
+    const { result } = mount({ online: true, wanted: [WEST, EAST] })
+
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+    expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_9 })
+    expect(result.current.graphIndex?.graph.nodes).toEqual(P)
+  })
+
+  it('useTrailGraph merges both release-9 cells when release 10 changed the east cell and left the west cell byte-identical', async () => {
+    // Before the review: the west cell was taken as release 10's by its
+    // hash, which fixed the graph's release at the first cell, and the east
+    // cell - release 9's only - could never join it. The hike's far end was
+    // missing for the whole session.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await publishing(RELEASE_10, R10_EAST_RENAMED)
+
+    const { result } = mount({ online: true, wanted: [WEST, EAST] })
+
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+    expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_9 })
+  })
+
+  it('useTrailGraph adds a stored release-9 cell to a graph it built from release 9 with no signal, once release 10 is published', async () => {
+    // Before the review: with the manifest answering, a stored copy stood in
+    // for a failed fetch only by release 10's hash, so the session's own
+    // release could not take its own cell.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    const { result, rerender } = mount({ online: false, wanted: [WEST] })
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name]))
+
+    await publishing(RELEASE_10, R10_FILES)
+    rerender(inputs({ online: true, wanted: [WEST, EAST] }))
+
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+    expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_9 })
+  })
+
+  it('loads the merged graph’s geometry and elevation when release 10 published every file byte-identical', async () => {
+    // Before the review: the routing halves merged as release 10's by their
+    // hash, and the geometry and elevation halves - the same bytes, stored
+    // under release 9 - were refused, so both came back undecided and the
+    // graph had no vertices to snap a point to.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await publishing(RELEASE_10, R9_FILES)
+
+    const { result } = mount({ online: true, wanted: [WEST, EAST] })
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+    const merged = result.current.graphMerged!
+
+    expect(await fetchTrailGraphGeometryCells(merged, undefined, true)).toMatchObject({
+      kind: 'loaded',
+    })
+    expect(await fetchTrailGraphElevationCells(merged, undefined, true)).toMatchObject({
+      kind: 'loaded',
+    })
+  })
+
+  it('joins a byte-identical stored cell, with its geometry, to the release-10 graph a fetched cell started', async () => {
+    // The east cell gets through and fixes the graph at release 10. The west
+    // cell's fetch fails, and its release-9 copy is release 10's bytes, so it
+    // joins. Before the review the routing half joined and its geometry was
+    // refused, so the whole graph had none.
+    await keep({ [WEST.name]: R9_FILES[WEST.name] }, RELEASE_9, 1_000)
+    await publishing(RELEASE_10, R9_FILES, {
+      serving: [keyOf(EAST.name, 'graph'), keyOf(EAST.name, 'geometry')],
+    })
+
+    const { result } = mount({ online: true, wanted: [WEST, EAST] })
+
+    // Either order: which cell merges first is not what this is about.
+    await waitFor(() =>
+      expect([...cellNames(result)].sort()).toEqual([EAST.name, WEST.name].sort()),
+    )
+    expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_10 })
+    expect(
+      await fetchTrailGraphGeometryCells(result.current.graphMerged!, undefined, true),
+    ).toMatchObject({ kind: 'loaded' })
+  })
+})
 
 describe('a release that published a stored cell byte-identical (#1828 review)', () => {
   it('a stored hike’s west cell still routes offline after the east cell it shares with a second hike was refetched with signal', async () => {

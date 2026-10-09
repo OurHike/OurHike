@@ -495,12 +495,15 @@ cell from the next invent a junction where the numbers collide and drop a trail 
 the other release already used. So every merged graph is built from one release, the manifest
 `version` its cells were verified against, and `mergeGraphShard` refuses a cell from any other:
 
-- **With signal, the manifest's release.** A stored copy stands in for a failed fetch only when
-  its hash is the one the manifest publishes for that cell now. A release whose manifest does
-  not answer 2xx is read as no signal at all: measured 2026-10-09, data.ourhike.org answered 404
-  for the release this build pins - its manifest, its cell index and both Harriman cells asked -
-  and a stored copy of the release being built now stands in. Any other stored copy is
-  refetched, never merged.
+- **With signal, the manifest's release, when any of it arrives.** A stored copy stands in for
+  a failed fetch as the manifest's release when its hash is the one the manifest publishes for
+  that cell now. But one bar of signal reads the manifest and fails the multi-MB cells, so a run
+  in which no cell's fetch got through builds what a phone with no signal would build, and a
+  graph already built from another release takes stored copies of its own release (#1828
+  review). A release whose manifest does not answer 2xx is read the same way: measured
+  2026-10-09, data.ourhike.org answered 404 for the release this build pins - its manifest, its
+  cell index and both Harriman cells asked - and a stored copy of the release being built now
+  stands in. Any other stored copy is refetched, never merged.
 - **Without signal, the newest release stored among the cells being built from**, by when each
   was fetched. Read across those cells rather than the whole store, so one cell fetched at home
   after an update cannot make a whole stretch stored before it unusable at the trailhead. A

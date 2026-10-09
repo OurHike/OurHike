@@ -361,6 +361,102 @@ describe('one release per session’s graph (#1828)', () => {
   })
 })
 
+// #1828 review - one bar of signal reads the manifest and fails the multi-MB
+// cells. lib/trailGraphData.ts leaves a stored copy it could not place to
+// the hook (`heldRelease`), and the hook asks the store for it again, as a
+// phone with no signal would, once the run knows its release.
+describe('one bar of signal (#1828 review)', () => {
+  type Load = Awaited<ReturnType<typeof loadGraphShard>>
+  const held = (release: { version: string }): Load => ({
+    kind: 'absent',
+    because: 'unreachable',
+    heldRelease: release,
+  })
+  const shard = (name: string, release: { version: string }): Load => ({
+    kind: 'shard',
+    shard: SHARDS[name],
+    release,
+  })
+  /** Each call as [cell, online, release asked for]. */
+  const calls = () =>
+    vi
+      .mocked(loadGraphShard)
+      .mock.calls.map(([cell, , online, release]) => [cell.name, online, release])
+
+  it('asks the store, with no signal and the newest stored release, for every held cell once the run fetched none', async () => {
+    vi.mocked(newestStoredGraphVersion).mockResolvedValue(RELEASE_9)
+    vi.mocked(loadGraphShard).mockImplementation(async (cell, _signal, online) =>
+      online ? held(RELEASE_9) : shard(cell.name, RELEASE_9),
+    )
+
+    const { result } = mount({ wanted: [A, B] })
+
+    await waitFor(() => expect(result.current.graphMerged?.cells).toHaveLength(2))
+    expect(calls()).toEqual([
+      ['n41w075', true, RELEASE_9],
+      ['n41w074', true, RELEASE_9],
+      ['n41w075', false, RELEASE_9],
+      ['n41w074', false, RELEASE_9],
+    ])
+    expect(result.current.graphMerged?.release).toEqual(RELEASE_9)
+  })
+
+  it('asks the store for a held cell at once when the session’s graph already has a release', async () => {
+    vi.mocked(loadGraphShard).mockImplementation(async (cell, _signal, online) =>
+      cell.name === 'n41w074' && online ? held(RELEASE_9) : shard(cell.name, RELEASE_9),
+    )
+
+    const { result } = mount({ wanted: [A, B, C] })
+
+    await waitFor(() => expect(result.current.graphMerged?.cells).toHaveLength(3))
+    expect(calls()).toEqual([
+      ['n41w075', true, undefined],
+      ['n41w074', true, RELEASE_9],
+      ['n41w074', false, RELEASE_9],
+      ['n42w075', true, RELEASE_9],
+    ])
+  })
+
+  it('asks the store for a held cell for the release a later cell’s fetch settled, not the newest stored', async () => {
+    // A fetch got through, so this run's graph is the manifest's release; a
+    // stored copy joins it only as a copy of that release.
+    vi.mocked(newestStoredGraphVersion).mockResolvedValue(RELEASE_9)
+    vi.mocked(loadGraphShard).mockImplementation(
+      async (cell, _signal, online, release) => {
+        if (cell.name === 'n41w074') return shard(cell.name, RELEASE_10)
+        if (online) return held(RELEASE_9)
+        return release?.version === RELEASE_10.version
+          ? shard(cell.name, RELEASE_10)
+          : held(RELEASE_9)
+      },
+    )
+
+    const { result } = mount({ wanted: [A, B] })
+
+    await waitFor(() => expect(result.current.graphMerged?.cells).toHaveLength(2))
+    expect(calls().at(-1)).toEqual(['n41w075', false, RELEASE_10])
+    expect(result.current.graphMerged?.release).toEqual(RELEASE_10)
+  })
+
+  it('names a held cell in the console only when the store will not take it either', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.mocked(newestStoredGraphVersion).mockResolvedValue(RELEASE_9)
+    vi.mocked(loadGraphShard).mockImplementation(async (cell, _signal, online) => {
+      if (cell.name === 'n41w074') return held(RELEASE_10)
+      return online ? held(RELEASE_9) : shard(cell.name, RELEASE_9)
+    })
+
+    const { result } = mount({ wanted: [A, B] })
+
+    await waitFor(() => expect(warn).toHaveBeenCalledTimes(1))
+    expect(String(warn.mock.calls[0][0])).toContain('n41w074')
+    expect(String(warn.mock.calls[0][0])).toContain('release-10')
+    expect(result.current.graphMerged?.cells.map((cell) => cell.name)).toEqual([
+      'n41w075',
+    ])
+  })
+})
+
 describe('the gate (#1117)', () => {
   it('waits for the trail line’s launch fetch with signal', async () => {
     const { rerender } = mount({ wanted: [A], gate: false })

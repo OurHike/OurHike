@@ -47,11 +47,15 @@
 // {@link mergeGraphShard} refuses a cell from any other. The maintainer chose
 // by poll on 2026-10-08 to refuse mixed releases, and which release wins:
 //
-//   - WITH SIGNAL, THE MANIFEST'S. A fresh fetch is always the manifest's
-//     release. A stored copy stands in for a failed fetch only when its hash
-//     is the hash the manifest names for that cell now - the same bytes, so
-//     the same release. A stored copy of any other release is refetched,
-//     never merged.
+//   - WITH SIGNAL, THE MANIFEST'S, WHEN ANY OF IT ARRIVES. A fresh fetch is
+//     always the manifest's release. A stored copy stands in for a failed
+//     fetch as the manifest's release when its hash is the hash the manifest
+//     names for that cell now - the same bytes, so the same release. But one
+//     bar of signal reads a manifest and fails the multi-MB cells, so a run
+//     that fetched no cell builds as a phone with no signal would, and a
+//     graph already built from another release takes stored copies of that
+//     release (lib/useTrailGraph.ts; #1828 review). A stored copy of any
+//     other release is refetched, never merged.
 //   - WITHOUT SIGNAL, THE NEWEST STORED. Of the cells a graph is being built
 //     from, the release this phone stored one most recently
 //     (lib/trailGraphStore.ts's newestStoredGraphVersion, which says why it
@@ -282,11 +286,15 @@ export type GraphShardLoad =
       kind: 'absent'
       because: TrailNetworkAbsence
       /**
-       * Set when this phone holds a copy of the cell from another release
-       * than the one the graph is being built from, and left it unused
-       * (#1828) - the release that copy is from. For the console line
-       * lib/useTrailGraph.ts writes; a hiker is told what any cell this phone
-       * does not hold tells them.
+       * Set when this phone holds a stored copy of the cell that this load
+       * left unused (#1828) - the release that copy was stored under. Either
+       * it is from another release than the one asked for, or the fetch
+       * failed while the caller was building from another release than the
+       * manifest's, and the online path does not choose between the two
+       * (`storedAsPublished`). The caller asks the store again with no
+       * signal once its run knows its release (lib/useTrailGraph.ts), and
+       * names the copy in the console if that does not use it either. A
+       * hiker is told what any cell this phone does not hold tells them.
        */
       heldRelease?: GraphRelease
     }
@@ -468,7 +476,9 @@ export async function loadGraphShard(
     // refetched on the next try, never merged. Where it was not read, nothing
     // says which release is current, and the store decides as it does with
     // no signal.
-    if (current?.readable === true) return await storedAsPublished(storeKey, current)
+    if (current?.readable === true) {
+      return await storedAsPublished(storeKey, current, release)
+    }
     return await storedShard(storeKey, release, 'unreachable')
   }
 }
@@ -513,21 +523,37 @@ async function storedShard(
  * it was stored under (#1828). That is recorded on the copy
  * (lib/trailGraphStore.ts's `recordAlsoPublishedIn`), so a later load of
  * either release can use it.
+ *
+ * WHEN THE CALLER IS BUILDING FROM ANOTHER RELEASE THAN THE MANIFEST'S,
+ * THIS DOES NOT DECIDE. Measured 2026-10-09 in
+ * lib/trailGraphReleases.realIdb.test.ts: on one bar of signal, handing back
+ * a copy as the manifest's release fixed the session's graph to that release
+ * at the first cell. The hike's next cell, stored only under the earlier
+ * release, could then never join it: the graph held the first cell alone,
+ * where the same phone with no signal at all merged both. So the stored
+ * copy is left to the caller, as `heldRelease`. The caller asks
+ * the store for it again, as a phone with no signal would, once it knows
+ * which release its graph is built from: the manifest's, if any cell's
+ * fetch got through, and otherwise the one it asked for
+ * (lib/useTrailGraph.ts).
  */
 async function storedAsPublished(
   storeKey: string,
   manifest: { hash: string | null; version: string | null },
+  release: GraphRelease | undefined,
 ): Promise<GraphShardLoad> {
   const stored = await readStoredGraph(storeKey)
   if (stored === null) return UNREACHABLE
-  if (manifest.hash === null || stored.hash !== manifest.hash) {
-    return {
-      kind: 'absent',
-      because: 'unreachable',
-      heldRelease: { version: stored.version },
-    }
+  const held: GraphShardLoad = {
+    kind: 'absent',
+    because: 'unreachable',
+    heldRelease: { version: stored.version },
   }
+  if (manifest.hash === null || stored.hash !== manifest.hash) return held
   await recordAlsoPublishedIn(storeKey, stored.hash, manifest.version)
+  if (release !== undefined && !sameRelease(release, { version: manifest.version })) {
+    return held
+  }
   const parsed = await parseStored(stored.bytes, isGraphShard)
   return parsed === null
     ? UNREACHABLE
@@ -647,7 +673,10 @@ export type TrailGraphLoad =
  * copies are asked for the newest release stored among `cells`, the first
  * cell to load fixes the release for the rest, and a cell that can only be
  * had from another one is `unreachable` - as it would be with no copy at all
- * - rather than half of a graph built from two.
+ * - rather than half of a graph built from two. A cell whose stored copy a
+ * load with signal left unused (`heldRelease`) is asked of the store again
+ * at the end, for the release the others settled on, as lib/useTrailGraph.ts
+ * does.
  */
 export async function loadTrailGraphCells(
   cells: readonly CoverageCell[],
@@ -658,6 +687,7 @@ export async function loadTrailGraphCells(
   if (cells.length === 0) return { kind: 'absent', because: 'empty' }
   const newest = await newestStoredGraphVersion(cells.map((cell) => cell.name))
   let merged = emptyMergedGraph()
+  const held: CoverageCell[] = []
   for (const cell of cells) {
     const load = await loadGraphShard(
       cell,
@@ -665,7 +695,26 @@ export async function loadTrailGraphCells(
       online,
       merged.release ?? newest ?? undefined,
     )
-    if (load.kind === 'absent') return { kind: 'absent', because: load.because }
+    if (load.kind === 'absent') {
+      if (online && load.heldRelease !== undefined) {
+        held.push(cell)
+        continue
+      }
+      return { kind: 'absent', because: load.because }
+    }
+    if (merged.release !== null && !sameRelease(merged.release, load.release)) {
+      return { kind: 'absent', because: 'unreachable' }
+    }
+    merged = mergeGraphShard(merged, cell.name, load.shard, load.release)
+  }
+  for (const cell of held) {
+    const load = await loadGraphShard(
+      cell,
+      signal,
+      false,
+      merged.release ?? newest ?? undefined,
+    )
+    if (load.kind === 'absent') return { kind: 'absent', because: 'unreachable' }
     if (merged.release !== null && !sameRelease(merged.release, load.release)) {
       return { kind: 'absent', because: 'unreachable' }
     }

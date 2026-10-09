@@ -34,14 +34,18 @@
 // which release this session's graph is - the manifest's with signal, the
 // newest this phone stored without (lib/trailGraphData.ts's header has the
 // rule and the maintainer's choice behind it) - and every later cell is asked
-// for that release. A cell this phone holds only from another release is
-// treated as not held, and the console says so once. A cell that arrives
-// from another release - signal came back, and the manifest's release is not
-// the one the graph was built from - is left out until the app restarts,
-// because a live draft holds positions in this graph and a graph rebuilt
-// from the other release would move every one of them. Both look, to a
-// hiker, like any cell that has not arrived: the same "hasn't got this
-// area's trail lines yet".
+// for that release. With signal, a cell whose fetch fails is asked of the
+// store as a phone with no signal would ask it, once the run knows its
+// release: the manifest's if any cell was fetched, and otherwise the newest
+// stored, so that a run on one bar of signal that fetches no cell builds
+// what no signal would (#1828 review). A cell this phone holds only from
+// another release is treated as not held, and the console says so once. A
+// cell that arrives from another release - signal came back, and the
+// manifest's release is not the one the graph was built from - is left out
+// until the app restarts, because a live draft holds positions in this graph
+// and a graph rebuilt from the other release would move every one of them.
+// Both look, to a hiker, like any cell that has not arrived: the same
+// "hasn't got this area's trail lines yet".
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DATA_CONFIGURED } from './config'
@@ -54,6 +58,7 @@ import {
   mergeGraphShard,
   sameRelease,
   type GraphRelease,
+  type GraphShard,
   type MergedGraph,
   type TrailNetworkAbsence,
   type TrailNetworkState,
@@ -171,6 +176,42 @@ export function useTrailGraph({
           ? await newestStoredGraphVersion(missing.map((cell) => cell.name))
           : null
       if (!live) return
+
+      const merge = (cell: CoverageCell, shard: GraphShard, release: GraphRelease) => {
+        building.current = release
+        askedCells.add(cell.name)
+        landedCells.add(cell.name)
+        setMerged((current) =>
+          mergeGraphShard(current ?? emptyMergedGraph(), cell.name, shard, release),
+        )
+      }
+      /** Asks the store for a cell as a phone with no signal would, for the
+       *  release this graph is built from, and merges what it hands back. */
+      const fromStore = async (cell: CoverageCell): Promise<boolean> => {
+        const load = await loadGraphShard(
+          cell,
+          controller.signal,
+          false,
+          building.current ?? newest ?? undefined,
+        )
+        if (!live || load.kind !== 'shard') return false
+        if (building.current !== null && !sameRelease(building.current, load.release)) {
+          return false
+        }
+        merge(cell, load.shard, load.release)
+        return true
+      }
+      const sayHeldElsewhere = (cell: CoverageCell, release: GraphRelease) => {
+        if (heldElsewhereSaid.current.has(cell.name)) return
+        heldElsewhereSaid.current.add(cell.name)
+        console.warn(
+          `Junction graph cell ${cell.name} is held from release ${releaseName(release)}, not the one this graph is built from: not used, and fetched again with signal (lib/useTrailGraph.ts)`,
+        )
+      }
+      /** Cells whose stored copy a load with nothing merged yet left unused,
+       *  with the release each copy was stored under. */
+      const held: Array<{ cell: CoverageCell; release: GraphRelease }> = []
+
       // One at a time rather than all at once: the densest cell is 12.7 MB of
       // JSON, and a phone parsing four of those together is the frozen page
       // this whole cut exists to prevent, one artifact further down.
@@ -196,24 +237,19 @@ export function useTrailGraph({
             )
             continue
           }
-          building.current = load.release
-          landedCells.add(cell.name)
-          setMerged((current) =>
-            mergeGraphShard(
-              current ?? emptyMergedGraph(),
-              cell.name,
-              load.shard,
-              load.release,
-            ),
-          )
+          merge(cell, load.shard, load.release)
           continue
         }
         askedCells.delete(cell.name)
-        if (load.heldRelease !== undefined && !heldElsewhereSaid.current.has(cell.name)) {
-          heldElsewhereSaid.current.add(cell.name)
-          console.warn(
-            `Junction graph cell ${cell.name} is held from release ${releaseName(load.heldRelease)}, not the one this graph is built from: not used, and fetched again with signal (lib/useTrailGraph.ts)`,
-          )
+        if (load.heldRelease !== undefined) {
+          if (building.current === null) {
+            held.push({ cell, release: load.heldRelease })
+            continue
+          }
+          if (online && (await fromStore(cell))) continue
+          if (!live) return
+          sayHeldElsewhere(cell, load.heldRelease)
+          continue
         }
         if (isSettledAbsence(load.because)) {
           settled.current.set(cell.name, load.because)
@@ -221,6 +257,22 @@ export function useTrailGraph({
             `Junction graph cell ${cell.name} is not being used: ${load.because} (lib/useTrailGraph.ts)`,
           )
         }
+      }
+
+      // A RUN THAT FETCHED NO CELL BUILDS WHAT NO SIGNAL WOULD (#1828
+      // review). With signal, a cell whose fetch failed is not handed back
+      // from the store while this graph's release is still open
+      // (lib/trailGraphData.ts's `storedAsPublished`). Now the run is over,
+      // the release is the manifest's if any fetch got through, and
+      // otherwise the newest stored among these cells. Each held cell is
+      // asked of the store for that release, exactly as with no signal.
+      // Measured 2026-10-09 in lib/trailGraphReleases.realIdb.test.ts:
+      // before this, a hike stored whole under one release and opened on one
+      // bar after the next was published merged nothing at all.
+      for (const { cell, release } of held) {
+        if (online && (await fromStore(cell))) continue
+        if (!live) return
+        sayHeldElsewhere(cell, release)
       }
     })()
 

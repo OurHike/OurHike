@@ -902,6 +902,30 @@ describe('one release per merged graph (#1828)', () => {
       vi.mocked(writeStoredGraph).mockClear()
     })
 
+    it('loadGraphShard with signal leaves a byte-identical stored copy to a caller building from another release than the manifest’s, and records it as the manifest’s', async () => {
+      // Handing it back as release 10's would fix the caller's graph at
+      // release 10 at this cell, and the hike's next cell - stored only
+      // under release 9 - could never join it. The caller asks the store
+      // again once its run knows its release (lib/useTrailGraph.ts).
+      const hash = await hashOf(WEST_SHARD)
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9', hash } })
+      manifestOnly(
+        await hashed({ [WEST_KEYS.graph]: WEST_SHARD }, { version: 'release-10' }),
+      )
+
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toEqual({
+        kind: 'absent',
+        because: 'unreachable',
+        heldRelease: RELEASE_9,
+      })
+      expect(recordAlsoPublishedIn).toHaveBeenCalledWith(WEST_GRAPH, hash, 'release-10')
+      // Asked for the manifest's own release, the same copy is a cell.
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_10)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_10,
+      })
+    })
+
     it('loadGraphShard offline takes a copy stored under release 9 for release 10 once release 10 published the same bytes, and for release 9 still', async () => {
       holdingReleases({
         [WEST_GRAPH]: {

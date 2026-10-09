@@ -309,6 +309,9 @@ def test_the_build_holds_the_steps_from_the_warehouse_on_and_none_of_the_pins(wo
     moved = [
         "Build the warehouse from the pin",
         "dbt build, the Python steps and the pub_ writers (build_marts.py --lane monthly)",
+        # Not moved: decision 31's new-data counts, added after the split (test_the_new_data_review_*).
+        "The new-data review's counts, from the built warehouse (new_data_report.py --facts-out)",
+        "Hand the new-data counts on",
         "Save the EPQS answers and the DEM samples",
         "Save dbt's DuckDB driver and v2's spatial extension",
         "Store the warehouse and its manifest in the step cache",
@@ -493,6 +496,70 @@ def test_the_parity_report_joins_every_group_into_the_one_artifact_the_gate_read
     assert 'gate_report.py --parity-dir "$PARITY_DIR/results"' in runs
     uploads = [step for step in job["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact")]
     assert uploads[-1]["if"] == "always()" and uploads[-1]["with"]["name"] == "monthly-parity"
+
+
+def _step(job: dict, name: str) -> tuple[int, dict]:
+    steps = job["steps"]
+    found = [index for index, step in enumerate(steps) if step.get("name") == name]
+    assert found, f"no step named {name!r}"
+    return found[0], steps[found[0]]
+
+
+def test_the_new_data_review_counts_the_warehouse_this_build_wrote_and_never_holds_up_the_ua_publish(workflow):
+    """Decision 31's report needs the warehouse, which only the build job holds, and every parity group's results,
+    which only parity-report holds: the build counts its own warehouse right after build_marts.py writes it, so the
+    counts describe the files this run's parity compares, and hands on the counts, never the warehouse."""
+    job = workflow["jobs"]["build"]
+    names = [step.get("name") for step in job["steps"]]
+    at, facts = _step(job, "The new-data review's counts, from the built warehouse (new_data_report.py --facts-out)")
+    hand, upload = _step(job, "Hand the new-data counts on")
+
+    assert names.index("dbt build, the Python steps and the pub_ writers (build_marts.py --lane monthly)") < at < hand
+    assert at < names.index("Store the warehouse and its manifest in the step cache")
+    run = " ".join(facts["run"].split())
+    assert "new_data_report.py --warehouse data/warehouse.duckdb --facts-out" in run
+    assert facts.get("continue-on-error") is True, "a review the build could not count must not keep UA's data back"
+    assert not _secrets({"steps": [facts]}), "it reads a local file"
+    assert upload["if"] == f"steps.{facts['id']}.outcome == 'success'"
+    assert upload["with"]["name"] == "monthly-new-data-facts"
+    assert upload["with"]["path"].endswith("/new_data/new_data_facts.json")
+
+
+def test_the_new_data_review_report_is_written_beside_every_parity_groups_results_and_kept_with_its_counts_shown(workflow):
+    job = workflow["jobs"]["parity-report"]
+    download_at, download = _step(job, "The build's new-data counts")
+    report_at, report = _step(job, "The new-data review report (new_data_report.py)")
+    keep_at, keep = _step(job, "Keep the new-data review report")
+    gate_at, gate = _step(job, "The gate's per-key report")
+
+    assert download["with"] == {"name": "monthly-new-data-facts", "path": "${{ runner.temp }}/new_data"}
+    assert download.get("continue-on-error") is True, "a build that could not count leaves a warning, not a red report"
+    run = " ".join(report["run"].split())
+    assert 'new_data_report.py --facts "$facts" "${parity[@]}"' in run and '--summary "$GITHUB_STEP_SUMMARY"' in run
+    assert 'parity=(--parity-dir "$PARITY_DIR/results")' in run
+    assert gate_at < download_at < report_at < keep_at
+    assert keep["if"] == "always()" and keep["with"]["name"] == "monthly-new-data-report"
+    assert keep["with"]["path"] == "${{ runner.temp }}/new_data/report/"
+    assert '--summary "$GITHUB_STEP_SUMMARY"' in " ".join(gate["run"].split()), "the gate's counts go on the page too"
+
+
+def test_the_new_data_report_step_warns_and_writes_nothing_when_the_build_could_not_count(workflow, tmp_path):
+    """Run as the job runs it, with no facts file: a warning naming why, an exit 0, and no report invented."""
+    _, report = _step(workflow["jobs"]["parity-report"], "The new-data review report (new_data_report.py)")
+    summary = tmp_path / "summary.md"
+    env = {
+        **os.environ,
+        "PARITY_DIR": str(tmp_path / "parity"),
+        "NEW_DATA_DIR": str(tmp_path / "new_data"),
+        "RUNNER_TEMP": str(tmp_path),
+        "GITHUB_STEP_SUMMARY": str(summary),
+    }
+
+    done = subprocess.run([*BASH, report["run"]], env=env, capture_output=True, text=True, check=False)
+
+    assert done.returncode == 0, done.stderr
+    assert "::warning title=No new-data counts::" in done.stdout
+    assert not (tmp_path / "new_data" / "report").exists() and not summary.exists()
 
 
 STUB_PARITY = """

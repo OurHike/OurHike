@@ -468,6 +468,12 @@ class ContentPages(_NoticeSource):
         return SITE_PARSERS[self.site or self.key]
 
     @property
+    def zero_proof(self) -> None:
+        """None: the count is the items a site's parser found (THE COUNT, the module docstring), and a page that lists
+        none raises before any zero."""
+        return None
+
+    @property
     def columns(self) -> dict[str, str]:
         if self.type not in TYPE_COLUMNS:
             raise ValueError(f"{self.key}: a content page reader feeds {sorted(TYPE_COLUMNS)}, not {self.type}")

@@ -40,7 +40,10 @@
 #            against the dbt writers on the pinned inputs (decision 30), one
 #            group of families per runner (pipeline/parity_lane.py).
 #   parity-report  No credential. Joins the groups' answers into the one
-#            `monthly-parity` artifact and writes the gate's per-key report.
+#            `monthly-parity` artifact and writes the gate's per-key report,
+#            and decision 31's new-data review report from the counts the
+#            build job took of its warehouse (`monthly-new-data-report`), each
+#            with its counts on the run's page.
 name: Build reference data from a pin
 
 # The raw_run in every run's title, so the run list says which pin each
@@ -374,6 +377,36 @@ jobs:
         run: >-
           python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
           --history-url "s3://$R2_RAW_BUCKET/history/monthly" --history-python "$RUNNER_TEMP/extract/bin/python"
+
+      # DECISION 31's NEW-DATA REVIEW, THE WAREHOUSE'S HALF (pipeline/ELT.md,
+      # "The go/no-go gate"): new_data_report.py counts what the marts carry
+      # - rows per club and type, every layer's licence basis and may_publish,
+      # every closure, warning, water and shelter source - from the warehouse
+      # build_marts.py just wrote, so the counts describe the files this run's
+      # parity compares. The other half needs every parity group's results,
+      # which only parity-report holds, so the counts travel there as a small
+      # artifact (--facts-out), never the warehouse. No credential: it reads a
+      # local file. It may fail alone, because the review is for a reviewer
+      # and the UA publish must not wait on it; parity-report then says the
+      # report is missing rather than writing one without these counts.
+      - name: The new-data review's counts, from the built warehouse (new_data_report.py --facts-out)
+        id: new-data-facts
+        continue-on-error: true
+        run: >-
+          "$RUNNER_TEMP/pipeline/bin/python" new_data_report.py --warehouse data/warehouse.duckdb
+          --facts-out "$RUNNER_TEMP/new_data/new_data_facts.json"
+
+      # Counts, source keys and registry fields only (new_data_report.py
+      # refuses a person field or a location before it writes), so this can
+      # sit in a public repository's artifacts. parity-report reads it.
+      - name: Hand the new-data counts on
+        if: steps.new-data-facts.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-new-data-facts
+          path: ${{ runner.temp }}/new_data/new_data_facts.json
+          retention-days: 7
+          if-no-files-found: error
 
       # Also when build_marts.py failed: the answers an attempt paid for are
       # what the next attempt needs, whatever a later step made of them.
@@ -749,8 +782,9 @@ jobs:
 
       # The gate's per-key report, from pipeline/gate_report.py (ELT.md: "every
       # existing R2 key comes out byte-equal, or is listed with a reviewed
-      # reason"). With no parity result to read, the step warns rather than
-      # inventing a report.
+      # reason"), its counts on this run's page under the parity table. With
+      # no parity result to read, the step warns rather than inventing a
+      # report.
       - name: The gate's per-key report
         env:
           PARITY_DIR: ${{ runner.temp }}/parity
@@ -758,8 +792,53 @@ jobs:
           if [ -z "$(find "$PARITY_DIR/results" -name '*.json' -print -quit 2>/dev/null)" ]; then
             echo "::warning title=No parity results for the gate::parity.py wrote no --json-dir result, so gate_report.py has nothing to read."
           else
-            "$RUNNER_TEMP/pipeline/bin/python" gate_report.py --parity-dir "$PARITY_DIR/results" --out "$PARITY_DIR/gate"
+            "$RUNNER_TEMP/pipeline/bin/python" gate_report.py --parity-dir "$PARITY_DIR/results" --out "$PARITY_DIR/gate" \
+              --summary "$GITHUB_STEP_SUMMARY"
           fi
+
+      # DECISION 31's NEW-DATA REVIEW, THE PARITY HALF: the build job's counts
+      # of what the marts carry (its new_data_report.py --facts-out step),
+      # beside every group's parity results, which say whether today's files
+      # carry each closure, warning, water and shelter source. Missing only
+      # when the build job could not count, which its step's log says.
+      - name: The build's new-data counts
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: monthly-new-data-facts
+          path: ${{ runner.temp }}/new_data
+
+      # Its headline counts go on this run's page and the whole report in the
+      # monthly-new-data-report artifact. With no parity result, a source is
+      # "not measured", never "not seen" (new_data_report.headline()).
+      - name: The new-data review report (new_data_report.py)
+        env:
+          PARITY_DIR: ${{ runner.temp }}/parity
+          NEW_DATA_DIR: ${{ runner.temp }}/new_data
+        run: |
+          facts="$NEW_DATA_DIR/new_data_facts.json"
+          if [ ! -f "$facts" ]; then
+            echo "::warning title=No new-data counts::the build job wrote no new_data_facts.json, so this run has no new-data review report; the build job's new_data_report.py step says why."
+            exit 0
+          fi
+          parity=()
+          if [ -n "$(find "$PARITY_DIR/results" -name '*.json' -print -quit 2>/dev/null)" ]; then
+            parity=(--parity-dir "$PARITY_DIR/results")
+          else
+            echo "::warning title=No parity results for the new-data report::no group wrote a result, so the report cannot say which sources today's files carry."
+          fi
+          "$RUNNER_TEMP/pipeline/bin/python" new_data_report.py --facts "$facts" "${parity[@]}" \
+            --out "$NEW_DATA_DIR/report" --summary "$GITHUB_STEP_SUMMARY"
+          echo "The line-by-line list is new_data_report.md in this run's monthly-new-data-report artifact." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the new-data review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-new-data-report
+          path: ${{ runner.temp }}/new_data/report/
+          retention-days: 90
+          if-no-files-found: warn
 
       - name: Keep the parity answers for the gate
         if: always()

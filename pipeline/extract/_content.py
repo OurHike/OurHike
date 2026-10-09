@@ -91,6 +91,11 @@ class PodcastEpisodes(_kinds.PodcastFeed):
     def exact_proof(self) -> bool:
         return True
 
+    @property
+    def zero_proof(self) -> str:
+        """PodcastFeed's, restated because this reads the feed again: the channel's items, from the answer rows() parses."""
+        return "the RSS <channel>'s own items, in the answer the rows come from; a body with no <channel> raises"
+
     def _session(self) -> requests.Session:
         return polite(_kinds.session(), max(self.crawl_delay, DEFAULT_HOST_GAP_SECONDS))
 
@@ -258,6 +263,11 @@ class NpsContent(_json_apis.NpsAlerts):
         """The fields one item is told apart by: the row's `key_fields`, as JsonFeatures' _copies reads them."""
         return list(self.entry.get("key_fields") or ["id"])
 
+    @property
+    def zero_proof(self) -> str:
+        """NpsAlerts', restated because _read_list() reads the list again: the `total` every page states."""
+        return "the API's own `total`, the same on every page of the read (an answer without one raises)"
+
     def column_hints(self) -> dict:
         path = self.entry["url"].rstrip("/").split("/api/v1/", 1)[-1]
         # Every list titles its rows but the stamp locations, which label them (`label`, hinted below).
@@ -352,6 +362,11 @@ class WordpressChildPages(_kinds.WordpressPosts):
 
     parent: int = 0
 
+    @property
+    def zero_proof(self) -> str:
+        """WordpressPosts', restated because the scope differs: the X-WP-Total the pages route states for this parent."""
+        return "the site's X-WP-Total for the parent page's children (wp_list())"
+
     def scope(self, http: requests.Session) -> dict:
         return {"parent": str(self.parent)}
 
@@ -378,6 +393,11 @@ class SiteTerms(_kinds.WordpressTerms):
     """
 
     crawl_delay: float = 0.0
+
+    @property
+    def zero_proof(self) -> str:
+        """WordpressTerms', restated because rows() is this class's own: each taxonomy's X-WP-Total, summed."""
+        return "the sum of each taxonomy's X-WP-Total; an empty taxonomy raises before any zero"
 
     def rows(self, proofs: dict[str, int]):
         http = polite(_kinds.session(), max(self.crawl_delay, DEFAULT_HOST_GAP_SECONDS))
@@ -420,6 +440,14 @@ class MediawikiTemplatePages(_json_apis.MediawikiAnnouncements):
     @property
     def part(self) -> str:
         return self.template
+
+    @property
+    def zero_proof(self) -> str:
+        """MediawikiAnnouncements', restated: the same read, for another template."""
+        return (
+            "the embeddedin listing's own pages once the wiki says batchcomplete, after the template's own page is "
+            "found (a missing template raises)"
+        )
 
 
 def mediawiki_template_pages(key: str, **overrides) -> MediawikiTemplatePages:

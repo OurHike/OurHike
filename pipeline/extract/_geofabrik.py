@@ -306,13 +306,24 @@ class GeofabrikExtracts(Resource):
 
     @property
     def may_be_empty(self) -> bool:
-        """True, with the store's own index as the count: a first run that downloads nothing has no copy to list, and
-        that zero is exact. The collapse floor still refuses a store that lost its copies (extract/_run.py's run_check)."""
+        """True, with the store's own index as the count (zero_proof): a first run that downloads nothing has no copy
+        to list, and that zero is exact.
+
+        NO COLLAPSE FLOOR HOLDS IT. This said the floor still refused a store that lost its copies, and it never did:
+        extract/_run.py's run_check exempts a table that may be empty, and holds the floor only where its kind reads no
+        count of the upstream's own. None is needed here, because a state whose copy the index lost is UNKNOWN to the
+        next run's change check and read again (verdicts()), and the build scans only a complete set of fourteen,
+        landing the last landed scans otherwise (the module docstring, THE BUILD SIDE). An index that could not be
+        read proves nothing at all (rows())."""
         return True
 
     @property
     def exact_proof(self) -> bool:
         return True
+
+    @property
+    def zero_proof(self) -> str:
+        return "the raw store's own index of the copies it holds, read in the same run; an unreadable index proves nothing"
 
     def base_url(self) -> str:
         return _kinds.registry_entry(self.key)["url"].rstrip("/")
@@ -380,11 +391,12 @@ class GeofabrikExtracts(Resource):
 
     def rows(self, proofs: dict[str, int]):
         fs, root = bound_store()
+        index_read = True
         try:
             index = read_index(fs, root)
         except (OSError, ValueError) as error:
             print(f"::warning title={self.key}: the store's index is unreadable::{error}; every extract is read again")
-            index = {}
+            index, index_read = {}, False
         sizes = listed_sizes(fs, root, OSM_DIR)
         verdicts = self.verdicts(index, sizes, _now())
         present = {state for state, verdict in verdicts.items() if verdict is not Freshness.UNKNOWN}
@@ -413,7 +425,11 @@ class GeofabrikExtracts(Resource):
         for state in self.states:
             if state not in present:
                 print(f"::warning title={self.key}: no copy of {state}::{errors.get(state, 'never landed')}")
-        proofs[self.table] = len(rows)
+        # The store's own index is the count (zero_proof). An index that could not be read counts nothing: the copies
+        # it describes are unknown, not none, and every download failing then lands no row for a store that may hold
+        # all fourteen. So no proof is recorded, and the run check refuses the table, whose last rows stand.
+        if index_read:
+            proofs[self.table] = len(rows)
         yield from rows
 
     def _read(self, fs, root: str, index: dict[str, dict], states: list[str]) -> tuple[set[str], dict[str, str]]:

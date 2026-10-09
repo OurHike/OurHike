@@ -102,6 +102,11 @@ class ContentPdf(_NoticeSource):
         return PDF_FAMILIES[self.family or self.key]
 
     @property
+    def zero_proof(self) -> None:
+        """None: the count is the items a PDF family's parser reads, and a document that reads as none raises first."""
+        return None
+
+    @property
     def timeout(self) -> int:
         """ClubPdf's 120 s: a PDF can be megabytes."""
         return 120

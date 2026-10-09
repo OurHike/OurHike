@@ -1,6 +1,18 @@
 """new_data_report: decision 31's review of what parity cannot check, read from a built warehouse.
 
-    python new_data_report.py --warehouse data/warehouse.duckdb --out <dir> [--parity-dir <dir>]
+    python new_data_report.py --warehouse data/warehouse.duckdb --out <dir> [--parity-dir <dir>] [--summary <file>]
+    python new_data_report.py --warehouse data/warehouse.duckdb --facts-out <file>
+    python new_data_report.py --facts <file> --parity-dir <dir> --out <dir> [--summary <file>]
+
+The first form reads the warehouse and the parity results together. The other
+two split it where the monthly lane has them (.github/workflows/
+build-reference.yml): its build job holds the warehouse and writes the
+warehouse's counts with --facts-out, since its parity groups run on runners of
+their own afterwards; its parity-report job holds every group's results and
+writes the report from those counts with --facts. The counts are read from the
+warehouse the same build wrote, so they describe the files parity compared.
+--summary appends the report's headline counts to a file, the run's step
+summary in CI.
 
 Parity (parity.py, gate_report.py) holds every key today's pipeline publishes
 to today's exporter, so it cannot check a row no exporter ever wrote. Decision
@@ -30,10 +42,11 @@ WHAT IT NEVER HOLDS, enforced rather than hoped for:
   registry fields only, with the same refusal for any field in
   LOCATION_FIELDS. CLAUDE.md's "Show what you changed" lists "a dispersed
   campsite at a readable zoom" among what must never be shown, and a
-  coordinate in a report is that location at any zoom.
+  coordinate in a report is that location at any zoom. The --facts-out file
+  is held to the same refusal, and so is a --facts file read back.
 
-Map shot recipes (decision 31's third item) are not here; the report's last
-section says what a recipe per region would need.
+Map shots per region (decision 31's third item) are preview recipes, not part
+of this report; its last section names them (MAP_SHOTS).
 """
 
 from __future__ import annotations
@@ -49,6 +62,8 @@ from parity import RESULT_FORMAT as PARITY_RESULT_FORMAT
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 REPORT_FORMAT = "ourhike-new-data-report/1"
+#: What --facts-out writes and --facts reads: the warehouse's half of the report, before today's files are read.
+FACTS_FORMAT = "ourhike-new-data-facts/1"
 
 #: The column each mart's rows are typed by, for the org × type × mart counts.
 #: A mart not named here is counted by club alone, and says so.
@@ -122,13 +137,13 @@ LOCATION_FIELDS = frozenset(
 )
 
 MAP_SHOTS = (
-    "Not in this report: map shot recipes are their own piece of work. A recipe per region would need: "
-    "a region, read from `reference/trail_orgs.json`'s `states` for the clubs whose rows are new; a camera "
-    "the region fits at a zoom where no campsite is readable, because CLAUDE.md's four rules forbid a dispersed "
-    "campsite at a readable zoom; UA's data, which the preview camera has (`pr-preview.yml`), never a fixture "
-    "that looks real; no signed-in account, nobody's reports or photos and no location fix; and a client that "
-    "draws the new rows, which v1's files do not carry yet (decision 44). Each recipe lives in "
-    "`client/preview-shots/`, under `.claude/skills/pr-screenshot/SKILL.md`'s contract."
+    "Not in this report, because a map is a picture: the shot per region is a preview recipe, "
+    "`client/preview-shots/map-region-*.mjs`, one for each part of the ground the marts' region boxes cover "
+    "(`dbt/macros/lands_outside_its_region.sql`'s `region_boxes()`: `eastern`, `national` and "
+    "`us_and_territories`). `pr-preview.yml` photographs a recipe on any pull request that adds or changes it, against "
+    "the data the preview build reads, never this warehouse. Each opens the map below `POI_PIN_MIN_ZOOM` "
+    "(`client/src/map/poiLayerIds.ts`), where no waypoint is drawn, so no campsite can be read in it, and "
+    "`client/src/test/regionMapShots.test.ts` holds every recipe there and every region box to a recipe."
 )
 
 
@@ -293,8 +308,8 @@ def unnamed_in_todays_files(parity: dict[str, dict]) -> list[dict]:
     ]
 
 
-def new_sources(con, tables: dict, parity: dict[str, dict], may_publish: dict[str, bool]) -> list[dict]:
-    """Every closure, warning, water and shelter source the marts carry, and whether today's files carry it."""
+def source_lines(con, tables: dict) -> list[dict]:
+    """Every closure, warning, water and shelter source the marts carry, a line each, before today's files are read."""
     found = []
     for mart, label, named_as, type_column, where, needs in NEW_SOURCE_QUERIES:
         columns = tables.get(("marts", mart))
@@ -306,19 +321,6 @@ def new_sources(con, tables: dict, parity: dict[str, dict], may_publish: dict[st
             from marts.{_quote(mart)} where {where} group by all order by all
         """
         for club_value, source_key, named, kind, count in con.execute(query).fetchall():
-            today = {
-                family: result["old_sources"][named]
-                for family, result in parity.items()
-                if named in (result.get("old_sources") or {})
-            }
-            if not parity:
-                verdict, detail = "not_measured", "no --parity-dir, so today's files were not read"
-            elif today:
-                verdict = "published_today"
-                detail = "today's exporter writes " + ", ".join(f"{count} in {family}" for family, count in sorted(today.items()))
-            else:
-                verdict = "not_in_todays_compared_files"
-                detail = f"no record in the {len(parity)} files parity compared names it"
             found.append(
                 {
                     "line": label,
@@ -328,11 +330,30 @@ def new_sources(con, tables: dict, parity: dict[str, dict], may_publish: dict[st
                     "source_named_as": named,
                     "type": kind,
                     "rows": count,
-                    "may_publish": may_publish.get(source_key),
-                    "today": verdict,
-                    "detail": detail,
                 }
             )
+    return found
+
+
+def new_sources(lines: list[dict], parity: dict[str, dict], may_publish: dict[str, bool]) -> list[dict]:
+    """Each source line (source_lines()), with its layer's may_publish and whether today's files carry it, unseen first."""
+    found = []
+    for line in lines:
+        named = line["source_named_as"]
+        today = {
+            family: result["old_sources"][named]
+            for family, result in parity.items()
+            if named in (result.get("old_sources") or {})
+        }
+        if not parity:
+            verdict, detail = "not_measured", "no --parity-dir, so today's files were not read"
+        elif today:
+            verdict = "published_today"
+            detail = "today's exporter writes " + ", ".join(f"{count} in {family}" for family, count in sorted(today.items()))
+        else:
+            verdict = "not_in_todays_compared_files"
+            detail = f"no record in the {len(parity)} files parity compared names it"
+        found.append({**line, "may_publish": may_publish.get(line["source_key"]), "today": verdict, "detail": detail})
     order = {"not_in_todays_compared_files": 0, "not_measured": 1, "published_today": 2}
     return sorted(found, key=lambda row: (order[row["today"]], row["line"], row["mart"], str(row["source_key"])))
 
@@ -342,20 +363,40 @@ def _cell(value) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
+def headline(report: dict) -> list[str]:
+    """The report's counts as three Markdown bullets: the top of new_data_report.md, and what --summary appends.
+
+    A source today's files were not read for is "not measured", never "not seen": without parity results nothing was
+    compared, so counting it as unseen would claim a comparison that never ran.
+    """
+    counts, layer_rows, sources = report["mart_counts"], report["layers"], report["new_sources"]
+    held = sum(not row["may_publish"] for row in layer_rows)
+    unseen = sum(row["today"] == "not_in_todays_compared_files" for row in sources)
+    unmeasured = sum(row["today"] == "not_measured" for row in sources)
+    measured = f", {unmeasured} not measured (no parity results were read)" if unmeasured else ""
+    return [
+        f"- {sum(row['rows'] for row in counts):,} mart rows across {len({row['mart'] for row in counts})} marts.",
+        f"- {len(layer_rows)} layers in `int_sources__publication`: {len(layer_rows) - held} may publish, {held} may not.",
+        f"- {len(sources)} closure, warning, water and shelter sources; **{unseen} not seen in today's compared "
+        f"files**{measured}.",
+    ]
+
+
+def summary_markdown(report: dict) -> str:
+    """The headline under a heading of its own, for a run's step summary: the line-by-line list stays in the files."""
+    return "\n".join(["### New-data review (decision 31)", "", *headline(report), ""]) + "\n"
+
+
 def render_markdown(report: dict) -> str:
     inputs = report["inputs"]
     counts, layer_rows, sources = report["mart_counts"], report["layers"], report["new_sources"]
-    new = [row for row in sources if row["today"] != "published_today"]
-    held = [row for row in layer_rows if not row["may_publish"]]
     lines = [
         "# New-data review: what the marts carry that parity cannot check",
         "",
         f'Decision 31 (pipeline/ELT.md, "The go/no-go gate"). Warehouse `{inputs["warehouse"]}`; parity results '
         f"{'`' + inputs['parity_dir'] + '`' if inputs['parity_dir'] else 'not given'}.",
         "",
-        f"- {sum(row['rows'] for row in counts):,} mart rows across {len({row['mart'] for row in counts})} marts.",
-        f"- {len(layer_rows)} layers in `int_sources__publication`: {len(layer_rows) - len(held)} may publish, {len(held)} may not.",
-        f"- {len(sources)} closure, warning, water and shelter sources; **{len(new)} not seen in today's compared files**.",
+        *headline(report),
         "",
         "Counts, source keys and registry fields only: no person field and no location is in this report.",
         "",
@@ -405,7 +446,13 @@ def render_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
-def build_report(warehouse: Path, parity_dir: Path | None) -> dict:
+def warehouse_facts(warehouse: Path) -> dict:
+    """The warehouse's half of the report: rows per mart, every layer's licence row and every source line.
+
+    Everything the report reads from the warehouse and nothing from parity, so
+    a job holding the warehouse but not every parity group's results can
+    write it (--facts-out) for the job that holds them (--facts).
+    """
     import duckdb
 
     if not warehouse.exists():
@@ -419,49 +466,105 @@ def build_report(warehouse: Path, parity_dir: Path | None) -> dict:
         con.execute("set memory_limit = '1500MB'")
         con.execute("set threads = 2")
         tables = _tables(con)
-        layer_rows = layers(con, tables)
-        parity = load_parity(parity_dir)
-        may_publish = {row["source_key"]: row["may_publish"] for row in layer_rows}
-        report = {
-            "format": REPORT_FORMAT,
-            "inputs": {
-                "warehouse": str(warehouse),
-                "parity_dir": None if parity_dir is None else str(parity_dir),
-                "parity_families": sorted(parity),
-            },
+        layer_rows = layers(con, tables)  # first: no int_sources__publication refuses before any count is run
+        facts = {
+            "format": FACTS_FORMAT,
+            "warehouse": str(warehouse),
             "mart_counts": mart_counts(con, tables),
             "layers": layer_rows,
-            "new_sources": new_sources(con, tables, parity, may_publish),
-            "todays_files_naming_no_source": unnamed_in_todays_files(parity),
-            "map_shots": MAP_SHOTS,
+            "source_lines": source_lines(con, tables),
         }
     finally:
         con.close()
+    refuse_what_it_must_not_hold(facts, person_fields())
+    return facts
+
+
+def read_facts(path: Path) -> dict:
+    """A --facts-out file, refused unless it is one, and held to the same refusal as everything this writes."""
+    if not path.exists():
+        raise FileNotFoundError(f"{path} is missing; write it with --facts-out from the built warehouse")
+    facts = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(facts, dict) or facts.get("format") != FACTS_FORMAT:
+        raise ValueError(f"{path} is not a {FACTS_FORMAT} file, which --facts-out writes")
+    refuse_what_it_must_not_hold(facts, person_fields())
+    return facts
+
+
+def report_from_facts(facts: dict, parity_dir: Path | None) -> dict:
+    """The whole report: the warehouse's half (warehouse_facts()) and what today's files carry, from parity's results."""
+    parity = load_parity(parity_dir)
+    may_publish = {row["source_key"]: row["may_publish"] for row in facts["layers"]}
+    report = {
+        "format": REPORT_FORMAT,
+        "inputs": {
+            "warehouse": facts["warehouse"],
+            "parity_dir": None if parity_dir is None else str(parity_dir),
+            "parity_families": sorted(parity),
+        },
+        "mart_counts": facts["mart_counts"],
+        "layers": facts["layers"],
+        "new_sources": new_sources(facts["source_lines"], parity, may_publish),
+        "todays_files_naming_no_source": unnamed_in_todays_files(parity),
+        "map_shots": MAP_SHOTS,
+    }
     refuse_what_it_must_not_hold(report, person_fields())
     return report
+
+
+def build_report(warehouse: Path, parity_dir: Path | None) -> dict:
+    return report_from_facts(warehouse_facts(warehouse), parity_dir)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--warehouse", type=Path, default=Path("data/warehouse.duckdb"), help="the built warehouse")
-    parser.add_argument("--out", type=Path, required=True, help="where new_data_report.md and new_data_report.json are written")
+    parser.add_argument(
+        "--facts", type=Path, default=None, help="the warehouse's counts as --facts-out wrote them, read in place of --warehouse"
+    )
+    parser.add_argument(
+        "--facts-out", type=Path, default=None, help="write only the warehouse's counts to this file, and no report"
+    )
+    parser.add_argument("--out", type=Path, default=None, help="where new_data_report.md and new_data_report.json are written")
     parser.add_argument(
         "--parity-dir", type=Path, default=None, help="parity.py --json-dir's results, to say what today's files carry"
     )
+    parser.add_argument(
+        "--summary", type=Path, default=None, help="a file the headline counts are appended to, such as $GITHUB_STEP_SUMMARY"
+    )
     args = parser.parse_args(argv)
+    if (args.out is None) == (args.facts_out is None):
+        parser.error("give --out to write the report, or --facts-out to write only the warehouse's counts")
+    if args.facts_out is not None and (args.facts or args.parity_dir or args.summary):
+        parser.error("--facts-out reads the warehouse alone; --facts, --parity-dir and --summary belong to a report")
     try:
-        report = build_report(args.warehouse, args.parity_dir)
+        if args.facts_out is not None:
+            facts = warehouse_facts(args.warehouse)
+        else:
+            facts = read_facts(args.facts) if args.facts is not None else warehouse_facts(args.warehouse)
+            report = report_from_facts(facts, args.parity_dir)
     except (FileNotFoundError, ValueError) as problem:
         print(f"new_data_report: {problem}", file=sys.stderr)
         return 2
+    if args.facts_out is not None:
+        args.facts_out.parent.mkdir(parents=True, exist_ok=True)
+        args.facts_out.write_text(json.dumps(facts, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(
+            f"new_data_report: {len(facts['layers'])} layers and {len(facts['source_lines'])} closure/warning/water/shelter "
+            f"source lines from {args.warehouse}; wrote {args.facts_out}"
+        )
+        return 0
     markdown = render_markdown(report)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "new_data_report.md").write_text(markdown, encoding="utf-8")
     (args.out / "new_data_report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    new = sum(row["today"] != "published_today" for row in report["new_sources"])
+    if args.summary is not None:
+        with args.summary.open("a", encoding="utf-8") as page:
+            page.write(summary_markdown(report))
+    unseen = sum(row["today"] == "not_in_todays_compared_files" for row in report["new_sources"])
     print(
         f"new_data_report: {len(report['layers'])} layers, {len(report['new_sources'])} closure/warning/water/shelter "
-        f"sources ({new} not in today's compared files); wrote {args.out / 'new_data_report.md'}"
+        f"sources ({unseen} not seen in today's compared files); wrote {args.out / 'new_data_report.md'}"
     )
     return 0
 

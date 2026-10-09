@@ -65,7 +65,7 @@ jobs:
           # gate itself still proves the suite it gates.
           #
           # Imported is not the same as read, and the difference was a real
-          # hole (TESTING.md's "Redundancy" audit, 2026-08-06). Three suites
+          # hole (TESTING.md's "Redundancy" audit, 2026-08-06). These suites
           # read files outside client/ at runtime:
           #
           #   pipeline/reference/gain_vectors.json  lib/elevationGain.test.ts
@@ -75,12 +75,19 @@ jobs:
           #   channels.json                         lib/dataRelease.pointer.test.ts,
           #                                         lib/config.phoneFileKey.test.ts
           #   pipeline/dbt/models/publish/*.yml     lib/config.phoneFileKey.test.ts
+          #   pipeline/dbt/macros/lands_outside_its_region.sql
+          #                                         test/regionMapShots.test.ts
           #
-          # The last two arrived with decision 44 (pipeline/ELT.md, "Versions
-          # and channels"): the promotion pull request changes channels.json
-          # and nothing else, and these are the only checks of its entries
-          # against the client's own release-id rule and of the v2 key list
-          # against the dbt writers' exposures.
+          # The region macro is decision 31's map shots: regionMapShots.test.ts
+          # holds every box its region_boxes() names to at least one preview
+          # recipe, so a box added there with no recipe to photograph it fails
+          # this suite.
+          #
+          # channels.json and the publish models arrived with decision 44
+          # (pipeline/ELT.md, "Versions and channels"): the promotion pull
+          # request changes channels.json and nothing else, and these are the
+          # only checks of its entries against the client's own release-id
+          # rule and of the v2 key list against the dbt writers' exposures.
           #
           # The fourth is #831's two-runtime resolver: the POI id resolver
           # exists once in Python and once in TypeScript, because neither
@@ -100,7 +107,7 @@ jobs:
           # them with fields prefilled, and GitHub matches a prefilled dropdown
           # by its option TEXT - so rewording a label there and nowhere else
           # breaks the links silently, and this is the run that says so.
-          paths: client/ pipeline/reference/ pipeline/tests/fixtures/ site/ .github/ISSUE_TEMPLATE/ channels.json pipeline/dbt/models/publish/ .github/workflows/client-tests.yml .github/actions/changed-paths/
+          paths: client/ pipeline/reference/ pipeline/tests/fixtures/ site/ .github/ISSUE_TEMPLATE/ channels.json pipeline/dbt/models/publish/ pipeline/dbt/macros/lands_outside_its_region.sql .github/workflows/client-tests.yml .github/actions/changed-paths/
 
       - uses: actions/setup-node@v7
         if: steps.scope.outputs.run == 'true'

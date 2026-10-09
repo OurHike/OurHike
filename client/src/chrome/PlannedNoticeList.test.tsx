@@ -345,66 +345,6 @@ describe('PlannedNoticeList', () => {
     )
   })
 
-  it('prints a page-matched closure’s page day under the organization and links the page (decision 128)', () => {
-    renderList({
-      empty: null,
-      undated: 0,
-      hikes: [
-        {
-          stretch: STRETCH,
-          onRoute: [
-            notice({
-              notice_id: 'ptny_est_closures:416',
-              source_key: 'ptny_est_closures',
-              title: 'Fixture Shoreline Trail',
-              obstructs_trail: true,
-              updated_at: null,
-              source_url: null,
-              matched_page: {
-                url: 'https://empiretrail.ny.gov/trail-closures',
-                updated_on: '2026-10-01',
-              },
-            }),
-          ],
-          stateWide: [],
-          fromClubs: [],
-        },
-      ],
-    })
-    const onRoute = screen.getByRole('list', { name: 'On your route' })
-    expect(within(onRoute).getByText('Closure')).toBeTruthy()
-    expect(
-      within(onRoute).getByText('On the trail’s closures page — updated October 1, 2026'),
-    ).toBeTruthy()
-    const link = within(onRoute).getByRole('link', {
-      name: 'Read the trail’s closures page',
-    })
-    expect(link.getAttribute('href')).toBe('https://empiretrail.ny.gov/trail-closures')
-    // The page's day is never the organization's: PTNY dates nothing, so the page's line is the only dated one.
-    expect(
-      within(onRoute)
-        .getAllByText(/updated/)
-        .map((line) => line.textContent),
-    ).toEqual(['On the trail’s closures page — updated October 1, 2026'])
-    expect(within(onRoute).queryByText(/Read .*’s notice/)).toBeNull()
-  })
-
-  it('prints no page line on a notice nobody matched to a page', () => {
-    renderList({
-      empty: null,
-      undated: 0,
-      hikes: [
-        {
-          stretch: STRETCH,
-          onRoute: [notice({ notice_id: 'gmc:closure', obstructs_trail: true })],
-          stateWide: [],
-          fromClubs: [],
-        },
-      ],
-    })
-    expect(screen.queryByText(/the trail’s closures page/)).toBeNull()
-  })
-
   it('says a day hike’s notices were matched to straight lines between its taps when its trails are not on the phone', () => {
     renderList({
       empty: null,

@@ -308,12 +308,12 @@ export function noticeStatesDocument() {
  *
  * @param {import('@playwright/test').Page} page
  */
-export async function routePlannedNotices(page, notices = noticesDocument()) {
+export async function routePlannedNotices(page) {
   await page.route(/\/conditions\/notices\.json(\?|$)/, (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(notices),
+      body: JSON.stringify(noticesDocument()),
     }),
   )
   await page.route(/\/conditions\/notice_states\.json(\?|$)/, (route) =>
@@ -323,109 +323,4 @@ export async function routePlannedNotices(page, notices = noticesDocument()) {
       body: JSON.stringify(noticeStatesDocument()),
     }),
   )
-}
-
-// --- Decision 128: a closed section matched to an item on a dated page -------
-//
-// For planned-hike-page-matched-closure.mjs. Parks & Trails New York's view of
-// the Empire State Trail's closed sections dates nothing, so a section draws
-// only once a person has matched it to an item on the trail's closures page,
-// and its row then carries that page's date and link (the maintainer's poll
-// of 2026-10-09, w6-ptny-closures.html's frame A). The registry key, the
-// organization and the page's address are real; the walk, the line, its
-// title and the page's date are invented, and the title says "(example)":
-// no section has been matched yet, so this shows the row a match would make,
-// not one that exists.
-
-/** An invented day hike along Buffalo's waterfront, today: two taps, joined
- *  by a straight line, nobody's route and nobody's location fix. */
-const WATERFRONT_WALK = {
-  id: 'preview-fixture-ptny',
-  name: 'Waterfront walk (example)',
-  segments: [
-    [
-      { coord: [-78.8825, 42.8825], poiId: null },
-      { coord: [-78.896, 42.895], poiId: null },
-    ],
-  ],
-  figures: {
-    miles: 1.2,
-    legs: [
-      {
-        name: 'Shoreline Trail (example)',
-        source: 'oprhp_est_segments',
-        blaze_color: null,
-        miles: 1.2,
-      },
-    ],
-  },
-  looped: false,
-  recorded: 'planned',
-}
-
-/** The waterfront walk alone, planned for today. */
-export function pageMatchedDayHikes() {
-  return { ...DAY_HIKES, hikes: [{ ...WATERFRONT_WALK, date: localDay(0) }] }
-}
-
-/** The steward list with Parks & Trails New York in it, as stewards.json will
- *  list it once a match is approved (pipeline/sources.json's
- *  ptny_est_closures stays held until then). */
-export function pageMatchedStewards() {
-  return {
-    stewards: [
-      ...STEWARDS_DOCUMENT.stewards,
-      {
-        provider: 'PTNY',
-        name: 'Parks & Trails New York',
-        trust: 'authoritative',
-        licence: null,
-        attribution: 'Parks & Trails New York',
-        terms: null,
-        terms_source: null,
-        layers: ["Empire State Trail closures (Parks & Trails New York's public view)"],
-        keys: ['ptny_est_closures'],
-        support: null,
-        store: null,
-        steward_id: 'org:ptny',
-      },
-    ],
-  }
-}
-
-/** conditions/notices.json holding one closed section on the walk, matched
- *  to an item on the trail's closures page eight days old. Its own
- *  `updated_at` is null, as PTNY's always is: the page's day is the only
- *  date the row has. */
-export function pageMatchedNoticesDocument() {
-  return {
-    generated_at: new Date(Date.now() - 3_600_000).toISOString().slice(0, 19) + 'Z',
-    notices: [
-      row({
-        notice_id: 'ptny_est_closures:example',
-        source_key: 'ptny_est_closures',
-        club: 'nysparks',
-        provider: 'PTNY',
-        steward_kind: 'agency',
-        title: 'Shoreline Trail (example)',
-        obstructs_trail: true,
-        review_state: 'unreviewed',
-        updated_at: null,
-        place: {
-          kind: 'geometry',
-          geometry: {
-            type: 'LineString',
-            coordinates: [
-              [-78.8845, 42.8844],
-              [-78.894, 42.8931],
-            ],
-          },
-        },
-        matched_page: {
-          url: 'https://empiretrail.ny.gov/trail-closures',
-          updated_on: localDay(-8),
-        },
-      }),
-    ],
-  }
 }

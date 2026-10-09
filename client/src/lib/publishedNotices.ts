@@ -39,7 +39,6 @@ import {
   PUBLISHED_NOTICES_KEY,
   readPublished,
   type NoticeHazard,
-  type NoticeMatchedPage,
   type NoticePlace,
   type NoticeStateArea,
   type OrgNotice,
@@ -180,27 +179,6 @@ function validPlace(value: unknown): NoticePlace {
   return { kind: 'unplaced' }
 }
 
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
-
-/**
- * Decision 128's `matched_page`, or nothing: the page's link as an absolute
- * http or https URL (pageUrlOrNull's rule, so a sentence never links to
- * OurHike itself), and its day where it reads as an ISO day. A link that
- * fails leaves the row without it, so the row reads as any other notice
- * rather than claiming a page it cannot open.
- */
-function validMatchedPage(value: unknown): { matched_page?: NoticeMatchedPage } {
-  if (typeof value !== 'object' || value === null) return {}
-  const page = value as Record<string, unknown>
-  const url = pageUrlOrNull(page.url)
-  if (url === null) return {}
-  const day =
-    typeof page.updated_on === 'string' && ISO_DAY.test(page.updated_on)
-      ? page.updated_on
-      : null
-  return { matched_page: { url, updated_on: day } }
-}
-
 /** Decision 76's `states`: the two-letter codes a row carries, or nothing -
  *  an unreadable code is left out, and a row left with none is an ordinary
  *  unplaced notice. */
@@ -294,7 +272,6 @@ export function validNotice(value: unknown): OrgNotice | null {
     first_seen_at: textOrNull(row.first_seen_at),
     changed_at: textOrNull(row.changed_at),
     carried_since: textOrNull(row.carried_since),
-    ...validMatchedPage(row.matched_page),
   }
 }
 

@@ -156,7 +156,7 @@ test('a choice in the Show menu clears the pressed button and the line naming it
   await expect(page.locator('[data-charted]')).toBeHidden()
 })
 
-test('a mart charts from under its name on a phone, and the chart says it came from By mart', async ({
+test('a mart charts from under its name on a phone, and the chart says "Charted from By finished table"', async ({
   page,
 }) => {
   await open(page)
@@ -168,14 +168,16 @@ test('a mart charts from under its name on a phone, and the chart says it came f
   await shown.click()
   await expect(title(page)).toContainText('trail_network')
   expect(await menu(page).inputValue()).toContain('trail_network')
-  await expect(page.locator('[data-charted]')).toContainText('Charted from By mart')
+  await expect(page.locator('[data-charted]')).toContainText(
+    'Charted from By finished table',
+  )
   await expect(mart.locator('[data-chart-key]').first()).toHaveAttribute(
     'aria-pressed',
     'true',
   )
 })
 
-test('By mart keeps every mart name to one line on a phone, its lane and check count under it', async ({
+test('By finished table keeps every table name to one line on a phone, its schedule and check count under it', async ({
   page,
 }) => {
   await open(page)

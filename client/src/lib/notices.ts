@@ -301,13 +301,26 @@ export function noticeBandId(notice: TrailNotice): string {
  * release built before decision 67's hazard sources were registered.
  */
 export function noticeOrgLabel(stewards: Stewards): (notice: TrailNotice) => string {
+  const label = sourceOrgLabel(stewards)
+  return (notice) => label(notice.source_key || null, notice.provider)
+}
+
+/**
+ * `noticeOrgLabel`'s rule for a source key and the provider its rows carry,
+ * for a caller holding the two without a notice: the "new notices" sentence
+ * (`newNoticeLabel`), which counts by key. One rule for both, so the banner
+ * never names an organization differently from the list it opens - it read
+ * the key alone until the word-choice review of #1805 (2026-10-09), and would
+ * have announced a hunting area as "oprhp_hunting_areas".
+ */
+export function sourceOrgLabel(
+  stewards: Stewards,
+): (sourceKey: string | null, provider?: string | null) => string {
   const label = orgLabelFrom(stewards)
   const byProvider = new Map(stewards.map((steward) => [steward.provider, steward.name]))
-  return (notice) => {
-    const key = notice.source_key || null
+  return (key, provider) => {
     const named = label(key)
     if (key === null || named !== key) return named
-    const { provider } = notice
     if (typeof provider !== 'string' || provider === '') return named
     return byProvider.get(provider) ?? provider
   }
@@ -459,9 +472,13 @@ export interface NewNotices {
    *  lib/noticeSelection.ts's `newClubNotices` names. */
   newestBySource: Map<string, Date>
   /** True when a counted notice gave no date of its own and is counted from
-   *  when OurHike first saw it (decision 87): the banner then says "seen",
+   *  when OurHike first saw it (decision 87): the banner then names no verb,
    *  never "issued", since nobody said when it was issued. */
   seen?: boolean
+  /** The registry provider a counted organization's rows carry
+   *  (conditions/notices.json's `provider`), by source key, where they carry
+   *  one: what names a key no steward claims, as `noticeOrgLabel` names it. */
+  providers?: Map<string, string>
 }
 
 /**
@@ -486,6 +503,7 @@ export function newNoticesSince(
 ): NewNotices | null {
   const watermarks = new Map<string, Date | null>()
   const newestBySource = new Map<string, Date>()
+  const providers = new Map<string, string>()
   const sourceKeys: string[] = []
   let count = 0
 
@@ -506,9 +524,13 @@ export function newNoticesSince(
     if (seen === undefined || at.getTime() > seen.getTime()) {
       newestBySource.set(key, at)
     }
+    const { provider } = notice
+    if (typeof provider === 'string' && provider !== '' && !providers.has(key)) {
+      providers.set(key, provider)
+    }
   }
 
-  return count === 0 ? null : { count, sourceKeys, newestBySource }
+  return count === 0 ? null : { count, sourceKeys, newestBySource, providers }
 }
 
 /**
@@ -550,17 +572,27 @@ export function silenceNewNotices(newNotices: NewNotices): void {
  * three notice sources, read on a phone in daylight.
  */
 export function newNoticeLabel(newNotices: NewNotices, stewards: Stewards): string {
-  const label = orgLabelFrom(stewards)
-  const names = newNotices.sourceKeys.map((key) => label(key))
+  const label = sourceOrgLabel(stewards)
+  // One name per organization: two sources of one publisher, such as New
+  // York State Parks' closures and its hunting areas, are one organization,
+  // never "X and X" and never counted as two.
+  const names = [
+    ...new Set(
+      newNotices.sourceKeys.map((key) => label(key, newNotices.providers?.get(key))),
+    ),
+  ]
   const { count } = newNotices
-  // Decision 87: "seen" when any counted notice is new only because OurHike
-  // first saw it, the weaker sentence that is true of every one counted.
-  const verb = newNotices.seen === true ? 'seen' : 'issued'
+  // Decision 87: no verb when any counted notice is new only because OurHike
+  // first saw it - "issued" would claim a date nobody gave, and "New notice"
+  // alone is true of every one counted. It said "seen" until the word-choice
+  // review of #1805 (2026-10-09), which read as "you saw it", the opposite
+  // of what the line is for.
+  const verb = newNotices.seen === true ? '' : ' issued'
 
   if (names.length === 1) {
     return count === 1
-      ? `${names[0]} · New notice ${verb}`
-      : `${names[0]} · ${count} new notices ${verb}`
+      ? `${names[0]} · New notice${verb}`
+      : `${names[0]} · ${count} new notices${verb}`
   }
 
   const who = names.length === 2 ? names.join(' and ') : `${names.length} organizations`

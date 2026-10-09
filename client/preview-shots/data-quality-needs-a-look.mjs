@@ -19,6 +19,10 @@
 //
 // THE CLOCK IS THE EXAMPLES' OWN, as in data-quality.mjs, so the rows' "Since"
 // dates and the cards' ages read the same whenever the frame is taken.
+//
+// RE-WORDED SINCE by the word-choice review of #1805 (2026-10-09): a row
+// that could not run says "went unchecked in this build", where it said "at
+// this build"; nothing else in this frame moved.
 import {
   EXAMPLE_NOW,
   hourlyManyProblems,
@@ -34,7 +38,7 @@ import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 export const caption =
   'ourhike.org/data/quality/ on a laptop, from INVENTED example files with 43 entries (no release carries the file yet): the checks that could not run listed in full above the 35 warnings, folded one line per kind, and the chart below with its new Show menu. Nothing in this frame was measured.'
 export const alt =
-  'The data quality page at desktop width, scrolled into its "Needs a look" list. White rows each name a kind of check and a table in code type - Volume, Freshness, Anomalies - with a red "Could not run" pill on the right and the sentence "The check could not run, so this went unchecked at this build." Below them a dashed amber pill says the figures are invented, and a bold line, "Warnings · 35, by kind", heads four white bars, each with an amber triangle, a kind and a count - "Freshness · 8 warnings", "Volume · 14 warnings", "Schema · 6 warnings", "Anomalies · 7 warnings" - and a downward chevron on the right. At the bottom a white card begins with the serif title "Null rate of trail_status in trail_lines, one point per monthly build", a grey line under it reading "Charted from Needs a look · trail_lines · trail_status · Back to the row" with the last words a link, and "Show" beside a select reading "Null rate of trail_status in trail_lines · Monthly".'
+  'The data quality page at desktop width, scrolled into its "Needs a look" list. White rows each name a kind of check and a table in code type - Volume, Freshness, Anomalies - with a red "Could not run" pill on the right and the sentence "The check could not run, so this went unchecked in this build." Below them a dashed amber pill says the figures are invented, and a bold line, "Warnings · 35, by kind", heads four white bars, each with an amber triangle, a kind and a count - "Freshness · 8 warnings", "Volume · 14 warnings", "Schema · 6 warnings", "Anomalies · 7 warnings" - and a downward chevron on the right. At the bottom a white card begins with the serif title "Null rate of trail_status in trail_lines, one point per monthly build", a grey line under it reading "Charted from Needs a look · trail_lines · trail_status · Back to the row" with the last words a link, and "Show" beside a select reading "Null rate of trail_status in trail_lines · Monthly".'
 
 export const desktop = true
 

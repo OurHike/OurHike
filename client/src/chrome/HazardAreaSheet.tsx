@@ -5,10 +5,15 @@
 // the kind of area as the heading, an Advisory tag, one or two sentences of
 // what to do, and that the trail stays open - about the area, the thing the
 // hiker tapped (`areaBody`, decision 99), where a tapped stretch's sheet says
-// "This stretch…" (`body`). Then whose layer it is, its own
+// "This stretch…" (`body`). Then who published the area, its own
 // dates where it gives them, and its page. Never "closed": an area a hiker
 // walks into is not a closure, and lib/hazardAreas.ts says why that line is
 // held in both the pipeline and here.
+//
+// The publisher is named, never "the layer" or "the agency": "layer" is a GIS
+// word a hiker does not use, and "the agency" was a second name for the
+// organization the meta line already names (the word-choice review of #1805,
+// 2026-10-09).
 
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES, hazardDates } from '../lib/hazardAreas'
@@ -53,12 +58,12 @@ export function HazardAreaSheet({ notice, stewards, onClose }: HazardAreaSheetPr
           .filter((part): part is string => typeof part === 'string' && part !== '')
           .join(' · ')}
       </p>
-      <p className="closure-sheet__range">{hazardDates(notice)}</p>
+      <p className="closure-sheet__range">{hazardDates(notice, org)}</p>
 
       <p className="closure-sheet__meta">
         {updatedAt === null
-          ? `${possessive(org)} layer`
-          : `${possessive(org)} layer — updated ${longDate(updatedAt)}`}
+          ? `From ${org}`
+          : `From ${org} — updated ${longDate(updatedAt)}`}
       </p>
 
       {notice.source_url !== null && isSafeLink(notice.source_url) && (
@@ -73,8 +78,8 @@ export function HazardAreaSheet({ notice, stewards, onClose }: HazardAreaSheetPr
       )}
 
       <p className="closure-sheet__limit" role="note">
-        The area is {possessive(org)}, drawn from their layer; the advice is OurHike’s.
-        OurHike has not checked the ground.
+        {org} drew this area; the advice is OurHike’s. OurHike hasn’t checked it on the
+        ground.
       </p>
     </div>
   )

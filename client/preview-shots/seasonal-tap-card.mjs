@@ -10,9 +10,13 @@
 // ordinary unconfirmed line and apart from it (chrome/PoiCard.tsx's
 // seasonCautionLine):
 //
-//   "Plumbed water. Its publisher does not say when it is shut off, and taps
-//   like this are often off out of season. Carry enough to reach the next
-//   source."
+//   "Tap water. Its listing doesn't say when it's turned off for the season,
+//   and taps like this are often off out of season. Carry enough to reach
+//   the next water."
+//
+// (It read "Plumbed water. Its publisher does not say when it is shut off,
+// ... the next source." until the word-choice review of #1805, 2026-10-09:
+// "source" meant a publisher in one sentence and a water point in the next.)
 //
 // THE TAP IS INVENTED, AND THE CAPTION SAYS SO. The release this build pins
 // (lib/dataRelease.ts) was published before decision 65 was built, and no
@@ -41,7 +45,7 @@ import { injectIntoRelease } from './fixtures/releaseInjection.mjs'
 export const caption =
   'Decision 65: a plumbed tap shown as unconfirmed water, with the season caution under the unconfirmed line. The tap is INVENTED (“Example tap (preview fixture)”), added to the pinned release’s nearby_poi.geojson by the recipe, because no published release carries water_caution yet'
 export const alt =
-  'A waypoint card for “Example tap (preview fixture)”, a water point marked unconfirmed, with a separate boxed note reading “Plumbed water. Its publisher does not say when it is shut off, and taps like this are often off out of season. Carry enough to reach the next source.” Or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
+  'A waypoint card for “Example tap (preview fixture)”, a water point marked unconfirmed, with a separate boxed note reading “Tap water. Its listing doesn’t say when it’s turned off for the season, and taps like this are often off out of season. Carry enough to reach the next water.” Or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
 
 /** waypoint-site-parts.mjs's settle: the drive waits on the card itself, so
  *  this only covers the fly-to finishing under it. */
@@ -94,7 +98,7 @@ export default async function drive(page) {
   // not pulled open: the frame is the first thing a hiker reads.
   await page
     .getByRole('note')
-    .filter({ hasText: 'Plumbed water.' })
+    .filter({ hasText: 'Tap water.' })
     .first()
     .waitFor({ timeout: 20000 })
     .catch(() => {})

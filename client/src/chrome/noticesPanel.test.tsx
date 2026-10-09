@@ -543,7 +543,8 @@ describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)'
 
 describe('the "new notices" banner with conditions/notices.json (decision 87)', () => {
   // A notice with no `updated_at` of its own counts as new only if OurHike
-  // first saw it after its source's earliest row in the file, worded "seen".
+  // first saw it after its source's earliest row in the file, and is
+  // announced with no verb, never "issued".
   // Invented rows shaped like soak run 536's: every first_seen_at between
   // 2026-10-03T20:24Z and 2026-10-05T00:23Z, the file generated at 00:23:54Z.
   const LATER = new Date('2026-10-05T00:30:00Z')
@@ -615,14 +616,14 @@ describe('the "new notices" banner with conditions/notices.json (decision 87)', 
     expect(result.current.mapScreen.newNoticeCount).toBe(0)
   })
 
-  it('counts a closure with no updated_at that OurHike first saw in a later build, worded seen, and silences it once the list is read', async () => {
+  it('counts a closure with no updated_at that OurHike first saw in a later build as "New notice", and silences it once the list is read', async () => {
     const { result } = bannerPanel([
       ...INITIAL_LOAD,
       seen('closure', '2026-10-04T22:01:56Z'),
     ])
     await waitFor(() => expect(result.current.mapScreen.newNoticeCount).toBe(1))
     expect(result.current.mapScreen.newNoticeLabel).toBe(
-      'New York-New Jersey Trail Conference · New notice seen',
+      'New York-New Jersey Trail Conference · New notice',
     )
 
     act(() => result.current.mapScreen.onOpenNotices?.())

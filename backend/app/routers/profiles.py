@@ -1,5 +1,6 @@
 """`/profiles` endpoints - who you are, everything we hold, and the way out."""
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,6 +12,8 @@ from app.core.auth import get_current_github_login, get_current_user
 from app.db.session import get_db
 from app.models.profile import Profile
 from app.schemas.profile import DeletionReceipt, ProfileOut
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -81,6 +84,10 @@ def delete_my_account(
         db.commit()
     except Exception:
         db.rollback()
+        # The cause - a constraint the deletion did not expect - used to reach
+        # no log at all (#1759). The response stays the bare 500 below; the
+        # request id in the line is what ties the hiker's report to it.
+        logger.exception("account deletion failed at commit; rolled back")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The account was not deleted. Nothing was changed.",

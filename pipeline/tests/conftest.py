@@ -137,6 +137,26 @@ def spatial_con():
 
 
 @pytest.fixture(autouse=True)
+def robots_txt_answers_no_rules(request, monkeypatch):
+    """Every request the extract sends first reads its origin's robots.txt, once a run (extract/_robots.py).
+
+    Here every origin answers as a 404 would, no rules, and nothing is sent
+    for it, so a test's request_history and call counts stay the requests its
+    reader makes, and no test needs a robots.txt answer it is not about. A test
+    about robots.txt is marked `robots_txt_read`: its origins answer through
+    requests_mock like any other URL. Each test starts and ends with nothing
+    read, as each run does.
+    """
+    from extract import _robots
+
+    _robots.forget()
+    if request.node.get_closest_marker("robots_txt_read") is None:
+        monkeypatch.setattr(_robots, "read_robots_txt", _robots.no_rules)
+    yield
+    _robots.forget()
+
+
+@pytest.fixture(autouse=True)
 def no_outside_network(monkeypatch):
     """Make TESTING.md's "any unmocked request raises" structurally true (#324).
 

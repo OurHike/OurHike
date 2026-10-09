@@ -14,6 +14,10 @@ never held whole, into the store and named by its manifest row; and no
 failed, refused or malformed download ever empties a state's copy. On the
 build side, the pull holds each copy to the index, and a build with a missing
 copy lands the last landed scans, or says it has none.
+
+robots.txt is read through extract/_robots.py, once a run for every reader of
+the host, so this module is marked `robots_txt_read`: Geofabrik's robots.txt
+answers through requests_mock, not with conftest.py's no-rules default.
 """
 
 import hashlib
@@ -27,7 +31,7 @@ import duckdb
 import fsspec
 import pytest
 
-from extract import _geofabrik, _kinds
+from extract import _geofabrik, _kinds, _robots
 from extract._geofabrik import (
     CURRENT_PREFIX,
     INDEX_NAME,
@@ -45,6 +49,8 @@ from extract._warehouse import load_warehouse
 from lib import geofabrik
 from lib.freshness_state import Freshness
 from lib.user_agent import USER_AGENT
+
+pytestmark = pytest.mark.robots_txt_read
 
 BASE = "https://download.geofabrik.de/north-america/us"
 ROBOTS = "https://download.geofabrik.de/robots.txt"
@@ -285,6 +291,7 @@ def test_a_robots_txt_that_cannot_be_read_refuses_everything_and_a_404_is_no_rul
     assert list(resource().rows({})) == [] and requests_mock.call_count == 3, "robots.txt is retried, never the extracts"
 
     requests_mock.reset_mock()
+    _robots.forget()  # the next run, which reads robots.txt again (extract/_run.py's run_pipeline())
     requests_mock.get(ROBOTS, status_code=404)
     for state in STATES:
         requests_mock.get(url(state), content=pbf())

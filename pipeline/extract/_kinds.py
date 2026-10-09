@@ -91,6 +91,7 @@ from extract._notices import (  # noqa: F401
     query_refused,
     refuse_other_hosts,
 )
+from extract._robots import obey
 from fetch_atc_updates import TOLERATED_PARSE_FAILURES as ATC_TOLERATED_PARSE_FAILURES
 from fetch_club_pdfs import extract_page_texts
 from fetch_elevation import TILE_URL_TEMPLATE as DEM_TILE_URL_TEMPLATE
@@ -440,22 +441,27 @@ MONTHLY_READ_BACKOFF_SECONDS = (5, 30, 120, 300, 600)
 
 
 def session(entry: dict | None = None) -> requests.Session:
-    """A session that names the project on every request, page and count included, and reads no other host's answer.
+    """A session that names the project on every request, page and count included, obeys each host's robots.txt, and
+    reads no other host's answer.
 
     Every request sends lib/user_agent.py's USER_AGENT, on every host, and
     never a browser's (decision 39): an operator should see who is asking from
     one line of their log, and a host that refuses our own named agent has
-    refused us. An answer redirected to another host raises
+    refused us. Every request is checked first against its origin's
+    robots.txt, read once a run, and held to the Crawl-delay it asks
+    (extract/_robots.py's obey()): a URL it disallows raises RobotsRefused,
+    UNKNOWN, and is never sent. An answer redirected to another host raises
     extract/_notices.py's RedirectRefused unless `entry`, the reader's
     sources.json row, names that host in `redirect_hosts` (refuse_other_hosts).
     """
     named = requests.Session()
     named.headers["User-Agent"] = USER_AGENT
-    return refuse_other_hosts(named, entry)
+    return obey(refuse_other_hosts(named, entry))
 
 
 def host_gated(entry: dict) -> requests.Session:
-    """session(), every request held by extract/_notices.py's per-host gate: the row's `crawl_delay`, at least DEFAULT_HOST_GAP_SECONDS.
+    """session(), every request held by extract/_notices.py's per-host gate: the row's `crawl_delay`, at least DEFAULT_HOST_GAP_SECONDS,
+    or the host's robots.txt Crawl-delay when this run reads a longer one (polite()).
 
     One gate per host for the process, so two readers of one host keep the
     gap between them as well as within each (GATC's water PDF and its peaks

@@ -100,7 +100,7 @@ from dlt.common.schema.exceptions import DataValidationError  # noqa: E402
 from dlt.common.storages.fsspec_filesystem import glob_files  # noqa: E402
 from dlt.pipeline.exceptions import PipelineStepFailed  # noqa: E402
 
-from extract import _geofabrik, _kinds  # noqa: E402
+from extract import _geofabrik, _kinds, _robots  # noqa: E402
 from extract._contract import (  # noqa: E402
     CADENCES,
     Carried,
@@ -1669,6 +1669,8 @@ def run_pipeline(
     later step of the same job (run_log_bytes()).
     """
     cadences_of(lane)
+    # Each origin's robots.txt is read again by this run, the first time it asks that origin (extract/_robots.py).
+    _robots.forget()
     if resources is None:
         resources = all_resources(discover() + discover_shared())
     plan_resources = lane_resources(lane, resources)

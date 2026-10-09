@@ -38,7 +38,8 @@ and both are gentle the way decision 53 asks:
 - EVERY HOST'S CRAWL-DELAY. `crawl_delay` is the robots.txt value the
   inventory read for the host; every request waits at least that long after
   the last one to that host ended, and at least DEFAULT_HOST_GAP_SECONDS
-  where robots.txt asks for nothing (`polite()`).
+  where robots.txt asks for nothing (`polite()`), or the Crawl-delay the
+  host's robots.txt asks in this run, when that is longer (extract/_robots.py).
 - NEVER A QUERY STRING WHERE ROBOTS.TXT FORBIDS ONE (QUERY_DISALLOWED_HOSTS).
   Neither reader builds a query string at all: each asks exactly the URL the
   registry row holds, or, for a WordPress page read through the REST API,
@@ -95,9 +96,12 @@ def _sha256(data: bytes | str) -> str:
 # also asks `Crawl-delay: 10`, and newenglandtrail.org [b4], `Crawl-delay: 3`.
 # A reader that would build a query URL there refuses at import, so the
 # layout test fails rather than the host being asked. Compared without a
-# leading `www.`. A list a person edits, because robots.txt is read once per
-# registration (decision 53, "Access is checked, never assumed"), not on
-# every run.
+# leading `www.`. A list a person edits, from robots.txt as it read at
+# registration (decision 53, "Access is checked, never assumed"). Every run
+# also reads each host's robots.txt as it starts asking that host
+# (extract/_robots.py) and refuses whatever it disallows then, so this list
+# is what stops such a reader being written, and a run is what stops one
+# being sent.
 QUERY_DISALLOWED_HOSTS = frozenset({"foothillstrail.org", "newenglandtrail.org"})
 
 
@@ -261,28 +265,58 @@ def _gate(host: str) -> _HostGate:
         return _GATES.setdefault(host, _HostGate(threading.Lock()))
 
 
+#: The hosts whose gate this thread holds now, so a gate inside another for the same host (polite() over
+#: extract/_robots.py's obey(), both on one session) sends at once rather than waiting a second time.
+_HOLDING = threading.local()
+
+
+def _held(host: str, delay: float, send):
+    """send()'s answer, sent no sooner than `delay` seconds after the last request to `host` ended, under that host's
+    gate, which then records when this one ended. Inside a gate this thread already holds for `host`, whose wait was
+    the longer one, it sends at once."""
+    holding = _HOLDING.__dict__.setdefault("hosts", set())
+    if host in holding:
+        return send()
+    gate = _gate(host)
+    with gate.lock:
+        if gate.finished is not None:
+            wait = gate.finished + delay - _now()
+            if wait > 0:
+                _pause(wait)
+        holding.add(host)
+        try:
+            return send()
+        finally:
+            holding.discard(host)
+            gate.finished = _now()
+
+
+def mark_gate_used(host: str) -> None:
+    """Count a request to `host` that passed no gate as its last: extract/_robots.py's fetch of its robots.txt."""
+    _gate(host).finished = _now()
+
+
 def polite(http: requests.Session, delay: float) -> requests.Session:
-    """`http`, with every request it sends held `delay` seconds after the last request to that host ended.
+    """`http`, with every request it sends held `delay` seconds after the last request to that host ended, or longer
+    when the host's robots.txt asks a longer Crawl-delay.
 
     One gate per host for the whole process, shared by every resource and
     every read_each thread, so two clubs on one host (aztrail.org serves
     `azgeo` and `ata` [b1, b4]) are never asked at once, and the gap is kept
     end to start, the stricter reading of a Crawl-delay. Each attempt
-    lib/http_retry.py makes passes the gate too.
+    lib/http_retry.py makes passes the gate too. `delay` is the caller's, the
+    registry row's `crawl_delay` as somebody read it; the robots.txt this run
+    reads (extract/_robots.py) is checked first, so a URL it disallows raises
+    before any wait, and a Crawl-delay it asks above `delay` is kept instead.
     """
+    from extract import _robots  # here, not at the top: extract/_robots.py imports this module
+
     send = http.request
 
     def request(method, url, *args, **kwargs):
-        gate = _gate(_site(urlparse(url).hostname))
-        with gate.lock:
-            if gate.finished is not None:
-                wait = gate.finished + delay - _now()
-                if wait > 0:
-                    _pause(wait)
-            try:
-                return send(method, url, *args, **kwargs)
-            finally:
-                gate.finished = _now()
+        robots = _robots.check(method, url, kwargs.get("params"))
+        host = _site(urlparse(url).hostname)
+        return _held(host, max(delay, robots.delay), lambda: send(method, url, *args, **kwargs))
 
     http.request = request
     return http

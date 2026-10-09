@@ -573,9 +573,14 @@ export function silenceNewNotices(newNotices: NewNotices): void {
  */
 export function newNoticeLabel(newNotices: NewNotices, stewards: Stewards): string {
   const label = sourceOrgLabel(stewards)
-  const names = newNotices.sourceKeys.map((key) =>
-    label(key, newNotices.providers?.get(key)),
-  )
+  // One name per organization: two sources of one publisher, such as New
+  // York State Parks' closures and its hunting areas, are one organization,
+  // never "X and X" and never counted as two.
+  const names = [
+    ...new Set(
+      newNotices.sourceKeys.map((key) => label(key, newNotices.providers?.get(key))),
+    ),
+  ]
   const { count } = newNotices
   // Decision 87: no verb when any counted notice is new only because OurHike
   // first saw it - "issued" would claim a date nobody gave, and "New notice"

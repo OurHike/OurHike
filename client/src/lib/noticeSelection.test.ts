@@ -283,4 +283,25 @@ describe('the banner names a source no steward claims through the row’s provid
       `2 new trail notices · National Park Service and ${PARKS_NAME}`,
     )
   })
+
+  it('names New York State Parks once when its closures and its hunting areas both have new notices, never "X and X"', () => {
+    // The closures' key is claimed by the steward and the hunting areas' key
+    // only by the provider its rows carry: one organization either way, so
+    // one name, and a count that is not "2 organizations".
+    const found = newNoticesSince(
+      [
+        row('oprhp_trail_closures:4', '2026-10-03T20:24:05Z', {
+          provider: 'NYS OPRHP',
+          updated_at: '2026-10-04T12:00:00Z',
+        }),
+        hunting('1', '2026-10-03T20:24:05Z', { updated_at: '2026-10-04T13:00:00Z' }),
+      ],
+      NOW,
+      readNoticeSilence,
+    )
+    expect(found?.sourceKeys).toEqual(['oprhp_trail_closures', 'oprhp_hunting_areas'])
+    expect(newNoticeLabel(found!, WITH_PARKS)).toBe(
+      `${PARKS_NAME} · 2 new notices issued`,
+    )
+  })
 })

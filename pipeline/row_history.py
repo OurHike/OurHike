@@ -72,6 +72,18 @@ records it (ELT.md's eighth snapshot trap). The committed-load reads
 (extract/_warehouse.py) are what keep a failed load out of the warehouse, and
 KEEP_SAVES is the way back if one gets through.
 
+NAMES READ BACK. history.json and elementary.json name tables and files, and
+anyone holding the store's key can write them as a save does. So a restore
+refuses, before it downloads anything, a snapshot table name that is not
+lib/store_names.py's `[a-z0-9_]+` ending in SUFFIX, and a file path that is
+empty, absolute or climbs out with `..`; Elementary's tables are restored by
+KEPT's own names alone. A save refuses a warehouse snapshot table whose name
+breaks the same rule, since each name becomes a file name inside a quoted
+COPY ... TO. Measured 2026-10-09 on the code before this rule: a history.json
+naming its table `../<…>/escaped` made a restore write escaped.parquet
+outside the temporary directory it downloads into, and report success (review
+finding of PR #1805 — dlt → dbt re-platform as one go/no-go change).
+
 ELEMENTARY'S HISTORY (decision 102, pipeline/ELT.md "Memory between runs").
 Each lane builds its warehouse from nothing, so without it an anomaly check
 would never see an earlier build and a schema check never an earlier column.
@@ -243,6 +255,10 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import duckdb
+
+# _quote() lived here; it moved to lib/store_names.py so extract/_warehouse.py quotes with the same function.
+from lib.store_names import StoreNameRefused, relative_path, table_name
+from lib.store_names import quote_identifier as _quote
 
 #: The warehouse schema dbt's snapshots are built in (dbt_project.yml's `snapshots: +schema`), which they share
 #: with the intermediate models, so a snapshot table is the one whose name ends in SUFFIX (int_<mart>__history).
@@ -505,8 +521,27 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _quote(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
+def _snapshot_name(name: object, where: str) -> str:
+    """`name`, a snapshot table's name read back from the store or the warehouse, or Refused: lib/store_names.py's
+    rule, and ending in SUFFIX, since a save writes nothing else (the module docstring, "NAMES READ BACK")."""
+    try:
+        table_name(name, where)
+    except StoreNameRefused as refused:
+        raise Refused(str(refused)) from refused
+    if not name.endswith(SUFFIX):
+        raise Refused(
+            f"{where} names a table {name!r}, which is not a snapshot table (int_<mart>{SUFFIX}), the only kind a save "
+            "writes; refused rather than created beside the intermediate models"
+        )
+    return name
+
+
+def _stored_file(path: object, where: str, refusal: type[Refused] = Refused) -> str:
+    """`path`, a file a pointer names under the store, or `refusal` when it could leave the store (lib/store_names.py)."""
+    try:
+        return relative_path(path, where)
+    except StoreNameRefused as refused:
+        raise refusal(str(refused)) from refused
 
 
 def _tables(con: duckdb.DuckDBPyConnection, schema: str) -> list[str]:
@@ -624,6 +659,11 @@ def _restore_rows(store: Store, url: str, con: duckdb.DuckDBPyConnection, cold_s
     pointer = json.loads(text)
     if pointer.get("format") != FORMAT:
         raise Refused(f"{url}/{POINTER} is format {pointer.get('format')!r}; this file reads format {FORMAT}")
+    # Every name before any download (the module docstring, "NAMES READ BACK"): each becomes a file name in the
+    # scratch directory and a table in the warehouse.
+    for table, entry in pointer["tables"].items():
+        _snapshot_name(table, f"{url}/{POINTER}")
+        _stored_file(entry["file"], f"{url}/{POINTER}")
     restored = {}
     with tempfile.TemporaryDirectory() as scratch:
         for table, entry in sorted(pointer["tables"].items()):
@@ -661,8 +701,11 @@ def _restore_elementary(store: Store, url: str, con: duckdb.DuckDBPyConnection, 
             f"{url}/{ELEMENTARY_POINTER} is format {pointer.get('format')!r}; this file reads format {ELEMENTARY_FORMAT}"
         )
     restored = {}
-    # A table a later version of this file keeps and this one does not is left in the store, not restored.
+    # A table a later version of this file keeps and this one does not is left in the store, not restored. KEPT's own
+    # names are the only ones used, so only each file's path is read back (the module docstring, "NAMES READ BACK").
     tables = sorted(name for name in pointer["tables"] if name in KEPT)
+    for table in tables:
+        _stored_file(pointer["tables"][table]["file"], f"{url}/{ELEMENTARY_POINTER}", ElementaryRefused)
     if tables:
         con.execute(f"create schema if not exists {ELEMENTARY_SCHEMA}")
     with tempfile.TemporaryDirectory() as scratch:
@@ -784,6 +827,9 @@ def _check_rows_save(store: Store, url: str, con: duckdb.DuckDBPyConnection, war
     restored_save = receipt[0][1]
     restored = {table: rows for _, _, table, rows in receipt if table is not None}
     tables = _snapshot_tables(con)
+    # Each becomes a file name inside COPY ... TO '<scratch>/<table>.parquet', so it is held to the restore's rule too.
+    for table in tables:
+        _snapshot_name(table, f"the warehouse {warehouse}'s {SCHEMA} schema")
     counts = {table: _count(con, table) for table in tables}
     if lost := sorted(set(restored) - set(counts)):
         raise Refused(f"snapshot tables restored and now gone: {', '.join(lost)}. History only grows; not saving")

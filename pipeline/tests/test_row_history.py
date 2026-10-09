@@ -193,6 +193,75 @@ def test_a_store_url_that_is_not_a_directory_file_or_s3_is_refused():
         row_history.Store("https://example.org/history")
 
 
+# --- Names read back from the store (lib/store_names.py) ----------------------------------------------------------
+#
+# history.json and elementary.json are written by a save, and could be by anyone else holding the store's key. The
+# review of PR #1805 measured a crafted table name writing a file outside restore's temporary directory; each test
+# below fails on the code before lib/store_names.py.
+
+
+@pytest.mark.parametrize(
+    "crafted",
+    [
+        "../../escaped__history",  # climbs out of the temporary directory restore downloads into
+        'int_things" (n int); --__history',  # ends its quoted identifier
+        "Int_Things__History",  # a name no dbt snapshot here has
+        "int_things__final",  # not a snapshot table: an intermediate model beside them
+    ],
+)
+def test_restore_refuses_a_history_json_table_that_is_not_a_snapshot_name_and_writes_no_file_outside(
+    tmp_path, monkeypatch, crafted
+):
+    store, _ = _cold_then_saved(tmp_path)
+    pointer = json.loads((store / POINTER).read_text())
+    pointer["tables"][crafted] = pointer["tables"].pop("int_things__history")
+    (store / POINTER).write_text(json.dumps(pointer))
+    # restore's TemporaryDirectory is made under tmp_path/tmp, so the climbing name reaches tmp_path, never `/`.
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setattr(row_history.tempfile, "tempdir", str(tmp_path / "tmp"))
+
+    with pytest.raises(Refused, match="names a table"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+    assert not (tmp_path / "escaped__history.parquet").exists(), "history.json's name wrote outside the scratch directory"
+
+
+def test_restore_refuses_a_history_json_file_that_climbs_out_of_the_store(tmp_path):
+    """The snapshot's own file, copied beside the store, still matches the sha256 the crafted pointer keeps."""
+    store, _ = _cold_then_saved(tmp_path)
+    pointer = json.loads((store / POINTER).read_text())
+    entry = pointer["tables"]["int_things__history"]
+    (tmp_path / "beside-the-store.parquet").write_bytes((store / entry["file"]).read_bytes())
+    entry["file"] = "../beside-the-store.parquet"
+    (store / POINTER).write_text(json.dumps(pointer))
+
+    with pytest.raises(Refused, match="names a path"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+
+
+def test_restore_refuses_an_elementary_json_file_that_climbs_out_of_the_store(tmp_path):
+    store, _ = _first_build(tmp_path)
+    pointer = _elementary_pointer(store)
+    entry = pointer["tables"]["dbt_invocations"]
+    (tmp_path / "beside-the-store.parquet").write_bytes((store / entry["file"]).read_bytes())
+    entry["file"] = "../beside-the-store.parquet"
+    (store / row_history.ELEMENTARY_POINTER).write_text(json.dumps(pointer))
+
+    with pytest.raises(row_history.ElementaryRefused, match="names a path"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+
+
+def test_save_refuses_a_snapshot_table_whose_name_would_end_the_copy_statements_file_name(tmp_path):
+    """save() writes each snapshot table to `<scratch>/<table>.parquet` inside a quoted COPY ... TO, so a quote in a
+    warehouse's table name is refused before anything is written, wherever the table came from."""
+    store, warehouse = tmp_path / "store", tmp_path / "w.duckdb"
+    restore(str(store), warehouse, cold_start=True)
+    _snapshot(warehouse, table='"int_o\'brien__history"')
+
+    with pytest.raises(Refused, match="names a table"):
+        save(str(store), warehouse)
+    assert not (store / POINTER).exists(), "nothing is written when a save is refused"
+
+
 # --- Elementary's history (row_history.py's docstring, "ELEMENTARY'S HISTORY") ---
 #
 # Each warehouse below holds Elementary 0.26.0's five kept tables with the columns row_history.py reads and one value,

@@ -63,6 +63,17 @@
 --    no season field has none: none of the four hunting layers gives one
 --    (seeds/notice_source_fields.csv), so their dates are null, never a
 --    season OurHike supplied.
+-- 7. A ROW OF A SOURCE THAT CONFIRMS BY PAGE IS HELD UNTIL ITS MATCH STANDS
+--    (decision 128, the maintainer's poll of 2026-10-09). A source
+--    seeds/notice_confirming_pages.csv names publishes a row only while a
+--    person's match of it to an item on that page
+--    (seeds/notice_page_matches.csv) stands this build: matched to this very
+--    row, by its id and its raw row's key, and the page's latest read still
+--    carrying the item
+--    (int_closures__page_matches says why each match stands or not, and which
+--    way that rounds). Parks & Trails New York's closures layer is the one
+--    such source: it says 'Closed' on all nine of its lines with no date, so
+--    an unmatched line, or one whose item has left the page, is held.
 --
 -- `key_versions` is how many different raw rows share the notice's key (its
 -- base model counts them); int_closures__gate holds a source with any over
@@ -98,6 +109,20 @@ hazard_values as (
     where coalesce(trim(category_value), '') != ''
 ),
 
+-- Rule 7's seed and model: which sources confirm by page, and each match.
+confirming as (
+    select distinct source_key
+    from {{ ref('notice_confirming_pages') }}
+),
+
+page_matches as (
+    select
+        notice_id,
+        source_row_key,
+        held_because
+    from {{ ref('int_closures__page_matches') }}
+),
+
 read_status as (
     select
         notices.*,
@@ -105,6 +130,10 @@ read_status as (
         hazard_sources.hazard,
         coalesce(hazard_sources.every_row, false) as hazard_every_row,
         hazard_values.category_value is not null as hazard_category_listed,
+        confirming.source_key is not null as confirms_by_page,
+        page_matches.notice_id is not null as page_matched,
+        page_matches.source_row_key as page_matched_row_key,
+        page_matches.held_because as page_match_held_because,
         cast(timezone('UTC', notices.starts_at) as date) as starts_on,
         cast(timezone('UTC', notices.ends_at) as date) as ends_on,
         cast(timezone('UTC', notices.rescinded_at) as date) as rescinded_on,
@@ -120,6 +149,13 @@ read_status as (
         on
             notices.source_key = hazard_values.source_key
             and lower(trim(notices.category)) = hazard_values.category_value
+    left join confirming
+        on notices.source_key = confirming.source_key
+    left join page_matches
+        on
+            notices.source_key || ':'
+            || coalesce(notices.source_id, 'key-' || notices.notice_key)
+            = page_matches.notice_id
 ),
 
 -- Rule 1's dates come last, from macros/notice_date_holds.sql, which
@@ -144,6 +180,20 @@ judged as (
             {{ notice_date_holds(
                 'starts_on', 'ends_on', 'build_date', rescinded_on='rescinded_on'
             ) }}
+            when confirms_by_page and not page_matched
+                then
+                    'nobody has matched it to an item on its page yet '
+                    || '(decision 128: seeds/notice_page_matches.csv names '
+                    || 'no match for this row)'
+            when confirms_by_page and page_match_held_because is not null
+                then
+                    'its match no longer stands: '
+                    || page_match_held_because
+            when confirms_by_page and page_matched_row_key != notice_key
+                then
+                    'its match names another drawing of this line (raw row '
+                    || 'key ' || page_matched_row_key || '), so it does not '
+                    || 'stand for this one'
         end as held_because
     from read_status
 )

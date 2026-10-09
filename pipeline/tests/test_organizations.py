@@ -439,8 +439,13 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # terms) and 4 `maintainer_authorisation` (decision 53's facts and a link, for GAP's and R2R's posts and
     # Tahoe-Pyramid's and the Montour Trail's pages). The NYS Canal Corporation's three, held the same way (the
     # lead's call, 2026-10-09), add 2 `public_gis` (its own layers, its terms quoted) and 1 `maintainer_authorisation`
-    # (its alerts page).
-    assert counts == {"maintainer_authorisation": 226, "public_gis": 271, "stated_by_org": 205, "unresolved": 28}
+    # (its alerts page). Review page 02's held loads (the same decisions) add 23 `maintainer_authorisation` (Illinois
+    # DNR's closures page, the Eastern Trail's and Maine Huts & Trails' conditions pages, three Rachel Carson
+    # Trails Conservancy trail pages, the Olympic Discovery Trail's alerts feed, Maricopa County's 14 park news
+    # feeds, TPWD's Caprock Canyons alert page and Washington State Parks' alerts page), 1 `public_gis` (the Baker
+    # Trail's GeoJSON) and 2 `stated_by_org` (the NorthEast Texas Trail Coalition's two layers, whose items state
+    # terms).
+    assert counts == {"maintainer_authorisation": 249, "public_gis": 272, "stated_by_org": 207, "unresolved": 28}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

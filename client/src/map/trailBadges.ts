@@ -83,7 +83,7 @@ import { longTrailHasMarker } from './longTrailNames'
 import { LABEL_TIER } from './labelLadder'
 import { sheetVariant, type SheetAppearance } from './sheets'
 import { CHOSEN_SYSTEM_SOURCES, nearbyTrailOpacityExpression } from './nearbyTrails'
-import { POI_PIN_MIN_ZOOM } from './poiLayers'
+import { POI_PIN_MIN_ZOOM } from './poiIds'
 import { parseHex, POI_PIN_PIXEL_RATIO, type PoiIconImage } from './poiIcons'
 import { whenStyleReady } from './styleReady'
 

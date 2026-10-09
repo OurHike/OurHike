@@ -54,6 +54,41 @@ GET_URL_LIMIT = 2000
 # answered. A caller that sets its own geometry_precision keeps it.
 PRECISION_FALLBACK = 6
 
+# A PAGE SIZE HALVED BY A CLUSTER OF HEAVY FEATURES GROWS BACK once the
+# cluster is behind it: after GROW_AFTER_PAGES pages in a row have answered at
+# one size, the next is asked at twice that, never above the size the read
+# began at. Measured 2026-10-09 on TPL's ParkServe_ProdNew/MapServer/2
+# (154,780 park polygons): 116 pages of 1,000 answered in 119 s (0.49 to
+# 3.8 s each) up to offset 116,000, where pages of 1,000 down to 31 answered
+# 500, pages of 15 answered 19 to 24 MB each, and the size was down to 1 by
+# offset 116,063; the feature at 116,065 answered only at 6 decimals, 28.7 MB
+# alone. With no rule to grow the size back, the loop read the 38,700
+# features after the cluster one a request, 0.454 s each: about 4.9 hours
+# (Reasoned from that rate; the run was stopped at offset 117,595).
+#
+# 3 is @unvalidated: a starting value, not a measurement. Its cost is
+# Reasoned: back from one feature to 1,000 takes 10 doublings, 30 pages and
+# 3,069 features. What would settle it: the request count and the read's
+# seconds on the layers the monthly lane halves (ParkServe, EDW_Wilderness_02,
+# PASDA's DCNR trails) over a few monthly runs.
+#
+# A GROWN SIZE THE SERVER REFUSES WAITS TWICE AS LONG BEFORE IT IS TRIED
+# AGAIN: the refused page halves as before, and the next growth needs twice
+# the pages in a row the last one did, until a grown size answers and the
+# wait goes back to GROW_AFTER_PAGES. So a server that refuses every page
+# above some size is asked above it after 3, 6, 12, 24 ... pages, about
+# log2(pages / 3) times in a whole read rather than every 3 pages (Measured
+# on the fake server in tests/test_lib_arcgis.py, 2026-10-09: 5 tries at 448
+# in a read of 30,000 features at 224 a page, 160 requests in all). And a
+# cluster of heavy features longer than the wait still lets the size grow
+# back, at most about as many pages again past its end as it took to cross
+# (Reasoned: a try refused after W pages makes the next wait 2W). Giving up
+# on a size after two refusals, tried first, made a ten-feature cluster a
+# ceiling: the two-feature try fell inside it twice, and the rest of the read
+# went one feature a request (the first heavy-cluster test in
+# tests/test_lib_arcgis.py, 2026-10-09).
+GROW_AFTER_PAGES = 3
+
 
 def query_page(
     query_url: str,
@@ -113,12 +148,14 @@ def fetch_layer_geojson(
     the same requests answer `{"error": {"code": 500, "message": "Error
     performing query operation"}}`, which is why a refusal is either an
     unparsable body or an error object. The halving repeats the SAME offset
-    at the smaller size, keeps that size for the rest of the layer, and
-    gives up at a page of one with the server's own words, so a layer that
-    is genuinely broken still fails - after at most ten extra requests
-    (1,000 halves to 1 in ten steps), which is what a wrong registration
-    costs here instead of a silent skip. Whether a server refuses by count
-    or by bytes is not distinguished, because it does not change what to do.
+    at the smaller size, keeps that size until GROW_AFTER_PAGES pages in a
+    row have answered at it (then doubles it, never past the size the read
+    began at), and gives up at a page of one with the server's own words,
+    so a layer that is genuinely broken still fails - after at most ten
+    extra requests (1,000 halves to 1 in ten steps), which is what a wrong
+    registration costs here instead of a silent skip. Whether a server
+    refuses by count or by bytes is not distinguished, because it does not
+    change what to do.
     """
     query_url = layer_url.rstrip("/") + "/query"
     features = []
@@ -144,7 +181,8 @@ def iter_layer_pages(
 
     The loop itself, with every rule fetch_layer_geojson's docstring states:
     stop on an empty page and never a short one, advance by the rows the
-    page returned, halve a refused page. It is a generator so the dlt
+    page returned, halve a refused page and grow it back once
+    GROW_AFTER_PAGES pages in a row have answered. It is a generator so the dlt
     resource in extract/_kinds.py can yield page by page through THIS loop
     rather than a second one (#1793, pipeline/ELT.md) - a second pager is
     the thing #1295 removed, and dlt's own OffsetPaginator steps by `limit`
@@ -211,6 +249,31 @@ def iter_layer_pages(
     initial = records  # the size the read began at, to go back to when no page has answered yet
     last_good = None  # the last page size that answered, to go back to after one rounded feature
     rounded = False  # this one feature is being asked at PRECISION_FALLBACK
+    answered_in_a_row = 0  # pages answered at `records` since it last changed (GROW_AFTER_PAGES)
+    wait = GROW_AFTER_PAGES  # pages in a row the next growth needs; doubles when a grown size is refused
+    probing = False  # `records` was just grown, and this page is the first asked at it
+
+    def halved() -> int:
+        """The next size after `records` was refused; a grown size refused at once makes the next growth wait longer."""
+        nonlocal answered_in_a_row, wait, probing
+        if probing:
+            wait *= 2
+        answered_in_a_row, probing = 0, False
+        return records // 2
+
+    def grown() -> int:
+        """`records` after a page answered at it: twice that once `wait` pages in a row have, up to `initial`."""
+        nonlocal answered_in_a_row, wait, probing
+        if probing:
+            wait, probing = GROW_AFTER_PAGES, False
+        answered_in_a_row += 1
+        if answered_in_a_row < wait or records >= initial:
+            return records
+        larger = min(records * 2, initial)
+        print(f"  {query_url} answered {answered_in_a_row} pages of {records} in a row; asking {larger}")
+        answered_in_a_row, probing = 0, True
+        return larger
+
     while True:
         params = {
             "where": where,
@@ -242,7 +305,7 @@ def iter_layer_pages(
             if last_chance or status is None or status < 500:
                 raise
             if records > 1:
-                smaller = records // 2
+                smaller = halved()
                 print(f"  {query_url} answered {status} at a page of {records}; retrying at {smaller}")
                 records = smaller
             else:
@@ -255,7 +318,7 @@ def iter_layer_pages(
         if refusal is not None:
             if records <= 1:
                 raise RuntimeError(f"{query_url} {refusal} at a page of 1 feature")
-            smaller = records // 2
+            smaller = halved()
             print(f"  {query_url} {refusal} at a page of {records}; retrying at {smaller}")
             records = smaller
             continue
@@ -273,10 +336,14 @@ def iter_layer_pages(
             # With no page answered before it, the one rounded feature is no size to keep: a fast 5xx burst on
             # the first page halved 1,000 to 1 and would have read the rest of the layer a feature a request
             # (review finding EXD-5). A server that really cannot take `initial` halves again, ten requests at most.
+            # After a cluster, `last_good` can itself be one feature (ParkServe's was, 2026-10-09), which grown()
+            # doubles back from, GROW_AFTER_PAGES pages at a time.
             rounded = False
             records = last_good or initial
+            answered_in_a_row, probing = 0, False
         else:
             last_good = records
+            records = grown()
 
 
 def feature_object_id(feature: dict, oid_field: str | None):

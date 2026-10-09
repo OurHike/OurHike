@@ -228,8 +228,9 @@ def _page(count: int, start: int = 0) -> dict:
 
 def test_fetch_layer_geojson_halves_a_page_the_server_answers_with_an_html_error_page(requests_mock):
     """PASDA's shape: 1,000 features is an HTML page, 500 is GeoJSON. The
-    retry asks for the SAME offset at half the size, keeps that size for
-    the rest of the layer, and every feature arrives exactly once."""
+    retry asks for the SAME offset at half the size, and every feature
+    arrives exactly once. The size stays 500 to the end because the layer
+    ends before arcgis.GROW_AFTER_PAGES pages have answered at it."""
     query_url = LAYER_URL + "/query"
     requests_mock.get(
         query_url,
@@ -761,3 +762,81 @@ def test_an_object_id_batch_answered_with_the_rate_limit_waits_and_keeps_its_siz
 
     assert [[f["id"] for f in page] for page in pages] == [[0, 1, 2]]
     assert waits == [arcgis.THROTTLE_WAITS_SECONDS[0]]
+
+
+def _heavy_layer(total: int, heavy=range(0), heavy_limit: int = 1, cap: int | None = None, needs_rounding=()):
+    """A paged layer of `total` features whose server answers 500 to a page holding a heavy feature when the page asks
+    for more than `heavy_limit`, to any page asking for more than `cap`, and to a feature in `needs_rounding` asked
+    without geometryPrecision: ParkServe's shapes (TPL's ParkServe_ProdNew/MapServer/2, 2026-10-09)."""
+
+    def answer(request, context):
+        count = int(request.qs["resultrecordcount"][0])
+        offset = int(request.qs["resultoffset"][0])
+        rows = range(offset, min(offset + count, total))
+        refused = (cap is not None and count > cap) or (count > heavy_limit and any(n in heavy for n in rows))
+        if not refused and "geometryprecision" not in request.qs and any(n in needs_rounding for n in rows):
+            refused = True
+        if refused:
+            context.status_code = 500
+            return {"error": {"code": 500, "message": "Error performing query operation"}}
+        return {"features": [{"properties": {"n": n}} for n in rows]}
+
+    return answer
+
+
+def _asked(requests_mock) -> list[tuple[int, int]]:
+    """Every page request as (offset, page size), in order."""
+    return [(int(r.qs["resultoffset"][0]), int(r.qs["resultrecordcount"][0])) for r in requests_mock.request_history]
+
+
+def test_a_page_size_halved_inside_a_heavy_range_grows_back_to_the_starting_size_once_the_range_is_behind_it(
+    requests_mock,
+):
+    """Ten heavy features at offsets 2,000 to 2,009 halve the page from 1,000 to 1 there; past them the read is asked
+    at 1,000 again, as it began, rather than one feature a request to the end."""
+    layer = "https://example.test/arcgis/rest/services/P/MapServer/2"
+    requests_mock.get(layer + "/query", json=_heavy_layer(12_000, heavy=range(2_000, 2_010)))
+
+    pages = list(arcgis.iter_layer_pages(layer, backoff=(1, 1)))
+
+    assert [feature["properties"]["n"] for page in pages for feature in page] == list(range(12_000))
+    asked = _asked(requests_mock)
+    assert min(size for offset, size in asked if 2_000 <= offset < 2_010) == 1, "it shrank inside the heavy range"
+    assert [size for _, size in asked][-4:] == [1_000, 1_000, 1_000, 1_000], (
+        "back at the size the read began at: pages of 1,000 to the empty page that ends the read"
+    )
+
+
+def test_a_layer_with_one_heavy_cluster_costs_dozens_of_requests_not_one_per_feature_after_it(requests_mock):
+    """The crawl ParkServe's read fell into (2026-10-09), on a fake layer of 20,000 features with a heavy cluster at
+    5,000 to 5,009 and one feature there that answers only at six decimals. The loop before this change asked 15,016
+    pages for it, every feature after the cluster alone; this one asks 68 (both Measured with this test, 2026-10-09)."""
+    layer = "https://example.test/arcgis/rest/services/P/MapServer/2"
+    requests_mock.get(layer + "/query", json=_heavy_layer(20_000, heavy=range(5_000, 5_010), needs_rounding=(5_005,)))
+
+    pages = list(arcgis.iter_layer_pages(layer, backoff=(1, 1)))
+
+    assert [feature["properties"]["n"] for page in pages for feature in page] == list(range(20_000))
+    asked = _asked(requests_mock)
+    rounded = [r for r in requests_mock.request_history if "geometryprecision" in r.qs]
+    assert [r.qs["resultoffset"][0] for r in rounded] == ["5005"], "the one feature is still asked at six decimals"
+    assert len(asked) <= 100, f"{len(asked)} page requests for 20,000 features"
+
+
+def test_a_size_the_server_always_refuses_is_asked_again_only_after_twice_as_many_pages_each_time(requests_mock):
+    """A server that answers 500 to any page over 300, read after a heavy start halved the page to 7: the page grows
+    back by doubling to 224, and 448 is asked again after 6, 12, 24 and 48 pages at 224, five tries in a read of
+    30,000 features, rather than every 3 pages; the loop before this change never grew past 7."""
+    layer = "https://example.test/arcgis/rest/services/P/MapServer/2"
+    requests_mock.get(layer + "/query", json=_heavy_layer(30_000, heavy=range(0, 10), heavy_limit=7, cap=300))
+
+    pages = list(arcgis.iter_layer_pages(layer, backoff=(1, 1)))
+
+    assert [feature["properties"]["n"] for page in pages for feature in page] == list(range(30_000))
+    sizes = [size for _, size in _asked(requests_mock)]
+    assert [size for size in sizes if size > 300] == [1_000, 500] + [448] * 5, "five tries above 300 in the whole read"
+    tries = [n for n, size in enumerate(sizes) if size == 448]
+    assert [later - earlier - 1 for earlier, later in zip(tries, tries[1:])] == [6, 12, 24, 48], (
+        "pages between one try at 448 and the next, twice as many each time"
+    )
+    assert set(sizes[tries[0] :]) == {224, 448}, "settled at 224, the largest size it reached that the server answers"

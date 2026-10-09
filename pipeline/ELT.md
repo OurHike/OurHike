@@ -1,6 +1,6 @@
 # The dlt → dbt data platform — design and migration plan
 
-This is the design for **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**: every source extracted and loaded by dlt into a private raw store, transformed by one dbt 2.0.6 project into eleven contracted marts, and published to phones as files.
+This is the design for **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**: every source extracted and loaded by dlt into a private raw store, transformed by one dbt 2.0.6 project into eleven contracted marts (the seven the issue asked for, plus four added since), and published to phones as files.
 
 ## Contents
 
@@ -24,7 +24,7 @@ This is the design for **#1793 — Rebuild the data platform as dlt → dbt: sev
 
 ## Overview
 
-**Status: planned 2026-10-01 under #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads (branch `claude/intelligent-feynman-sw3ewm`); built in stages on that branch since, at the go/no-go gate since 2026-10-05 (head `567890e6`), and recorded here to 2026-10-08 evening (head `4ad88f3b`).** Stage 1's dbt tooling went green first, on a GitHub runner on 2026-10-01: dbt 2.0.6, the YAML moved to v2's shape, the evaluator enforced, and SQLFluff and `dbt lint` in CI and `scripts/test.sh` ([Phases](#phases)). Where each stage and workstream stands now is [Work in flight](#work-in-flight-updated-as-it-moves); a section's "as built" paragraphs say what of its design is on the branch, and the rest is the intended state. The implementation lands as one pull request on that branch, built in stages and merged by the maintainer as a single go/no-go change (decisions 29–31, [Phases](#phases)).
+**Status: planned 2026-10-01 under #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads (branch `claude/intelligent-feynman-sw3ewm`); built in stages on that branch since, at the go/no-go gate since 2026-10-05 (head `567890e6`), and current to 2026-10-09 (head `8d84a4cb`).** Stage 1's dbt tooling went green first, on a GitHub runner on 2026-10-01: dbt 2.0.6, the YAML moved to v2's shape, `dbt_project_evaluator` enforced, and SQLFluff and `dbt lint` in CI and `scripts/test.sh` ([Phases](#phases)). Where each stage and workstream stands now is [Work in flight](#work-in-flight-updated-as-it-moves); a section's "as built" paragraphs say what of its design is on the branch, and the rest is the intended state. The implementation lands as one pull request on that branch, built in stages and merged by the maintainer as a single go/no-go change (decisions 29–31, [Phases](#phases)).
 
 **What "report N", "the decisions log" and "a probe" mean here.** The planning session kept its working files in a private scratch directory, and none of them is committed. They are six research reports, cited by number: 1, dlt for extraction; 2, the geometry marts (trail lines, POIs, elevation); 3, closures, warnings and podcasts; 4, CI and publishing; 5, what a phone downloads, and geometry; 6, dbt tooling. Then three later studies: storage formats and DuckLake, incremental loading per source and per mechanism, and each node's cadence. Then the decisions log, which records the maintainer's answers and which [Decisions](#decisions) restates. A probe is a throwaway project built to measure one behaviour. A reader cannot open any of these, so this document restates what it takes from them, with the date and what each figure was measured against.
 
@@ -61,7 +61,7 @@ A number in brackets is a row of [Decisions](#decisions).
 
 ### Decisions
 
-Settled by the maintainer on 2026-10-01, most by poll; 4 and 11 went without a picture, and 12, 14 and 15 began as the maintainer's own unprompted asks, as did 20–25, 28–29, 32, 34–35 and 40. Nothing below re-argues them. Under "Offered and not taken", "—" means nothing offered was left: the maintainer gave the direction in their own words, or (5) took every option offered. "Not recorded" means a poll whose other options the decisions log did not keep.
+The first 40 were settled by the maintainer on 2026-10-01, most by poll; later rows give their own dates. Of the first 40, 4 and 11 went without a picture, and 12, 14 and 15 began as the maintainer's own unprompted asks, as did 20–25, 28–29, 32, 34–35 and 40. Nothing below re-argues them. Under "Offered and not taken", "—" means nothing offered was left: the maintainer gave the direction in their own words, or (5) took every option offered. "Not recorded" means a poll whose other options the decisions log did not keep.
 
 | # | Question | Chosen | Offered and not taken |
 |---|---|---|---|

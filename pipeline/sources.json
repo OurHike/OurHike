@@ -18413,7 +18413,11 @@
       "person_fields_comment": "The extract's PERSON_SHAPED backstop leaves these four out by their words 'owner' and 'manager' (read off the live field list 2026-10-09). They are very likely agencies and agency types, not people, but nobody has read their values; listed so the row says so, and a person who reads them may clear them in `not_person_fields` if a places rule needs who manages a park.",
       "geometry_kind": "polygon",
       "id_field": "parkid",
-      "id_comment": "`parkid`, ParkServe's own park id (text), and not unique: the 154,780 rows read whole on 2026-10-09 hold 154,779 distinct values and no null (counted over the landed raw table; this row's notes), and the one value on two rows names two different parks, in different states, with different names, sizes and shapes (TPL's server, a statistics query grouped by parkid with HAVING COUNT(objectid) > 1, the same day; no value printed). A model keyed on parkid alone would take them for one park, which the duplicates_are_exact test generated beside it would refuse. (parkid, park_state) was distinct on that read (Reasoned: the two rows' park_state differs); which key a model uses is decided with what ParkServe is used for (decision 126). objectid is the server's.",
+      "id_fields": [
+        "parkid",
+        "park_state"
+      ],
+      "id_comment": "`parkid`, ParkServe's own park id (text), and not unique: the 154,780 rows read whole on 2026-10-09 hold 154,779 distinct values and no null (counted over the landed raw table; this row's notes), and the one value on two rows names two different parks, in different states, with different names, sizes and shapes (TPL's server, a statistics query grouped by parkid with HAVING COUNT(objectid) > 1, the same day; no value printed). A model keyed on parkid alone would take them for one park, which the duplicates_are_exact test generated beside it would refuse. (parkid, park_state) was distinct on that read (Reasoned: the two rows' park_state differs); so the key is the pair (parkid, park_state), by the maintainer's poll of 2026-10-09, made before any model reads it. objectid is the server's.",
       "freshness": {
         "kind": "arcgis_max_field",
         "field": "park_dateadded",

@@ -6508,7 +6508,7 @@
       "trust": "authoritative",
       "steward": "Pennsylvania Department of Conservation and Natural Resources",
       "steward_contact": "https://www.dcnr.pa.gov/Pages/ContactUs.aspx",
-      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
+      "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form. pipeline/ORG_COVERAGE_SURVEY.md reasons that Explore PA Trails' terms ('intended for demonstration, education, planning, and monitoring purposes only ... save the Commonwealth harmless') reach this PASDA copy too, and if they do they hold nothing back from publishing: decision 106 reads their 'purposes only' as a scope note and decision 71 their 'save ... harmless' as a liability line (pipeline/ELT.md).",
       "licence_basis": "stated_by_org",
       "attribution": "PASDA / PA DCNR",
       "name_field": "NAME01",
@@ -18797,7 +18797,7 @@
       "org:pasda": {
         "provider": "PASDA",
         "name": "Pennsylvania Spatial Data Access",
-        "note": "Penn State's clearinghouse for Pennsylvania public geospatial data, publishing PA DCNR's land trails. Also registered for its points of interest under decision 54 (2026-10-03), at reaches_hikers: false."
+        "note": "Penn State's clearinghouse for Pennsylvania public geospatial data, publishing PA DCNR's land trails. Also registered for its points of interest and parks under decision 54 (2026-10-03). Three of its six point layers reach hikers: pasda_state_park_buildings and pasda_state_forest_campsites since 2026-10-04 (decision 63), and pasda_explore_pa_trail_access since decision 106. So does pasda_dcnr_wild_natural_areas, one of its two park layers. Each row still at reaches_hikers: false says why in its reaches_hikers_comment."
       },
       "org:ncparks": {
         "provider": "NC State Parks",

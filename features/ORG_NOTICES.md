@@ -231,7 +231,9 @@ Two gates, and they are independent — a source can be perfectly placeable and 
 publishable:
 
 1. **`reaches_hikers` in `sources.json`.** Already the mechanism, already enforced by
-   `export_sources.py` refusing to run without it. `nynjtc_trail_alerts` carries `false`.
+   `export_sources.py` refusing to run without it. `nynjtc_trail_alerts` carries `true`: the
+   maintainer authorised it on 2026-08-27 for the facts and a link alone, while NYNJTC's own
+   terms are still asked for (`nynjtc_notices_licence` in `pipeline/sources.json`).
 2. **The licence.** `nynjtc_licence` covers NYNJTC's two public trail extracts "and
    nothing else" and says it must not be read as precedent — so it does not stretch to
    their notices, and that entry says so rather than borrowing it. ATC's own notices ship

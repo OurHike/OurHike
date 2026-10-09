@@ -430,7 +430,10 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Lakes' alerts (`stated_by_org`, a federal work), the trail's closures page (`maintainer_authorisation`,
     # decision 53's facts and a link) and Parks & Trails New York's closures view (`public_gis`). Its two line
     # layers, the trail's segments and connector trails, add 2 `stated_by_org` on the same item's terms.
-    assert counts == {"maintainer_authorisation": 220, "public_gis": 253, "stated_by_org": 198, "unresolved": 29}
+    # Decision 133 (the maintainer's poll, 2026-10-09) moves TATC's republished ATC ridgerunner reports
+    # (tatc_ridgerunner_reports) from `unresolved` to `maintainer_authorisation`: decision 107's facts and a link
+    # reach them, rather than waiting on #458.
+    assert counts == {"maintainer_authorisation": 221, "public_gis": 253, "stated_by_org": 198, "unresolved": 28}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

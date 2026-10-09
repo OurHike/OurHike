@@ -13831,8 +13831,8 @@
       "trust": "authoritative",
       "steward": "Tidewater Appalachian Trail Club",
       "steward_contact": "https://tidewateratc.org/",
-      "licence": "UNRESOLVED. The reports are ATC ridgerunner output (RIMS' 'Stewardship Report Digest') that the club republishes; whether atc_licence covers them is the maintainer's question, open since the coverage audit, and decision 53's facts-and-a-link reading is not applied until it is answered. tidewateratc.com's robots.txt, read 2026-10-03 under our agent, disallows WooCommerce paths and /wp-admin/ only.",
-      "licence_basis": "unresolved",
+      "licence": "Facts and a link only, on the maintainer's authorisation: decision 133 (the maintainer's poll, 2026-10-09) extends decision 107's facts and a link for clubs' closure posts to these reports; NOT a grant from TATC or the ATC. The reports are ATC ridgerunner output (RIMS' 'Stewardship Report Digest') that the club republishes, so the notice carries the registry title, the PDF's own date and a link to TATC's copy, never the reports' words; the maintainer chose this over waiting on #458 — Confirm with the ATC what may be republished from their Trail Updates. tidewateratc.com's robots.txt, read 2026-10-03 under our agent, disallows WooCommerce paths and /wp-admin/ only.",
+      "licence_basis": "maintainer_authorisation",
       "attribution": "Tidewater Appalachian Trail Club",
       "terms": "None found: no terms page found (inventory, batch 2).",
       "freshness": {
@@ -13843,8 +13843,8 @@
       "discovered_via": "pipeline/ELT.md decision 53's phase A inventory (batch 2), re-read live under our agent in phase B, 2026-10-03.",
       "discovered_date": "2026-10-03",
       "notes": "One row: the PDF as one notice (extract/_notices.py's PageNotice over a PDF), keyed by `url`: the registry title, the document's own metadata date, and the bytes' sha256. Read 2026-10-03: 202,242 bytes, the date 2026-08-03 from the PDF's ModDate: an index of about 71 weekly reports, 2022 week 1 to 2026 week 13 (inventory). The reports carry per-assessment coordinates and name ATC staff with e-mail addresses; this reader lands none of the text. The upload path is dated (2026/08), so a new index may arrive at a new URL.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): its licence basis is unresolved, so int_sources__publication cannot let it publish. Settled by a basis."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "Ships as facts and a link (decision 133, 2026-10-09), on the basis decision 107 gave clubs' closure posts."
     },
     {
       "key": "tko_oct_trail_conditions",

@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1364,10 +1365,13 @@ def test_no_history_store_outside_the_fixtures_is_refused_before_anything_runs(m
         build_marts.main(["--lane", "monthly", "--warehouse", str(tmp_path / "w.duckdb"), "--dry-run"])
 
 
-def test_the_fixtures_with_no_store_named_cold_start_in_a_new_temporary_directory():
+def test_the_fixtures_with_no_store_named_cold_start_in_a_new_temporary_directory(monkeypatch, tmp_path):
+    # Under tmp_path, so the suite leaves no /tmp/ourhike-history-* directory behind each run.
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     history, notice = build_marts.resolve_history(None, fixtures=True, cold_start=False, python="python", started={})
 
     assert history.cold_start and Path(history.url).is_dir() and not any(Path(history.url).iterdir())
+    assert Path(history.url).parent == tmp_path and Path(history.url).name.startswith("ourhike-history-")
     assert "no later run reads" in notice
 
 

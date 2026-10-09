@@ -228,7 +228,9 @@ export function hazardFeatureCollection(
  * lib/atcNoticeText.ts's `longDate` gives a stamp, so a sheet that prints both
  * prints one date style, never "2026-10-01" beside "October 5, 2026".
  * Anything that is not an ISO day is shown as the source wrote it, never as
- * "Invalid Date": publishedNotices.ts reads both fields as plain text.
+ * "Invalid Date": publishedNotices.ts reads both fields as plain text. So is
+ * a day no calendar has, such as "2026-04-31", which V8 rolls over to May 1
+ * (measured 2026-10-09, Node 22): the parsed day must name the same day back.
  *
  * Here rather than beside `longDate` because the panel and the area's card
  * already import this module, and an import of atcNoticeText.ts from here
@@ -238,7 +240,7 @@ export function hazardFeatureCollection(
 export function longDay(day: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day
   const at = new Date(`${day}T00:00:00Z`)
-  if (Number.isNaN(at.getTime())) return day
+  if (Number.isNaN(at.getTime()) || at.toISOString().slice(0, 10) !== day) return day
   return at.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',

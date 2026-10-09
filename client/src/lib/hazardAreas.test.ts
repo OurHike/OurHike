@@ -185,4 +185,13 @@ describe('longDay', () => {
     expect(longDay('late October')).toBe('late October')
     expect(longDay('2026-13-45')).toBe('2026-13-45')
   })
+
+  it('shows "2026-04-31" as written, never as May 1, 2026, the day V8 rolls it over to', () => {
+    // Measured 2026-10-09 in Node 22: new Date('2026-04-31T00:00:00Z') is
+    // 2026-05-01, and '2026-02-30' is 2026-03-02. A closure's end date one
+    // day off is worse than the source's own string.
+    expect(longDay('2026-04-31')).toBe('2026-04-31')
+    expect(longDay('2026-02-29')).toBe('2026-02-29')
+    expect(longDay('2028-02-29')).toBe('February 29, 2028')
+  })
 })

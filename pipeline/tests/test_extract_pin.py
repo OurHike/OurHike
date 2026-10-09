@@ -103,7 +103,7 @@ def test_the_as_landed_copy_is_each_layer_as_its_fetcher_writes_it_without_perso
     assert [item["properties"]["OBJECTID"] for item in trails["features"]] == [1, 2], "the server's order"
     assert all("RANGER" not in item["properties"] for item in trails["features"]), "a person field never lands"
     assert trails["features"][0]["geometry"] == {"type": "Point", "coordinates": [-74.0, 42.0]}
-    assert "id" not in trails["features"][0], "an ArcGIS layer's GeoJSON id is not landed, so it is not invented"
+    assert [item["id"] for item in trails["features"]] == [1, 2], "the GeoJSON id ArcGIS writes is its objectIdField's value"
     assert "_loaded_at" not in trails["features"][0]["properties"], "no fetcher writes the load stamp"
 
 
@@ -183,6 +183,76 @@ def test_socrata_and_opentrail_ids_go_back_where_their_fetchers_files_hold_them(
         "properties": {"kind": "water"},
     }
     assert _run.as_landed_path(opentrail) == "opentrail_at.geojson"
+
+
+def test_as_landed_feature_writes_an_arcgis_rows_object_id_as_its_geojson_id_and_keeps_the_property():
+    """ArcGIS writes a layer's object id field as each GeoJSON feature's `id` (34 of 34 features of 18 layers, read
+    live 2026-10-09), and today's exporters publish that id where a layer has no GlobalID: NYNJTC's Long Path as
+    `nynjtc_long_path:<FID>`. The copy without it numbered those lines by place on parity's old side."""
+    long_path = ArcgisLayer(key="nynjtc_long_path", club="nynjtc", type="trail_lines")
+    row = {"FID": 85, "Trail_Name": "Long Path", "geometry": '{"type":"LineString","coordinates":[[1,2],[3,4]]}'}
+
+    assert as_landed_feature(long_path, row, "FID") == {
+        "type": "Feature",
+        "id": 85,
+        "geometry": {"type": "LineString", "coordinates": [[1, 2], [3, 4]]},
+        "properties": {"FID": 85, "Trail_Name": "Long Path"},
+    }
+
+
+def test_as_landed_feature_invents_no_arcgis_id_without_a_named_field_or_a_value_in_it():
+    layer = ArcgisLayer(key="trails", club="testclub", type="trail_lines")
+    row = {"OBJECTID": 7, "NAME": "Trail", "geometry": None}
+
+    assert "id" not in as_landed_feature(layer, row, None), "no field named by the metadata, so no id"
+    assert "id" not in as_landed_feature(layer, {**row, "OBJECTID": None}, "OBJECTID"), "a null object id is no id"
+    assert "id" not in as_landed_feature(layer, row, "FID"), "the named field is not in the row"
+
+
+def test_named_object_id_field_reads_the_oid_typed_field_where_the_metadata_names_no_objectidfield(registry, requests_mock):
+    """9 of the 18 layers read on 2026-10-09 leave `objectIdField` out, all off ArcGIS Online; pasda_dcnr_trails'
+    esriFieldTypeOID field is OBJECTID_1, beside an OBJECTID that is not its object id."""
+    fields = [
+        {"name": "OBJECTID", "type": "esriFieldTypeInteger"},
+        {"name": "OBJECTID_1", "type": "esriFieldTypeOID"},
+        {"name": "NAME", "type": "esriFieldTypeString"},
+    ]
+    requests_mock.get(LINES_URL, json={"fields": fields})
+    assert _run.named_object_id_field(lines()) == "OBJECTID_1"
+
+    requests_mock.get(LINES_URL, json={"objectIdField": "FID", "fields": fields})
+    assert _run.named_object_id_field(lines()) == "FID", "the metadata's own objectIdField wins"
+
+    requests_mock.get(LINES_URL, json={"fields": fields[:1]})
+    assert _run.named_object_id_field(lines()) is None, "no field named or typed as the object id, so no guess"
+
+
+def test_named_object_id_field_is_none_and_warns_when_the_metadata_does_not_answer(registry, requests_mock, capsys):
+    requests_mock.get(LINES_URL, status_code=500)
+
+    assert _run.named_object_id_field(lines()) is None
+    assert len([request for request in requests_mock.request_history if request.url.startswith(LINES_URL)]) == 1, (
+        "one request and no retry ladder: the copy is parity's input, not the load"
+    )
+    assert "no feature carries an id" in capsys.readouterr().out
+
+
+def test_the_as_landed_copy_writes_the_object_id_its_layers_metadata_types_as_oid(registry, store, requests_mock):
+    """A server that names no objectIdField (9 of the 18 layers read 2026-10-09) still gets its ids, from the field its
+    metadata types esriFieldTypeOID (tests/test_extract_run.py's FIELDS: OBJECTID)."""
+    layer = FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    as_served = layer.metadata
+
+    def metadata_without_objectidfield(request, context):
+        answer = as_served(request, context)
+        return None if answer is None else {name: value for name, value in answer.items() if name != "objectIdField"}
+
+    requests_mock.get(LINES_URL, json=metadata_without_objectidfield)
+
+    report = run(store, lines(), as_landed=True)
+
+    trails = json.loads((landed_root(store) / report.load_id / "trails.geojson").read_text())
+    assert [item["id"] for item in trails["features"]] == [1, 2]
 
 
 def test_an_external_layer_lands_at_fetch_external_layers_own_path(registry, monkeypatch):

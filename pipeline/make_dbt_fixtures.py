@@ -420,21 +420,32 @@ def _oprhp_park_polygons_layer():
 
 
 def _nynjtc_long_path_layer():
-    """The measured field list, 2026-08-24. Blaze is the lowercase 'aqua'
-    all 43 real rows read - a plain string with no coded domain, which is
-    why nothing decodes it here or downstream."""
+    """The measured field list, 2026-08-24, and FID, the layer's object id
+    field, which its metadata names and the 2026-08-24 list left out (read
+    2026-10-09; the live FIDs run from 1 to 85). Blaze is the lowercase
+    'aqua' all 43 real rows read - a plain string with no coded domain,
+    which is why nothing decodes it here or downstream."""
     common = {"Trail_Name": "Long Path", "Blaze": "aqua", "Maintainer": "NYNJTC", "Source": "NYNJTC"}
     return _features(
         [
-            {**common, "Mileage": 3.2, "Comments": "fixture row", "LP_Section": "1", "GuideURL": "https://example.invalid/lp/1"},
-            {**common, "Mileage": 2.7, "Comments": None, "LP_Section": "2", "GuideURL": "https://example.invalid/lp/2"},
+            {
+                "FID": 1,
+                **common,
+                "Mileage": 3.2,
+                "Comments": "fixture row",
+                "LP_Section": "1",
+                "GuideURL": "https://example.invalid/lp/1",
+            },
+            {"FID": 2, **common, "Mileage": 2.7, "Comments": None, "LP_Section": "2", "GuideURL": "https://example.invalid/lp/2"},
         ],
         _line,
     )
 
 
 def _nynjtc_highlands_trail_layer():
-    """Trail_Name/Section_Name/Source/MapOrder, measured 2026-08-24.
+    """Trail_Name/Section_Name/Source/MapOrder, measured 2026-08-24, and
+    OBJECTID, the layer's object id field, which its metadata names (read
+    2026-10-09, when the first two live OBJECTIDs were 4 and 6).
 
     NO BLAZE KEY, and that absence is the fixture's point: sources.json
     records that this layer publishes no blaze at all, and the staging model
@@ -443,8 +454,8 @@ def _nynjtc_highlands_trail_layer():
     """
     return _features(
         [
-            {"Trail_Name": "Highlands", "Section_Name": "NJ 2", "Source": "NYNJTC", "MapOrder": 2},
-            {"Trail_Name": "Highlands", "Section_Name": "NJ 3", "Source": "NYNJTC", "MapOrder": 3},
+            {"OBJECTID": 4, "Trail_Name": "Highlands", "Section_Name": "NJ 2", "Source": "NYNJTC", "MapOrder": 2},
+            {"OBJECTID": 6, "Trail_Name": "Highlands", "Section_Name": "NJ 3", "Source": "NYNJTC", "MapOrder": 3},
         ],
         _line,
     )
@@ -5188,6 +5199,9 @@ def _network_rows() -> dict[str, list[dict]]:
             {
                 "type": "Feature",
                 "properties": {
+                    # The layer's object id, as _nynjtc_long_path_layer's rows carry
+                    # it: 83 to 85, where the live FIDs end (read 2026-10-09).
+                    "FID": 80 + section,
                     **long_path,
                     "Mileage": 20.7,
                     "LP_Section": str(section),
@@ -5217,17 +5231,22 @@ def _trail_lines_network_fixtures(files: dict[str, dict | str | bytes]) -> dict[
     - oprhp_trail_closures' NETWORK_CLOSED_AREAS, after its own triangle, so
       parity reaches every branch of apply_area_closures().
     - each network line feature's own `id`, which the live servers write and
-      the builders above leave off: an ArcGIS layer's is its OBJECTID, where
-      the fixture carries one, and a Socrata layer's is the row id
-      lib/socrata.py promotes onto the feature, `row-<n>` in the order
-      extract/_fixtures.py's adapter numbers them. lib/feature_id.py falls
-      back to that `id` where a layer has no `GlobalID`, so without it every
-      such row's published id would be positional. That ArcGIS's GeoJSON
-      `id` is the OBJECTID is Reasoned from the REST API and @unvalidated
-      here; one live fetch comparing the two settles it.
+      the builders above leave off: an ArcGIS layer's is its object id,
+      OBJECTID or else FID where the fixture carries one (the two names the
+      registered network layers use, and the order
+      int_trail_lines__network_judged reads them in), and a Socrata layer's
+      is the row id lib/socrata.py promotes onto the feature, `row-<n>` in
+      the order extract/_fixtures.py's adapter numbers them.
+      lib/feature_id.py falls back to that `id` where a layer has no
+      `GlobalID`, so without it every such row's published id would be
+      positional. That ArcGIS's GeoJSON `id` is the layer's object id is
+      measured: equal on 34 of 34 features of 18 registered layers, one per
+      host, on-premises servers among them, and on all 43 and 12 features of
+      the two NYNJTC layers (read live 2026-10-09).
 
-    The extract lands none of these ids (its rows are a feature's properties
-    and geometry), so the warehouse is unchanged by them.
+    The extract lands none of these ids as an `id` (its rows are a feature's
+    properties and geometry), so the warehouse is unchanged by them; an
+    ArcGIS layer's object id lands as its own column.
     """
     registry = json.loads((Path(__file__).parent / "sources.json").read_text(encoding="utf-8"))
     kinds = {entry["key"]: entry.get("kind") for entry in registry["sources"]}
@@ -5276,10 +5295,11 @@ def _trail_lines_network_fixtures(files: dict[str, dict | str | bytes]) -> dict[
             continue
         for index, feature in enumerate(out[name]["features"]):
             properties = feature.setdefault("properties", {})
+            object_id = next((properties[name] for name in ("OBJECTID", "FID") if properties.get(name) is not None), None)
             if kinds[key] == "socrata_geojson_layer":
                 feature["id"] = f"row-{index}"
-            elif properties.get("OBJECTID") is not None:
-                feature["id"] = properties["OBJECTID"]
+            elif object_id is not None:
+                feature["id"] = object_id
             # A field the registry declares and no builder above writes (#1778's
             # builder writes the name column alone, and two of its layers have
             # since declared a blaze field). The exporter refuses a layer missing

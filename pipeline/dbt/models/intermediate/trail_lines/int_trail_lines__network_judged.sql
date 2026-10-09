@@ -44,10 +44,15 @@
 -- and its stg model keeps no raw-table order: decision 40's key, as every
 -- club line has (int_trail_lines__club_published), unique in its layer and
 -- the same for the same row next release. No line of run 30 reaches it.
--- The two NYNJTC layers, whose stg models carry `source_row` and not the
--- object id, are numbered by place, where today's fetch publishes their
--- object id; parity cannot see that, since the as-landed copy it gives
--- today's exporter drops the GeoJSON `id` too (ELT.md, TL05).
+-- The two NYNJTC stg models carry their layer's object id, `fid` on the
+-- Long Path and `objectid` on the Highlands Trail, so their lines publish
+-- `nynjtc_long_path:<FID>` and `nynjtc_highlands_trail:<OBJECTID>`, the
+-- ids today's fetch and export publish (43 and 12 GeoJSON ids equal to
+-- them, read live 2026-10-09). Until 2026-10-09 those models carried no
+-- object id and the lines were numbered `generated-<n>` by place: UA's
+-- release 2026-10-08, written by this model's path, numbers all 55 NYNJTC
+-- lines so, where UA's 2026-10-03-2, today's exporter's, numbers all 55 by
+-- object id (both read 2026-10-09; ELT.md, TL05).
 --
 -- `trail_status` (TL10) is 'open' or 'closed' from the status column, and
 -- `closure_kind` 'long_term' where the steward marked a line closed. A
@@ -161,9 +166,10 @@ read_fields as (
         -- The feature's place in its layer, for `generated-<n>`, every row
         -- counted as the Python counts them: `source_row`, the raw table's
         -- order and so the fetched file's (Reasoned, stg_nynjtc__long_path),
-        -- which only the two NYNJTC layers carry, their stg models keeping
-        -- no object id column (above). Null on every other layer, whose row
-        -- with none of the four ids then takes its staging key.
+        -- which only the two NYNJTC layers carry. Their rows also carry the
+        -- object id (above), which comes first, so this numbers a NYNJTC
+        -- line only where its object id is null. Null on every other layer,
+        -- whose row with none of the four ids then takes its staging key.
         unioned.source_row as layer_position
     from unioned
     inner join sources on unioned.source_key = sources.source_key

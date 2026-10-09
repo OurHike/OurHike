@@ -57,10 +57,14 @@ today's exporters on exactly the rows dbt read (decision 30). Each ArcGIS,
 Socrata and opentrail resource that ran is written back out as its fetcher's
 GeoJSON file (as_landed_path()) and uploaded to
 `<bucket-url>/as_landed/<load_id>/` after the load commits and the run log is
-written. It is not the upstream's bytes (person fields were never asked for,
-and an ArcGIS feature's GeoJSON `id` is not landed: ELT.md's ledger row TL05),
+written. It is not the upstream's bytes (person fields were never asked for),
 so it tests today's exporters against dbt, not today's fetchers against the
-dlt resources, which tests/test_extract_run.py and the run check hold.
+dlt resources, which tests/test_extract_run.py and the run check hold. Each
+feature's GeoJSON `id` is put back as its fetcher's file holds it: Socrata's
+and opentrail's from the column each lands, and an ArcGIS layer's from its
+object id column (as_landed_feature(), ELT.md's ledger row TL05). Copies
+written before 2026-10-09 have no ArcGIS `id`, and a layer FRESH since then
+is still pinned from such a copy.
 """
 
 from __future__ import annotations
@@ -96,6 +100,7 @@ os.environ.setdefault("SCHEMA__NAMING", "sql_ci_v1")
 
 import dlt  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
+import requests  # noqa: E402
 from dlt.common.schema.exceptions import DataValidationError  # noqa: E402
 from dlt.common.storages.fsspec_filesystem import glob_files  # noqa: E402
 from dlt.pipeline.exceptions import PipelineStepFailed  # noqa: E402
@@ -1012,23 +1017,61 @@ def as_landed_path(resource: Resource) -> str | None:
     return None
 
 
-def as_landed_feature(resource: Resource, row: dict) -> dict:
-    """One yielded row as the GeoJSON feature it was read from: `geometry` back out, the server's id back in its place."""
+def as_landed_feature(resource: Resource, row: dict, object_id_field: str | None = None) -> dict:
+    """One yielded row as the GeoJSON feature it was read from: `geometry` back out, the server's id back in its place.
+
+    Socrata's `:id` and opentrail's feature id each land as a column of their
+    own, so they move out of the properties into `id`, where the fetchers'
+    files hold them. AN ARCGIS LAYER'S GeoJSON `id` IS ITS OBJECT ID FIELD'S
+    VALUE (equal on 34 of 34 features of 18 registered layers, one per host,
+    and on 43 of 43 and 12 of 12 on NYNJTC's two, read live 2026-10-09), and
+    that field lands as a column like any other. So `object_id_field`, the
+    field the layer's metadata names (named_object_id_field()), is copied to
+    `id` and kept in the properties, where ArcGIS's own GeoJSON has it too.
+    Without that name, or without a value in that field, the feature gets no
+    `id`: the copy never invents one.
+    """
     properties = dict(row)
     geometry = properties.pop("geometry", None)
     if isinstance(geometry, str):
         geometry = json.loads(geometry)
     feature = {"type": "Feature"}
-    # Socrata's `:id` and opentrail's feature id are landed as columns, so they
-    # go back where the fetchers' files hold them; an ArcGIS layer's is not landed.
     for column in ("_socrata_id", "feature_id"):
         if column in properties and isinstance(resource, SocrataDataset | OpentrailFeed):
             value = properties.pop(column)
             if value is not None:
                 feature["id"] = value
+    if isinstance(resource, ArcgisLayer) and object_id_field and properties.get(object_id_field) is not None:
+        feature["id"] = properties[object_id_field]
     feature["geometry"] = geometry
     feature["properties"] = properties
     return feature
+
+
+def named_object_id_field(resource: ArcgisLayer) -> str | None:
+    """The field an ArcGIS layer's metadata names as its object id, or None where it names none or does not answer.
+
+    Its `objectIdField`, else the field typed esriFieldTypeOID: 9 of the 18
+    layers read on 2026-10-09 leave `objectIdField` out, all 9 of them off
+    ArcGIS Online (ArcgisLayer.platform 'onprem'), and pasda_dcnr_trails'
+    field is OBJECTID_1. Not extract/_kinds.py's object_id_field(), whose
+    last answer is a bare OBJECTID guess: an id written into the copy is one
+    parity reads as the id today's fetcher wrote. One request with no retry
+    ladder, read once per table by AsLanded: a layer whose metadata does not
+    answer gets a copy without ids, as every copy was before 2026-10-09, and
+    a warning says which.
+    """
+    try:
+        metadata = resource.metadata(backoff=())
+    except (requests.RequestException, ValueError) as error:
+        print(
+            f"::warning title={resource.key} as-landed copy::the layer's metadata did not answer ({error}); no feature carries an id"
+        )
+        return None
+    if metadata.get("objectIdField"):
+        return metadata["objectIdField"]
+    fields = [field for field in metadata.get("fields") or [] if isinstance(field, dict)]
+    return next((field["name"] for field in fields if field.get("type") == "esriFieldTypeOID" and field.get("name")), None)
 
 
 class AsLanded:
@@ -1038,11 +1081,15 @@ class AsLanded:
         self.staging = staging
         self.paths: dict[str, str] = {}  # table -> path under data/raw/
         self._open: dict[str, object] = {}
+        # table -> an ArcGIS layer's object id field (named_object_id_field()), asked once per table, kept by reset()
+        self._object_id_fields: dict[str, str | None] = {}
 
     def add(self, resource: Resource, row: dict) -> None:
         path = as_landed_path(resource)
         if path is None:
             return
+        if isinstance(resource, ArcgisLayer) and resource.table not in self._object_id_fields:
+            self._object_id_fields[resource.table] = named_object_id_field(resource)
         handle = self._open.get(resource.table)
         if handle is None:
             target = self.staging / path
@@ -1053,7 +1100,8 @@ class AsLanded:
             self.paths[resource.table] = path
         else:
             handle.write(",")
-        handle.write(json.dumps(as_landed_feature(resource, row), separators=(",", ":"), default=str))
+        feature = as_landed_feature(resource, row, self._object_id_fields.get(resource.table))
+        handle.write(json.dumps(feature, separators=(",", ":"), default=str))
 
     def reset(self) -> None:
         """Forget every staged file: a leg that refused a table on its own extracts what is left again

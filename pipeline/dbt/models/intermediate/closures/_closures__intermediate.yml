@@ -2013,6 +2013,8 @@ unit_tests:
           - {source_key: 'iata_trail_conditions', status_value: 'pending', reads_as: 'not_current', why: 'posted pending 2 of 80: not yet posted'}
           - {source_key: 'utah_ffsl_fire_restrictions', status_value: 'Rescinded', reads_as: 'not_current', why: 'Kept out at extraction too (`where` Status NOT IN (''Rescinded'', ''Superseded''))'}
           - {source_key: 'utah_ffsl_fire_restrictions', status_value: 'Superseded', reads_as: 'not_current', why: 'As above'}
+          - {source_key: 'ptny_est_closures', status_value: 'Closed', reads_as: 'closes_trail', why: 'trail_stat ''Closed'' 9 of 9 (the row''s notes, read live 2026-10-08): a view that shows only the Empire State Trail''s closed sections'}
+          - {source_key: 'ptny_est_closures', status_value: 'Open', reads_as: 'not_current', why: 'One of trail_stat''s four domain values (the row''s notes); the view serves none, and an open section tells a hiker nothing'}
     expect:
       rows:
         - {notice_id: 'usfs_r06_fire_closure_lines:g01', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own end date, 2001-06-01, has passed', title: 'Fixture Fire Area Closure', locality: null, geom_geojson: null, updated_at: null}

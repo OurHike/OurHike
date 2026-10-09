@@ -246,7 +246,10 @@ export function validNotice(value: unknown): OrgNotice | null {
  * Null is the ordinary state on a bucket the exporters still publish: no
  * exporter writes this file, so it 404s, and lib/useConditions.ts keeps
  * reading ATC's and NYNJTC's own files. Offline it is the copy this phone
- * kept (#447), dated by its own `generated_at`, like every file here.
+ * kept (#447), if it kept one: the last file that arrived whole, up to
+ * lib/conditionsCache.ts's ceiling, dated by its own `generated_at` like
+ * every file here. A phone that never downloaded it, such as a first run
+ * with no signal, holds none and reads null.
  */
 export async function fetchPublishedNotices(
   signal?: AbortSignal,

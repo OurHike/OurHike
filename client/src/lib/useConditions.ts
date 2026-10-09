@@ -453,22 +453,33 @@ export function useConditions(
   // launch budget (lib/publishedNotices.ts says why); a chunk that cannot
   // load reads as no file, exactly as a 404 does.
   //
-  // THE HAZARD AREAS RIDE THE SAME READ, PLANNED OR NOT (decision 84):
+  // THE HAZARD AREAS RIDE THE SAME EFFECT, PLANNED OR NOT (decision 84):
   // conditions/hazard_areas.json is read on each run of this effect - at
   // launch, on each refresh and visibility read, as notices.json was before
   // decision 77, and once more when planning changes - with the same rule
-  // that a null keeps what this phone holds.
+  // that a null keeps what this phone holds. ON A PROMISE OF ITS OWN: at a
+  // weak-signal trailhead the areas waited behind a planned hike's download
+  // of notices.json (UA's was 11,811,546 bytes on 2026-10-09), or behind the
+  // HEAD with nothing planned.
   useEffect(() => {
     if (!ready) return
     let cancelled = false
-    void import('./publishedNotices')
+    const reader = import('./publishedNotices')
+    void reader
       .then(({ readPublishedNotices }) => readPublishedNotices(hikePlanned, { online }))
       .then(
-        ({ published, listed, hazards }) => {
+        ({ published, listed }) => {
           if (cancelled) return
           if (published !== null) setClubNotices(published)
-          if (hazards !== null) setHazardFile(hazards)
           if (listed) setClubNoticesListed(true)
+        },
+        () => undefined,
+      )
+    void reader
+      .then(({ fetchPublishedHazardAreas }) => fetchPublishedHazardAreas({ online }))
+      .then(
+        (hazards) => {
+          if (!cancelled && hazards !== null) setHazardFile(hazards)
         },
         () => undefined,
       )

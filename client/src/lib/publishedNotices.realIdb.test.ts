@@ -9,6 +9,12 @@
 // on the phone until its first relaunch with no signal, and then gone:
 // chrome/noticesPanel.tsx fell back to ATC's and NYNJTC's own lists, and
 // nothing said why.
+//
+// AND THE DEADLINES. A request with no deadline does not fail on a captive
+// portal or a one-bar link: it hangs, and lib/publishedConditions.ts's
+// `fetchPublished` reaches the kept copy only once its request fails. So each
+// read here is held to answering, from the kept copy, once its deadline
+// passes, and not before.
 
 import 'fake-indexeddb/auto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -21,9 +27,16 @@ vi.mock('./config', async (importOriginal) => ({
   dataUrl: (key: string) => `https://data.example/${key}`,
 }))
 
-import { recallPublished } from './conditionsCache'
+import { recallPublished, rememberPublished } from './conditionsCache'
+import { MANIFEST_READ_TIMEOUT_MS } from './dataManifest'
 import { PUBLISHED_NOTICES_KEY } from './publishedConditions'
-import { readPublishedNotices } from './publishedNotices'
+import {
+  NOTICES_DOWNLOAD_TIMEOUT_MS,
+  PUBLISHED_HAZARD_AREAS_KEY,
+  fetchPublishedHazardAreas,
+  noticesListed,
+  readPublishedNotices,
+} from './publishedNotices'
 
 const NOTICES_URL = `https://data.example/${PUBLISHED_NOTICES_KEY}`
 
@@ -56,7 +69,44 @@ function noticesLongerThan(characters: number) {
   }
 }
 
+const KEPT_NOTICES = {
+  generated_at: '2026-10-07T06:00:00Z',
+  notices: [
+    {
+      notice_id: 'club_page:footbridge',
+      source_key: 'club_page',
+      title: 'Fixture footbridge out',
+      obstructs_trail: true,
+      place: { kind: 'unplaced' },
+    },
+  ],
+}
+
+const KEPT_HAZARDS = {
+  generated_at: '2026-10-07T06:00:00Z',
+  notices: [
+    {
+      notice_id: 'oprhp_hunting_areas:1',
+      source_key: 'oprhp_hunting_areas',
+      title: 'Fixture hunting area',
+      hazard: 'hunting',
+      place: { kind: 'geometry', geometry: { type: 'Point', coordinates: [-74, 41] } },
+    },
+  ],
+}
+
+/** A request nobody answers, as on a captive portal or one bar, that gives
+ *  up when its signal aborts, as fetch does. */
+function unanswered(init?: RequestInit): Promise<Response> {
+  return new Promise((_, reject) => {
+    init?.signal?.addEventListener('abort', () =>
+      reject(new DOMException('The operation was aborted.', 'AbortError')),
+    )
+  })
+}
+
 afterEach(async () => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   await clear()
 })
@@ -93,5 +143,67 @@ describe('a planned hike’s notices.json on a relaunch with no signal', () => {
       'club_page:area',
     ])
     expect(offline.published?.generatedAt.toISOString()).toBe('2026-10-08T22:51:29.000Z')
+  })
+})
+
+describe('a request that never answers', () => {
+  it('reads the HEAD about notices.json as not said once MANIFEST_READ_TIMEOUT_MS passes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) =>
+      unanswered(init),
+    )
+    let listed: boolean | undefined
+    void noticesListed().then((answer) => {
+      listed = answer
+    })
+
+    await vi.advanceTimersByTimeAsync(MANIFEST_READ_TIMEOUT_MS - 1)
+    expect(listed).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.waitFor(() => expect(listed).toBe(false))
+  })
+
+  it('answers a planned hike’s read from the kept copy once NOTICES_DOWNLOAD_TIMEOUT_MS passes', async () => {
+    await rememberPublished(PUBLISHED_NOTICES_KEY, KEPT_NOTICES)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) =>
+      unanswered(init),
+    )
+    let read: Awaited<ReturnType<typeof readPublishedNotices>> | undefined
+    void readPublishedNotices(true, { online: true }).then((answer) => {
+      read = answer
+    })
+
+    // A slow link is given the whole deadline to bring the file.
+    await vi.advanceTimersByTimeAsync(NOTICES_DOWNLOAD_TIMEOUT_MS - 1)
+    expect(read).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.waitFor(() =>
+      expect(read?.published?.items.map((notice) => notice.notice_id)).toEqual([
+        'club_page:footbridge',
+      ]),
+    )
+    expect(read?.published?.generatedAt.toISOString()).toBe('2026-10-07T06:00:00.000Z')
+  })
+
+  it('answers the hazard areas from the kept copy once MANIFEST_READ_TIMEOUT_MS passes', async () => {
+    await rememberPublished(PUBLISHED_HAZARD_AREAS_KEY, KEPT_HAZARDS)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) =>
+      unanswered(init),
+    )
+    let hazards: Awaited<ReturnType<typeof fetchPublishedHazardAreas>> | undefined
+    void fetchPublishedHazardAreas({ online: true }).then((answer) => {
+      hazards = answer
+    })
+
+    await vi.advanceTimersByTimeAsync(MANIFEST_READ_TIMEOUT_MS - 1)
+    expect(hazards).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    await vi.waitFor(() =>
+      expect(hazards?.items.map((notice) => notice.notice_id)).toEqual([
+        'oprhp_hunting_areas:1',
+      ]),
+    )
   })
 })

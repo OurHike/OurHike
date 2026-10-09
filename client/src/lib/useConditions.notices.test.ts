@@ -202,7 +202,7 @@ describe('conditions/hazard_areas.json, read at launch whatever is planned (deci
 
   it('keeps the hazard areas it holds when a later read finds no file, never reading that as no area', async () => {
     bucketWithHazards({ serves: true })
-    const read = vi.spyOn(notices, 'readPublishedNotices')
+    const read = vi.spyOn(notices, 'fetchPublishedHazardAreas')
     const { result, rerender } = renderHook(
       ({ planned }) => useConditions(true, true, planned),
       { initialProps: { planned: false } },
@@ -211,11 +211,43 @@ describe('conditions/hazard_areas.json, read at launch whatever is planned (deci
 
     // The next read answers nothing for the file: a 404 with no kept copy,
     // or a dead spot. Planning a hike is what runs the read again here.
-    read.mockResolvedValue({ published: null, listed: false, hazards: null })
+    read.mockResolvedValue(null)
     rerender({ planned: true })
     await waitFor(() => expect(read).toHaveBeenCalledTimes(2))
     await read.mock.results[1].value
     expect(result.current.hazardFile?.items).toHaveLength(1)
+  })
+
+  /** The bucket at a weak-signal trailhead: the hazard file answers at once,
+   *  and the request for conditions/notices.json made with `method` (the
+   *  planned hike's download, or the HEAD asked with nothing planned) has not
+   *  answered and does not. */
+  function trailheadWith(method: 'GET' | 'HEAD'): MockInstance<typeof fetch> {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input) === HAZARD_URL) {
+        return new Response(JSON.stringify(A_HAZARD_DOCUMENT), { status: 200 })
+      }
+      if (String(input) === NOTICES_URL && (init?.method ?? 'GET') === method) {
+        return new Promise<Response>(() => undefined)
+      }
+      return new Response('', { status: 404 })
+    })
+  }
+
+  it('draws the hazard areas while a planned hike’s notices.json is still downloading', async () => {
+    // UA's file was 11,811,546 bytes on 2026-10-09, about 2 MB on the wire:
+    // the areas must not wait for it.
+    trailheadWith('GET')
+    const { result } = renderHook(() => useConditions(true, true, true))
+    await waitFor(() => expect(result.current.hazardFile?.items).toHaveLength(1))
+    expect(result.current.clubNotices).toBeNull()
+  })
+
+  it('draws the hazard areas while the HEAD about notices.json has not answered', async () => {
+    trailheadWith('HEAD')
+    const { result } = renderHook(() => useConditions(true, true, false))
+    await waitFor(() => expect(result.current.hazardFile?.items).toHaveLength(1))
+    expect(result.current.clubNoticesListed).toBe(false)
   })
 
   it('holds no hazard file on a bucket that serves none, as production’s does today', async () => {

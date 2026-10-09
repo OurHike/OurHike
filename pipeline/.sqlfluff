@@ -72,7 +72,12 @@ exclude_rules = ST06
 # unlinted file, and SQLFluff says so only as a warning, so the step stays
 # green: int_podcasts__checked.sql, 20,789 bytes, was skipped that way
 # (2026-10-01, sqlfluff 4.3.0). The skip guards against parser lock on
-# generated SQL, and every file here is written by hand.
+# generated SQL, and since decision 91 the lint covers generate_dbt.py's
+# models as well as the hand-written ones: 1,168 generated files beside 345
+# (counted 2026-10-09), the largest generated one 26,232 bytes, which the
+# default would skip unlinted. Keeping 0 is a bet that no generated file
+# locks the parser, @unvalidated beyond the lint finishing over all of them;
+# if one ever locks it, skip that file by name, not by size.
 large_file_skip_byte_limit = 0
 
 # apply_dbt_builtins gives ref/source/config/var/is_incremental stand-ins.

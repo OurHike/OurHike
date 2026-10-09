@@ -200,9 +200,14 @@ contracted tables. Snapshots exist for one purpose, the row dates: one
 no incremental model and no other snapshot without a decision (decision 27).
 `closures` and `warnings` stay `table`.
 
-**Every source and every exposure carries `meta.cadence`**, one of `hourly`,
-`daily`, `weekly`, `monthly` (decision 28). Models are not tagged: a model's
-cadence is the fastest among its upstream sources, and each lane runs
+**Every source and every exposure is meant to carry `meta.cadence`**, one of
+`hourly`, `daily`, `weekly`, `monthly` (decision 28). All 54 exposures do; 58
+of 757 sources do not (measured 2026-10-09 from the parsed manifest: 13 in
+`atc`, 8 in `dec`, and 37 across 25 other source blocks).
+`build_marts.py`'s monthly lane builds what an untagged source feeds (its
+docstring, "A LANE BUILDS ONLY ITS OWN NODES"), so such a source is monthly
+in effect; give a new one its cadence anyway. Models are not tagged: a
+model's cadence is the fastest among its upstream sources, and each lane runs
 `dbt build --select config.meta.cadence:<lane>+` (measured selecting correctly
 on 2.0.5, 2026-10-01).
 

@@ -248,11 +248,12 @@ what was written and then turns the run red:
   int_closures__gate holds their source for (a club's wording in a published
   column, a row outside its region box), and its rows are printed as a failed
   test's are;
-- a model of one generated club notice source failed in stage A (a SQL error
-  on one source's rows): that source's raw tables are dropped from the
-  warehouse and stage A runs once more, so the gate holds the source as "not
-  in this warehouse" and it carries its last good rows. Any other failure in
-  stage A stops the build, as before;
+- a model or data test of one generated club notice source failed in stage A
+  (a SQL error on one source's rows, or, in publish-conditions.yml run 599, a
+  key test naming a column the source's layer does not serve): that source's
+  raw tables are dropped from the warehouse and stage A runs once more, so
+  the gate holds the source as "not in this warehouse" and it carries its
+  last good rows. Any other failure in stage A stops the build, as before;
 - some pub_ writers failed and every failure in that dbt run is a writer's
   own (its model, or a test or unit test of it): each failed writer's file is
   removed from the processed directory, so a half-written or untested file
@@ -1552,15 +1553,19 @@ def _ancestor_sources(manifest: dict, unique_id: str) -> set[str]:
 
 
 def one_sources_failures(results: list[dict], manifest: dict, readers: list[dict[str, str]]) -> dict[str, list[str]] | None:
-    """The generated club notice sources whose own models errored in this dbt run, each with its raw tables, or None
-    unless every failure in it is that (the module docstring, "ONE SOURCE OR ONE WRITER NEVER STOPS THE REST").
+    """The generated club notice sources whose own models or data tests failed in this dbt run, each with its raw
+    tables, or None unless every failure in it is that (the module docstring, "ONE SOURCE OR ONE WRITER NEVER STOPS
+    THE REST").
 
-    A model is one source's own when the only club notice raw tables above it are that one source's, and the source
-    is generated (seeds/notice_readers.csv's `staged_by` is a model, never `hand`): its base and staging models read
-    an absent table as typed and empty (macros/notices.sql's notice_raw_table), and the gate holds the source with
-    that reason. A union of several sources, a hand-staged source's model, any failed test or unit test, and anything
-    else is not one source's own, so the build stops on it as before. Skipped nodes are what a failure left unbuilt
-    and say nothing of their own."""
+    A model that errored, or a data test that errored or failed, is one source's own when the only club notice raw
+    tables above it are that one source's, and the source is generated (seeds/notice_readers.csv's `staged_by` is a
+    model, never `hand`): its base and staging models read an absent table as typed and empty (macros/notices.sql's
+    notice_raw_table), a test on the absent table itself passes (tests/generic/duplicates_are_exact.sql), and the
+    gate holds the source with that reason. Tests count since publish-conditions.yml run 599 (37999435763,
+    2026-10-09), where a held Nebraska source's key test could not bind `globalid`, a column its layer does not
+    have, and that one error stopped every hourly file. A union of several sources, a hand-staged source's model, a
+    unit test, which fails on the code and not on one source's rows, and anything else is not one source's own, so
+    the build stops on it as before. Skipped nodes are what a failure left unbuilt and say nothing of their own."""
     by_table = {row["raw_table"]: row for row in readers}
     tables_of: dict[str, list[str]] = {}
     for row in readers:
@@ -1573,7 +1578,10 @@ def one_sources_failures(results: list[dict], manifest: dict, readers: list[dict
         status = result.get("status")
         if status not in FAILED_STATUSES or status == "skipped":
             continue
-        if not unique_id.startswith("model.") or status != "error":
+        own = (unique_id.startswith("model.") and status == "error") or (
+            unique_id.startswith("test.") and status in ("error", "fail")
+        )
+        if not own:
             return None
         keys = set()
         for source in _ancestor_sources(manifest, unique_id):
@@ -2141,7 +2149,7 @@ def main(argv: list[str] | None = None) -> int:
         position += 1
         if run.stage == CHECKS:
             # Less the checks on each raw table the warehouse does not hold now, which counts the tables of a source
-            # dropped after a failed model of its own (one_sources_failures()), and the same pass otherwise. A
+            # dropped after a failed model or test of its own (one_sources_failures()), and the same pass otherwise. A
             # warehouse that cannot be read here leaves nothing out, rather than stopping a build the pass never stops.
             try:
                 absent = absent_sources(_read_manifest(), paths.warehouse, args.lane)
@@ -2211,13 +2219,14 @@ def main(argv: list[str] | None = None) -> int:
                     for key, tables in sorted(held.items()):
                         dropped = drop_raw_tables(paths.warehouse, tables)
                         print(
-                            f"::error title={key} held for a failed model::a model of {key} alone failed in {run.label}, "
+                            f"::error title={key} held for a failure of its own::a model or data test of {key} alone "
+                            f"failed in {run.label}, "
                             f"so its raw tables ({', '.join(dropped) or 'none held'}) are dropped from this build's "
                             "warehouse and int_closures__gate holds it as not in this warehouse: it carries its last good "
                             "rows, every other source still publishes, and the run goes red afterwards.",
                             flush=True,
                         )
-                    partial.append(f"{', '.join(sorted(held))} held for a failed model")
+                    partial.append(f"{', '.join(sorted(held))} held for a failure of its own")
                     stage_a_rerun = True
                     position -= 1  # stage A once more, with those tables gone
                     continue

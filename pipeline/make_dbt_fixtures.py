@@ -4915,7 +4915,6 @@ NOTICE_LAYERS = {
             "To_": "Fixture Village",
             "CreationDate": FIXTURE_DATE_MS,
             "EditDate": FIXTURE_DATE_MS,
-            "GlobalID": "{fixture-ngpc-cowboy-trail-improvements-1}",
         },
     ),
     "oprd_hunting_areas": (

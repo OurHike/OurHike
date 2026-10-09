@@ -1790,8 +1790,40 @@ def test_a_model_of_one_club_notice_source_failing_drops_its_raw_tables_and_runs
     assert _raw_tables(warehouse) == ["raw_a__club_y", "raw_nynjtc__nynjtc_trail_alerts"]
     stage_a = [argv for argv, _, _ in recorder.calls if _is_stage_a(argv)]
     assert len(stage_a) == 2 and stage_a[0] == stage_a[1]
-    assert "::error title=club_x held for a failed model::" in capsys.readouterr().out
+    assert "::error title=club_x held for a failure of its own::" in capsys.readouterr().out
     assert recorder.calls[-1][0][:3] == (*RESTORE, "save")
+
+
+@pytest.mark.parametrize(
+    ("failed_test", "parent", "status"),
+    [
+        (
+            "test.ourhike.source_duplicates_are_exact_a_raw_a__club_x__club_x___globalid.d23fb57662",
+            "source.ourhike.a.raw_a__club_x",
+            "error",
+        ),
+        ("test.ourhike.unique_stg_a__club_x_notice_id.1", "model.ourhike.stg_a__club_x", "fail"),
+    ],
+)
+def test_a_data_test_of_one_club_notice_source_failing_drops_its_raw_tables_and_runs_stage_a_once_more(
+    monkeypatch, tmp_path, capsys, failed_test, parent, status
+):
+    """publish-conditions.yml run 599 (37999435763, 2026-10-09): a held Nebraska source's key test could not bind
+    `globalid`, which its layer does not have ("Binder Error: Referenced column "globalid" not found"), and that one
+    error stopped stage A, so no hourly file was written. A data test above one generated source's raw tables alone
+    is that source's own, as its models are: its tables are dropped, the test reads the absent table as passing, and
+    the gate holds the source."""
+    manifest, warehouse = _one_source_setup(tmp_path, monkeypatch)
+    manifest["parent_map"][failed_test] = [parent]
+    failed = [{"unique_id": failed_test, "status": status, "message": "Binder Error"}]
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 1, failed, {}), (_is_stage_a, 0, [], {})])
+
+    code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)
+
+    assert code == build_marts.PARTIAL_EXIT
+    assert _raw_tables(warehouse) == ["raw_a__club_y", "raw_nynjtc__nynjtc_trail_alerts"]
+    assert len([argv for argv, _, _ in recorder.calls if _is_stage_a(argv)]) == 2
+    assert "::error title=club_x held for a failure of its own::" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
@@ -1800,10 +1832,16 @@ def test_a_model_of_one_club_notice_source_failing_drops_its_raw_tables_and_runs
         ("model.ourhike.int_closures__club_notices_part_1_unioned", "a union of two sources"),
         ("model.ourhike.base_nynjtc__nynjtc_trail_alerts", "a hand-staged source, whose base reads no absent table"),
         ("model.ourhike.int_closures__gate", "a model of no one source"),
+        ("test.ourhike.unique_int_closures__club_notices_part_1_unioned_notice_id.1", "a test of a union of two sources"),
+        ("unit_test.ourhike.stg_a__club_x.reads_a_status", "a unit test, which fails on the code, not on one source's rows"),
     ],
 )
 def test_a_failed_model_that_is_not_one_generated_sources_own_still_stops_the_build(monkeypatch, tmp_path, failed_node, why):
     manifest, warehouse = _one_source_setup(tmp_path, monkeypatch)
+    manifest["parent_map"]["test.ourhike.unique_int_closures__club_notices_part_1_unioned_notice_id.1"] = [
+        "model.ourhike.int_closures__club_notices_part_1_unioned"
+    ]
+    manifest["parent_map"]["unit_test.ourhike.stg_a__club_x.reads_a_status"] = ["model.ourhike.stg_a__club_x"]
     recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 1, [{"unique_id": failed_node, "status": "error"}], {})])
 
     code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)

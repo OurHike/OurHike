@@ -20,7 +20,7 @@ import check_contract_versions as ccv
 TODAY = "2026-10-02"
 
 
-def _mart(name="podcasts", version=None, columns=None, enforced=True, deprecation_date=None):
+def _mart(name="podcasts", version=None, columns=None, enforced=True, deprecation_date=None, latest=None):
     columns = columns or {"spotify_id": "varchar", "title": "varchar", "minutes": "bigint"}
     node_id = f"model.ourhike.{name}" + (f".v{version}" if version is not None else "")
     return node_id, {
@@ -28,7 +28,7 @@ def _mart(name="podcasts", version=None, columns=None, enforced=True, deprecatio
         "package_name": "ourhike",
         "name": name,
         "version": version,
-        "latest_version": version,
+        "latest_version": latest if latest is not None else version,
         "deprecation_date": deprecation_date,
         "config": {"materialized": "table", "contract": {"enforced": enforced}},
         "columns": {
@@ -72,14 +72,47 @@ def _exposure(writer_id, keys, name="podcasts_episodes_json"):
     }
 
 
-def _manifest(*nodes, exposures=()):
-    return {"nodes": dict(nodes), "exposures": dict(exposures)}
+def _reader(name="int_podcasts__latest", resource_type="model", reads=(("podcasts", 1),), pinned=True):
+    """A node that is not a writer and reads `reads` as _writer's do: an intermediate table, or a data test."""
+    node_id = f"{resource_type}.ourhike.{name}"
+    return node_id, {
+        "resource_type": resource_type,
+        "package_name": "ourhike",
+        "name": name,
+        "version": None,
+        "config": {"materialized": "table" if resource_type == "model" else "test"},
+        "refs": [
+            {"name": model, "package": None, "version": (version if pinned else None) if version is not None else None}
+            for model, version in reads
+        ],
+        "depends_on": {
+            "nodes": [f"model.ourhike.{model}" + (f".v{version}" if version is not None else "") for model, version in reads]
+        },
+    }
+
+
+def _unit_test(*inputs, model="int_podcasts__latest", name="int_podcasts__latest_keeps_one_row"):
+    """A unit test as dbt 2.0.6 keeps it: each given's `input` is the text of its call, and `refs` names only the model
+    under test (read off this project's manifest, 2026-10-09)."""
+    return f"unit_test.ourhike.{model}.{name}", {
+        "resource_type": "unit_test",
+        "package_name": "ourhike",
+        "name": name,
+        "model": model,
+        "refs": [{"name": model, "package": "ourhike", "version": None}],
+        "given": [{"input": text, "rows": []} for text in inputs],
+    }
+
+
+def _manifest(*nodes, exposures=(), unit_tests=()):
+    return {"nodes": dict(nodes), "exposures": dict(exposures), "unit_tests": dict(unit_tests)}
 
 
 def _check(base, head, today=TODAY):
     report = ccv.Report()
     if base is not None:
         ccv.compare(base, head, ccv.datetime.fromisoformat(today).replace(tzinfo=ccv.timezone.utc), report)
+    ccv.check_pins(head, report)
     ccv.check_writers(head, report)
     return report
 
@@ -267,6 +300,78 @@ def test_a_writer_reading_an_unversioned_mart_needs_no_pin():
     assert _check(None, head).failures == []
 
 
+# --- rule 5 beyond the writers ------------------------------------------------
+
+
+def test_an_intermediate_reading_a_versioned_mart_without_pinning_it_fails():
+    """The review of PR #1805 (dlt → dbt re-platform as one go/no-go change), 2026-10-09: seven intermediates read
+    points_of_interest or trail_lines unpinned, and rule 5 looked only at the writers. int_trail_lines__spur_destinations
+    alone feeds trail_lines v1, and through it three writers, each of which pins."""
+    reader_id, reader = _reader(pinned=False)
+    (failure,) = _check(None, _manifest(_mart(version=1), (reader_id, reader))).failures
+    assert failure.startswith("model.ourhike.int_podcasts__latest: reads `podcasts` without a version")
+    assert "pin it, ref('podcasts', v=1)" in failure
+
+
+def test_a_pinned_intermediate_passes():
+    reader_id, reader = _reader()
+    assert _check(None, _manifest(_mart(version=1), (reader_id, reader))).failures == []
+
+
+def test_a_data_test_reading_a_versioned_mart_without_pinning_it_fails():
+    """A test that moved to v2 at a bump would test a file nobody publishes yet, and pass or fail on its columns."""
+    test_id, data_test = _reader(name="assert_every_episode_may_publish", resource_type="test", pinned=False)
+    (failure,) = _check(None, _manifest(_mart(version=1), (test_id, data_test))).failures
+    assert failure.startswith("test.ourhike.assert_every_episode_may_publish: reads `podcasts` without a version")
+
+
+def test_a_node_reading_an_unversioned_model_needs_no_pin():
+    reader_id, reader = _reader(reads=(("trail_lines", None),))
+    assert _check(None, _manifest(_mart(name="trail_lines"), (reader_id, reader))).failures == []
+
+
+def test_a_unit_test_given_without_a_version_fails():
+    """A given must name the relation its model reads; unpinned, it follows the latest version away from a model
+    that pins (pub_trail_graph_profile read elevation v1 under a given of plain ref('elevation'), 2026-10-09)."""
+    unit_id, unit_test = _unit_test("ref('podcasts')", "ref('int_sources__publication')")
+    (failure,) = _check(None, _manifest(_mart(version=1), unit_tests=[(unit_id, unit_test)])).failures
+    assert failure.startswith(f"{unit_id}'s given: reads `podcasts` without a version; pin it, ref('podcasts', v=1)")
+
+
+@pytest.mark.parametrize(
+    "given",
+    ["ref('podcasts', v=1)", 'ref("podcasts", version=1)', "ref('ourhike', 'podcasts', v=1)", "source('raw', 'podcasts')"],
+)
+def test_a_pinned_given_or_a_source_given_passes(given):
+    unit_id, unit_test = _unit_test(given)
+    assert _check(None, _manifest(_mart(version=1), unit_tests=[(unit_id, unit_test)])).failures == []
+
+
+def test_a_given_naming_its_package_is_still_read_for_its_model():
+    unit_id, unit_test = _unit_test("ref('ourhike', 'podcasts')")
+    (failure,) = _check(None, _manifest(_mart(version=1), unit_tests=[(unit_id, unit_test)])).failures
+    assert "reads `podcasts` without a version" in failure
+
+
+def test_the_pin_asked_for_is_the_version_an_unpinned_ref_reads_today():
+    """Pinning the latest version changes nothing a build reads today; only the next bump stops moving it."""
+    reader_id, reader = _reader(reads=(("podcasts", 2),), pinned=False)
+    head = _manifest(_mart(version=1, latest=2), _mart(version=2, latest=2), (reader_id, reader))
+    (failure,) = _check(None, head).failures
+    assert "pin it, ref('podcasts', v=2)" in failure
+
+
+def test_a_declared_latest_version_wins_over_the_highest_one():
+    """A prerelease v2 beside `latest_version: 1` leaves unpinned refs on v1, so the pin asked for is v1."""
+    reader_id, reader = _reader(pinned=False)
+    v1_id, v1 = _mart(version=1, latest=1)
+    v2_id, v2 = _mart(version=2)
+    v2["latest_version"] = None
+    for order in ([(v2_id, v2), (v1_id, v1)], [(v1_id, v1), (v2_id, v2)]):
+        (failure,) = _check(None, _manifest(*order, (reader_id, reader))).failures
+        assert "pin it, ref('podcasts', v=1)" in failure
+
+
 @pytest.mark.parametrize("key", ["v2/stewards.json", "conditions/v2/closures.json", "podcasts/v2/episodes.json"])
 def test_a_v2_writer_names_v2_where_elt_md_puts_it(key):
     writer_id, writer = _writer(reads=(("podcasts", 2),))
@@ -404,10 +509,18 @@ def test_the_command_exits_1_and_names_each_failure(tmp_path, capsys):
     assert out.count("FAIL ") == 2
 
 
-def test_without_a_base_only_the_writers_rules_run(tmp_path, capsys):
+def test_without_a_base_only_the_heads_own_rules_run(tmp_path, capsys):
     head = _write(tmp_path, "head.json", _manifest(_mart(version=1)))
     assert ccv.main(["--head", str(head)]) == 0
-    assert "no base manifest, so only the writers' own rules ran" in capsys.readouterr().out
+    assert "no base manifest, so only the head's own rules (5-7) ran" in capsys.readouterr().out
+
+
+def test_without_a_base_an_unpinned_intermediate_still_fails_the_command(tmp_path, capsys):
+    """Rule 5 needs no base: CI's step runs the head alone when the base predates this script."""
+    reader_id, reader = _reader(pinned=False)
+    head = _write(tmp_path, "head.json", _manifest(_mart(version=1), (reader_id, reader)))
+    assert ccv.main(["--head", str(head)]) == 1
+    assert "model.ourhike.int_podcasts__latest: reads `podcasts` without a version" in capsys.readouterr().out
 
 
 def test_a_manifest_that_is_not_there_exits_2(tmp_path):

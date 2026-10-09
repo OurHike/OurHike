@@ -32,14 +32,14 @@ mart_rows as (
         source_key,
         source_row_key,
         'closures' as mart
-    from {{ ref('closures') }}
+    from {{ ref('closures', v=1) }}
     union all
     select
         warning_id as notice_id,
         source_key,
         source_row_key,
         'warnings' as mart
-    from {{ ref('warnings') }}
+    from {{ ref('warnings', v=1) }}
 )
 
 select

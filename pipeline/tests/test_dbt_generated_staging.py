@@ -146,7 +146,9 @@ def test_a_table_read_off_a_pdf_has_no_freshness_and_its_evaluator_exception_and
 
     So exactly the generated tables read off a PDF carry `freshness: null`, and each has its
     fct_sources_without_freshness row in seeds/dbt_project_evaluator_exceptions.csv, so the evaluator's rule
-    still holds for every other table. generate_notice_models.py's PDF notices are held the same way.
+    still holds for every other table. generate_notice_models.py's PDF notices are not: production measures them,
+    so they keep their freshness and CI's freshness commands leave them out by a tag
+    (tests/test_generated_notice_models.py).
     """
     import csv
 

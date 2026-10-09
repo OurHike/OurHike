@@ -13,7 +13,7 @@ with at_published as (
         elevation.seq,
         elevation.elevation_ft,
         profile.sample_index
-    from {{ ref('elevation') }} as elevation
+    from {{ ref('elevation', v=1) }} as elevation
     inner join {{ ref('int_elevation__profile') }} as profile
         on
             elevation.line_id = profile.line_id
@@ -26,7 +26,7 @@ edge_published as (
         seq,
         elevation_ft,
         seq as sample_index
-    from {{ ref('elevation') }}
+    from {{ ref('elevation', v=1) }}
     where line_id != 'AT'
 ),
 

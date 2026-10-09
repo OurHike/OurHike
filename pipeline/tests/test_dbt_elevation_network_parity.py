@@ -75,7 +75,8 @@ def _on(model: str) -> list[dict]:
 
 
 def _given(test: dict, model: str) -> list[dict]:
-    return next(given for given in test["given"] if given["input"] == f"ref('{model}')")["rows"]
+    """A versioned mart's given names its version, `ref('elevation', v=1)` (check_contract_versions.py's rule 5)."""
+    return next(given for given in test["given"] if re.fullmatch(rf"ref\('{model}'(, v=\d+)?\)", given["input"]))["rows"]
 
 
 def render_macro(name: str, **arguments: str) -> str:

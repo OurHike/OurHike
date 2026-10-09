@@ -39,7 +39,7 @@
 -- ATC Parking GlobalID such as `{03D8B54B-...}`, and none parses as JSON, so
 -- no row reaches that case today.
 with pois as (
-    select * from {{ ref('points_of_interest') }}
+    select * from {{ ref('points_of_interest', v=1) }}
     where
         phone_files in ('poi_by_type', 'nearby_poi')
         and poi_type in ('trailhead', 'parking', 'resupply')

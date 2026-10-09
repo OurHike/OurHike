@@ -539,7 +539,7 @@ unit_tests:
           - {edge_id: 'trail:b#1.1', edge_index: 1}
           - {edge_id: 'trail:c#1.1', edge_index: 2}
           - {edge_id: 'trail:d#1.1', edge_index: 3}
-      - input: ref('elevation')
+      - input: ref('elevation', v=1)
         rows:
           - {line_id: 'trail:a#1.1', seq: 0, elevation_ft: 980.0}
           - {line_id: 'trail:a#1.1', seq: 1, elevation_ft: null}
@@ -559,7 +559,7 @@ unit_tests:
     given:
       - input: ref('int_trail_network__edges')
         rows: []
-      - input: ref('elevation')
+      - input: ref('elevation', v=1)
         rows: []
     expect:
       rows:

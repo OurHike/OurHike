@@ -21,7 +21,7 @@ areas as (
 
 closed_sections as (
     select count(*) as section_count
-    from {{ ref('trail_lines') }}
+    from {{ ref('trail_lines', v=1) }}
     where closure_kind = 'area'
 )
 

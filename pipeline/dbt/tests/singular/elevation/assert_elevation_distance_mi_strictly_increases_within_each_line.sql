@@ -14,7 +14,7 @@ with ordered as (
         distance_mi,
         lag(distance_mi) over (partition by line_id order by seq)
             as previous_distance_mi
-    from {{ ref('elevation') }}
+    from {{ ref('elevation', v=1) }}
 )
 
 select

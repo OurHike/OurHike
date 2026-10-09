@@ -2063,7 +2063,7 @@ unit_tests:
       load_destination_pois().
     model: int_trail_lines__spur_destinations
     given:
-      - input: ref('points_of_interest')
+      - input: ref('points_of_interest', v=1)
         rows:
           - {poi_id: "viewpoint:lunch-rocks", poi_type: "viewpoint", lat: 41.0001, lon: -73.99000000000001, record_order: 0, phone_files: "poi_by_type"}
           - {poi_id: "water:spring-b", poi_type: "water", lat: 41.0002, lon: -74.0, record_order: 7, phone_files: "poi_by_type"}

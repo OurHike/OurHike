@@ -577,6 +577,8 @@ if selected_has dbt; then
     step "dbt notice freshness"  env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_freshness_runs.py
     # The data-quality page's two files from Elementary-shaped tables (decision 102), as CI's dbt job runs it.
     step "dbt data-quality files" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_data_quality_builds.py
+    # Every exceptions-seed row names a resource the parsed project has, as CI's dbt job checks it.
+    step "dbt exceptions live"   env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_evaluator_exceptions.py
     for family in podcasts:podcasts_episodes stewards:stewards registry:registry; do
       step "dbt parity ${family%%:*}" env -C pipeline "$PY" parity.py "${family%%:*}" --new "$dbt_tmp/processed/${family#*:}.json"
     done
@@ -584,7 +586,8 @@ if selected_has dbt; then
     for family in trail_graph_elevation trail_graph_profile; do
       step "dbt parity $family" env -C pipeline "$PY" parity.py "$family" --new "$dbt_tmp/processed/$family.json" --raw-dir "$dbt_tmp/raw" --warehouse "$dbt_tmp/warehouse.duckdb"
     done
-    step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir .
+    # The PDF notices left out, as CI's step leaves them (generate_notice_models.py's PDF_NOTICE_TAG).
+    step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir . --exclude tag:pdf_notice
     step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
     step "dbt docs site"         env -C pipeline "$PY" check_docs_site.py dbt/target/docs
     step "dbt project evaluator" env DBT_PROJECT_EVALUATOR_SEVERITY=error "${dbt_cmd[@]}" build -s package:dbt_project_evaluator --profiles-dir .

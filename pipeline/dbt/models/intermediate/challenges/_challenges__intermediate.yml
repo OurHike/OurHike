@@ -172,7 +172,7 @@ models:
           - relationships:
               name: challenges_every_resolved_challenge_may_publish
               arguments:
-                to: ref('challenges')
+                to: ref('challenges', v=1)
                 field: challenge_id
               config:
                 where: "problem is null"

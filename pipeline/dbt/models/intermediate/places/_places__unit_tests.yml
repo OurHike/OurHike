@@ -222,7 +222,7 @@ unit_tests:
       Mirrors
       tests/test_export_places.py::TestLines::test_a_line_whose_steward_is_held_back_measures_nothing_and_is_counted.
     given:
-      - input: ref('trail_lines')
+      - input: ref('trail_lines', v=1)
         rows:
           - {"trail_line_id": "held_trails:1", "club": "held", "source_key": "held_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "Unlicensed Trail", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9808, 41.02894], [-73.9424, 41.02894]]}"}
           - {"trail_line_id": "oprhp_trails:1", "club": "nysparks", "source_key": "oprhp_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "network", "name": "T", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.808, 41.0], [-73.78880000000001, 41.0]]}"}
@@ -243,7 +243,7 @@ unit_tests:
       Mirrors
       tests/test_export_places.py::TestLines::test_the_centerline_always_measures.
     given:
-      - input: ref('trail_lines')
+      - input: ref('trail_lines', v=1)
         rows:
           - {"trail_line_id": "centerline:chain:0", "club": "atc", "source_key": "centerline", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "centerline", "name": "Georgia", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-73.9808, 41.02894], [-73.9424, 41.02894]]}"}
       - input: ref('int_sources__publication')
@@ -265,7 +265,7 @@ unit_tests:
       finding, not a rule anyone wrote down (int_places__lines' header); pinned
       so that changing it is a decision.
     given:
-      - input: ref('trail_lines')
+      - input: ref('trail_lines', v=1)
         rows:
           - {"trail_line_id": "centerline:chain:0", "club": "atc", "source_key": "centerline", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "centerline", "name": null, "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.0], [-73.9616, 41.0]]}"}
           - {"trail_line_id": "side_trails:s1", "club": "atc", "source_key": "side_trails", "_loaded_at": "2026-10-02 00:00:00+00", "line_kind": "side_trail", "name": "Blue Blaze Spur", "geom_geojson": "{\"type\": \"LineString\", \"coordinates\": [[-74.0, 41.01447], [-73.9808, 41.01447]]}"}
@@ -294,7 +294,7 @@ unit_tests:
       tests/test_dbt_places_parity.py holds the lon and lat below to GDAL
       exactly, writing these rows with export_poi.py's own write_poi_type().
     given:
-      - input: ref('points_of_interest')
+      - input: ref('points_of_interest', v=1)
         rows:
           - {"phone_files": "poi_by_type", "poi_type": "parking", "poi_id": "atc_parking:p1", "source": "atc_parking", "source_key": "parking", "source_feature_id": "p1", "name": "Lot One", "lon": -73.99000000000001, "lat": 34.62661800000001, "record_order": 4000000000, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}
           - {"phone_files": "poi_by_type", "poi_type": "resupply", "poi_id": "atc_communities:c1", "source": "atc_communities", "source_key": "communities", "source_feature_id": "c1", "name": "Unionville", "lon": -74.29599999999999, "lat": 41.0, "record_order": 6000000000, "club": "atc", "_loaded_at": "2026-10-02 00:00:00+00"}

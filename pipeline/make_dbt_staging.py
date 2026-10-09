@@ -545,7 +545,10 @@ class Table:
         or extract/_pdf_content.py's ContentPdf. Fixture mode's Python need not have pypdf, so the fixture warehouse
         never holds the table, and `dbt source freshness` would fail on it (CI's dbt job did, 2026-10-04, on
         ata_water_cache_boxes, bmta_access_points and rmc_recommended_hikes). So its source table carries
-        `freshness: null`, as generate_notice_models.py's is_pdf_notice() gives a PDF notice's."""
+        `freshness: null`. All seven such tables on 2026-10-09 were on the monthly lane, which no production job
+        measures for freshness (generate_notice_models.py's MONTHLY_WARN_DAYS). A PDF notice is hourly and
+        production measures it, so it keeps its freshness and is tagged generate_notice_models.py's PDF_NOTICE_TAG
+        instead."""
         return self.entry.get("kind") == PDF_POINTS_KIND or self.reader == "ContentPdf"
 
     def key_inputs(self) -> list[str]:

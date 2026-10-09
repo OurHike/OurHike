@@ -90,9 +90,9 @@ def test_every_generated_notice_source_measures_from_the_run_log_by_its_cadence(
         if "loaded_at_field" in config or config.get("loaded_at_query") != MEASURE:
             problems.append(f"{source.table}: measured by {config.get('loaded_at_field') or config.get('loaded_at_query')}")
         warn, error = _thresholds(config)
-        if generator.is_pdf_notice(source):
-            expected = (None, None)
-        elif source.cadence == "monthly":
+        # A PDF notice included: CI's freshness leaves it out by its tag, never by dropping its thresholds
+        # (tests/test_generated_notice_models.py).
+        if source.cadence == "monthly":
             expected = (7 * 24, None)
         else:
             hours = generator.FRESHNESS_HOURS[source.cadence]

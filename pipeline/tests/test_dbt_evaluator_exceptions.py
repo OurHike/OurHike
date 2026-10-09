@@ -20,14 +20,41 @@ What this cannot check: that a title is the issue's current title (no
 network in tests), or that a pattern matches only the models its comment
 means. The evaluator run in CI's `dbt` job is what shows the pattern is not
 too narrow; nothing shows it is not too wide except reading it.
+
+A ROW THAT CAN NO LONGER MATCH ANYTHING is a rule switched off in advance for
+whatever later takes the name. The review of PR #1805 (dlt → dbt re-platform
+as one go/no-go change) ran the evaluator with an empty seed on 2026-10-09 and
+found 11 of 54 rows matching no finding. So every row's pattern must match a
+resource the parsed project has, named as the evaluator names it
+(int_all_graph_resources.sql: `source_name.name` for a source, `name.vN` for a
+versioned model, else `name`). That catches a row whose resource was renamed,
+deleted or versioned: 4 of those 11, rows naming closures, warnings,
+points_of_interest and trail_lines after those marts became closures.v1 and
+the rest. It cannot catch a row whose resource still exists but whose finding
+is gone, because the model was fixed (the other 7: five staging models given
+key tests, pub_trail_miles once pub_trails_geojson gained a second child,
+int_sources__publication once the conditions writers stopped reading it). Only
+an unfiltered evaluator run shows those, which is minutes of build, not a test:
+`dbt build -s package:dbt_project_evaluator` over an empty copy of the seed,
+then each row's LIKE against its finding table. It needs a parsed manifest, so
+it runs only where OURHIKE_DBT names dbt 2.0.6 (pipeline-tests.yml's dbt job
+and scripts/test.sh's dbt suite); the name matching itself is tested here
+without one.
 """
 
 import csv
+import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
-SEED_PATH = Path(__file__).parent.parent / "dbt" / "seeds" / "dbt_project_evaluator_exceptions.csv"
+import pytest
+
+DBT_DIR = Path(__file__).parent.parent / "dbt"
+SEED_PATH = DBT_DIR / "seeds" / "dbt_project_evaluator_exceptions.csv"
 COLUMNS = ["fct_name", "column_name", "id_to_exclude", "comment"]
+DBT = os.environ.get("OURHIKE_DBT")
 
 #: "#1793 — Rebuild ...": a number, an em dash, then a title of a few words.
 ISSUE_WITH_TITLE = re.compile(r"#\d+ — \S+(?: \S+){2,}")
@@ -74,3 +101,101 @@ def test_the_rules_are_caught_by_the_checks_above():
     assert not BARE_ISSUE.search("see #1793 — Rebuild the data platform")
     assert ISSUE_WITH_TITLE.search("see #1793 — Rebuild the data platform")
     assert not "%_%".strip("%_")
+
+
+def _like(pattern: str) -> re.Pattern:
+    """A SQL LIKE pattern with no ESCAPE clause, as filter_exceptions() writes it: `%` any run, `_` any one character."""
+    return re.compile("".join(".*" if c == "%" else "." if c == "_" else re.escape(c) for c in pattern), re.DOTALL)
+
+
+def _resource_names(manifest: dict) -> dict[str, set[str]]:
+    """Every name a finding can carry, by kind, as the evaluator writes it (int_all_graph_resources.sql)."""
+    nodes = {
+        f"{node['name']}.v{node['version']}" if node.get("version") is not None else node["name"]
+        for node in (manifest.get("nodes") or {}).values()
+        if node.get("resource_type") in ("model", "seed", "snapshot")
+    }
+    sources = {f"{source['source_name']}.{source['name']}" for source in (manifest.get("sources") or {}).values()}
+    exposures = {exposure["name"] for exposure in (manifest.get("exposures") or {}).values()}
+    return {"nodes": nodes, "sources": sources, "exposures": exposures}
+
+
+def _kind(row: dict) -> str:
+    """Which names a row's column holds: an exposure's, a source's, or a model's (a seed's or snapshot's for a parent)."""
+    if row["column_name"] == "exposure_name":
+        return "exposures"
+    return "sources" if row["fct_name"] == "fct_sources_without_freshness" else "nodes"
+
+
+def _rows_matching_nothing(rows: list[dict], manifest: dict) -> list[str]:
+    names = _resource_names(manifest)
+    return [
+        f"{row['fct_name']} {row['column_name']} {row['id_to_exclude']}"
+        for row in rows
+        if not any(_like(row["id_to_exclude"]).fullmatch(name) for name in names[_kind(row)])
+    ]
+
+
+def test_a_row_naming_a_mart_by_its_unversioned_name_matches_nothing_once_the_mart_is_versioned():
+    """The four renamed rows of 2026-10-09, against a manifest in dbt 2.0.6's shape (a node per version, `version` an
+    integer): `closures` names nothing once the mart is closures.v1, and `closures.v%` names it."""
+    manifest = {
+        "nodes": {
+            "model.ourhike.closures.v1": {"resource_type": "model", "name": "closures", "version": 1},
+            "model.ourhike.stg_octa__trail_lines": {"resource_type": "model", "name": "stg_octa__trail_lines"},
+            "seed.ourhike.notice_readers": {"resource_type": "seed", "name": "notice_readers"},
+        },
+        "sources": {"source.ourhike.atc.raw_atc__water_distance": {"source_name": "atc", "name": "raw_atc__water_distance"}},
+        "exposures": {"exposure.ourhike.step_form_route": {"name": "step_form_route"}},
+    }
+    rows = [
+        {"fct_name": "fct_model_fanout", "column_name": "parent", "id_to_exclude": "closures"},
+        {"fct_name": "fct_model_fanout", "column_name": "parent", "id_to_exclude": "closures.v%"},
+        {"fct_name": "fct_too_many_joins", "column_name": "resource_name", "id_to_exclude": "stg_%__trail_lines"},
+        {"fct_name": "fct_rejoining_of_upstream_concepts", "column_name": "parent", "id_to_exclude": "notice_readers"},
+        {
+            "fct_name": "fct_sources_without_freshness",
+            "column_name": "resource_name",
+            "id_to_exclude": "atc.raw_atc__water_distance",
+        },
+        {"fct_name": "fct_sources_without_freshness", "column_name": "resource_name", "id_to_exclude": "raw_atc__water_distance"},
+        {"fct_name": "fct_exposures_dependent_on_private_models", "column_name": "exposure_name", "id_to_exclude": "step_%"},
+        {"fct_name": "fct_hard_coded_references", "column_name": "model", "id_to_exclude": "step_form_route"},
+    ]
+    assert _rows_matching_nothing(rows, manifest) == [
+        "fct_model_fanout parent closures",
+        "fct_sources_without_freshness resource_name raw_atc__water_distance",
+        "fct_hard_coded_references model step_form_route",
+    ]
+    assert _like("int_%unioned").fullmatch("int_closures__club_notices_part_1_unioned")
+    assert not _like("closures").fullmatch("closures.v1")
+    assert _like("a_c").fullmatch("abc"), "LIKE's `_` is any one character"
+
+
+@pytest.fixture(scope="module")
+def manifest(tmp_path_factory) -> dict:
+    """The project as dbt parses it now, into a directory of its own."""
+    root = tmp_path_factory.mktemp("exceptions_manifest")
+    env = {
+        **os.environ,
+        "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS": "false",
+        "OURHIKE_WAREHOUSE": str(root / "warehouse.duckdb"),
+        "OURHIKE_PROCESSED_DIR": str(root / "processed"),
+    }
+    completed = subprocess.run(
+        [DBT, "parse", "--profiles-dir", ".", "--target-path", str(root / "target"), "--log-path", str(root / "logs")],
+        cwd=DBT_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    path = root / "target" / "manifest.json"
+    assert completed.returncode == 0 and path.exists(), completed.stdout[-3000:] + completed.stderr[-2000:]
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.skipif(not DBT, reason="OURHIKE_DBT names no dbt (the dbt job and scripts/test.sh set it)")
+def test_every_row_names_a_resource_the_project_has_under_its_current_name(manifest):
+    dead = _rows_matching_nothing(_rows(), manifest)
+    assert not dead, f"rows whose pattern names nothing the project has, so they suppress nothing yet: {dead}"

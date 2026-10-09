@@ -263,6 +263,7 @@ jobs:
             pipeline/tests/test_dbt_club_tables_absent_builds.py
             pipeline/tests/test_dbt_notice_source_freshness_runs.py
             pipeline/tests/test_dbt_data_quality_builds.py
+            pipeline/tests/test_dbt_evaluator_exceptions.py
             pipeline/tests/conftest.py
             pipeline/pyproject.toml
             pipeline/requirements-dev.txt
@@ -460,9 +461,10 @@ jobs:
       # ContractBreakingChangeError. check_contract_versions.py fails on a
       # removed column, a changed type, a version dropped before its
       # deprecation_date or a contract switched off, unless the change
-      # arrives as a new version, and requires every pub_ writer to pin the
-      # version it reads and name it in its R2 keys (ELT.md, "Versions and
-      # channels").
+      # arrives as a new version. It requires every model, data test and
+      # unit-test given that reads a versioned mart to pin the version, and
+      # every pub_ writer to name its version in its R2 keys (ELT.md,
+      # "Versions and channels").
       #
       # The base is parsed in a git worktree of the event's base commit (the
       # pull request's, the merge queue's, or the push's previous head),
@@ -686,9 +688,12 @@ jobs:
       # holding only a run log and runs `dbt source freshness` on the real
       # project over nine cases: refused 30 hours, confirmed an hour ago with
       # a week-old `_loaded_at`, read an hour ago, and the rest in its
-      # docstring. It reads the generated YAML, not the generator, so this
-      # venv needs no dlt. Measured 2026-10-07 in a sandbox: 9 passed in 11
-      # to 13 s.
+      # docstring. A second run uses publish-conditions.yml's own selection
+      # and holds that it measures the four PDF notices, which this job's
+      # own freshness step leaves out. It reads the generated YAML, not the
+      # generator, so this venv needs no dlt. Measured 2026-10-07 in a
+      # sandbox: 9 passed in 11 to 13 s; with the second run, 10 passed in
+      # 55 s on 2026-10-09, in a sandbox other builds shared.
       - name: Notice source freshness (tests/test_dbt_notice_source_freshness_runs.py)
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_freshness_runs.py
@@ -703,6 +708,16 @@ jobs:
       - name: The data-quality files (tests/test_dbt_data_quality_builds.py)
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_data_quality_builds.py
+
+      # Every row of the evaluator's exceptions seed names a resource the
+      # parsed project has, named as the evaluator names it, so a row left
+      # behind by a rename or a version suppresses nothing in advance. The
+      # test's docstring says what that can and cannot catch. It parses the
+      # project into a directory of its own. Measured 2026-10-09 in a
+      # sandbox: 6 passed in 27 s, most of it the parse.
+      - name: Exceptions rows name live resources (tests/test_dbt_evaluator_exceptions.py)
+        if: steps.scope.outputs.run == 'true'
+        run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_evaluator_exceptions.py
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by
@@ -842,10 +857,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      # Every source but the PDF notices, which fixture mode never lands (no
+      # pypdf here) and so would read as never read: generate_notice_models.py's
+      # PDF_NOTICE_TAG says why, and publish-conditions.yml measures them.
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
-        run: dbt source freshness --profiles-dir .
+        run: dbt source freshness --profiles-dir . --exclude tag:pdf_notice
 
       # v2's docs are a directory: index.html, assets/ and the Parquet files
       # the page reads with DuckDB-WASM (measured 2026-10-01 on dbt 2.0.6: 315

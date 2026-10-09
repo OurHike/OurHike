@@ -18,16 +18,25 @@ clean-targets: [target, dbt_packages]
 models:
   ourhike:
     staging:
-      # One source() in, light rename/cast only - views, per DBT.md's
-      # conventions. The one sanctioned exception to "no joins in staging"
-      # is stg_opentrail__waypoints's seed lookup, which the design names.
+      # Renames, casts, the key and the dedupe only (decision 40), as views.
+      # No staging model joins another relation: counted 2026-10-09, 64 stg_
+      # models union several base models and every other one reads a single
+      # relation. Decision 40 moved stg_opentrail__waypoints's seed
+      # lookup, once the sanctioned exception, to
+      # int_points_of_interest__classified. Six base models are tables by
+      # their own config: generate_notice_models.py's TABLE_BASES,
+      # base_ourhike__disputes and base_ourhike__notes.
       +materialized: view
       +schema: staging
     intermediate:
       +materialized: view
       +schema: intermediate
     marts:
-      # Final, tested, documented - the only layer materialized as tables.
+      # Final, tested, documented and contracted, as tables. Not the only
+      # tables: 108 intermediates and the six base models above set
+      # materialized='table' in their own config (counted 2026-10-09), the
+      # unions and heavy intermediates the dbt skill's "Materializations"
+      # names among them.
       +materialized: table
       +schema: marts
     publish:

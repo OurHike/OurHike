@@ -33,11 +33,21 @@ first time is the same model: its v1 is compared with the base's unversioned
 one. A removed `not_null` or other constraint is a warning, never a failure:
 dbt Core counts it as breaking, and decision 44 did not name it.
 
-IN THE HEAD ALONE, on every run, for the pub_ writers (materialised
-`phone_file`), because "its writer names the version in the R2 key":
+IN THE HEAD ALONE, on every run:
 
-  5. a writer that reads a versioned model pins it, `ref('podcasts', v=1)`,
-     so a new latest version cannot move a published file underneath it;
+  5. every model, data test and snapshot that reads a versioned model pins
+     it, `ref('podcasts', v=1)`, and so does every unit test's given, so a
+     new latest version cannot move a published file underneath it. A writer
+     is not the only way to move one: an intermediate that reads a mart feeds
+     the marts and writers after it. The review of PR #1805 (dlt → dbt
+     re-platform as one go/no-go change) found seven intermediates, 25 refs
+     in data tests and 11 unit-test givens unpinned on 2026-10-09, when this
+     rule checked writers only; dbt 2.0.6 compiled `ref('points_of_interest')`
+     to points_of_interest_v1 without a notice.
+
+And for the pub_ writers (materialised `phone_file`), because "its writer
+names the version in the R2 key":
+
   6. a writer reads one version, not two;
   7. each key it writes (keys_by_writer() pairs an exposure's keys with its
      writers) carries that version's segment, and v1's keys carry none:
@@ -275,23 +285,63 @@ def compare(base: dict, head: dict, today: datetime, report: Report) -> None:
     report.new = sum(1 for identity in contracted_versions(head) if identity not in matched)
 
 
-def check_writers(head: dict, report: Report) -> None:
-    """Rules 5-7: each pub_ writer pins the version it reads, reads one, and
-    names it in its keys."""
+#: A unit test's given as dbt keeps it, the text of the call: `ref('name')`, `ref('package', 'name')`, either with
+#: `v=` or `version=`. A `source()` or `this` given matches nothing here.
+_GIVEN_REF = re.compile(
+    r"""^\s*ref\(\s*(['"])(?P<first>[^'"]+)\1\s*"""
+    r"""(?:,\s*(['"])(?P<second>[^'"]+)\3\s*)?"""
+    r"""(?:,\s*(?:v|version)\s*=\s*(?P<version>[^\s)]+)\s*)?\)\s*$"""
+)
+
+
+def _latest_versions(nodes: dict) -> dict[str, str]:
+    """Each versioned model's name and the version an unpinned ref to it compiles to today: its `latest_version`,
+    else its highest version."""
+    declared: dict[str, str] = {}
+    highest: dict[str, str] = {}
+    for node in nodes.values():
+        version = _version(node)
+        if node.get("resource_type") != "model" or version is None:
+            continue
+        name = node.get("name")
+        if node.get("latest_version") is not None:
+            declared[name] = str(node["latest_version"])
+        if name not in highest or int(version) > int(highest[name]):
+            highest[name] = version
+    return {name: declared.get(name, version) for name, version in highest.items()}
+
+
+def check_pins(head: dict, report: Report) -> None:
+    """Rule 5: every node that refs a versioned model pins the version, and so does every unit test's given."""
     nodes = head.get("nodes") or {}
-    versioned_names = {
-        node.get("name") for node in nodes.values() if node.get("resource_type") == "model" and _version(node) is not None
-    }
+    latest = _latest_versions(nodes)
+    readers: list[tuple[str, str]] = [
+        (node_id, ref.get("name"))
+        for node_id, node in sorted(nodes.items())
+        for ref in node.get("refs") or []
+        if ref.get("name") in latest and ref.get("version") is None
+    ]
+    for unit_id, unit_test in sorted((head.get("unit_tests") or {}).items()):
+        for given in unit_test.get("given") or []:
+            match = _GIVEN_REF.match(str(given.get("input") or ""))
+            if match and match.group("version") is None:
+                name = match.group("second") or match.group("first")
+                if name in latest:
+                    readers.append((f"{unit_id}'s given", name))
+    for reader, name in readers:
+        report.fail(
+            f"{reader}: reads `{name}` without a version; pin it, ref('{name}', v={latest[name]}), "
+            "so a new latest version cannot move what it reads"
+        )
+
+
+def check_writers(head: dict, report: Report) -> None:
+    """Rules 6-7: each pub_ writer reads one version and names it in its keys."""
+    nodes = head.get("nodes") or {}
     writer_version: dict[str, int] = {}
     for node_id, node in sorted(nodes.items()):
         if ((node.get("config") or {}).get("materialized")) != PHONE_FILE_MATERIALIZATION:
             continue
-        for ref in node.get("refs") or []:
-            if ref.get("name") in versioned_names and ref.get("version") is None:
-                report.fail(
-                    f"{node_id}: reads `{ref.get('name')}` without a version; pin it, "
-                    f"ref('{ref.get('name')}', v=1), so a new latest version cannot move this file"
-                )
         read = sorted(
             {_version(nodes[parent]) for parent in (node.get("depends_on") or {}).get("nodes") or [] if parent in nodes} - {None}
         )
@@ -342,6 +392,7 @@ def main(argv: list[str] | None = None) -> int:
     report = Report()
     if args.base is not None:
         compare(_load(args.base), head, today, report)
+    check_pins(head, report)
     check_writers(head, report)
 
     for line in report.warnings:
@@ -351,7 +402,7 @@ def main(argv: list[str] | None = None) -> int:
     against = (
         f"{report.compared} contracted model version(s) compared with the base, {report.new} new"
         if args.base is not None
-        else "no base manifest, so only the writers' own rules ran"
+        else "no base manifest, so only the head's own rules (5-7) ran"
     )
     print(f"{against}; {len(report.failures)} failure(s), {len(report.warnings)} warning(s).")
     return 1 if report.failures else 0

@@ -744,6 +744,55 @@ unit_tests:
     expect:
       rows: []
 
+  - name: pub_conditions_reports_writes_only_the_verified_public_reports
+    model: pub_conditions_reports
+    description: >
+      The writer's own filter, the second after the extract's
+      PUBLIC_REPORTS_SQL: a report the extract should never have landed is
+      left out rather than published. Of a verified public report, a
+      verified report for safety moderators (internal_only), a verified one
+      for its club (club_only) and a public one still awaiting review
+      (submitted), only the first is written. The fixtures hold public
+      reports only (make_dbt_fixtures.py), so neither the build nor parity
+      reaches this filter; the review of PR #1805 (dlt → dbt re-platform as
+      one go/no-go change) found it untested on 2026-10-09.
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-09T12:00:00Z'"
+    given:
+      - input: ref('base_ourhike__reports')
+        format: sql
+        rows: |
+          select
+              ourhike_report_key, report_uuid, report_type, poi_id,
+              cast(lat as double) as lat,
+              cast(lon as double) as lon,
+              cast(mile as double) as mile,
+              reporter_type,
+              cast(reported_at as timestamptz) as reported_at,
+              note,
+              cast(follow_up as json) as follow_up,
+              report_status, visibility, report_severity,
+              cast(verified_at as timestamptz) as verified_at,
+              cast(_loaded_at as timestamptz) as _loaded_at,
+              _dlt_id
+          from (values
+              ('k1', 'r-public', 'water', null, 41.5, -74.25, null, 'hiker', '2026-10-08 15:00:00+00', 'Fixture spring flowing', null, 'verified', 'public', 'info', '2026-10-08 16:00:00+00', '2026-10-09 00:00:00+00', 'd1'),
+              ('k2', 'r-moderators', 'safety', null, 41.6, -74.2, null, 'hiker', '2026-10-08 15:10:00+00', 'Fixture note for safety moderators', null, 'verified', 'internal_only', 'serious', '2026-10-08 16:10:00+00', '2026-10-09 00:00:00+00', 'd2'),
+              ('k3', 'r-club', 'trail', null, 41.7, -74.15, null, 'hiker', '2026-10-08 15:20:00+00', 'Fixture note for the club', null, 'verified', 'club_only', 'info', '2026-10-08 16:20:00+00', '2026-10-09 00:00:00+00', 'd3'),
+              ('k4', 'r-pending', 'water', null, 41.8, -74.1, null, 'hiker', '2026-10-08 15:30:00+00', 'Fixture report awaiting review', null, 'submitted', 'public', 'info', null, '2026-10-09 00:00:00+00', 'd4')
+          ) as reports (ourhike_report_key, report_uuid, report_type, poi_id, lat, lon, mile, reporter_type, reported_at, note, follow_up, report_status, visibility, report_severity, verified_at, _loaded_at, _dlt_id)
+      - input: ref('int_closures__gate')
+        format: sql
+        rows: |
+          select 'ourhike_reports' as source_key, true as passed, true as may_publish
+    expect:
+      format: sql
+      rows: |
+        select
+            '2026-10-09T12:00:00Z' as generated_at,
+            [cast('{"id":"r-public","type":"water","poi_id":null,"lat":41.5,"lon":-74.25,"mile":null,"reporter_type":"hiker","timestamp":"2026-10-08T15:00:00Z","note":"Fixture spring flowing","follow_up":null,"status":"verified","visibility":"public","severity":"info","verified_at":"2026-10-08T16:00:00Z"}' as json)] as reports
+
 exposures:
   - name: conditions_atc_updates_json
     label: conditions/atc_updates.json

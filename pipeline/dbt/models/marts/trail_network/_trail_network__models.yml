@@ -103,7 +103,7 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('sources')
+                to: ref('sources', v=1)
                 field: source_key
       - name: _loaded_at
         description: When the parent line's source was loaded.
@@ -118,7 +118,7 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('trail_lines')
+                to: ref('trail_lines', v=1)
                 field: trail_line_id
       - name: name
         description: The parent line's name; null where nothing names it.

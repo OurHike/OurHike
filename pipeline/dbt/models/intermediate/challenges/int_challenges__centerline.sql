@@ -15,7 +15,7 @@
 -- also does with no centerline, and says so: the test
 -- challenges_distance_check_has_a_centerline_to_measure_against warns.
 with lines as (
-    select * from {{ ref('trail_lines') }}
+    select * from {{ ref('trail_lines', v=1) }}
     where line_kind not in ('network', 'club')
 )
 

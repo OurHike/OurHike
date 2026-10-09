@@ -11,7 +11,7 @@ with unioned as (
 ),
 
 shipped as (
-    select poi_key from {{ ref('points_of_interest') }}
+    select poi_key from {{ ref('points_of_interest', v=1) }}
     where
         phone_files in ('poi_by_type', 'nearby_poi')
         and source != 'atc_csi'

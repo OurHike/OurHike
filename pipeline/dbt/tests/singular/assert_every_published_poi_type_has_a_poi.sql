@@ -18,7 +18,7 @@ counts as (
     select
         poi_type,
         count(*) as pois
-    from {{ ref('points_of_interest') }}
+    from {{ ref('points_of_interest', v=1) }}
     where phone_files = 'poi_by_type'
     group by poi_type
 )

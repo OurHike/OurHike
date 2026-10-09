@@ -200,9 +200,14 @@ contracted tables. Snapshots exist for one purpose, the row dates: one
 no incremental model and no other snapshot without a decision (decision 27).
 `closures` and `warnings` stay `table`.
 
-**Every source and every exposure carries `meta.cadence`**, one of `hourly`,
-`daily`, `weekly`, `monthly` (decision 28). Models are not tagged: a model's
-cadence is the fastest among its upstream sources, and each lane runs
+**Every source and every exposure is meant to carry `meta.cadence`**, one of
+`hourly`, `daily`, `weekly`, `monthly` (decision 28). All 54 exposures do; 58
+of 757 sources do not (measured 2026-10-09 from the parsed manifest: 13 in
+`atc`, 8 in `dec`, and 37 across 25 other source blocks).
+`build_marts.py`'s monthly lane builds what an untagged source feeds (its
+docstring, "A LANE BUILDS ONLY ITS OWN NODES"), so such a source is monthly
+in effect; give a new one its cadence anyway. Models are not tagged: a
+model's cadence is the fastest among its upstream sources, and each lane runs
 `dbt build --select config.meta.cadence:<lane>+` (measured selecting correctly
 on 2.0.5, 2026-10-01).
 
@@ -318,9 +323,11 @@ measurements; `macros/row_history.sql` has the macros. This is what to do.
 Every mart is a contracted table (`contract: {enforced: true}`), `access:
 public`, with every column described. Intermediates are `protected`. Every mart
 carries `club varchar` (the folder that extracted the row), `source_key
-varchar` (with a relationships test to `sources`) and `_loaded_at timestamptz`,
-and each feature appears once, its stewards attached from
-`int_<mart>__stewardship`.
+varchar` and `_loaded_at timestamptz`, and each feature appears once, its
+stewards attached from `int_<mart>__stewardship`. `source_key` is tested with
+`dbt_utils.relationships_where` against `int_sources__publication`, `to_condition:
+may_publish`, as podcasts' is: a plain `relationships` test passes a row whose
+source is registered but held back.
 
 | Trap | Evidence | What to do |
 |---|---|---|
@@ -536,7 +543,7 @@ python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"   #
 "$RUNNER_TEMP/pipeline/bin/python" -m pytest tests/test_dbt_notice_source_freshness_runs.py   # decision 100's freshness, on a warehouse holding only a run log
 "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity <family> --new data/processed/dbt/<file>   # one line per family
 cd dbt
-dbt source freshness --profiles-dir .
+dbt source freshness --profiles-dir . --exclude tag:pdf_notice   # fixture mode lands no PDF; production measures them (generate_notice_models.py's PDF_NOTICE_TAG)
 dbt docs generate --profiles-dir . --output-dir target/docs
 python ../check_docs_site.py target/docs                     # the parts, no --vars, telemetry off, no coordinates outside the unit tests
 DBT_PROJECT_EVALUATOR_SEVERITY=error dbt build -s package:dbt_project_evaluator --profiles-dir .

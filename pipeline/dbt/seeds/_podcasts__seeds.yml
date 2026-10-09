@@ -1,0 +1,38 @@
+version: 2
+
+# The two lists int_podcasts__checked checks reference/podcast_episodes.json
+# against, as lib/podcasts.py's validate() does: a row that breaks either is a
+# problem, and that model's test fails the build, so a list that would drop a
+# row writes nothing (PC07). tests/test_dbt_podcasts_parity.py holds each
+# file to its Python constant, and the unit test's mocked rows to the file.
+seeds:
+  - name: podcast_row_fields
+    description: >
+      The fields an episode row may carry, one per row: lib/podcasts.py's
+      ROW_FIELDS. A row holding any other field is refused, so a typo in a
+      field name stops the list rather than shipping a row missing what the
+      typo meant.
+    config:
+      column_types:
+        field_name: varchar
+    columns:
+      - name: field_name
+        description: A field of an episode row in reference/podcast_episodes.json.
+        data_tests: [not_null, unique]
+  - name: podcast_app_link_hosts
+    description: >
+      The hosts a published podcast link may point to, by the app it opens:
+      lib/podcasts.py's APP_LINK_HOSTS, one row per host. An episode's
+      `links` may name only these apps, and each link must be https on one
+      of its app's hosts, because the phone opens it as written.
+    config:
+      column_types:
+        app: varchar
+        hostname: varchar
+    columns:
+      - name: app
+        description: The key an episode's `links` names the app by, such as `apple_podcasts`.
+        data_tests: [not_null]
+      - name: hostname
+        description: A host that app's links may use; each host belongs to one app.
+        data_tests: [not_null, unique]

@@ -85,8 +85,9 @@ VALUES = re.compile(r"from \(values(.*)\)\s*as\s+\w+\s*\(([^)]*)\)", re.S)
 
 
 def given(test: dict, model: str) -> list[dict]:
-    """The rows a unit test gives `model`: its dict rows, or the VALUES list of a `format: sql` block."""
-    found = [item for item in test["given"] if item["input"] == f"ref('{model}')"]
+    """The rows a unit test gives `model`: its dict rows, or the VALUES list of a `format: sql` block. A versioned
+    mart's given names its version, `ref('trail_lines', v=1)`, as check_contract_versions.py's rule 5 requires."""
+    found = [item for item in test["given"] if re.fullmatch(rf"ref\('{model}'(, v=\d+)?\)", item["input"])]
     if not found:
         return []
     item = found[0]

@@ -30,22 +30,33 @@
 //
 // ONE RELEASE PER SESSION'S GRAPH (#1828 - a phone merges trail-graph cells
 // from two releases by node number, and a new release renumbers them). The
-// first cell to merge decides
-// which release this session's graph is - the manifest's with signal, the
-// newest this phone stored without (lib/trailGraphData.ts's header has the
-// rule and the maintainer's choice behind it) - and every later cell is asked
-// for that release. With signal, a cell whose fetch fails is asked of the
-// store as a phone with no signal would ask it, once the run knows its
-// release: the manifest's if any cell was fetched, and otherwise the newest
-// stored, so that a run on one bar of signal that fetches no cell builds
-// what no signal would (#1828 review). A cell this phone holds only from
-// another release is treated as not held, and the console says so once. A
-// cell that arrives from another release - signal came back, and the
-// manifest's release is not the one the graph was built from - is left out
-// until the app restarts, because a live draft holds positions in this graph
-// and a graph rebuilt from the other release would move every one of them.
-// Both look, to a hiker, like any cell that has not arrived: the same
-// "hasn't got this area's trail lines yet".
+// first cell to merge decides which release this session's graph is - the
+// manifest's with signal, and without it the newest release this phone
+// stored every cell of the run from, counting the older copy kept beside a
+// refreshed cell (#1837; lib/trailGraphData.ts's header has the rule and the
+// maintainer's choices behind it) - and every later cell is asked for that
+// release. With signal, a cell whose fetch fails is asked of the store as a
+// phone with no signal would ask it, once the run knows its release: the
+// manifest's if any cell was fetched, and otherwise the store's, so that a
+// run on one bar of signal that fetches no cell builds what no signal would
+// (#1828 review). A cell this phone holds only from another release is
+// treated as not held, and the console says so once. A cell that arrives from
+// another release - signal came back, and the manifest's release is not the
+// one the graph was built from - is left out until the app restarts, because
+// a live draft holds positions in this graph and a graph rebuilt from the
+// other release would move every one of them. Both look, to a hiker, like any
+// cell that has not arrived: the same "hasn't got this area's trail lines
+// yet".
+//
+// WHICH CELLS THE STORE'S CHOICE SEES. Only the cells of the run that merges
+// first: a cell wanted later is asked for the release that run settled on.
+// So a hike stored before an update, one of whose cells was refreshed since,
+// is built from the release that holds all of it when its cells are among
+// that first run's (#1837). When a refreshed cell under the fix or the
+// camera merges alone first, from the newer release, the hike's other cells
+// are asked for that one, and a cell held only from the older release is
+// left out as before. Reasoned from App.tsx's `graphWanted`, not measured on
+// a phone.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DATA_CONFIGURED } from './config'
@@ -63,7 +74,7 @@ import {
   type TrailNetworkAbsence,
   type TrailNetworkState,
 } from './trailGraphData'
-import { forgetWholeGraph, newestStoredGraphVersion } from './trailGraphStore'
+import { forgetWholeGraph, releaseToBuildFromStore } from './trailGraphStore'
 
 export interface TrailGraphInputs {
   online: boolean
@@ -166,14 +177,17 @@ export function useTrailGraph({
     for (const cell of missing) askedCells.add(cell.name)
 
     void (async () => {
-      // NEWEST WINS, until something has merged (#1828). Of the cells this
-      // run asks for, the release this phone stored one from most recently
-      // is the one a stored copy must be from; once a cell has merged, its
-      // release is. Read across these cells and not the whole store -
-      // lib/trailGraphStore.ts's newestStoredGraphVersion says why.
-      const newest =
+      // THE STORE'S RELEASE, until something has merged (#1828, #1837). Of
+      // the cells this run asks for, the newest release this phone holds a
+      // copy of every one of them from - the older copy kept beside a
+      // refreshed cell counts - or, when none holds them all, the release it
+      // stored one of them from most recently. That is the one a stored copy
+      // must be from; once a cell has merged, its release is. Read across
+      // these cells and not the whole store - lib/trailGraphStore.ts's
+      // releaseToBuildFromStore says why.
+      const storedRelease =
         building.current === null
-          ? await newestStoredGraphVersion(missing.map((cell) => cell.name))
+          ? await releaseToBuildFromStore(missing.map((cell) => cell.name))
           : null
       if (!live) return
 
@@ -192,7 +206,7 @@ export function useTrailGraph({
           cell,
           controller.signal,
           false,
-          building.current ?? newest ?? undefined,
+          building.current ?? storedRelease ?? undefined,
         )
         if (!live || load.kind !== 'shard') return false
         if (building.current !== null && !sameRelease(building.current, load.release)) {
@@ -220,7 +234,7 @@ export function useTrailGraph({
           cell,
           controller.signal,
           online,
-          building.current ?? newest ?? undefined,
+          building.current ?? storedRelease ?? undefined,
         )
         if (!live) return
         if (load.kind === 'shard') {
@@ -264,8 +278,9 @@ export function useTrailGraph({
       // from the store while this graph's release is still open
       // (lib/trailGraphData.ts's `storedAsPublished`). Now the run is over,
       // the release is the manifest's if any fetch got through, and
-      // otherwise the newest stored among these cells. Each held cell is
-      // asked of the store for that release, exactly as with no signal.
+      // otherwise the store's for these cells (`storedRelease` above). Each
+      // held cell is asked of the store for that release, exactly as with no
+      // signal.
       // Measured 2026-10-09 in lib/trailGraphReleases.realIdb.test.ts:
       // before this, a hike stored whole under one release and opened on one
       // bar after the next was published merged nothing at all.

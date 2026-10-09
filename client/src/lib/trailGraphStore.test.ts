@@ -39,6 +39,7 @@ import {
   olderCopyKey,
   readStoredGraph,
   recordAlsoPublishedIn,
+  releaseToBuildFromStore,
   storedGraphBytes,
   writeStoredGraph,
 } from './trailGraphStore'
@@ -713,5 +714,61 @@ describe('the older copy kept beside a refreshed cell half (#1837)', () => {
     await clearStoredGraph()
 
     expect(records.size).toBe(0)
+  })
+
+  describe('releaseToBuildFromStore', () => {
+    it('answers release 9 for a hike whose east cell kept its release-9 copy when a release-10 copy replaced it', async () => {
+      records.set(GRAPH, copy('west 9', 'release-9', 1_000))
+      records.set(EAST_GRAPH, copy('east 10', 'release-10', 2_000))
+      records.set(olderCopyKey(EAST_GRAPH), copy('east 9', 'release-9', 1_000))
+
+      expect(await releaseToBuildFromStore(['n41w075', 'n41w074'])).toEqual({
+        version: 'release-9',
+      })
+    })
+
+    it('answers release 10 once every cell asked about holds it, whatever older copies are kept', async () => {
+      records.set(GRAPH, copy('west 10', 'release-10', 2_500))
+      records.set(olderCopyKey(GRAPH), copy('west 9', 'release-9', 1_000))
+      records.set(EAST_GRAPH, copy('east 10', 'release-10', 2_000))
+      records.set(olderCopyKey(EAST_GRAPH), copy('east 9', 'release-9', 1_000))
+
+      expect(await releaseToBuildFromStore(['n41w075', 'n41w074'])).toEqual({
+        version: 'release-10',
+      })
+    })
+
+    it('counts a cell release 10 published byte-identical (alsoPublishedIn) as holding release 10', async () => {
+      records.set(GRAPH, copy('west 9', 'release-9', 1_000, ['release-10']))
+      records.set(EAST_GRAPH, copy('east 10', 'release-10', 2_000))
+      records.set(olderCopyKey(EAST_GRAPH), copy('east 9', 'release-9', 1_000))
+
+      expect(await releaseToBuildFromStore(['n41w075', 'n41w074'])).toEqual({
+        version: 'release-10',
+      })
+    })
+
+    it('falls back to newestStoredGraphVersion, the newest stored, when no release is held by every cell asked about', async () => {
+      // Release 10 lacks the east cell and release 9 the north one.
+      records.set(GRAPH, copy('west 10', 'release-10', 2_000))
+      records.set(olderCopyKey(GRAPH), copy('west 9', 'release-9', 1_000))
+      records.set(EAST_GRAPH, copy('east 9', 'release-9', 1_000))
+      records.set(NORTH_GRAPH, copy('north 10', 'release-10', 3_000))
+      const names = ['n41w075', 'n41w074', 'n42w075']
+
+      expect(await releaseToBuildFromStore(names)).toEqual({ version: 'release-10' })
+      expect(await releaseToBuildFromStore(names)).toEqual(
+        await newestStoredGraphVersion(names),
+      )
+    })
+
+    it('ignores a cell this phone holds nothing of, and answers null when it holds none of them', async () => {
+      records.set(GRAPH, copy('west 9', 'release-9', 1_000))
+
+      expect(await releaseToBuildFromStore(['n41w075', 'n41w074'])).toEqual({
+        version: 'release-9',
+      })
+      expect(await releaseToBuildFromStore(['n41w074', 'n42w075'])).toBeNull()
+    })
   })
 })

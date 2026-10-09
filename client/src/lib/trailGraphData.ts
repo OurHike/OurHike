@@ -56,12 +56,16 @@
 //     graph already built from another release takes stored copies of that
 //     release (lib/useTrailGraph.ts; #1828 review). A stored copy of any
 //     other release is refetched, never merged.
-//   - WITHOUT SIGNAL, THE NEWEST STORED. Of the cells a graph is being built
-//     from, the release this phone stored one most recently
-//     (lib/trailGraphStore.ts's newestStoredGraphVersion, which says why it
-//     looks at those cells and not the whole store). A stored cell of
-//     another release is treated as not stored at all - `unreachable`, the
-//     absence a connection cures.
+//   - WITHOUT SIGNAL, THE NEWEST RELEASE STORED FOR EVERY CELL (#1837). Of
+//     the cells a graph is being built from, the newest release this phone
+//     holds a copy of every one of them from - the current copy, or the
+//     older copy kept beside it when a refetch from a release that changed
+//     the cell replaced it - and where no release holds them all, the
+//     release this phone stored one of them from most recently
+//     (lib/trailGraphStore.ts's releaseToBuildFromStore, and
+//     newestStoredGraphVersion for why it looks at those cells and not the
+//     whole store). A stored cell of another release is treated as not
+//     stored at all - `unreachable`, the absence a connection cures.
 //   - ONCE A CELL HAS MERGED, THAT RELEASE, UNTIL THE APP RESTARTS. A live
 //     draft holds `GraphPoint.edgeIndex` positions in this graph, and
 //     swapping it for another release's graph would move every tap onto
@@ -128,9 +132,10 @@ import { publishedSnapshot } from './dataManifest'
 import {
   graphCellStoreKey,
   isCopyOf,
-  newestStoredGraphVersion,
+  olderCopyKey,
   readStoredGraph,
   recordAlsoPublishedIn,
+  releaseToBuildFromStore,
   writeStoredGraph,
   type StoredGraphArtifact,
 } from './trailGraphStore'
@@ -347,9 +352,9 @@ async function published(
  * which.
  *
  * `release` is the release the caller is building its graph from (#1828):
- * the one its merged cells came from, or before any has merged, the newest
- * stored among the cells it is about to ask for
- * (lib/trailGraphStore.ts's `newestStoredGraphVersion`). A stored copy is
+ * the one its merged cells came from, or before any has merged, the one the
+ * store holds every cell it is about to ask for from
+ * (lib/trailGraphStore.ts's `releaseToBuildFromStore`). A stored copy is
  * handed back only when it is from that release; with no `release` given, a
  * stored copy stands as its own. A fresh fetch is not held to it: the answer
  * carries its own `release`, and the caller decides whether it can take a
@@ -493,12 +498,18 @@ export async function loadGraphShard(
  * The stored copy of one routing half, if it is from the release being built
  * - the no-signal answer, and the fallback for a manifest that never answered.
  *
- * A copy from any other release than `release` is treated exactly as no copy
- * - `unreachable`, the one absence a connection cures - and says which
- * release it was in `heldRelease`. With no `release`, the copy's own stands:
- * the caller had nothing to build from yet, and {@link mergeGraphShard} still
- * refuses a second release, so the cost of guessing there is which release
- * wins, never a graph built from two.
+ * THE CURRENT COPY, OR THE OLDER ONE KEPT BESIDE IT (#1837). A refetch from a
+ * release that changed the cell keeps the copy it replaced while another
+ * stored cell is still of that release (lib/trailGraphStore.ts's
+ * `olderCopyKey`), so a graph built from that release reads the older copy
+ * when the current one is the newer release's.
+ *
+ * A cell with neither copy from `release` is treated exactly as no copy -
+ * `unreachable`, the one absence a connection cures - and says which release
+ * its current copy is in `heldRelease`. With no `release`, the current copy's
+ * own stands: the caller had nothing to build from yet, and
+ * {@link mergeGraphShard} still refuses a second release, so the cost of
+ * guessing there is which release wins, never a graph built from two.
  */
 async function storedShard(
   storeKey: string,
@@ -506,18 +517,27 @@ async function storedShard(
   whenNotAShard: TrailNetworkAbsence,
 ): Promise<GraphShardLoad> {
   const stored = await readStoredGraph(storeKey)
-  if (stored === null) return UNREACHABLE
-  const held: GraphRelease = { version: stored.version }
   // A copy of `release` by the release it was stored under, or by a later
   // manifest having named the same bytes (lib/trailGraphStore.ts's
   // `alsoPublishedIn`).
-  if (release !== undefined && !isCopyOf(stored, release.version)) {
-    return { kind: 'absent', because: 'unreachable', heldRelease: held }
+  let copy = stored
+  if (release !== undefined && (stored === null || !isCopyOf(stored, release.version))) {
+    const older = await readStoredGraph(olderCopyKey(storeKey))
+    copy = older !== null && isCopyOf(older, release.version) ? older : null
   }
-  const parsed = await parseStored(stored.bytes, isGraphShard)
+  if (copy === null) {
+    return stored === null
+      ? UNREACHABLE
+      : {
+          kind: 'absent',
+          because: 'unreachable',
+          heldRelease: { version: stored.version },
+        }
+  }
+  const parsed = await parseStored(copy.bytes, isGraphShard)
   return parsed === null
     ? { kind: 'absent', because: whenNotAShard }
-    : { kind: 'shard', shard: parsed, release: release ?? held }
+    : { kind: 'shard', shard: parsed, release: release ?? { version: copy.version } }
 }
 
 /**
@@ -676,13 +696,14 @@ export type TrailGraphLoad =
 
 /**
  * All of `cells` from one release, or the first absence (#1828). Stored
- * copies are asked for the newest release stored among `cells`, the first
- * cell to load fixes the release for the rest, and a cell that can only be
- * had from another one is `unreachable` - as it would be with no copy at all
- * - rather than half of a graph built from two. A cell whose stored copy a
- * load with signal left unused (`heldRelease`) is asked of the store again
- * at the end, for the release the others settled on, as lib/useTrailGraph.ts
- * does.
+ * copies are asked for the release lib/trailGraphStore.ts's
+ * `releaseToBuildFromStore` answers for `cells` - the newest one this phone
+ * holds every one of them from, since #1837 - the first cell to load fixes
+ * the release for the rest, and a cell that can only be had from another one
+ * is `unreachable` - as it would be with no copy at all - rather than half of
+ * a graph built from two. A cell whose stored copy a load with signal left
+ * unused (`heldRelease`) is asked of the store again at the end, for the
+ * release the others settled on, as lib/useTrailGraph.ts does.
  */
 export async function loadTrailGraphCells(
   cells: readonly CoverageCell[],
@@ -691,7 +712,7 @@ export async function loadTrailGraphCells(
 ): Promise<TrailGraphLoad> {
   if (!DATA_CONFIGURED) return { kind: 'absent', because: 'unconfigured' }
   if (cells.length === 0) return { kind: 'absent', because: 'empty' }
-  const newest = await newestStoredGraphVersion(cells.map((cell) => cell.name))
+  const storedRelease = await releaseToBuildFromStore(cells.map((cell) => cell.name))
   let merged = emptyMergedGraph()
   const held: CoverageCell[] = []
   for (const cell of cells) {
@@ -699,7 +720,7 @@ export async function loadTrailGraphCells(
       cell,
       signal,
       online,
-      merged.release ?? newest ?? undefined,
+      merged.release ?? storedRelease ?? undefined,
     )
     if (load.kind === 'absent') {
       if (online && load.heldRelease !== undefined) {
@@ -718,7 +739,7 @@ export async function loadTrailGraphCells(
       cell,
       signal,
       false,
-      merged.release ?? newest ?? undefined,
+      merged.release ?? storedRelease ?? undefined,
     )
     if (load.kind === 'absent') return { kind: 'absent', because: 'unreachable' }
     if (merged.release !== null && !sameRelease(merged.release, load.release)) {
@@ -1191,7 +1212,10 @@ async function keepVerified(
  *  checks a fresh fetch is - not skipped for stored bytes, because a phone
  *  can hold a shard from one release and a companion from the next - and,
  *  since #1828, to the release of the graph it would line up with, checked
- *  before anything is parsed ({@link linesUpWith}). */
+ *  before anything is parsed ({@link linesUpWith}). The current copy first,
+ *  then the older copy kept beside it since #1837 (lib/trailGraphStore.ts's
+ *  `olderCopyKey`): a day hike open while a cell was refetched from a release
+ *  that changed it replaced that cell's geometry and elevation too. */
 async function readStoredCompanion<T extends { length: number }>(
   storeKey: string,
   routingStoreKey: string,
@@ -1201,14 +1225,16 @@ async function readStoredCompanion<T extends { length: number }>(
   publishedHash: string | null,
 ): Promise<T | null> {
   if (release === null) return null
-  const stored = await readStoredGraph(storeKey)
-  if (stored === null) return null
-  if (!(await linesUpWith(stored, storeKey, routingStoreKey, release, publishedHash))) {
-    return null
+  for (const key of [storeKey, olderCopyKey(storeKey)]) {
+    const stored = await readStoredGraph(key)
+    if (stored === null) continue
+    if (!(await linesUpWith(stored, key, routingStoreKey, release, publishedHash))) {
+      continue
+    }
+    const parsed = await parseStored(stored.bytes, isShape)
+    if (parsed !== null && parsed.length === edgeCount) return parsed
   }
-  const parsed = await parseStored(stored.bytes, isShape)
-  if (parsed === null || parsed.length !== edgeCount) return null
-  return parsed
+  return null
 }
 
 /**
@@ -1219,8 +1245,9 @@ async function readStoredCompanion<T extends { length: number }>(
  *     since (lib/trailGraphStore.ts's `alsoPublishedIn`);
  *   - that release's manifest, read just now, names its hash
  *     (`publishedHash`), which is recorded on it for the next launch;
- *   - the cell's stored routing half is the same bytes in that release and
- *     in a release this half is a copy of. The halves are index-aligned per
+ *   - the cell's stored routing half - its current copy, or the older copy
+ *     kept beside it since #1837 - is the same bytes in that release and in
+ *     a release this half is a copy of. The halves are index-aligned per
  *     cell, so a half published beside those routing bytes lines up with
  *     them in every release that published them.
  *
@@ -1246,11 +1273,15 @@ async function linesUpWith(
     await recordAlsoPublishedIn(storeKey, stored.hash, release.version)
     return true
   }
-  const routing = await readStoredGraph(routingStoreKey)
-  if (routing === null || !isCopyOf(routing, release.version)) return false
-  return [stored.version, ...stored.alsoPublishedIn].some((version) =>
-    isCopyOf(routing, version),
-  )
+  for (const key of [routingStoreKey, olderCopyKey(routingStoreKey)]) {
+    const routing = await readStoredGraph(key)
+    if (routing === null || !isCopyOf(routing, release.version)) continue
+    const sameBytes = [stored.version, ...stored.alsoPublishedIn].some((version) =>
+      isCopyOf(routing, version),
+    )
+    if (sameBytes) return true
+  }
+  return false
 }
 
 /** Stored bytes, parsed and shape-checked - null on anything else. */

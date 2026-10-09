@@ -65,8 +65,13 @@ const {
   mergeGraphShard,
 } = await import('./trailGraphData')
 const { trailGraphCellKey } = await import('./config')
-const { graphCellStoreKey, readStoredGraph, recordAlsoPublishedIn, writeStoredGraph } =
-  await import('./trailGraphStore')
+const {
+  graphCellStoreKey,
+  olderCopyKey,
+  readStoredGraph,
+  recordAlsoPublishedIn,
+  writeStoredGraph,
+} = await import('./trailGraphStore')
 const { buildGraphIndex } = await import('./trailGraph')
 const { LAUNCH_ARTIFACT_BUDGET_BYTES } = await import('./artifactBudget')
 
@@ -1116,6 +1121,79 @@ describe('one release per merged graph (#1828)', () => {
       expect(
         await fetchTrailGraphGeometryCells(mergedAsRelease10(), undefined, false),
       ).toEqual({ kind: 'absent' })
+    })
+  })
+
+  // #1837 - After a data release changes one piece of a saved hike, the
+  // phone strands the rest of the hike offline until every piece is
+  // refreshed. A cell half refetched from a release that changed it keeps
+  // the copy it replaced under lib/trailGraphStore.ts's `olderCopyKey`, and
+  // a graph built from that copy's release reads it there.
+  describe('the older copy kept beside a refreshed cell (#1837)', () => {
+    const WEST_GRAPH = graphCellStoreKey(WEST.name, 'graph')
+    const EAST_GRAPH = graphCellStoreKey(EAST.name, 'graph')
+    const WEST_GEOMETRY_KEY = graphCellStoreKey(WEST.name, 'geometry')
+    const EAST_GEOMETRY_KEY = graphCellStoreKey(EAST.name, 'geometry')
+
+    /** The east cell refreshed from release 10, release 9's copy kept. */
+    const EAST_REFRESHED = {
+      [EAST_GRAPH]: { body: EAST_SHARD_RELEASE_10, version: 'release-10' },
+      [olderCopyKey(EAST_GRAPH)]: { body: EAST_SHARD, version: 'release-9' },
+    }
+
+    it('loadGraphShard offline takes the copy kept under olderCopyKey when release 9 is asked for, and the current copy for release 10', async () => {
+      holdingReleases(EAST_REFRESHED)
+
+      expect(await loadGraphShard(EAST, undefined, false, RELEASE_9)).toEqual({
+        kind: 'shard',
+        shard: JSON.parse(EAST_SHARD),
+        release: RELEASE_9,
+      })
+      expect(await loadGraphShard(EAST, undefined, false, RELEASE_10)).toEqual({
+        kind: 'shard',
+        shard: JSON.parse(EAST_SHARD_RELEASE_10),
+        release: RELEASE_10,
+      })
+    })
+
+    it('loadGraphShard offline names the current copy’s release when neither copy is of the release asked for', async () => {
+      holdingReleases(EAST_REFRESHED)
+
+      expect(
+        await loadGraphShard(EAST, undefined, false, { version: 'release-8' }),
+      ).toEqual({ kind: 'absent', because: 'unreachable', heldRelease: RELEASE_10 })
+    })
+
+    it('loadGraphShard takes the copy kept under olderCopyKey for a release-9 graph when the release’s manifest answers 404', async () => {
+      // The same store read as with no signal (`unlessKept`).
+      holdingReleases(EAST_REFRESHED)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.resolve({ ok: false, status: 404 } as unknown as Response)),
+      )
+
+      expect(await loadGraphShard(EAST, undefined, true, RELEASE_9)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_9,
+      })
+    })
+
+    it('fetchTrailGraphGeometryCells offline takes the release-9 geometry kept under olderCopyKey for a release-9 graph whose east cell was refreshed from release 10', async () => {
+      // Release 10's east geometry lists the east trail first; on release
+      // 9's east cell it would put the seam edge's vertices on the east
+      // trail. The edge-count check passes both.
+      holdingReleases({
+        ...EAST_REFRESHED,
+        [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9' },
+        [WEST_GEOMETRY_KEY]: { body: WEST_GEOMETRY, version: 'release-9' },
+        [EAST_GEOMETRY_KEY]: { body: EAST_GEOMETRY_RELEASE_10, version: 'release-10' },
+        [olderCopyKey(EAST_GEOMETRY_KEY)]: { body: EAST_GEOMETRY, version: 'release-9' },
+      })
+
+      expect(await fetchTrailGraphGeometryCells(merged(), undefined, false)).toEqual({
+        kind: 'loaded',
+        data: [[NODE[0], NODE[1]], SEAM_EDGE, [NODE[2], NODE[3]]],
+      })
     })
   })
 })

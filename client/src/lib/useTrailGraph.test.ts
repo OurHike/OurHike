@@ -21,11 +21,11 @@ vi.mock('./trailGraphData', async (importOriginal) => ({
 vi.mock('./trailGraphStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./trailGraphStore')>()),
   forgetWholeGraph: vi.fn(async () => undefined),
-  newestStoredGraphVersion: vi.fn(async () => null),
+  releaseToBuildFromStore: vi.fn(async () => null),
 }))
 
 const { loadGraphShard } = await import('./trailGraphData')
-const { forgetWholeGraph, newestStoredGraphVersion } = await import('./trailGraphStore')
+const { forgetWholeGraph, releaseToBuildFromStore } = await import('./trailGraphStore')
 const { parseCellIndex } = await import('./coverageCells')
 const { useTrailGraph } = await import('./useTrailGraph')
 
@@ -141,8 +141,8 @@ const askedFor = () => vi.mocked(loadGraphShard).mock.calls.map(([cell]) => cell
 beforeEach(() => {
   vi.mocked(loadGraphShard).mockReset()
   vi.mocked(forgetWholeGraph).mockClear()
-  vi.mocked(newestStoredGraphVersion).mockReset()
-  vi.mocked(newestStoredGraphVersion).mockResolvedValue(null)
+  vi.mocked(releaseToBuildFromStore).mockReset()
+  vi.mocked(releaseToBuildFromStore).mockResolvedValue(null)
   serving()
 })
 
@@ -290,11 +290,11 @@ describe('one release per session’s graph (#1828)', () => {
     expect(result.current.graphMerged?.release).toEqual(RELEASE_9)
   })
 
-  it('asks the first cells for the newest release stored among them, before anything has merged', async () => {
-    // The maintainer's newest-wins rule, read across the cells this run
-    // wants (lib/trailGraphStore.ts's newestStoredGraphVersion says why not
-    // the whole store).
-    vi.mocked(newestStoredGraphVersion).mockResolvedValue(RELEASE_10)
+  it('asks the first cells for the release releaseToBuildFromStore answers for them, before anything has merged', async () => {
+    // The newest release this phone holds every one of the run's cells from
+    // (#1837), read across those cells and not the whole store -
+    // lib/trailGraphStore.ts's releaseToBuildFromStore says why.
+    vi.mocked(releaseToBuildFromStore).mockResolvedValue(RELEASE_10)
     vi.mocked(loadGraphShard).mockImplementation(async (cell) => ({
       kind: 'shard',
       shard: SHARDS[cell.name],
@@ -304,7 +304,7 @@ describe('one release per session’s graph (#1828)', () => {
     mount({ wanted: [A, B], online: false })
 
     await waitFor(() => expect(askedFor()).toEqual(['n41w075', 'n41w074']))
-    expect(newestStoredGraphVersion).toHaveBeenCalledWith(['n41w075', 'n41w074'])
+    expect(releaseToBuildFromStore).toHaveBeenCalledWith(['n41w075', 'n41w074'])
     expect(vi.mocked(loadGraphShard).mock.calls[0][3]).toEqual(RELEASE_10)
   })
 
@@ -383,8 +383,8 @@ describe('one bar of signal (#1828 review)', () => {
       .mocked(loadGraphShard)
       .mock.calls.map(([cell, , online, release]) => [cell.name, online, release])
 
-  it('asks the store, with no signal and the newest stored release, for every held cell once the run fetched none', async () => {
-    vi.mocked(newestStoredGraphVersion).mockResolvedValue(RELEASE_9)
+  it('asks the store, with no signal and the release releaseToBuildFromStore answers, for every held cell once the run fetched none', async () => {
+    vi.mocked(releaseToBuildFromStore).mockResolvedValue(RELEASE_9)
     vi.mocked(loadGraphShard).mockImplementation(async (cell, _signal, online) =>
       online ? held(RELEASE_9) : shard(cell.name, RELEASE_9),
     )
@@ -417,10 +417,10 @@ describe('one bar of signal (#1828 review)', () => {
     ])
   })
 
-  it('asks the store for a held cell for the release a later cell’s fetch settled, not the newest stored', async () => {
+  it('asks the store for a held cell for the release a later cell’s fetch settled, not the one releaseToBuildFromStore answers', async () => {
     // A fetch got through, so this run's graph is the manifest's release; a
     // stored copy joins it only as a copy of that release.
-    vi.mocked(newestStoredGraphVersion).mockResolvedValue(RELEASE_9)
+    vi.mocked(releaseToBuildFromStore).mockResolvedValue(RELEASE_9)
     vi.mocked(loadGraphShard).mockImplementation(
       async (cell, _signal, online, release) => {
         if (cell.name === 'n41w074') return shard(cell.name, RELEASE_10)
@@ -440,7 +440,7 @@ describe('one bar of signal (#1828 review)', () => {
 
   it('names a held cell in the console only when the store will not take it either', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    vi.mocked(newestStoredGraphVersion).mockResolvedValue(RELEASE_9)
+    vi.mocked(releaseToBuildFromStore).mockResolvedValue(RELEASE_9)
     vi.mocked(loadGraphShard).mockImplementation(async (cell, _signal, online) => {
       if (cell.name === 'n41w074') return held(RELEASE_10)
       return online ? held(RELEASE_9) : shard(cell.name, RELEASE_9)

@@ -735,6 +735,84 @@ describe('a saved hike whose east cell alone was refreshed from renumbered relea
 
   const sizeOf = (body: string) => new Blob([body]).size
 
+  it('useTrailGraph merges both release-9 cells of the hike offline after the east cell alone was refreshed from release 10', async () => {
+    // Before #1837: [n41w074] alone, as release 10 - no route across the
+    // seam, and the west half of the hike not routable at all.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await lookAtTheEastEndAtHome(routingKeys(EAST.name))
+
+    const { result } = mount({ online: false, wanted: [WEST, EAST] })
+
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+    expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_9 })
+    expect(result.current.graphIndex?.graph.nodes).toEqual(P)
+    expect(result.current.graphIndex?.graph.edges).toHaveLength(3)
+  })
+
+  it('useTrailGraph merges both release-9 cells on one bar of signal after the east cell alone was refreshed from release 10', async () => {
+    // One bar: release 10's manifest is read and every cell fetch fails, so
+    // the run fetches no cell and builds what no signal would (#1828
+    // review). Before #1837: [n41w074] alone, as release 10, its copy taken
+    // by the hash release 10 publishes.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await lookAtTheEastEndAtHome(routingKeys(EAST.name))
+    await publishing(RELEASE_10, R10_FILES)
+
+    const { result } = mount({ online: true, wanted: [WEST, EAST] })
+
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+    expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_9 })
+  })
+
+  it('loadTrailGraphCells builds the hike from release 9 with no signal after the east cell alone was refreshed from release 10', async () => {
+    // Before #1837: absent, unreachable.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await lookAtTheEastEndAtHome(routingKeys(EAST.name))
+
+    const load = await loadTrailGraphCells([WEST, EAST], undefined, false)
+
+    expect(load).toMatchObject({
+      kind: 'graph',
+      merged: {
+        release: { version: RELEASE_9 },
+        cells: [{ name: WEST.name }, { name: EAST.name }],
+      },
+    })
+  })
+
+  it('loads release 9’s geometry and elevation offline for the hike when the day hike was open while the east cell was refreshed', async () => {
+    // Release 10's east halves list the east trail first. Drawn on release
+    // 9's east cell, which lists the seam edge first, they would put the
+    // seam edge's vertices on the east trail. Release 9's halves, kept
+    // beside release 10's, are the ones that line up.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await lookAtTheEastEndAtHome(
+      [
+        keyOf(EAST.name, 'graph'),
+        keyOf(EAST.name, 'geometry'),
+        keyOf(EAST.name, 'elevation'),
+      ],
+      { dayHikeOpen: true },
+    )
+
+    const { result } = mount({ online: false, wanted: [WEST, EAST] })
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+    const merged = result.current.graphMerged!
+
+    expect(await fetchTrailGraphGeometryCells(merged, undefined, false)).toEqual({
+      kind: 'loaded',
+      data: [[P[0], P[1]], SEAM, [P[2], P[3]]],
+    })
+    expect(await fetchTrailGraphElevationCells(merged, undefined, false)).toEqual({
+      kind: 'loaded',
+      data: [
+        [12, 0],
+        [3, 3],
+        [0, 9],
+      ],
+    })
+  })
+
   it('keeps the east cell’s release-9 routing half beside its release-10 one until the west cell is refreshed too, then holds one copy of each', async () => {
     // The stored bytes before and after, which is what this costs a phone:
     // the refresh adds release 10's east routing half and keeps release
@@ -766,5 +844,20 @@ describe('a saved hike whose east cell alone was refreshed from renumbered relea
         sizeOf(SHARD[RELEASE_10].west) +
         sizeOf(SHARD[RELEASE_10].east),
     )
+  })
+
+  it('useTrailGraph falls back to the newest stored release, leaving the east cell out, when no release holds every cell asked for', async () => {
+    // The west cell holds release 10 and, kept beside it, release 9. The
+    // east cell holds release 9 alone and the north cell release 10 alone,
+    // so no release holds all three, and the store builds as it did before
+    // #1837: from the newest stored, release 10. Passes before and after.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await stored(WEST.name, SHARD[RELEASE_10].west, RELEASE_10, 2_000)
+    await stored(NORTH.name, NORTH_SHARD, RELEASE_10, 3_000)
+
+    const { result } = mount({ online: false, wanted: [WEST, EAST, NORTH] })
+
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, NORTH.name]))
+    expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_10 })
   })
 })

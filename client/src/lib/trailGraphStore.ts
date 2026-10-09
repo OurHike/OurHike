@@ -69,7 +69,7 @@
 // renumbers them". It is read now: lib/trailGraphData.ts hands a stored cell
 // back only when it is a copy of the release the graph is being built from -
 // its version, or a later release that published the same bytes
-// (`alsoPublishedIn`) - and {@link newestStoredGraphVersion} below is how a
+// (`alsoPublishedIn`) - and {@link releaseToBuildFromStore} below is how a
 // phone with no signal picks that release - the maintainer's choice by poll
 // on 2026-10-08, refuse mixed releases rather than join cells by coordinates
 // or clear the store.
@@ -89,7 +89,8 @@
 // with both cells, and at the trailhead it routed on one of them. The
 // maintainer chose by poll on 2026-10-09: keep the older copy until every
 // piece of the hike is refreshed, and build offline from the newest release
-// that holds every piece. This module keeps the older copy and drops it.
+// that holds every piece. This module keeps the older copy and drops it, and
+// {@link releaseToBuildFromStore} is the offline choice.
 //
 // KEPT: {@link writeStoredGraph} keeps the copy it replaces, under
 // {@link olderCopyKey}, when that copy is another release's bytes and some
@@ -154,13 +155,13 @@ export interface StoredGraphArtifact {
    * lib/trailGraphReleases.realIdb.test.ts. Kept as a list, the copy joins
    * a graph of either release.
    *
-   * {@link newestStoredGraphVersion} still reads `version` alone. A later
-   * release recorded here does not make the copy newer.
+   * {@link releaseToBuildFromStore} still ranks releases by `version` alone.
+   * A later release recorded here makes the copy a copy of it, not newer.
    */
   alsoPublishedIn: Array<string | null>
-  /** Epoch ms. Read by {@link newestStoredGraphVersion}, which is the one
-   *  decision made on it: which stored release a phone with no signal builds
-   *  its graph from. */
+  /** Epoch ms. Read by {@link releaseToBuildFromStore} and
+   *  {@link newestStoredGraphVersion}, which is the one decision made on it:
+   *  which stored release a phone with no signal builds its graph from. */
   fetchedAt: number
 }
 
@@ -523,7 +524,9 @@ async function graphCellStoreKeys(): Promise<string[]> {
 
 /**
  * The manifest version of the newest routing half this phone holds for any of
- * `names`, or null when it holds none of them (#1828).
+ * `names`, or null when it holds none of them (#1828). Since #1837 it is what
+ * {@link releaseToBuildFromStore} answers when no one release holds every
+ * cell asked about, and reads the current copies only.
  *
  * WHAT "NEWEST" MEANS HERE, because the version cannot say it. A version is
  * `str(uuid.uuid4())` (pipeline/publish.py), so two of them cannot be put in
@@ -563,6 +566,58 @@ export async function newestStoredGraphVersion(
     }
   }
   return newest === null ? null : { version: newest.version }
+}
+
+/**
+ * The release a graph of the cells `names` is built from out of this phone's
+ * store (#1837): the newest release that every one of them this phone holds
+ * has a copy of - its current copy, or the older copy kept beside it
+ * ({@link olderCopyKey}). When no release holds them all, the newest stored
+ * among them, {@link newestStoredGraphVersion}'s answer and the rule before
+ * #1837. Null when this phone holds none of them.
+ *
+ * The maintainer's choice by poll on 2026-10-09, for a hike one of whose
+ * cells was refreshed with signal from a release that changed it: build from
+ * the newest release that holds every piece. Measured in
+ * lib/trailGraphReleases.realIdb.test.ts, the rule before #1837 built such a
+ * hike from the refreshed cell alone.
+ *
+ * NEWEST BY WHEN A COPY WAS STORED UNDER IT, which is how
+ * newestStoredGraphVersion orders releases, and for its reason: a version is
+ * a uuid4 and says nothing about order. A release recorded on a copy since
+ * (`alsoPublishedIn`) counts as one that copy holds, never as a newer one.
+ *
+ * ACROSS THE CELLS ASKED ABOUT, NOT THE WHOLE STORE, for the reason
+ * newestStoredGraphVersion gives. A cell this phone holds nothing of is left
+ * out of the question: no release can supply it from here, and it must not
+ * keep the others from being built.
+ */
+export async function releaseToBuildFromStore(
+  names: readonly string[],
+): Promise<{ version: string | null } | null> {
+  /** Each cell's routing copies, current first, for every cell held at all. */
+  const held: StoredGraphArtifact[][] = []
+  for (const name of new Set(names)) {
+    const storeKey = graphCellStoreKey(name, 'graph')
+    const copies: StoredGraphArtifact[] = []
+    for (const key of [storeKey, olderCopyKey(storeKey)]) {
+      const stored = await readStoredGraph(key)
+      if (stored !== null) copies.push(stored)
+    }
+    if (copies.length > 0) held.push(copies)
+  }
+  // Newest stored first. The sort is stable, so of two copies stored at the
+  // same moment the first name asked about comes first, as it does in
+  // newestStoredGraphVersion.
+  const tried = new Set<string | null>()
+  for (const { version } of held.flat().sort((a, b) => b.fetchedAt - a.fetchedAt)) {
+    if (tried.has(version)) continue
+    tried.add(version)
+    if (held.every((copies) => copies.some((copy) => isCopyOf(copy, version)))) {
+      return { version }
+    }
+  }
+  return await newestStoredGraphVersion(names)
 }
 
 /**

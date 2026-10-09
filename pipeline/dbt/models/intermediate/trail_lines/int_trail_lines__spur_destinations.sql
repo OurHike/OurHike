@@ -22,7 +22,7 @@
 -- mart's record_order). A tie between two POIs at one distance goes to the
 -- first, as lib/spurs.PointIndex.nearest's strict `<` keeps it.
 with pois as (
-    select * from {{ ref('points_of_interest') }}
+    select * from {{ ref('points_of_interest', v=1) }}
     where phone_files = 'poi_by_type'
 )
 

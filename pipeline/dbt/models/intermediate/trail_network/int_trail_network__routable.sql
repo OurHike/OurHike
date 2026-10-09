@@ -47,7 +47,7 @@ with lines as (
         geom_geojson,
         line_kind != 'network' as is_at,
         feature_order
-    from {{ ref('trail_lines') }}
+    from {{ ref('trail_lines', v=1) }}
     where
         line_kind = 'network'
         or source_key in (

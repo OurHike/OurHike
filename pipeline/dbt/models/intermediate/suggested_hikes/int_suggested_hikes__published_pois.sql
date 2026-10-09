@@ -11,5 +11,5 @@
 select
     poi_id,
     mile
-from {{ ref('points_of_interest') }}
+from {{ ref('points_of_interest', v=1) }}
 where phone_files = 'poi_by_type'

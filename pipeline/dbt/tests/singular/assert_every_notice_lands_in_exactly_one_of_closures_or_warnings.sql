@@ -54,12 +54,12 @@ landed as (
     select
         closure_id as notice_id,
         'closures' as mart
-    from {{ ref('closures') }}
+    from {{ ref('closures', v=1) }}
     union all
     select
         warning_id as notice_id,
         'warnings' as mart
-    from {{ ref('warnings') }}
+    from {{ ref('warnings', v=1) }}
     where warning_kind = 'org_notice'
 ),
 

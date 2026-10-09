@@ -35,7 +35,7 @@ unit_tests:
       prevent (TN01, a safety field).
     model: int_trail_network__routable
     given:
-      - input: ref('trail_lines')
+      - input: ref('trail_lines', v=1)
         rows:
           - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.25], [-74.08, 41.25]]}'}
           - {trail_line_id: 'oprhp_trails:9', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: Closed, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.26], [-74.08, 41.26]]}'}
@@ -58,7 +58,7 @@ unit_tests:
       a Polygon is counted `not_a_line`, and none of the three is an edge.
     model: int_trail_network__routable
     given:
-      - input: ref('trail_lines')
+      - input: ref('trail_lines', v=1)
         rows:
           - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: null}
           - {trail_line_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": []}'}
@@ -77,7 +77,7 @@ unit_tests:
       the line after it is numbered after both.
     model: int_trail_network__routable
     given:
-      - input: ref('trail_lines')
+      - input: ref('trail_lines', v=1)
         rows:
           - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "MultiLineString", "coordinates": [[[-74.1, 41.25], [-74.09, 41.25]], [[-74.1, 41.27], [-74.09, 41.27]]]}'}
           - {trail_line_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.09, 41.29]]}'}
@@ -97,7 +97,7 @@ unit_tests:
       the map with a sentence that is false there.
     model: int_trail_network__routable
     given:
-      - input: ref('trail_lines')
+      - input: ref('trail_lines', v=1)
         rows:
           - {trail_line_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.26], [-74.09, 41.26]]}'}
           - {trail_line_id: 'centerline:1', source_key: centerline, line_kind: centerline, feature_order: 0, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.27], [-74.09, 41.27]]}'}

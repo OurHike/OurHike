@@ -15,7 +15,7 @@ select
     'closures' as mart,
     closures.closure_id as notice_id,
     closures.source_key
-from {{ ref('closures') }} as closures
+from {{ ref('closures', v=1) }} as closures
 inner join hazards on closures.source_key = hazards.source_key
 
 union all
@@ -24,6 +24,6 @@ select
     'warnings' as mart,
     warnings.warning_id as notice_id,
     warnings.source_key
-from {{ ref('warnings') }} as warnings
+from {{ ref('warnings', v=1) }} as warnings
 inner join hazards on warnings.source_key = hazards.source_key
 where coalesce(warnings.obstructs_trail, false)

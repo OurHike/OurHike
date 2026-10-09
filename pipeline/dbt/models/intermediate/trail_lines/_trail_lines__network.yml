@@ -467,7 +467,7 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('sources')
+                to: ref('sources', v=1)
                 field: source_key
       - name: _loaded_at
         description: When dlt loaded the line's row.

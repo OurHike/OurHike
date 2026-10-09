@@ -10,5 +10,5 @@ select
     source_key,
     licence_basis,
     publication_rule
-from {{ ref('sources') }}
+from {{ ref('sources', v=1) }}
 where reaches_hikers and not may_publish

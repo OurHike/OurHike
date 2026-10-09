@@ -21,7 +21,7 @@
 -- no POI type or trail id has that shape, and a name of that shape would
 -- publish here as the name's text where today's file publishes the JSON.
 with pois as (
-    select * from {{ ref('points_of_interest') }}
+    select * from {{ ref('points_of_interest', v=1) }}
     where phone_files = 'poi_by_type'
 )
 

@@ -9,7 +9,7 @@ select
     edges.edge_id as id,
     trail_line.trail_line_id
 from {{ ref('trail_network') }} as edges
-inner join {{ ref('trail_lines') }} as trail_line
+inner join {{ ref('trail_lines', v=1) }} as trail_line
     on edges.trail_id = trail_line.trail_line_id
 where trail_line.line_kind = 'club'
 union all
@@ -18,6 +18,6 @@ select
     routable.part_id as id,
     trail_line.trail_line_id
 from {{ ref('int_trail_network__routable') }} as routable
-inner join {{ ref('trail_lines') }} as trail_line
+inner join {{ ref('trail_lines', v=1) }} as trail_line
     on routable.trail_id = trail_line.trail_line_id
 where trail_line.line_kind = 'club'

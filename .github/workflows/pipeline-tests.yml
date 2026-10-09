@@ -459,9 +459,10 @@ jobs:
       # ContractBreakingChangeError. check_contract_versions.py fails on a
       # removed column, a changed type, a version dropped before its
       # deprecation_date or a contract switched off, unless the change
-      # arrives as a new version, and requires every pub_ writer to pin the
-      # version it reads and name it in its R2 keys (ELT.md, "Versions and
-      # channels").
+      # arrives as a new version. It requires every model, data test and
+      # unit-test given that reads a versioned mart to pin the version, and
+      # every pub_ writer to name its version in its R2 keys (ELT.md,
+      # "Versions and channels").
       #
       # The base is parsed in a git worktree of the event's base commit (the
       # pull request's, the merge queue's, or the push's previous head),

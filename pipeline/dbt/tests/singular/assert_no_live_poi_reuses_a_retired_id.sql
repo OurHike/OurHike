@@ -30,7 +30,7 @@ with live as (
         poi_id,
         source,
         name
-    from {{ ref('points_of_interest') }}
+    from {{ ref('points_of_interest', v=1) }}
     where phone_files != 'retired_poi'
 ),
 
@@ -38,7 +38,7 @@ tombstones as (
     select
         poi_id,
         retired
-    from {{ ref('points_of_interest') }}
+    from {{ ref('points_of_interest', v=1) }}
     where phone_files = 'retired_poi'
 )
 

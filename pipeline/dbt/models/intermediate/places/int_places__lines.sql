@@ -46,7 +46,7 @@
 -- owned name, the centerline keeps its own, as the Python's `if owned`
 -- leaves it.
 with trail_lines as (
-    select * from {{ ref('trail_lines') }}
+    select * from {{ ref('trail_lines', v=1) }}
 ),
 
 publication as (

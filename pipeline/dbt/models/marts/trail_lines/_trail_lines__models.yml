@@ -273,7 +273,7 @@ models:
         data_tests:
           - relationships:
               arguments:
-                to: ref('sources')
+                to: ref('sources', v=1)
                 field: source_key
       - name: _loaded_at
         description: When the extract loaded the row's source; for a centerline chain, the latest of its segments'.

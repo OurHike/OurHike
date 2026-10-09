@@ -297,16 +297,18 @@ _GIVEN_REF = re.compile(
 def _latest_versions(nodes: dict) -> dict[str, str]:
     """Each versioned model's name and the version an unpinned ref to it compiles to today: its `latest_version`,
     else its highest version."""
-    latest: dict[str, str] = {}
+    declared: dict[str, str] = {}
+    highest: dict[str, str] = {}
     for node in nodes.values():
-        if node.get("resource_type") != "model" or _version(node) is None:
+        version = _version(node)
+        if node.get("resource_type") != "model" or version is None:
             continue
         name = node.get("name")
-        declared = node.get("latest_version")
-        candidate = str(declared) if declared is not None else _version(node)
-        if name not in latest or (declared is None and int(candidate) > int(latest[name])):
-            latest[name] = candidate
-    return latest
+        if node.get("latest_version") is not None:
+            declared[name] = str(node["latest_version"])
+        if name not in highest or int(version) > int(highest[name]):
+            highest[name] = version
+    return {name: declared.get(name, version) for name, version in highest.items()}
 
 
 def check_pins(head: dict, report: Report) -> None:

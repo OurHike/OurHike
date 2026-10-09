@@ -361,6 +361,17 @@ def test_the_pin_asked_for_is_the_version_an_unpinned_ref_reads_today():
     assert "pin it, ref('podcasts', v=2)" in failure
 
 
+def test_a_declared_latest_version_wins_over_the_highest_one():
+    """A prerelease v2 beside `latest_version: 1` leaves unpinned refs on v1, so the pin asked for is v1."""
+    reader_id, reader = _reader(pinned=False)
+    v1_id, v1 = _mart(version=1, latest=1)
+    v2_id, v2 = _mart(version=2)
+    v2["latest_version"] = None
+    for order in ([(v2_id, v2), (v1_id, v1)], [(v1_id, v1), (v2_id, v2)]):
+        (failure,) = _check(None, _manifest(*order, (reader_id, reader))).failures
+        assert "pin it, ref('podcasts', v=1)" in failure
+
+
 @pytest.mark.parametrize("key", ["v2/stewards.json", "conditions/v2/closures.json", "podcasts/v2/episodes.json"])
 def test_a_v2_writer_names_v2_where_elt_md_puts_it(key):
     writer_id, writer = _writer(reads=(("podcasts", 2),))

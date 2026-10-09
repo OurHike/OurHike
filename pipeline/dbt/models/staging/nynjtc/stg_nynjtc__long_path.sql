@@ -9,15 +9,27 @@
 -- 43 polyline segments, measured live 2026-08-24 - the same count and the
 -- same field list the survey read on 2026-08-18, so the shelf has not moved
 -- under it. Trail_Name/Blaze/Maintainer/Mileage/Source/Comments/LP_Section/
--- GuideURL is that measured list, whole.
+-- GuideURL is that list. It left out two system fields the layer's metadata
+-- names: FID and Shape__Length (read live 2026-10-09).
 --
--- NO ID COLUMN, and this is an absence rather than an oversight. sources.json
--- records no `id_field` for this layer and no id in the measured field list,
--- so there is nothing to stage as a source_id. ST_Read does hand DuckDB an
--- `OGC_FID`, and it must not be used: that is GDAL's row number for this
--- fetch, not NYNJTC's identity for the segment, and a republished layer in a
--- different order would silently renumber every row. What would settle it is
--- one metadata read of the service's objectIdField.
+-- `fid` IS THE LAYER'S OBJECT ID, AND THE ID TODAY'S EXPORTER PUBLISHES.
+-- The metadata names FID as the objectIdField (type esriFieldTypeOID), and
+-- ArcGIS writes FID's value as each GeoJSON feature's `id`: equal on 43 of
+-- 43 features, read live 2026-10-09. fetch_external_layers.py keeps that
+-- `id`, and lib/feature_id.py publishes it where a layer has no GlobalID,
+-- so export_nearby_trails.py calls these lines `nynjtc_long_path:<FID>`:
+-- UA's release 2026-10-03-2, which it built, holds exactly the 43 live
+-- FIDs (read 2026-10-09). int_trail_lines__network_judged reads `fid` from
+-- this model and publishes the same id, so no line's id changes at cutover
+-- (ELT.md, TL05).
+--
+-- FID IS NOT THE KEY. Decision 40 keys a row on current values and never
+-- on an object id alone, because a reload mints object ids again. Whether
+-- NYNJTC's seasonal republish in place keeps FIDs is @unvalidated: the live
+-- ids run from 1 to 85 over 43 rows (2026-10-09), which reads as features
+-- edited in place rather than reloaded (Reasoned, not measured). Today's
+-- exporter carries the same exposure, so matching it adds none. Two reads
+-- of the layer either side of a republish, compared, would settle it.
 --
 -- `blaze` IS NOT DECODED, and the difference from the A.T. side is the
 -- point: this is a plain string with no coded domain, reading the lowercase
@@ -38,9 +50,11 @@ with layer as (
     -- fetch_external_layers.py writes the GeoJSON export_nearby_trails.py
     -- reads (Reasoned from both files, as stg_atc__centerline_segments has
     -- it; @unvalidated across a load dlt splits into more than one file).
-    -- This layer has no id field, so lib/feature_id.py's last fallback,
-    -- `generated-<place in the file>`, is its published id, and
-    -- int_trail_lines__network_judged numbers it by `source_row`.
+    -- step_long_path_guide.py reads the lines in this order. The published
+    -- id is `fid`; int_trail_lines__network_judged numbers a line by
+    -- `source_row` (`generated-<n>`, lib/feature_id.py's last fallback) only
+    -- where `fid` is null, which an esriFieldTypeOID field never is
+    -- (Reasoned: ArcGIS gives every feature one).
     select
         rowid as source_row,
         * exclude (geometry),
@@ -55,6 +69,8 @@ renamed as (
             'lp_section',
             'mileage',
         ]) }} as trail_segment_key,
+        -- Under its landed name: the judged model's id ladder reads `fid`.
+        fid,
         trail_name,
         blaze,
         maintainer,

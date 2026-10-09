@@ -431,8 +431,11 @@ NETWORK_ID_REASONS = {
         "feature's server row id or to its place in the file"
     ),
     "feature_id_not_landed": (
-        "expected by TL05's ledger row until the extract lands it: the extract lands a feature's properties and "
-        "geometry and not its GeoJSON id, so a layer whose only id is that one is numbered by its place in the file"
+        "expected by TL05's ledger row: the extract lands a feature's properties and geometry and not its GeoJSON "
+        "id, so a line whose only id is a GeoJSON id that is not its layer's object id is numbered by its place in "
+        "the file. Never explained beside an object id, a whole number: an ArcGIS layer's GeoJSON id is its object "
+        "id, which lands as a column (34 of 34 features of 18 layers, read 2026-10-09), so the SQL numbering such a "
+        "line by place has lost a column it should carry, as the two NYNJTC staging models did until 2026-10-09"
     ),
     "staging_key_for_a_line_with_no_id": (
         "an improvement over numbering by place (TL05): a line with none of the ids the SQL reads (a GlobalID, an "
@@ -473,11 +476,12 @@ AS_LANDED_ID_REASON = (
     "expected, from the old side's input and not from either writer (TL05): today's fetcher writes each ArcGIS "
     "feature's GeoJSON id, which ArcGIS sets to the layer's object id, and resolve_feature_id() publishes it where "
     "the layer has no field named exactly 'GlobalID'; the SQL publishes the same object id from its landed column, "
-    "OBJECTID or FID. The file the old side reads has no GeoJSON id (the extract's as-landed copy drops it, and "
-    "make_dbt_fixtures.py writes its ArcGIS lines without one), so there today's exporter numbers the line by its "
-    "place in the file. Explained only for a line equal in both files on every other property and on geometry, its "
-    "old ids all positional and its new ids all whole numbers. Read on 2026-10-08: of the 24 ArcGIS network layers "
-    "whose metadata answered, the object id field is OBJECTID on 20 and FID on 3 (cotrex_trails, nc_mst_trail, "
+    "OBJECTID or FID. An as-landed copy written before 2026-10-09 has no GeoJSON id, and a layer FRESH since then "
+    "is still pinned from that copy, so there today's exporter numbers the line by its place in the file; a copy "
+    "written since carries the id (extract/_run.py's as_landed_feature()), as make_dbt_fixtures.py's lines do. "
+    "Explained only for a line equal in both files on every other property and on geometry, its old ids all "
+    "positional and its new ids all whole numbers. Read on 2026-10-08: of the 24 ArcGIS network layers whose "
+    "metadata answered, the object id field is OBJECTID on 20 and FID on 3 (cotrex_trails, nc_mst_trail, "
     "nynjtc_long_path), and cotrex_trails, nc_mst_trail and both NYNJTC layers each gave two features a GeoJSON id "
     "equal to it"
 )
@@ -492,7 +496,9 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     (int_trail_lines__network_judged's `source_row`), as today's exporter does, so a line they number differently is
     a defect. A layer whose staging model keeps no such order is published under its staging key (STAGING_KEY). A line
     the old side numbers by place and the dbt writer by its object id, a whole number, is the old side's input
-    (AS_LANDED_ID_REASON).
+    (AS_LANDED_ID_REASON). The other way round is never explained: an object id today's exporter publishes beside a
+    place in the dbt file means a staging model dropped the object id column, which renames the line at cutover. That
+    is what the two NYNJTC models did until 2026-10-09, while this function explained it as feature_id_not_landed.
     """
 
     def line(feature: dict) -> str:
@@ -535,6 +541,8 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
         if all(positional(feature_id) for feature_id in was) and all(staging_key(feature_id) for feature_id in now):
             case = "staging_key_for_a_line_with_no_id"
         elif all(positional(feature_id) for feature_id in now):
+            if any(object_id(feature_id) for feature_id in was):
+                continue  # an object id the dbt file numbers by place: a dropped column, never explained (docstring)
             case = "feature_id_not_landed"
         else:
             case = "globalid_in_any_case"

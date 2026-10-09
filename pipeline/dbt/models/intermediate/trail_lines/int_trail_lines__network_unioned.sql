@@ -59,8 +59,10 @@
     ('wi_ice_age_trail', 'wi_dnr', 'base_wi_dnr__wi_ice_age_trail'),
 ] %}
 {#- The fourth field: whether the stg model carries `source_row`, the
-    raw table's order, which the two NYNJTC layers do because they have no
-    id field (stg_nynjtc__long_path says why). -#}
+    raw table's order, which the two NYNJTC layers do. Their object id
+    (`fid`, `objectid`) rides in `properties` and is their published id;
+    `source_row` numbers a line only where that id is null
+    (stg_nynjtc__long_path says why it is kept). -#}
 {%- set staged_branches = [
     ('oprhp_trails', 'nysparks', 'stg_oprhp__trails', false),
     ('nynjtc_long_path', 'nynjtc', 'stg_nynjtc__long_path', true),

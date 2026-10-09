@@ -116,10 +116,11 @@ models:
         description: >
           The published id, `{source_key}:{id}` (TL05): the layer's GlobalID
           in any case, else its object id (OBJECTID, or FID where the layer
-          names it so), else Socrata's row id, else `generated-<n>` by the
-          raw table's order where the stg model carries it (`source_row`:
-          the two NYNJTC layers), else the row's staging key, as a club
-          line's is. Unique among the rows that ship.
+          names it so, as the Long Path does), else Socrata's row id, else
+          `generated-<n>` by the raw table's order where the stg model
+          carries it (`source_row`: the two NYNJTC layers, whose object id
+          comes first), else the row's staging key, as a club line's is.
+          Unique among the rows that ship.
         data_tests:
           - not_null
           - unique:
@@ -241,8 +242,8 @@ models:
       - name: source_row
         description: >
           The row's place in its raw table, the fetched file's order, where
-          the layer's stg model carries it (the two NYNJTC layers, which have
-          no id field); null elsewhere.
+          the layer's stg model carries it (the two NYNJTC layers, which
+          also carry their object id); null elsewhere.
       - name: geom
         description: The feature's geometry as landed; null where the steward published none.
 

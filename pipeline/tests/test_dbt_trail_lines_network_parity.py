@@ -814,6 +814,40 @@ def test_parity_explains_a_place_in_the_as_landed_copy_beside_the_layers_object_
     assert found - explained == {"properties.id s:generated-4", "properties.id s:5"}
 
 
+def test_parity_never_explains_an_object_id_today_publishes_beside_a_place_in_the_dbt_file():
+    """The two NYNJTC layers until 2026-10-09: today's file publishes each line under its object id (the Long Path's
+    FID, which ArcGIS writes as the GeoJSON id), while stg_nynjtc__long_path dropped that column, so the dbt writer
+    numbered the same line `generated-<n>` and every NYNJTC line would have been renamed at cutover. parity.py
+    explained the pair as feature_id_not_landed; a dropped object id column is a defect, so it explains nothing."""
+    family = parity.FAMILIES["nearby_trails"]
+    a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]
+    old = {"features": [_line("nynjtc_long_path:1", "A", a), _line("nynjtc_long_path:85", "B", b)]}
+    new = {"features": [_line("nynjtc_long_path:generated-0", "A", a), _line("nynjtc_long_path:generated-1", "B", b)]}
+
+    found = {what for what, _, _ in parity.differences(old, new, family)}
+
+    assert found == {
+        "properties.id nynjtc_long_path:1",
+        "properties.id nynjtc_long_path:85",
+        "properties.id nynjtc_long_path:generated-0",
+        "properties.id nynjtc_long_path:generated-1",
+    }
+    assert family.explained(old, new) == {}
+
+
+def test_parity_still_explains_a_place_beside_a_feature_id_that_is_not_an_object_id():
+    """feature_id_not_landed's own case, the unit-test row sql::a_feature_id_the_extract_does_not_land: a GeoJSON id
+    that is no layer's object id (`row-7`) and that the SQL cannot read, so it numbers the line by place."""
+    line = [[0.0, 0.0], [1.0, 1.0]]
+    reasons = parity._network_id_reasons(
+        {"features": [_line("s:row-7", "A", line)]}, {"features": [_line("s:generated-3", "A", line)]}
+    )
+    assert reasons == {
+        "properties.id s:row-7": parity.NETWORK_ID_REASONS["feature_id_not_landed"],
+        "properties.id s:generated-3": parity.NETWORK_ID_REASONS["feature_id_not_landed"],
+    }
+
+
 def test_parity_does_not_call_a_staging_key_what_a_line_with_a_globalid_publishes():
     """A positional id beside an id of any other form is TL05's GlobalID case, never the staging key's."""
     line = [[0.0, 0.0], [1.0, 1.0]]

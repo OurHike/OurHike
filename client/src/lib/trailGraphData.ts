@@ -393,7 +393,24 @@ export async function loadGraphShard(
     // Any non-2xx, not only 404. A 403 on a misconfigured bucket and a 500
     // from the edge are both "this bucket is not serving this cell", and
     // neither is cured by waiting for a connection the phone already has.
-    if (!response.ok) return { kind: 'absent', because: 'not-in-release' }
+    if (!response.ok) {
+      // BUT NOT BEFORE THE STORE, WHEN THE RELEASE ITSELF DID NOT ANSWER
+      // (#1828 review). A manifest that does not answer 2xx says nothing
+      // about this cell. Measured 2026-10-09, data.ourhike.org answers 404
+      // for releases/2026-09-24-2/manifest.json, the release this build
+      // pins (lib/dataRelease.ts), and for the graph's cell index and both
+      // Harriman cells under it. Answered `not-in-release` here, that settled
+      // every cell for the session, so a phone holding the cells routed
+      // nothing, and still nothing after it lost signal. A stored copy of the
+      // release being built stands in, held to the same rule as with no
+      // signal. A readable manifest that lists no such cell still answers
+      // `not-in-release`, as it always has.
+      if (!readable) {
+        const kept = await storedShard(storeKey, release, 'not-in-release')
+        if (kept.kind === 'shard') return kept
+      }
+      return { kind: 'absent', because: 'not-in-release' }
+    }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
     // The backstop for a manifest that named no size: the bytes in hand are

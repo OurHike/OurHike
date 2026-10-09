@@ -496,7 +496,10 @@ the other release already used. So every merged graph is built from one release,
 `version` its cells were verified against, and `mergeGraphShard` refuses a cell from any other:
 
 - **With signal, the manifest's release.** A stored copy stands in for a failed fetch only when
-  its hash is the one the manifest publishes for that cell now. Any other stored copy is
+  its hash is the one the manifest publishes for that cell now. A release whose manifest does
+  not answer 2xx is read as no signal at all: measured 2026-10-09, data.ourhike.org answered 404
+  for the release this build pins - its manifest, its cell index and both Harriman cells asked -
+  and a stored copy of the release being built now stands in. Any other stored copy is
   refetched, never merged.
 - **Without signal, the newest release stored among the cells being built from**, by when each
   was fetched. Read across those cells rather than the whole store, so one cell fetched at home

@@ -298,3 +298,132 @@ describe('a phone holding a release-9 cell, with signal and release 10 published
     )
   })
 })
+
+// THE #1828 REVIEW'S THREE PLACES, and what the same review found beside them.
+//
+// One bar of signal reads the manifest - a few hundred KB - and fails the
+// multi-MB cells. A release can publish a cell byte-identical to the one a
+// phone holds, and measured 2026-10-09 UA's releases 2026-10-03, 2026-10-03-2
+// and 2026-10-08 did exactly that for all 779 routing cells. And a release
+// folder can answer 404 for everything: data.ourhike.org does for the
+// release this build pins, measured the same day. Each test below names the
+// way the code before the review failed it. Every one of those failures is
+// the same one in the woods: a followed hike with no graph to resolve
+// against, or a graph whose edges have no vertices, which no point snaps to.
+
+type Half = 'graph' | 'geometry' | 'elevation'
+/** One release's files, by cell and half. */
+type ReleaseFiles = Record<string, Partial<Record<Half, string>>>
+
+const SEAM: Array<[number, number]> = [P[1], [-74, 41.254], P[2]]
+
+/** Release 9's three halves of the two cells, each in its cell's edge order. */
+const R9_FILES: ReleaseFiles = {
+  [WEST.name]: {
+    graph: SHARD[RELEASE_9].west,
+    geometry: JSON.stringify([[P[0], P[1]], SEAM]),
+    elevation: JSON.stringify([
+      [12, 0],
+      [3, 3],
+    ]),
+  },
+  [EAST.name]: {
+    graph: SHARD[RELEASE_9].east,
+    geometry: JSON.stringify([SEAM, [P[2], P[3]]]),
+    elevation: JSON.stringify([
+      [3, 3],
+      [0, 9],
+    ]),
+  },
+}
+
+const keyOf = (name: string, half: Half) => trailGraphCellKey(name, half)
+/** What a launch of `version`'s build stored: every half in `files`. */
+async function keep(files: ReleaseFiles, version: string, fetchedAt: number) {
+  for (const [name, halves] of Object.entries(files)) {
+    for (const [half, body] of Object.entries(halves) as Array<[Half, string]>) {
+      const written = await writeStoredGraph(graphCellStoreKey(name, half), {
+        bytes: new Blob([body]),
+        hash: await hashOf(body),
+        version,
+        fetchedAt,
+      })
+      expect(written).toBe(true)
+    }
+  }
+}
+
+/**
+ * The bucket publishing `files` as release `version`. Only the keys in
+ * `serving` answer; every other request fails the way one bar of signal
+ * fails a multi-MB request, or answers `refusal` when that is a status.
+ * `manifestStatus` other than 200 is a release folder that is not there.
+ */
+async function publishing(
+  version: string,
+  files: ReleaseFiles,
+  {
+    serving = [] as string[],
+    manifestStatus = 200,
+    refusal = 'throw' as 'throw' | number,
+  } = {},
+) {
+  const bodies: Record<string, string> = {}
+  const artifacts: Record<string, { sha256: string }> = {}
+  for (const [name, halves] of Object.entries(files)) {
+    for (const [half, body] of Object.entries(halves) as Array<[Half, string]>) {
+      bodies[keyOf(name, half)] = body
+      artifacts[keyOf(name, half)] = { sha256: await hashOf(body) }
+    }
+  }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes(RELEASE_MANIFEST_PATH)) {
+      return manifestStatus === 200
+        ? new Response(JSON.stringify({ version, artifacts }), { status: 200 })
+        : new Response('Not Found', { status: manifestStatus })
+    }
+    const key = serving.find((each) => url.endsWith(`/${each}`))
+    if (key !== undefined) {
+      return new Response(bodies[key], {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    if (refusal === 'throw') throw new TypeError('Failed to fetch')
+    return new Response('Not Found', { status: refusal })
+  })
+}
+
+const cellNames = (result: { current: ReturnType<typeof useTrailGraph> }) =>
+  result.current.graphMerged?.cells.map((cell) => cell.name) ?? []
+
+function inputs(overrides: Partial<Inputs>): Inputs {
+  return {
+    online: false,
+    gate: true,
+    cellIndex: INDEX,
+    cellIndexSettled: true,
+    cellIndexUnreachable: false,
+    wanted: [],
+    attempt: 0,
+    ...overrides,
+  }
+}
+
+describe('a release folder that answers 404 (#1828 review)', () => {
+  it('useTrailGraph merges the cells this phone stored, with signal', async () => {
+    // Before the review: each cell's 404 answered `not-in-release` before
+    // the store was asked, settled for the session, and still routed
+    // nothing after the phone lost signal.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await publishing(RELEASE_10, R9_FILES, { manifestStatus: 404, refusal: 404 })
+
+    const { result, rerender } = mount({ online: true, wanted: [WEST, EAST] })
+
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+    expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_9 })
+    rerender(inputs({ online: false, wanted: [WEST, EAST] }))
+    expect(cellNames(result)).toEqual([WEST.name, EAST.name])
+  })
+})

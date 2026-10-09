@@ -863,6 +863,57 @@ describe('one release per merged graph (#1828)', () => {
     })
     expect(await fetchTrailGraphGeometryCells(merged())).toMatchObject({ kind: 'loaded' })
   })
+
+  // #1828 review. One bar of signal reads the manifest and fails the
+  // multi-MB cells; a release can publish a cell byte-identical to the copy
+  // this phone holds; and a release folder can answer 404 for everything.
+  describe('the #1828 review', () => {
+    const WEST_GRAPH = graphCellStoreKey(WEST.name, 'graph')
+    /** A release folder that is not there: the manifest and every file 404. */
+    function releaseFolderMissing() {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.resolve({ ok: false, status: 404 } as unknown as Response)),
+      )
+    }
+
+    it('loadGraphShard takes the stored copy of the release asked for when the release’s manifest answers 404', async () => {
+      // Measured 2026-10-09: data.ourhike.org answers 404 for the release
+      // this build pins, its manifest and its cells alike.
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9' } })
+      releaseFolderMissing()
+
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_9,
+      })
+    })
+
+    it('loadGraphShard answers not-in-release when the manifest answers 404 and this phone holds no copy of the release asked for', async () => {
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-10' } })
+      releaseFolderMissing()
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toEqual({
+        kind: 'absent',
+        because: 'not-in-release',
+      })
+
+      holdingReleases({})
+      expect(await loadGraphShard(WEST)).toEqual({
+        kind: 'absent',
+        because: 'not-in-release',
+      })
+    })
+
+    it('loadGraphShard still answers not-in-release, whatever is stored, when the manifest is readable and the cell answers 404', async () => {
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9' } })
+      serve({ manifest: { version: 'release-9', artifacts: {} } })
+
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toEqual({
+        kind: 'absent',
+        because: 'not-in-release',
+      })
+    })
+  })
 })
 
 describe('the geometry half, fetched when the door opens', () => {

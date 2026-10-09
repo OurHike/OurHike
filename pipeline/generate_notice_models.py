@@ -43,10 +43,11 @@ WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
   (macros/last_read_or_confirmed_at.sql: when the extract last read it or
   confirmed it unchanged, never `_loaded_at`, which a FRESH check leaves at
   the last load) and errors after FRESHNESS_HOURS for its cadence, 24 hours
-  for an hourly source (decision 100); one that reaches no hiker only warns,
-  and a PDF notice has none (is_pdf_notice()). Each the notices legs read is
-  tagged NOTICES_JOB_TAG, which publish-conditions.yml's freshness step
-  selects after it has published.
+  for an hourly source (decision 100); one that reaches no hiker only warns.
+  Each the notices legs read is tagged NOTICES_JOB_TAG, which
+  publish-conditions.yml's freshness step selects after it has published, and
+  a PDF notice is tagged PDF_NOTICE_TAG as well, which CI's two freshness
+  commands leave out (is_pdf_notice()).
 - Elementary's checks (decision 102), each at warn and tagged
   `elementary_check`, which build_marts.py runs after the writers in CI's
   fixture build (on a pull request, only those its change reaches, decision
@@ -185,6 +186,15 @@ MONTHLY_WARN_DAYS = 7
 #: The tag publish-conditions.yml's freshness step selects the notices job's sources by: every generated source the
 #: notices legs read (extract/_run.py's job_of()), whose run log reaches the hourly warehouse only with a served copy.
 NOTICES_JOB_TAG = "notices_job"
+#: The tag CI's two `dbt source freshness` commands leave out with `--exclude tag:pdf_notice` (pipeline-tests.yml's dbt
+#: job and scripts/test.sh's dbt suite): every PDF notice (is_pdf_notice()). Fixture mode lands no PDF, so in CI each
+#: would read as never read and turn red. Production measures them like any other notice source: the notices job
+#: installs requirements-extract.txt, which pins pypdf, and publish-conditions.yml's freshness step selects
+#: tag:notices_job with no exclude. Until 2026-10-09 a PDF notice carried no freshness instead, and dbt 2.0.6 leaves a
+#: source with no thresholds out of `source freshness` without a word (measured that day: publish-conditions.yml's
+#: selection measured 295 sources and none of the four PDFs, tests/test_dbt_notice_source_freshness_runs.py), so a
+#: PDF the extract stopped reading kept publishing its last table and nothing turned red.
+PDF_NOTICE_TAG = "pdf_notice"
 #: Every generated source's `loaded_at_query`, as dbt renders it.
 LOADED_AT_QUERY = "{{ last_read_or_confirmed_at(this) }}"
 
@@ -753,25 +763,23 @@ def _dump(document: dict) -> str:
 
 
 def is_pdf_notice(source: NoticeSource) -> bool:
-    """A page notice read from a PDF: no freshness, because the fixture warehouse never holds its table.
+    """A page notice read from a PDF: tagged PDF_NOTICE_TAG, because the fixture warehouse never holds its table.
 
     PageNotice reads a PDF through pypdf, which the pipeline and dbt jobs do not
     install, so fixture mode leaves these out (make_dbt_fixtures.py's note on the
-    four PDFs) and CI's `dbt source freshness` would fail on a table that is not
-    there; measured from the run log, as every other notice source is
-    (notice_freshness()), it would read null, which dbt reads as stale. Each has
-    a fct_sources_without_freshness row in
-    seeds/dbt_project_evaluator_exceptions.csv, which
-    tests/test_generated_notice_models.py holds to this list. The gate still
-    holds an absent one (int_closures__notice_tables).
+    four PDFs). Measured from the run log, as every other notice source is
+    (notice_freshness()), such a source reads null in CI, which dbt reads as
+    stale, so CI's two `dbt source freshness` commands exclude the tag.
+    Production measures it: the notices job installs pypdf.
+    tests/test_generated_notice_models.py holds the tag to this list and the
+    three commands to the tag. The gate still holds an absent one
+    (int_closures__notice_tables).
     """
     return source.reader_class == "PageNotice" and str((source.entry or {}).get("url", "")).lower().endswith(".pdf")
 
 
-def notice_freshness(source: NoticeSource) -> dict | None:
-    """A notice source's dbt freshness by its cadence (FRESHNESS_HOURS, MONTHLY_WARN_DAYS); None for a PDF notice."""
-    if is_pdf_notice(source):
-        return None
+def notice_freshness(source: NoticeSource) -> dict:
+    """A notice source's dbt freshness by its cadence (FRESHNESS_HOURS, MONTHLY_WARN_DAYS), a PDF notice's included."""
     if source.cadence == "monthly":
         return {"warn_after": {"count": MONTHLY_WARN_DAYS, "period": "day"}}
     warn, error = FRESHNESS_HOURS[source.cadence]
@@ -779,6 +787,12 @@ def notice_freshness(source: NoticeSource) -> dict | None:
     if (source.entry or {}).get("reaches_hikers") is not False:
         freshness["error_after"] = {"count": error, "period": "hour"}
     return freshness
+
+
+def _source_tags(source: NoticeSource) -> list[str]:
+    """A notice source's tags: NOTICES_JOB_TAG on the notices legs' cadences, and PDF_NOTICE_TAG on a PDF notice."""
+    tags = [NOTICES_JOB_TAG] if source.cadence in FRESHNESS_HOURS else []
+    return tags + ([PDF_NOTICE_TAG] if is_pdf_notice(source) else [])
 
 
 def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
@@ -794,7 +808,7 @@ def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
                 "meta": {"cadence": source.cadence},
                 # The hourly lane's two cadences are the notices job's (extract/_run.py's job_of()): no generated
                 # source is one of the conditions job's HOURLY_JOB_TABLES, which are all hand-staged.
-                **({"tags": [NOTICES_JOB_TAG]} if source.cadence in FRESHNESS_HOURS else {}),
+                **({"tags": tags} if (tags := _source_tags(source)) else {}),
                 "freshness": notice_freshness(source),
             },
             "data_tests": [

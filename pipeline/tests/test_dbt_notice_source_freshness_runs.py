@@ -57,24 +57,46 @@ def _ago(hours: float) -> datetime:
     return NOW - timedelta(hours=hours)
 
 
-def _notice_sources(cadence: str, reaches_hikers: bool, count: int) -> list[tuple[str, str]]:
-    """(dbt source name, raw table) of the first `count` generated notice sources of `cadence`, PDF notices left out
-    (their `freshness: null`), whose sources.json row does or does not say reaches_hikers false."""
-    with (DBT_DIR / "seeds" / "notice_readers.csv").open(newline="") as handle:
-        keys = {row["raw_table"]: row["source_key"] for row in csv.DictReader(handle)}
-    registry = {row["key"]: row for row in json.loads((PIPELINE_DIR / "sources.json").read_text())["sources"]}
+def _generated_notice_tables() -> list[tuple[str, dict]]:
+    """(dbt source name, table) of every generated notice source, from the generated sources YAML."""
     found = []
     for path in sorted(DBT_DIR.glob("models/staging/*/notices/_*__sources.yml")):
         text = path.read_text(encoding="utf-8")
         if not text.startswith(GENERATED):
             continue
         for source in yaml.safe_load(text)["sources"]:
-            for table in source["tables"]:
-                config = table.get("config") or {}
-                quiet = registry.get(keys.get(table["name"]), {}).get("reaches_hikers") is False
-                if config.get("meta", {}).get("cadence") == cadence and config.get("freshness", {}) is not None:
-                    if quiet is not reaches_hikers:
-                        found.append((source["name"], table["name"]))
+            found.extend((source["name"], table) for table in source["tables"])
+    return found
+
+
+def _pdf_notice_tables() -> set[str]:
+    """The raw table of every PDF notice: a page notice whose sources.json URL is a PDF, as generate_notice_models.py's
+    is_pdf_notice() decides it, read here from the readers seed and the registry because the generator imports dlt.
+    tests/test_generated_notice_models.py holds the generator's own list to the same tables."""
+    registry = {row["key"]: row for row in json.loads((PIPELINE_DIR / "sources.json").read_text())["sources"]}
+    with (DBT_DIR / "seeds" / "notice_readers.csv").open(newline="") as handle:
+        return {
+            row["raw_table"]
+            for row in csv.DictReader(handle)
+            if row["reader"] == "page_notice" and str(registry.get(row["source_key"], {}).get("url", "")).lower().endswith(".pdf")
+        }
+
+
+def _notice_sources(cadence: str, reaches_hikers: bool, count: int) -> list[tuple[str, str]]:
+    """(dbt source name, raw table) of the first `count` generated notice sources of `cadence`, PDF notices left out
+    (test_publish_conditions_freshness_measures_every_pdf_notice has them), whose sources.json row does or does not
+    say reaches_hikers false."""
+    with (DBT_DIR / "seeds" / "notice_readers.csv").open(newline="") as handle:
+        keys = {row["raw_table"]: row["source_key"] for row in csv.DictReader(handle)}
+    registry = {row["key"]: row for row in json.loads((PIPELINE_DIR / "sources.json").read_text())["sources"]}
+    pdfs = _pdf_notice_tables()
+    found = []
+    for source_name, table in _generated_notice_tables():
+        config = table.get("config") or {}
+        quiet = registry.get(keys.get(table["name"]), {}).get("reaches_hikers") is False
+        if config.get("meta", {}).get("cadence") == cadence and table["name"] not in pdfs:
+            if quiet is not reaches_hikers:
+                found.append((source_name, table["name"]))
     assert len(found) >= count, f"fewer than {count} {cadence} notice sources with reaches_hikers {reaches_hikers}"
     return found[:count]
 
@@ -141,13 +163,26 @@ def freshness(tmp_path_factory) -> dict[str, str]:
                         checked_at,
                     ],
                 )
+    selection = [f"source:{source}.{table}" for source, table, _loaded_at, _rows in cases.values()]
+    completed, by_id = _dbt_source_freshness(root, warehouse, "--select", *selection)
+    statuses = {
+        name: by_id.get(f"source.ourhike.{source}.{table}", "not measured")
+        for name, (source, table, _loaded_at, _rows) in cases.items()
+    }
+    print(completed.stdout[-6000:])
+    # dbt exits 1 when any source errors and 0 when the worst is a warning (measured on 2.0.6, 2026-10-07).
+    assert completed.returncode == (1 if "error" in statuses.values() else 0), completed.stdout[-3000:]
+    return statuses
+
+
+def _dbt_source_freshness(root: Path, warehouse: Path, *selection: str) -> tuple[subprocess.CompletedProcess, dict]:
+    """`dbt source freshness` over `warehouse` with `selection`, and {unique_id: status} of every source it measured."""
     env = {
         **os.environ,
         "OURHIKE_WAREHOUSE": str(warehouse),
         "OURHIKE_PROCESSED_DIR": str(root / "processed"),
         "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS": "false",
     }
-    selection = [f"source:{source}.{table}" for source, table, _loaded_at, _rows in cases.values()]
     completed = subprocess.run(
         [
             DBT,
@@ -159,7 +194,6 @@ def freshness(tmp_path_factory) -> dict[str, str]:
             str(root / "target"),
             "--log-path",
             str(root / "logs"),
-            "--select",
             *selection,
         ],
         cwd=DBT_DIR,
@@ -170,15 +204,49 @@ def freshness(tmp_path_factory) -> dict[str, str]:
     )
     results_path = root / "target" / "sources.json"
     assert results_path.exists(), completed.stdout[-4000:] + completed.stderr[-2000:]
-    by_id = {result["unique_id"]: result["status"].lower() for result in json.loads(results_path.read_text())["results"]}
-    statuses = {
-        name: by_id.get(f"source.ourhike.{source}.{table}", "not measured")
-        for name, (source, table, _loaded_at, _rows) in cases.items()
+    results = json.loads(results_path.read_text())["results"]
+    return completed, {result["unique_id"]: result["status"].lower() for result in results}
+
+
+@pytest.fixture(scope="module")
+def publish_conditions_selection(tmp_path_factory) -> dict[str, str]:
+    """{source.table: status} of every PDF notice, from `dbt source freshness` with publish-conditions.yml's own
+    selection after the build read a notices copy (`tag:conditions_job tag:notices_job`, no exclude), over a warehouse
+    whose run log holds only each PDF's one refused read 30 hours ago. No raw table exists for any of them, as for a
+    PDF the extract has never read: the run log is all freshness reads (macros/last_read_or_confirmed_at.sql)."""
+    root = tmp_path_factory.mktemp("pdf_notice_freshness")
+    warehouse = root / "warehouse.duckdb"
+    pdfs = {
+        f"{source_name}.{table['name']}": table["name"]
+        for source_name, table in _generated_notice_tables()
+        if table["name"] in _pdf_notice_tables()
     }
+    assert len(pdfs) >= 4, f"the four PDF notices of 2026-10-09 are not all generated: {sorted(pdfs)}"
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema raw")
+        con.execute(
+            "create table raw._extract_runs (run_id varchar, pipeline varchar, table_name varchar, "
+            "resource_name varchar, verdict varchar, outcome varchar, checked_at timestamptz)"
+        )
+        for table in pdfs.values():
+            con.execute(
+                "insert into raw._extract_runs values (?, 'notices_ua', ?, ?, 'stale', 'refused', ?)",
+                [_ago(30).strftime("%Y%m%dT%H%M%S.%fZ"), table, table.removeprefix("raw_"), _ago(30)],
+            )
+    completed, by_id = _dbt_source_freshness(root, warehouse, "--select", "tag:conditions_job", "tag:notices_job")
     print(completed.stdout[-6000:])
-    # dbt exits 1 when any source errors and 0 when the worst is a warning (measured on 2.0.6, 2026-10-07).
-    assert completed.returncode == (1 if "error" in statuses.values() else 0), completed.stdout[-3000:]
-    return statuses
+    return {name: by_id.get(f"source.ourhike.{name}", "not measured") for name in pdfs}
+
+
+def test_publish_conditions_freshness_measures_every_pdf_notice_and_one_unread_for_30_hours_is_red(
+    publish_conditions_selection,
+):
+    """The review of PR #1805 (dlt → dbt re-platform as one go/no-go change), 2026-10-09: the four PDF notices, each
+    reaching hikers, carried no freshness, and dbt 2.0.6 leaves a source with no thresholds out of `source freshness`
+    without a word, so a PDF the extract stopped reading kept publishing its last table and nothing turned red.
+    Production's command measures them now; CI's two leave them out by generate_notice_models.py's PDF_NOTICE_TAG,
+    because fixture mode lands no PDF (tests/test_generated_notice_models.py holds the three commands)."""
+    assert publish_conditions_selection == dict.fromkeys(publish_conditions_selection, "error")
 
 
 def test_a_notice_source_refused_for_over_24_hours_is_stale(freshness):

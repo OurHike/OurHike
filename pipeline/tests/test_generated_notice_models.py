@@ -223,30 +223,57 @@ def test_the_readers_seed_marks_every_feed_a_window():
         assert (row["listing"] == "window") == (row["reader"] == "feed_notices"), row["raw_table"]
 
 
-def test_only_a_pdf_notice_goes_without_freshness_and_each_has_its_evaluator_exception(files):
-    """CI's `dbt source freshness` fails on a table the fixture warehouse never holds, and fixture mode lands no PDF.
+def test_every_pdf_notice_keeps_its_freshness_and_only_cis_two_freshness_commands_leave_it_out(files):
+    """The review of PR #1805 (dlt → dbt re-platform as one go/no-go change), 2026-10-09: the four PDF notices, each
+    reaching hikers, carried `freshness: null`, and dbt 2.0.6 leaves such a source out of `source freshness` without a
+    word, so production never turned one red. Fixture mode lands no PDF, because PageNotice reads one through pypdf
+    and CI's dbt and pipeline jobs do not install it, so CI cannot measure them.
 
-    So a PDF page notice's table carries `freshness: null`, every other generated
-    table carries its own (generator.notice_freshness(), which
-    tests/test_notice_source_freshness.py holds), and each PDF one has its
-    fct_sources_without_freshness row in seeds/dbt_project_evaluator_exceptions.csv,
-    so the evaluator's rule still holds for the rest.
+    So every generated notice table carries freshness (generator.notice_freshness(), which
+    tests/test_notice_source_freshness.py holds), exactly the PDF notices carry generator.PDF_NOTICE_TAG, CI's two
+    `dbt source freshness` commands exclude that tag, publish-conditions.yml's excludes nothing, and no generated
+    notice table keeps a fct_sources_without_freshness row in seeds/dbt_project_evaluator_exceptions.csv.
+    tests/test_dbt_notice_source_freshness_runs.py runs publish-conditions.yml's selection and finds all four red.
     """
-    without = set()
+    without, tagged, tables = set(), set(), set()
     for path, text in files.items():
         if path.name.endswith("__sources.yml"):
             for source in yaml.safe_load(text)["sources"]:
                 for table in source["tables"]:
-                    if (table.get("config") or {}).get("freshness") is None:
-                        without.add(f"{source['name']}.{table['name']}")
+                    name = f"{source['name']}.{table['name']}"
+                    config = table.get("config") or {}
+                    tables.add(name)
+                    if config.get("freshness") is None:
+                        without.add(name)
+                    if generator.PDF_NOTICE_TAG in (config.get("tags") or []):
+                        tagged.add(name)
     pdfs = {f"{s.club}.{s.table}" for s in generator.notice_sources() if not s.hand_staged and generator.is_pdf_notice(s)}
-    assert without == pdfs
+    assert len(pdfs) >= 4, "the four PDF notices of 2026-10-09 are not all generated"
+    assert without == set()
+    assert tagged == pdfs
     excepted = {
         row["id_to_exclude"]
         for row in _seed("dbt_project_evaluator_exceptions")
         if row["fct_name"] == "fct_sources_without_freshness"
     }
-    assert pdfs <= excepted, sorted(pdfs - excepted)
+    assert not tables & excepted, sorted(tables & excepted)
+
+    exclude = f"--exclude tag:{generator.PDF_NOTICE_TAG}"
+    workflows = PIPELINE.parent / ".github" / "workflows"
+    ci = yaml.safe_load((workflows / "pipeline-tests.yml").read_text(encoding="utf-8"))["jobs"]["dbt"]["steps"]
+    (ci_step,) = [step for step in ci if step.get("name") == "dbt source freshness"]
+    assert ci_step["run"] == f"dbt source freshness --profiles-dir . {exclude}"
+    test_sh = (PIPELINE.parent / "scripts" / "test.sh").read_text(encoding="utf-8")
+    (local,) = re.findall(r'^\s*step "dbt source freshness"\s+(.*)$', test_sh, re.MULTILINE)
+    assert local.endswith(f"source freshness --profiles-dir . {exclude}"), local
+    conditions = yaml.safe_load((workflows / "publish-conditions.yml").read_text(encoding="utf-8"))
+    (production,) = [
+        step["run"]
+        for job in conditions["jobs"].values()
+        for step in job.get("steps") or []
+        if 'dbt/bin/dbt" source freshness' in str(step.get("run", ""))
+    ]
+    assert "tag:notices_job" in production and "--exclude" not in production
 
 
 def test_every_notice_raw_table_carries_elementarys_checks_and_each_dated_source_its_event_freshness(files):

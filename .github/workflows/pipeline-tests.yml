@@ -829,10 +829,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      # Every source but the PDF notices, which fixture mode never lands (no
+      # pypdf here) and so would read as never read: generate_notice_models.py's
+      # PDF_NOTICE_TAG says why, and publish-conditions.yml measures them.
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
-        run: dbt source freshness --profiles-dir .
+        run: dbt source freshness --profiles-dir . --exclude tag:pdf_notice
 
       # v2's docs are a directory: index.html, assets/ and the Parquet files
       # the page reads with DuckDB-WASM (measured 2026-10-01 on dbt 2.0.6: 315

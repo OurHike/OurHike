@@ -536,7 +536,7 @@ python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"   #
 "$RUNNER_TEMP/pipeline/bin/python" -m pytest tests/test_dbt_notice_source_freshness_runs.py   # decision 100's freshness, on a warehouse holding only a run log
 "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity <family> --new data/processed/dbt/<file>   # one line per family
 cd dbt
-dbt source freshness --profiles-dir .
+dbt source freshness --profiles-dir . --exclude tag:pdf_notice   # fixture mode lands no PDF; production measures them (generate_notice_models.py's PDF_NOTICE_TAG)
 dbt docs generate --profiles-dir . --output-dir target/docs
 python ../check_docs_site.py target/docs                     # the parts, no --vars, telemetry off, no coordinates outside the unit tests
 DBT_PROJECT_EVALUATOR_SEVERITY=error dbt build -s package:dbt_project_evaluator --profiles-dir .

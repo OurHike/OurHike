@@ -509,6 +509,17 @@ the other release already used. So every merged graph is built from one release,
   edge positions in the merged graph, so a cell fetched mid-session from another release is
   left out rather than joined, and the next launch builds from the manifest's release.
 
+**A cell a later release publishes byte-identical is a copy of both releases.** Measured
+2026-10-09 against UA's manifests: releases 2026-10-03, 2026-10-03-2 and 2026-10-08 carry three
+different versions and publish all 779 routing halves and all 779 geometry halves byte-identical.
+So a stored copy whose hash a later manifest names is recorded as that release's copy too
+(`alsoPublishedIn` in `lib/trailGraphStore.ts`) and is not rewritten under it. Rewritten, it left
+the release it was stored under, and a stored hike whose other cells were from that release was
+refused offline. A geometry, elevation or profile half lines up with any release in which its
+cell's stored routing half is the same bytes, because the halves are index-aligned per cell. The
+routing half is refetched whenever its cell is wanted; the other halves are refetched only while
+a day hike is open.
+
 A hiker sees a cell left out the way they see any cell not on the phone: a tap there gets
 *"hasn't got this area's trail lines yet… Try again in a moment"*, and the console says which
 release the cell was from. Every release folder `pipeline/publish.py` stages carries a fresh

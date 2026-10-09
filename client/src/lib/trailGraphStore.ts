@@ -67,16 +67,18 @@
 // The version was recorded and nothing read it until #1828 - "a phone merges
 // trail-graph cells from two releases by node number, and a new release
 // renumbers them". It is read now: lib/trailGraphData.ts hands a stored cell
-// back only when its version is the release the graph is being built from,
-// and {@link newestStoredGraphVersion} below is how a phone with no signal
-// picks that release - the maintainer's choice by poll on 2026-10-08, refuse
-// mixed releases rather than join cells by coordinates or clear the store.
+// back only when it is a copy of the release the graph is being built from -
+// its version, or a later release that published the same bytes
+// (`alsoPublishedIn`) - and {@link newestStoredGraphVersion} below is how a
+// phone with no signal picks that release - the maintainer's choice by poll
+// on 2026-10-08, refuse mixed releases rather than join cells by coordinates
+// or clear the store.
 //
 // Still not acted on: a card saying its cached figures were computed
 // against a different release. That is a change to what a screen SAYS, which
 // wants its own before-and-after.
 
-import { del, get, keys, set } from 'idb-keyval'
+import { del, get, keys, set, update } from 'idb-keyval'
 
 import { oversized, warnOversized } from './artifactBudget'
 import type { TrailGraphCellHalf } from './config'
@@ -89,10 +91,40 @@ export interface StoredGraphArtifact {
   /** The release version the manifest carried then, or null when it named
    *  none. See the header for what this is for and what it is not. */
   version: string | null
+  /**
+   * Every later release whose manifest named this record's `hash` for its
+   * key - the same bytes, so this copy is that release's copy too (#1828
+   * review). Empty for a record no later manifest has vouched for, and for
+   * every record written before this field existed.
+   *
+   * WHY A LIST BESIDE `version`, NOT A NEW `version`. A release that leaves
+   * a cell byte-identical leaves it in both releases. Measured 2026-10-09
+   * against UA's manifests (data.ourhike.org/environments/ua): releases
+   * 2026-10-03, 2026-10-03-2 and 2026-10-08 carry three different
+   * `version`s and publish all 779 routing halves and all 779 geometry
+   * halves byte-identical, and the elevation and profile halves, which
+   * 2026-10-03 did not publish, are byte-identical across the other two.
+   * Rewriting `version` to the later release took the copy out of the
+   * earlier one, so a hike whose other cells were stored under the earlier
+   * release was refused offline - measured in
+   * lib/trailGraphReleases.realIdb.test.ts. Kept as a list, the copy joins
+   * a graph of either release.
+   *
+   * {@link newestStoredGraphVersion} still reads `version` alone. A later
+   * release recorded here does not make the copy newer.
+   */
+  alsoPublishedIn: Array<string | null>
   /** Epoch ms. Read by {@link newestStoredGraphVersion}, which is the one
    *  decision made on it: which stored release a phone with no signal builds
    *  its graph from. */
   fetchedAt: number
+}
+
+/** Whether a stored copy is a copy of the release whose manifest `version`
+ *  is given: the release it was stored under, or one that has published the
+ *  same bytes since. */
+export function isCopyOf(stored: StoredGraphArtifact, version: string | null): boolean {
+  return stored.version === version || stored.alsoPublishedIn.includes(version)
 }
 
 /** Every graph cell record starts with this, so the whole family can be
@@ -165,6 +197,12 @@ export async function readStoredGraph(
         bytes: record.bytes,
         hash: record.hash,
         version: typeof record.version === 'string' ? record.version : null,
+        alsoPublishedIn: Array.isArray(record.alsoPublishedIn)
+          ? record.alsoPublishedIn.filter(
+              (version: unknown): version is string | null =>
+                version === null || typeof version === 'string',
+            )
+          : [],
         fetchedAt: typeof record.fetchedAt === 'number' ? record.fetchedAt : 0,
       }
     }
@@ -184,19 +222,57 @@ export async function readStoredGraph(
  */
 export async function writeStoredGraph(
   storeKey: string,
-  record: Omit<StoredGraphArtifact, 'fetchedAt'> & { fetchedAt?: number },
+  record: Omit<StoredGraphArtifact, 'fetchedAt' | 'alsoPublishedIn'> & {
+    fetchedAt?: number
+  },
 ): Promise<boolean> {
   try {
     if (!(await hasRoomFor(record.bytes.size))) return false
+    // No `alsoPublishedIn`: a copy just fetched has been published in no
+    // later release yet, and readStoredGraph reads the missing list as empty.
     await set(storeKey, {
       bytes: record.bytes,
       hash: record.hash,
       version: record.version,
       fetchedAt: record.fetchedAt ?? Date.now(),
-    } satisfies StoredGraphArtifact)
+    } satisfies Omit<StoredGraphArtifact, 'alsoPublishedIn'>)
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * Record that the manifest of release `version` names `hash` for the record
+ * under `storeKey` (#1828 review) - which makes the stored copy that
+ * release's copy too, without a byte moved. See `alsoPublishedIn` for why
+ * this adds to a list rather than rewriting `version`.
+ *
+ * A no-op unless the record's hash is `hash` and it is not already a copy of
+ * `version`. The read and the write are one IndexedDB transaction, and the
+ * hash is checked again inside it, so a different copy written in between is
+ * never given a release its bytes were not published in.
+ *
+ * NEVER THROWS, like {@link writeStoredGraph}: a refusing store leaves the
+ * copy a copy of the releases it already named, which is today's answer.
+ */
+export async function recordAlsoPublishedIn(
+  storeKey: string,
+  hash: string,
+  version: string | null,
+): Promise<void> {
+  try {
+    const stored = await readStoredGraph(storeKey)
+    if (stored === null || stored.hash !== hash || isCopyOf(stored, version)) return
+    await update(storeKey, (current: unknown) => {
+      const record = current as Partial<StoredGraphArtifact> | undefined
+      if (record?.hash !== hash) return current
+      const already = Array.isArray(record.alsoPublishedIn) ? record.alsoPublishedIn : []
+      if (record.version === version || already.includes(version)) return current
+      return { ...record, alsoPublishedIn: [...already, version] }
+    })
+  } catch {
+    // See above: the copy stays what it was.
   }
 }
 

@@ -123,9 +123,12 @@ import type { CoverageCell } from './coverageCells'
 import { publishedSnapshot } from './dataManifest'
 import {
   graphCellStoreKey,
+  isCopyOf,
   newestStoredGraphVersion,
   readStoredGraph,
+  recordAlsoPublishedIn,
   writeStoredGraph,
+  type StoredGraphArtifact,
 } from './trailGraphStore'
 import { sha256Of } from './trailData'
 import {
@@ -489,19 +492,27 @@ async function storedShard(
   const stored = await readStoredGraph(storeKey)
   if (stored === null) return UNREACHABLE
   const held: GraphRelease = { version: stored.version }
-  if (!sameRelease(held, release ?? held)) {
+  // A copy of `release` by the release it was stored under, or by a later
+  // manifest having named the same bytes (lib/trailGraphStore.ts's
+  // `alsoPublishedIn`).
+  if (release !== undefined && !isCopyOf(stored, release.version)) {
     return { kind: 'absent', because: 'unreachable', heldRelease: held }
   }
   const parsed = await parseStored(stored.bytes, isGraphShard)
   return parsed === null
     ? { kind: 'absent', because: whenNotAShard }
-    : { kind: 'shard', shard: parsed, release: held }
+    : { kind: 'shard', shard: parsed, release: release ?? held }
 }
 
 /**
- * The stored copy of one routing half, if it is the copy the manifest
- * publishes now - same hash, same bytes - and so of the manifest's release,
- * whatever release it was stored under (#1828).
+ * The stored copy of one routing half when the fetch failed and the manifest
+ * answered.
+ *
+ * A copy whose hash the manifest names is the copy the manifest publishes
+ * now - the same bytes - and so of the manifest's release, whatever release
+ * it was stored under (#1828). That is recorded on the copy
+ * (lib/trailGraphStore.ts's `recordAlsoPublishedIn`), so a later load of
+ * either release can use it.
  */
 async function storedAsPublished(
   storeKey: string,
@@ -516,6 +527,7 @@ async function storedAsPublished(
       heldRelease: { version: stored.version },
     }
   }
+  await recordAlsoPublishedIn(storeKey, stored.hash, manifest.version)
   const parsed = await parseStored(stored.bytes, isGraphShard)
   return parsed === null
     ? UNREACHABLE
@@ -841,12 +853,18 @@ async function fetchCompanionCell<E>(
   if (!DATA_CONFIGURED) return ABSENT
   const key = trailGraphCellKey(cell.name, half)
   const storeKey = graphCellStoreKey(cell.name, half)
+  // The hash the manifest names for this half, once the manifest has been
+  // read and found to be the graph's own release - what lets a stored copy
+  // of those exact bytes stand in for a fetch that failed (#1828 review).
+  let published: string | null = null
   const stored = async (whenMissing: CompanionOutcome<never>) => {
     const held = await readStoredCompanion(
       storeKey,
+      graphCellStoreKey(cell.name, 'graph'),
       isShape,
       cell.edgeIds.length,
       release,
+      published,
     )
     return held === null ? whenMissing : LOADED(held)
   }
@@ -888,6 +906,7 @@ async function fetchCompanionCell<E>(
       return ABSENT
     }
     if (expected === null) return ABSENT
+    published = expected
 
     // #1275. The manifest's hash is the version, so an entry recorded under
     // it is byte-identical to what the fetch below would download and
@@ -1087,6 +1106,19 @@ async function keepVerified(
   response: Response,
 ): Promise<void> {
   try {
+    // THE SAME BYTES ARE NOT REWRITTEN (#1828 review). A copy already held
+    // with this hash is this release's copy too, and is recorded as one.
+    // Rewriting it under this release's `version` took it out of the
+    // release it was stored under: measured 2026-10-09 in
+    // lib/trailGraphReleases.realIdb.test.ts, refetching one cell a stored
+    // hike shares with a new one made the stored hike's other cell refuse
+    // offline, on byte-identical releases - which UA's last three were
+    // (lib/trailGraphStore.ts's `alsoPublishedIn`).
+    const held = await readStoredGraph(storeKey)
+    if (held?.hash === hash) {
+      await recordAlsoPublishedIn(storeKey, hash, version)
+      return
+    }
     await writeStoredGraph(storeKey, {
       bytes: new Blob([bytes as unknown as BlobPart], {
         type: response.headers.get('content-type') ?? 'application/json',
@@ -1104,19 +1136,66 @@ async function keepVerified(
  *  checks a fresh fetch is - not skipped for stored bytes, because a phone
  *  can hold a shard from one release and a companion from the next - and,
  *  since #1828, to the release of the graph it would line up with, checked
- *  before anything is parsed. */
+ *  before anything is parsed ({@link linesUpWith}). */
 async function readStoredCompanion<T extends { length: number }>(
   storeKey: string,
+  routingStoreKey: string,
   isShape: (value: unknown) => value is T,
   edgeCount: number,
   release: GraphRelease | null,
+  publishedHash: string | null,
 ): Promise<T | null> {
+  if (release === null) return null
   const stored = await readStoredGraph(storeKey)
   if (stored === null) return null
-  if (!sameRelease(release, { version: stored.version })) return null
+  if (!(await linesUpWith(stored, storeKey, routingStoreKey, release, publishedHash))) {
+    return null
+  }
   const parsed = await parseStored(stored.bytes, isShape)
   if (parsed === null || parsed.length !== edgeCount) return null
   return parsed
+}
+
+/**
+ * Whether a stored companion half lines up with a graph built from `release`
+ * (#1828). Three ways, each of them the same bytes:
+ *
+ *   - it is a copy of that release: stored under it, or published in it
+ *     since (lib/trailGraphStore.ts's `alsoPublishedIn`);
+ *   - that release's manifest, read just now, names its hash
+ *     (`publishedHash`), which is recorded on it for the next launch;
+ *   - the cell's stored routing half is the same bytes in that release and
+ *     in a release this half is a copy of. The halves are index-aligned per
+ *     cell, so a half published beside those routing bytes lines up with
+ *     them in every release that published them.
+ *
+ * WHY THE THIRD (#1828 review). A routing half is refetched whenever its
+ * cell is wanted with signal, and the other halves only while a day hike is
+ * open (App.tsx's `wantsGraphGeometry`). Measured 2026-10-09 in
+ * lib/trailGraphReleases.realIdb.test.ts: a stored hike's cells browsed with
+ * signal after a byte-identical release, then loaded offline, gave a graph
+ * with no geometry and no elevation. Reasoned from lib/trailGraph.ts's
+ * `nearestPointOnGraph`, which skips an edge with no vertices: no point of
+ * the hike snaps, `resolveDayHike` answers null, and the follow card says
+ * "Waiting for GPS" with a fix in hand.
+ */
+async function linesUpWith(
+  stored: StoredGraphArtifact,
+  storeKey: string,
+  routingStoreKey: string,
+  release: GraphRelease,
+  publishedHash: string | null,
+): Promise<boolean> {
+  if (isCopyOf(stored, release.version)) return true
+  if (publishedHash !== null && stored.hash === publishedHash) {
+    await recordAlsoPublishedIn(storeKey, stored.hash, release.version)
+    return true
+  }
+  const routing = await readStoredGraph(routingStoreKey)
+  if (routing === null || !isCopyOf(routing, release.version)) return false
+  return [stored.version, ...stored.alsoPublishedIn].some((version) =>
+    isCopyOf(routing, version),
+  )
 }
 
 /** Stored bytes, parsed and shape-checked - null on anything else. */

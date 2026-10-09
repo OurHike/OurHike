@@ -18,9 +18,10 @@ vi.mock('idb-keyval', () => ({
   set: vi.fn(),
   del: vi.fn(),
   keys: vi.fn(),
+  update: vi.fn(),
 }))
 
-import { del, get, getMany, keys, set } from 'idb-keyval'
+import { del, get, getMany, keys, set, update } from 'idb-keyval'
 
 import { LAUNCH_ARTIFACT_BUDGET_BYTES } from './artifactBudget'
 import {
@@ -30,9 +31,11 @@ import {
   GRAPH_CELL_STORE_PREFIX,
   GRAPH_STORE_HEADROOM_BYTES,
   graphCellStoreKey,
+  isCopyOf,
   LEGACY_GRAPH_STORE_KEYS,
   newestStoredGraphVersion,
   readStoredGraph,
+  recordAlsoPublishedIn,
   storedGraphBytes,
   writeStoredGraph,
 } from './trailGraphStore'
@@ -356,5 +359,118 @@ describe('which stored release is newest (#1828)', () => {
 
     expect(await newestStoredGraphVersion(['n41w075'])).toBeNull()
     expect(vi.mocked(get).mock.calls.map(([key]) => key)).toEqual([GRAPH])
+  })
+})
+
+// #1828 review - a release can publish a cell byte-identical to the copy a
+// phone holds, and measured 2026-10-09 UA's last three releases did for all
+// 779 routing cells. The copy is then that release's copy too, recorded
+// beside the release it was stored under rather than over it.
+describe('a copy a later release published byte-identical (#1828 review)', () => {
+  /** The record idb-keyval holds under GRAPH, as the updater would see it. */
+  function holdingRecord(record: Record<string, unknown> | undefined) {
+    vi.mocked(get).mockResolvedValue(record)
+    vi.mocked(update).mockImplementation(async (_key, updater) => {
+      written = updater(record)
+    })
+  }
+  let written: unknown
+
+  beforeEach(() => {
+    written = 'never written'
+  })
+
+  it('readStoredGraph reads a record written before alsoPublishedIn existed as published in no later release', async () => {
+    vi.mocked(get).mockResolvedValue({
+      bytes: new Blob(['{}']),
+      hash: 'h',
+      version: 'release-9',
+    })
+
+    expect((await readStoredGraph(GRAPH))?.alsoPublishedIn).toEqual([])
+  })
+
+  it('readStoredGraph keeps only the versions in alsoPublishedIn, dropping anything else stored there', async () => {
+    vi.mocked(get).mockResolvedValue({
+      bytes: new Blob(['{}']),
+      hash: 'h',
+      version: 'release-9',
+      alsoPublishedIn: ['release-10', 7, null, { version: 'x' }],
+    })
+
+    expect((await readStoredGraph(GRAPH))?.alsoPublishedIn).toEqual(['release-10', null])
+  })
+
+  it('isCopyOf answers true for the release a copy was stored under and every one recorded since, and false for any other', () => {
+    const copy = {
+      bytes: new Blob(['{}']),
+      hash: 'h',
+      version: 'release-9',
+      alsoPublishedIn: ['release-10'],
+      fetchedAt: 1,
+    }
+
+    expect(isCopyOf(copy, 'release-9')).toBe(true)
+    expect(isCopyOf(copy, 'release-10')).toBe(true)
+    expect(isCopyOf(copy, 'release-11')).toBe(false)
+    expect(isCopyOf(copy, null)).toBe(false)
+  })
+
+  it('recordAlsoPublishedIn adds the release to a copy whose hash it names, keeping the version and fetchedAt it was stored with', async () => {
+    const record = {
+      bytes: new Blob(['{}']),
+      hash: 'h',
+      version: 'release-9',
+      fetchedAt: 1_000,
+    }
+    holdingRecord(record)
+
+    await recordAlsoPublishedIn(GRAPH, 'h', 'release-10')
+
+    expect(written).toEqual({ ...record, alsoPublishedIn: ['release-10'] })
+  })
+
+  it('recordAlsoPublishedIn writes nothing for a copy with another hash, or one already of that release', async () => {
+    holdingRecord({ bytes: new Blob(['{}']), hash: 'other', version: 'release-9' })
+    await recordAlsoPublishedIn(GRAPH, 'h', 'release-10')
+    holdingRecord({
+      bytes: new Blob(['{}']),
+      hash: 'h',
+      version: 'release-9',
+      alsoPublishedIn: ['release-10'],
+    })
+    await recordAlsoPublishedIn(GRAPH, 'h', 'release-10')
+    await recordAlsoPublishedIn(GRAPH, 'h', 'release-9')
+
+    expect(vi.mocked(update)).not.toHaveBeenCalled()
+  })
+
+  it('recordAlsoPublishedIn leaves alone a copy rewritten with other bytes between its read and its write', async () => {
+    // The check is made again inside the transaction: a release must never
+    // be recorded on bytes it did not publish.
+    vi.mocked(get).mockResolvedValue({
+      bytes: new Blob(['{}']),
+      hash: 'h',
+      version: 'release-9',
+    })
+    const rewritten = { bytes: new Blob(['[]']), hash: 'new', version: 'release-10' }
+    vi.mocked(update).mockImplementation(async (_key, updater) => {
+      written = updater(rewritten)
+    })
+
+    await recordAlsoPublishedIn(GRAPH, 'h', 'release-10')
+
+    expect(written).toBe(rewritten)
+  })
+
+  it('recordAlsoPublishedIn never throws when the store refuses the write', async () => {
+    vi.mocked(get).mockResolvedValue({
+      bytes: new Blob(['{}']),
+      hash: 'h',
+      version: 'release-9',
+    })
+    vi.mocked(update).mockRejectedValue(new DOMException('full', 'QuotaExceededError'))
+
+    await expect(recordAlsoPublishedIn(GRAPH, 'h', 'release-10')).resolves.toBeUndefined()
   })
 })

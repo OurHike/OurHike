@@ -51,7 +51,11 @@ const { trailGraphCellKey } = await import('./config')
 const { parseCellIndex } = await import('./coverageCells')
 const { graphCellStoreKey, readStoredGraph, writeStoredGraph } =
   await import('./trailGraphStore')
-const { loadTrailGraphCells } = await import('./trailGraphData')
+const {
+  fetchTrailGraphElevationCells,
+  fetchTrailGraphGeometryCells,
+  loadTrailGraphCells,
+} = await import('./trailGraphData')
 const { useTrailGraph } = await import('./useTrailGraph')
 
 type Inputs = Parameters<typeof useTrailGraph>[0]
@@ -337,7 +341,26 @@ const R9_FILES: ReleaseFiles = {
   },
 }
 
+/** Release 10 renumbered, as above. The west cell keeps its edge order, so
+ *  its other halves are byte-identical; the east cell lists its own trail
+ *  first, so they are not. */
+const R10_FILES: ReleaseFiles = {
+  [WEST.name]: { ...R9_FILES[WEST.name], graph: SHARD[RELEASE_10].west },
+  [EAST.name]: {
+    graph: SHARD[RELEASE_10].east,
+    geometry: JSON.stringify([[P[2], P[3]], SEAM]),
+    elevation: JSON.stringify([
+      [0, 9],
+      [3, 3],
+    ]),
+  },
+}
+
+const NORTH_FILES: ReleaseFiles = { [NORTH.name]: { graph: NORTH_SHARD } }
+
 const keyOf = (name: string, half: Half) => trailGraphCellKey(name, half)
+const routingKeys = (...names: string[]) => names.map((name) => keyOf(name, 'graph'))
+
 /** What a launch of `version`'s build stored: every half in `files`. */
 async function keep(files: ReleaseFiles, version: string, fetchedAt: number) {
   for (const [name, halves] of Object.entries(files)) {
@@ -395,6 +418,16 @@ async function publishing(
   })
 }
 
+/** Whether this phone holds `name`'s routing half as a copy of `version` -
+ *  stored under it, or recorded since as published in it. */
+async function heldAs(name: string, version: string): Promise<boolean> {
+  const held = (await readStoredGraph(graphCellStoreKey(name, 'graph'))) as {
+    version: string | null
+    alsoPublishedIn?: unknown[]
+  } | null
+  return held?.version === version || (held?.alsoPublishedIn ?? []).includes(version)
+}
+
 const cellNames = (result: { current: ReturnType<typeof useTrailGraph> }) =>
   result.current.graphMerged?.cells.map((cell) => cell.name) ?? []
 
@@ -410,6 +443,106 @@ function inputs(overrides: Partial<Inputs>): Inputs {
     ...overrides,
   }
 }
+
+describe('a release that published a stored cell byte-identical (#1828 review)', () => {
+  it('a stored hike’s west cell still routes offline after the east cell it shares with a second hike was refetched with signal', async () => {
+    // Before the review: the refetch rewrote the east cell's record as
+    // release 10's, the west cell stayed release 9's, and offline the newest
+    // of the two refused the other - on bytes identical in both releases.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await publishing(
+      RELEASE_10,
+      { ...R9_FILES, ...NORTH_FILES },
+      {
+        serving: routingKeys(EAST.name, NORTH.name),
+      },
+    )
+    const planning = mount({ online: true, wanted: [EAST, NORTH] })
+    await waitFor(() => expect(cellNames(planning.result)).toHaveLength(2))
+    await waitFor(async () => expect(await heldAs(EAST.name, RELEASE_10)).toBe(true))
+    await waitFor(async () => expect(await heldAs(NORTH.name, RELEASE_10)).toBe(true))
+    planning.unmount()
+    vi.mocked(globalThis.fetch).mockRestore()
+
+    const { result } = mount({ online: false, wanted: [WEST, EAST] })
+
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+  })
+
+  it('a second hike planned on one bar routes offline, its stored cell taken by the hash release 10 publishes', async () => {
+    // Before the review: the east cell joined release 10's graph by its hash
+    // and stayed recorded as release 9's, so offline the second hike's
+    // release-10 cell refused it.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await publishing(
+      RELEASE_10,
+      { ...R9_FILES, ...NORTH_FILES },
+      {
+        serving: routingKeys(NORTH.name),
+      },
+    )
+    const planning = mount({ online: true, wanted: [EAST, NORTH] })
+    await waitFor(() => expect(cellNames(planning.result)).toHaveLength(2))
+    await waitFor(async () => expect(await heldAs(NORTH.name, RELEASE_10)).toBe(true))
+    planning.unmount()
+    vi.mocked(globalThis.fetch).mockRestore()
+
+    const { result } = mount({ online: false, wanted: [EAST, NORTH] })
+
+    await waitFor(() => expect(cellNames(result)).toEqual([EAST.name, NORTH.name]))
+    expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_10 })
+  })
+
+  it('loads geometry and elevation offline after the hike’s routing halves alone were refetched with signal', async () => {
+    // A routing half is fetched whenever its cell is wanted; the other halves
+    // only while a day hike is open. Before the review the refetch moved the
+    // routing halves to release 10 and left the geometry under release 9,
+    // and offline the release-10 graph refused it.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await publishing(RELEASE_10, R9_FILES, { serving: routingKeys(WEST.name, EAST.name) })
+    const home = mount({ online: true, wanted: [WEST, EAST] })
+    await waitFor(() => expect(cellNames(home.result)).toHaveLength(2))
+    await waitFor(async () => expect(await heldAs(WEST.name, RELEASE_10)).toBe(true))
+    await waitFor(async () => expect(await heldAs(EAST.name, RELEASE_10)).toBe(true))
+    home.unmount()
+    vi.mocked(globalThis.fetch).mockRestore()
+
+    const { result } = mount({ online: false, wanted: [WEST, EAST] })
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+    const merged = result.current.graphMerged!
+
+    expect(await fetchTrailGraphGeometryCells(merged, undefined, false)).toMatchObject({
+      kind: 'loaded',
+    })
+    expect(await fetchTrailGraphElevationCells(merged, undefined, false)).toMatchObject({
+      kind: 'loaded',
+    })
+  })
+
+  it('still refuses release 9’s geometry offline for a release-10 graph whose routing halves were renumbered', async () => {
+    // The guard the above must not loosen. Release 10's east cell lists its
+    // edges in another order with the same count, so release 9's east
+    // geometry would draw the seam edge along the east trail. No geometry is
+    // the honest answer, and it is what this phone gets.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    await publishing(RELEASE_10, R10_FILES, {
+      serving: routingKeys(WEST.name, EAST.name),
+    })
+    const home = mount({ online: true, wanted: [WEST, EAST] })
+    await waitFor(() => expect(cellNames(home.result)).toHaveLength(2))
+    await waitFor(async () => expect(await heldAs(WEST.name, RELEASE_10)).toBe(true))
+    await waitFor(async () => expect(await heldAs(EAST.name, RELEASE_10)).toBe(true))
+    home.unmount()
+    vi.mocked(globalThis.fetch).mockRestore()
+
+    const { result } = mount({ online: false, wanted: [WEST, EAST] })
+    await waitFor(() => expect(cellNames(result)).toEqual([WEST.name, EAST.name]))
+
+    expect(
+      await fetchTrailGraphGeometryCells(result.current.graphMerged!, undefined, false),
+    ).toEqual({ kind: 'absent' })
+  })
+})
 
 describe('a release folder that answers 404 (#1828 review)', () => {
   it('useTrailGraph merges the cells this phone stored, with signal', async () => {

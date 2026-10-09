@@ -330,7 +330,7 @@ words; git keeps the row.
 
 | Rule | Why (measured) |
 |---|---|
-| **1. Geometry carries a JSON hint:** `columns={"geometry": {"data_type": "json"}}` on every geometry resource | On defaults the A.T. centerline became 2,072,165 rows in 4 tables and reported `LOADED` (the 2026-09-09 spike). With the hint: 3,025 rows, round-tripped through `ST_GeomFromGeoJSON`. The column lands `JSON` in DuckDB and `VARCHAR` in the filesystem destination's Parquet (2026-10-01), so base models cast it first |
+| **1. Geometry carries a JSON hint:** `columns={"geometry": {"data_type": "json"}}` on every geometry resource | On defaults the A.T. centerline became 2,072,165 rows in 4 tables and reported `LOADED` (the 2026-09-09 spike). With the hint: 3,025 rows, round-tripped through `ST_GeomFromGeoJSON`. The column lands `JSON` in DuckDB and `VARCHAR` in the filesystem destination's Parquet (2026-10-01), so base models cast it first. Unhinted, a geometry null on every row of a first load lands no column at all (Socrata, 2026-10-09); the layout test holds every reader kind to the hint (`YIELDS_GEOMETRY`) |
 | **2. An unchanged upstream is left out of the run, never run empty.** Skip it with `with_resources()`; never yield nothing | Under `replace`, an empty yield took `closures` from 1 row to 0. A resource left out kept its rows and `_dlt_load_id` (2026-10-01) |
 | **3. Telemetry off:** `RUNTIME__DLTHUB_TELEMETRY=false` in every job, `dlthub_telemetry = false` in `.dlt/config.toml` | On by default (`dlthub_telemetry` reads `True` in dlt 1.30.0, 2026-10-01), sending to `telemetry.scalevector.ai` from jobs holding R2 write keys. What it sends is `@unvalidated`; off makes that moot |
 | **4. Change checks are ours, before dlt, and three-valued.** `lib/freshness_state.py`'s `FRESH` / `STALE` / `UNKNOWN`. Only `FRESH` skips; `UNKNOWN` fetches | A dlt cursor cannot tell "checked, nothing changed" from "nobody checked". `lib/freshness_state.py`: "THE FAILURE THAT MATTERS is a false 'fresh'" |
@@ -377,7 +377,12 @@ cannot see it (measured 2026-10-01). So:
 - On-prem ArcGIS ETags hash the response body, so a service-metadata ETag
   never moves when the data does: USFS read `"1a7709d0"` on both 2026-09-02 and
   2026-10-01 (measured). Use the statistics fingerprint instead: `count`,
-  `max(OID)`, `sum(Shape_Length)` and the maintained date.
+  `max(OID)`, `sum(Shape_Length)` and the maintained date. On any cadence an
+  unchanged fingerprint is FRESH only when that date is the one the layer's
+  `editFieldsInfo.editDateField` names, since only editor tracking's date is
+  promised to move on every edit; otherwise it is UNKNOWN and the layer is read
+  every run. Read 2026-10-09: 22 of the 25 layers that declare a date are read
+  every run, all 17 monthly ones among them (100,012 features in 110 pages).
 - `max(edit date)` alone cannot see a deleted row, and neither can a cursor
   (Reasoned: a deleted row has no edit date left to read).
 - WordPress feed validators are site-wide (measured 2026-10-01), so they never
@@ -440,6 +445,21 @@ third run answered 53 resources FRESH whose rows no build could read
   `tests/test_extract_run.py`. The R2 store's own schema list was not read.
 - dbt runs as its own CLI step, never through `dlt.dbt`, whose default is
   `dbt>=1.7,<2` while this project runs `dbt` 2.0.6 (decision 32).
+
+**A field its publisher retyped is refused on every run until one table is
+reset.** `data_type: freeze` compares against the store's dlt schema, which
+`replace` never resets, so the layer logs `refused` every run, its last
+committed table stands, and dbt's source freshness turns it red. First read
+the refusal (`schema contract: …` in the run summary) beside the layer's own
+metadata, and reset only when the new type is the publisher's choice, never
+to make a broken answer load. Then, while that lane's own job is not running,
+`python -m extract._run --lane <lane or leg> --raw-bucket our-hike-raw --only
+<raw table> --reset`: it reads that table whatever its check says and lands it
+with `refresh="drop_resources"`, which drops the table and its state and
+erases its schema history inside the same load package, so a reset the run
+check refuses drops nothing (`tests/test_extract_conditions_legs.py`). It
+refuses anything but exactly one `--only`. A base model casting the field may
+need changing in the same pull request.
 
 ## Load every club, gate publication downstream
 

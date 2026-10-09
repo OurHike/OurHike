@@ -103,6 +103,7 @@ import pyarrow.parquet as pq  # noqa: E402
 import requests  # noqa: E402
 from dlt.common.schema.exceptions import DataValidationError  # noqa: E402
 from dlt.common.storages.fsspec_filesystem import glob_files  # noqa: E402
+from dlt.normalize.exceptions import NormalizeJobFailed  # noqa: E402
 from dlt.pipeline.exceptions import PipelineStepFailed  # noqa: E402
 
 from extract import _geofabrik, _kinds, _robots  # noqa: E402
@@ -778,12 +779,48 @@ def read_each(
     return kept, read_rows
 
 
-def contract_breach(failure: BaseException) -> DataValidationError | None:
-    """The schema-contract refusal behind a failed dlt step, or None. A retyped ArcGIS field raises one at extract."""
+@dataclass(frozen=True)
+class Breach:
+    """A table dlt's schema contract refused (contract_breach()): the table, and dlt's own words."""
+
+    table_name: str
+    message: str
+
+    def __str__(self) -> str:
+        return self.message
+
+
+#: How a worker process's traceback names a DataValidationError: Python's traceback module writes `module.Class: words`.
+WORKER_BREACH_LINE = f"{DataValidationError.__module__}.{DataValidationError.__qualname__}: "
+
+
+def contract_breach(failure: BaseException) -> Breach | None:
+    """The schema-contract refusal behind a failed dlt step, or None.
+
+    `data_type: freeze` refuses at either step: at extract when a column's
+    hint changes type (an ArcGIS field its metadata retyped), and at normalize
+    when a value no longer fits its column's type under an unchanged hint.
+    In one process the DataValidationError is in the chain. On several
+    (--normalize-workers, MONTHLY_NORMALIZE_WORKERS) normalize raises it in a
+    worker, and what comes back is NormalizeJobFailed with the cause left
+    behind and only the worker's traceback text attached (concurrent.futures'
+    _RemoteTraceback). Measured 2026-10-09 on dlt 1.30.0, before this read
+    the text: on four workers (the review's probe) and on two (a real pool
+    running tests/test_extract_run.py's case by hand), no breach was found and
+    the whole monthly run failed. So a NormalizeJobFailed is a breach when
+    that text names a DataValidationError, of the table its job id begins with.
+
+    Anything else, a full disk or a bug, is None, and the run stops red as it
+    did: no table is left out on a guess, and nothing is tried again.
+    """
     seen = set()
     while failure is not None and id(failure) not in seen:
         if isinstance(failure, DataValidationError):
-            return failure
+            return Breach(failure.table_name, str(failure))
+        if isinstance(failure, NormalizeJobFailed) and failure.__cause__ is not None:
+            if any(line.startswith(WORKER_BREACH_LINE) for line in str(failure.__cause__).splitlines()):
+                # A job id is `<table>.<file id>.<format>`; no table name holds a dot (dlt's ParsedLoadJobFileName).
+                return Breach(failure.job_id.split(".", 1)[0], failure.failed_message)
         seen.add(id(failure))
         failure = failure.__cause__ or failure.__context__
     return None
@@ -1705,6 +1742,7 @@ def run_pipeline(
     cross_lane: bool = False,
     normalize_workers: int = 1,
     run_log_cache: Path | None = None,
+    reset: bool = False,
 ) -> RunReport:
     """One lane, or one leg, end to end. Raises ExtractRefused, after logging, when either check fails.
 
@@ -1714,7 +1752,11 @@ def run_pipeline(
     ignore it. `as_landed` also writes the as-landed copy (the module
     docstring). `cross_lane` also reads ALSO_READS' resources for this lane.
     `run_log_cache` keeps each run log file the run reads or writes, for a
-    later step of the same job (run_log_bytes()).
+    later step of the same job (run_log_bytes()). `reset`, main()'s --reset
+    on exactly one --only table, reads every resource it is given whatever
+    its change check and cadence say, and lands them with dlt's
+    refresh="drop_resources", which drops their tables and state and erases
+    their schema history in the same load package.
     """
     cadences_of(lane)
     # Each origin's robots.txt is read again by this run, the first time it asks that origin (extract/_robots.py).
@@ -1738,6 +1780,7 @@ def run_pipeline(
             as_landed,
             normalize_workers,
             run_log_cache,
+            reset=reset,
         )
     except Exception as failure:
         if getattr(failure, "report", None) is None:
@@ -1762,6 +1805,8 @@ def _run(
     as_landed: bool = False,
     normalize_workers: int = 1,
     run_log_cache: Path | None = None,
+    *,
+    reset: bool = False,
 ) -> None:
     pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
     # Drop a package a dead run left pending, then sync, so the committed
@@ -1788,7 +1833,7 @@ def _run(
         def landed(load_id: str) -> dict[str, str]:
             return as_landed_index(_client(pipeline).fs_client, bucket_url, load_id, indexes)
 
-        plan_resources = due(plan_resources, log, checked_at)
+        plan_resources = plan_resources if reset else due(plan_resources, log, checked_at)  # a reset reads now
         # One listing of the store for every FRESH verdict's served-files check,
         # not one per table: each was a request to R2.
         listing = table_listing(pipeline, [resource.table for resource in plan_resources])
@@ -1813,7 +1858,19 @@ def _run(
                 before = {name: value for name, value in stored.items() if name != DEFINITION_KEY}
             else:
                 before = None
-            verdict, marker = resource.change_check(before)
+            try:
+                verdict, marker = resource.change_check(before)
+            except Unavailable:
+                raise
+            except Exception as error:
+                # A CHECK THAT ERRORS IS UNKNOWN (Resource.change_check), whatever it raised, so the upstream is read:
+                # each kind catches what it expects (ArcgisLayer three types), and anything else raised here would
+                # stop the whole leg or month, where the same error from its read leaves out that resource alone
+                # (read_each()). OurHike's own rows still stop the leg (stops_the_leg()).
+                if stops_the_leg(resource):
+                    raise
+                print(f"::warning title={resource.name} change check failed::{type(error).__name__}: {error}; reading it")
+                return stored, Freshness.UNKNOWN, None
             return stored, verdict, {**marker, DEFINITION_KEY: definition} if marker else None
 
         # The upstreams are asked one folder per thread (by_folder()), and
@@ -1843,6 +1900,9 @@ def _run(
             if isinstance(outcome, BaseException):
                 raise outcome
             stored, verdict, marker = outcome
+            if reset and verdict is Freshness.FRESH:
+                # A reset reads the table it names whatever its check says: left out as FRESH, it would drop nothing.
+                verdict = Freshness.UNKNOWN
             if verdict is Freshness.FRESH:
                 # A FRESH verdict is UNKNOWN when the served load cannot give a build what it needs.
                 load_id = current.get(resource.table)
@@ -1892,6 +1952,7 @@ def _run(
             spool,
             normalize_workers,
             run_log_cache,
+            refresh="drop_resources" if reset else None,
         )
         # After the run log, so a failed upload leaves a committed, logged load
         # and a red job, and the next --as-landed run reads the layer again
@@ -1920,13 +1981,17 @@ def _extract_and_load(
     spool: Path | None = None,
     normalize_workers: int = 1,
     run_log_cache: Path | None = None,
+    *,
+    refresh: str | None = None,
 ) -> None:
     """run_pipeline's extract, checks, load and run log; ExtractRefused, after logging, when either check fails.
 
     `progress` is _run()'s: what PROGRESS_TABLE holds after this run, given
     the resources that loaded, which every run log written here carries.
     `spool` is where an isolating lane's rows wait (Spool), and
-    `normalize_workers` dlt's normalize processes (MONTHLY_NORMALIZE_WORKERS)."""
+    `normalize_workers` dlt's normalize processes (MONTHLY_NORMALIZE_WORKERS).
+    `refresh` is dlt's, given to the data's extract alone: never to the run
+    log's own load, whose tables it would drop (run_pipeline()'s `reset`)."""
     # A LEG, AND THE MONTHLY LANE, ISOLATE EACH UPSTREAM (isolates()), so one
     # club's failure does not hold back another club's closures, or its month.
     # Every resource is read first (read_each), and one whose read fails, runs
@@ -1963,10 +2028,15 @@ def _extract_and_load(
                 for item in items
             ]
 
+        # dlt 1.30.0 applies a refresh to a clone of the stored schema and then merges in the schema the source
+        # carries (Pipeline._extract_source), so the store's own schema would carry the dropped tables straight back:
+        # measured 2026-10-09, a reset was still refused by the type it was to erase. A reset's source carries an empty
+        # schema of the store's name instead, which is still one schema and one package (store_schema()).
+        schema = store_schema(pipeline) if refresh is None else dlt.Schema(store_schema(pipeline).name)
         try:
             with timed(report, "extract"):
                 pipeline.extract(
-                    dlt.source(resources, name=SOURCE_NAME)(), schema=store_schema(pipeline), loader_file_format="parquet"
+                    dlt.source(resources, name=SOURCE_NAME)(), schema=schema, loader_file_format="parquet", refresh=refresh
                 )
             if as_landed is not None:
                 # What ran: a lane's every non-FRESH resource, a leg's less those read_each() left out.
@@ -1974,7 +2044,8 @@ def _extract_and_load(
             with timed(report, "normalize"):
                 pipeline.normalize(workers=normalize_workers)
         except PipelineStepFailed as failure:
-            # On a leg, a table dlt's schema contract refuses is left out like one the run check refuses.
+            # On a leg or the monthly lane, a table dlt's schema contract refuses, at extract or at normalize
+            # (contract_breach()), is left out like one the run check refuses.
             breach = contract_breach(failure) if read is not None else None
             items = [item for item in to_run if breach is not None and item.resource.table == breach.table_name]
             if not items or any(stops_the_leg(item.resource) for item in items):
@@ -2182,11 +2253,20 @@ def main(argv: list[str] | None = None) -> RunReport:
         type=Path,
         help="keep each run log file read or written here, for a later step of this job to read again (run_log_bytes())",
     )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="read the one --only table now and land it with its dlt schema history erased (refresh='drop_resources'): "
+        "for a field its publisher retyped, which data_type freeze refuses on every run (the dlt skill)",
+    )
     args = parser.parse_args(argv)
     if args.only and args.cross_lane_inputs:
         # Otherwise cross_lane_resources() would refuse ALSO_READS' tables,
         # which --only removed, by a name the command line never gave.
         parser.error("--only keeps only the tables it names, so it cannot also read --cross-lane-inputs' tables")
+    if args.reset and len(args.only) != 1:
+        # drop_resources drops every resource the run reads, its table and state, and erases its schema history.
+        parser.error("--reset drops the table and schema history of everything the run reads, so it takes exactly one --only")
     bucket_url = args.bucket_url or raw_store_url(args.raw_bucket, args.lane)
     discovered = all_resources(discover() + discover_shared())
     resources = only_tables(discovered, args.only, args.lane) if args.only else discovered
@@ -2205,6 +2285,7 @@ def main(argv: list[str] | None = None) -> RunReport:
                 cross_lane=args.cross_lane_inputs,
                 normalize_workers=args.normalize_workers,
                 run_log_cache=args.run_log_cache,
+                reset=args.reset,
             )
         except ExtractRefused as refused:
             if args.report_json:

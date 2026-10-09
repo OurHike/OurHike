@@ -651,11 +651,14 @@ class ArcgisLayer(PersonRuled, Resource):
 
     @property
     def schema_contract(self) -> dict:
-        """New columns are welcome; a column whose type changes is refused at normalize.
+        """New columns are welcome; a column whose type changes is refused.
 
-        Without `freeze`, a mistyped value splits into a variant column
-        (`code__v_text`) that no staging model reads (ELT.md, measured on the
-        #1363 spike).
+        At extract when the layer's metadata retypes the field (its hint
+        changes), and at normalize when a value no longer fits the type its
+        hint keeps; extract/_run.py's contract_breach() finds both, on any
+        number of normalize workers. Without `freeze`, a mistyped value
+        splits into a variant column (`code__v_text`) that no staging model
+        reads (ELT.md, measured on the #1363 spike).
         """
         return {"columns": "evolve", "data_type": "freeze"}
 
@@ -712,6 +715,22 @@ class ArcgisLayer(PersonRuled, Resource):
         run: a false-stale costs a read, a false-fresh keeps a rerouted line
         on a phone. ELT.md's per-page conditional read, which would let such a
         layer skip, is not built yet.
+
+        FRESH ONLY BESIDE EDIT TRACKING'S OWN DATE, ON ANY CADENCE. A
+        maintained date sees an attribute-only edit only if its publisher
+        moves it with every edit, and the server promises that only of the
+        date its editor tracking keeps (`editFieldsInfo.editDateField` in the
+        metadata read here). So an unchanged fingerprint on any other date
+        answers UNKNOWN, and the layer is read every run. FRESH would hold for
+        as long as the fingerprint did not move, so on the monthly lane an
+        edit to a lean-to or a campsite could go unseen indefinitely, not for
+        one month. Read 2026-10-09: of the 25 on-prem layers that declare a
+        maintained date, 3 name editor tracking's (all hourly) and keep
+        FRESH. The other 22, whose metadata reports no editFieldsInfo at all,
+        are read every run: five hourly (wi_dnr_fire_danger, wa_dnr_ifpl,
+        mi_dnr_burn_permits, mo_state_parks_katy_trailheads,
+        odfw_orham_alert_areas) and all 17 monthly. The statistics are still
+        asked, so the run log keeps whether the fingerprint moved.
         """
         date_field = (self.entry.get("freshness") or {}).get("field")
         if not date_field:
@@ -746,7 +765,11 @@ class ArcgisLayer(PersonRuled, Resource):
         marker = {name: str(value) for name, value in marker.items()}
         if recorded is None:
             return Freshness.STALE, marker
-        return compare_marker(_canonical(recorded), _canonical(marker)), marker
+        verdict = compare_marker(_canonical(recorded), _canonical(marker))
+        tracked = ((metadata.get("editFieldsInfo") or {}).get("editDateField") or "").lower()
+        if verdict is Freshness.FRESH and tracked != date_field.lower():
+            return Freshness.UNKNOWN, marker
+        return verdict, marker
 
     def dropped_fields(self, metadata: dict) -> dict[str, str]:
         """Every field of the layer that is never asked for or kept, lower-cased, with the rule that drops it.
@@ -953,6 +976,15 @@ class SocrataDataset(PersonRuled, Resource):
     @property
     def zero_proof(self) -> str:
         return "the portal's count(*) under the entry's own where (count())"
+
+    def column_hints(self) -> dict:
+        """The two columns every row gets, so each exists even where a first load holds no value for it.
+
+        The dlt skill's rule 1: unhinted, a geometry null on every row of a
+        first load landed no `geometry` column at all (measured 2026-10-09,
+        tests/test_extract_run.py), which the base model reads.
+        """
+        return {"geometry": {"data_type": "json"}, "_socrata_id": {"data_type": "text"}}
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """`count(*)` and `max(:updated_at)` under the entry's own `where`, with the `where` text kept.

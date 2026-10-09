@@ -14,8 +14,10 @@ empty answer without that proof is refused and the last good rows stay what
 the warehouse reads; a table that halves is refused.
 """
 
+import errno
 import hashlib
 import json
+import pickle
 import shutil
 import tempfile
 import threading
@@ -28,6 +30,8 @@ from urllib.parse import parse_qs, urlsplit
 import duckdb
 import pytest
 import requests
+from dlt.common.storages.load_package import ParsedLoadJobFileName
+from dlt.normalize.exceptions import NormalizeJobFailed
 from dlt.pipeline.exceptions import PipelineStepFailed
 
 from extract import _kinds, _notices, _run
@@ -606,8 +610,10 @@ def monthly_points():
     return ArcgisLayer(key="closures_layer", club="otherclub", type="points_of_interest")
 
 
-def month(store, *resources):
-    return run_pipeline("monthly", store["bucket_url"], resources=list(resources), pipelines_dir=store["pipelines_dir"])
+def month(store, *resources, **options):
+    return run_pipeline(
+        "monthly", store["bucket_url"], resources=list(resources), pipelines_dir=store["pipelines_dir"], **options
+    )
 
 
 def monthly_counts(store):
@@ -676,6 +682,100 @@ def test_a_monthly_table_the_run_check_refuses_keeps_its_rows_while_the_others_l
     assert "below the 50% floor" in report.isolated["raw_testclub__trails"]
     assert report.rows == {"raw_otherclub__closures_layer": 2}
     assert monthly_counts(store) == {"raw_testclub__trails": 6, "raw_otherclub__closures_layer": 2}
+
+
+def normalize_on_a_worker(monkeypatch, fails=None) -> list[list[str]]:
+    """dlt's normalize, its failure carried back as a ProcessPoolExecutor worker's is: pickled, its cause left behind.
+
+    refresh-reference.yml normalizes the monthly lane on --normalize-workers 4
+    processes. A worker's exception comes back through
+    concurrent.futures.process's _ExceptionWithTraceback: the exception
+    pickled, its cause and context dropped, and only its traceback's text
+    attached as a _RemoteTraceback. This does exactly that in one process, so
+    the case is the same on every Python the suite runs on, without forking
+    (pipeline-tests.yml's pytest job on Python 3.14 lost a worker of a real
+    pool, run 37214263752; extract/_run.py's MONTHLY_NORMALIZE_WORKERS).
+
+    `fails(files, load_id)`, when given, may raise in the worker in place of
+    normalizing; `files` maps each table the worker was handed to its job
+    file. Returns the tables each call was handed, one list per call.
+    """
+    from concurrent.futures.process import _ExceptionWithTraceback
+
+    from dlt.normalize import normalize as dlt_normalize
+
+    real, calls = dlt_normalize.w_normalize_files, []
+
+    def worker(*args, **kwargs):
+        files = {ParsedLoadJobFileName.parse(path).table_name: path for path in args[5]}
+        calls.append(sorted(files))
+        try:
+            if fails is not None:
+                fails(files, args[4])
+            return real(*args, **kwargs)
+        except Exception as failure:  # noqa: BLE001 - every worker failure crosses the boundary
+            sent = pickle.dumps(_ExceptionWithTraceback(failure, failure.__traceback__))
+        raise pickle.loads(sent)
+
+    monkeypatch.setattr(dlt_normalize, "w_normalize_files", worker)
+    return calls
+
+
+def capacity_feature(oid, capacity):
+    """feature(), its CAPACITY (hinted bigint from the layer's own esriFieldTypeInteger) set to `capacity`."""
+    made = feature(oid)
+    return {**made, "properties": {**made["properties"], "CAPACITY": capacity}}
+
+
+def test_a_monthly_value_that_no_longer_fits_its_columns_type_refuses_that_layer_only_when_a_worker_normalizes_it(
+    registry, store, requests_mock, monkeypatch
+):
+    """dlt's `data_type: freeze` refuses a value retyped under an unchanged hint at normalize, and on the monthly lane's
+    worker processes the refusal comes back as NormalizeJobFailed with its cause left behind. contract_breach() found
+    it only on one process: on four, the whole month failed with no raw_run and no pin, and every rerun failed the
+    same way (the review of the extract layer against dlt 1.30.0, 2026-10-09)."""
+    normalize_on_a_worker(monkeypatch)
+    trails = FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    points = FakeLayer(requests_mock, CLOSURES_URL, [capacity_feature(10, 4)])
+    month(store, monthly_lines(), monthly_points())
+
+    trails.features, trails.etag = [feature(1), feature(2), feature(3)], "v2"
+    points.features, points.etag = [capacity_feature(10, "four bunks")], "v2"
+    report = month(store, monthly_lines(), monthly_points())
+
+    assert set(report.isolated) == {"raw_otherclub__closures_layer"}
+    assert "schema contract" in report.isolated["raw_otherclub__closures_layer"]
+    assert "data_type" in report.isolated["raw_otherclub__closures_layer"], "dlt's own words, from the worker"
+    assert report.rows == {"raw_testclub__trails": 3}
+    assert _run.exit_status(report) == _run.PARTIAL_EXIT
+    assert monthly_counts(store) == {"raw_testclub__trails": 3, "raw_otherclub__closures_layer": 1}
+
+
+def test_a_monthly_normalize_a_worker_fails_for_any_other_reason_ends_the_run_red_and_leaves_no_layer_out(
+    registry, store, requests_mock, monkeypatch
+):
+    """A full disk or a bug is not a refusal of one layer, though its NormalizeJobFailed names one layer's job: the run
+    stops red as it did, rather than leaving that layer out on a guess, and it does not go round again."""
+    trails = FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    points = FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])
+    month(store, monthly_lines(), monthly_points())
+
+    def disk_full(files, load_id):
+        job = ParsedLoadJobFileName.parse(files["raw_otherclub__closures_layer"]).job_id()
+        try:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        except OSError as error:
+            raise NormalizeJobFailed(load_id, job, str(error), []) from error
+
+    calls = normalize_on_a_worker(monkeypatch, disk_full)
+    trails.features, trails.etag = [feature(1), feature(2), feature(3)], "v2"
+    points.features, points.etag = [feature(10), feature(11)], "v2"
+    with pytest.raises(PipelineStepFailed, match="No space left on device") as failed:
+        month(store, monthly_lines(), monthly_points())
+
+    assert failed.value.report.isolated == {}
+    assert len(calls) == 1, "normalized once: nothing was left out and tried again"
+    assert monthly_counts(store) == {"raw_testclub__trails": 2, "raw_otherclub__closures_layer": 1}
 
 
 def test_a_spooled_monthly_layer_lands_the_rows_its_reader_made(registry, store, requests_mock, tmp_path, monkeypatch):
@@ -1159,6 +1259,12 @@ def test_turning_return_z_on_reads_a_layer_again_and_leaves_every_other_digest_a
     assert _run.definition_digest(z_centerline()) != digest_before_return_z(z_centerline())
 
 
+#: Two `editFieldsInfo` answers for onprem_dated, whose freshness.field is UPDATED: editor tracking keeping another
+#: date, and keeping UPDATED. An unchanged on-prem fingerprint is FRESH only beside the second (_onprem_check()).
+ANOTHER_DATE = {"editDateField": "LAST_EDITED_DATE", "editorField": "LAST_EDITED_USER"}
+ITS_OWN_DATE = {"editDateField": "updated", "editorField": "editor"}
+
+
 def test_an_onprem_layer_with_no_maintained_date_is_always_read(registry, requests_mock):
     resource = ArcgisLayer(key="onprem_undated", club="testclub", type="trail_lines")
     assert resource.platform == "onprem"
@@ -1166,7 +1272,7 @@ def test_an_onprem_layer_with_no_maintained_date_is_always_read(registry, reques
 
 
 def test_an_onprem_fingerprint_sees_a_delete_that_the_edit_date_alone_would_miss(registry, requests_mock):
-    requests_mock.get(ONPREM_URL, json={"objectIdField": "OBJECTID"})
+    requests_mock.get(ONPREM_URL, json={"objectIdField": "OBJECTID", "editFieldsInfo": ITS_OWN_DATE})
     answer = {"features": [{"attributes": {"n": 315, "max_oid": 900, "max_date": 1790000000000}}]}
     requests_mock.get(ONPREM_URL + "/query", json=answer)
     resource = ArcgisLayer(key="onprem_dated", club="testclub", type="points_of_interest")
@@ -1180,13 +1286,16 @@ def test_an_onprem_fingerprint_sees_a_delete_that_the_edit_date_alone_would_miss
 
 
 def test_an_onprem_fingerprint_sees_a_redrawn_line_that_count_ids_and_the_date_all_miss(registry, requests_mock):
-    """A line moved in place, its maintained date kept by hand: only the summed length moves (the dlt skill's rule 4)."""
+    """A line moved in place under an unchanged edit date: only the summed length moves (the dlt skill's rule 4).
+
+    Even editor tracking's own date can stay put: tracking can be switched off for a bulk edit (Reasoned; not seen on
+    a registered layer)."""
     fields = [
         {"name": "OBJECTID", "type": "esriFieldTypeOID"},
         {"name": "UPDATED", "type": "esriFieldTypeDate"},
         {"name": "Shape_Length", "type": "esriFieldTypeDouble"},
     ]
-    requests_mock.get(ONPREM_URL, json={"objectIdField": "OBJECTID", "fields": fields})
+    requests_mock.get(ONPREM_URL, json={"objectIdField": "OBJECTID", "fields": fields, "editFieldsInfo": ITS_OWN_DATE})
     asked = []
     answer = {"features": [{"attributes": {"n": 40, "max_oid": 40, "max_date": 1790000000000, "sum_measure": 81234.5}}]}
 
@@ -1205,6 +1314,47 @@ def test_an_onprem_fingerprint_sees_a_redrawn_line_that_count_ids_and_the_date_a
 
     answer["features"][0]["attributes"]["sum_measure"] = 81240.25  # a reroute: same rows, same ids, same date
     assert resource.change_check(marker)[0] is Freshness.STALE
+
+
+@pytest.mark.parametrize(
+    ("type_", "edit_fields", "unchanged"),
+    [
+        ("warnings", None, Freshness.UNKNOWN),
+        ("warnings", ANOTHER_DATE, Freshness.UNKNOWN),
+        ("warnings", ITS_OWN_DATE, Freshness.FRESH),
+        ("points_of_interest", None, Freshness.UNKNOWN),
+        ("points_of_interest", ANOTHER_DATE, Freshness.UNKNOWN),
+        ("points_of_interest", ITS_OWN_DATE, Freshness.FRESH),
+    ],
+    ids=[
+        "hourly, the server names no edit tracking",
+        "hourly, edit tracking keeps another date",
+        "hourly, the date is edit tracking's own",
+        "monthly, the server names no edit tracking",
+        "monthly, edit tracking keeps another date",
+        "monthly, the date is edit tracking's own",
+    ],
+)
+def test_an_unchanged_onprem_fingerprint_is_fresh_only_beside_edit_trackings_own_date_on_any_cadence(
+    registry, requests_mock, type_, edit_fields, unchanged
+):
+    """A burn restriction or a lean-to's capacity edited in place moves no count, id or length, and moves a maintained
+    date only when its publisher moves it; the server promises that only of the date its editor tracking keeps
+    (`editFieldsInfo.editDateField`). An unchanged fingerprint is FRESH for as long as it stays unchanged, so on the
+    monthly lane such an edit could go unseen indefinitely. Read 2026-10-09: five of the eight hourly on-prem layers
+    with a maintained date, and all 17 monthly ones, name a date their servers do not (the dlt skill's rule 4)."""
+    metadata = {"objectIdField": "OBJECTID", "fields": [{"name": "OBJECTID", "type": "esriFieldTypeOID"}]}
+    requests_mock.get(ONPREM_URL, json={**metadata, "editFieldsInfo": edit_fields} if edit_fields else metadata)
+    answer = {"features": [{"attributes": {"n": 83, "max_oid": 83, "max_date": 1791496200000}}]}
+    requests_mock.get(ONPREM_URL + "/query", json=answer)
+    resource = ArcgisLayer(key="onprem_dated", club="testclub", type=type_)
+
+    verdict, marker = resource.change_check(None)
+    assert verdict is Freshness.STALE
+
+    assert resource.change_check(marker) == (unchanged, marker)
+    answer["features"][0]["attributes"]["n"] = 82
+    assert resource.change_check(marker)[0] is Freshness.STALE, "a fingerprint that moved still reads as moved"
 
 
 def test_an_onprem_point_layer_fingerprints_without_a_measure(registry, requests_mock):
@@ -1244,7 +1394,8 @@ def test_an_onprem_fingerprint_asks_for_the_layers_own_id_field_when_its_metadat
     verdict, marker = resource.change_check(None)
 
     assert verdict is Freshness.STALE and marker == {"n": "843", "max_oid": "842", "max_date": "1790000000000"}
-    assert resource.change_check(marker) == (Freshness.FRESH, marker)
+    # Unchanged, so not STALE; and read anyway, since CAJO's metadata names no editor-tracking date.
+    assert resource.change_check(marker) == (Freshness.UNKNOWN, marker)
 
 
 @pytest.mark.parametrize(
@@ -1404,8 +1555,8 @@ def test_an_unchanged_podcast_feed_answers_304_and_is_fresh(registry, requests_m
 class FakeSocrata:
     """One Socrata dataset: `count(*)` and `max(:updated_at)` under a `where`, and GeoJSON pages ordered on `:id`."""
 
-    def __init__(self, requests_mock, rows, *, updated="2026-09-16T20:43:14.951Z", count=None):
-        self.rows, self.updated, self.count = rows, updated, count
+    def __init__(self, requests_mock, rows, *, updated="2026-09-16T20:43:14.951Z", count=None, geometry=True):
+        self.rows, self.updated, self.count, self.geometry = rows, updated, count, geometry
         requests_mock.get(SOCRATA + ".json", json=self.soql)
         requests_mock.get(SOCRATA + ".geojson", json=self.pages)
 
@@ -1421,7 +1572,7 @@ class FakeSocrata:
             {
                 "type": "Feature",
                 "properties": {"segmentid": n, ":id": f"row-{n}"},
-                "geometry": {"type": "Point", "coordinates": [-73.9, 40.7]},
+                "geometry": {"type": "Point", "coordinates": [-73.9, 40.7]} if self.geometry else None,
             }
             for n in self.rows[offset : offset + limit]
         ]
@@ -1441,6 +1592,24 @@ def test_a_socrata_dataset_lands_its_filtered_rows_with_the_portals_count_as_pro
     assert ":id" not in rows[0]
     assert proofs["raw_testclub__greenways"] == 3
     assert all(r.headers["User-Agent"] == USER_AGENT for r in requests_mock.request_history)
+
+
+def test_a_socrata_first_load_whose_every_geometry_is_null_still_lands_its_geometry_column(registry, store, requests_mock):
+    """The dlt skill's rule 1. dlt creates no column it never saw a value for, so with no hint a first load of rows
+    whose geometry is null on every one landed no `geometry` column, and the base model reading it would fail."""
+    FakeSocrata(requests_mock, [1, 2], geometry=False)
+
+    month(store, greenways())
+
+    with duckdb.connect() as con:
+        load_warehouse(con, make_pipeline("monthly", store["bucket_url"], store["pipelines_dir"]))
+        columns = dict(
+            con.execute(
+                "select column_name, data_type from information_schema.columns where table_name = 'raw_testclub__greenways'"
+            ).fetchall()
+        )
+    assert "geometry" in columns, sorted(columns)
+    assert columns["_socrata_id"] == "VARCHAR"
 
 
 def test_a_socrata_read_shorter_than_the_portals_count_raises(registry, requests_mock):

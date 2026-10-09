@@ -49,11 +49,17 @@ vi.mock('./config', async (importOriginal) => {
 const { RELEASE_MANIFEST_PATH } = await import('./dataRelease')
 const { trailGraphCellKey } = await import('./config')
 const { parseCellIndex } = await import('./coverageCells')
-const { graphCellStoreKey, readStoredGraph, writeStoredGraph } =
-  await import('./trailGraphStore')
+const {
+  graphCellStoreKey,
+  olderCopyKey,
+  readStoredGraph,
+  storedGraphBytes,
+  writeStoredGraph,
+} = await import('./trailGraphStore')
 const {
   fetchTrailGraphElevationCells,
   fetchTrailGraphGeometryCells,
+  forgetVerifiedCompanions,
   loadTrailGraphCells,
 } = await import('./trailGraphData')
 const { useTrailGraph } = await import('./useTrailGraph')
@@ -434,10 +440,15 @@ async function publishing(
   })
 }
 
-/** Whether this phone holds `name`'s routing half as a copy of `version` -
- *  stored under it, or recorded since as published in it. */
-async function heldAs(name: string, version: string): Promise<boolean> {
-  const held = (await readStoredGraph(graphCellStoreKey(name, 'graph'))) as {
+/** Whether this phone holds `name`'s `half` (the routing half unless named)
+ *  as a copy of `version` - stored under it, or recorded since as published
+ *  in it. */
+async function heldAs(
+  name: string,
+  version: string,
+  half: Half = 'graph',
+): Promise<boolean> {
+  const held = (await readStoredGraph(graphCellStoreKey(name, half))) as {
     version: string | null
     alsoPublishedIn?: unknown[]
   } | null
@@ -661,5 +672,99 @@ describe('a release folder that answers 404 (#1828 review)', () => {
     expect(result.current.graphMerged?.release).toEqual({ version: RELEASE_9 })
     rerender(inputs({ online: false, wanted: [WEST, EAST] }))
     expect(cellNames(result)).toEqual([WEST.name, EAST.name])
+  })
+})
+
+// #1837 - After a data release changes one piece of a saved hike, the phone
+// strands the rest of the hike offline until every piece is refreshed.
+//
+// The hike spans the west and east cells, stored whole from release 9
+// (R9_FILES). Release 10 renumbers both cells' routing halves (R10_FILES).
+// At home with signal the hiker looks at the east end only, so the east cell
+// alone is fetched from release 10 and stored under it. At the trailhead with
+// no signal, the newest release stored among the hike's cells was then
+// release 10, which holds the east cell alone: the west cell, stored only
+// from release 9, counted as not stored, and the east cell's release-9 copy
+// had been written over. The maintainer's answer (poll, 2026-10-09): keep the
+// older copy until every piece is refreshed, and build offline from the
+// newest release that holds every piece.
+describe('a saved hike whose east cell alone was refreshed from renumbered release 10 (#1837)', () => {
+  beforeEach(() => {
+    // Companion halves verified by an earlier test in this file must not
+    // stand in for the fetches these tests make at home.
+    forgetVerifiedCompanions()
+  })
+
+  /**
+   * The hiker at home with signal, looking at the east end of the hike:
+   * release 10 is published and `serving` is what gets through. With the day
+   * hike open, its geometry and elevation are fetched too, as App.tsx's
+   * `wantsGraphGeometry` asks. Returns once the store holds what was
+   * fetched as release 10's, with the session closed and the bucket gone.
+   */
+  async function lookAtTheEastEndAtHome(serving: string[], { dayHikeOpen = false } = {}) {
+    await publishing(RELEASE_10, R10_FILES, { serving })
+    const home = mount({ online: true, wanted: [EAST] })
+    await waitFor(() => expect(cellNames(home.result)).toEqual([EAST.name]))
+    await waitFor(async () => expect(await heldAs(EAST.name, RELEASE_10)).toBe(true))
+    if (dayHikeOpen) {
+      const merged = home.result.current.graphMerged!
+      expect(await fetchTrailGraphGeometryCells(merged, undefined, true)).toMatchObject({
+        kind: 'loaded',
+      })
+      expect(await fetchTrailGraphElevationCells(merged, undefined, true)).toMatchObject({
+        kind: 'loaded',
+      })
+      await waitFor(async () =>
+        expect(await heldAs(EAST.name, RELEASE_10, 'geometry')).toBe(true),
+      )
+      await waitFor(async () =>
+        expect(await heldAs(EAST.name, RELEASE_10, 'elevation')).toBe(true),
+      )
+    }
+    home.unmount()
+    vi.mocked(globalThis.fetch).mockRestore()
+  }
+
+  const olderRouting = (name: string) =>
+    readStoredGraph(olderCopyKey(graphCellStoreKey(name, 'graph')))
+
+  /** Every graph cell byte this phone holds - the Downloads window's figure. */
+  const storedTotal = async () =>
+    Object.values(await storedGraphBytes()).reduce((sum, bytes) => sum + bytes, 0)
+
+  const sizeOf = (body: string) => new Blob([body]).size
+
+  it('keeps the east cell’s release-9 routing half beside its release-10 one until the west cell is refreshed too, then holds one copy of each', async () => {
+    // The stored bytes before and after, which is what this costs a phone:
+    // the refresh adds release 10's east routing half and keeps release
+    // 9's, and once the west cell is refreshed too nothing holds release 9
+    // and the store is back to one copy of each half.
+    await keep(R9_FILES, RELEASE_9, 1_000)
+    const before = await storedTotal()
+
+    await lookAtTheEastEndAtHome(routingKeys(EAST.name))
+
+    // Before #1837: `before` - the release-9 copy was written over.
+    expect(await storedTotal()).toBe(before + sizeOf(SHARD[RELEASE_10].east))
+    expect(await olderRouting(EAST.name)).toMatchObject({
+      version: RELEASE_9,
+      hash: await hashOf(SHARD[RELEASE_9].east),
+    })
+
+    await publishing(RELEASE_10, R10_FILES, { serving: routingKeys(WEST.name) })
+    const west = mount({ online: true, wanted: [WEST] })
+    await waitFor(async () => expect(await heldAs(WEST.name, RELEASE_10)).toBe(true))
+    await waitFor(async () => expect(await olderRouting(EAST.name)).toBeNull())
+    west.unmount()
+
+    expect(await olderRouting(WEST.name)).toBeNull()
+    expect(await storedTotal()).toBe(
+      before -
+        sizeOf(SHARD[RELEASE_9].west) -
+        sizeOf(SHARD[RELEASE_9].east) +
+        sizeOf(SHARD[RELEASE_10].west) +
+        sizeOf(SHARD[RELEASE_10].east),
+    )
   })
 })

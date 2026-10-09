@@ -77,8 +77,52 @@
 // Still not acted on: a card saying its cached figures were computed
 // against a different release. That is a change to what a screen SAYS, which
 // wants its own before-and-after.
+//
+// THE OLDER COPY KEPT BESIDE A REFRESHED CELL HALF (#1837 - after a data
+// release changes one piece of a saved hike, the phone strands the rest of
+// the hike offline until every piece is refreshed)
+//
+// One record per cell half used to be all a phone held, so a fetch from a
+// release that changed a cell wrote over the copy the hike's other cells
+// could still be built with. A hike stored whole from release 9, whose east
+// cell alone was refetched from release 10 at home, then held no release
+// with both cells, and at the trailhead it routed on one of them. The
+// maintainer chose by poll on 2026-10-09: keep the older copy until every
+// piece of the hike is refreshed, and build offline from the newest release
+// that holds every piece. This module keeps the older copy and drops it.
+//
+// KEPT: {@link writeStoredGraph} keeps the copy it replaces, under
+// {@link olderCopyKey}, when that copy is another release's bytes and some
+// stored cell's current routing half is still a copy of that release - a
+// cell a graph of that release could be built with.
+//
+// DROPPED: every write then forgets each older copy that no stored cell's
+// current routing half is a copy of the release of any more. That is "until
+// every piece is refreshed" without the store knowing which cells make up a
+// hike - it has no such notion, and this adds none. It errs both ways:
+//   - a copy can outlive the hike that needed it, because one release-9 cell
+//     of any other hike keeps every release-9 copy until it is refreshed too;
+//   - a copy can go while a hike could still use it, when the hike's cells
+//     were refreshed under two different later releases, one cell under
+//     each. No cell is current at the release they last shared, and the
+//     store builds as it did before #1837, from the newest stored.
+//
+// ONE OLDER COPY PER HALF, AT MOST. A cell refreshed under two later releases
+// keeps one of its two earlier copies: the one a stored routing half is still
+// current at, the newer if both are - the same newest-first preference the
+// offline choice makes. A hike whose other cells are still current at the
+// one given up loses this cell. That takes two data releases with this cell
+// refreshed in each and those cells in neither, and each further copy kept
+// would cost up to one more multiple of the graph bytes the phone holds.
+//
+// WHAT IT COSTS, AND THE ROOM CHECK. A half held twice costs one more copy of
+// that half. Older copies are what the room check gives up first: a write
+// with no room forgets every older copy before it declines, and keeps none on
+// that write, so an older copy never costs a current copy its place.
+// features/HIKE_PLANNING.md's "One release per graph" has the measured sizes
+// and the worst case.
 
-import { del, get, keys, set, update } from 'idb-keyval'
+import { del, delMany, get, getMany, keys, set, setMany, update } from 'idb-keyval'
 
 import { oversized, warnOversized } from './artifactBudget'
 import type { TrailGraphCellHalf } from './config'
@@ -137,6 +181,30 @@ export function graphCellStoreKey(name: string, half: TrailGraphCellHalf): strin
   return `${GRAPH_CELL_STORE_PREFIX}${half}:${name}`
 }
 
+/** What every older copy's key ends with - see {@link olderCopyKey}. */
+const OLDER_COPY_SUFFIX = ':older'
+
+/**
+ * Where the older copy of the record under `storeKey` lives (#1837): the
+ * copy a refetch from another release replaced, kept while a stored cell can
+ * still be built with it (the header says when). Beside the current copy's
+ * key and inside {@link GRAPH_CELL_STORE_PREFIX}, so {@link storedGraphBytes}
+ * counts it for the Downloads window and {@link clearStoredGraph} forgets it.
+ */
+export function olderCopyKey(storeKey: string): string {
+  return `${storeKey}${OLDER_COPY_SUFFIX}`
+}
+
+function isOlderCopyKey(storeKey: string): boolean {
+  return storeKey.endsWith(OLDER_COPY_SUFFIX)
+}
+
+/** Whether `storeKey` holds a cell's current routing half - the records
+ *  whose releases decide which older copies are still kept. */
+function isCurrentRoutingKey(storeKey: string): boolean {
+  return storeKey.startsWith(graphCellStoreKey('', 'graph')) && !isOlderCopyKey(storeKey)
+}
+
 /**
  * The four whole-file records releases before #1257 stage 3 wrote, kept as
  * names only so {@link forgetWholeGraph} can delete what they left. Nothing
@@ -170,17 +238,40 @@ export const LEGACY_GRAPH_STORE_KEYS = [
  */
 export const GRAPH_STORE_HEADROOM_BYTES = 50 * 1024 * 1024
 
+/**
+ * A record as this module reads it back, or null when it is not one.
+ *
+ * Shape-checked because this store is written by every past version of this
+ * module there will ever be. A record that is not a blob and a hash is
+ * treated as absent, and the next verified fetch rewrites it.
+ */
+function asStoredCopy(record: unknown): StoredGraphArtifact | null {
+  const candidate = record as Partial<StoredGraphArtifact> | null | undefined
+  if (!(candidate?.bytes instanceof Blob) || typeof candidate.hash !== 'string') {
+    return null
+  }
+  return {
+    bytes: candidate.bytes,
+    hash: candidate.hash,
+    version: typeof candidate.version === 'string' ? candidate.version : null,
+    alsoPublishedIn: Array.isArray(candidate.alsoPublishedIn)
+      ? candidate.alsoPublishedIn.filter(
+          (version: unknown): version is string | null =>
+            version === null || typeof version === 'string',
+        )
+      : [],
+    fetchedAt: typeof candidate.fetchedAt === 'number' ? candidate.fetchedAt : 0,
+  }
+}
+
 /** A stored copy under `storeKey`, or null when there is none this module
  *  trusts. */
 export async function readStoredGraph(
   storeKey: string,
 ): Promise<StoredGraphArtifact | null> {
   try {
-    const record = (await get(storeKey)) as StoredGraphArtifact | undefined
-    // Shape-checked because this store is written by every past version of
-    // this module there will ever be. A record that is not a blob and a hash
-    // is treated as absent, and the next verified fetch rewrites it.
-    if (record?.bytes instanceof Blob && typeof record.hash === 'string') {
+    const stored = asStoredCopy(await get(storeKey))
+    if (stored !== null) {
       // Weighed on the way out (#1254): a launch before the budget existed
       // stored whatever it had verified, and on 2026-09-07 that was a
       // 78,595,556-byte graph whose parse is the frozen first page the
@@ -188,23 +279,12 @@ export async function readStoredGraph(
       // for the same reason. Forgotten rather than kept: a copy nothing will
       // parse is storage taken from the map, and the next fetch that fits
       // rewrites it.
-      if (oversized(record.bytes.size)) {
-        warnOversized(storeKey, record.bytes.size, 'store')
+      if (oversized(stored.bytes.size)) {
+        warnOversized(storeKey, stored.bytes.size, 'store')
         await forgetStoredGraph(storeKey)
         return null
       }
-      return {
-        bytes: record.bytes,
-        hash: record.hash,
-        version: typeof record.version === 'string' ? record.version : null,
-        alsoPublishedIn: Array.isArray(record.alsoPublishedIn)
-          ? record.alsoPublishedIn.filter(
-              (version: unknown): version is string | null =>
-                version === null || typeof version === 'string',
-            )
-          : [],
-        fetchedAt: typeof record.fetchedAt === 'number' ? record.fetchedAt : 0,
-      }
+      return stored
     }
   } catch {
     // An unreadable store is the no-store case. The fetch path still answers.
@@ -219,6 +299,12 @@ export async function readStoredGraph(
  * a refusing one, or one with no room to spare all end with the caller holding
  * exactly what it fetched. Storing is an improvement on the next launch, not a
  * condition of this one.
+ *
+ * KEEPS THE COPY IT REPLACES under {@link olderCopyKey} while a stored cell
+ * can still be built with it, and then forgets every older copy no stored
+ * cell can be built with any more (#1837; the header says why, and why one
+ * older copy per half). With no room for the new copy, every older copy is
+ * forgotten first, and none is kept on this write.
  */
 export async function writeStoredGraph(
   storeKey: string,
@@ -226,19 +312,134 @@ export async function writeStoredGraph(
     fetchedAt?: number
   },
 ): Promise<boolean> {
+  // No `alsoPublishedIn`: a copy just fetched has been published in no
+  // later release yet, and readStoredGraph reads the missing list as empty.
+  const next = {
+    bytes: record.bytes,
+    hash: record.hash,
+    version: record.version,
+    fetchedAt: record.fetchedAt ?? Date.now(),
+  } satisfies Omit<StoredGraphArtifact, 'alsoPublishedIn'>
   try {
-    if (!(await hasRoomFor(record.bytes.size))) return false
-    // No `alsoPublishedIn`: a copy just fetched has been published in no
-    // later release yet, and readStoredGraph reads the missing list as empty.
-    await set(storeKey, {
-      bytes: record.bytes,
-      hash: record.hash,
-      version: record.version,
-      fetchedAt: record.fetchedAt ?? Date.now(),
-    } satisfies Omit<StoredGraphArtifact, 'alsoPublishedIn'>)
-    return true
+    if (!(await hasRoomFor(record.bytes.size))) {
+      // OLDER COPIES GO BEFORE ANYTHING CURRENT (#1837). An older copy serves
+      // only a hike whose other cells were not refreshed; a current copy is
+      // the one every graph built with signal uses. So a write with no room
+      // forgets every older copy and asks again, keeps none on this write,
+      // and declines - as it always has - only when that still leaves too
+      // little room.
+      await forgetOlderCopies()
+      if (!(await hasRoomFor(record.bytes.size))) return false
+      await set(storeKey, next)
+      return true
+    }
+    const replaced = await readStoredGraph(storeKey)
+    if (replaced !== null && (await keptAsOlderCopy(replaced, storeKey, next))) {
+      // One transaction, so neither record is ever written without the other.
+      await setMany([
+        [olderCopyKey(storeKey), replaced],
+        [storeKey, next],
+      ])
+    } else {
+      await set(storeKey, next)
+    }
   } catch {
     return false
+  }
+  await forgetOlderCopiesNoCellNeeds()
+  return true
+}
+
+/** The two fields that say which releases a stored copy belongs to. */
+type Releases = Pick<StoredGraphArtifact, 'version' | 'alsoPublishedIn'>
+
+/** Every release a stored copy is a copy of. */
+function releasesOf(copy: Releases): Array<string | null> {
+  return [copy.version, ...copy.alsoPublishedIn]
+}
+
+/**
+ * Every release that some stored cell's current routing half is a copy of -
+ * the releases whose older copies this store keeps (#1837). Read with `next`
+ * in place of the record under its `storeKey`, for a write about to put it
+ * there.
+ */
+async function currentReleases(
+  storeKeys: readonly string[],
+  next?: { storeKey: string; copy: Releases },
+): Promise<Set<string | null>> {
+  const routingKeys = storeKeys.filter(
+    (storeKey) => isCurrentRoutingKey(storeKey) && storeKey !== next?.storeKey,
+  )
+  const copies: Array<Releases | null> =
+    routingKeys.length === 0
+      ? []
+      : (await getMany(routingKeys)).map((record) => asStoredCopy(record))
+  if (next !== undefined && isCurrentRoutingKey(next.storeKey)) copies.push(next.copy)
+  const current = new Set<string | null>()
+  for (const copy of copies) {
+    if (copy !== null) for (const version of releasesOf(copy)) current.add(version)
+  }
+  return current
+}
+
+/**
+ * Whether the copy `next` replaces under `storeKey` is kept as its older copy
+ * (#1837): other bytes, from another release, which some stored cell's
+ * current routing half will still be a copy of once `next` is written. Bytes
+ * replaced under the release they were stored as are not kept - two copies
+ * claiming one release (two releases that named no version read as one) would
+ * leave nothing to choose between them.
+ */
+async function keptAsOlderCopy(
+  replaced: StoredGraphArtifact,
+  storeKey: string,
+  next: Omit<StoredGraphArtifact, 'alsoPublishedIn'>,
+): Promise<boolean> {
+  if (replaced.hash === next.hash || isCopyOf(replaced, next.version)) return false
+  const current = await currentReleases(await graphCellStoreKeys(), {
+    storeKey,
+    copy: { version: next.version, alsoPublishedIn: [] },
+  })
+  return releasesOf(replaced).some((version) => current.has(version))
+}
+
+/**
+ * Forget every older copy whose release no stored cell's current routing half
+ * is a copy of any more (#1837) - the maintainer's "until every piece of the
+ * hike is refreshed", read without knowing which cells make up a hike (the
+ * header says what that keeps too long and what it drops too soon).
+ *
+ * Run after every write, of any half: a write is what takes a cell off a
+ * release, and writes are fire-and-forget and can overlap, so the call after
+ * the last of them is the one that sees them all. Never throws: a copy left
+ * behind is forgotten by the next write, or by the room check.
+ */
+async function forgetOlderCopiesNoCellNeeds(): Promise<void> {
+  try {
+    const storeKeys = await graphCellStoreKeys()
+    const olderKeys = storeKeys.filter(isOlderCopyKey)
+    if (olderKeys.length === 0) return
+    const current = await currentReleases(storeKeys)
+    const olderCopies = await getMany(olderKeys)
+    const unneeded = olderKeys.filter((_storeKey, at) => {
+      const copy = asStoredCopy(olderCopies[at])
+      return copy === null || !releasesOf(copy).some((version) => current.has(version))
+    })
+    if (unneeded.length > 0) await delMany(unneeded)
+  } catch {
+    // See above.
+  }
+}
+
+/** Forget every older copy, which is what the room check gives up first.
+ *  Never throws, like the rest of this module's writes. */
+async function forgetOlderCopies(): Promise<void> {
+  try {
+    const olderKeys = (await graphCellStoreKeys()).filter(isOlderCopyKey)
+    if (olderKeys.length > 0) await delMany(olderKeys)
+  } catch {
+    // The room check asks again either way.
   }
 }
 

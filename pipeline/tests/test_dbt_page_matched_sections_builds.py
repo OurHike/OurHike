@@ -147,9 +147,12 @@ def builds(tmp_path_factory) -> dict:
                 "Fixture",
             ],
         )
-    # The singular test by name: under cautious selection a test runs only when every parent is selected, and one of
-    # its parents is a seed.
-    downstream = ["-s", "int_closures__page_matches+", INVARIANT, "--indirect-selection", "cautious", *paths]
+    # Only what lies between the match and what step 1 built: int_closures__page_matches+ alone also reaches
+    # pub_conditions_weather_alerts (through int_closures__gate), which reads stg_derived__weather_squares, a model
+    # step 1 never built. The singular test by name: under cautious selection a test runs only when every parent is
+    # selected, and one of its parents is a seed.
+    between = [f"int_closures__page_matches+,+{end}" for end in ("pub_conditions_notices", INVARIANT)]
+    downstream = ["-s", *between, INVARIANT, "--indirect-selection", "cautious", *paths]
     _ok([DBT, "build", *downstream], DBT_DIR, dbt_env)
     matched = _state(warehouse, processed, target)
 

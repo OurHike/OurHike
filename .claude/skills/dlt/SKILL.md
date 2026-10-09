@@ -507,7 +507,11 @@ finisher and member rosters the coverage audit found. The full list is in
   permission"*). Nothing is fetched past what the coverage audit already read.
 - **The maintainer sends every permission request.** No session contacts an
   org. Each reply is quoted, with its date, in the club's licence fields.
-- **robots.txt, a 403 or a login means `UNKNOWN`, and stops there.**
+- **A robots.txt disallow, a 403 on the data or a login means `UNKNOWN`,
+  and stops there.** A 4xx other than 429 on robots.txt itself is no rules
+  (RFC 9309, 2.3.1.3; `extract/_robots.py`): `carto.nationalmap.gov`
+  answered 403 to its robots.txt and served its layers to `USER_AGENT`
+  (2026-10-09).
 - **Every request sends `lib/user_agent.py`'s `USER_AGENT`**
   (`CONTACTABLE_USER_AGENT` for Wikimedia), on every host. It names the
   project and links to it rather than impersonating a browser, so an operator

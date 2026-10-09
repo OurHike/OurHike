@@ -123,7 +123,9 @@ describe("cards and bodies", () => {
   it("puts a notice where there is nothing to count, and the four sections where there is", () => {
     expect(renderBody(view(MISSING, MISSING))).toContain("Nothing is published yet");
     const body = renderBody(lookingView());
-    for (const heading of ["The five kinds of check", "Needs a look", "By mart"]) expect(body).toContain(heading);
+    for (const heading of ["The five kinds of check", "Needs a look", "By finished table"]) expect(body).toContain(heading);
+    // The table's own headers, in a visitor's words: no "Mart", no "Lane".
+    expect(body).toContain('<th scope="col">Table</th><th scope="col" class="dq-col-lane">Schedule</th>');
     expect(body).toContain("dq-chart-card");
     expect(renderBody(view(lane(examples.monthlyAllGreen(), "monthly"), MISSING))).not.toContain("dq-chart-card");
   });
@@ -189,7 +191,7 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
     const page = manyView();
     const body = renderBody(page);
     expect(body).toContain('<label class="dq-show__label" for="dq-show">Show</label>');
-    expect(body.match(/<optgroup label="([^"]+)">/g)).toEqual(['<optgroup label="Needs a look">', '<optgroup label="Every mart">']);
+    expect(body.match(/<optgroup label="([^"]+)">/g)).toEqual(['<optgroup label="Needs a look">', '<optgroup label="Every finished table">']);
     const selected = [...body.matchAll(/<option value="([^"]*)" selected>/g)].map((m) => m[1].replaceAll("&quot;", '"'));
     expect(selected).toEqual([page.sections.chart.key]);
     expect(body.match(/<option /g)).toHaveLength(38);
@@ -212,8 +214,8 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
 
   it("names where a chart came from, with the way back to its row", () => {
     expect(renderCharted(null)).toBe("");
-    expect(renderCharted({ from: "By mart", table: "trail_network", column: null, row: "dq-mart-2" })).toBe(
-      'Charted from By mart · <code>trail_<wbr>network</code> · <a href="#dq-mart-2" data-back>Back to the row</a>',
+    expect(renderCharted({ from: "By finished table", table: "trail_network", column: null, row: "dq-mart-2" })).toBe(
+      'Charted from By finished table · <code>trail_<wbr>network</code> · <a href="#dq-mart-2" data-back>Back to the row</a>',
     );
   });
 });
@@ -249,9 +251,16 @@ describe("the chart", () => {
     const { markup } = renderChart(chart(), 900);
     expect(markup.match(/class="dq-chart__out"/g)).toHaveLength(1);
     expect(markup.match(/class="dq-chart__dot"/g)).toHaveLength(11);
-    expect(markup).toContain("4,118 rows, below the range");
+    expect(markup).toContain("4,118 rows, flagged as low");
     expect(markup).toContain(`aria-label="${chart().summary}"`);
     expect(renderChartFigure(chart())).toContain("</svg>Flagged by Elementary</span>");
+  });
+
+  it('keys the band as "Usual range", the rows\' word for it, in the key and the table of numbers', () => {
+    const figure = renderChartFigure(chart());
+    expect(figure).toContain('<i class="dq-key__band"></i>Usual range</span>');
+    expect(figure).toContain('<th scope="col">Usual range</th>');
+    expect(figure).not.toContain("Expected range");
   });
 
   it("bands each point with the band stored at the point before it, and a lone one as a bar", () => {

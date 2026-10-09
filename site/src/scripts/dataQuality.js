@@ -65,7 +65,7 @@ function readout(chart, i) {
   const point = chart.points[i];
   const row = chart.rows[i];
   const value = point.value === null ? "No value" : chart.format.value(point.value);
-  const range = point.min === null || point.max === null ? NO_RANGE : `Expected ${chart.format.range(point.min, point.max)}`;
+  const range = point.min === null || point.max === null ? NO_RANGE : `Usual range ${chart.format.range(point.min, point.max)}`;
   const lines = [value, row.whenFull, range];
   if (point.outside) lines.push(row.where);
   return lines;

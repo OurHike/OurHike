@@ -15,7 +15,7 @@
 // labels at under 5 px. src/scripts/dataQuality.js measures the box and
 // redraws when it changes size.
 
-import { chartControls, formatTickLabel, initialChart } from "./dataQuality.mjs";
+import { FLAGGED_AS, chartControls, formatTickLabel, initialChart } from "./dataQuality.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
@@ -164,7 +164,7 @@ ${itemList(group.items, pressed)}
 }
 
 function renderMarts(marts, pressed) {
-  if (marts.length === 0) return html`<p class="dq-panel dq-quiet">No mart was checked in these builds.</p>`;
+  if (marts.length === 0) return html`<p class="dq-panel dq-quiet">No finished table was checked in these builds.</p>`;
   // Its own column on a laptop; on a phone under the mart's name, because a
   // fourth column does not fit 390 px (round 2's frames). Two buttons, one
   // shown at a time by site.css, so only the shown one is in the tab order.
@@ -176,7 +176,7 @@ function renderMarts(marts, pressed) {
     chartButton({ key: row.chart, row: row.id, label: row.chartName, pressed: pressed.includes(row.id), extra });
   return html`<div class="dq-panel dq-table-wrap">
 <table class="dq-table" aria-labelledby="dq-marts-title">
-<thead><tr><th scope="col">Mart</th><th scope="col" class="dq-col-lane">Lane</th><th scope="col" class="dq-num dq-col-checks">Checks</th><th scope="col" class="dq-col-result">Result</th>${charting ? html`<th scope="col" class="dq-col-chart"><span class="dq-sr">Chart</span></th>` : ""}</tr></thead>
+<thead><tr><th scope="col">Table</th><th scope="col" class="dq-col-lane">Schedule</th><th scope="col" class="dq-num dq-col-checks">Checks</th><th scope="col" class="dq-col-result">Result</th>${charting ? html`<th scope="col" class="dq-col-chart"><span class="dq-sr">Chart</span></th>` : ""}</tr></thead>
 <tbody>
 ${marts.map(
   (row) => html`<tr id="${row.id}"><td>${name(row.mart)}<span class="dq-lane-tag">${row.lane} · ${row.checksPhrase}</span>${row.chart ? button(row, "dq-chart-btn--inline") : ""}</td><td class="dq-col-lane">${row.lane}</td><td class="dq-num dq-col-checks">${row.checks}</td><td class="dq-col-result"><p class="dq-pills">${row.pills.map(pill)}</p></td>${charting ? html`<td class="dq-col-chart">${row.chart ? button(row, null) : ""}</td>` : ""}</tr>
@@ -240,7 +240,7 @@ export function renderChartFigure(chart, { tableOpen = false } = {}) {
   return html`<figure class="dq-figure">
 <div class="dq-key" aria-hidden="true">
 <span><i class="dq-key__line"></i>${chart.format.label} at each point</span>
-<span><i class="dq-key__band"></i>Expected range</span>
+<span><i class="dq-key__band"></i>Usual range</span>
 <span><svg class="dq-key__out" viewBox="0 0 16 16"><path d="M8 1.5 15 14H1z"></path></svg>Flagged by Elementary</span>
 </div>
 <div class="dq-chart" data-chart tabindex="0" role="group" aria-label="The chart, point by point: use the left and right arrow keys">
@@ -253,7 +253,7 @@ export function renderChartFigure(chart, { tableOpen = false } = {}) {
 <summary>The numbers behind the chart</summary>
 <div class="dq-table-wrap">
 <table class="dq-table">
-<thead><tr><th scope="col">When (UTC)</th><th scope="col" class="dq-num">${chart.format.label}</th><th scope="col">Expected range</th></tr></thead>
+<thead><tr><th scope="col">When (UTC)</th><th scope="col" class="dq-num">${chart.format.label}</th><th scope="col">Usual range</th></tr></thead>
 <tbody>
 ${chart.rows.map(
   (row) => html`<tr><td class="dq-when">${row.when}</td><td class="dq-num">${row.value}</td><td>${row.expected}</td></tr>
@@ -286,7 +286,7 @@ ${s.items.length ? renderLook(s.look, shown.pressed) : html`<p class="dq-panel d
 </section>
 ${s.chart ? renderChartSection(s, shown) : ""}
 <section class="dq-section" aria-labelledby="dq-marts-title">
-<h2 id="dq-marts-title">By mart</h2>
+<h2 id="dq-marts-title">By finished table</h2>
 ${renderMarts(s.marts, shown.pressed)}
 </section>`.text;
 }
@@ -481,7 +481,7 @@ export function renderChart(chart, width) {
   const flagged = chart.points.findLastIndex((point, i) => point.outside && ys[i] !== null);
   if (flagged !== -1) {
     const point = chart.points[flagged];
-    const text = `${chart.format.value(point.value)}, ${point.outside} the range`;
+    const text = `${chart.format.value(point.value)}, flagged as ${FLAGGED_AS[point.outside]}`;
     const rightHalf = xs[flagged] > plot.left + plot.width / 2;
     const ty = Math.min(plot.top + plot.height - 4, Math.max(plot.top + 12, ys[flagged] + 4));
     parts.push(

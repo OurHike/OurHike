@@ -63,6 +63,16 @@ export const RELEASE_ID = /^\d{4}-\d{2}-\d{2}(-\d+)?$/;
  * `kind` (ELT.md, "The checks, and where each goes"). `passed` captions the
  * "N of M" figure, `problem` names a check of this kind that did not pass,
  * and `about` says what the kind covers when nothing of it needs a look.
+ *
+ * `about` IS FOR A VISITOR, not for the pipeline: "raw table", "mart",
+ * "retyped upstream", "phone file", "nulls", "contracts" and "safety
+ * columns" were the pipeline's words (the word-choice review of #1805,
+ * 2026-10-09). Each sentence still claims no more than the checks do, read
+ * against ELT.md's table and pipeline/dbt's YAML on 2026-10-09: schema
+ * validity runs on the marts a single phone file reads, not on every file,
+ * so Schema says "files the app reads" and not "each"; and minimum and
+ * maximum run on water distance and elevation only, so Anomalies names the
+ * lowest and highest of those two and the blank rate of all four.
  */
 export const KINDS = [
   {
@@ -70,35 +80,38 @@ export const KINDS = [
     label: "Freshness",
     passed: "checks on time",
     problem: "late",
-    about: "How long each source goes between loads, against the gap it usually keeps.",
+    about: "How long each source goes between updates, against its usual gap.",
   },
   {
     id: "volume",
     label: "Volume",
     passed: "checks at the usual size",
     problem: "unusual",
-    about: "Rows per build in every raw table and every mart.",
+    about: "Row counts per build in every source table and finished table.",
   },
   {
     id: "schema",
     label: "Schema",
     passed: "checks with the columns expected",
     problem: "changed",
-    about: "Columns added, dropped or retyped upstream, and the types each phone file declares.",
+    about:
+      "Columns a source added, dropped or changed, and whether files the app reads have the columns and types it expects.",
   },
   {
     id: "dbt_tests",
     label: "dbt tests",
     passed: "tests pass",
     problem: "not passing",
-    about: "Keys, nulls, relationships and the marts' contracts.",
+    about:
+      "Unique IDs, required values filled in, links between tables, and each finished table's promised columns.",
   },
   {
     id: "anomalies",
     label: "Anomalies",
     passed: "checks in the usual range",
     problem: "out of range",
-    about: "Null rates, minimums and maximums on the safety columns, and counts per club.",
+    about:
+      "How often water distance, elevation, trail status and closure dates are blank, the lowest and highest water distances and elevations, and rows per club.",
   },
 ];
 const KIND = new Map(KINDS.map((kind) => [kind.id, kind]));
@@ -600,14 +613,14 @@ function card(lane, state, config, now) {
         ...base,
         meta:
           lane === "monthly"
-            ? `Made release ${config.release} · built ${when}`
+            ? `Release ${config.release} · built ${when}`
             : `Trail conditions, rebuilt every hour · last run ${when}`,
         pills: countPills(file.totals),
         learning:
           builds < needed
             ? {
                 text: `Learning, ${builds} of ${needed} builds`,
-                detail: `Its anomaly checks compare each build with the ones before it, and need ${needed} builds, this one included, before any can fire. Until then they pass without being able to.`,
+                detail: `Its anomaly checks compare each build with the ones before it, and can't flag anything until they have ${needed} builds, this one included. Until then they pass even if something is wrong.`,
               }
             : null,
       };
@@ -676,12 +689,12 @@ function countSentences(item) {
   const verb = item.status === "fail" ? "failed" : "warned";
   if (item.kind === "dbt_tests") {
     const rows = `${formatCount(n)} ${plural(n, "row", "rows")}`;
-    return { long: `A dbt test on it ${verb} on ${rows} at this build.`, short: `a dbt test ${verb} on ${rows}.` };
+    return { long: `A dbt test on it ${verb} on ${rows} in this build.`, short: `a dbt test ${verb} on ${rows}.` };
   }
   if (item.kind === "schema") {
-    const columns = `${formatCount(n)} ${plural(n, "column", "columns")} a phone file reads`;
+    const columns = `${formatCount(n)} ${plural(n, "column", "columns")} an app file reads`;
     return {
-      long: `${columns} ${plural(n, "is", "are")} missing or not the type it declares, at this build.`,
+      long: `${columns} ${plural(n, "is", "are")} missing or not the type it declares, in this build.`,
       short: `${columns} ${plural(n, "does", "do")} not match.`,
     };
   }
@@ -711,8 +724,13 @@ function placement(item, series) {
   };
 }
 
-/** Elementary's side of its own range, as a row says it: "flagged as high". */
-const FLAGGED_AS = { above: "high", below: "low" };
+/** Elementary's side of its own range, as a row says it: "flagged as high".
+ *  The one wording of that verdict on the page - the row, its kind's card,
+ *  the chart's table and readout, and the label on the chart's triangle
+ *  (dataQualityHtml.mjs) - where it was four until the word-choice review of
+ *  #1805 (2026-10-09): "flagged by Elementary", "flagged below", "Flagged
+ *  below the range" and "below the range" beside this one. */
+export const FLAGGED_AS = { above: "high", below: "low" };
 
 /**
  * A ROW'S SENTENCE. For a measured value, the range it quotes is the one the
@@ -756,13 +774,13 @@ const FLAGGED_AS = { above: "high", below: "low" };
  * and the other two are corners (Reasoned from that header).
  */
 function itemSentence(item, series) {
-  if (item.status === "error") return "The check could not run, so this went unchecked at this build.";
+  if (item.status === "error") return "The check could not run, so this went unchecked in this build.";
   const counted = countSentences(item);
   if (counted) return counted.long;
   const metric = item.metric ?? DEFAULT_METRIC[item.kind] ?? null;
   if (item.value !== null) {
     const fmt = metricFormat(metric);
-    const what = `${fmt.value(item.value)} at this build`;
+    const what = `${fmt.value(item.value)} in this build`;
     if (item.min === null || item.max === null) return `${what}.`;
     const { before, side, flagged } = placement(item, series);
     if (before === null) {
@@ -773,16 +791,21 @@ function itemSentence(item, series) {
     if (flagged === null || flagged === side) return `${against}.`;
     return `${against}, but flagged as ${FLAGGED_AS[flagged]}.`;
   }
-  if (item.kind === "schema") return "Its columns no longer match what Elementary expected.";
+  // A schema entry with no value is a schema_changes result, which compares
+  // the table with the build before (LEARNING_KINDS' note on
+  // test_schema_changes.sql); schema_changes_from_baseline, the one that
+  // would not, runs on no table (ELT.md, "No schema_changes_from_baseline").
+  if (item.kind === "schema") return "Its columns changed since the last build.";
   if (item.kind === "dbt_tests") return item.status === "fail" ? "A dbt test on it failed." : "A dbt test on it warned.";
   return item.status === "fail" ? "Elementary's check on it failed." : "Elementary's check on it warned.";
 }
 
 /**
- * A kind's card names its first row in short. "Its expected range" there is
+ * A kind's card names its first row in short. "Its usual range" there is
  * the row's range from the builds before (decision 130), so the card names a
  * side only where that range gives the side Elementary flagged; anywhere else
- * it says the value was flagged, and the row below says the rest.
+ * it says which side Elementary flagged ("flagged as high"), in the row's own
+ * words, and the row below says the rest.
  */
 function shortSentence(item, series) {
   if (item.status === "error") return "could not run.";
@@ -794,8 +817,8 @@ function shortSentence(item, series) {
     let where = "";
     if (item.min !== null && item.max !== null) {
       const { side, flagged } = placement(item, series);
-      if (flagged !== null && flagged !== side) where = ", flagged by Elementary";
-      else if (side === "below" || side === "above") where = `, ${side} its expected range`;
+      if (flagged !== null && flagged !== side) where = `, flagged as ${FLAGGED_AS[flagged]}`;
+      else if (side === "below" || side === "above") where = `, ${side} its usual range`;
     }
     return `${fmt.value(item.value)}${where}.`;
   }
@@ -849,7 +872,7 @@ function learningNote(read) {
     .filter((file) => file.learning.builds < file.learning.needed)
     .map((file) => `${file.learning.builds} of ${file.learning.needed} ${LANE_RUNS[file.lane]}`);
   if (parts.length === 0) return null;
-  return `Learning, ${parts.join(" and ")}: until then a pass may only mean an anomaly check cannot fire yet.`;
+  return `Learning, ${parts.join(" and ")}: until then its anomaly checks can't flag anything.`;
 }
 
 function tile(kind, read, items, learning, series) {
@@ -1019,7 +1042,7 @@ function menuOf(series, items, marts) {
     other,
     groups: [
       { label: "Needs a look", options: look },
-      { label: "Every mart", options: other },
+      { label: "Every finished table", options: other },
     ]
       .filter((group) => group.options.length > 0)
       .map((group) => ({
@@ -1166,13 +1189,19 @@ function chartView(series, read) {
   // band is the chart's first, or one after a point no run in the history
   // scored: a check's first point never is, and the pipeline keeps every
   // other band between builds (row_history.py, "THE BANDS").
+  //
+  // IN THE PAGE'S OWN WORDS, "the usual range" as the rows say it (decision
+  // 130's), since the maintainer called "which does not count the point
+  // itself" jargon in the rows' first wording (2026-10-09). "Worked out with
+  // that value included", not "a range that includes it": that could read as
+  // "a range the value is inside", which is false for every flagged point.
   const unbanded = points.some((point) => point.min === null || point.max === null);
   const caption = [
-    `The shaded band at each point is the range Elementary expected from the ${LANE_RUNS[series.lane]} before it: the band it worked out at the point before, which does not count the point itself.`,
-    " A triangle marks a point Elementary flagged.",
-    " Elementary judges a point against a band that does count it, so a point can sit outside the shaded band without a triangle",
-    file ? `, and none can be flagged before its check has ${file.learning.needed} ${LANE_RUNS[series.lane]}.` : ".",
-    unbanded ? " A point with no band is this chart's first, or comes after one no run scored, such as a check's first." : "",
+    `The shaded band is the usual range, from the ${LANE_RUNS[series.lane]} before each point.`,
+    " A triangle marks a value Elementary flagged.",
+    " Elementary judges each value against a range worked out with that value included, so a point can sit outside the band with no triangle.",
+    file ? ` Nothing can be flagged before a check has ${file.learning.needed} ${LANE_RUNS[series.lane]}.` : "",
+    unbanded ? " A point with no band has no earlier range." : "",
   ].join("");
 
   return {
@@ -1194,7 +1223,7 @@ function chartView(series, read) {
       when: series.lane === "monthly" ? formatDay(point.at) : formatWhen(point.at).replace(/ UTC$/, ""),
       whenFull: formatWhen(point.at),
       value: point.value === null ? "No value" : fmt.cell(point.value),
-      expected: `${point.min === null || point.max === null ? NO_RANGE : fmt.range(point.min, point.max)}${point.outside ? `, flagged ${point.outside}` : ""}`,
+      expected: `${point.min === null || point.max === null ? NO_RANGE : fmt.range(point.min, point.max)}${point.outside ? `, flagged as ${FLAGGED_AS[point.outside]}` : ""}`,
       where: flaggedLine(point),
     })),
   };
@@ -1202,8 +1231,8 @@ function chartView(series, read) {
 
 /** The readout's line for a point Elementary flagged, or null for one it did not. */
 function flaggedLine(point) {
-  if (point.outside === "below") return "Flagged below the range";
-  if (point.outside === "above") return "Flagged above the range";
+  if (point.outside === "below") return "Flagged as low";
+  if (point.outside === "above") return "Flagged as high";
   return null;
 }
 
@@ -1308,7 +1337,7 @@ function sectionsView(lanes, read) {
     // chart's "Charted from" line names, and where "Back to the row" goes.
     buttons: [
       ...items.filter((item) => item.chart).map((item) => ({ row: item.id, key: item.chart, from: "Needs a look", table: item.table, column: item.column })),
-      ...marts.filter((mart) => mart.chart).map((mart) => ({ row: mart.id, key: mart.chart, from: "By mart", table: mart.mart, column: null })),
+      ...marts.filter((mart) => mart.chart).map((mart) => ({ row: mart.id, key: mart.chart, from: "By finished table", table: mart.mart, column: null })),
     ],
     marts,
   };

@@ -6,8 +6,11 @@ extract. An umbrella's reason is its trail_orgs.json `why`, quoted. A
 route-only trail's is the same for all thirteen, so it is written once here
 rather than copied with the route authors' names some of those rows carry.
 The aggregators (osm, outerspatial, avenza) are not here: each has a
-_shared/ folder. tests/test_extract_layout.py holds every umbrella and
-route-only slug to exactly one line.
+_shared/ folder. One umbrella has a _shared/ folder as well: tpl, whose
+ParkServe parks load held under decision 126 (the maintainer's poll,
+2026-10-09); it keeps its line here, since it maintains no trail.
+tests/test_extract_layout.py holds every umbrella and route-only slug to
+exactly one line.
 """
 
 from datetime import date

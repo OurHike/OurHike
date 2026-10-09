@@ -6050,6 +6050,8 @@ CLUB_PLACES_KEYS = (
     "patc_lands_compilation",
     "buckeye_retail_map_outlines",
     "usgs_gnis_populated_places",
+    # Decision 126 (2026-10-09): TPL's ParkServe, held in extract/_shared/tpl/, landed raw only.
+    "tpl_parkserve_parks",
 )
 # The keys the live layers type as numbers (read 2026-10-03), so the fixture's
 # column is typed as the live one is; every other key column is a string.

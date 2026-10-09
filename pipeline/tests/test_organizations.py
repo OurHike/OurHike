@@ -444,8 +444,9 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Trails Conservancy trail pages, the Olympic Discovery Trail's alerts feed, Maricopa County's 14 park news
     # feeds, TPWD's Caprock Canyons alert page and Washington State Parks' alerts page), 1 `public_gis` (the Baker
     # Trail's GeoJSON) and 2 `stated_by_org` (the NorthEast Texas Trail Coalition's two layers, whose items state
-    # terms).
-    assert counts == {"maintainer_authorisation": 249, "public_gis": 272, "stated_by_org": 207, "unresolved": 28}
+    # terms). Decision 126's ParkServe parks, held the same way (the maintainer's poll, 2026-10-09: "Load it,
+    # held"), add 1 `stated_by_org`: the Trust for Public Land's item states its terms.
+    assert counts == {"maintainer_authorisation": 249, "public_gis": 272, "stated_by_org": 208, "unresolved": 28}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

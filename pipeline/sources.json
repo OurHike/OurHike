@@ -18377,6 +18377,44 @@
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The Montour Trail Council has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: no terms on reuse were found, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
     },
     {
+      "key": "tpl_parkserve_parks",
+      "title": "ParkServe parks with public access (Trust for Public Land)",
+      "provider": "TPL",
+      "kind": "club_arcgis_layer",
+      "url": "https://server7.tplgis.org/arcgis7/rest/services/ParkServe/ParkServe_ProdNew/MapServer/2",
+      "trust": "authoritative",
+      "steward": "Trust for Public Land",
+      "steward_contact": "https://www.tpl.org/",
+      "licence": "STATED BY THE ORGANIZATION: the item behind this service, 0674302df77d405998efe68249785235 ('Trust for Public Land’s ParkServe', public, on TPL's ArcGIS Online organisation), states terms, quoted verbatim in `terms` (read 2026-10-09): the data is 'distributed and transmitted \"as is\"', TPL takes no liability, and any visual output carries the attribution 'This [document, map, diagram, report, etc.] was produced using data, in whole or in part, provided by The Trust for Public Land.' They contemplate the data passing to third parties and bar nothing. tpl.org answers our agent 403, so the website's terms are UNKNOWN (the triage, 2026-10-08). What ParkServe is used for is decided later (decision 126).",
+      "licence_basis": "stated_by_org",
+      "attribution": "The Trust for Public Land",
+      "terms": "You understand and agree, and will advise any third party to whom you give any or all of the data, that The Trust for Public Land is neither responsible nor liable for any viruses or other contamination of your system arising from use of The Trust for Public Land’s data nor for any delays, inaccuracies, errors or omissions arising out of the use of the data. The Trust for Public Land’s data is distributed and transmitted \"as is\" without warranties of any kind, either express or implied, including without limitation, warranties of title or implied warranties of merchantability or fitness for a particular purpose. The Trust for Public Land is not responsible for any claim of loss of profit or any special, direct, indirect, incidental, consequential, and/or punitive damages that may arise from the use of the data. If you or any person to whom you make the data available are downloading or using the data for any visual output, attribution for same will be given in the following format: \"This [document, map, diagram, report, etc.] was produced using data, in whole or in part, provided by The Trust for Public Land.\"",
+      "terms_source": "The item's licenseInfo, https://www.arcgis.com/home/item.html?id=0674302df77d405998efe68249785235, read 2026-10-09; its accessInformation reads '2022 The Trust for Public Land'.",
+      "person_fields": [
+        "park_local_owner",
+        "park_local_manager",
+        "park_owner_type",
+        "park_manager_type"
+      ],
+      "person_fields_comment": "The extract's PERSON_SHAPED backstop leaves these four out by their words 'owner' and 'manager' (read off the live field list 2026-10-09). They are very likely agencies and agency types, not people, but nobody has read their values; listed so the row says so, and a person who reads them may clear them in `not_person_fields` if a places rule needs who manages a park.",
+      "geometry_kind": "polygon",
+      "id_field": "parkid",
+      "id_comment": "`parkid`, ParkServe's own park id (text), and not unique: the 154,780 rows read whole on 2026-10-09 hold 154,779 distinct values and no null (counted over the landed raw table; this row's notes), and the one value on two rows names two different parks, in different states, with different names, sizes and shapes (TPL's server, a statistics query grouped by parkid with HAVING COUNT(objectid) > 1, the same day; no value printed). A model keyed on parkid alone would take them for one park, which the duplicates_are_exact test generated beside it would refuse. (parkid, park_state) was distinct on that read (Reasoned: the two rows' park_state differs); which key a model uses is decided with what ParkServe is used for (decision 126). objectid is the server's.",
+      "freshness": {
+        "kind": "arcgis_max_field",
+        "field": "park_dateadded",
+        "notes": "TPL's own ArcGIS Server, with no editingInfo, so the change check is the statistics fingerprint: count and max(objectid) beside max(park_dateadded), the day a park was added (2018-05-01 to 2026-07-22 on 2026-10-09), and sum(st_length(shape)), so a boundary redrawn reads as moved. An attribute edited in place moves none of them, so a renamed park can stay stale until the next addition (Reasoned; @unvalidated how often ParkServe edits in place, settled by comparing two monthly reads row by row). Without it the layer would be read whole every month: 1.25 GB and 19 minutes on the monthly lane (Measured 2026-10-09, this row's notes)."
+      },
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's tpl places row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01), loaded under decision 126 (the maintainer's poll, 2026-10-09: 'Load it, held'), read live on 2026-10-09 under lib/user_agent.py's USER_AGENT: server7.tplgis.org's robots.txt answered 404, so no rule applies; two seconds or more between requests; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, a statistics query, one page of 1,000 features for its size, and the item. Registered by hand.",
+      "discovered_date": "2026-10-09",
+      "notes": "154,780 polygons (returnCountOnly, 2026-10-09), 'Park with public access', every park in 13,913 US places (the item's snippet), maxRecordCount 2,000, pagination supported. 61 fields: park_name, park_designation, park_access, park_status, park_size_acres, park_state and park_county with their FIPS codes, park_urbanarea, trails_yn, playground_count, canopy_pct, the 10-minute walk service area's population sums by age, income and race (sum_totpopsvca and 17 more), and park_boundary_source and park_source_agency. Read whole on the monthly lane on 2026-10-09 (extract._run --lane monthly --only, 4 normalize workers, in a sandbox, every request logged): 212 requests answering 1,252,406,914 bytes in 10.1 minutes, then 9.2 minutes to normalise and load; 154,780 rows landed in a raw table of 588,523,876 bytes (one parquet file, 59 columns, none of the four person fields), and the extract's processes peaked at 2,910 MiB together. Where the read's time went: 116 pages of 1,000 to offset 116,000 in 4.5 minutes; a cluster of large parks at offsets 116,000 to 116,071 in 2.5 minutes, which answered HTTP 500 to pages of 1,000 down to 31 and to the feature at 116,065 alone, which answered at 6 decimals (28.7 MB); 27 pages growing the size from 2 back to 1,000 by offset 119,138 in 36 seconds; and 37 pages of 1,000 to the end in 1.9 minutes. Before lib/arcgis.py's page loop grew a halved size back, the read went on one feature a request after that cluster, 0.454 s each, about 4.9 hours for the rest (Reasoned from that rate; that run was stopped at offset 117,595). Extent in EPSG:4326: lat 17.93 to 71.30, lon -165.41 to -65.30 (the states, Alaska, Hawaii and Puerto Rico). Statistics fingerprint: count(objectid) 154,780, max(objectid) 154,780, park_dateadded 2018-05-01 to 2026-07-22.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decision 126 (the maintainer's poll, 2026-10-09: 'Load it, held'), loaded under decision 122 into extract/_shared/tpl/: what ParkServe is used for is decided later, and nothing reads it until then. Not the publisher's terms, which bar nothing and ask for a credit sentence.",
+      "meta": {
+        "cadence": "monthly"
+      }
+    },
+    {
       "key": "nys_canal_water_fountains",
       "title": "Canalway Trail water fountains (NYS Canal Corporation, Erie_WaterFountains)",
       "provider": "NYS Canal Corporation",
@@ -19887,6 +19925,10 @@
         "state": "not_asked",
         "note": "Not asked. Registered for its trail alerts page (tahoe_pyramid_trail_alerts) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       },
+      "TPL": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for ParkServe under decision 126 (2026-10-09), at reaches_hikers: false - nothing of theirs reaches a hiker, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
       "NYS Canal Corporation": {
         "state": "not_asked",
         "note": "Not asked. Registered for the Canalway Trail's water fountains, surface condition and alerts page on 2026-10-09, at reaches_hikers: false, held under decision 122 - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
@@ -20992,6 +21034,11 @@
         "state": "NV",
         "name": "Tahoe-Pyramid Trail",
         "note": "The non-profit building the Tahoe-Pyramid Trail from Lake Tahoe to Pyramid Lake along the Truckee River (tahoepyramidtrail.org). Registered for its trail alerts page (tahoe_pyramid_trail_alerts) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+      },
+      "org:tpl": {
+        "provider": "TPL",
+        "name": "Trust for Public Land",
+        "note": "A national non-profit that acquires land for parks and trails; its trail_orgs.json row is a national umbrella with no trail data of its own (load: none). Registered for ParkServe's 154,780 parks with public access (tpl_parkserve_parks) under decision 126 (the maintainer's poll, 2026-10-09: 'Load it, held'), at reaches_hikers: false; what it is used for is decided later."
       },
       "org:nyscanal": {
         "provider": "NYS Canal Corporation",
@@ -27477,6 +27524,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its trail alerts page (tahoe_pyramid_trail_alerts) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its alerts page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) found its routes on RideWithGPS and Google My Maps, which the rest of its layers' load reads."
+          }
+        }
+      },
+      "TPL": {
+        "probed_date": "2026-10-09",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for ParkServe's park polygons under decision 126 (2026-10-09), at reaches_hikers: false: a places layer, read for its metadata only. The coverage audit (2026-10-01) found ParkServe overlays for playgrounds and schools and no hiker facilities, so `unprobed` is the literal state of each point type, not a finding that TPL publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for ParkServe's park polygons under decision 126 (2026-10-09), at reaches_hikers: false: a places layer, read for its metadata only. The coverage audit (2026-10-01) found ParkServe overlays for playgrounds and schools and no hiker facilities, so `unprobed` is the literal state of each point type, not a finding that TPL publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for ParkServe's park polygons under decision 126 (2026-10-09), at reaches_hikers: false: a places layer, read for its metadata only. The coverage audit (2026-10-01) found ParkServe overlays for playgrounds and schools and no hiker facilities, so `unprobed` is the literal state of each point type, not a finding that TPL publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for ParkServe's park polygons under decision 126 (2026-10-09), at reaches_hikers: false: a places layer, read for its metadata only. The coverage audit (2026-10-01) found ParkServe overlays for playgrounds and schools and no hiker facilities, so `unprobed` is the literal state of each point type, not a finding that TPL publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for ParkServe's park polygons under decision 126 (2026-10-09), at reaches_hikers: false: a places layer, read for its metadata only. The coverage audit (2026-10-01) found ParkServe overlays for playgrounds and schools and no hiker facilities, so `unprobed` is the literal state of each point type, not a finding that TPL publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for ParkServe's park polygons under decision 126 (2026-10-09), at reaches_hikers: false: a places layer, read for its metadata only. The coverage audit (2026-10-01) found ParkServe overlays for playgrounds and schools and no hiker facilities, so `unprobed` is the literal state of each point type, not a finding that TPL publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for ParkServe's park polygons under decision 126 (2026-10-09), at reaches_hikers: false: a places layer, read for its metadata only. The coverage audit (2026-10-01) found ParkServe overlays for playgrounds and schools and no hiker facilities, so `unprobed` is the literal state of each point type, not a finding that TPL publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for ParkServe's park polygons under decision 126 (2026-10-09), at reaches_hikers: false: a places layer, read for its metadata only. The coverage audit (2026-10-01) found ParkServe overlays for playgrounds and schools and no hiker facilities, so `unprobed` is the literal state of each point type, not a finding that TPL publishes none."
           }
         }
       },

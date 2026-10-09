@@ -910,8 +910,9 @@ class TestTheRegistryTheConsoleReads:
         # trail_orgs.json row waits for the maintainer's review. 135 since the same day registered the NYS Canal
         # Corporation (org:nyscanal), held like the rest. 142 since review page 02's held loads registered 7 more
         # candidate stewards (Illinois DNR, NETT, the Eastern Trail Alliance, Maine Huts & Trails, RCTC, the
-        # Peninsula Trails Coalition and Maricopa County Parks).
-        assert len(orgs) == 142
+        # Peninsula Trails Coalition and Maricopa County Parks). 143 since decision 126 (the maintainer's
+        # poll, 2026-10-09) registered the Trust for Public Land (org:tpl) for ParkServe's parks, held.
+        assert len(orgs) == 143
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -1057,6 +1058,8 @@ class TestTheRegistryTheConsoleReads:
             "org:rctc",
             "org:peninsulatrails",
             "org:maricopaparks",
+            # Decision 126 (2026-10-09): the Trust for Public Land, for ParkServe's parks, held.
+            "org:tpl",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

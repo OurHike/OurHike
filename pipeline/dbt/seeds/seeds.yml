@@ -153,6 +153,37 @@ seeds:
                 values: [any, federal, nys_clearinghouse, gis]
       - name: admitted_by
         description: The rule of "Who may publish", or the decision, that admits it.
+  - name: registry_surfaces
+    description: >
+      Where on the phone an organization may grant each of its two kinds of
+      registry block: a `support` block's donation line
+      (export_sources.py's DONATE_SURFACES) and a `store` block's paper-map
+      link (its STORE_SURFACES), one row per pair. Both lists are closed and
+      neither holds the map, so a block naming any other surface is refused
+      by int_sources__stewards, as export_sources.py refuses it.
+      tests/test_dbt_sources_parity.py holds the rows to the two Python
+      lists and the unit test's mocked rows to this file.
+    config:
+      column_types:
+        block_kind: varchar
+        surface: varchar
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [block_kind, surface]
+    columns:
+      - name: block_kind
+        description: Which block the surface is granted for, `support` or `store`.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [support, store]
+      - name: surface
+        description: >
+          A screen the block may appear on, such as `trail_card`; one surface
+          can be granted for both kinds, as `sources_screen` is.
+        data_tests: [not_null]
   - name: unregistered_publishing_sources
     description: >
       The sources an exporter publishes today with no sources.json row, each

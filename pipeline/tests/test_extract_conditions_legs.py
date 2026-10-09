@@ -319,6 +319,111 @@ def test_an_arcgis_field_retyped_upstream_refuses_that_layer_only_and_the_rest_l
     assert again.verdicts["raw_testclub__closures_layer"] != "fresh", "the refused layer advanced no marker"
 
 
+CLOSURES_LAYER = "raw_testclub__closures_layer"
+
+
+def retype_the_name_field(requests_mock, layer: FakeLayer) -> None:
+    """The publisher retypes NAME from text to an integer, in the layer's metadata, and its value with it."""
+    retyped = [dict(field, type="esriFieldTypeInteger") if field["name"] == "NAME" else field for field in FIELDS]
+    first_metadata = layer.metadata
+
+    def metadata(request, context):
+        answer = first_metadata(request, context)
+        return answer if answer is None else {**answer, "fields": retyped}
+
+    requests_mock.get(CLOSURES_URL, json=metadata)
+    layer.etag, layer.features = "v2", [feature(10, 7)]
+
+
+def command_line(store, monkeypatch, *resources, reset=False):
+    """`python -m extract._run` on the clubs' leg, discovering `resources`, keeping only the closures layer with --reset."""
+    monkeypatch.setattr(_run, "discover", list)
+    monkeypatch.setattr(_run, "discover_shared", list)
+    monkeypatch.setattr(_run, "all_resources", lambda files: list(resources))
+    args = ["--lane", CLUBS, "--bucket-url", store["url"], "--pipelines-dir", store["dir"]]
+    return _run.main(args + (["--only", CLOSURES_LAYER, "--reset"] if reset else []))
+
+
+def closures_names(store) -> tuple[str, list]:
+    """The warehouse's type for the closures layer's `name` column, and its values."""
+    with duckdb.connect() as con:
+        load_warehouse(con, make_pipeline(CLUBS, store["url"], store["dir"]))
+        (data_type,) = con.execute(
+            "select data_type from information_schema.columns where table_name = ? and column_name = 'name'", [CLOSURES_LAYER]
+        ).fetchone()
+        return data_type, [name for (name,) in con.execute(f"select name from raw.{CLOSURES_LAYER} order by 1").fetchall()]
+
+
+@pytest.mark.usefixtures("registry")
+def test_a_field_its_publisher_retyped_is_refused_every_run_until_a_reset_lands_that_one_table_retyped(
+    store, requests_mock, monkeypatch
+):
+    """`data_type: freeze` compares against the store's dlt schema, which `replace` never resets, so a field its
+    publisher legitimately retypes is refused on every run while the last committed table stands, until dbt's source
+    freshness turns red. `--only <table> --reset` reads that one table with refresh="drop_resources" and lands it."""
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [feature(10, "Bridge out")])
+    nynjtc = club_closures("nynjtc", "n1", count=1)
+    leg(store, closures(), nynjtc)
+    retype_the_name_field(requests_mock, layer)
+    for _ in range(2):
+        assert "contract" in leg(store, closures(), nynjtc).isolated[CLOSURES_LAYER]
+
+    report = command_line(store, monkeypatch, closures(), nynjtc, reset=True)
+
+    assert not report.isolated and report.rows == {CLOSURES_LAYER: 1}
+    assert set(report.verdicts) == {CLOSURES_LAYER}, "the reset read the one table it named"
+    assert closures_names(store) == ("BIGINT", [7])
+    with duckdb.connect() as con:
+        load_warehouse(con, make_pipeline(CLUBS, store["url"], store["dir"]))
+        assert con.execute("select id from raw.raw_nynjtc__closures").fetchall() == [("n1",)], "the other club's stands"
+    after = leg(store, closures(), nynjtc)
+    assert not after.isolated and after.verdicts[CLOSURES_LAYER] == "fresh", "the reset kept the layer's marker"
+    layer.etag, layer.features = "v3", [feature(10, 7), feature(11, 8)]
+    assert leg(store, closures(), nynjtc).rows[CLOSURES_LAYER] == 2, "and the new type now stands"
+
+
+@pytest.mark.usefixtures("registry")
+def test_a_reset_whose_read_is_refused_drops_nothing_and_leaves_the_retyped_field_refused(store, requests_mock, monkeypatch):
+    """The drop rides the load package, so a reset the run check refuses aborts it with everything else: the last
+    committed closures stand, and the schema history it would have erased still refuses the retyped field."""
+    layer = FakeLayer(requests_mock, CLOSURES_URL, [feature(10, "Bridge out")])
+    leg(store, closures())
+    retype_the_name_field(requests_mock, layer)
+    layer.features, layer.count_fails = [], True  # an empty answer with no count of its own proves nothing
+
+    report = command_line(store, monkeypatch, closures(), reset=True)
+
+    assert "0 rows and no upstream count" in report.isolated[CLOSURES_LAYER]
+    assert closures_names(store) == ("VARCHAR", ["Bridge out"])
+    layer.features, layer.count_fails = [feature(10, 7)], False
+    assert "contract" in leg(store, closures()).isolated[CLOSURES_LAYER]
+
+
+@pytest.mark.usefixtures("registry")
+def test_a_reset_reads_the_table_it_names_even_when_its_change_check_answers_fresh(store, requests_mock, monkeypatch):
+    """A reset that left a FRESH table out would drop nothing and say nothing, so --reset reads its table whatever
+    the check says, and logs that read as UNKNOWN, a load, rather than as `skipped` beside a new load."""
+    FakeLayer(requests_mock, CLOSURES_URL, [feature(10, "Bridge out")])
+    command_line(store, monkeypatch, closures())
+    assert leg(store, closures()).verdicts[CLOSURES_LAYER] == "fresh"
+
+    report = command_line(store, monkeypatch, closures(), reset=True)
+
+    assert report.verdicts[CLOSURES_LAYER] == "unknown" and report.rows == {CLOSURES_LAYER: 1}
+    logged = [row for row in run_log_rows(make_pipeline(CLUBS, store["url"], store["dir"])) if row["run_id"] == report.run_id]
+    assert [(row["outcome"], row["load_id"]) for row in logged] == [("loaded", report.load_id)]
+    assert closures_names(store) == ("VARCHAR", ["Bridge out"])
+
+
+@pytest.mark.parametrize("only", [[], ["--only", CLOSURES_LAYER, "--only", "raw_nynjtc__closures"]], ids=["none", "two"])
+def test_reset_refuses_to_run_unless_exactly_one_table_is_named(store, only, capsys):
+    """refresh="drop_resources" drops every resource a run reads and erases its schema history, so it names one table."""
+    with pytest.raises(SystemExit) as stopped:
+        _run.main(["--lane", CLUBS, "--bucket-url", store["url"], *only, "--reset"])
+    assert stopped.value.code == 2
+    assert "exactly one --only" in capsys.readouterr().err
+
+
 @pytest.mark.usefixtures("registry")
 def test_an_arcgis_layer_whose_metadata_stops_answering_mid_read_refuses_that_layer_only(store, requests_mock, monkeypatch):
     """column_hints() asks for the metadata a third time; outside read_each(), a 503 there stopped the whole leg."""

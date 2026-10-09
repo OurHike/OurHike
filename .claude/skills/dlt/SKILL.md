@@ -441,6 +441,21 @@ third run answered 53 resources FRESH whose rows no build could read
 - dbt runs as its own CLI step, never through `dlt.dbt`, whose default is
   `dbt>=1.7,<2` while this project runs `dbt` 2.0.6 (decision 32).
 
+**A field its publisher retyped is refused on every run until one table is
+reset.** `data_type: freeze` compares against the store's dlt schema, which
+`replace` never resets, so the layer logs `refused` every run, its last
+committed table stands, and dbt's source freshness turns it red. First read
+the refusal (`schema contract: …` in the run summary) beside the layer's own
+metadata, and reset only when the new type is the publisher's choice, never
+to make a broken answer load. Then, while that lane's own job is not running,
+`python -m extract._run --lane <lane or leg> --raw-bucket our-hike-raw --only
+<raw table> --reset`: it reads that table whatever its check says and lands it
+with `refresh="drop_resources"`, which drops the table and its state and
+erases its schema history inside the same load package, so a reset the run
+check refuses drops nothing (`tests/test_extract_conditions_legs.py`). It
+refuses anything but exactly one `--only`. A base model casting the field may
+need changing in the same pull request.
+
 ## Load every club, gate publication downstream
 
 The maintainer, round 5: *"We should just load ALL the clubs now and handle any

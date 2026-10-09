@@ -1694,6 +1694,7 @@ def run_pipeline(
     cross_lane: bool = False,
     normalize_workers: int = 1,
     run_log_cache: Path | None = None,
+    reset: bool = False,
 ) -> RunReport:
     """One lane, or one leg, end to end. Raises ExtractRefused, after logging, when either check fails.
 
@@ -1703,7 +1704,11 @@ def run_pipeline(
     ignore it. `as_landed` also writes the as-landed copy (the module
     docstring). `cross_lane` also reads ALSO_READS' resources for this lane.
     `run_log_cache` keeps each run log file the run reads or writes, for a
-    later step of the same job (run_log_bytes()).
+    later step of the same job (run_log_bytes()). `reset`, main()'s --reset
+    on exactly one --only table, reads every resource it is given whatever
+    its change check and cadence say, and lands them with dlt's
+    refresh="drop_resources", which drops their tables and state and erases
+    their schema history in the same load package.
     """
     cadences_of(lane)
     if resources is None:
@@ -1725,6 +1730,7 @@ def run_pipeline(
             as_landed,
             normalize_workers,
             run_log_cache,
+            reset=reset,
         )
     except Exception as failure:
         if getattr(failure, "report", None) is None:
@@ -1749,6 +1755,8 @@ def _run(
     as_landed: bool = False,
     normalize_workers: int = 1,
     run_log_cache: Path | None = None,
+    *,
+    reset: bool = False,
 ) -> None:
     pipeline = make_pipeline(lane, bucket_url, pipelines_dir)
     # Drop a package a dead run left pending, then sync, so the committed
@@ -1775,7 +1783,7 @@ def _run(
         def landed(load_id: str) -> dict[str, str]:
             return as_landed_index(_client(pipeline).fs_client, bucket_url, load_id, indexes)
 
-        plan_resources = due(plan_resources, log, checked_at)
+        plan_resources = plan_resources if reset else due(plan_resources, log, checked_at)  # a reset reads now
         # One listing of the store for every FRESH verdict's served-files check,
         # not one per table: each was a request to R2.
         listing = table_listing(pipeline, [resource.table for resource in plan_resources])
@@ -1830,6 +1838,9 @@ def _run(
             if isinstance(outcome, BaseException):
                 raise outcome
             stored, verdict, marker = outcome
+            if reset and verdict is Freshness.FRESH:
+                # A reset reads the table it names whatever its check says: left out as FRESH, it would drop nothing.
+                verdict = Freshness.UNKNOWN
             if verdict is Freshness.FRESH:
                 # A FRESH verdict is UNKNOWN when the served load cannot give a build what it needs.
                 load_id = current.get(resource.table)
@@ -1879,6 +1890,7 @@ def _run(
             spool,
             normalize_workers,
             run_log_cache,
+            refresh="drop_resources" if reset else None,
         )
         # After the run log, so a failed upload leaves a committed, logged load
         # and a red job, and the next --as-landed run reads the layer again
@@ -1907,13 +1919,17 @@ def _extract_and_load(
     spool: Path | None = None,
     normalize_workers: int = 1,
     run_log_cache: Path | None = None,
+    *,
+    refresh: str | None = None,
 ) -> None:
     """run_pipeline's extract, checks, load and run log; ExtractRefused, after logging, when either check fails.
 
     `progress` is _run()'s: what PROGRESS_TABLE holds after this run, given
     the resources that loaded, which every run log written here carries.
     `spool` is where an isolating lane's rows wait (Spool), and
-    `normalize_workers` dlt's normalize processes (MONTHLY_NORMALIZE_WORKERS)."""
+    `normalize_workers` dlt's normalize processes (MONTHLY_NORMALIZE_WORKERS).
+    `refresh` is dlt's, given to the data's extract alone: never to the run
+    log's own load, whose tables it would drop (run_pipeline()'s `reset`)."""
     # A LEG, AND THE MONTHLY LANE, ISOLATE EACH UPSTREAM (isolates()), so one
     # club's failure does not hold back another club's closures, or its month.
     # Every resource is read first (read_each), and one whose read fails, runs
@@ -1950,10 +1966,15 @@ def _extract_and_load(
                 for item in items
             ]
 
+        # dlt 1.30.0 applies a refresh to a clone of the stored schema and then merges in the schema the source
+        # carries (Pipeline._extract_source), so the store's own schema would carry the dropped tables straight back:
+        # measured 2026-10-09, a reset was still refused by the type it was to erase. A reset's source carries an empty
+        # schema of the store's name instead, which is still one schema and one package (store_schema()).
+        schema = store_schema(pipeline) if refresh is None else dlt.Schema(store_schema(pipeline).name)
         try:
             with timed(report, "extract"):
                 pipeline.extract(
-                    dlt.source(resources, name=SOURCE_NAME)(), schema=store_schema(pipeline), loader_file_format="parquet"
+                    dlt.source(resources, name=SOURCE_NAME)(), schema=schema, loader_file_format="parquet", refresh=refresh
                 )
             if as_landed is not None:
                 # What ran: a lane's every non-FRESH resource, a leg's less those read_each() left out.
@@ -2170,11 +2191,20 @@ def main(argv: list[str] | None = None) -> RunReport:
         type=Path,
         help="keep each run log file read or written here, for a later step of this job to read again (run_log_bytes())",
     )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="read the one --only table now and land it with its dlt schema history erased (refresh='drop_resources'): "
+        "for a field its publisher retyped, which data_type freeze refuses on every run (the dlt skill)",
+    )
     args = parser.parse_args(argv)
     if args.only and args.cross_lane_inputs:
         # Otherwise cross_lane_resources() would refuse ALSO_READS' tables,
         # which --only removed, by a name the command line never gave.
         parser.error("--only keeps only the tables it names, so it cannot also read --cross-lane-inputs' tables")
+    if args.reset and len(args.only) != 1:
+        # drop_resources drops every resource the run reads, its table and state, and erases its schema history.
+        parser.error("--reset drops the table and schema history of everything the run reads, so it takes exactly one --only")
     bucket_url = args.bucket_url or raw_store_url(args.raw_bucket, args.lane)
     discovered = all_resources(discover() + discover_shared())
     resources = only_tables(discovered, args.only, args.lane) if args.only else discovered
@@ -2193,6 +2223,7 @@ def main(argv: list[str] | None = None) -> RunReport:
                 cross_lane=args.cross_lane_inputs,
                 normalize_workers=args.normalize_workers,
                 run_log_cache=args.run_log_cache,
+                reset=args.reset,
             )
         except ExtractRefused as refused:
             if args.report_json:

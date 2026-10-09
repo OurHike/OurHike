@@ -207,10 +207,75 @@ PERSON_FIELDS = frozenset(
 # column fixture mode lands from make_dbt_fixtures.py's files, and no reader
 # that asks this backstop lands a column a model reads by that name (the Hike
 # Finder's `author`, which publishes, is PublishedHikes', which names its own).
+#
+# WIDENED 2026-10-09, when decision 54's wave 6 registered two layers whose
+# person fields these words missed: D&L Corridor's trailheads name their
+# inspectors in `updatedBy`, and Montour Trail's access areas carry editor
+# accounts in `MODIFIED_BY` and the locator in `LocationBy`. Both rows name
+# them in `person_fields`, so nothing reached a store; a layer registered
+# later has only this pattern. PR #1805's security review the same night ran
+# this pattern over 50 names and listed 23 more that load (`LastModifiedBy`,
+# `reviewed_by`, `GPS_By`, `RangerName`, `first_name`, `volunteer`, `mobile`
+# and others). Esri's own editor-tracking names, `created_user` and
+# `last_edited_user` (ArcGIS Pro's Enable Editor Tracking defaults, and the
+# REST API's editFieldsInfo example, both read 2026-10-09), are PERSON_FIELDS
+# entries already. Each alternative after the first two lines answers one of
+# those names:
+#   - who did something, a word ending in `by`, separate or run together
+#     (`updatedBy`, `MODIFIED_BY`, `LocationBy`, `GPS_By`, `Round1QAQCBy`),
+#     and `assigned_to`. It also reads `nearby`, `lobby` and `baby_changing`
+#     as a person's, none of them a field any registered layer is recorded as
+#     carrying;
+#   - Esri's two names cut to a shapefile's ten characters, `created_us` and
+#     `last_edite`, which four registry rows already list by hand;
+#   - a person's own name, `first_name`, `LastName`, `full_name`;
+#   - a role run into its name (`OWNERNAME`, `OWNERNME1`, `RangerName`), or
+#     ending the name (`INSPECTOR`, `TrailAdopter`, `volunteers`,
+#     `COLLECTOR`, `DataEntryPerson`, and the Buckeye Trail's "Section
+#     supervisor", a volunteer's name its parser never reads), but not
+#     followed by another word, so `RANGER_DISTRICT` and `reporter_type` load;
+#   - `contact`, `phone` and `email` anywhere in a run-together word
+#     (`entityphone`, `MGRPHONE`, `contacts`), a phone or fax number run
+#     together (`TELNO`, `FAXNUMBER`), and `mobile` or `cell` as the name's
+#     last word, so PA DCNR's `MOBILE_FAC` and a grid's `cell_size` still load.
+#
+# Measured 2026-10-09 against the 176 full live field lists
+# make_dbt_fixtures.py copies (CLUB_TRAIL_LINE_FIELDS, CLUB_POINT_FIXTURES)
+# and every other fixture layer: the widened pattern reads 21 more of the 124
+# distinct names the registry's rows list in `person_fields` as a person's
+# (each listed there by hand already, so on those rows nothing changes), and
+# leaves out 12 columns it did not before, on 12 layers. Eight of those name
+# a place or a body, and each one's row clears it in `not_person_fields`:
+# four that a model reads (nynjtc_long_path's `Maintainer`, 'NYNJTC' on all
+# 43 rows; ugrc_state_park_points' `full_name`, its name and key; and
+# oprd_hunting_areas' `FULL_NAME` and nps_seki_closures' `FullName`, which
+# seeds/notice_source_fields.csv reads as each notice's title), and four
+# whose rows record what they hold (patc_trails_master's `Maintainer`,
+# nps_points_of_interest's and nps_trail_of_tears_nht's `MAINTAINER`,
+# usace_mobile_trails' `managedBy`). The other four are left out until a
+# person reads them: nps_anza_nht's and usfws_trail_segments' `MAINTAINER`,
+# nc_state_parks_points' `FullName` and montour_trail_access_areas'
+# `AssetMaintainer`. No model reads any of the four, nor NWS's `replacedBy`,
+# which the `by` rule would leave out of an alert that carries one, and which
+# has no sources.json row to clear it in.
+# @unvalidated, as the first word list was: what would settle it is the
+# "left out ... person-shaped names" lines the first monthly and notices runs
+# print, read for false matches on layers whose field lists no fixture records.
 PERSON_SHAPED = re.compile(
     r"(^|_)(user|user_?name|editor|edited_?by|created_?by|creator|last_?ed_?by|last_?edit(ed|or)?(_?by)?"
     r"|owner|phone|telephone|tel|fax|email|e_?mail|contact|manager|superintendent|steward|surveyor|authors?)($|_|\d)"
     r"|[a-z]user($|_|\d)"
+    r"|(^|_)[a-z]+_?by($|_|\d)"
+    r"|(^|_)assigned_?to($|_|\d)"
+    r"|(^|_)(created_?us|last_?edite)($|_|\d)"
+    r"|(^|_)(first|last|full)_?name($|_|\d)"
+    r"|(owner|creator|editor|author|user|manager|steward|surveyor|ranger|inspector|reporter|submitter|overseer"
+    r"|adopter|volunteer|maintainer|collector|supervisor|person)_?n(a)?me"
+    r"|(ranger|inspector|reporter|submitter|overseer|adopter|volunteer|maintainer|collector|supervisor)s?($|\d)"
+    r"|person($|\d)"
+    r"|contact|phone|email"
+    r"|(^|_)(tel|fax)_?(no|num|nbr|number)($|_|\d)"
+    r"|(^|_)(mobile|cell)($|\d)"
 )
 
 # Field types whose values are never a person's name, whatever the field is

@@ -857,7 +857,10 @@ def test_a_field_added_to_person_fields_is_dropped_from_a_layer_that_has_not_mov
     """The layer answers 304, so only the resource's own definition in its marker can say it must be read again."""
     FakeLayer(requests_mock, LINES_URL, [feature(1, ranger="A. Person")])
     with monkeypatch.context() as before_the_fix:
+        # Before RANGER was listed, the person-shaped backstop did not read it as a person's either; since
+        # 2026-10-09 it does (`ranger` as a name's last word), so the world before the fix has neither.
         before_the_fix.setattr(_kinds, "PERSON_FIELDS", _kinds.PERSON_FIELDS - {"ranger"})
+        before_the_fix.setattr(_kinds, "PERSON_SHAPED", _kinds.re.compile(r"(?!)"))
         lane(store, lines())
         con, _ = warehouse(store)
         assert "A. Person" in str(con.execute('select * from raw."raw_testclub__trails"').fetchall()), "the leak"

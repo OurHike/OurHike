@@ -12,8 +12,11 @@ seeds:
       may carry, and what it is: a restriction (commercial, no_reuse,
       permission, purpose_limited, condition, conduct, cannot_be_met), a line that
       restricts nothing (not_a_restriction: warranty, liability, accuracy and
-      credit lines, cut out of the words before anything else is read), or
-      the backstop (unclassified), read on what every other phrase leaves.
+      credit lines, and two publishers' "purposes only" sentences the
+      maintainer read as scope notes, TIGER/Line's and Explore PA Trails'
+      (decisions 80 and 106), each scoped to its own exact words; all cut
+      out of the words before anything else is read), or the backstop
+      (unclassified), read on what every other phrase leaves.
       Each pattern is a case-insensitive RE2 expression, as DuckDB reads it,
       and names the registry row it was written from. @unvalidated as a
       complete vocabulary: it is what the 95 quoted texts on the registry at

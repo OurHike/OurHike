@@ -34,7 +34,14 @@
 --   own points and no prose is held in tests/test_organizations.py, since
 --   no model here knows an organization's type. A photo, audio, hike-list,
 --   notice or other page source is still refused (rule 6): the
---   presumption does not reach prose.
+--   presumption does not reach prose. A club's notice pages, feeds and
+--   posts publish on another basis, the maintainer's facts and a link
+--   (`maintainer_authorisation`, decisions 53 and 55; 131 of the 132 such
+--   sources in seeds/notice_readers.csv on 2026-10-08, TATC's republished
+--   ridgerunner reports `unresolved`), which decision 107 (the
+--   maintainer's poll, 2026-10-08) confirmed for clubs' closure posts:
+--   closed or open, the dates, the place and a link, never the post's
+--   words.
 -- - RULE 5: restrictive words that no decision answers. Read from the row's
 --   own fields: the words it quotes (`terms`, and `terms_verbatim` where a
 --   row carries the whole text), its `licence_basis`, and the decisions and
@@ -51,7 +58,12 @@
 --                                  count: decision 71 reads a hold-harmless
 --                                  or indemnity clause as one, decision 72
 --                                  "at your own risk" and "may be out of
---                                  date"); and `unclassified`, the backstop
+--                                  date", and decisions 80 and 106 one
+--                                  publisher's "purposes only" sentence
+--                                  each, TIGER/Line's and Explore PA
+--                                  Trails', as a scope note, each phrase
+--                                  scoped to that publisher's own words);
+--                                  and `unclassified`, the backstop
 --     licence_restriction_answers  which decision answers a restriction on
 --                                  which basis, and the words a row's
 --                                  `licence` names it by
@@ -90,6 +102,13 @@
 --   copyright footer (decision 69), FMST's "updated only when" (decision
 --   72) and IN.gov's clause on bots (decision 75). Decision 71 moved no
 --   verdict: rule 5 already read a hold-harmless line as a liability line.
+--   Re-measured 2026-10-08 the same way, on the registry after decision 106
+--   (branch d106-107, from 4ad88f3b), 693 rows: 449 quote words; 153 carry
+--   a restriction; 79 are unanswered, every one held by its own
+--   `reaches_hikers`. The one new quote is pasda_explore_pa_trail_access's,
+--   PA DCNR's Explore PA Trails terms, which carry no restriction once
+--   decision 71's and decision 106's phrases are cut out; without decision
+--   106's phrase the same words read purpose_limited, unanswered.
 --
 -- ONE ROW IS NOT IN THE REGISTRY. The unregistered_publishing_sources seed
 -- lists the sources an exporter publishes today with no sources.json row,

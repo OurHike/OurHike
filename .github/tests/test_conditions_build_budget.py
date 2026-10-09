@@ -57,3 +57,14 @@ def test_a_build_and_the_freshness_step_each_at_its_cap_still_end_inside_the_job
     (freshness,) = [step for step in _job()["steps"] if 'dbt/bin/dbt" source freshness' in str(step.get("run", ""))]
     job_cap = _job()["timeout-minutes"] * 60
     assert _build_step()["timeout-minutes"] * 60 + freshness["timeout-minutes"] * 60 + SLOWEST_REST_OF_JOB_SECONDS <= job_cap
+
+
+def test_the_hand_off_to_the_checks_fits_beside_them_inside_the_jobs_cap():
+    """Decision 110's hand-off of the warehouse to check-conditions.yml runs after "Publish to R2", so it can never cost
+    a publish, but one that ran into the job's cap would end the run cancelled. Added on top of the freshness step, as
+    that one was on top of the measured rest of the job."""
+    steps = _job()["steps"]
+    (freshness,) = [step for step in steps if 'dbt/bin/dbt" source freshness' in str(step.get("run", ""))]
+    (hand_off,) = [step for step in steps if "hand_off.py put" in str(step.get("run", ""))]
+    caps = (_build_step()["timeout-minutes"] + freshness["timeout-minutes"] + hand_off["timeout-minutes"]) * 60
+    assert caps + SLOWEST_REST_OF_JOB_SECONDS <= _job()["timeout-minutes"] * 60

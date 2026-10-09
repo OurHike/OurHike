@@ -15,11 +15,14 @@ scripts/suite_scopes.py - a hand copy is exactly the half that goes stale):
 
 1. A workflow is a *publishing path* iff one of its steps' `run:` scripts
    invokes `publish.py` with a Python interpreter, or dispatches a workflow
-   that does (below). Eight files on 2026-10-08: publish-weather.yml was the
+   that does (below). Nine files on 2026-10-08: publish-weather.yml was the
    sixth (2026-09-25), refresh-reference.yml the seventh, and since the
    maintainer's choice B split the monthly lane (2026-10-08) it publishes
-   through build-reference.yml, the eighth. The next joins this
-   report by existing rather than by being remembered.
+   through build-reference.yml, the eighth; check-conditions.yml, decision
+   110's hourly checks, the ninth, which `publish.py --sidecar` makes one
+   and publish-conditions.yml dispatches after each build, so a change to
+   what the checks run stales both and the bake's schedule reruns both. The
+   next joins this report by existing rather than by being remembered.
    Only the invocation counts, not a mention (#1552): matching the file's
    whole text counted `nynjtc-archive-recovery.yml` and
    `propose-atc-updates.yml`, whose comments explain why they do NOT publish,

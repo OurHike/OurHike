@@ -119,17 +119,20 @@ def test_a_dispatchs_phone_files_wins_for_that_run(tmp_path, leg, asked):
 def test_each_environment_has_one_line_and_the_cutover_is_productions():
     """One `KEY: value` line each at the top of the workflow, where its header points, and no other default anywhere:
     the cutover is changing PRODUCTION_PHONE_FILES to `dbt`, and extract-notices.yml reads that same line
-    (test_notices_job.py). `inputs.phone_files` has three readers: the matrix and the bash lock, which keep a
-    dispatched dbt path off the production leg, and the step that chooses."""
+    (test_notices_job.py). `inputs.phone_files` has four readers: the matrix and the bash lock, which keep a
+    dispatched dbt path off the production leg, the step that chooses, and the `checks` job, which starts
+    check-conditions.yml on the legs the matrix ran (decision 110) by the matrix's own rule."""
     text = WORKFLOW.read_text(encoding="utf-8")
     for name, value in SETTINGS.values():
         assert re.findall(rf"^  {name}: (\S+)$", text, re.M) == [value], name
         assert _workflow()["env"][name] == value
     assert "PHONE_FILES" not in _workflow()["env"], "a workflow-wide PHONE_FILES would be the one value for both legs"
     readers = [line.strip() for line in text.splitlines() if "inputs.phone_files" in line]
-    assert len(readers) == 3, readers
+    assert len(readers) == 4, readers
     assert readers[0].startswith("data_environment: ${{ fromJSON(") and "inputs.phone_files != 'dbt'" in readers[0]
     assert readers[1] == readers[2] == "ASKED_PHONE_FILES: ${{ inputs.phone_files }}"
+    matrix_rule = readers[0][readers[0].index("((") + 1 : readers[0].index(") &&") + 1]
+    assert readers[3].startswith("LEGS: ${{ ") and matrix_rule in readers[3], (matrix_rule, readers[3])
     names = [step.get("name") for step in _steps()]
     (first,) = [number for number, step in enumerate(_steps()) if "env.PHONE_FILES" in str(step.get("if", ""))][:1]
     assert names.index(CHOOSE_STEP) < first, "every step that branches on PHONE_FILES comes after the choice"

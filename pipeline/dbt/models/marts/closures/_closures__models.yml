@@ -30,9 +30,10 @@ models:
         defined_in: closures
     data_tests:
       # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each at warn and run by build_marts.py after the
-      # writers: in CI's fixture build, and in the hourly lane once it runs
-      # checks (build_marts.py's HOURLY_LANE_CHECKS). The rows at each build;
+      # where each goes"), each at warn and run by build_marts.py: after the
+      # writers in CI's fixture build, and every hour in check-conditions.yml
+      # once the hourly build has published (build_marts.py's
+      # HOURLY_LANE_CHECKS, decision 110). The rows at each build;
       # the rows per club and source, so one club's notices vanishing cannot
       # hide inside the total; and each column's null rate, the geometry and
       # the long text (a reporter's note, NYS Parks' place description) left

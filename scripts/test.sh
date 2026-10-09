@@ -480,6 +480,52 @@ fi
 # as in CI: the workflow's dbt job says why that variable and no other.
 # The docs site is checked by pipeline/check_docs_site.py, as the workflow
 # step checks it; that script is the home of what the site must contain.
+#
+# ELEMENTARY'S CHECKS, AS CI'S PULL REQUEST RUNS THEM (decision 111): only
+# those on what this branch changed and below it, against the merge base
+# with the base this script compares with (origin/main, or --since), which
+# is what a pull request's merge commit changes against its base. That base
+# is exported from git into the temporary directory (never a worktree),
+# given this checkout's dbt packages when its pins are the same and its own
+# generated models, and parsed with Elementary's switches on, against the
+# same warehouse path the build uses, as the workflow's "Parse the base with
+# Elementary's checks in it" step does. `--all`, the way a push to main
+# runs, runs every check, as a push to main does; and so does a base this
+# cannot prepare, said by name. build_marts.py says the rest.
+checks_base=()
+checks_base_for_dbt_suite() {
+  local why="" merge_base="" exported="$dbt_tmp/base"
+  if $run_all; then
+    why="--all runs every check, as a push to main does"
+  elif [ -z "$base" ] || ! merge_base="$(git merge-base "$base" HEAD 2>/dev/null)"; then
+    why="there is no merge base with ${base:-a base branch} to compare with"
+  else
+    mkdir -p "$exported"
+    if ! git archive "$merge_base" pipeline | tar -x -C "$exported"; then
+      why="the merge base's pipeline/ could not be exported"
+    elif [ ! -f "$exported/pipeline/check_contract_versions.py" ]; then
+      why="the merge base predates check_contract_versions.py, and dbt ${DBT_PIN} cannot parse it"
+    elif ! cmp -s pipeline/dbt/packages.yml "$exported/pipeline/dbt/packages.yml" ||
+         ! cmp -s pipeline/dbt/package-lock.yml "$exported/pipeline/dbt/package-lock.yml"; then
+      why="the merge base pins other dbt packages, which this script does not fetch"
+    elif ! cp -R pipeline/dbt/dbt_packages "$exported/pipeline/dbt/dbt_packages"; then
+      why="this checkout's dbt packages could not be copied to the merge base"
+    elif [ -f "$exported/pipeline/generate_dbt.py" ] && ! env -C "$exported/pipeline" "$PY" generate_dbt.py >/dev/null; then
+      why="the merge base's generate_dbt.py failed"
+    elif ! env -C "$exported/pipeline/dbt" DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false OURHIKE_ELEMENTARY=true \
+           OURHIKE_ELEMENTARY_CHECKS=true "OURHIKE_WAREHOUSE=$dbt_tmp/warehouse.duckdb" \
+           "OURHIKE_PROCESSED_DIR=$dbt_tmp/processed" "$DBT_DIR/dbt" parse --profiles-dir . >/dev/null; then
+      why="the merge base would not parse with Elementary's checks in it"
+    fi
+  fi
+  if [ -n "$why" ]; then
+    echo "-- dbt checks base: every Elementary check runs: $why"
+    checks_base=()
+  else
+    echo "-- dbt checks base: only the Elementary checks on what changed since ${merge_base:0:12} and below it"
+    checks_base=(--checks-base "$exported/pipeline/dbt")
+  fi
+}
 if selected_has dbt; then
   if [ -z "$DBT_DIR" ]; then
     echo "-- dbt suite: SKIPPED, no dbt ${DBT_PIN:-?} first on PATH (found: ${dbt_found})."
@@ -512,8 +558,10 @@ if selected_has dbt; then
     # The seeds, the build in stages around the Python steps, and the pub_
     # writers last, in the order pipeline/build_marts.py owns, as CI runs it.
     # dbt is $DBT_DIR's; the steps run on $PY, the suites' own Python, which
-    # carries requirements.txt's rasterio as CI's pipeline venv does.
-    step "dbt build_marts"       env -C pipeline DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false "$PY" build_marts.py --fixtures --dbt "$DBT_DIR/dbt" --warehouse "$dbt_tmp/warehouse.duckdb" --processed-dir "$dbt_tmp/processed" --raw-dir "$dbt_tmp/raw"
+    # carries requirements.txt's rasterio as CI's pipeline venv does. Its
+    # Elementary checks are the ones CI's pull request runs (above).
+    checks_base_for_dbt_suite
+    step "dbt build_marts"       env -C pipeline DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false "$PY" build_marts.py --fixtures --dbt "$DBT_DIR/dbt" --warehouse "$dbt_tmp/warehouse.duckdb" --processed-dir "$dbt_tmp/processed" --raw-dir "$dbt_tmp/raw" "${checks_base[@]}"
     # Row dates across builds, as CI's dbt job runs it (decision 57): three
     # podcasts builds in fresh warehouses, the history restored between them.
     step "dbt row dates builds"  env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_row_dates_builds.py

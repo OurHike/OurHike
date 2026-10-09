@@ -502,6 +502,50 @@ jobs:
           (cd "$base/pipeline/dbt" && dbt parse --profiles-dir .)
           python check_contract_versions.py --head dbt/target/manifest.json --base "$base/pipeline/dbt/target/manifest.json"
 
+      # THE BASE AGAIN, WITH ELEMENTARY'S CHECKS IN IT (decision 111, the
+      # maintainer's poll of 2026-10-08: "Run all of them that have been
+      # modified, and downstream models"). On a pull request the build below
+      # runs only the checks `state:modified+` reaches from the base, which
+      # needs a base manifest that holds them: the step above parses the base
+      # with both of Elementary's switches off, as every command but
+      # build_marts.py's does, and against that every check reads as new
+      # (1,979 of 1,979, measured 2026-10-08 with `dbt ls` on dbt 2.0.6). So
+      # the same worktree, its packages and its generated models in place, is
+      # parsed once more with the switches on, against the warehouse path the
+      # build uses, since that file's name is every node's database (a
+      # different one also read 1,979 of 1,979 as changed, the same day). Its
+      # manifest replaces the one above, which has done its job.
+      #
+      # NEVER NONE. A push to main and a merge-queue entry pass no base, so
+      # their build runs every check, as BRANCHING.md's queue runs every suite
+      # whole; and a base that predates check_contract_versions.py, which
+      # dbt 2.0.6 cannot parse, or that fails to parse, passes none either.
+      # build_marts.py then says which in the log, and runs every check also
+      # when dbt_project.yml, packages.yml, package-lock.yml or any macro
+      # differs from the base's, which dbt's state comparison cannot see
+      # (its docstring, "A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES").
+      # 10.7 to 14.0 s, one `dbt parse` with the checks in it (Measured three
+      # times on 2026-10-08 and 09 in a sandbox).
+      - name: Parse the base with Elementary's checks in it, for the checks the change reaches
+        id: checks-base
+        if: steps.scope.outputs.run == 'true' && github.event_name == 'pull_request'
+        run: |
+          base="$RUNNER_TEMP/contract-base"
+          if [ ! -f "$base/pipeline/check_contract_versions.py" ]; then
+            echo "::notice title=Every Elementary check::The base predates check_contract_versions.py, so dbt 2.0.6 cannot parse it, and with no base manifest the build runs every check."
+            exit 0
+          fi
+          set +e
+          (cd "$base/pipeline/dbt" && OURHIKE_ELEMENTARY=true OURHIKE_ELEMENTARY_CHECKS=true \
+            OURHIKE_WAREHOUSE="$GITHUB_WORKSPACE/pipeline/data/warehouse.duckdb" dbt parse --profiles-dir .)
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::notice title=Every Elementary check::The base would not parse with Elementary's checks in it (exit $status), so with no base manifest the build runs every check."
+            exit 0
+          fi
+          echo "dir=$base/pipeline/dbt" >> "$GITHUB_OUTPUT"
+
       # THE PIPELINE'S OWN PINS (requirements.txt), for today's exporters in
       # the parity step and for the Python steps (ELT.md, "Python steps,
       # outside dbt"): they import shapely, numpy, pyproj, requests and
@@ -538,9 +582,31 @@ jobs:
       # stopped it. The writers write under data/processed/dbt/ and nothing
       # here uploads. The Python steps run on the pipeline's pins. A new
       # Python step is an entry in build_marts.STEPS, never a step here.
+      #
+      # ELEMENTARY'S CHECKS, LAST: on a pull request whose base parsed, only
+      # those on what the pull request changed and below it (--checks-base,
+      # decision 111); otherwise every one, said here and by build_marts.py.
+      # Every check took 718 s and 802 s of this build in a sandbox
+      # (build_marts.py's docstring), 13 to 19 minutes on a runner by its
+      # sums, which is what a pull request no longer pays for checks it
+      # cannot have changed: with one mart's SQL changed, the pass ran that
+      # mart's 6 checks in 27.5 s (Measured 2026-10-09 in the same sandbox).
       - name: dbt build, the Python steps and the pub_ writers (build_marts.py)
         if: steps.scope.outputs.run == 'true'
-        run: python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"
+        env:
+          CHECKS_BASE: ${{ steps.checks-base.outputs.dir }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          base=()
+          if [ -n "$CHECKS_BASE" ]; then
+            base=(--checks-base "$CHECKS_BASE")
+            echo "::notice title=Elementary's checks: what this pull request reaches::Only the checks on nodes this pull request changed, and below them (state:modified+ against its base), unless build_marts.py's log says why it runs every one."
+          elif [ "$EVENT" = "pull_request" ]; then
+            echo "::notice title=Every Elementary check::No base manifest holding the checks (the step before says why), so every check runs."
+          else
+            echo "::notice title=Every Elementary check::A $EVENT runs every check: only a pull request compares with its base (decision 111)."
+          fi
+          python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python" "${base[@]}"
 
       # ROW DATES ACROSS BUILDS (decision 57): the podcasts mart built three
       # times in fresh warehouses, with row_history.py's store restored

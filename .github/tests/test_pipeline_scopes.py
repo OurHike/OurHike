@@ -53,6 +53,11 @@ PUBLISHING_PATHS = {
     # The eighth: the monthly lane's build from a pin, whose `publish` job runs
     # `python publish.py` with OURHIKE_PHONE_FILES=dbt.
     "build-reference.yml",
+    # The ninth, from decision 110: the hourly lane's checks, which
+    # publish-conditions.yml's `checks` job starts with `gh workflow run
+    # check-conditions.yml`, and which put conditions/data_quality.json in
+    # place with `python publish.py --sidecar`.
+    "check-conditions.yml",
 }
 
 #: The extract paths: workflows that run `python -m extract._run` and no
@@ -174,6 +179,22 @@ def test_a_workflow_that_dispatches_a_publishing_path_is_one_and_its_scope_holds
     assert not scopes.INVOKES_PUBLISH_RE.search(scopes.run_scripts(refresh)), "the publish is build-reference.yml's"
     assert refresh in scopes.publishing_workflows() and refresh not in scopes.extract_paths()
     assert scopes.scope_for(build) <= scopes.scope_for(refresh)
+
+
+def test_the_hourly_checks_are_a_publishing_path_the_hourly_bake_dispatches_and_its_schedule_reruns():
+    """Decision 110: check-conditions.yml puts conditions/data_quality.json in place with `publish.py --sidecar`, and
+    publish-conditions.yml's `checks` job starts it after every build with `gh workflow run`, so a change to what the
+    checks run stales both, and the bake's own schedule reruns both from main."""
+    scopes = _load_scopes_module()
+    bake, checks = scopes.WORKFLOWS / "publish-conditions.yml", scopes.WORKFLOWS / "check-conditions.yml"
+
+    assert scopes.dispatched(bake) == [checks] and scopes.dispatched(checks) == []
+    assert checks in scopes.publishing_workflows() and scopes.scope_for(checks) <= scopes.scope_for(bake)
+    verdict = _verdict(["pipeline/hand_off.py"])
+    assert "STALE  check-conditions.yml" in verdict and "STALE  publish-conditions.yml" in verdict
+    note = _note_after(verdict, "check-conditions.yml")
+    assert "publish-conditions.yml's schedule" in note and "-f build_run=<build_run>" in note
+    assert "nothing to dispatch" in _note_after(verdict, "publish-conditions.yml")
 
 
 def test_a_change_to_what_the_pin_holds_stales_the_extract_and_pin_and_not_a_rebuild_from_an_old_pin():

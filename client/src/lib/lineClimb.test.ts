@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { COVERAGE_TOLERANCE, edgesOfLine, lineClimb } from './lineClimb'
+import {
+  COVERAGE_TOLERANCE,
+  OVERRUN_TOLERANCE,
+  edgesOfLine,
+  lineClimb,
+} from './lineClimb'
 import type { GraphEdge, TrailGraph } from './trailGraph'
 
 const MILE_M = 1609.344
@@ -176,6 +181,62 @@ describe('lineClimb (#1476)', () => {
     })
 
     expect(result).toMatchObject({ kind: 'measured', gainFt: 400, lossFt: 120 })
+  })
+})
+
+describe('edges that run longer than the line they were matched to', () => {
+  // A tile cell and a graph cell from different months: a positional id such
+  // as NYNJTC's `generated-<source_row>` can name one line in the tile and
+  // another in the graph, and every edge carrying that id is summed. Three
+  // miles of edges are not the 2-mile line that was tapped, so their climb is
+  // some other trail's, on the figure a hiker uses to judge daylight.
+
+  it('gives no climb, rather than another line’s climb as this one’s', () => {
+    const result = lineClimb(
+      graph([
+        edge({ climb: [400, 120] }),
+        edge({ climb: [260, 350] }),
+        edge({ climb: [90, 90] }),
+      ]),
+      { id: ID, lengthMiles: 2 },
+    )
+
+    expect(result).toEqual({ kind: 'none' })
+  })
+
+  it('says nothing about an unmeasured stretch on edges that are not this line', () => {
+    // Checked before the DEM hole: "not measured on 2 mi of this trail" would
+    // be a sentence about the other trail's ground.
+    const result = lineClimb(
+      graph([edge({ climb: [400, 120] }), edge({ climb: null, length_m: 2 * MILE_M })]),
+      { id: ID, lengthMiles: 2 },
+    )
+
+    expect(result).toEqual({ kind: 'none' })
+  })
+
+  it('still totals a line whose edges run just past it, inside the tolerance', () => {
+    // One line, drawn once for the map and once for the graph: the same
+    // allowance the shortfall gets, in the other direction.
+    const held = 10 * (1 + OVERRUN_TOLERANCE)
+    const result = lineClimb(
+      graph([edge({ climb: [900, 880], length_m: held * MILE_M })]),
+      { id: ID, lengthMiles: 10 },
+    )
+
+    expect(result.kind).toBe('measured')
+  })
+
+  it('gives a short line the rounding of its published length to hundredths', () => {
+    // A line 0.054 mi long is published as 0.05. Edges of 0.057 mi are 6%
+    // over the line itself, inside the tolerance, and 14% over its published
+    // figure, which is the rounding and not another line.
+    const result = lineClimb(
+      graph([edge({ climb: [12, 4], length_m: 0.057 * MILE_M })]),
+      { id: ID, lengthMiles: 0.05 },
+    )
+
+    expect(result.kind).toBe('measured')
   })
 })
 

@@ -711,21 +711,27 @@ function placement(item, series) {
   };
 }
 
+/** Elementary's side of its own range, as a row says it: "flagged as high". */
+const FLAGGED_AS = { above: "high", below: "low" };
+
 /**
  * A ROW'S SENTENCE. For a measured value, the range it quotes is the one the
  * maintainer chose by poll on 2026-10-09 (decision 130): the range expected
  * from the builds before, the band the chart draws at the entry's own point
  * (bandBefore), so the page shows one range per point. "4,118 rows at this
- * build, below the 5,199 to 5,322 expected from the builds before" on the
- * invented monthly file, where the row quoted 4,174 to 6,156 until then: the
- * range Elementary scored the value against, which counts the value itself
- * and fans out to meet it.
+ * build, below the usual 5,199 to 5,322" on the invented monthly file, where
+ * the row quoted 4,174 to 6,156 until then: the range Elementary scored the
+ * value against, which counts the value itself and fans out to meet it. The
+ * words are the maintainer's ask of the same day, shown the first wording
+ * ("expected from the builds before", "which counts this build"): "both of
+ * those are jargony ... be more concise and simple". So the range is "the
+ * usual" one, and Elementary's own verdict is "flagged as high" or "low".
  *
  * THE ROW IS STILL ELEMENTARY'S VERDICT. It is there, with its pill, because
  * a check warned or failed, as a triangle is. So where the range from the
  * builds before does not put the value on the side Elementary flagged it -
- * the value is inside that range, or beyond its other edge - a second
- * sentence says which side of its own range Elementary flagged it on.
+ * the value is inside that range, or beyond its other edge - the sentence
+ * ends with the side Elementary flagged it on ("but flagged as low").
  * Rare: when one run scored both points over one training window, a value
  * Elementary flags is outside the band before it too, on the same side.
  * Reasoned: take the m points before it, their mean, their sample deviation
@@ -739,9 +745,9 @@ function placement(item, series) {
  * the file's rounding moves an edge.
  *
  * WHERE THE PAGE HAS NO RANGE FROM THE BUILDS BEFORE, the row quotes none
- * and says so, rather than falling back on Elementary's own range, which is
- * the range decision 130 turned down; Elementary's side goes in the second
- * sentence. That is an entry with no history in the files, one whose
+ * and says so ("flagged as high. No earlier range to compare it with."),
+ * rather than falling back on Elementary's own range, which is the range
+ * decision 130 turned down: the maintainer chose that by the same poll. That is an entry with no history in the files, one whose
  * history holds no point of it (a series two checks report on carries one
  * check's bands: flaggedPoints), and one whose point before carries no band,
  * where the chart's table says NO_RANGE too. A file the pipeline writes gives
@@ -759,12 +765,13 @@ function itemSentence(item, series) {
     const what = `${fmt.value(item.value)} at this build`;
     if (item.min === null || item.max === null) return `${what}.`;
     const { before, side, flagged } = placement(item, series);
-    const against =
-      before === null
-        ? `${what}, with no range from the builds before to compare it with.`
-        : `${what}, ${side} the ${fmt.range(before.min, before.max)} expected from the builds before.`;
-    if (flagged === null || flagged === side) return against;
-    return `${against} Elementary flagged it ${flagged} its own range, which counts this build.`;
+    if (before === null) {
+      const verdict = flagged === null ? "" : `, flagged as ${FLAGGED_AS[flagged]}`;
+      return `${what}${verdict}. No earlier range to compare it with.`;
+    }
+    const against = `${what}, ${side} the usual ${fmt.range(before.min, before.max)}`;
+    if (flagged === null || flagged === side) return `${against}.`;
+    return `${against}, but flagged as ${FLAGGED_AS[flagged]}.`;
   }
   if (item.kind === "schema") return "Its columns no longer match what Elementary expected.";
   if (item.kind === "dbt_tests") return item.status === "fail" ? "A dbt test on it failed." : "A dbt test on it warned.";

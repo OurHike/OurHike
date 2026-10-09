@@ -433,7 +433,14 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Decision 133 (the maintainer's poll, 2026-10-09) moves TATC's republished ATC ridgerunner reports
     # (tatc_ridgerunner_reports) from `unresolved` to `maintainer_authorisation`: decision 107's facts and a link
     # reach them, rather than waiting on #458.
-    assert counts == {"maintainer_authorisation": 221, "public_gis": 253, "stated_by_org": 198, "unresolved": 28}
+    # Decision 122 (the maintainer's poll, 2026-10-09) loads every layer of a candidate steward, held, while its
+    # trail_orgs.json row waits; its first batch adds 27: 16 `public_gis` (the stewards' own ArcGIS layers that
+    # state no terms), 7 `stated_by_org` (IDPR's two layers and NGPC's five hunting-unit layers, whose items state
+    # terms) and 4 `maintainer_authorisation` (decision 53's facts and a link, for GAP's and R2R's posts and
+    # Tahoe-Pyramid's and the Montour Trail's pages). The NYS Canal Corporation's three, held the same way (the
+    # lead's call, 2026-10-09), add 2 `public_gis` (its own layers, its terms quoted) and 1 `maintainer_authorisation`
+    # (its alerts page).
+    assert counts == {"maintainer_authorisation": 226, "public_gis": 271, "stated_by_org": 205, "unresolved": 28}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

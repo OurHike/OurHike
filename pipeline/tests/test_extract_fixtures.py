@@ -70,13 +70,16 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | PagePoints
     )
     fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
-    assert len(fetched) == 393, (
+    assert len(fetched) == 418, (
         "61 monthly layers and OPRHP's temporary closures on the hourly lane, and decision 53's 76 ArcGIS "
         "closure and warning layers: 70 hourly, 3 daily, 3 monthly, and decision 54's 83 places layers, all "
         "monthly, its 100 trail-line layers, all monthly (wave 6 added the Empire State Trail's two, "
         "oprhp_est_segments and oprhp_est_connectors), and its 70 point layers, all monthly (wave 6 added "
         "the Empire State Trail's, oprhp_est_trail_features), and wave 6's 2 hourly closure layers "
-        "(ptny_est_closures, oprhp_est_under_construction)"
+        "(ptny_est_closures, oprhp_est_under_construction), and decision 122's first batch of candidate "
+        "stewards held in extract/_shared/: 18 hourly closure and warning layers (6 of them hunting areas) "
+        "and 5 monthly point layers, with the NYS Canal Corporation's condition survey (hourly) and water "
+        "fountains (monthly)"
     )
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])

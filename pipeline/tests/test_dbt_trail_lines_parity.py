@@ -399,7 +399,9 @@ def _at_tests(model: str) -> list[dict]:
 
 
 def _at_given(test: dict, model: str):
-    (given,) = [given for given in test["given"] if given["input"] == f"ref('{model}')"]
+    """A versioned mart's given names its version, `ref('points_of_interest', v=1)` (check_contract_versions.py's
+    rule 5)."""
+    (given,) = [given for given in test["given"] if re.fullmatch(rf"ref\('{model}'(, v=\d+)?\)", given["input"])]
     return given["rows"]
 
 

@@ -53,14 +53,20 @@ from tests.test_extract_run import (  # noqa: F401 - `registry` is a fixture
 
 
 class Answers:
-    """An upstream that answers with the rows it is given and its own count, or fails, or is slow."""
+    """An upstream that answers with the rows it is given and its own count, or fails, or is slow.
+
+    `check_error` makes its change check raise a TypeError, an exception no kind's own except-list names (ArcgisLayer
+    catches three types), as a malformed answer or a bug in a check would."""
 
     answer: tuple[dict, ...] = ()
     count: int | None = None
     error: str | None = None
     delay: float = 0.0
+    check_error: str | None = None
 
     def change_check(self, recorded):
+        if self.check_error is not None:
+            raise TypeError(self.check_error)
         return Freshness.UNKNOWN, None
 
     def column_hints(self) -> dict:
@@ -82,6 +88,7 @@ class ClubAnswer(Answers, Resource):
     count: int | None = None
     error: str | None = None
     delay: float = 0.0
+    check_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +99,7 @@ class OurhikeAnswer(Answers, ConditionsQuery):
     count: int | None = None
     error: str | None = None
     delay: float = 0.0
+    check_error: str | None = None
 
 
 def ourhike_closures(*ids: str, count: int | None = None, error: str | None = None) -> OurhikeAnswer:
@@ -470,6 +478,26 @@ def test_ourhikes_own_rows_still_stop_the_whole_leg_when_their_read_fails(store)
     assert not stops_the_leg(club_closures("atc"))
     with pytest.raises(RuntimeError, match="permission denied"):
         leg(store, ourhike_closures(error="permission denied for table closures"), nynjtc_alerts("n1", count=1), name=CONDITIONS)
+
+
+def test_a_change_check_that_raises_what_its_kind_does_not_catch_reads_that_club_and_holds_back_no_other(store):
+    """A check that errors is UNKNOWN (extract/_contract.py's Resource.change_check), whatever it raised: the run reads
+    the upstream. Before, an exception a kind's own except-list missed stopped the whole leg, where the same exception
+    from its read left out that club alone."""
+    atc = ClubAnswer(key="closures", club="atc", type="closures", answer=({"id": "a1"},), count=1, check_error="no subscript")
+
+    report = leg(store, atc, club_closures("nynjtc", "n1", count=1))
+
+    assert report.verdicts == {"raw_atc__closures": "unknown", "raw_nynjtc__closures": "unknown"}
+    assert not report.isolated
+    assert report.rows == {"raw_atc__closures": 1, "raw_nynjtc__closures": 1}
+
+
+def test_a_change_check_on_ourhikes_own_rows_that_raises_still_stops_the_whole_leg(store):
+    """As their failed read does (stops_the_leg()): the bake publishes nothing it cannot read from its own database."""
+    ourhike = OurhikeAnswer(key="closures", club="ourhike", type="closures", answer=({"id": "o1"},), count=1, check_error="x")
+    with pytest.raises(TypeError, match="x"):
+        leg(store, ourhike, nynjtc_alerts("n1", count=1), name=CONDITIONS)
 
 
 def test_ourhikes_own_rows_refused_by_the_run_check_refuse_the_whole_leg(store):

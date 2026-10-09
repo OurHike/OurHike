@@ -1808,7 +1808,19 @@ def _run(
                 before = {name: value for name, value in stored.items() if name != DEFINITION_KEY}
             else:
                 before = None
-            verdict, marker = resource.change_check(before)
+            try:
+                verdict, marker = resource.change_check(before)
+            except Unavailable:
+                raise
+            except Exception as error:
+                # A CHECK THAT ERRORS IS UNKNOWN (Resource.change_check), whatever it raised, so the upstream is read:
+                # each kind catches what it expects (ArcgisLayer three types), and anything else raised here would
+                # stop the whole leg or month, where the same error from its read leaves out that resource alone
+                # (read_each()). OurHike's own rows still stop the leg (stops_the_leg()).
+                if stops_the_leg(resource):
+                    raise
+                print(f"::warning title={resource.name} change check failed::{type(error).__name__}: {error}; reading it")
+                return stored, Freshness.UNKNOWN, None
             return stored, verdict, {**marker, DEFINITION_KEY: definition} if marker else None
 
         # The upstreams are asked one folder per thread (by_folder()), and

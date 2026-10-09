@@ -70,9 +70,14 @@ export const RELEASE_ID = /^\d{4}-\d{2}-\d{2}(-\d+)?$/;
  * 2026-10-09). Each sentence still claims no more than the checks do, read
  * against ELT.md's table and pipeline/dbt's YAML on 2026-10-09: schema
  * validity runs on the marts a single phone file reads, not on every file,
- * so Schema says "files the app reads" and not "each"; and minimum and
- * maximum run on water distance and elevation only, so Anomalies names the
- * lowest and highest of those two and the blank rate of all four.
+ * so Schema says "files the app reads" and not "each"; freshness runs on
+ * the hourly and daily sources only (make_dbt_staging.py's
+ * FRESHNESS_CADENCES), so Freshness says so; minimum and maximum
+ * run on water distance and elevation only, so Anomalies names the lowest
+ * and highest of those two; and the blank rate runs on the columns of all 11
+ * finished tables but their geometry and long text (all_columns_anomalies,
+ * beside column_anomalies' safety columns), so Anomalies names no column for
+ * it and says "columns", not "every column".
  */
 export const KINDS = [
   {
@@ -80,7 +85,7 @@ export const KINDS = [
     label: "Freshness",
     passed: "checks on time",
     problem: "late",
-    about: "How long each source goes between updates, against its usual gap.",
+    about: "How long each hourly or daily source goes between updates, against its usual gap.",
   },
   {
     id: "volume",
@@ -111,7 +116,7 @@ export const KINDS = [
     passed: "checks in the usual range",
     problem: "out of range",
     about:
-      "How often water distance, elevation, trail status and closure dates are blank, the lowest and highest water distances and elevations, and rows per club.",
+      "How often columns in the finished tables are blank, the lowest and highest water distances and elevations, and rows per club.",
   },
 ];
 const KIND = new Map(KINDS.map((kind) => [kind.id, kind]));

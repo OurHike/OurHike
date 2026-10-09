@@ -524,8 +524,8 @@ jobs:
       # when dbt_project.yml, packages.yml, package-lock.yml or any macro
       # differs from the base's, which dbt's state comparison cannot see
       # (its docstring, "A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES").
-      # About 14 to 17 s, one `dbt parse` with the checks in it (Measured
-      # 2026-10-08 in a sandbox).
+      # 10.7 to 14.0 s, one `dbt parse` with the checks in it (Measured three
+      # times on 2026-10-08 and 09 in a sandbox).
       - name: Parse the base with Elementary's checks in it, for the checks the change reaches
         id: checks-base
         if: steps.scope.outputs.run == 'true' && github.event_name == 'pull_request'
@@ -589,7 +589,8 @@ jobs:
       # Every check took 718 s and 802 s of this build in a sandbox
       # (build_marts.py's docstring), 13 to 19 minutes on a runner by its
       # sums, which is what a pull request no longer pays for checks it
-      # cannot have changed.
+      # cannot have changed: with one mart's SQL changed, the pass ran that
+      # mart's 6 checks in 27.5 s (Measured 2026-10-09 in the same sandbox).
       - name: dbt build, the Python steps and the pub_ writers (build_marts.py)
         if: steps.scope.outputs.run == 'true'
         env:

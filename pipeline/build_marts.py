@@ -343,19 +343,26 @@ and says which), when the base's manifest is missing, when dbt_project.yml,
 packages.yml or package-lock.yml differs from the base's, or when any macro's
 SQL does: dbt 2.0.6's state comparison reads neither a var nor a macro.
 Measured 2026-10-08 with `dbt ls` against this project, its base parsed from
-this commit: no change selected 0 of the 1,979 checks, and a comment added to
-closures.sql the 6 on that mart (its pub_ writers below it carry none);
+this commit: no change selected 0 of the project's 1,979 checks (a fixture
+build runs the 1,949 whose tables its warehouse holds), and a comment added
+to closures.sql the 6 on that mart (its pub_ writers below it carry none);
 anomaly_sensitivity moved from 3 to 4 in dbt_project.yml, a comment added to
 macros/elementary_overrides.sql, and one added to Elementary's own
-test_volume_anomalies.sql each selected 0. Two bases are no base: one parsed
-with the switches off, as CI's contract-versions step parses it, reads every
-check as new (1,979 of 1,979), and so does one parsed against a warehouse
-file of another name, since the file's name is every node's database (1,979
-of 1,979; its folder, OURHIKE_PROCESSED_DIR, OURHIKE_BUILT_BY,
-OURHIKE_BUILD_STARTED_AT and TZ moved none), so the base is parsed against
-the build's own warehouse path. A selection that reaches no check is an
-answer, said in the log without an annotation. Only a build with no lane
-takes a base: each lane runs every check it has.
+test_volume_anomalies.sql each selected 0. A comment added to
+_warnings__models.yml beside closures.sql's added nothing to those 6
+(2026-10-09), so a comment in a models YAML file is no change. In a fixture
+build with that closures.sql comment (2026-10-09, the shared 4-core sandbox,
+under the heavy lock) the log named the base, and the pass ran those 6,
+every one passing, in 27.5 s of a 663.4 s build, where every check took
+718 s and 802 s in two earlier builds there. Two bases are no base: one
+parsed with the switches off, as CI's contract-versions step parses it,
+reads every check as new (1,979 of 1,979), and so does one parsed against a
+warehouse file of another name, since the file's name is every node's
+database (1,979 of 1,979; its folder, OURHIKE_PROCESSED_DIR,
+OURHIKE_BUILT_BY, OURHIKE_BUILD_STARTED_AT and TZ moved none), so the base
+is parsed against the build's own warehouse path. A selection that reaches
+no check is an answer, said in the log without an annotation. Only a build
+with no lane takes a base: each lane runs every check it has.
 
 THE HOURLY LANE'S CHECKS RUN APART, AFTER ITS BUILD HAS PUBLISHED (decision
 110, the maintainer's poll of 2026-10-08: "All of them, hourly. build a

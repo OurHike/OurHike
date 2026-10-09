@@ -1869,16 +1869,21 @@ reason = "drawn from usfs/'s resources, extracted once there (decision 34); chec
 [batona.challenges]
 confirmed = 2026-10-01
 summary = """
-Nothing published (coverage audit 2026-10-01, batch c1_at_clubs_north).
+Nothing published by the club (coverage audit 2026-10-01, batch c1_at_clubs_north).
 
-—"""
+NJDEP's 'Celebrate 250 Challenge' (2026 only: trails hiked or miles moved across New Jersey's state
+parks and forests, a certificate on completion) is behind the wall NJDEP's pages put up for both
+plain requests and a browser fetch, so its rules and any trail list are UNKNOWN (the audit's
+`batona-trail-nj` candidate, which decision 54's wave 6 folds into this folder on 2026-10-08)."""
 checked = [
     '`/page-1652370`: "Batona Trail and BATONA Hiking Club patches are $3.00 each". That is a sale, with no completion requirement stated.',
+    "(the coverage audit, 2026-10-01) batona-trail-nj challenges: `https://dep.nj.gov/parksandforests/get-outside/celebrate-250-challenge/`, by the search index \"41 state parks, 11 state forests, five recreation areas, and 50+ historic sites\", from \"hiking 25 different trails in a year\" to \"move 250 miles in 2026\"; the page is behind the Incapsula wall",
 ]
 where = [
     "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services",
     "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services",
     "https://batonahikingclub.org/",
+    "https://dep.nj.gov/parksandforests/get-outside/celebrate-250-challenge/",
 ]
 
 [batona.closures]
@@ -1972,14 +1977,23 @@ reason = "drawn from atc/'s resources, extracted once there (decision 34); check
 [batona.suggested_hikes]
 confirmed = 2026-10-01
 summary = """
-Nothing published (coverage audit 2026-10-01, batch c1_at_clubs_north).
+Nothing published by the club (coverage audit 2026-10-01, batch c1_at_clubs_north).
 
 An event calendar is not a published hike description. Reconsider only if events ever get their own
-mart."""
+mart.
+
+NJDEP publishes one: its 'Trails of Wharton State Forest' PDF names the Batona Trail's colour, miles
+and entry points and suggests loops from Batsto (the audit's `batona-trail-nj` candidate, which
+decision 54's wave 6 folds into this folder on 2026-10-08). It is NJDEP's, not the club's, so it
+waits on a row for New Jersey's State Park Service, a candidate of its own in the audit."""
 checked = [
     '`https://batona.wildapricot.org/RSS` is an RSS feed of upcoming events (group outings; "the description of the hike includes the meeting place, often accompanied by the GPS coordinates"). `/page-1652511` (Hiking Guide) is a liability and etiquette statement.',
+    "(the coverage audit, 2026-10-01) batona-trail-nj suggested_hikes: `https://dep.nj.gov/wp-content/uploads/parksandforests/Wharton-Trails.pdf`, \"TRAILS OF WHARTON STATE FOREST\" (3,586,800 bytes), \"Batona Trail — Pink • 28.2 miles (in Wharton) • Hiking — Moderate\", and \"A 12-mile-long loop hike can be followed from Batsto…\"; guides for Bass River and Byrne were not found",
 ]
-where = ["https://batona.wildapricot.org/RSS"]
+where = [
+    "https://batona.wildapricot.org/RSS",
+    "https://dep.nj.gov/wp-content/uploads/parksandforests/Wharton-Trails.pdf",
+]
 
 [batona.trail_lines]
 confirmed = 2026-10-01
@@ -9320,9 +9334,15 @@ where = ["https://northcountrytrail.org/"]
 
 [ncta.places]
 confirmed = 2026-10-01
-summary = "Published, and not landed (coverage audit 2026-10-01, batch b7_long_trails_states)."
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch b7_long_trails_states).
+
+The Central New York chapter's page names Canastota as an NCTA Trail Town (the audit's `ncta-cny`
+candidate, which decision 54's wave 6 folds into this folder on 2026-10-08): one more Trail Town
+for the pages above, none of which is read."""
 checked = [
     "Format page: the Trail Towns pages `northcountrytrail.org/our-work/trail-towns/<town>/` (WordPress search returned Cohasset & Grand Rapids, Abercrombie, Ely, North Creek, Battle Creek and Zoar). `Michigan_Public_Lands_WFL1` (763 polygons) is a copy of other publishers' land data.",
+    '(the coverage audit, 2026-10-01) ncta-cny places: the chapter page names "the NCTA Trail Town of Canastota"',
 ]
 where = ["https://northcountrytrail.org/our-work/trail-towns/", "https://northcountrytrail.org/"]
 reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
@@ -9343,9 +9363,15 @@ Published, and not landed (coverage audit 2026-10-01, batch b7_long_trails_state
 
 Format: arcgis + page. The ArcGIS hikes are stale (2016, 2023 event). The live candidate is the
 chapter pages. Someone with a browser should confirm the section exists before
-`ncta/suggested_hikes.py` scrapes it."""
+`ncta/suggested_hikes.py` scrapes it.
+
+One chapter page is confirmed: the Central New York chapter's own day-hikes page (the coverage
+audit's `ncta-cny` candidate, which decision 54's wave 6 folds into this folder on 2026-10-08)
+describes at least four hikes with their distances. It was last modified 2021-07-04, states no
+terms and is served over plain http; no site parser reads it."""
 checked = [
     'WordPress search for "featured hike", "great hikes", "itinerar" and "day hikes" returned only news posts and event write-ups.',
+    "(the coverage audit, 2026-10-01) ncta-cny suggested_hikes: `http://www.nctacnychapter.org/day-hikes/index.html` (last-modified 2021-07-04), \"Hikes under 10 miles for a day's adventure\", e.g. \"Cazenovia to Freber Road/Chittenango Falls State Park: 7 miles\", \"Nelson Swamp Unique Area: 1.7 miles\"; the 2024 hike schedule is dated group outings, not routes.",
     "Skeptic adds: (1) ArcGIS, owner `nctgis`: the MapTour app \"Mineral Springs and Waterfall Hike - North Dakota\" (`cfc67e8a7fc74e039dfd29822acbbba2`, 2016-09-28) and its web map \"ND Waterfall Hike\". (2) The feature service `2023___Transportation_and_Hike_Mapping/FeatureServer/0`: 24 points with `Hike`, `Day`, `Parking_Location`, `Start_Times`, last edit 2023-05-23. These are the 2023 Celebration's event hikes. (3) A web search excerpt of …",
 ]
 where = [
@@ -10572,6 +10598,7 @@ Restated in full from the persistence pass's batch file; bcc70dd0:pipeline/refer
 copy."""
 checked = [
     "re-read 2026-10-03: `Latest_DEM/ImageServer` is still an F32, 1-band, 1 m ImageServer; copyrightText 'NYS ITS Geospatial Services, United State Geological Survey (USGS), and FEMA'",
+    "(the coverage audit, 2026-10-01) empire-state-trail elevation, folded into this folder by decision 54's wave 6: the EST site's nav (Map, Activities, FAQs, Trip Planning, Trail Closures, Partners) and `/documents-resources` (7 report PDFs) publish no elevation.",
     "`https://elevation.its.ny.gov/arcgis/rest/services/Latest_DEM/ImageServer`: \"Mosaic dataset of high resolution (1 meter) Bare Earth Digital Elevation Model's (DEM's). Newest and hightest resolution data is stored on top. This mosaic is a combination of County, State, and Federal Collections\". F32, 1 m pixels, statewide extent (EPSG:26918), image export enabled. The root lists 64 services: about 55 project ImageServers plus `DEM_Extents`, `Dem_Indexes`, `LAS_Indexes`, `In_Progress_LiDAR_Collections_in_NYS` and `NYS_Statewide_Hillshade`. Clearinghouse: `data.gis.ny.gov/api/search/v1/collections/all/items?q=DEM` returns 7 items, 4 of them owned by `NYSGIS_GPO`: Latest DEM (`75759cd0…`), DEM Projects (`988e7f37…`), NYS DEM Indexes and NYS Statewide Hillshade. data.ny.gov (Socrata) also lists \"High Resolution Digital Elevation Models (DEMs)\". OPRHP: AGOL `owner:NYS.Parks.Admin` × elevation, contour, DEM, lidar, hillshade, terrain or topographic returns 0. Other OPRHP roots: `parks.ny.gov/arcgis/rest/services` and `/server/rest/services` answer 403 (the website, not an ArcGIS server, Reasoned); `gis.`, `maps.` and `gisservices.parks.ny.gov` do not resolve. Tried: 1, 2, 3, 5 (data.gov returns coastal NOAA and USGS records only).",
 ]
 where = [
@@ -10625,8 +10652,14 @@ feeds and search. A re-check from a browser would harden it."""
 checked = [
     "Blog RSS search `nystateparks.blog/search/podcast/feed/rss2/` returns 2 posts. Neither is an OPRHP podcast: one mentions a third-party \"Original People's Podcast\" at Ganondagan. Two web searches found no OPRHP podcast, only a YouTube channel (video).",
     "Skeptic, more places checked 2026-10-01: `content.parks.ny.gov`'s home page links the blog, YouTube, Flickr, Instagram, X, Facebook and GovDelivery, and no podcast. \"podcast\" and \"audio\" match 0 of the 780 events-feed items and 0 of the 10 press-release items. The one New York parks podcast search finds, \"Upstate Parks and Rec\" (Apple …",
+    "(the coverage audit, 2026-10-01) empire-state-trail podcasts, folded into this folder by decision 54's wave 6: the EST site's nav and `parks.ny.gov`'s home page links; `parks.ny.gov/sitemap.xml` (435 URLs) and `empiretrail.ny.gov/sitemap.xml` (88 URLs) hold no podcast or audio page.",
 ]
-where = ["https://content.parks.ny.gov", "https://parks.ny.gov", "https://data.gis.ny.gov/"]
+where = [
+    "https://content.parks.ny.gov",
+    "https://parks.ny.gov",
+    "https://data.gis.ny.gov/",
+    "https://empiretrail.ny.gov/sitemap.xml",
+]
 
 [nysparks.suggested_hikes]
 confirmed = 2026-10-04
@@ -10640,9 +10673,16 @@ First Day Hikes (First_Day_Hikes_2026_view/0, 136 points, a meet-up point and a 
 the legacy events feed (content.parks.ny.gov/feeds/events.ashx) are dated guided hikes, so neither
 is a suggested hike. The Birding Trail Locations dataset (data.ny.gov `dpe3-6uw2`) is a Socrata
 dataset whose hike shape is @unvalidated (the audit), and the blog post a page: neither is section
-C's format, and the hand-back names both."""
+C's format, and the hand-back names both.
+
+The Empire State Trail's GPX and KMZ downloads (decision 54's wave 6, 2026-10-08, folds the
+coverage audit's `empire-state-trail` candidate into this folder) cover 'each leg of the full
+750-mile EST route' and omit 'shorter-term detours', by the trail's own map page: the trail's legs
+as route files, not a list of hikes, and trail_lines.py's oprhp_est_segments lands the same legs as
+lines."""
 checked = [
     "The lead's ruling of 2026-10-04 on events (quoted in the docstring); no request sent today.",
+    "(the coverage audit, 2026-10-01) empire-state-trail suggested_hikes: the GPX and KMZ zips cover \"each leg of the full 750-mile EST route\" (2025); `/map` lists the legs south to north with end points (\"1 Manhattan Greenway Trail The Battery to Inwood Hill\"); the page says the GPX omits \"shorter-term detours\".",
     '(the coverage audit, 2026-10-01) `First_Day_Hikes_2026_view/0`: 136 points, edited 2026-01-01. Fields `Facility`, `Description`, `StartTime`, `MeetupLocation`, `Mileage`, `RegistrationURL`, `Host`. Sample: Saratoga Spa SP, "moderate 1.5-mile hike". Blog post "Best Loved Hikes in New York State Parks" (nystateparks.blog, 2016-08-30, page). 15 StoryMaps on the org, e.g. "OPRHP Trails Program Summary" (2021-12-01). data.ny.gov "Birding Trail Locations" (`dpe3-6uw2`, updated 2025-10-28). Per-park trail pages on parks.ny.gov are unreachable today. Skeptic find: a live RSS feed. `https://content.parks.ny.gov/feeds/events.ashx` …',
 ]
 where = [
@@ -10650,8 +10690,9 @@ where = [
     "https://data.ny.gov",
     "https://parks.ny.gov",
     "https://parks.ny.gov/feeds/events.ashx",
+    "https://empiretrail.ny.gov/map",
 ]
-reason = "not this type: dated events, which the lead ruled are not suggested hikes (2026-10-04)"
+reason = "not this type: dated events, which the lead ruled are not suggested hikes (2026-10-04), and the Empire State Trail's legs as route files"
 
 [octa.challenges]
 confirmed = 2026-10-04
@@ -15981,13 +16022,22 @@ K, 2026-10-04).
 The Passport ('154 national forests and 20 national grasslands', with the National Forest Foundation) is digital
 check-ins and badges inside the OuterSpatial app; an app's content is not a page this pipeline reads. The PATC
 challenge's eligible-trail list the page cell names is an Airtable shared view, patc/challenges.py's. The Junior
-Forest Ranger booklet is a children's activity book, not place-based. No request sent today."""
+Forest Ranger booklet is a children's activity book, not place-based. No request sent today.
+
+Land Between The Lakes (the coverage audit's `lbl` candidate, which decision 54's wave 6 folds into this folder on
+2026-10-08) runs an annual geocache challenge on a page: 2026's named six caches and gave 150 coins, all awarded by
+2026-03-31, and the page looks to 'our next geocache challenge around the new year'. Live a few weeks a year and
+over for this one."""
 checked = [
     "(the coverage audit, 2026-10-01) the Passport announcement, 2026-08-27: check-ins and badges in the OuterSpatial app",
     "no request sent today: the coverage audit's reading, 2026-10-01",
+    "(the coverage audit, 2026-10-01) lbl challenges: `/2026-lbl-geocache-challenge/`, 2026 theme 'Mississippian Indians', 6 named cache locations, 150 challenge coins, all awarded by 2026-03-31",
 ]
-where = ["https://www.fs.usda.gov/inside-fs/leadership/introducing-national-forests-and-grasslands-passport"]
-reason = "not published as a page: the passport lives in an app"
+where = [
+    "https://www.fs.usda.gov/inside-fs/leadership/introducing-national-forests-and-grasslands-passport",
+    "https://www.landbetweenthelakes.us/2026-lbl-geocache-challenge/",
+]
+reason = "not published as a page: the passport lives in an app; Land Between The Lakes' geocache challenge is a page, over for 2026"
 
 [usfs.elevation]
 confirmed = 2026-10-03
@@ -16027,9 +16077,16 @@ licence is never a photo's (the round brief's item 2). With a key, the reader re
 environment and answers UNKNOWN without it, as NPS_API_KEY does (extract/_json_apis.py). The no-key
 public feed (photos_public.gne) returns the newest 20 uploads only (the coverage audit), and RIDB's
 `/media` sits behind its own key (401, the audit). The coverage audit listed this cell three times
-(batches b6 and its skeptic), one dataset."""
+(batches b6 and its skeptic), one dataset.
+
+Land Between The Lakes (the audit's `lbl` candidate, folded into this folder by decision 54's wave 6,
+2026-10-08) has a Flickr account of its own, linked from its site's header: 6,214 photos, all 25 on
+its first page under Flickr licence id 12, and one photo page links CC BY-SA 4.0 (the audit). The
+same key is needed, and whether share-alike suits the app's photo terms is the maintainer's call
+(sources.json's photo_licence)."""
 checked = [
     '(the coverage audit, 2026-10-01) `https://www.flickr.com/photos/usforestservice/` ("Forest Service, USDA | Flickr", nsid `140082569@N07`): `photoCount` 14,717. All 25 photos on the first page carry Flickr licence id 10. One photo page (`/photos/usforestservice/55196746856/`) links `creativecommons.org/publicdomain/mark/1.0`, so id 10 is the Public Domain Mark. The no-key public feed `https://www.flickr.com/services/feeds/photos_public.gne?id=140082569@N07&format=json` returns the latest 20 uploads, newest 2026-04-09. RIDB `/media` is still behind the 401 key wall (UNKNOWN). The EDW recreation layers have no photo field …',
+    "(the coverage audit, 2026-10-01) lbl photos: `https://www.flickr.com/photos/lblkytn/`, 6,214 photos; all 25 on the first page carry Flickr licence id 12, and one photo page links `creativecommons.org/licenses/by-sa/4.0/`",
 ]
 where = [
     "https://www.flickr.com/services/apps/create/",
@@ -16038,6 +16095,7 @@ where = [
     "https://creativecommons.org/publicdomain/mark/1.0",
     "https://fs.usda.gov/",
     "https://apps.fs.usda.gov/arcx/rest/services",
+    "https://www.flickr.com/photos/lblkytn/",
 ]
 reason = "needs a key OurHike does not hold: a Flickr API key, issued by Flickr, for each photo's own licence"
 
@@ -16048,14 +16106,21 @@ Published, and not landed (coverage audit 2026-10-01, batch b6_federal).
 
 `activitydescription` read "None" on the one row sampled, so how much text is actually present is
 Unvalidated. The service description says these come from the Recreation Portal that feeds
-recreation.gov."""
+recreation.gov.
+
+Land Between The Lakes (the audit's `lbl` candidate, folded into this folder by decision 54's wave 6,
+2026-10-08) describes its named trails with their lengths on its own pages, beside ten trail-map PDFs,
+and lists the four trails where backpacking is allowed: pages, which no site parser reads yet."""
 checked = [
     '`.../EDW/EDW_RecreationAreaActivities_01/MapServer/0` (point, 52,482 rows; Day Hiking 6,523, Backpacking 2,755; fields `activitydescription`, `recareadescription`, `recareaurl`, `openstatus`). `EDW_RecreationOpportunities_01` "Day Hiking" markers: 923. Pages: `fs.usda.gov/r08/northcarolina/recreation/opportunities/hiking` and the like (search).',
+    "(the coverage audit, 2026-10-01) lbl suggested_hikes: `/outdoors-recreation/trails-3/`, named trail descriptions with lengths (Canal Loop's \"11-mile loop has 4 connectors providing up to 14 miles\", Energy Lake's \"4.6 mile loop\") and 10 trail-map PDFs; `/outdoors-recreation/backpacking/` lists the 4 trails where overnight backpacking is allowed",
 ]
 where = [
     "https://fs.usda.gov/r08/northcarolina/recreation/opportunities/hiking",
     "https://recreation.gov",
     "https://apps.fs.usda.gov/arcx/rest/services",
+    "https://www.landbetweenthelakes.us/outdoors-recreation/trails-3/",
+    "https://www.landbetweenthelakes.us/outdoors-recreation/backpacking/",
 ]
 reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
 

@@ -371,6 +371,31 @@ unit_tests:
         - {poi_key: 'pt-7', rule_drop_reason: null}
         - {poi_key: 'ut-1', rule_drop_reason: null}
 
+  - name: club_points_never_print_arcgis_null_text_as_a_name
+    model: int_points_of_interest__club_points
+    description: >
+      '<Null>' is no name: the Empire State Trail's layer writes the text '<Null>' as the name of
+      18 of its 40 restrooms (oprhp_est_trail_features' notes, 2026-10-08), so a name that is
+      exactly '<Null>' once trimmed comes out null and still ships its type, and two such
+      restrooms at one fix are both kept, since nothing says they are one point. A named
+      restroom keeps its name.
+    given:
+      - input: ref('int_points_of_interest__club_unioned')
+        rows:
+          - {source_key: 'oprhp_est_trail_features', club: 'nysparks', poi_key: 'es-1', name: '<Null>', category: 'Restroom', source_id: '{ES-1}', geom: 'POINT (-74 42)', properties: '{"asset": "Restroom"}'}
+          - {source_key: 'oprhp_est_trail_features', club: 'nysparks', poi_key: 'es-2', name: ' <Null> ', category: 'Restroom', source_id: '{ES-2}', geom: 'POINT (-74 42)', properties: '{"asset": "Restroom"}'}
+          - {source_key: 'oprhp_est_trail_features', club: 'nysparks', poi_key: 'es-3', name: 'Fixture Comfort Station', category: 'Restroom', source_id: '{ES-3}', geom: 'POINT (-74 42.01)', properties: '{"asset": "Restroom"}'}
+      - input: ref('club_poi_types')
+        rows:
+          - {source_key: 'oprhp_est_trail_features', field: 'asset', value: 'Restroom', poi_type: 'privy', confidence: 'high', evidence: 'Restroom'}
+      - input: ref('layer_rules')
+        rows: []
+    expect:
+      rows:
+        - {poi_key: 'es-1', name: null, poi_type: 'privy', rule_drop_reason: null, derived_id: 'oprhp_est_trail_features:{ES-1}'}
+        - {poi_key: 'es-2', name: null, poi_type: 'privy', rule_drop_reason: null, derived_id: 'oprhp_est_trail_features:{ES-2}'}
+        - {poi_key: 'es-3', name: 'Fixture Comfort Station', poi_type: 'privy', rule_drop_reason: null, derived_id: 'oprhp_est_trail_features:{ES-3}'}
+
   - name: classified_reads_a_wave_1_point_as_a_typed_record
     model: int_points_of_interest__classified
     description: >

@@ -3161,6 +3161,11 @@ def _notice_pages_n_to_z() -> dict[str, tuple[str, str, str]]:
             "https://dec.ny.gov/things-to-do/hiking/adirondack-backcountry/backcountry-information-for-adirondack-park",
             _notice_page("Fixture Backcountry Information", "New this week (9/21/2026)"),
         ),
+        # The <h1> is the live page's own: the resource's expect_title is 'Trail Closures'.
+        "oprhp_est_trail_closures_page": (
+            "https://empiretrail.ny.gov/trail-closures",
+            _notice_page("Trail Closures", f"Updated {FIXTURE_DAY}"),
+        ),
         "palmetto_trail_closures": (
             "https://www.palmettotrail.org/updates/post/trail-closures-updated-2-5-26",
             _notice_page("Fixture Current Trail Closures", None),
@@ -3512,13 +3517,41 @@ def _club_wp_post(post_id: int, site: str, categories: list[int], **taxonomies) 
     }
 
 
+def _lbl_alert_post(post_id: int) -> dict:
+    """One Land Between The Lakes alert as its `alerts` route served it on 2026-10-08: no body, no excerpt and no
+    category, but a title, its own dates, its link, its two taxonomies and the author id WP_DROPPED leaves out."""
+    site = "www.landbetweenthelakes.us"
+    return {
+        "id": post_id,
+        "date": "2026-09-21T09:13:20",
+        "date_gmt": "2026-09-21T14:13:20",
+        "guid": {"rendered": f"https://{site}/?post_type=alerts&p={post_id}"},
+        "modified": "2026-09-21T09:13:20",
+        "modified_gmt": "2026-09-21T14:13:20",
+        "slug": f"fixture-alert-{post_id}",
+        "status": "publish",
+        "type": "alerts",
+        "link": f"https://{site}/alerts/fixture-alert-{post_id}/",
+        "title": {"rendered": f"Fixture Trail Re-route {post_id}"},
+        "author": 9,
+        "template": "",
+        "alert-category": [57],
+        "facilities": [],
+        "class_list": [f"post-{post_id}", "alerts", "type-alerts", "status-publish", "hentry"],
+        "_links": {"self": [{"href": f"https://{site}/wp-json/wp/v2/alerts/{post_id}"}]},
+    }
+
+
 def _club_wordpress_fixtures() -> dict[str, str]:
-    """The category lookup and posts of the three club WordPress sources phase B registered, or GMC's `alert` type.
+    """The category lookup and posts of the three club WordPress sources phase B registered, GMC's `alert` type and
+    Land Between The Lakes' `alerts` type.
 
     Field names are the ones each site's posts route served on 2026-10-03
     (sources.json's `notes`); ATA's category 251 carries a passage term beside
     it, as its live posts do; MATC's category is 157; GMC's posts sit in no
-    category and carry `alert-category` terms.
+    category and carry `alert-category` terms. Land Between The Lakes' were
+    read on 2026-10-08 (decision 54's wave 6): its alert category 57 is
+    'Trails'.
     """
     ata, gmc, matc = "aztrail.org", "greenmountainclub.org", "www.matc.org"
     documents = {
@@ -3537,6 +3570,12 @@ def _club_wordpress_fixtures() -> dict[str, str]:
             "categories": [{"id": 157, "slug": "hazard"}],
             "posts": [_club_wp_post(8201, matc, [157]), _club_wp_post(8202, matc, [157])],
             "terms": {},
+        },
+        "usfs_lbl_alerts": {
+            "categories": [],
+            "posts": [],
+            "terms": {},
+            "types": {"alerts": [_lbl_alert_post(8301), _lbl_alert_post(8302)]},
         },
     }
     return {f"conditions/{key}.json": json.dumps(document) for key, document in documents.items()}
@@ -4306,6 +4345,36 @@ NOTICE_LAYERS = {
             "GlobalID": "{fixture-oprhp-hunting-areas-1}",
             "MasterAreaID": 1,
             "last_edited_date": FIXTURE_DATE_MS,
+        },
+    ),
+    # Decision 54's wave 6 (2026-10-08): the Empire State Trail's closed sections and its work zones, each
+    # field list the one its live ?f=json gave that day. The closures view serves no GlobalID.
+    "ptny_est_closures": (
+        _line,
+        {
+            "OBJECTID": 1,
+            "ownership": "Fixture City",
+            "trail_name": "Fixture Shoreline Trail",
+            "trail_stat": "Closed",
+            "trail_type": "Paved",
+            "ECT": "1",
+            "HVGT": "0",
+            "CVT": "0",
+            "CCT": "0",
+            "Shape__Length": 1290.9,
+        },
+    ),
+    "oprhp_est_under_construction": (
+        _polygon,
+        {
+            "OBJECTID": 1,
+            "Description": "Fixture culvert work",
+            "ParentLegName": "Fixture Canalway Trail (Rome to Utica)",
+            "ParentLegID": "EC20",
+            "UID": "{fixture-oprhp-est-under-construction-1}",
+            "GlobalID": "{fixture-oprhp-est-under-construction-global-1}",
+            "Shape__Area": 479285.0,
+            "Shape__Length": 6529.4,
         },
     ),
     "njdep_park_status": (
@@ -5871,6 +5940,10 @@ CLUB_TRAIL_LINE_FIELDS = {
         "creator:s stroke_opacity:i stroke_width:i title:s fill:s class:s updated:d stroke:s fill_opacity:d "
         "folderId:s gpstype:s ObjectId:o Shape__Length:d"
     ),
+    # Decision 54's wave 6 (2026-10-08): the Empire State Trail's segments and connector trails, the field lists
+    # their live ?f=json gave that day.
+    "oprhp_est_segments": "OBJECTID:o Type:s Surface:s Miles:d ParentLegName:s ParentLegID:s UID:s GlobalID:g Shape__Length:d",
+    "oprhp_est_connectors": "OBJECTID:o Name:s UID:s GlobalID:g Shape__Length:d",
     "patc_trails_master": (
         "OBJECTID:o TrailName:s TrailType:s MapMethod:s MapSource:s SurveyDate:s District:s Maintainer:s "
         "GuidebookSection:s Easement:s Comments:s SegmentLengthMiles:d MapFootprint:s SegmentFrom:s SegmentTo:s "
@@ -7710,6 +7783,35 @@ CLUB_POINT_FIXTURES = {
     "external/black_hills_parking.geojson": (
         ("OBJECTID", "LOCATION"),
         {"OBJECTID": (1, 2), "LOCATION": ("Fixture black hills parking 0", "Fixture black hills parking 1")},
+    ),
+    # Decision 54's wave 6 (2026-10-08): the Empire State Trail's TrailFeature layer, the field list
+    # its live metadata gave that day. Row 0 carries the '<Null>' name the live layer gives 18
+    # restrooms, so CI's build shows int_points_of_interest__club_points reading it as no name.
+    "external/oprhp_est_trail_features.geojson": (
+        (
+            "OBJECTID",
+            "Asset",
+            "Name",
+            "Description",
+            "PhoneNumber",
+            "Address",
+            "URL",
+            "ParentLegName",
+            "ParentLegID",
+            "Latitude",
+            "Longitude",
+            "UID",
+            "GlobalID",
+        ),
+        {
+            "OBJECTID": (1, 2),
+            "UID": ("{fixture-oprhp_est_trail_features-0}", "{fixture-oprhp_est_trail_features-1}"),
+            "GlobalID": ("fixture-est-global-0", "fixture-est-global-1"),
+            "Asset": ("Restroom", "Campground"),
+            "Name": ("<Null>", "Fixture oprhp est trail features 1"),
+            "PhoneNumber": ("fixture person", "fixture person"),
+            "Address": ("fixture person", "fixture person"),
+        },
     ),
 }
 

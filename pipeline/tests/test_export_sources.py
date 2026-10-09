@@ -904,7 +904,9 @@ class TestTheRegistryTheConsoleReads:
         # registered the Tennessee Trails Association (its 36 Great Hikes form), and 121 since decision 76
         # (section B, 2026-10-04) registered the U.S. Census Bureau (org:census), for the TIGER/Line state
         # boundaries a state-wide notice is placed by. Recounted from the merged registry 2026-10-05.
-        assert len(orgs) == 121
+        # 122 since decision 54's wave 6 (2026-10-08) registered Parks & Trails New York (org:ptny), for
+        # its view of the Empire State Trail's closed sections.
+        assert len(orgs) == 122
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -995,6 +997,7 @@ class TestTheRegistryTheConsoleReads:
             "org:phta",
             "org:pnta",
             "org:portlandparks",
+            "org:ptny",
             "org:ridgetrail",
             "org:rmc",
             "org:rmfi",

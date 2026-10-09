@@ -194,3 +194,6 @@ bmta_access_points,,,trailhead,low,"every row: BMTA's 'Access Points / Trailhead
 patc_tuscarora_points,kind,access,trailhead,low,"kind 'access', 55 of 80 (notes): each section's road access with a fix; low, 10 say their parking is limited, two sit 0.3 and 0.4 mi off the Tuscarora (approach_mi), and WV 23/2 is reached by a side trail"
 patc_tuscarora_points,kind,shelter,shelter,high,"kind 'shelter', 15 of 80 (notes): a Camping item whose own name carries the word Shelter, PATC's 14 on the Tuscarora and the A.T.'s Darlington Shelter"
 patc_tuscarora_points,kind,camping,campsite,high,"kind 'camping', 10 of 80 (notes): campgrounds, a campsite and two camps, typed campsite as wave 1 types a campground"
+oprhp_est_trail_features,asset,Campground,campsite,high,"Asset 'Campground', 69 of 381 (notes), typed campsite as wave 1 types a campground"
+oprhp_est_trail_features,asset,Parking Area,parking,high,"Asset 'Parking Area', 251 of 381 (notes)"
+oprhp_est_trail_features,asset,Restroom,privy,high,"Asset 'Restroom', 40 of 381 (notes), typed privy as wave 1 types a restroom; 'Train Station', 21, is not mapped"

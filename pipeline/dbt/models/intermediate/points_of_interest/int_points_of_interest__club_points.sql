@@ -49,6 +49,11 @@
 --   usfs_dispersed_camping_holdback holds back, drop the same way.
 -- - A POINT LISTED TWICE IS ONE POINT: of a layer's rows that share a name
 --   and a fix, one ships (the `repeats` CTE says which, and why).
+-- - '<Null>' IS NO NAME. An ArcGIS export writes the text '<Null>' into a
+--   string field that held nothing: the Empire State Trail's layer names
+--   18 of its 40 restrooms that way (oprhp_est_trail_features' notes, read
+--   2026-10-08). A name that is exactly '<Null>' once trimmed reads as no
+--   name, so it never prints on a card and never folds two points together.
 --
 -- THE ID a row publishes under is `<source_key>:<source_id>`, the layer's
 -- own id where its registry id_field is one, and the base model's key where
@@ -163,7 +168,7 @@ repeats as (
         left join first_held on unioned.poi_key = first_held.poi_key
         where
             unioned.geom is not null
-            and nullif(trim(unioned.name), '') is not null
+            and nullif(nullif(trim(unioned.name), ''), '<Null>') is not null
     ) as listings
     where listings.listing > 1
 ),
@@ -218,7 +223,7 @@ select
     unioned.poi_key,
     unioned.source_key,
     unioned.club,
-    nullif(trim(unioned.name), '') as name,
+    nullif(nullif(trim(unioned.name), ''), '<Null>') as name,
     unioned.source_id,
     unioned.source_key || ':' || unioned.source_id as derived_id,
     case when typed.type_count = 1 then typed.poi_type end as poi_type,

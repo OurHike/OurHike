@@ -189,7 +189,9 @@ models:
       - name: walk_key
         description: >
           The other end of the walk, the nearest point on the feature, as
-          the EPQS cache keys it: "lat,lon" at 6 dp.
+          "lat,lon" at 6 dp, the precision make_dbt_fixtures.py keys its EPQS
+          answers at, so a unit test can hold it exactly. fetch_trail_water.py's
+          own cache has keyed each point exactly since decision 131.
       - name: passes_distance
         description: Within MATCH_RADIUS_FT of the nearest; false where nothing is near.
         data_tests: [not_null]

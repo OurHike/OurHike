@@ -1659,7 +1659,9 @@ def _site_water_fixtures(sites: list[dict]) -> dict[str, str]:
 # OSM water (PO03, PO06, PO08, PO09): step_osm_water.py's points, in
 # fetch_osm_water.py's feature() shape, and the EPQS answers
 # step_osm_water_grade.py reads in place of the network, keyed "lat,lon" at
-# 6 dp as fetch_trail_water.py's cache keys them. They live under osm_water/
+# 6 dp as step_site_water.offline_elevations() reads them (fetch_trail_water.
+# py's own cache has keyed each point exactly since decision 131; that
+# function says why the stand-in does not). They live under osm_water/
 # rather than at data/raw/osm_water.geojson, where export_poi.py would read
 # them and then refuse to run without build_osm_water_reach.py's verdicts.
 #

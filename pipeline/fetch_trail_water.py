@@ -741,6 +741,8 @@ def elevation_ft(lat: float, lon: float) -> float | None:
     ground does not move between runs, and re-deriving with a tighter
     MAX_GRADE should cost the reading of the hydrography and not several
     hundred more round trips to a service that answers in seconds apiece.
+    The cache is keyed on the point itself (ELEVATION_CACHE_KEYS), so a
+    cached answer is only ever EPQS's answer for the point being asked.
 
     A point prefetch_elevations() already asked this run and got no answer
     for is declined here without asking again: it has had its TRIES.
@@ -758,8 +760,61 @@ def elevation_ft(lat: float, lon: float) -> float | None:
     return elevation
 
 
+# What an epqs_elevations.json key is, written into the file as its `keys`
+# field: the point itself (decision 131, the maintainer's poll of 2026-10-09,
+# the rule decision 115 gave export_elevation.py's DEM sample cache in
+# ffea5e31). Each coordinate is written as Python's repr writes a double, the
+# shortest text that reads back to that same double, so two points share a key
+# only when they are one point, and a cached answer is only ever EPQS's answer
+# for the point that was asked. (0.0 and -0.0 are one point under two keys,
+# which costs a lookup and never a wrong answer.)
+#
+# WHAT IT REPLACED. Until decision 131 a point was keyed "lat,lon" to 6
+# decimals, about 0.11 m, and a key held the answer for the first point asked
+# under it and gave it to every later point inside the same 0.11 m box. The
+# cache feeds the water-grade gate: both ends of every walk to water that
+# resolve_site() grades here and that build_osm_water_reach.apply_grade_gate()
+# grades for OSM water (step_site_water.py --derive, step_osm_water_grade.py,
+# and parity.py's old side for a monthly run's pinned points). So a later
+# point could be graded on another point's ground. How far off depends on how
+# EPQS reads 3DEP: if it answers from the cell a point falls in, as
+# export_elevation.py's sampler does, two points either side of a cell edge
+# differ by the step between cells, the case decision 115 measured on the DEM
+# sample cache (monthly run 30: up to 19 ft on one sample). How EPQS reads it
+# is not recorded here, and nobody has checked a run for a water verdict the
+# old key changed; the exact key removes the cause either way.
+#
+# WHAT IT COSTS. A point that differs from another only in the last bits of a
+# double is now asked on its own: the two sides of a monthly parity compute a
+# walk's far end each in their own SQL, and where those differ in the last
+# bits the second side asks EPQS again (Reasoned; nobody has compared the two
+# sides' walk ends bit for bit). Keys are longer and slower to make: 36.1
+# characters against 20.0, and 1.03 us a key against 0.59, on 200,000 random
+# points in the A.T. states' box (Measured 2026-10-09 in this sandbox,
+# synthetic points, not the corridor's).
+#
+# A FILE FROM BEFORE NEVER ANSWERS. An old key can equal a new one:
+# "40.000001,-75.000001" is the 6-decimal key every point within half a
+# millionth of a degree of that one was stored under, and that one point's
+# exact key as well. So _load_elevation_cache() reads a file only when its
+# `keys` is this value. Every file written before decision 131 is a bare map
+# of keys to feet, carries no `keys` and is discarded whole, so each carried
+# cache's first run after it asks EPQS for every point again: monthly runs 20
+# to 22 graded the same 3,118 corridor OSM water points with nothing cached
+# in 21.3, 41.5 and 54.2 min one at a time, and run 24 asked 2,342 points
+# four at a time in 33.2 min (build-reference.yml's build job and parity.py's
+# _osm_water_old() record both). The cache's path and name are unchanged, so
+# no workflow changes.
+ELEVATION_CACHE_KEYS = "exact"
+
+
 def _elevation_key(lat: float, lon: float) -> str:
-    return f"{lat:.6f},{lon:.6f}"
+    """The EPQS cache's key for a point: its own lat then lon, each as repr
+    writes the double (ELEVATION_CACHE_KEYS). float() first, so a numpy double
+    is keyed as the Python float it equals, never as "np.float64(...)". Lat
+    first, as this file has always keyed; export_elevation.py's DEM sample
+    cache keys lon first, and neither file is read by the other's code."""
+    return f"{float(lat)!r},{float(lon)!r}"
 
 
 def _ask_epqs(lat: float, lon: float) -> float | None:
@@ -848,8 +903,38 @@ _ELEVATION_CACHE: dict[str, float] | None = None
 def _elevation_cache() -> dict[str, float]:
     global _ELEVATION_CACHE
     if _ELEVATION_CACHE is None:
-        _ELEVATION_CACHE = json.loads(ELEVATION_CACHE_PATH.read_text()) if ELEVATION_CACHE_PATH.exists() else {}
+        _ELEVATION_CACHE = _load_elevation_cache(ELEVATION_CACHE_PATH)
     return _ELEVATION_CACHE
+
+
+def _load_elevation_cache(path: Path) -> dict[str, float]:
+    """The answers a cache file holds, or none at all.
+
+    DISCARDED WHOLE, never in part, when its `keys` is not
+    ELEVATION_CACHE_KEYS: every file written before decision 131 keyed a point
+    to 6 decimals, and one of its keys can be the exact key of a point it was
+    never asked for (ELEVATION_CACHE_KEYS says how), so not one entry of it is
+    served. Discarded too when it cannot be read or is not the shape
+    _write_elevation_cache() writes, every answer a finite number of feet
+    (json.loads reads a bare NaN or Infinity as a float, as
+    export_elevation._is_a_stored_sample() says): a lost answer costs one more
+    EPQS lookup, and a wrong one a wrong grade.
+    """
+    try:
+        stored = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(stored, dict) or stored.get("keys") != ELEVATION_CACHE_KEYS:
+        return {}
+    elevations = stored.get("elevations")
+    if not isinstance(elevations, dict) or not all(_is_feet(feet) for feet in elevations.values()):
+        return {}
+    return elevations
+
+
+def _is_feet(value) -> bool:
+    """Whether a value read back out of the cache file can be an elevation: a finite real number, and not a bool."""
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
 # How many new lookups pile up before the cache file is rewritten (#1768).
@@ -879,9 +964,12 @@ def flush_elevation_cache() -> None:
 
 
 def _write_elevation_cache(cache: dict[str, float]) -> None:
+    """The cache, written whole through a temporary file. `keys` says which
+    rule the keys were written under, so a later rule can refuse the file
+    (_load_elevation_cache())."""
     ELEVATION_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = ELEVATION_CACHE_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cache))
+    tmp.write_text(json.dumps({"keys": ELEVATION_CACHE_KEYS, "elevations": cache}))
     tmp.replace(ELEVATION_CACHE_PATH)
 
 

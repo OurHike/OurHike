@@ -900,7 +900,7 @@ def test_a_dem_gap_is_cached_as_a_gap_and_stays_none(tmp_path, monkeypatch):
         first.close()
 
     stored = json.loads(_cache_file(index).read_text())["samples"]
-    assert stored == {"-84.150000,34.650000": None}, "a gap is stored as an explicit null, not left out"
+    assert stored == {"-84.15,34.65": None}, "a gap is stored as an explicit null, not left out"
 
     _forbid_raster_opens(monkeypatch)
     second = export_elevation.ElevationSampler.for_index(index)
@@ -954,6 +954,112 @@ def test_the_same_point_asked_for_twice_in_one_run_is_read_once(tmp_path, monkey
     assert len(windows) == 1
 
 
+# --- The key is the point itself (decision 115) ------------------------------
+#
+# Until decision 115 the cache keyed a point to 6 decimals and answered a key
+# with whoever asked it first, so a point a hair across a 3DEP pixel edge from
+# one asked before it took that point's pixel: monthly run 30 published the
+# neighbouring pixel on 133 samples of 123 graph edges that way. These hold the
+# rule that replaced it, a key is one point, on the ramp tile, whose value at a
+# point is its column, so the pixel an answer came from shows in the number.
+
+# Columns 511 and 512 of _tiled_ramp_tile meet at -84.15, and these two points
+# sit 1.5e-7 degrees either side of that edge: one 6-decimal key, two pixels.
+WEST_OF_EDGE = (-84.15 - 1.5e-7, 34.65)
+EAST_OF_EDGE = (-84.15 + 1.5e-7, 34.65)
+
+
+def _ramp_index(tmp_path):
+    """The ramp tile, indexed with its edition pinned, so its samples reach the cache file."""
+    tile = _tiled_ramp_tile(tmp_path / "ramp.tif")
+    return _index_json(
+        tmp_path / "tile_index.json",
+        [{"url": tile.as_posix(), "bounds": [-84.3, 34.5, -84.0, 34.8], "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"}],
+    )
+
+
+def _six_decimal_key(lon, lat):
+    """The key every samples.json written before decision 115 holds a point under."""
+    return f"{lon:.6f},{lat:.6f}"
+
+
+def test_the_edge_points_share_a_six_decimal_key_and_read_columns_511_and_512_cold(tmp_path):
+    """What the next two tests stand on: one key under the old rule, two pixels when each is read on its own."""
+    assert _six_decimal_key(*WEST_OF_EDGE) == _six_decimal_key(*EAST_OF_EDGE)
+    index = _ramp_index(tmp_path)
+    cold = []
+    for point in (WEST_OF_EDGE, EAST_OF_EDGE):
+        sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
+        try:
+            cold.append(sampler.sample(*point))
+        finally:
+            sampler.close()
+    assert cold == [511.0, 512.0]
+
+
+def test_sample_many_answers_two_points_across_a_pixel_edge_each_with_its_own_pixel(tmp_path):
+    sampler = export_elevation.ElevationSampler.for_index(_ramp_index(tmp_path))
+    try:
+        assert sampler.sample_many([WEST_OF_EDGE, EAST_OF_EDGE]) == [511.0, 512.0]
+        assert sampler.sample_many([EAST_OF_EDGE, WEST_OF_EDGE]) == [512.0, 511.0]
+    finally:
+        sampler.close()
+
+
+def test_samples_json_from_an_earlier_run_never_answers_a_point_across_a_pixel_edge_from_its_own(tmp_path):
+    """Monthly run 30's 133 samples in small: an earlier run asked the point west of the edge and wrote samples.json,
+    and this run asks the point east of it."""
+    index = _ramp_index(tmp_path)
+    earlier = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert earlier.sample(*WEST_OF_EDGE) == 511.0
+    finally:
+        earlier.close()
+
+    this = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert this.sample(*EAST_OF_EDGE) == 512.0
+    finally:
+        this.close()
+
+
+def test_cache_key_reads_back_to_the_points_own_doubles_and_parts_two_adjacent_ones():
+    """A key is one point: each coordinate as repr writes it, which reads back to that same double, so two points
+    share a key only when they are one point. A numpy double is keyed as the Python float it equals."""
+    lon, lat = -84.15, 34.65
+    nudged = math.nextafter(lon, 0.0)
+    assert export_elevation._cache_key(lon, lat) == "-84.15,34.65"
+    assert export_elevation._cache_key(nudged, lat) != export_elevation._cache_key(lon, lat)
+    for point in [(lon, lat), (nudged, lat), WEST_OF_EDGE, EAST_OF_EDGE]:
+        assert tuple(float(part) for part in export_elevation._cache_key(*point).split(",")) == point
+    assert export_elevation._cache_key(np.float64(lon), np.float64(lat)) == "-84.15,34.65"
+
+
+@pytest.mark.parametrize("keys", [None, "6 decimals"], ids=["no keys field, as before decision 115", "another rule"])
+def test_samples_json_keyed_under_another_rule_is_discarded_whole(tmp_path, keys):
+    """An old file's key can be a new point's exact key: "-84.150001,34.650001" is the 6-decimal key every point
+    within half a millionth of a degree of that one was stored under, and that one point's exact key too. So a file
+    whose `keys` is not SAMPLE_CACHE_KEYS answers nothing, whatever its marker, and is written over in the new form."""
+    index = _ramp_index(tmp_path)
+    point = (-84.150001, 34.650001)
+    assert _six_decimal_key(*point) == export_elevation._cache_key(*point)
+    stored = {"marker": elevation_marker(index), "samples": {_six_decimal_key(*point): 9999.0}}
+    if keys is not None:
+        stored["keys"] = keys
+    # 9999 is no column of the ramp: the value a neighbour in another pixel could have left under that key.
+    _cache_file(index).write_text(json.dumps(stored))
+
+    sampler = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert sampler.sample(*point) == 511.0
+    finally:
+        sampler.close()
+
+    written = json.loads(_cache_file(index).read_text())
+    assert written["keys"] == export_elevation.SAMPLE_CACHE_KEYS == "exact"
+    assert written["samples"] == {"-84.150001,34.650001": 511.0}
+
+
 def test_an_unreadable_cache_costs_a_slow_run_and_not_the_export(tmp_path):
     """The cache is an optimisation, so a corrupt one is treated as no cache
     rather than as a reason to stop. A half-written file is exactly what a run
@@ -998,8 +1104,12 @@ def test_a_non_finite_value_in_the_cache_file_is_never_served_as_an_elevation(tm
 
     for token in ("Infinity", "-Infinity", "NaN"):
         # Written as text rather than through json.dumps, because these are
-        # tokens json.dumps only emits for a float this code cannot hold.
-        _cache_file(index).write_text('{"marker": %s, "samples": {"-84.150000,34.650000": %s}}' % (json.dumps(marker), token))
+        # tokens json.dumps only emits for a float this code cannot hold. In
+        # the current form (`keys`, the point's exact key), so it is the value
+        # check that refuses it and not the keys check.
+        _cache_file(index).write_text(
+            '{"keys": "exact", "marker": %s, "samples": {"-84.15,34.65": %s}}' % (json.dumps(marker), token)
+        )
         sampler = export_elevation.ElevationSampler.for_index(index)
         try:
             value = sampler.sample(-84.15, 34.65)
@@ -1025,10 +1135,11 @@ def test_a_cache_value_that_is_not_a_number_is_refused_along_with_the_file(tmp_p
     _cache_file(index).write_text(
         json.dumps(
             {
+                "keys": export_elevation.SAMPLE_CACHE_KEYS,
                 "marker": elevation_marker(index),
                 # A string where a number belongs, and a bool - which is an
                 # `int` in Python and would otherwise read as one metre.
-                "samples": {"-84.150000,34.650000": "515.0", "-84.160000,34.650000": True},
+                "samples": {"-84.15,34.65": "515.0", "-84.16,34.65": True},
             }
         )
     )
@@ -1073,7 +1184,7 @@ def test_a_cell_added_to_the_index_discards_the_cache_as_a_re_flown_one_does(tmp
         assert sampler.sample(-84.15, 34.65) == pytest.approx(515.0)
     finally:
         sampler.close()
-    assert json.loads(_cache_file(index).read_text())["samples"] == {"-84.150000,34.650000": 515.0}
+    assert json.loads(_cache_file(index).read_text())["samples"] == {"-84.15,34.65": 515.0}
 
     _write_dem_tile(second, second_bounds, elevation=222.0)
     _write_dem_tile(first, first_bounds, elevation=901.0)
@@ -1217,7 +1328,7 @@ def test_one_unstamped_cell_does_not_cost_the_stamped_ones_their_cache(tmp_path)
     finally:
         sampler.close()
 
-    assert json.loads(_cache_file(index).read_text())["samples"] == {"-84.150000,34.650000": 515.0}
+    assert json.loads(_cache_file(index).read_text())["samples"] == {"-84.15,34.65": 515.0}
 
 
 def test_falling_THROUGH_an_unpinned_cell_holds_the_point_out_too(tmp_path):
@@ -1292,7 +1403,7 @@ def test_a_dated_filename_pins_an_edition_without_a_head_answering(tmp_path):
     finally:
         sampler.close()
 
-    assert json.loads(_cache_file(index).read_text())["samples"] == {"-84.150000,34.650000": 515.0}
+    assert json.loads(_cache_file(index).read_text())["samples"] == {"-84.15,34.65": 515.0}
 
 
 def test_a_failed_block_read_is_raised_and_not_published_as_a_dem_gap(tmp_path, monkeypatch):

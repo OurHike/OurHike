@@ -173,12 +173,21 @@ const DEFAULT_METRIC = { volume: "row_count", freshness: "freshness" };
 const MART_METRIC = "row_count";
 
 /**
- * What the chart's table and readout say of a point with no band. Not "No
- * range yet": the point that has none is one no run in the history scored,
- * such as a check's first, and no later run gives it one (the chart's
- * caption, chartView).
+ * What the chart's table and readout say of a point with no band drawn. Not
+ * "No range yet": the band drawn at a point is the one from the point before
+ * it (decision 118), so the chart's first point has none, and so does a point
+ * after one no run in the history scored, such as a check's first; no later
+ * run gives either one (the chart's caption, chartView).
  */
 export const NO_RANGE = "No range";
+
+/**
+ * The statuses whose needs_a_look entry is Elementary's verdict that a point
+ * fell outside the range it expected: a check that warned or failed. A check
+ * that could not run judged nothing, and a status this page does not know is
+ * read as neither.
+ */
+const FLAGGING_STATUSES = new Set(["warn", "fail"]);
 
 const COUNT_KEYS = ["checks", "passed", "warned", "failed", "errored"];
 const MAX_NAME = 256;
@@ -960,18 +969,70 @@ function pickSeries(series, items, menu) {
   return menu.other[0] ?? series[0] ?? null;
 }
 
-function outsideOf(point) {
-  if (point.value === null || point.min === null || point.max === null) return null;
-  if (point.value < point.min) return "below";
-  if (point.value > point.max) return "above";
-  return null;
+/**
+ * WHICH POINTS ELEMENTARY FLAGGED, as far as the file records it: the point
+ * each needs_a_look entry on this series reports, by its place in the
+ * series, with the side it fell on ("below" or "above") of the range
+ * Elementary scored it against. An entry whose check warned or failed
+ * carries its point's value and that range, and data_quality.sql takes all
+ * three from the run's newest anomalous bucket and writes the series point
+ * of that bucket with the same run's numbers, so the newest point holding
+ * all three is the entry's (Reasoned from its `anomalous` and `bands`; a
+ * series two checks both report on carries one check's bands, so only that
+ * check's entry can be placed). The file keeps no verdict on any other point.
+ *
+ * READ FROM THE ENTRY, NEVER FROM THE BAND THE CHART DRAWS (decision 118).
+ * Elementary judges a point against a band that counts the point itself; the
+ * chart draws the band from the builds before it. The two differ, so a point
+ * can sit outside the drawn band and not be flagged, as an early point
+ * against a narrow early band does.
+ */
+function flaggedPoints(series, items) {
+  const flagged = new Map();
+  for (const item of items) {
+    if (!FLAGGING_STATUSES.has(item.status) || seriesOf(item, [series]) === null) continue;
+    if (item.value === null || item.min === null || item.max === null) continue;
+    const side = item.value < item.min ? "below" : item.value > item.max ? "above" : null;
+    if (side === null) continue;
+    const at = series.points.findLastIndex(
+      (point) => point.value === item.value && point.min === item.min && point.max === item.max,
+    );
+    if (at !== -1) flagged.set(at, side);
+  }
+  return flagged;
 }
 
 function chartView(series, read) {
   if (series === null) return null;
   const fmt = metricFormat(series.metric);
   const file = read.find((candidate) => candidate.lane === series.lane);
-  const points = series.points.map((point) => ({ ...point, outside: outsideOf(point) }));
+  const flagged = flaggedPoints(series, file?.items ?? []);
+  // THE BAND DRAWN AT A POINT IS THE ONE FROM THE BUILDS BEFORE IT, the
+  // maintainer's choice by poll on 2026-10-09 (decision 118, "A: band from
+  // before"): the band stored for the point before. A stored band is the one
+  // Elementary scored its own point against, the mean of that point and
+  // those before it in its window, plus or minus three deviations, so it
+  // counts the point and fans out at an outlier; the one before does not,
+  // and an outlier sits against what was expected before it. Elementary
+  // 0.26.0's own report query does this at a flagged point and draws a
+  // point's own band elsewhere (get_read_anomaly_scores_query(): "when there
+  // is an anomaly we would want to use the last value of the metric (lag),
+  // otherwise visually the expectations would look out of bounds", read
+  // 2026-10-09); the chart takes the band before at every point, one rule
+  // for the whole line. The first point has no point before it here, so no
+  // band. `outside` is Elementary's verdict (flaggedPoints), not this band's
+  // geometry.
+  const points = series.points.map((point, i) => {
+    const before = i > 0 ? series.points[i - 1] : null;
+    const banded = before !== null && before.min !== null && before.max !== null;
+    return {
+      at: point.at,
+      value: point.value,
+      min: banded ? before.min : null,
+      max: banded ? before.max : null,
+      outside: flagged.get(i) ?? null,
+    };
+  });
   const drawn = points.filter((point) => point.value !== null);
   const outside = points.filter((point) => point.outside !== null);
   const each = series.lane === "monthly" ? "monthly build" : "hourly run";
@@ -989,24 +1050,26 @@ function chartView(series, read) {
       drawn.length === 1
         ? `One ${each} so far: ${fmt.cell(first.value)} on ${formatDay(first.at)}.`
         : `${drawn.length} ${LANE_RUNS[series.lane]}, from ${fmt.cell(first.value)} on ${formatDay(first.at)} to ${fmt.cell(last.value)} on ${formatDay(last.at)}.`;
-    summary +=
-      outside.length === 0
-        ? " None falls outside the range Elementary expected."
-        : ` ${outside.length} of them ${outside.length === 1 ? "falls" : "fall"} outside the range Elementary expected.`;
+    // Counted from Elementary's verdicts (flaggedPoints), never from the band.
+    if (drawn.length === 1) summary += ` Elementary ${outside.length ? "flagged" : "did not flag"} it in its latest checks.`;
+    else summary += ` Elementary flagged ${outside.length === 0 ? "none" : outside.length} of them in its latest checks.`;
   }
-  // WHAT THE BAND IS, as Elementary 0.26.0 works it out: the mean of the
-  // point and those before it in its window, plus or minus three deviations,
-  // so a point counts toward its own band and cannot leave one worked out
-  // from fewer than `learning.needed` points (dbt_project.yml's measurement).
-  // A point with no band is one no run the history keeps has scored: a
-  // check's first point never is, and the pipeline keeps every other band
-  // between builds (row_history.py, "THE BANDS").
+  // WHAT THE CAPTION MUST SAY, since the band and the triangles answer two
+  // different questions: the band is the range expected from the points
+  // before (decision 118), and a triangle is Elementary's verdict, made
+  // against a band that counts the point. So a point can sit outside the
+  // band unflagged, and none can be flagged before its check holds
+  // `learning.needed` points (dbt_project.yml's measurement). A point with no
+  // band is the chart's first, or one after a point no run in the history
+  // scored: a check's first point never is, and the pipeline keeps every
+  // other band between builds (row_history.py, "THE BANDS").
   const unbanded = points.some((point) => point.min === null || point.max === null);
   const caption = [
-    "The shaded band is the range Elementary expected at each point, worked out from that point and the ones before it",
-    file ? `, so no point can fall outside a band worked out from fewer than ${file.learning.needed} ${LANE_RUNS[series.lane]}.` : ".",
-    " A point outside it is drawn as a triangle and named.",
-    unbanded ? " A point with no band is one no run in this history scored, such as a check's first, which has nothing before it to set a range by." : "",
+    `The shaded band at each point is the range Elementary expected from the ${LANE_RUNS[series.lane]} before it: the band it worked out at the point before, which does not count the point itself.`,
+    " A triangle marks a point Elementary flagged.",
+    " Elementary judges a point against a band that does count it, so a point can sit outside the shaded band without a triangle",
+    file ? `, and none can be flagged before its check has ${file.learning.needed} ${LANE_RUNS[series.lane]}.` : ".",
+    unbanded ? " A point with no band is this chart's first, or comes after one no run scored, such as a check's first." : "",
   ].join("");
 
   return {
@@ -1021,25 +1084,24 @@ function chartView(series, read) {
     caption,
     points,
     // A monthly build is named by its day; an hourly run needs its time too.
-    // The table's header says UTC, so the cells need not.
+    // The table's header says UTC, so the cells need not. `expected` is the
+    // band the chart draws at the point, so the table and the chart agree,
+    // and a flagged point says so in Elementary's words, not the band's.
     rows: points.map((point) => ({
       when: series.lane === "monthly" ? formatDay(point.at) : formatWhen(point.at).replace(/ UTC$/, ""),
       whenFull: formatWhen(point.at),
       value: point.value === null ? "No value" : fmt.cell(point.value),
-      expected:
-        point.min === null || point.max === null
-          ? NO_RANGE
-          : `${fmt.range(point.min, point.max)}${point.outside ? `, ${point.outside} it` : ""}`,
-      where: whereInRange(point),
+      expected: `${point.min === null || point.max === null ? NO_RANGE : fmt.range(point.min, point.max)}${point.outside ? `, flagged ${point.outside}` : ""}`,
+      where: flaggedLine(point),
     })),
   };
 }
 
-function whereInRange(point) {
-  if (point.outside === "below") return "Below the range";
-  if (point.outside === "above") return "Above the range";
-  if (point.value === null || point.min === null || point.max === null) return "Not compared";
-  return "Inside the range";
+/** The readout's line for a point Elementary flagged, or null for one it did not. */
+function flaggedLine(point) {
+  if (point.outside === "below") return "Flagged below the range";
+  if (point.outside === "above") return "Flagged above the range";
+  return null;
 }
 
 /**

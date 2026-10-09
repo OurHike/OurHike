@@ -20,7 +20,10 @@ the file publish.py uploads, so the two are held together here:
   reads, and gives the fixture profile both kinds of gap;
 - step_dem_sampling writes the sampler's own answer at every point of
   int_elevation__dem_points, in its ask_order, a gap as NULL and never as
-  NaN, and refuses what it cannot write honestly.
+  NaN, and refuses what it cannot write honestly;
+- it and today's sampler answer each point with that point's own pixel,
+  whatever samples.json holds from either of them (decision 115: the cache is
+  keyed on the point itself).
 
 The network half (the junction graph's edges) is held by
 tests/test_dbt_elevation_network_parity.py.
@@ -311,9 +314,10 @@ def test_step_dem_sampling_writes_the_samplers_own_answer_at_every_point(tmp_pat
 
 
 def test_step_dem_sampling_asks_in_int_elevation__dem_points_ask_order(tmp_path, fixtures, monkeypatch):
-    """The cache answers a second point within 0.11 m of a first with the first's pixel, so the step asks in the order
-    int_elevation__dem_points sets (its unit test holds that the A.T.'s walk comes first and the edges follow by
-    edge_index), not in the order the rows come back or their ids sort: 'A1' sorts before 'AT', and asks after it."""
+    """The step asks in the order int_elevation__dem_points sets (its unit test holds that the A.T.'s walk comes first
+    and the edges follow by edge_index), not in the order the rows come back or their ids sort: 'A1' sorts before 'AT',
+    and asks after it. Since decision 115 the order decides no answer, each point being keyed exactly; it is held so the
+    same rows ask the same questions in the same order, and a cold run writes the same samples.json."""
     other_line = [("A1", 0, -73.995, 41.005), ("A1", 1, -73.995, 41.0051)]
     points = STEP_POINTS + other_line
     warehouse = _warehouse_with_points(
@@ -351,12 +355,12 @@ def test_step_dem_sampling_refuses_an_answer_that_is_not_an_elevation(tmp_path, 
         assert written.execute("select count(*) from information_schema.tables where table_schema = 'derived'").fetchone()[0] == 0
 
 
-# A column edge of the fixture tile, and two points either side of it under one cache key: 1.5e-7 degrees each way,
-# where the key's last decimal is 1e-6. And two points under one key inside one pixel.
+# A column edge of the fixture tile and two points 1.5e-7 degrees either side of it, which every samples.json written
+# before decision 115 held as one point (one 6-decimal key) and a cold read finds in two pixels. And a point in the
+# middle of a pixel.
 EDGE_LON = make_dbt_fixtures.ELEVATION_FIXTURE_WEST + 10 * make_dbt_fixtures.ELEVATION_FIXTURE_PIXEL_DEG
 WEST_OF_EDGE, EAST_OF_EDGE = (EDGE_LON - 1.5e-7, 41.0), (EDGE_LON + 1.5e-7, 41.0)
-MID_PIXEL = make_dbt_fixtures.ELEVATION_FIXTURE_WEST + 10.5 * make_dbt_fixtures.ELEVATION_FIXTURE_PIXEL_DEG
-IN_ONE_PIXEL = ((MID_PIXEL - 1.5e-7, 41.0), (MID_PIXEL + 1.5e-7, 41.0))
+MID_PIXEL = (make_dbt_fixtures.ELEVATION_FIXTURE_WEST + 10.5 * make_dbt_fixtures.ELEVATION_FIXTURE_PIXEL_DEG, 41.0)
 
 
 def _own_index(tmp_path: Path, fixtures: Path) -> Path:
@@ -367,8 +371,7 @@ def _own_index(tmp_path: Path, fixtures: Path) -> Path:
 
 
 def _cold(index: Path, points: list[tuple[float, float]]) -> list:
-    """Each point read at its own pixel: a sampler of its own per point, since one sampler answers a second point
-    under a key with the first's value even with no cache file."""
+    """Each point read by a sampler of its own with no cache file: what a cold run reads at that point."""
     answers = []
     for point in points:
         sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
@@ -388,61 +391,76 @@ def _step(tmp_path: Path, index: Path, name: str, points: list[tuple[float, floa
         return [row[0] for row in written.execute("select elevation_m from derived.dem_samples order by sample_index").fetchall()]
 
 
-def test_the_edge_points_share_a_key_and_read_two_pixels(tmp_path, fixtures):
-    """What the next three tests stand on: one cache key, two different DEM answers when each is read cold."""
-    assert export_elevation._cache_key(*WEST_OF_EDGE) == export_elevation._cache_key(*EAST_OF_EDGE)
-    assert export_elevation._cache_key(*IN_ONE_PIXEL[0]) == export_elevation._cache_key(*IN_ONE_PIXEL[1])
+def _today(index: Path, points: list[tuple[float, float]]) -> list:
+    """The sampler today's three exporters build (ElevationSampler.for_index), asked `points` in one call through the
+    cache beside the index, as export_network_elevation.build asks."""
+    sampler = export_elevation.ElevationSampler.for_index(index)
+    try:
+        return sampler.sample_many(points)
+    finally:
+        sampler.close()
+
+
+def test_the_edge_points_share_a_six_decimal_key_have_two_exact_ones_and_read_two_pixels(tmp_path, fixtures):
+    """What the tests below stand on: one point under the key samples.json held before decision 115, two under
+    SAMPLE_CACHE_KEYS, and two different DEM answers when each is read cold."""
+    assert f"{WEST_OF_EDGE[0]:.6f},{WEST_OF_EDGE[1]:.6f}" == f"{EAST_OF_EDGE[0]:.6f},{EAST_OF_EDGE[1]:.6f}"
+    assert export_elevation._cache_key(*WEST_OF_EDGE) != export_elevation._cache_key(*EAST_OF_EDGE)
     west, east = _cold(_own_index(tmp_path, fixtures), [WEST_OF_EDGE, EAST_OF_EDGE])
     assert None not in (west, east) and west != east
 
 
-def test_step_dem_sampling_reads_a_key_an_earlier_run_asked_across_a_pixel_edge_at_this_runs_point(tmp_path, fixtures):
-    """Monthly run 30's 133 samples in small: an earlier run asked the key west of the edge, and this run's point is
-    east of it. The cache alone answers the west pixel; the step answers what a cold cache reads, the east one."""
+def test_both_lanes_answer_a_point_across_a_pixel_edge_from_an_earlier_runs_point_with_its_own_pixel(tmp_path, fixtures):
+    """Monthly run 30's 133 samples in small: an earlier run asked the point west of the edge and left it in
+    samples.json, and this run asks the point east of it. step_dem_sampling and today's sampler both answer the east
+    pixel, through the cache alone; until decision 115 the cache answered the west one."""
     index = _own_index(tmp_path, fixtures)
     west, east = _cold(index, [WEST_OF_EDGE, EAST_OF_EDGE])
     assert _step(tmp_path, index, "earlier", [WEST_OF_EDGE]) == [west]
-    sampler = export_elevation.ElevationSampler.for_index(index)
-    try:
-        assert sampler.sample_many([EAST_OF_EDGE]) == [west], "the cache answers this run's point with the west pixel"
-    finally:
-        sampler.close()
+    assert _today(index, [EAST_OF_EDGE]) == [east]
     assert _step(tmp_path, index, "this", [EAST_OF_EDGE]) == [east]
 
 
 @pytest.mark.parametrize("order", [(WEST_OF_EDGE, EAST_OF_EDGE), (EAST_OF_EDGE, WEST_OF_EDGE)], ids=["west first", "east first"])
-def test_step_dem_sampling_answers_a_key_across_a_pixel_edge_with_this_runs_first_point_under_it(tmp_path, fixtures, order):
-    """A cold cache answers every point under a key with the first one asked in the run, whatever an earlier run
-    asked: export_network_elevation.build and int_elevation__dem_points' ask_order both rely on that."""
+def test_step_dem_sampling_answers_two_points_across_a_pixel_edge_each_with_its_own_pixel_in_either_order(
+    tmp_path, fixtures, order
+):
+    """Whichever of the two this run asks first, and whatever an earlier run asked: each its own pixel."""
     index = _own_index(tmp_path, fixtures)
-    first, _second = _cold(index, list(order))
+    cold = _cold(index, list(order))
     _step(tmp_path, index, "earlier", [order[1]])
-    assert _step(tmp_path, index, "this", list(order)) == [first, first]
+    assert _step(tmp_path, index, "this", list(order)) == cold
 
 
-def test_step_dem_sampling_keeps_a_cached_answer_whose_key_lies_in_one_pixel(tmp_path, fixtures, capsys):
+def test_step_dem_sampling_answers_a_point_an_earlier_run_read_from_samples_json_without_opening_a_tile(
+    tmp_path, fixtures, monkeypatch
+):
+    """The exact key keeps the cache's whole purpose for the dbt lane: a point a run before read is answered from the
+    file, with the same value, and no tile is opened."""
     index = _own_index(tmp_path, fixtures)
-    (answer, also) = _cold(index, list(IN_ONE_PIXEL))
-    assert answer == also
-    _step(tmp_path, index, "earlier", [IN_ONE_PIXEL[0]])
-    capsys.readouterr()
-    assert _step(tmp_path, index, "this", [IN_ONE_PIXEL[1]]) == [answer]
-    assert "Read again with no cache: 0 point(s) under 0 key(s)" in capsys.readouterr().out
+    (answer,) = _cold(index, [MID_PIXEL])
+    assert _step(tmp_path, index, "earlier", [MID_PIXEL]) == [answer]
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("a DEM tile was opened for a point samples.json already answers")
+
+    monkeypatch.setattr(rasterio, "open", refuse)
+    assert _step(tmp_path, index, "this", [MID_PIXEL]) == [answer]
 
 
-def test_a_point_whose_key_could_cross_a_tiles_bound_is_read_again(fixtures):
-    """A key whose box crosses a tile's bound may be answered by that tile or by none, so it is read again; one wholly
-    outside every tile, and one wholly inside a pixel, are not."""
-    tiles = export_elevation.index_elevation_tiles(fixtures / make_dbt_fixtures.ELEVATION_FIXTURE_INDEX)
-    ((_, (west, south, east, north)),) = tiles
-    points = [
-        step_dem_sampling.SamplePoint("E", 0, east - 4e-7, 41.0),
-        step_dem_sampling.SamplePoint("E", 1, east + 0.01, 41.0),
-        step_dem_sampling.SamplePoint("E", 2, *IN_ONE_PIXEL[0]),
-        step_dem_sampling.SamplePoint("E", 3, *WEST_OF_EDGE),
-        step_dem_sampling.SamplePoint("E", 4, -74.0, north + 4e-7),
-    ]
-    assert step_dem_sampling.could_be_answered_for_another_point(points, tiles).tolist() == [True, False, False, True, True]
+def test_step_dem_sampling_and_todays_sampler_agree_at_every_point_whatever_the_other_left_in_samples_json(tmp_path, fixtures):
+    """The dbt side and today's side, on one cache file, each asking after the other and in the other's reverse order:
+    both answer every point with what a cold read gives there, across a pixel edge, in the middle of a pixel, in the
+    fixture tile's nodata rows and past its north edge (STEP_POINTS' second and third)."""
+    points = [WEST_OF_EDGE, EAST_OF_EDGE, MID_PIXEL, (-74.0, 41.0029), (-73.99, 41.0145)]
+    index = _own_index(tmp_path, fixtures)
+    cold = _cold(index, points)
+    assert cold[0] != cold[1] and cold[3:] == [None, None]
+
+    today = _today(index, points)
+    dbt = list(reversed(_step(tmp_path, index, "dbt", list(reversed(points)))))
+    today_again = _today(index, list(reversed(points)))[::-1]
+    assert today == dbt == today_again == cold
 
 
 # --- parity.py's elevation family ------------------------------------------------

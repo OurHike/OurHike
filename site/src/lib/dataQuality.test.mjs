@@ -285,32 +285,64 @@ describe("the page, state by state", () => {
       ]);
     });
 
-    it("draws the history behind the worst entry that has one, banded at every point but the first", () => {
+    it("draws the history behind the worst entry that has one, each point against the band stored at the point before it", () => {
       const { chart } = view.sections;
+      const stored = monthly.series[0].points;
+      const range = (point) => `${formatCount(point.expected_min)} to ${formatCount(point.expected_max)}`;
       expect(chart.table).toBe("preview_fixture__trails");
-      expect(chart.rows).toHaveLength(monthly.series[0].points.length);
-      expect(chart.rows.at(-1)).toMatchObject({
-        when: "7 Oct 2026",
-        value: "4,118",
-        expected: `${formatCount(volume.expected_min)} to ${formatCount(volume.expected_max)}, below it`,
-        where: "Below the range",
-      });
-      expect(chart.rows.map((row) => row.expected === NO_RANGE)).toEqual([true, ...Array(11).fill(false)]);
+      expect(chart.points.map((point) => [point.min, point.max])).toEqual([
+        [null, null],
+        ...stored.slice(0, -1).map((point) => [point.expected_min, point.expected_max]),
+      ]);
+      // The table shows the band the chart draws, row by row: none at the first point, which has no point before
+      // it, nor at the second, whose point before is a check's first and was never scored.
+      expect(chart.rows.map((row) => row.expected)).toEqual([
+        NO_RANGE,
+        NO_RANGE,
+        ...stored.slice(1, -2).map(range),
+        `${range(stored.at(-2))}, flagged below`,
+      ]);
+      expect(chart.rows.at(-1)).toMatchObject({ when: "7 Oct 2026", value: "4,118", where: "Flagged below the range" });
       expect(chart.summary).toBe(
-        "12 monthly builds, from 5,231 on 7 Nov 2025 to 4,118 on 7 Oct 2026. 1 of them falls outside the range Elementary expected.",
+        "12 monthly builds, from 5,231 on 7 Nov 2025 to 4,118 on 7 Oct 2026. Elementary flagged 1 of them in its latest checks.",
       );
     });
 
-    it('says the band counts its own point, and names the 11 builds no point can leave a band before ("No range" on a first point)', () => {
+    it("leaves 7 Feb 2026 unflagged above the band from the three builds before it, as the caption warns", () => {
+      const { chart } = view.sections;
+      expect(chart.rows[3]).toEqual({
+        when: "7 Feb 2026",
+        whenFull: "7 Feb 2026, 06:12 UTC",
+        value: "5,252",
+        expected: "5,222 to 5,249",
+        where: null,
+      });
+      expect(chart.points[3].value).toBeGreaterThan(chart.points[3].max);
+      expect(chart.points[3].outside).toBeNull();
+    });
+
+    it('says the band is the range expected from the builds before each point, and a triangle is Elementary\'s verdict ("No range" without one)', () => {
       const { chart } = view.sections;
       expect(NO_RANGE).toBe("No range");
       expect(chart.caption).toBe(
-        "The shaded band is the range Elementary expected at each point, worked out from that point and the ones before it, so no point can fall outside a band worked out from fewer than 11 monthly builds. A point outside it is drawn as a triangle and named. A point with no band is one no run in this history scored, such as a check's first, which has nothing before it to set a range by.",
+        "The shaded band at each point is the range Elementary expected from the monthly builds before it: the band it worked out at the point before, which does not count the point itself. A triangle marks a point Elementary flagged. Elementary judges a point against a band that does count it, so a point can sit outside the shaded band without a triangle, and none can be flagged before its check has 11 monthly builds. A point with no band is this chart's first, or comes after one no run scored, such as a check's first.",
       );
-      const banded = examples.monthlyWithWarnings();
-      banded.series[0].points = banded.series[0].points.slice(1);
-      const whole = page(read(banded, "monthly"), MISSING).sections.chart;
-      expect(whole.caption).not.toContain("no band");
+    });
+
+    it("flags only the point a warned or failed entry reports, by its value and range, whatever band the chart draws there", () => {
+      const flags = (change) => {
+        const file = examples.monthlyWithWarnings();
+        change(file.needs_a_look[0]);
+        return page(read(file, "monthly"), MISSING).sections.chart.points.map((point) => point.outside);
+      };
+      const last = [...Array(11).fill(null), "below"];
+      expect(flags(() => {})).toEqual(last);
+      expect(flags((entry) => (entry.status = "fail"))).toEqual(last);
+      // A check that could not run judged nothing, though 4,118 sits far below the band drawn there.
+      expect(flags((entry) => (entry.status = "error"))).toEqual(Array(12).fill(null));
+      // An entry whose figures are no point's cannot be placed, so nothing is flagged in its name.
+      expect(flags((entry) => (entry.value = 4117))).toEqual(Array(12).fill(null));
+      expect(flags((entry) => (entry.expected_min = entry.expected_min - 1))).toEqual(Array(12).fill(null));
     });
   });
 
@@ -533,6 +565,29 @@ describe("the Show menu", () => {
     expect(items).toEqual([]);
     expect(chart.table).toBe("trail_network");
     expect(menu.map((group) => group.label)).toEqual(["Every mart"]);
+  });
+});
+
+describe("the band and the triangles on the heavy files (decision 118)", () => {
+  it("flags the newest point of every history a warned or failed entry reports, and no point of a mart's own row count", () => {
+    const { charts } = manyView().sections;
+    for (const [file, lane] of [
+      [examples.monthlyManyProblems(), "monthly"],
+      [examples.hourlyManyProblems(), "hourly"],
+    ]) {
+      for (const series of file.series) {
+        const chart = charts.get(seriesKey({ ...series, lane }));
+        const flagged = chart.points.flatMap((point, i) => (point.outside ? [i] : []));
+        expect(flagged, `${lane} ${series.table} ${series.metric}`).toEqual(series.in_needs_a_look ? [series.points.length - 1] : []);
+      }
+    }
+  });
+
+  it("names the hourly lane's runs in an hourly chart's caption", () => {
+    const { charts } = manyView().sections;
+    const hourly = [...charts.values()].find((chart) => chart.lane === "hourly");
+    expect(hourly.caption).toContain("the range Elementary expected from the hourly runs before it");
+    expect(hourly.caption).toContain("none can be flagged before its check has 11 hourly runs.");
   });
 });
 

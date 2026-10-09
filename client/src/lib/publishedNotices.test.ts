@@ -68,40 +68,6 @@ describe('a source_url', () => {
   })
 })
 
-describe('a matched_page (decision 128)', () => {
-  const page = (value: unknown) => validNotice(row({ matched_page: value }))?.matched_page
-
-  it('is read with its link and the page’s own day', () => {
-    expect(
-      page({
-        url: 'https://empiretrail.ny.gov/trail-closures',
-        updated_on: '2026-10-01',
-      }),
-    ).toEqual({
-      url: 'https://empiretrail.ny.gov/trail-closures',
-      updated_on: '2026-10-01',
-    })
-  })
-
-  it('keeps its link with no day where the day is not an ISO day', () => {
-    expect(page({ url: 'https://example.org/fixture', updated_on: 'October 1' })).toEqual(
-      {
-        url: 'https://example.org/fixture',
-        updated_on: null,
-      },
-    )
-  })
-
-  it('is left out whole where its link is not an absolute http or https URL, and on every other row', () => {
-    // A row that claims a page it cannot open would print "Read the trail's
-    // closures page" over a link to OurHike itself.
-    expect(page({ url: '/trail-closures', updated_on: '2026-10-01' })).toBeUndefined()
-    expect(page({ updated_on: '2026-10-01' })).toBeUndefined()
-    expect(page('https://example.org/fixture')).toBeUndefined()
-    expect(validNotice(row())).not.toHaveProperty('matched_page')
-  })
-})
-
 describe('a geometry place', () => {
   it.each([
     // What the writer's ST_AsGeoJSON makes of an empty polygon (the

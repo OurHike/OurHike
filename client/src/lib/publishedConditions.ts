@@ -469,19 +469,6 @@ export interface OrgNotice {
   /** Set when OurHike could not use the source's latest read and kept its
    *  last good rows instead: when that began. */
   carried_since?: string | null
-  /** Decision 128: on a row a person matched to an item on a dated page
-   *  (Parks & Trails New York's closed Empire State Trail sections, matched
-   *  to the trail's closures page), that page's link and its own stated day,
-   *  ISO. Absent on every other row. The day is the page's, never the row's:
-   *  `updated_at` stays the source's own. */
-  matched_page?: NoticeMatchedPage | null
-}
-
-/** The page a notice was matched to (decision 128): its link, and the day the
- *  page itself says it was updated, or null where that cannot be read. */
-export interface NoticeMatchedPage {
-  url: string
-  updated_on: string | null
 }
 
 /**

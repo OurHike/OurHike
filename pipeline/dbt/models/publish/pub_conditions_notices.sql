@@ -75,18 +75,6 @@
 -- 4,286,114 are the areas, 1,945,390 the lines and points, and 4,600,584
 -- every other field. A part the shaping would empty keeps its full shape.
 --
--- `matched_page` is decision 128's (the maintainer's poll of 2026-10-09,
--- w6-ptny-closures.html's frame A): on a row a person matched to an item on
--- a page, the page's link and the page's own stated date, which the phone
--- prints as "On the trail's closures page — updated <date>" and "Read the
--- trail's closures page". Absent on every other row. Only a match that
--- stands this build (int_closures__page_matches): int_closures__club_notices
--- and int_closures__held_carried keep every other row of such a source out
--- of the marts, so a row of one always carries it, and
--- assert_every_row_of_a_confirming_source_carries_its_page holds that. The
--- page's date is the page's, never the row's: `updated_at` stays the
--- source's own, null for Parks & Trails New York, which dates nothing.
---
 -- THE DATES. `updated_at` is the club's own edit stamp, null where it gives
 -- none. `checked_at` is OurHike's: the run log's (base_extract__runs) latest
 -- read of the source that loaded it or found it unchanged, the oldest of
@@ -454,40 +442,6 @@ stated_rows as (
     left join named_states on notice_rows.source_key = named_states.source_key
 ),
 
--- Decision 128's `matched_page`, the same way: on a matched row only. The
--- seed keys a match by notice id (unique), so the id alone finds it.
-page_matches as (
-    select
-        notice_id,
-        page_url,
-        page_updated_on
-    from {{ ref('int_closures__page_matches') }}
-    where held_because is null
-),
-
-matched_rows as (
-    select
-        stated_rows.source_key,
-        stated_rows.notice_id,
-        case
-            when page_matches.notice_id is null then stated_rows.notice
-            else
-                json_merge_patch(
-                    stated_rows.notice,
-                    json_object(
-                        'matched_page',
-                        json_object(
-                            'url', page_matches.page_url,
-                            'updated_on',
-                            strftime(page_matches.page_updated_on, '%Y-%m-%d')
-                        )
-                    )
-                )
-        end as notice
-    from stated_rows
-    left join page_matches on stated_rows.notice_id = page_matches.notice_id
-),
-
 -- Whether a notice source that may publish is held this build: in a build
 -- without the row history its last good rows cannot be carried. And whether
 -- one is held with rows this build read and no row in the marts to carry
@@ -519,13 +473,13 @@ published as (
         coalesce(
             to_json(
                 list(
-                    matched_rows.notice
-                    order by matched_rows.source_key, matched_rows.notice_id
+                    stated_rows.notice
+                    order by stated_rows.source_key, stated_rows.notice_id
                 )
             ),
             cast('[]' as json)
         ) as notices
-    from matched_rows
+    from stated_rows
 )
 
 select

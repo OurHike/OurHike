@@ -3,7 +3,7 @@
 The Long Path guide and the Hike Finder are web pages, and a monthly pin carries neither page: it carries the rows the
 guide_pages and published_hikes kinds landed, each the page as lib/nynjtc_long_path_guide.py or lib/hikefinder.py
 parses it. Monthly run 30 (refresh-reference.yml 37772454847) read the fixture's pages instead, so its old side placed
-no guide waypoint (271 differences in nearby_poi, 111 in places) and could not run suggested_hikes at all. These hold
+no guide waypoint (271 differences in nearby_poi, 109 in places) and could not run suggested_hikes at all. These hold
 the reading to the shape the extract lands; tests/test_extract_fixtures.py holds it to what dlt really lands from
 make_dbt_fixtures.py's pages.
 """

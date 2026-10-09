@@ -1859,8 +1859,9 @@ def _guide_sections_old() -> Path:
     In CI the table is make_dbt_fixtures.py's guide pages, which fixture mode served the extract; in a monthly run it
     is the pin's. Monthly run 30 (refresh-reference.yml 37772454847) parsed the fixture's pages here, which a pin does
     not carry, so its old side placed no guide waypoint, and its nearby_poi parity named all 271 the dbt writer
-    published, and places' the 111 lots among them. Today's guide_records() over the guide and Long Path layer read
-    live on 2026-10-08 places the same 271, every one equal to the dbt writer's in run 30, property for property.
+    published, and places' the 109 guide places among them. Today's guide_records() over the guide and Long Path
+    layer read live on 2026-10-08 places the same 271, every one equal to the dbt writer's in run 30, property for
+    property.
     """
     import tempfile
 

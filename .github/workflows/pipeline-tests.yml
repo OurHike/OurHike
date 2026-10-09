@@ -675,9 +675,12 @@ jobs:
       # holding only a run log and runs `dbt source freshness` on the real
       # project over nine cases: refused 30 hours, confirmed an hour ago with
       # a week-old `_loaded_at`, read an hour ago, and the rest in its
-      # docstring. It reads the generated YAML, not the generator, so this
-      # venv needs no dlt. Measured 2026-10-07 in a sandbox: 9 passed in 11
-      # to 13 s.
+      # docstring. A second run uses publish-conditions.yml's own selection
+      # and holds that it measures the four PDF notices, which this job's
+      # own freshness step leaves out. It reads the generated YAML, not the
+      # generator, so this venv needs no dlt. Measured 2026-10-07 in a
+      # sandbox: 9 passed in 11 to 13 s; with the second run, 10 passed in
+      # 55 s on 2026-10-09, in a sandbox other builds shared.
       - name: Notice source freshness (tests/test_dbt_notice_source_freshness_runs.py)
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_freshness_runs.py

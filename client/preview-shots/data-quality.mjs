@@ -7,7 +7,7 @@
 // in the site's own example files and labels the frame as invented, and the
 // caption says it again, so the picture cannot be taken for a measurement.
 //
-// WHAT TO LOOK FOR, against mock B: the "Data docs" / "Data quality" tabs
+// WHAT TO LOOK FOR, against mock B: the "How the data is built" / "Data quality" tabs
 // under the site's own nav; both build cards with their passed, warning and
 // failed counts; the five kinds of check, each with what needs a look in it.
 // Everything is drawn from the files: change one count in
@@ -50,7 +50,7 @@ import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 export const caption =
   'ourhike.org/data/quality/ on a laptop, from INVENTED example files (no release carries the file yet): the data tabs, both build cards and the five kinds of check. Nothing in this frame was measured.'
 export const alt =
-  'The data quality page at desktop width. A white band holds two tabs, "Data docs" and "Data quality", the second highlighted in pale green. Below, the eyebrow "ourhike.org/data/quality", the serif heading "Data quality", a grey paragraph saying the page shows counts and table names, never rows, and a dashed amber pill reading "Invented figures, routed in by the preview recipe. Nothing here was measured." Two white cards side by side, "Monthly build" and "Hourly conditions", each with a line naming when it was built and three pills - a number passed with a green check, a number of warnings with an amber triangle, and "0 failed" - then the heading "The five kinds of check" over five cards: Freshness, Volume, Schema, dbt tests and Anomalies, each with an amber "1 late"-style pill or a green "All pass", a large count of checks passed and a short note naming a table.'
+  'The data quality page at desktop width. A white band holds two tabs, "How the data is built" and "Data quality", the second highlighted in pale green. Below, the eyebrow "ourhike.org/data/quality", the serif heading "Data quality", a grey paragraph saying the page shows counts and table names, never rows, and a dashed amber pill reading "Invented figures, routed in by the preview recipe. Nothing here was measured." Two white cards side by side, "Monthly build" and "Hourly conditions", each with a line naming when it was built and three pills - a number passed with a green check, a number of warnings with an amber triangle, and "0 failed" - then the heading "The five kinds of check" over five cards: Freshness, Volume, Schema, dbt tests and Anomalies, each with an amber "1 late"-style pill or a green "All pass", a large count of checks passed and a short note naming a table.'
 
 export const desktop = true
 

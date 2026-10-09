@@ -32,9 +32,9 @@ function pages(dir = "src/pages") {
 }
 
 describe("the footer's data links", () => {
-  it('end "The project" with Data docs and then Data quality', () => {
+  it('end "The project" with How the data is built and then Data quality', () => {
     expect(column("THE PROJECT").slice(-2)).toEqual([
-      ["/data/", "Data docs"],
+      ["/data/", "How the data is built"],
       ["/data/quality/", "Data quality"],
     ]);
   });

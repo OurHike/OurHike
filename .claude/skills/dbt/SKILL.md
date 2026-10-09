@@ -318,9 +318,11 @@ measurements; `macros/row_history.sql` has the macros. This is what to do.
 Every mart is a contracted table (`contract: {enforced: true}`), `access:
 public`, with every column described. Intermediates are `protected`. Every mart
 carries `club varchar` (the folder that extracted the row), `source_key
-varchar` (with a relationships test to `sources`) and `_loaded_at timestamptz`,
-and each feature appears once, its stewards attached from
-`int_<mart>__stewardship`.
+varchar` and `_loaded_at timestamptz`, and each feature appears once, its
+stewards attached from `int_<mart>__stewardship`. `source_key` is tested with
+`dbt_utils.relationships_where` against `int_sources__publication`, `to_condition:
+may_publish`, as podcasts' is: a plain `relationships` test passes a row whose
+source is registered but held back.
 
 | Trap | Evidence | What to do |
 |---|---|---|

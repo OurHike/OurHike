@@ -155,10 +155,13 @@ models:
         constraints:
           - type: not_null
         data_tests:
-          - relationships:
+          # Its source may publish, not only exist: a plain relationships test
+          # passes a row whose source is registered but held back.
+          - dbt_utils.relationships_where:
               arguments:
                 to: ref('int_sources__publication')
                 field: source_key
+                to_condition: may_publish
       - name: _loaded_at
         description: When the extract loaded the row's source.
         data_type: timestamptz

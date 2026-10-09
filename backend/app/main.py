@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
+from app.core.logs import RequestIdMiddleware, configure_logging
 from app.routers import (
     app_failures,
     assist,
@@ -34,6 +35,8 @@ from app.routers import (
     work_projects,
 )
 
+configure_logging()
+
 app = FastAPI(title="OurHike backend")
 
 # Added BEFORE the CORS middleware below, which matters: `add_middleware`
@@ -56,7 +59,14 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-Id"],
 )
+
+# Added AFTER CORS so it is outermost: a 5xx that CORS or anything inside it
+# raises is still logged, and the id header is on every response. A browser
+# only lets the client read X-Request-Id because CORS exposes it above.
+# app/core/logs.py is the reasoning (#1759).
+app.add_middleware(RequestIdMiddleware)
 
 
 def _json_safe(value):

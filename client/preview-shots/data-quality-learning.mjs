@@ -51,7 +51,12 @@ export default async function drive(page) {
   await page.getByRole('heading', { name: 'Needs a look' }).waitFor()
   const runs = page.locator('section.dq-runs')
   await labelInvented(page, { before: runs })
-  // The pill sits above the cards with a 12 px margin; 64 px keeps it in
-  // the frame with the two cards and the five kinds of check under them.
-  await scrollToTop(runs, 64)
+  // The pill itself 16 px from the top, so the frame says in full that its
+  // figures are invented, at either width; the cards and the five kinds of
+  // check follow it. Scrolled to the cards at 64 px, it was cut at its top
+  // edge on a laptop and to its last line on a phone (measured 2026-10-09).
+  await scrollToTop(
+    page.getByText('Invented figures, routed in by the preview recipe.'),
+    16,
+  )
 }

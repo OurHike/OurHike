@@ -1,9 +1,11 @@
 version: 2
 
-# Decision 53's phase C: the club notice sources' seeds. Four are reviewed by
+# Decision 53's phase C: the club notice sources' seeds. Five are reviewed by
 # hand row by row (notice_source_fields, notice_status_values, decision 67's
-# notice_hazard_areas and decision 76's notice_states), one is a
-# person's mark on a notice (notice_marks), and one is written by
+# notice_hazard_areas, decision 76's notice_states and decision 128's
+# notice_confirming_pages), two are a person's judgement on one notice
+# (notice_marks, and decision 128's notice_page_matches, each row approved by
+# the maintainer before it is written), and one is written by
 # pipeline/generate_notice_models.py from the extract's own declarations
 # (notice_readers), which tests/test_generated_notice_models.py holds to what
 # the generator writes.
@@ -171,6 +173,124 @@ seeds:
           person's name or contact.
       - name: why
         description: What the person read that ends the notice.
+  - name: notice_confirming_pages
+    description: >
+      The notice sources whose rows draw only once a person has matched each
+      one to an item on a named page, and only while that page's latest read
+      still carries the item (decision 128, the maintainer's poll of
+      2026-10-09): one row per source, naming its page.
+      int_closures__club_notices holds every other row of such a source
+      (rule 7), int_closures__held_carried carries none of them, and
+      int_closures__page_matches says which matches stand. A decision, not a
+      match: the matches are notice_page_matches.
+    config:
+      column_types:
+        source_key: varchar
+        page_source_key: varchar
+        evidence: varchar
+    columns:
+      - name: source_key
+        description: The notice source's sources.json key.
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('stg_registry__sources')
+                field: source_key
+      - name: page_source_key
+        description: >
+          The sources.json key of the page its rows are matched to. The
+          Empire State Trail's closures page is the only page the extract
+          reads with `items` (extract/nysparks/closures.py) and the only one
+          int_closures__page_matches reads, so another page is refused here
+          until both learn it.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [oprhp_est_trail_closures_page]
+      - name: evidence
+        description: The decision and what it rests on, quoted from the sources' sources.json notes.
+        data_tests: [not_null]
+  - name: notice_page_matches
+    description: >
+      A person's match of one notice row to one item on its page (decision
+      128): that this section of Parks & Trails New York's closures layer is
+      the closure this item of the trail's closures page describes. Each row
+      is a judgement the maintainer approves in chat before it is written,
+      the rule decision 121 set for trail_orgs.json rows, so the file ships
+      with none and nothing draws until one is approved. A row names the
+      notice exactly, its id and its raw row's key, so a section PTNY
+      redraws or renumbers stops matching; and the item by the sha256 of its
+      words, so an item the page drops or rewords stops matching too
+      (int_closures__page_matches says why each one stands or does not).
+    data_tests:
+      # An id the marts key notices by, and a sha256 as PageNotice writes it.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "regexp_full_match(notice_id, '[a-z][a-z0-9_]*:.+')"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "regexp_full_match(page_item_sha256, '[0-9a-f]{64}')"
+    config:
+      column_types:
+        notice_id: varchar
+        source_row_key: varchar
+        page_source_key: varchar
+        page_item: varchar
+        page_item_sha256: varchar
+        matched_on: date
+        reviewed_in: varchar
+        evidence: varchar
+    columns:
+      - name: notice_id
+        description: >
+          The notice, as the marts key it: `<source key>:<the source's own
+          id>`, so `ptny_est_closures:<OBJECTID>`. Its source must be one
+          notice_confirming_pages names.
+        data_tests: [not_null, unique]
+      - name: source_row_key
+        description: >
+          The notice's raw row key (its base model's `notice_key`, the
+          closures mart's `source_row_key`): a hash of the source key, the
+          OBJECTID and the geometry, so the match holds only while PTNY
+          serves that line exactly as it was matched.
+        data_tests: [not_null]
+      - name: page_source_key
+        description: The page's sources.json key, the one notice_confirming_pages names for the notice's source.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [oprhp_est_trail_closures_page]
+      - name: page_item
+        description: >
+          The item as the page writes it, quoted for the reviewer: its lead
+          (the place and county the page names) and enough of its first
+          sentence to tell it from the page's other items. Never published.
+        data_tests: [not_null]
+      - name: page_item_sha256
+        description: >
+          The sha256 of the item's whole visible text, whitespace folded, as
+          extract/_notices.py's PageNotice computes it for `item_sha256s`.
+        data_tests: [not_null]
+      - name: matched_on
+        description: The day the person compared the line with the page's latest read.
+        data_tests: [not_null]
+      - name: reviewed_in
+        description: >
+          Where the maintainer approved the row: the poll's date and the pull
+          request that records it, by number and title; never a person's name
+          or contact.
+        data_tests: [not_null]
+      - name: evidence
+        description: >
+          Why this line is that item: where the line lies (its ends'
+          coordinates, its length, the places they are near), its own name
+          and owner where PTNY gives them, and the page's words that place
+          the item.
+        data_tests: [not_null]
   - name: notice_readers
     description: >
       Every closures and warnings resource the extract declares, one row per

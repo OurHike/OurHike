@@ -3062,11 +3062,13 @@ NOTICE_RSS = "application/rss+xml; charset=UTF-8"
 FIXTURE_DAY = "September 21, 2026"
 
 
-def _notice_page(h1: str, dated: str | None = f"Updated {FIXTURE_DAY}", region: str = "main") -> str:
-    """An HTML page shaped like the live one: the notice in `region`, a menu and a footer the reader leaves out."""
+def _notice_page(h1: str, dated: str | None = f"Updated {FIXTURE_DAY}", region: str = "main", items: tuple[str, ...] = ()) -> str:
+    """An HTML page shaped like the live one: the notice in `region`, a menu and a footer the reader leaves out, and
+    `items` as one <li> each, for a page read with PageNotice's `items` (the Empire State Trail's closures page)."""
     date_line = f"<p>{dated}</p>" if dated else ""
     title = f"<title>{h1}</title>"
-    inner = f"<h1>{h1}</h1>{date_line}<p>Fixture notice: a trail section is closed for repairs.</p>"
+    listed = f"<ul>{''.join(f'<li>{item}</li>' for item in items)}</ul>" if items else ""
+    inner = f"<h1>{h1}</h1>{date_line}<p>Fixture notice: a trail section is closed for repairs.</p>{listed}"
     if region == "main":
         body = f"<nav>Fixture menu</nav><main>{inner}</main><footer>Fixture footer</footer>"
     elif region == "article":
@@ -3163,10 +3165,19 @@ def _notice_pages_n_to_z() -> dict[str, tuple[str, str, str]]:
             "https://dec.ny.gov/things-to-do/hiking/adirondack-backcountry/backcountry-information-for-adirondack-park",
             _notice_page("Fixture Backcountry Information", "New this week (9/21/2026)"),
         ),
-        # The <h1> is the live page's own: the resource's expect_title is 'Trail Closures'.
+        # The <h1> is the live page's own: the resource's expect_title is 'Trail Closures'. Its closures are one <li>
+        # each, as live (read 2026-10-09), because the resource reads them with items="li" (decision 128).
         "oprhp_est_trail_closures_page": (
             "https://empiretrail.ny.gov/trail-closures",
-            _notice_page("Trail Closures", f"Updated {FIXTURE_DAY}"),
+            _notice_page(
+                "Trail Closures",
+                f"Updated {FIXTURE_DAY}",
+                items=(
+                    "<strong>Fixture Town, Fixture County:</strong> The trail is closed between Fixture Road and "
+                    "Fixture Street for repairs.",
+                    "<strong>Fixture City, Fixture County:</strong> Fixture work beside the trail; expect flaggers.",
+                ),
+            ),
         ),
         "palmetto_trail_closures": (
             "https://www.palmettotrail.org/updates/post/trail-closures-updated-2-5-26",

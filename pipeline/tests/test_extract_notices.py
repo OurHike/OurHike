@@ -449,6 +449,110 @@ def test_a_named_region_is_what_is_read_and_a_page_that_lost_it_has_changed_shap
         list(conditions(region="#alert-block").rows({}))
 
 
+# Decision 128's page: each closure one <li> in <main>, its place in a <strong> lead, as the Empire State Trail's
+# closures page writes them (read 2026-10-09). The words are invented; a menu list in <nav> and a footer list sit
+# outside the region, as they do on a Drupal page.
+LISTED = """<!DOCTYPE html><html><head><title>Trail Closures | A Trail</title></head><body>
+<nav><ul><li>Home</li><li>Plan Your Trip</li></ul></nav>
+<main><h1>Trail Closures</h1><p><em>Updated October 1, 2026.</em></p>
+<p><strong>Canal Section</strong></p><ul>%(items)s</ul></main>
+<footer><ul><li>Contact</li></ul></footer></body></html>"""
+BRIDGE = "<strong>Fixture Town, Fixture County:</strong> The trail is closed at the Fixture Creek bridge."
+WALL = "<strong>Fixture City, Fixture County:</strong> Work beside the trail; follow the <a href='/x'>detour</a>."
+
+
+def listed(*items: str) -> str:
+    return LISTED % {"items": "".join(f"<li>{item}</li>" for item in items)}
+
+
+def item_hashes(row: dict) -> list[str]:
+    return json.loads(row[_notices.ITEM_COLUMN])
+
+
+def test_a_page_read_with_items_lands_each_items_hash_in_page_order_and_never_its_words(registry, requests_mock):
+    """Decision 128: a section of Parks & Trails New York's layer draws only while the item a person matched it to is
+    still on the trail's closures page, so the read lands one sha256 per item, and no item's words (decision 55)."""
+    requests_mock.get(PAGE_URL, text=listed(BRIDGE, WALL))
+
+    (row,) = list(conditions(items="li").rows({}))
+
+    assert set(row) == set(PAGE_COLUMNS) | {_notices.ITEM_COLUMN}
+    assert item_hashes(row) == [
+        _notices._sha256("Fixture Town, Fixture County: The trail is closed at the Fixture Creek bridge."),
+        _notices._sha256("Fixture City, Fixture County: Work beside the trail; follow the detour."),
+    ], "each item's visible text, whitespace folded, in page order; the menu's and the footer's lists are not items"
+    assert "Fixture Creek" not in json.dumps(row) and " " not in row[_notices.ITEM_COLUMN]
+    assert (row["title"], row["date"]) == ("Trail Closures", "2026-10-01")
+
+
+def test_a_page_read_without_items_lands_exactly_the_columns_it_did(registry, requests_mock):
+    """Every other page notice is read as before: no new column, so no source's row hash moves (its FRESH check)."""
+    requests_mock.get(PAGE_URL, text=listed(BRIDGE, WALL))
+
+    (row,) = list(conditions().rows({}))
+
+    assert set(row) == set(PAGE_COLUMNS)
+    assert set(conditions().column_hints()) == set(PAGE_COLUMNS)
+    assert set(conditions(items="li").column_hints()) == set(PAGE_COLUMNS) | {_notices.ITEM_COLUMN}
+
+
+def test_an_item_reworded_or_removed_leaves_the_list_and_the_others_keep_their_hash(registry, requests_mock):
+    """Any edit to an item's words reads as that item gone, so a section matched to it is held until a person matches
+    it again: the rounding decision 128 asked for. An item the edit did not touch keeps its hash."""
+    body = {"text": listed(BRIDGE, WALL)}
+    requests_mock.get(PAGE_URL, text=lambda request, context: body["text"])
+    (before,) = list(conditions(items="li").rows({}))
+
+    _notices._ANSWERS.clear()
+    body["text"] = listed(BRIDGE.replace("is closed", "remains closed"), WALL)
+    (reworded,) = list(conditions(items="li").rows({}))
+    _notices._ANSWERS.clear()
+    body["text"] = listed(WALL)
+    (removed,) = list(conditions(items="li").rows({}))
+
+    bridge, wall = item_hashes(before)
+    assert bridge not in item_hashes(reworded) and wall in item_hashes(reworded)
+    assert item_hashes(removed) == [wall]
+
+
+def test_a_nested_list_is_part_of_the_item_it_sits_in(registry, requests_mock):
+    requests_mock.get(PAGE_URL, text=listed(BRIDGE + "<ul><li>Detour: Fixture Road</li></ul>", WALL))
+
+    (row,) = list(conditions(items="li").rows({}))
+
+    assert len(item_hashes(row)) == 2
+    assert item_hashes(row)[0] == _notices._sha256(
+        "Fixture Town, Fixture County: The trail is closed at the Fixture Creek bridge. Detour: Fixture Road"
+    )
+
+
+def test_a_page_read_with_items_whose_region_holds_none_has_changed_shape(registry, requests_mock):
+    """A redesign that drops the list must not read as every closure lifted at once: the read raises, so the leg
+    leaves the source out and its last row stands (the walled-page rule)."""
+    requests_mock.get(PAGE_URL, text=listed())
+
+    with pytest.raises(NoticeUnreadable, match="holds no 'li' item, which is a changed shape"):
+        list(conditions(items="li").rows({}))
+
+
+def test_items_are_read_from_a_pages_html_only(registry, requests_mock):
+    with pytest.raises(ValueError, match="never through a WordPress route"):
+        page_notice("wpstaq_conditions", wp_page=25, items="li")
+    with pytest.raises(ValueError, match="is not tag, #id, .class"):
+        conditions(items="li > a")
+    requests_mock.get(PAGE_URL, content=b"%PDF-1.7 a closures list", headers={"Content-Type": "application/pdf"})
+    with pytest.raises(NoticeUnreadable, match="now a PDF, which has no 'li' items"):
+        list(conditions(items="li").rows({}))
+
+
+def test_the_empire_state_trail_closures_page_is_read_with_its_items():
+    """The one page decision 128 matches sections to, read with `items` so int_closures__page_matches can see them."""
+    from extract.nysparks import closures
+
+    (page,) = [resource for resource in closures.RESOURCES if resource.key == "oprhp_est_trail_closures_page"]
+    assert (page.items, page.expect_title) == ("li", "Trail Closures")
+
+
 def test_a_fragment_with_no_title_of_its_own_carries_the_registry_rows_only_when_asked(registry, requests_mock):
     requests_mock.get(PAGE_URL, text='<ul class="alerts"><li><span>Fest moved to Oct 17</span></li></ul>')
 

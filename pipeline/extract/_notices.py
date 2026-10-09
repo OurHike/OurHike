@@ -706,17 +706,24 @@ class _PageReader(HTMLParser):
     HTMLParser closes nothing by itself, so an end tag closes every element
     opened after its own start tag, the way a browser recovers from an
     unclosed <p> or <li>.
+
+    With `items`, each element matching that spec is also read as one item:
+    its text, kept with the regions open where it began. An item inside
+    another item is part of the outer one, so a nested list is one item.
     """
 
-    def __init__(self, specs: tuple[str, ...]):
+    def __init__(self, specs: tuple[str, ...], items: str | None = None):
         super().__init__(convert_charrefs=True)
         self.specs = specs
         self.matchers = [_region_matcher(spec) for spec in specs]
-        self.stack: list[tuple[str, int | None]] = []  # (tag, the region it opened, if any)
+        self.item_matcher = _region_matcher(items) if items else None
+        self.stack: list[tuple[str, int | None, bool]] = []  # (tag, the region it opened, if any, whether it began an item)
         self.open = {len(specs)}  # region indexes being read; the last index is `document`
         self.text: dict[int, list[str]] = {len(specs): []}
         self.h1: dict[int, list[str]] = {len(specs): []}
         self.h1_done: set[int] = set()
+        self.items: list[tuple[frozenset[int], list[str]]] = []  # (the regions open where it began, its text)
+        self._item: list[str] | None = None  # the open item's text
         self.title: list[str] = []
         self.og_title: str | None = None
         self.json_ld: list[str] = []
@@ -728,6 +735,8 @@ class _PageReader(HTMLParser):
         if tag not in INLINE_ELEMENTS:
             for index in self.open:
                 self.text[index].append(" ")
+            if self._item is not None:
+                self._item.append(" ")
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -743,7 +752,17 @@ class _PageReader(HTMLParser):
         if opened is not None:
             self.open.add(opened)
             self.text[opened], self.h1[opened] = [], []
-        self.stack.append((tag, opened))
+        begins_item = (
+            self.item_matcher is not None
+            and self._item is None
+            and not self._skip
+            and not self._outside
+            and self.item_matcher(tag, attrs)
+        )
+        if begins_item:
+            self._item = []
+            self.items.append((frozenset(self.open), self._item))
+        self.stack.append((tag, opened, begins_item))
         if tag == "script" and (attrs.get("type") or "").lower() == "application/ld+json":
             self._ld = []
         self._skip += tag in SKIPPED_ELEMENTS
@@ -753,11 +772,13 @@ class _PageReader(HTMLParser):
 
     def handle_endtag(self, tag):
         self._boundary(tag)
-        positions = [i for i, (name, _) in enumerate(self.stack) if name == tag]
+        positions = [i for i, (name, _, _) in enumerate(self.stack) if name == tag]
         if tag in VOID_ELEMENTS or not positions:
             return  # an end tag nothing opened, which pages carry
-        for name, opened in self.stack[positions[-1] :]:
+        for name, opened, began_item in self.stack[positions[-1] :]:
             self.open.discard(opened)
+            if began_item:
+                self._item = None
             if name == "script" and self._ld is not None:
                 self.json_ld.append("".join(self._ld))
                 self._ld = None
@@ -781,6 +802,8 @@ class _PageReader(HTMLParser):
                 self.text[index].append(data)
                 if self._h1 and index not in self.h1_done:
                     self.h1[index].append(data)
+            if self._item is not None:
+                self._item.append(data)
 
     def region(self, fallback: bool) -> tuple[str, str, str | None] | None:
         """(which region, its text, its first <h1>) for the first spec the page has, or `document`, or None."""
@@ -790,6 +813,12 @@ class _PageReader(HTMLParser):
         index = indexes[0] if indexes else len(self.specs)
         name = self.specs[index] if indexes else DOCUMENT
         return name, _text("".join(self.text[index])) or "", _text("".join(self.h1[index]))
+
+    def items_in(self, region: str) -> list[str]:
+        """The text of each item that began inside `region` (a name region() returned), whitespace folded, in page
+        order. An item with no text is left out: it says nothing a hiker could read."""
+        index = self.specs.index(region) if region in self.specs else len(self.specs)
+        return [text for regions, parts in self.items if index in regions and (text := _text("".join(parts)))]
 
 
 def html_text(fragment: str) -> str:
@@ -969,6 +998,8 @@ def read_pdf(body: bytes) -> PdfFacts:
 
 # The columns a page notice lands, and nothing else.
 PAGE_COLUMNS = ("url", "title", "date", "date_text", "date_source", "format", "region", "region_chars", "region_sha256")
+# And the one a page read with `items` adds: a JSON list of each item's sha256, never its text (PageNotice, ITEMS).
+ITEM_COLUMN = "item_sha256s"
 
 
 @dataclass(frozen=True)
@@ -1066,6 +1097,23 @@ class PageNotice(_NoticeSource):
     closures post carries its date in its slug, so a new post moves the URL
     [b3]), so the read raises and the run says so every hour until a person
     looks, rather than reading the notice as lifted.
+
+    ITEMS, for a page another source's rows are matched to (decision 128, the
+    maintainer's poll of 2026-10-09: the Empire State Trail's closures page,
+    whose items each name one closed section). With `items` set to the
+    element each item is (`li` there: every closure is one <li> in <main>,
+    read 2026-10-09), the row also lands ITEM_COLUMN, the sha256 of each
+    item's visible text, whitespace folded, in page order. Hashes and never
+    the text, as for the region (decision 55): dbt's
+    int_closures__page_matches asks only whether the item a person matched
+    is still on the latest read. So any edit to an item's words, a typo fix
+    included, reads as that item gone, and the section matched to it is held
+    until a person matches it again. That rounds toward held, the direction
+    decision 128 chose: a section drawn closed on an item the page no longer
+    carries is a closure nobody stands behind. A region with no item has
+    changed shape and raises, so the last row stands rather than every match
+    failing at once. Read from HTML only: a WordPress route or a PDF with
+    `items` raises.
     """
 
     region: str | None = None
@@ -1075,6 +1123,8 @@ class PageNotice(_NoticeSource):
     registry_title: bool = False
     # The stated-date pattern; None turns step 1 of the date order off.
     date_pattern: str | None = STATED_DATE.pattern
+    # The element each of the page's items is (ITEMS above); None lands no ITEM_COLUMN.
+    items: str | None = None
 
     @property
     def wp_route(self) -> str | None:
@@ -1107,6 +1157,8 @@ class PageNotice(_NoticeSource):
     def column_hints(self) -> dict:
         hints = {name: {"data_type": "text"} for name in PAGE_COLUMNS}
         hints["region_chars"] = {"data_type": "bigint"}
+        if self.items is not None:
+            hints[ITEM_COLUMN] = {"data_type": "text"}
         return hints
 
     def _stated(self, text: str) -> tuple[str, str, str] | None:
@@ -1140,13 +1192,15 @@ class PageNotice(_NoticeSource):
     def _parse(self, response: requests.Response):
         content_type = (response.headers.get("Content-Type") or "").lower()
         if "application/pdf" in content_type or response.content[:5] == b"%PDF-":
+            if self.items is not None:
+                raise NoticeUnreadable(f"{self.key}: the page is now a PDF, which has no {self.items!r} items to read")
             return [self._pdf_row(response)], 1
         if self.wp_route is not None:
             return [self._wp_row(response)], 1
         return [self._html_row(response)], 1
 
     def _html_row(self, response: requests.Response) -> dict:
-        reader = _PageReader((self.region,) if self.region else DEFAULT_REGIONS)
+        reader = _PageReader((self.region,) if self.region else DEFAULT_REGIONS, items=self.items)
         reader.feed(_decoded(response))
         reader.close()
         title = _text("".join(reader.title))
@@ -1163,7 +1217,14 @@ class PageNotice(_NoticeSource):
             or self._last_modified(response)
         )
         own = h1 or _text(reader.og_title) or title
-        return self._row(own or (_text(self.entry.get("title")) if self.registry_title else None), dated, "html", region, text)
+        row = self._row(own or (_text(self.entry.get("title")) if self.registry_title else None), dated, "html", region, text)
+        if self.items is None:
+            return row
+        items = reader.items_in(region)
+        if not items:
+            raise NoticeUnreadable(f"{self.key}: the page's {region} holds no {self.items!r} item, which is a changed shape")
+        # No space in it, so dbt's notice_is_wording() never reads the list as the page's words.
+        return {**row, ITEM_COLUMN: json.dumps([_sha256(item) for item in items], separators=(",", ":"))}
 
     def _wp_row(self, response: requests.Response) -> dict:
         try:
@@ -1199,6 +1260,7 @@ def page_notice(
     expect_title: str | None = None,
     registry_title: bool = False,
     date_pattern: str | None = STATED_DATE.pattern,
+    items: str | None = None,
     **overrides,
 ) -> PageNotice:
     """A PageNotice for a registry key. Every option is a per-site one, set from what the inventory read on that page."""
@@ -1207,6 +1269,10 @@ def page_notice(
         raise ValueError(f"{key}: a page notice reads one WordPress page or one post, not both")
     if region is not None:
         _region_matcher(region)  # a malformed region fails at import
+    if items is not None:
+        _region_matcher(items)  # and so does a malformed item spec
+        if wp_page is not None or wp_post is not None:
+            raise ValueError(f"{key}: items are read from a page's HTML, never through a WordPress route")
     if date_pattern is not None and "date" not in re.compile(date_pattern).groupindex:
         raise ValueError(f"{key}: a date_pattern embeds DATE, whose `date` group is the date it reads")
     if urlparse(url).query and (refused := query_refused(url)):
@@ -1221,5 +1287,6 @@ def page_notice(
         expect_title=expect_title,
         registry_title=registry_title,
         date_pattern=date_pattern,
+        items=items,
         **overrides,
     )

@@ -13,7 +13,12 @@
   here, beside OPRHP's (pipeline/ELT.md's folder-placement table).
 - `oprhp_est_trail_closures_page`: the Empire State Trail's own closures page,
   https://empiretrail.ny.gov/trail-closures, one PageNotice: its <h1> 'Trail Closures' (which
-  expect_title holds) and its own 'Updated <date>' stamp, read live 2026-10-08.
+  expect_title holds) and its own 'Updated <date>' stamp, read live 2026-10-08. Read with
+  `items="li"` (decision 128, the maintainer's poll of 2026-10-09): each closure on the page is
+  one <li> in <main>, 14 of them on 2026-10-09 (12 distinct: Albany's Dunn Memorial Bridge item
+  is listed under all three sections), and the row lands each one's sha256, never its words.
+  A section of `ptny_est_closures` draws only while it is matched to one of those items
+  (dbt's int_closures__page_matches).
 - `oprhp_est_under_construction`: the Empire State Trail's sections under construction,
   `EST_Public/FeatureServer/5` (UnderConstruction), 2 polygons on 2026-10-08, neither dated.
 
@@ -33,6 +38,6 @@ CLAIMS = ("oprhp_trail_closures", "ptny_est_closures", "oprhp_est_trail_closures
 RESOURCES = [
     arcgis_layer("oprhp_trail_closures"),
     arcgis_layer("ptny_est_closures"),
-    page_notice("oprhp_est_trail_closures_page", expect_title="Trail Closures"),
+    page_notice("oprhp_est_trail_closures_page", expect_title="Trail Closures", items="li"),
     arcgis_layer("oprhp_est_under_construction"),
 ]

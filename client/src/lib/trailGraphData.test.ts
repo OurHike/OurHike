@@ -999,6 +999,36 @@ describe('one release per merged graph (#1828)', () => {
       })
     })
 
+    it('loadGraphShard takes the stored copy of the release asked for when a captive portal answers the manifest and the cell with its own page', async () => {
+      // 200 for everything, and nothing a hash could hold: before, the page
+      // fetched for the cell was `unverifiable`, settled for the session,
+      // with the cell on this phone.
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9' } })
+      const page = '<html><body>Sign in to use this Wi-Fi</body></html>'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() =>
+          Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'text/html' }),
+            json: () => Promise.reject(new SyntaxError('Unexpected token <')),
+            arrayBuffer: () => Promise.resolve(new TextEncoder().encode(page).buffer),
+          } as unknown as Response),
+        ),
+      )
+
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_9,
+      })
+      holdingReleases({})
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toEqual({
+        kind: 'absent',
+        because: 'unverifiable',
+      })
+    })
+
     it('loadGraphShard still answers not-in-release, whatever is stored, when the manifest is readable and the cell answers 404', async () => {
       holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9' } })
       serve({ manifest: { version: 'release-9', artifacts: {} } })

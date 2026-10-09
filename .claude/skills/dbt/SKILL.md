@@ -589,6 +589,69 @@ In the target, the suite gains the breaking-change check, the extract layout
 pytest, dlt fixture mode and `build_marts.py` (`pipeline/ELT.md`, "Running
 it").
 
+## Elementary's checks, by hand
+
+**Every Elementary check is tagged `elementary_check`, at warn, and runs in
+`build_marts.py`'s checks pass, after the pub_ writers**: `dbt test -s
+tag:elementary_check` at one thread, lane-scoped as the writers are, the
+monthly lane's with `--vars '{"days_back": 400}'` (`ELEMENTARY_CHECKS` and its
+docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"); the hourly lane runs
+none yet (`HOURLY_LANE_CHECKS`), and CI's fixture build runs both lanes'.
+Every dbt build before that pass leaves the tag out. The checks come from
+`make_dbt_staging.py`'s `raw_table_checks()` on every raw table and from the
+marts' YAML (decision 102; `pipeline/ELT.md`, "The checks, and where each
+goes").
+
+**Two switches, and a check needs both.** `OURHIKE_ELEMENTARY=true` enables
+Elementary's own models and its two hooks; `OURHIKE_ELEMENTARY_CHECKS=true`
+enables the checks themselves (`dbt_project.yml` and
+`make_dbt_staging.py`'s `ELEMENTARY_ENABLED`). With the checks' switch alone,
+`exposure_schema_validity` compiles to the text `None` and errors, and every
+other check passes without querying anything (measured 2026-10-08 by the
+session that built them). With Elementary's switch alone the checks are not
+in the graph at all.
+
+**Elementary's tables first, or nothing is recorded**: with them missing, a
+command passes and stores no result (measured 2026-10-08). `build_marts.py`
+runs `dbt run --select package:elementary` before `dbt seed` for that reason,
+with both switches on, so that Elementary's `dbt_tests` table describes every
+check. By hand, from `pipeline/dbt/`, over a warehouse a fixture build made,
+the same two commands `build_marts.py` runs. Two fixture builds ran them green
+on 2026-10-08, in a 4-core sandbox other builds shared: Elementary's tables in
+1 m 34 s and 1 m 17 s, and the 1,949 checks in 10 m 5 s and 10 m 2 s.
+
+```sh
+export OURHIKE_ELEMENTARY=true OURHIKE_ELEMENTARY_CHECKS=true
+export DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false TZ=UTC   # Elementary's times are UTC with no zone
+dbt run --select package:elementary --profiles-dir .                     # its tables first, and again after a check changes
+dbt test --select tag:elementary_check --threads 1 --profiles-dir .      # every check, as the pass runs them
+```
+
+To run fewer, intersect the tag with another selector, as `build_marts.py`
+does for the hourly lane (`tag:elementary_check,config.meta.cadence:hourly+`).
+Add `--vars '{"days_back": 400}'` to read a check as the monthly lane does.
+Read the results in the warehouse's `elementary.elementary_test_results`, or
+build the page's file over them, which is what `build_marts.py` does last:
+`OURHIKE_BUILD_STARTED_AT='YYYY-MM-DD HH:MM:SS' dbt build -s pub_data_quality
+--profiles-dir .` (UTC; unset, every result in the warehouse counts as this
+build's).
+
+What a run by hand will and will not show:
+
+- **On a warehouse with no history, every anomaly check passes** and logs
+  "Not enough data to calculate anomaly scores". One build is one point, and
+  no check can warn before its window holds 11, this build's among them
+  (`dbt_project.yml`, "ELEMENTARY'S TRAINING AND DETECTION", which has the
+  measurement). `row_history.py` restores a lane's history before a build;
+  a warehouse built by hand has none unless it ran `restore`.
+- **A check on a raw table the warehouse does not hold errors.**
+  `build_marts.py` leaves those out (`absent_sources()`); by hand, select
+  around them.
+- **No failing row is kept**: `test_sample_row_count` is 0, and on dbt 2.0.6
+  Elementary stores none at any setting (measured 2026-10-08, `dbt_project.yml`
+  says how). Never raise it, here or in a test's meta.
+- **Never `edr`**, the Elementary CLI: decision 102 measured and refused it.
+
 ## `dbt deps` in a sandbox
 
 `dbt deps` cannot download packages here. Measured 2026-10-01 in this sandbox:

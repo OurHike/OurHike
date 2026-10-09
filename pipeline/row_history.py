@@ -80,10 +80,16 @@ snapshots. Its own pointer, elementary.json, and its own folders,
 elementary/<save_id>/, so neither part's failure touches the other's pointer,
 and a save by a row_history.py from before decision 102, which knows only
 history.json and saves/, leaves it alone. Both parts of one `save` share its
-save id.
+save id. The history is matched by name: Elementary names a table
+DATABASE.SCHEMA.TABLE, and DuckDB names the database after the warehouse's
+file, so a lane's restored history is read only while its builds write to a
+file of the same name, data/warehouse.duckdb in both lanes. Measured
+2026-10-08 in a scratch project: a warehouse copied to another name started
+its volume check's training set again.
 
-FOUR OF ELEMENTARY'S TABLES ARE KEPT (KEPT), each read back by a check or by
-the data-quality page, all Reasoned from Elementary 0.26.0's macros:
+FIVE OF ELEMENTARY'S TABLES ARE KEPT (KEPT), each read back by a check or by
+the data-quality page, Reasoned from Elementary 0.26.0's macros unless a line
+says it was measured:
   - data_monitoring_metrics: every anomaly check's training set.
     get_anomaly_scores_query() reads its rows with bucket_end after the start
     of the check's days_back, and get_metric_buckets_min_and_max() reads which
@@ -97,13 +103,43 @@ the data-quality page, all Reasoned from Elementary 0.26.0's macros:
     the history holds (decision 102's step 4).
   - dbt_invocations: one row per dbt command, which the results' invocation_id
     names, so the page can tell a build's checks run from its other commands.
+  - test_result_rows, and of it only each scored bucket's expected range
+    (THE BANDS, below), which the page draws behind a series' points.
 Left out on purpose: dbt_run_results, read back only by
 get_latest_full_refresh() for an incremental model, and this project has
-none; test_result_rows, one build's failing rows and anomaly scores, because
-no row leaves the warehouse (dbt_project.yml's test_sample_row_count);
-dbt_source_freshness_results, which no check and no page reads; and the
+none; dbt_source_freshness_results, which no check and no page reads; and the
 tables describing the project itself, which "Elementary's own tables"
 rebuilds every build.
+
+THE BANDS. An anomaly check's run stores a test_result_rows row for every
+bucket of its training window it could score, not only the buckets it tests:
+store_anomaly_test_results() keeps each row of get_anomaly_scores_query()
+whose anomaly_score is not null. Measured 2026-10-08 in a scratch project on
+dbt 2.0.6 and DuckDB, 11 builds 12 hours apart: build k's run stored k - 1
+rows, from the second build's bucket to its own, 4.5 days of them at build 11
+against a detection window of 2. The bucket a run cannot score is the oldest
+of its window, whose training set is that one value and has no spread. So
+this build's run bands every point the page charts but, at most, the oldest,
+and what the page needs from an earlier run is that oldest bucket's band,
+which the run before gave it while its window still reached further back. The
+save keeps exactly what that needs, and nothing else:
+  - rows of anomaly checks that carry a band (test_type anomaly_detection,
+    both ends of the range set);
+  - never a dimension's rows, which name a value of the dimension's column (a
+    club, a source key) and which the page never charts;
+  - never a dbt test's failing rows, nor a schema change's. On dbt 2.0.6
+    Elementary stores no failing row at all: builds of that project with
+    test_sample_row_count 5 and a test failing on 5 whole rows stored no
+    dbt_test row, and every result's failed_row_count was null, so its test
+    materialization, the one place it reads a sample, did not run (measured
+    the same day). dbt_project.yml's test_sample_row_count 0 holds if that
+    changes, and this filter holds behind it: such a row is a row of the
+    tested table, person fields among them;
+  - of each row, five fields: metric_name, column_name, bucket_end,
+    min_metric_value and max_metric_value. An anomaly's description, its
+    anomalous value and its training figures are dropped;
+  - of each check's bucket, the newest run's band, which is the only one
+    macros/data_quality.sql reads.
 
 ELEMENTARY REWRITES ITS RECENT METRIC BUCKETS. A check with a
 timestamp_column computes buckets it already has again, every build: on a
@@ -119,8 +155,8 @@ guard here: the warehouse table only grows, while the saved copy keeps one row
 per id inside the window and so may hold fewer rows than were restored. The
 guard is by key instead. `restore` records every restored row's KEPT key in
 its receipt, and `save` refuses when one is gone from the warehouse: Elementary
-only appends to these four tables (0.26.0's insert_data_monitoring_metrics(),
-insert_schema_columns_snapshot() and insert_rows(), and the four models'
+only appends to these five tables (0.26.0's insert_data_monitoring_metrics(),
+insert_schema_columns_snapshot() and insert_rows(), and the five models'
 incremental runs select no row), and a rewrite keeps its key, so a missing key
 is history lost in this build and never a rewrite. What the save writes is
 then RETENTION's, and only that may shrink.
@@ -132,7 +168,9 @@ RETENTION, so the store stops growing. A save keeps, of each table:
   - elementary_test_results and dbt_invocations: the rows whose detected_at
     or created_at is inside --keep-days;
   - schema_columns_snapshot: each table's latest snapshot whatever its age,
-    the only one a schema check reads, and nothing older.
+    the only one a schema check reads, and nothing older;
+  - test_result_rows: THE BANDS' rows whose detected_at is inside
+    --keep-days, one per check, column, metric and bucket.
 A row with no time at all is dropped: no check can place it in a window
 (bucket_end after a start is never true of a null). build_marts.py passes
 --keep-days per lane (its ELEMENTARY_KEEP_DAYS, the lane's training window
@@ -222,9 +260,30 @@ ELEMENTARY_ON_FAILURE = ("fail", "degrade")
 ELEMENTARY_KEEP_DAYS = 430
 
 
+#: The five fields of a scored bucket's test_result_rows row that a save keeps (the module docstring, "THE BANDS"):
+#: what macros/data_quality.sql reads to draw a band behind a point, and nothing else. The two ends of the range are
+#: numbers; the rest are names and the bucket's time.
+BAND_FIELDS = ("metric_name", "column_name", "bucket_end", "min_metric_value", "max_metric_value")
+BAND_NUMBERS = ("min_metric_value", "max_metric_value")
+
+
+def _band_of(column: str) -> str:
+    """SQL rewriting `column`, an anomaly row's JSON as Elementary stores it, to BAND_FIELDS alone."""
+    fields = ", ".join(
+        f"'{field}', "
+        + (
+            f"try_cast(json_extract_string({column}, '$.{field}') as double)"
+            if field in BAND_NUMBERS
+            else f"json_extract_string({column}, '$.{field}')"
+        )
+        for field in BAND_FIELDS
+    )
+    return f"cast(json_object({fields}) as varchar)"
+
+
 @dataclass(frozen=True)
 class Kept:
-    """One of Elementary's tables kept between builds (the module docstring, "FOUR OF ELEMENTARY'S TABLES ARE KEPT")."""
+    """One of Elementary's tables kept between builds (the module docstring, "FIVE OF ELEMENTARY'S TABLES ARE KEPT")."""
 
     #: SQL over the table's columns naming one row across builds, which a rewrite keeps.
     key: str
@@ -259,6 +318,26 @@ KEPT: dict[str, Kept] = {
         keep="select * from {table} where created_at > {cutoff} qualify invocation_id is null or row_number() over "
         "(partition by invocation_id order by created_at desc nulls last) = 1",
         at="created_at",
+    ),
+    # THE BANDS (the module docstring): a result's rows are numbered from 1 (0.26.0's pop_test_result_rows()), so its
+    # id and a row's number name the row. The check comes from the result the row belongs to, a row without one is
+    # dropped, and of each check's bucket the newest band is kept.
+    "test_result_rows": Kept(
+        key="elementary_test_results_id || '|' || cast(row_index as varchar)",
+        keep=f"select scored.elementary_test_results_id, {_band_of('scored.result_row')} as result_row, "
+        "scored.detected_at, scored.created_at, scored.row_index, scored.test_type "
+        "from {table} as scored inner join "
+        f"(select id, any_value(test_unique_id) as test_unique_id from {ELEMENTARY_SCHEMA}.elementary_test_results "
+        "group by id) as results on scored.elementary_test_results_id = results.id "
+        "where scored.test_type = 'anomaly_detection' and scored.detected_at > {cutoff} "
+        "and json_extract_string(scored.result_row, '$.dimension') is null "
+        "and json_extract_string(scored.result_row, '$.min_metric_value') is not null "
+        "and json_extract_string(scored.result_row, '$.max_metric_value') is not null "
+        "qualify row_number() over (partition by results.test_unique_id, "
+        "json_extract_string(scored.result_row, '$.column_name'), json_extract_string(scored.result_row, '$.metric_name'), "
+        "json_extract_string(scored.result_row, '$.bucket_end') "
+        "order by scored.created_at desc nulls last, scored.detected_at desc nulls last) = 1",
+        at="detected_at",
     ),
 }
 

@@ -106,8 +106,11 @@ const KIND = new Map(KINDS.map((kind) => [kind.id, kind]));
 /**
  * The kinds whose checks compare a build with the builds before it, and so
  * wait for the file's `learning.needed` builds before they can fire: each is
- * an Elementary `*_anomalies` test (ELT.md's table). Schema changes compare
- * with the one build before (0.26.0's test_schema_changes.sql calls
+ * an Elementary `*_anomalies` test (ELT.md's table). `needed` is 11 at
+ * Elementary's 3 standard deviations, this build included, because a point
+ * is scored against a mean that counts it (pipeline/dbt/dbt_project.yml has
+ * the measurement). Schema changes compare with the one build before
+ * (0.26.0's test_schema_changes.sql calls
  * `get_columns_changes_from_last_run_query`, read 2026-10-08), and dbt tests
  * with nothing, so neither learns.
  */
@@ -168,6 +171,14 @@ const DEFAULT_METRIC = { volume: "row_count", freshness: "freshness" };
 
 /** The metric a mart's own row is charted by: its row count, from the volume checks. */
 const MART_METRIC = "row_count";
+
+/**
+ * What the chart's table and readout say of a point with no band. Not "No
+ * range yet": the point that has none is one no run in the history scored,
+ * such as a check's first, and no later run gives it one (the chart's
+ * caption, chartView).
+ */
+export const NO_RANGE = "No range";
 
 const COUNT_KEYS = ["checks", "passed", "warned", "failed", "errored"];
 const MAX_NAME = 256;
@@ -432,7 +443,8 @@ function parse(value, lane) {
       column: name(entry.column, `${where}.column`, { optional: true }),
       metric: name(entry.metric, `${where}.metric`),
       // The mart a versioned table is: `trail_lines_v1` is `trail_lines`, the
-      // name by_mart uses. Absent for a table that is no mart's.
+      // name by_mart uses. Null for a table that is no mart's, and in a file
+      // from before the field, either way no By mart row's (martSeries).
       mart: name(entry.mart, `${where}.mart`, { optional: true }),
       inNeedsALook: typeof flag === "boolean" ? flag : null,
       points,
@@ -586,7 +598,7 @@ function card(lane, state, config, now) {
           builds < needed
             ? {
                 text: `Learning, ${builds} of ${needed} builds`,
-                detail: `Its anomaly checks compare each build with the ones before it, and wait for ${needed}. Until then they pass without being able to fire.`,
+                detail: `Its anomaly checks compare each build with the ones before it, and need ${needed} builds, this one included, before any can fire. Until then they pass without being able to.`,
               }
             : null,
       };
@@ -636,8 +648,41 @@ function scopeLine(lanes, read) {
 /** Text with code in it, as segments the renderer escapes: strings, and `{code}` for a name. */
 const code = (text) => ({ code: text });
 
+/**
+ * WHAT A dbt TEST'S OR A SCHEMA CHECK'S `value` COUNTS, in the page's words
+ * rather than as a measurement: the file writes a dbt test's `failures`,
+ * the rows its query returned (macros/data_quality.sql's header), which is
+ * one row of the table for not_null or relationships, and one per offending
+ * value for unique or accepted_values (Reasoned from dbt's generic tests);
+ * the page calls them rows, as dbt does. A schema entry with
+ * a value is exposure_schema_validity, the one schema check Elementary runs
+ * as a dbt test, which returns one row per column a phone file reads that
+ * is missing or not the type it declares (0.26.0's
+ * test_exposure_schema_validity.sql). Null, as a schema change's value is,
+ * when the file counts nothing.
+ */
+function countSentences(item) {
+  if (item.value === null || item.status === "error") return null;
+  const n = Math.round(item.value);
+  const verb = item.status === "fail" ? "failed" : "warned";
+  if (item.kind === "dbt_tests") {
+    const rows = `${formatCount(n)} ${plural(n, "row", "rows")}`;
+    return { long: `A dbt test on it ${verb} on ${rows} at this build.`, short: `a dbt test ${verb} on ${rows}.` };
+  }
+  if (item.kind === "schema") {
+    const columns = `${formatCount(n)} ${plural(n, "column", "columns")} a phone file reads`;
+    return {
+      long: `${columns} ${plural(n, "is", "are")} missing or not the type it declares, at this build.`,
+      short: `${columns} ${plural(n, "does", "do")} not match.`,
+    };
+  }
+  return null;
+}
+
 function itemSentence(item) {
   if (item.status === "error") return "The check could not run, so this went unchecked at this build.";
+  const counted = countSentences(item);
+  if (counted) return counted.long;
   const metric = item.metric ?? DEFAULT_METRIC[item.kind] ?? null;
   if (item.value !== null) {
     const fmt = metricFormat(metric);
@@ -657,6 +702,8 @@ function itemSentence(item) {
 
 function shortSentence(item) {
   if (item.status === "error") return "could not run.";
+  const counted = countSentences(item);
+  if (counted) return counted.short;
   const metric = item.metric ?? DEFAULT_METRIC[item.kind] ?? null;
   if (item.value !== null) {
     const fmt = metricFormat(metric);
@@ -794,24 +841,36 @@ function seriesOf(item, series) {
   );
 }
 
+/** A versioned mart table's version, from dbt's name for it: `trail_lines_v2` is 2, a table with none 0. */
+function tableVersion(table) {
+  const found = /_v(\d+)$/.exec(table);
+  return found ? Number(found[1]) : 0;
+}
+
 /**
- * A mart's own row count, or null when the file holds none for it. Joined
- * by the series' `mart` where it names one, and else by its table: C1's
- * test-warehouse file (2026-10-08) writes the versioned table
- * (`trail_lines_v1`) with `mart: "trail_lines"`, while by_mart names the mart
- * alone, so a join on the table found no mart and By mart drew no Chart
- * button.
+ * A mart's own row count, or null when the file holds none for it. JOINED
+ * BY THE SERIES' `mart` ALONE, never by its table: by_mart names the folder
+ * (`trail_lines`) and a mart's tables are named by version
+ * (`trail_lines_v1`, `trail_lines_v2`), which C1's test-warehouse file showed
+ * on 2026-10-08. A series whose `mart` is null, or a file from before the
+ * field, is no mart's, whatever its table is called, so its mart's row gets
+ * no Chart button rather than a guess.
+ *
+ * A MART WITH TWO VERSIONS SHOWS THE HIGHER ONE'S: v1 is written beside v2
+ * until its deprecation_date and then dropped (decision 44, pipeline/ELT.md),
+ * so v2's is the history that carries on, and the button names the table
+ * the mart is becoming. Nothing a reader would miss is hidden by it: each
+ * v2 holds its v1's rows by an equal_rowcount test in its mart's YAML, so
+ * the two series count the same rows at every build both ran, and the Show
+ * menu still lists both. "Higher" is the version number dbt puts in the
+ * table's name, not dbt's `latest_version`, which this file does not carry
+ * and which stays at 1 until a v2 release ships.
  */
 function martSeries(mart, series) {
-  return (
-    series.find(
-      (s) =>
-        s.lane === mart.lane &&
-        (s.mart ?? s.table) === mart.mart &&
-        (s.column ?? null) === null &&
-        s.metric === MART_METRIC,
-    ) ?? null
+  const own = series.filter(
+    (s) => s.lane === mart.lane && s.mart === mart.mart && (s.column ?? null) === null && s.metric === MART_METRIC,
   );
+  return own.reduce((newest, s) => (newest === null || tableVersion(s.table) > tableVersion(newest.table) ? s : newest), null);
 }
 
 /**
@@ -935,12 +994,19 @@ function chartView(series, read) {
         ? " None falls outside the range Elementary expected."
         : ` ${outside.length} of them ${outside.length === 1 ? "falls" : "fall"} outside the range Elementary expected.`;
   }
+  // WHAT THE BAND IS, as Elementary 0.26.0 works it out: the mean of the
+  // point and those before it in its window, plus or minus three deviations,
+  // so a point counts toward its own band and cannot leave one worked out
+  // from fewer than `learning.needed` points (dbt_project.yml's measurement).
+  // A point with no band is one no run the history keeps has scored: a
+  // check's first point never is, and the pipeline keeps every other band
+  // between builds (row_history.py, "THE BANDS").
   const unbanded = points.some((point) => point.min === null || point.max === null);
   const caption = [
-    "The shaded band is the range Elementary expected at each point, worked out from the ones before it. A point outside it is drawn as a triangle and named.",
-    unbanded && file
-      ? ` Points with no band came before Elementary had the ${file.learning.needed} earlier ${LANE_RUNS[series.lane]} it waits for.`
-      : "",
+    "The shaded band is the range Elementary expected at each point, worked out from that point and the ones before it",
+    file ? `, so no point can fall outside a band worked out from fewer than ${file.learning.needed} ${LANE_RUNS[series.lane]}.` : ".",
+    " A point outside it is drawn as a triangle and named.",
+    unbanded ? " A point with no band is one no run in this history scored, such as a check's first, which has nothing before it to set a range by." : "",
   ].join("");
 
   return {
@@ -962,7 +1028,7 @@ function chartView(series, read) {
       value: point.value === null ? "No value" : fmt.cell(point.value),
       expected:
         point.min === null || point.max === null
-          ? "No range yet"
+          ? NO_RANGE
           : `${fmt.range(point.min, point.max)}${point.outside ? `, ${point.outside} it` : ""}`,
       where: whereInRange(point),
     })),

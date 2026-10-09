@@ -22,6 +22,7 @@ import {
   OPEN_FOLD_MAX,
   initialChart,
   laneUrl,
+  NO_RANGE,
   readQualityFile,
   seriesKey,
   settleLane,
@@ -203,11 +204,14 @@ describe("the page, state by state", () => {
 
   it("learning: says how far, on the card and on each kind that learns, and that a pass means less", () => {
     const view = page(read(examples.monthlyLearning(), "monthly"), MISSING);
-    expect(view.cards[0].learning.text).toBe("Learning, 3 of 7 builds");
-    expect(view.cards[0].learning.detail).toContain("wait for 7");
+    expect(examples.NEEDED).toBe(11);
+    expect(view.cards[0].learning.text).toBe("Learning, 3 of 11 builds");
+    expect(view.cards[0].learning.detail).toBe(
+      "Its anomaly checks compare each build with the ones before it, and need 11 builds, this one included, before any can fire. Until then they pass without being able to.",
+    );
     for (const id of ["freshness", "volume", "anomalies"]) {
       expect(tile(view, id).learning).toBe(
-        "Learning, 3 of 7 monthly builds: until then a pass may only mean an anomaly check cannot fire yet.",
+        "Learning, 3 of 11 monthly builds: until then a pass may only mean an anomaly check cannot fire yet.",
       );
     }
     expect(tile(view, "schema").learning).toBeNull();
@@ -281,7 +285,7 @@ describe("the page, state by state", () => {
       ]);
     });
 
-    it("draws the history behind the worst entry that has one, banded where Elementary had enough to expect", () => {
+    it("draws the history behind the worst entry that has one, banded at every point but the first", () => {
       const { chart } = view.sections;
       expect(chart.table).toBe("preview_fixture__trails");
       expect(chart.rows).toHaveLength(monthly.series[0].points.length);
@@ -291,11 +295,22 @@ describe("the page, state by state", () => {
         expected: `${formatCount(volume.expected_min)} to ${formatCount(volume.expected_max)}, below it`,
         where: "Below the range",
       });
-      expect(chart.rows[0].expected).toBe("No range yet");
+      expect(chart.rows.map((row) => row.expected === NO_RANGE)).toEqual([true, ...Array(11).fill(false)]);
       expect(chart.summary).toBe(
         "12 monthly builds, from 5,231 on 7 Nov 2025 to 4,118 on 7 Oct 2026. 1 of them falls outside the range Elementary expected.",
       );
-      expect(chart.caption).toContain("the 7 earlier monthly builds it waits for");
+    });
+
+    it('says the band counts its own point, and names the 11 builds no point can leave a band before ("No range" on a first point)', () => {
+      const { chart } = view.sections;
+      expect(NO_RANGE).toBe("No range");
+      expect(chart.caption).toBe(
+        "The shaded band is the range Elementary expected at each point, worked out from that point and the ones before it, so no point can fall outside a band worked out from fewer than 11 monthly builds. A point outside it is drawn as a triangle and named. A point with no band is one no run in this history scored, such as a check's first, which has nothing before it to set a range by.",
+      );
+      const banded = examples.monthlyWithWarnings();
+      banded.series[0].points = banded.series[0].points.slice(1);
+      const whole = page(read(banded, "monthly"), MISSING).sections.chart;
+      expect(whole.caption).not.toContain("no band");
     });
   });
 
@@ -330,6 +345,30 @@ describe("the page, state by state", () => {
     file.series.unshift({ ...file.series[0], table: "trail_lines" });
     const { chart } = page(read(file, "monthly"), MISSING).sections;
     expect(chart.table).toBe("preview_fixture__trails");
+  });
+
+  it("words a dbt test's value as the rows it failed or warned on, and a phone file's columns that do not match", () => {
+    // `value` is a dbt test's failures, the rows its query returned (macros/data_quality.sql), never a measurement.
+    const file = examples.monthlyWithWarnings();
+    const base = { column: "id", expected_min: null, expected_max: null, since: null, metric: null };
+    file.needs_a_look = [
+      { ...base, kind: "dbt_tests", table: "trail_lines", status: "fail", value: 13 },
+      { ...base, kind: "dbt_tests", table: "closures", status: "warn", value: 1 },
+      { ...base, kind: "dbt_tests", table: "warnings", status: "warn", value: 1204 },
+      { ...base, kind: "schema", table: "trail_lines_v2", column: null, status: "warn", value: 2 },
+      { ...base, kind: "dbt_tests", table: "places", status: "fail", value: null },
+    ];
+    const view = page(read(file, "monthly"), MISSING);
+    expect(view.sections.items.map((item) => item.sentence)).toEqual([
+      "A dbt test on it failed on 13 rows at this build.",
+      "A dbt test on it failed.",
+      "A dbt test on it warned on 1 row at this build.",
+      "A dbt test on it warned on 1,204 rows at this build.",
+      "2 columns a phone file reads are missing or not the type it declares, at this build.",
+    ]);
+    expect(view.sections.items.some((item) => item.sentence.includes("Measured"))).toBe(false);
+    expect(tile(view, "dbt_tests").note).toEqual([{ code: "trail_lines" }, ": a dbt test failed on 13 rows.", " And 3 more below."]);
+    expect(tile(view, "schema").note).toEqual([{ code: "trail_lines_v2" }, ": 2 columns a phone file reads do not match.", ""]);
   });
 
   it("prints a value bare when the file does not say what it measures", () => {
@@ -542,6 +581,36 @@ describe("Chart buttons", () => {
     expect(network.chartName).toBe("Chart rows in trail_network_v1, Monthly");
     expect(marts.every((mart) => mart.chart !== null)).toBe(true);
     expect(menu[1].options[0].label).toBe("Rows in trail_network_v1 · Monthly");
+  });
+
+  it("show a mart's highest version's row count when it has two, in either order, and list both in the menu", () => {
+    // trail_lines_v1 is written beside trail_lines_v2 until its deprecation_date (decision 44), and v2 holds v1's
+    // rows by an equal_rowcount test; the series the mart's button keeps is the one that outlives the other.
+    const file = examples.monthlyManyProblems();
+    const rowCount = (series) => series.mart === "trail_network" && series.metric === "row_count" && series.column === null;
+    const network = file.series.find(rowCount);
+    const versions = (...suffixes) => suffixes.map((suffix) => ({ ...network, table: `trail_network${suffix}` }));
+    const v2 = seriesKey({ lane: "monthly", table: "trail_network_v2", metric: "row_count" });
+    for (const order of [["_v1", "_v2"], ["_v2", "_v1"]]) {
+      file.series = [...file.series.filter((series) => !rowCount(series)), ...versions(...order)];
+      const { marts, menu } = page(read(file, "monthly"), MISSING).sections;
+      const row = marts.find((mart) => mart.mart === "trail_network");
+      expect(row.chart).toBe(v2);
+      expect(row.chartName).toBe("Chart rows in trail_network_v2, Monthly");
+      const labels = menu.flatMap((group) => group.options.map((option) => option.label));
+      expect(labels).toEqual(expect.arrayContaining(["Rows in trail_network_v1 · Monthly", "Rows in trail_network_v2 · Monthly"]));
+    }
+  });
+
+  it("join a mart's row by the series' mart alone, never by a table that merely shares its name", () => {
+    const file = examples.monthlyManyProblems();
+    // trail_network's own row count, its table named as the mart is, but its `mart` null: no mart's.
+    file.series = file.series.map((series) =>
+      series.mart === "trail_network" && series.metric === "row_count" ? { ...series, mart: null } : series,
+    );
+    const { marts } = page(read(file, "monthly"), MISSING).sections;
+    expect(marts.find((mart) => mart.mart === "trail_network").chart).toBeNull();
+    expect(marts.filter((mart) => mart.chart === null).map((mart) => mart.mart)).toEqual(["trail_network"]);
   });
 });
 

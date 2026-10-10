@@ -1090,7 +1090,8 @@ class TestTheDataDocsLoadNoCodeFromAnotherOrigin:
 
     def test_the_pinned_duckdb_wasm_is_one_this_dbt_s_page_was_loaded_with(self):
         requirements = (REPO_ROOT / "pipeline" / "requirements-dbt.txt").read_text(encoding="utf-8")
-        dbt = re.search(r"^dbt==(\S+)$", requirements, re.MULTILINE).group(1)
+        # The pin line ends in ` \` since the file is hash-pinned (decision 144): its hashes follow on their own lines.
+        dbt = re.search(r"^dbt==([^\s\\;]+)", requirements, re.MULTILINE).group(1)
         manifest = json.loads((self.DUCKDB / "package.json").read_text(encoding="utf-8"))
         lock = json.loads((self.DUCKDB / "package-lock.json").read_text(encoding="utf-8"))
         pinned = manifest["dependencies"]["@duckdb/duckdb-wasm"]

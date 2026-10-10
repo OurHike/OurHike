@@ -301,6 +301,8 @@ jobs:
             pipeline/sources.json
             pipeline/requirements-dbt.in
             pipeline/requirements-dbt.txt
+            pipeline/requirements-dbt-build.in
+            pipeline/requirements-dbt-build.txt
             pipeline/requirements-extract.in
             pipeline/requirements-extract.txt
             pipeline/.sqlfluff
@@ -362,9 +364,25 @@ jobs:
       # warm run skips the download: Pipeline tests run 37408628160 (fd38fe24,
       # 2026-10-06) logged "Using cached dbt-2.0.6-cp311-abi3-manylinux_2_28_
       # x86_64.whl" and built nothing.
+      #
+      # --require-hashes (ELT.md decision 144): every file is checked against
+      # the sha256 requirements-dbt.txt lists for it, and a pin with none is
+      # refused (requirements-dbt.in says how the file is compiled). A warm
+      # cache still skips the build: pip writes the sdist's sha256 beside the
+      # wheel it built (origin.json), and a second hash-checked install logged
+      # "Using cached dbt-2.0.6-cp311-abi3-manylinux_2_28_x86_64.whl" and
+      # built nothing (measured 2026-10-10 in a sandbox on pip 25.0.1, the
+      # version this job's own venvs report in run 38001863592's log).
+      #
+      # dbt's build requirement goes in first, from requirements-dbt-build.txt
+      # and hash-checked too, and --no-build-isolation then builds dbt with it
+      # rather than with a `packaging` pip would fetch unpinned and unhashed
+      # (requirements-dbt-build.in has the measurement).
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
-        run: pip install -r requirements-dbt.txt
+        run: |
+          pip install --require-hashes -r requirements-dbt-build.txt
+          pip install --require-hashes --no-build-isolation -r requirements-dbt.txt
 
       # FIXTURE MODE (pipeline/ELT.md, "Fixture mode"): extract/_fixtures.py
       # runs the real extract over make_dbt_fixtures.py's files, so every

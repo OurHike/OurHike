@@ -132,6 +132,8 @@ SHARED_ROOTS = (
     "pipeline/requirements.in",
     "pipeline/requirements-dbt.txt",
     "pipeline/requirements-dbt.in",
+    "pipeline/requirements-dbt-build.txt",
+    "pipeline/requirements-dbt-build.in",
 )
 
 #: Changed files that are never evidence of a stale publish, whatever scope

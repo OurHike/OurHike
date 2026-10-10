@@ -191,7 +191,8 @@ jobs:
 
       - name: Install dbt, the extract's pins and the pipeline's pins
         run: |
-          pip install --quiet -r requirements-dbt.txt
+          pip install --quiet --require-hashes -r requirements-dbt-build.txt
+          pip install --quiet --require-hashes --no-build-isolation -r requirements-dbt.txt
           python -m venv "$RUNNER_TEMP/extract"
           "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
           python -m venv "$RUNNER_TEMP/pipeline"

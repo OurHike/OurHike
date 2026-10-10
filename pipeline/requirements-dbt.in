@@ -4,6 +4,22 @@
 # requirements.in on purpose: the pytest job never needs dbt, and the dbt job
 # never needs rasterio/pillow/pmtiles.
 #
+# HASH-PINNED (pipeline/ELT.md decision 144, the maintainer's poll of
+# 2026-10-09): the page dbt writes for ourhike.org/data/ comes from this
+# install, and that page shares an origin with the app's signed-in session.
+# So requirements-dbt.txt is compiled with --generate-hashes, which lists the
+# sha256 of every file PyPI holds for each pinned version, every platform's
+# wheels included (450 for the 20 pins, each set equal to PyPI's own file list
+# on 2026-10-10), and every install passes --require-hashes, which refuses a
+# download whose hash is not listed and a pin that lists none. Recompile from
+# pipeline/, on Python 3.12, with the command the .txt's header records:
+#   pip-compile --generate-hashes --output-file=requirements-dbt.txt --strip-extras requirements-dbt.in
+# .github/tests/test_dbt_install_is_hash_pinned.py fails a compile that drops
+# the hashes and an install that drops the flag. These hashes do not reach the
+# `packaging` that dbt's sdist builds with: requirements-dbt-build.in pins it,
+# says why, and is installed first, so this file installs with
+# --no-build-isolation.
+#
 # duckdb is pinned identically to requirements.in's hand-written pin, and for
 # the same ABI reason - the spatial extension is ABI-locked to the exact
 # DuckDB version. Keep the two pins moving together. In this file it serves
@@ -40,6 +56,10 @@ duckdb==1.5.5
 # sha256 matches the sdist's own `assets.json`. So an install reaches dbt's
 # CDN as well as PyPI. The wheels are cp311-abi3 (Linux x86-64 and ARM,
 # macOS, Windows x86-64): any CPython >= 3.11, which is `Requires-Python`.
+# The sdist's own sha256 is the one hash requirements-dbt.txt lists for dbt,
+# and through `assets.json` it pins the wheel as well. On Linux x86-64 every
+# hash-checked install built the manylinux_2_28_x86_64 wheel with the sha256
+# assets.json names, af850377…b336 (measured 2026-10-10, Python 3.11 to 3.13).
 dbt==2.0.6
 #
 # SQLFluff with its own jinja templater (pipeline/.sqlfluff). 4.3.0 is the

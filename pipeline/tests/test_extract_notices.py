@@ -19,6 +19,7 @@ import duckdb
 import pytest
 
 from extract import _kinds, _notices
+from extract._contract import all_resources, discover
 from extract._kinds import WordpressPosts, feed_notices, page_notice, wordpress_posts
 from extract._notices import (
     DATE,
@@ -634,3 +635,31 @@ def test_wordpress_posts_keep_the_hosts_crawl_delay_between_their_requests(regis
     list(wordpress_posts("club_closures", crawl_delay=10, club="testclub", type="closures").rows({}))
     assert len(quiet_gates_and_answers) == 1 and 9 < quiet_gates_and_answers[0] <= 10
     assert WordpressPosts(key="club_closures").crawl_delay == 0, "NYNJTC's asks none, and sends as it always has"
+
+
+def test_ratcs_mcafee_page_is_one_notice_and_its_dragons_tooth_water_line_never_lands(requests_mock):
+    """RATC's McAfee Knob page (ratc_mcafee_page, WordPress page 2821) states a water hazard for the Dragons Tooth area
+    among its standing rules (read 2026-10-10). Registered as every page notice is, it lands one row of PAGE_COLUMNS:
+    its title, its own date and its link, and none of its sentences (decisions 55, 107 and 141), so a hiker meets the
+    page's title and a link, never the water line itself. The real registry row and resource; the REST answer shaped
+    as the live one, with invented words."""
+    (resource,) = [r for r in all_resources(discover()) if r.key == "ratc_mcafee_page"]
+    water = "There are no natural water sources along the fixture ridge, so bring all your water."
+    page = {
+        "id": 2821,
+        "modified_gmt": "2026-02-25T02:18:48",
+        "title": {"rendered": "Fixture Knob and Virginia&#8217;s Fixture Crown"},
+        "content": {"rendered": f"<h2>Fixture camping</h2><p>{water}</p>"},
+        "author": 1,
+    }
+    requests_mock.get("https://www.ratc.org/wp-json/wp/v2/pages/2821", json=page)
+
+    (row,) = list(resource.rows({}))
+
+    (asked,) = requests_mock.request_history
+    assert asked.headers["User-Agent"] == USER_AGENT
+    assert set(row) == set(PAGE_COLUMNS)
+    assert row["url"] == "https://www.ratc.org/at-hiking/mcafee-knob-and-the-triple-crown/"
+    assert row["title"] == "Fixture Knob and Virginia\u2019s Fixture Crown"
+    assert (row["date"], row["date_source"]) == ("2026-02-25", "wp_modified")
+    assert "water" not in json.dumps(row).lower()

@@ -27,6 +27,7 @@ from extract._fixtures import (
     esri_type,
     fixture_file,
     fixture_resources,
+    joined_wordpress,
 )
 from extract._kinds import (
     AtcTrailUpdatePages,
@@ -114,9 +115,32 @@ def test_every_notice_page_and_feed_lands_the_rows_its_answers_make_and_each_pag
                 assert title, resource.table
 
 
+def test_two_category_files_of_one_site_answer_together_and_a_post_both_carry_once():
+    """Fixture mode answers a WordPress site per REST root (extract/_fixtures.py's joined_wordpress()). RATC's
+    Closures and RATC News are two registry rows on one site, each its own file, so the second file joins the first
+    rather than replacing it, and a post filed under both categories (RATC's post 9351 is) is answered once."""
+    closures = {
+        "categories": [{"id": 78, "slug": "closures"}],
+        "posts": [{"id": 1, "categories": [78]}, {"id": 2, "categories": [78, 13]}],
+        "terms": {},
+    }
+    news = {
+        "categories": [{"id": 13, "slug": "ratc-news"}],
+        "posts": [{"id": 2, "categories": [78, 13]}, {"id": 3, "categories": [13]}],
+        "terms": {},
+    }
+
+    joined = joined_wordpress(joined_wordpress(None, closures), news)
+
+    assert [category["slug"] for category in joined["categories"]] == ["closures", "ratc-news"]
+    assert [post["id"] for post in joined["posts"]] == [1, 2, 3]
+    assert joined_wordpress(None, closures) is closures, "a site named by one file is served as written"
+
+
 def test_a_wordpress_rows_person_fields_never_reach_the_raw_store(fixtures):
     """Decision 59: OHTA's, TEHCC's, TKO's and PNTA's post bodies carried telephone numbers and an e-mail address on
-    2026-10-03, so their rows list `content` and `excerpt` as person_fields, and the table lands without them."""
+    2026-10-03, and RATC's e-mail addresses and telephone numbers on 2026-10-10, so their rows list `content` and
+    `excerpt` as person_fields, and the table lands without them."""
     root, counts = fixtures
     with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
         for table in (
@@ -124,6 +148,8 @@ def test_a_wordpress_rows_person_fields_never_reach_the_raw_store(fixtures):
             "raw_tehcc__tehcc_at_posts",
             "raw_tko__tko_oct_trail_conditions",
             "raw_pnta__pnta_trail_conditions_posts",
+            "raw_ratc__ratc_closures_posts",
+            "raw_ratc__ratc_news_posts",
         ):
             assert counts[table] == 2, table
             columns = {row[0] for row in con.execute(f'describe raw."{table}"').fetchall()}

@@ -3423,6 +3423,9 @@ WP_CATEGORY_POSTS = {
     "tko_oct_trail_conditions": ("https://trailkeepersoforegon.org", 10, "trail-conditions"),
     # Decision 122 (2026-10-09): the River to River Trail Society's 'Trail Conditions', category 4, held in _shared/r2r.
     "r2r_trail_conditions": ("https://rivertorivertrail.net", 4, "trail-conditions"),
+    # Decision 53's drafted rows for RATC, registered 2026-10-10 once its robots.txt answered 200.
+    "ratc_closures_posts": ("https://www.ratc.org", 78, "closures"),
+    "ratc_news_posts": ("https://www.ratc.org", 13, "ratc-news"),
 }
 
 
@@ -3432,10 +3435,15 @@ def _notice_fixtures_n_to_z() -> dict[str, str]:
         f"conditions/notices/{key}.json": json.dumps({"answers": {url: {"content_type": content_type, "body": body}}, "rows": 1})
         for key, (url, content_type, body) in _notice_pages_n_to_z().items()
     }
+    keys_per_site: dict[str, int] = {}
     for key, (site, category, slug) in WP_CATEGORY_POSTS.items():
+        # WordPress numbers posts per site, and fixture mode answers one site from every file that names it
+        # (extract/_fixtures.py's joined_wordpress()), so a second category of one site (RATC's) takes ids of its own.
+        first = 9100 + 10 * keys_per_site.get(site, 0)
+        keys_per_site[site] = keys_per_site.get(site, 0) + 1
         posts = [
             _wp_category_post(
-                site, 9100 + n, category, f"Fixture notice {n} &#8211; trail closed", f"2026-09-{20 + n:02d}T14:13:20"
+                site, first + n, category, f"Fixture notice {n} &#8211; trail closed", f"2026-09-{20 + n:02d}T14:13:20"
             )
             for n in (1, 2)
         ]
@@ -3479,6 +3487,7 @@ NOTICE_FIXTURES = {
     "mratc_trail_alerts": ("html", "https://www.mratc.org/"),
     "mratc_blog_feed": ("feed", "https://www.mratc.org/blog-feed.xml"),
     "msgtc_trail_conditions": ("wp", "https://www.msgtc.org/wp-json/wp/v2/pages/24"),
+    "ratc_mcafee_page": ("wp", "https://www.ratc.org/wp-json/wp/v2/pages/2821"),
 }
 NOTICE_FIXTURES.update(
     {

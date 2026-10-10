@@ -222,6 +222,32 @@ def conditions_fixture(raw_dir: Path, name: str) -> dict | None:
     return json.loads(path.read_text()) if path.exists() else None
 
 
+def joined_wordpress(served: dict | None, document: dict) -> dict:
+    """One site's WordPress answers from every source file that names its REST root.
+
+    The adapter answers a site per REST root, and two registry rows can read two categories of one site: RATC's
+    Closures (category 78) and RATC News (category 13), each its own file. Without the join, the second file read
+    would replace the first, and the first source's category lookup would find no id. A category, post or term both
+    files carry is answered once, by its id.
+    """
+    if served is None:
+        return document
+
+    def join(old: list[dict], new: list[dict]) -> list[dict]:
+        seen = {item.get("id") for item in old}
+        return [*old, *(item for item in new if item.get("id") not in seen)]
+
+    joined = {**served, "categories": join(served.get("categories", []), document.get("categories", []))}
+    joined["posts"] = join(served.get("posts", []), document.get("posts", []))
+    terms = dict(served.get("terms") or {})
+    for taxonomy, items in (document.get("terms") or {}).items():
+        terms[taxonomy] = join(terms.get(taxonomy, []), items)
+    joined["terms"] = terms
+    if "types" in served or "types" in document:
+        joined["types"] = {**(served.get("types") or {}), **(document.get("types") or {})}
+    return joined
+
+
 # The declared column types whose values _row() hands back as datetimes, as
 # psycopg does. FixtureConnection reports each fixture column's declared type
 # name as its type, so POSTGRES_TYPES maps it as it maps a real one.
@@ -575,7 +601,7 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
         if isinstance(resource, WordpressPosts | WordpressTerms):
             document = conditions_fixture(raw_dir, f"{resource.key}.json")
             if document is not None:
-                wordpress[resource.api] = document
+                wordpress[resource.api] = joined_wordpress(wordpress.get(resource.api), document)
                 chosen.append(resource)
             continue
         path = fixture_file(raw_dir, resource.key)

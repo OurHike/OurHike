@@ -17694,7 +17694,7 @@
       "attribution": "Roanoke Appalachian Trail Club",
       "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its difficulty, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Roanoke Appalachian Trail Club; the terms as found stay quoted in `terms`.",
       "licence_basis": "maintainer_authorisation",
-      "terms": "The page's footer: \"Copyright © 2026\" (read 2026-10-10). No terms or licence page was found on it.",
+      "terms": "The page's footer: \"Copyright © 2026\" (read 2026-10-10). No terms page was found on it.",
       "reader": "ContentPages (extract/_pages_content.py), site `ratc_at_hikes`",
       "person_fields": [],
       "person_fields_comment": "None: the parser reads the hikes table's three columns and nothing else. The page's hike descriptions and its Google Maps links are not read.",
@@ -17706,6 +17706,88 @@
       "notes": "Read 2026-10-10: HTTP 200, text/html, 185,423 bytes. One table, 14 hikes north to south along RATC's section, from Black Horse Gap on the Blue Ridge Parkway to VA 611, 5.5 to 13.2 miles, each Moderate or Strenuous. Below it each hike's description and Google Maps driving links, neither read. The routes are in a CalTopo map whose API caltopo.com's robots.txt disallows (not_available.toml's former [ratc.suggested_hikes] note, kept in ratc/suggested_hikes.py's docstring), and the 113-mile hike list page (2023) gives the same hikes with their climbs and 11 map PDFs, which are not read.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and difficulty each beside the text it was read from, and the link."
+    },
+    {
+      "key": "ratc_closures_posts",
+      "title": "RATC closures posts",
+      "provider": "RATC",
+      "kind": "published_notices",
+      "url": "https://www.ratc.org/category/closures/",
+      "trust": "authoritative",
+      "steward": "Roanoke Appalachian Trail Club",
+      "licence": "MAINTAINER AUTHORISATION on decisions 53, 55 and 107 (facts and a link, 2026-10-03 and 2026-10-08): a club's notices and closure posts publish as their title, dates, category and a link to the club's own page, copying none of their wording (features/ORG_NOTICES.md section 7), and a copyright footer restricts copying, not reading. The terms are quoted verbatim in `terms`. NOT A LICENCE FROM the Roanoke Appalachian Trail Club.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Roanoke Appalachian Trail Club",
+      "terms": "The site footer: \"Copyright © 2026\" (read 2026-10-10 on the McAfee Knob page and on the 14 AT Hikes page). No terms page: neither page links one.",
+      "reader": "WordpressPosts",
+      "person_fields": [
+        "content",
+        "excerpt"
+      ],
+      "person_fields_comment": "Decision 59 leaves a free-text field that carries personal data out whole: on 2026-10-10 the category's 3 posts carried 3 telephone-number-shaped strings in their bodies and 1 in an excerpt (counted, not read). WordpressPosts drops the row's person_fields before dlt sees the post, so the body never reaches the raw store; the title, dates, categories and link are what a notice publishes anyway (decisions 55 and 107).",
+      "freshness": {
+        "kind": "wp_total_and_modified",
+        "url": "https://www.ratc.org/wp-json/wp/v2/posts",
+        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4; decision 53's inventory read the category feed's ETag and Last-Modified as the site's)."
+      },
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03: its drafted row, registered on 2026-10-10 once www.ratc.org's robots.txt answered 200 (it answered 502 to phase B on 2026-10-03, which RFC 9309 reads as a full disallow).",
+      "discovered_date": "2026-10-03",
+      "notes": "One row per post (extract/_kinds.py's WordpressPosts), keyed by `id`, the WordPress post id. WordPress category 78 `closures`, read through the REST API with X-WP-Total as the count. Dormant: 3 posts, 'Catawba Mountain Fire Road Temporarily Closed' (2022-01-11, post 9351), 'Dragon’s Tooth visitors asked to protect sensitive ecosystem' (2023-08-21) and 'MVP Construction in Peters Mountain Area' (2023-10-25), newest modified 2025-04-26. Closure posts since go untagged to RATC News (ratc_news_posts), which carries post 9351 too, so that post lands in both tables. Read live at 2026-10-10T22:34:02Z under lib/user_agent.py's agent, robots.txt (https://www.ratc.org/robots.txt, 200, 113 bytes, read 2026-10-10T22:33:58Z) allows the path for our agent, no Crawl-delay: the category lookup (category 78 `closures`) and one page of posts (per_page=100): HTTP 200, 15,196 bytes, no ETag or Last-Modified, X-WP-Total 3, 3 posts read, `id` distinct on 3 of 3: the key, with X-WP-Total as the proof.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04), as every WordPress category that keeps every post it ever filed (tehcc_at_posts, matc_hazard_posts, ata_closures_reroutes): no rule expires a post (a post states no end date the reader stages), so its 3 posts of 2022 and 2023 would stand as current warnings. Settled by an expiry rule for posts (@unvalidated, as those rows say: expiry is a dbt rule)."
+    },
+    {
+      "key": "ratc_news_posts",
+      "title": "RATC news posts",
+      "provider": "RATC",
+      "kind": "published_notices",
+      "url": "https://www.ratc.org/category/ratc-news/",
+      "trust": "authoritative",
+      "steward": "Roanoke Appalachian Trail Club",
+      "licence": "MAINTAINER AUTHORISATION on decisions 53, 55 and 107 (facts and a link, 2026-10-03 and 2026-10-08): a club's notices and closure posts publish as their title, dates, category and a link to the club's own page, copying none of their wording (features/ORG_NOTICES.md section 7), and a copyright footer restricts copying, not reading. The terms are quoted verbatim in `terms`. NOT A LICENCE FROM the Roanoke Appalachian Trail Club.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Roanoke Appalachian Trail Club",
+      "terms": "The site footer: \"Copyright © 2026\" (read 2026-10-10 on the McAfee Knob page and on the 14 AT Hikes page). No terms page: neither page links one.",
+      "reader": "WordpressPosts",
+      "person_fields": [
+        "content",
+        "excerpt"
+      ],
+      "person_fields_comment": "Decision 59 leaves a free-text field that carries personal data out whole: on 2026-10-10 the category's 25 posts carried 8 e-mail-address-shaped and 5 telephone-number-shaped strings in their bodies and 1 telephone-number-shaped string in an excerpt (counted, not read). WordpressPosts drops the row's person_fields before dlt sees the post, so the body never reaches the raw store; the title, dates, categories and link are what a notice publishes anyway (decisions 55 and 107).",
+      "freshness": {
+        "kind": "wp_total_and_modified",
+        "url": "https://www.ratc.org/wp-json/wp/v2/posts",
+        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4; decision 53's inventory read the category feed's ETag and Last-Modified as the site's)."
+      },
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03: its drafted row, registered on 2026-10-10 once www.ratc.org's robots.txt answered 200 (it answered 502 to phase B on 2026-10-03, which RFC 9309 reads as a full disallow).",
+      "discovered_date": "2026-10-03",
+      "notes": "One row per post (extract/_kinds.py's WordpressPosts), keyed by `id`, the WordPress post id. WordPress category 13 `ratc-news`, read through the REST API with X-WP-Total as the count: 25 posts, 2015-08-04 to 2025-11-26, the club's news beside its notices. Where closure posts have gone since the Closures category went quiet: the Catawba Mountain Fire Road's closure (2022-01-11, post 9351, in both categories), its reopening (2022-02-25), its second phase of work (2025-11-03, 'Nov 10-20') and its completion (2025-11-26). Which posts are notices is decision 7's classifier and a person's review in dbt, never a filter here. Read live at 2026-10-10T22:34:08Z under lib/user_agent.py's agent, robots.txt (https://www.ratc.org/robots.txt, 200, 113 bytes, read 2026-10-10T22:33:58Z) allows the path for our agent, no Crawl-delay: the category lookup (category 13 `ratc-news`) and one page of posts (per_page=100): HTTP 200, 240,961 bytes, no ETag or Last-Modified, X-WP-Total 25, 25 posts read, `id` distinct on 25 of 25: the key, with X-WP-Total as the proof.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04), as every WordPress category that keeps every post it ever filed (tehcc_at_posts, matc_hazard_posts, ata_closures_reroutes): no rule expires a post (a post states no end date the reader stages), so its 25 posts back to 2015, club news among them, would stand as current warnings. Settled by an expiry rule for posts (@unvalidated, as those rows say: expiry is a dbt rule), and decision 7's classifier or a reviewed list of which posts are notices, as gatc_news_feed's hold says of a stream that mixes notices with a club's news."
+    },
+    {
+      "key": "ratc_mcafee_page",
+      "title": "RATC McAfee Knob and Triple Crown rules page",
+      "provider": "RATC",
+      "kind": "published_notices",
+      "url": "https://www.ratc.org/at-hiking/mcafee-knob-and-the-triple-crown/",
+      "trust": "authoritative",
+      "steward": "Roanoke Appalachian Trail Club",
+      "licence": "MAINTAINER AUTHORISATION on decisions 53, 55 and 107 (facts and a link, 2026-10-03 and 2026-10-08): a club's notices and closure posts publish as their title, dates, category and a link to the club's own page, copying none of their wording (features/ORG_NOTICES.md section 7), and a copyright footer restricts copying, not reading. The terms are quoted verbatim in `terms`. NOT A LICENCE FROM the Roanoke Appalachian Trail Club.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Roanoke Appalachian Trail Club",
+      "terms": "The site footer: \"Copyright © 2026\" (read 2026-10-10 on the McAfee Knob page and on the 14 AT Hikes page). No terms page: neither page links one.",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.ratc.org/wp-json/wp/v2/pages/2821",
+        "notes": "No validator trusted: every run reads the source (one request) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check). The REST answer carries no ETag or Last-Modified (measured 2026-10-10)."
+      },
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03: its drafted row, registered on 2026-10-10 once www.ratc.org's robots.txt answered 200 (it answered 502 to phase B on 2026-10-03, which RFC 9309 reads as a full disallow).",
+      "discovered_date": "2026-10-03",
+      "notes": "'McAfee Knob and Virginia’s Triple Crown', the club's standing rules for the A.T. from VA 624 to US 220 (camping, fires, group sizes) and a water line for the Dragons Tooth area, read through WordPress page 2821. As every page notice, the page is one notice: its title, its own date and its link, and none of its sentences, the water line among them (decisions 55 and 107). Read live at 2026-10-10T22:34:12Z under lib/user_agent.py's agent, robots.txt (https://www.ratc.org/robots.txt, 200, 113 bytes, read 2026-10-10T22:33:58Z) allows the path for our agent, no Crawl-delay: HTTP 200, 30,888 bytes, no ETag or Last-Modified. Through PageNotice that answer lands one row: title 'McAfee Knob and Virginia’s Triple Crown', its date 2026-02-25 (wp_modified, stated as '2026-02-25T02:18:48'), region `wp:content` of 14,304 characters. The key is `url`: one row a page, 1 distinct of 1.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63, as for every page notice (cohos_trouble_spots, mratc_trail_alerts): stg_ratc__ratc_mcafee_page reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
       "key": "blue_hills_hikes",
@@ -20093,7 +20175,7 @@
       },
       "RATC": {
         "state": "not_asked",
-        "note": "Not asked. Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+        "note": "Not asked. Registered for its 14 AT Hikes page and its closures and warnings under section K's hand-back (2026-10-10). Its McAfee Knob page reaches hikers as a notice, facts and a link credited to the club by name, with no mark beside it. Nothing has been sent."
       },
       "SMHC": {
         "state": "not_asked",
@@ -21172,7 +21254,7 @@
       "org:ratc": {
         "provider": "RATC",
         "name": "Roanoke Appalachian Trail Club",
-        "note": "An A.T. maintaining club (trail_orgs.json: at_club) whose section runs from Black Horse Gap to VA 611; registered for its 14 AT Hikes page (section K's hand-back, 2026-10-10), at reaches_hikers: false."
+        "note": "An A.T. maintaining club (trail_orgs.json: at_club) whose section runs from Black Horse Gap to VA 611; registered for its 14 AT Hikes page (section K's hand-back, 2026-10-10), at reaches_hikers: false, and for its closures and warnings (decision 53's drafted rows, 2026-10-10), whose McAfee Knob page reaches hikers as a notice."
       },
       "org:kta": {
         "provider": "KTA",

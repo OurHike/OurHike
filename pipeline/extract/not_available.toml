@@ -12971,47 +12971,6 @@ checked = [
 where = ["https://www.ratc.org/awards/113-mile-club/", "https://www.ratc.org/robots.txt"]
 reason = "not read: no PDF family reads the checklist, and the award's miles are the 14 hikes ratc/suggested_hikes.py reads"
 
-[ratc.closures]
-confirmed = 2026-10-10
-summary = """
-Held: www.ratc.org's robots.txt answered 502 to our agent on both reads of 2026-10-03, which RFC
-9309 reads as disallow.
-
-Decision 53's inventory (batch 2) read the club's WordPress REST routes earlier the same day, with a 200
-robots.txt that disallowed only /wp-admin/: the Closures category (id 78, 3 posts, newest 'MVP
-Construction in Peters Mountain Area', 2023-10-25) is dormant, and closure posts now go untagged to RATC
-News (id 13, X-WP-Total 25, newest 2025-11-26 'Catawba Mountain Fire Road Project Complete'). The club
-points hikers to Facebook for 'the latest news and alerts', a social channel with no reader here.
-
-In phase B, robots.txt was read again before the first request to the host this session, as every
-registration's rule asks, and answered HTTP 502 with an empty body at 22:06 and 22:15 UTC. A host whose
-robots.txt fails with a server error is read as refusing (RFC 9309, section 2.3.1.4), so nothing was
-fetched and no row was registered. Whether the 502 is RATC's server or the sandbox's proxy failing to
-reach it is unknown; one 200 robots.txt read, from a runner or a later session, settles it, and the
-two WordpressPosts rows the inventory drafted (`ratc_closures_posts`, `ratc_news_posts`) and the McAfee
-Knob page (`ratc_mcafee_page`, WordPress page 2821) can then be registered as drafted. ATC's resources
-carry the current A.T. items on RATC's section meanwhile (decision 34).
-
-Read again on 2026-10-10 (section K's hand-back): robots.txt answered 200, as `checked`'s first
-line records, so the drafted rows can be registered; `reason` says why they were not.
-
-Before this, the file was the coverage audit's note (confirmed 2026-10-01, batch c3_at_clubs_south),
-whose `checked` is kept below."""
-checked = [
-    "https://www.ratc.org/robots.txt and https://ratc.org/robots.txt, read 2026-10-10T18:51Z under lib/user_agent.py's agent: 200, 113 bytes each, `User-agent: *` / `Disallow: /wp-admin/` / `Allow: /wp-admin/admin-ajax.php`, no Crawl-delay. The 502 of 2026-10-03 and 2026-10-04 no longer holds.",
-    "https://www.ratc.org/robots.txt, read under our agent at 2026-10-03 22:06 and 22:15 UTC (decision 53 phase B): HTTP 502, empty body, both times. Read as disallow (RFC 9309); nothing else was asked.",
-    "(decision 53 inventory, batch 2, earlier on 2026-10-03, robots.txt 200 disallowing /wp-admin/ only) /wp-json/wp/v2/posts?categories=78: X-WP-Total 3, newest 2023-10-25 (modified 2025-04-26); categories=13 (RATC News): X-WP-Total 25, newest 2025-11-26.",
-    '(coverage audit, 2026-10-01) WP category Closures (id 78, 3 posts: 2022-01-11, 2023-08-21, 2023-10-25), RSS `https://www.ratc.org/category/closures/feed/`. `/andy-layne-trail/` (page, modified 2026-08-20): "The new Andy Lane Trail parking lot and permanent reroute is now open", with the Feb 2026 closure history. The Triple Crown page says "For the latest news and alerts … please check our Facebook page" (`facebook.com/RoanokeATC`; not fetched).',
-]
-where = [
-    "https://www.ratc.org/robots.txt",
-    "https://www.ratc.org/wp-json/wp/v2/posts?categories=78",
-    "https://www.ratc.org/wp-json/wp/v2/posts?categories=13",
-    "https://www.ratc.org/category/closures/feed/",
-    "https://facebook.com/RoanokeATC",
-]
-reason = "robots.txt answers 200 since 2026-10-10, so the inventory's drafted rows can be registered; not done in section K's hand-back, because they ride the hourly lane, whose soak a new source changes (the lead's call)"
-
 [ratc.elevation]
 confirmed = 2026-10-01
 summary = """
@@ -13102,37 +13061,6 @@ where = [
     "https://ratc.org/",
 ]
 reason = "drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
-
-[ratc.warnings]
-confirmed = 2026-10-10
-summary = """
-Held for the same reason as closures.py: www.ratc.org's robots.txt answered 502 to our agent on both
-reads of 2026-10-03.
-
-The club's warnings are regulations and a water hazard on its McAfee Knob and Triple Crown page
-(WordPress page 2821, modified 2026-02-24: camping only in 7 designated areas, fire rings, group sizes,
-"There are no natural water sources along the A.T. in the Dragons Tooth area, so bring all your water"),
-and the mixed RATC News posts (category 13). Under decision 7 they are warnings. Nothing is fetched until
-a robots.txt read answers 200 (RFC 9309 reads a 5xx as disallow); closures.py says what settles it.
-ATC's resources carry the bear and high-water rows on the section meanwhile.
-
-Read again on 2026-10-10 (section K's hand-back): robots.txt answered 200, as `checked`'s first
-line records, so the drafted rows can be registered; `reason` says why they were not.
-
-Before this, the file was the coverage audit's note (confirmed 2026-10-01, batch c3_at_clubs_south),
-whose `checked` is kept below."""
-checked = [
-    "https://www.ratc.org/robots.txt and https://ratc.org/robots.txt, read 2026-10-10T18:51Z under lib/user_agent.py's agent: 200, 113 bytes each, `User-agent: *` / `Disallow: /wp-admin/` / `Allow: /wp-admin/admin-ajax.php`, no Crawl-delay. The 502 of 2026-10-03 and 2026-10-04 no longer holds.",
-    "https://www.ratc.org/robots.txt, read under our agent at 2026-10-03 22:06 and 22:15 UTC (decision 53 phase B): HTTP 502, empty body, both times. Read as disallow (RFC 9309); nothing else was asked.",
-    "(decision 53 inventory, batch 2, earlier on 2026-10-03) /wp-json/wp/v2/pages?slug=mcafee-knob-and-the-triple-crown: page 2821, modified 2026-02-24T21:18:48; it links facebook.com/RoanokeATC for 'latest news and alerts'.",
-    '(coverage audit, 2026-10-01) `https://www.ratc.org/at-hiking/mcafee-knob-and-the-triple-crown/` (page, modified 2026-02-24). Standing federal rules for VA 624–US 220: "NO camping outside of 7 designated areas", no fires outside metal rings, group size 25 for day hikes and 10 overnight. Water: "There are no natural water sources along the A.T. in the Dragons Tooth area, so bring all your water". The Dragons Tooth Special Biological Area is closed to camping. A drone prohibition. The bears category (id 31) has 2 posts, both 2016.',
-]
-where = [
-    "https://www.ratc.org/robots.txt",
-    "https://www.ratc.org/at-hiking/mcafee-knob-and-the-triple-crown/",
-    "https://www.ratc.org/wp-json/wp/v2/posts?categories=13",
-]
-reason = "robots.txt answers 200 since 2026-10-10, so the McAfee Knob page and RATC News can be registered as the inventory drafted them; not done in section K's hand-back, because warnings ride the hourly lane, whose soak a new source changes (the lead's call)"
 
 [ridgetrail.challenges]
 confirmed = 2026-10-04

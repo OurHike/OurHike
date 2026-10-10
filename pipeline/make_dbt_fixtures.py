@@ -10148,6 +10148,25 @@ def _kta_page() -> str:
     return _k_page("Favorite Hikes", body)
 
 
+def _ratc_page() -> str:
+    """RATC's hikes table as measured 2026-10-10: a th header whose first cell is two lines, then a row a hike whose
+    first cell links to the hike's own section below; then the hikes' prose and their Google links, which never land."""
+    rows = "".join(
+        f'<tr><td><a href="#hike{n}">Hike {n}</a>: Fixture Gap {n} to Fixture Knob {n}</td><td>{miles}</td>'
+        f"<td>{difficulty}</td></tr>"
+        for n, miles, difficulty in ((1, "6.9", "Moderate"), (2, "13", "Strenuous"))
+    )
+    body = (
+        "<h1>RATC's 14 AT Hikes</h1><p>Fixture prose.</p><table><tbody><tr>"
+        '<th width="75%"><strong>Hike</strong><br /><span>Northern Point to Southern Point</span></th>'
+        "<th><strong>Length (miles)</strong></th><th><strong>Difficulty</strong></th></tr>"
+        f"{rows}</tbody></table>"
+        "<h3>Hike 1: Fixture Gap 1 to Fixture Knob 1</h3><p>Fixture description.</p>"
+        '<p><a href="https://www.google.com/maps?daddr=36.72036,-80.0">Fixture directions</a></p>'
+    )
+    return _k_page("RATC's 14 AT Hikes", body)
+
+
 def _amc_page() -> str:
     trip = (
         "<h5>Fixture Traverse {n}</h5><p><strong>Strenuous | 3-4 Days</strong></p>"
@@ -10499,6 +10518,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "cohos_day_hikes": [("https://www.cohostrail.org/day-hike/", HTML, _cohos_page())],
         "patc_tuscarora_sections": _tuscarora_pages(),
         "kta_favorite_hikes": [("https://www.kta-hike.org/favorite-hikes-in-pennsylvania.html", HTML, _kta_page())],
+        "ratc_at_hikes": [("https://www.ratc.org/at-hiking/ratcs-14-at-hikes/", HTML, _ratc_page())],
         "amc_itineraries": [("https://www.outdoors.org/resources/itineraries/", HTML, _amc_page())],
         "ata_passages": _ata_pages(),
         "cfpa_trails": [("https://ctwoodlands.org/trails/", HTML, _cfpa_page())],
@@ -10540,6 +10560,7 @@ K_PAGES_ROWS = {
     "cohos_day_hikes": 2,
     "patc_tuscarora_sections": 2,
     "kta_favorite_hikes": 2,
+    "ratc_at_hikes": 2,
     "amc_itineraries": 2,
     "ata_passages": 1,
     "cfpa_trails": 2,

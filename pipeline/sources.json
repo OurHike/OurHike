@@ -17685,6 +17685,29 @@
       "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
+      "key": "ratc_at_hikes",
+      "title": "Roanoke Appalachian Trail Club's 14 AT Hikes (its page)",
+      "provider": "RATC",
+      "kind": "published_hikes",
+      "url": "https://www.ratc.org/at-hiking/ratcs-14-at-hikes/",
+      "steward": "Roanoke Appalachian Trail Club",
+      "attribution": "Roanoke Appalachian Trail Club",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its difficulty, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Roanoke Appalachian Trail Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "The page's footer: \"Copyright © 2026\" (read 2026-10-10). No terms or licence page was found on it.",
+      "reader": "ContentPages (extract/_pages_content.py), site `ratc_at_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads the hikes table's three columns and nothing else. The page's hike descriptions and its Google Maps links are not read.",
+      "key_fields": ["name"],
+      "key_comment": "The hike's two ends (`name`, 'Black Horse Gap (BRP) to Curry Gap (BRP)'): unique on all 14 rows read 2026-10-10. Its number (`section`, 'Hike 1' to 'Hike 14') is unique too, and would change if the club renumbered.",
+      "freshness": {"kind": "read_and_hash", "url": "https://www.ratc.org/at-hiking/ratcs-14-at-hikes/", "notes": "No validator trusted: every run reads the page and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."},
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's suggested_hikes row for this club (coverage audit 2026-10-01); section K (2026-10-04) could not read it, www.ratc.org's robots.txt answering 502; read live on 2026-10-10 under lib/user_agent.py's USER_AGENT, robots.txt first (200, disallowing only /wp-admin/).",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10: HTTP 200, text/html, 185,423 bytes. One table, 14 hikes north to south along RATC's section, from Black Horse Gap on the Blue Ridge Parkway to VA 611, 5.5 to 13.2 miles, each Moderate or Strenuous. Below it each hike's description and Google Maps driving links, neither read. The routes are in a CalTopo map whose API caltopo.com's robots.txt disallows (not_available.toml's former [ratc.suggested_hikes] note, kept in ratc/suggested_hikes.py's docstring), and the 113-mile hike list page (2023) gives the same hikes with their climbs and 11 map PDFs, which are not read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and difficulty each beside the text it was read from, and the link."
+    },
+    {
       "key": "blue_hills_hikes",
       "title": "Friends of the Blue Hills Suggested Hikes (friendsofthebluehills.org/hiking-near-boston/)",
       "provider": "Friends of the Blue Hills",
@@ -20068,6 +20091,10 @@
         "state": "not_asked",
         "note": "Not asked. Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       },
+      "RATC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
       "SMHC": {
         "state": "not_asked",
         "note": "Not asked. Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
@@ -21141,6 +21168,11 @@
         "provider": "RMC",
         "name": "Randolph Mountain Club",
         "note": "Maintains trails and camps on the northern slopes of the Presidential Range from Randolph, New Hampshire; registered for its Recommended Hikes PDF (decision 54, wave 4, section K, 2026-10-04), at reaches_hikers: false."
+      },
+      "org:ratc": {
+        "provider": "RATC",
+        "name": "Roanoke Appalachian Trail Club",
+        "note": "An A.T. maintaining club (trail_orgs.json: at_club) whose section runs from Black Horse Gap to VA 611; registered for its 14 AT Hikes page (section K's hand-back, 2026-10-10), at reaches_hikers: false."
       },
       "org:kta": {
         "provider": "KTA",
@@ -26815,6 +26847,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "RATC": {
+        "probed_date": "2026-10-10",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
           }
         }
       },

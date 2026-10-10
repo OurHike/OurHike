@@ -1055,6 +1055,52 @@ def _kta_favorite_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+#: RATC's '14 AT Hikes' table, as read 2026-10-10: its three header cells, the first two lines of one cell joined.
+RATC_HEADER = ("Hike Northern Point to Southern Point", "Length (miles)", "Difficulty")
+_RATC_HIKE = re.compile(r"Hike (?P<number>\d+)\s*:\s*(?P<name>.+)")
+
+
+def _ratc_at_hikes(page: Page, fetch) -> list[dict]:
+    """The Roanoke Appalachian Trail Club's '14 AT Hikes' (www.ratc.org/at-hiking/ratcs-14-at-hikes/), read 2026-10-10,
+    the first day this pipeline could ask: www.ratc.org's robots.txt answered 502 on 2026-10-03 and 2026-10-04.
+
+    One table, north to south along RATC's section of the A.T.: a header row (RATC_HEADER) and a row a hike, 'Hike N:
+    <one end> to <the other>' with its length in miles and its difficulty ('Moderate', 'Strenuous'). Below the table
+    each hike's description, which is prose and lands nowhere, and its Google Maps driving links, which are Google's
+    places, not the club's, and are not read either. The hikes are written as shuttle hikes but for one loop, and no
+    row says which, so the way is left unknown. A table that is not there once, a row that is not 'Hike N: ...' with a
+    plain number of miles and one word of difficulty, or a number that skips, raises.
+    """
+    found = [table_rows(node) for node in page.root.iter() if node.tag == "table"]
+    matching = [rows for header, rows in found if tuple(" ".join(cell.split()) for cell in header) == RATC_HEADER]
+    if len(matching) != 1:
+        raise LayoutChanged(f"ratc: {len(matching)} tables carry the hikes' header {RATC_HEADER}, not one")
+    rows = []
+    for cells in matching[0]:
+        if len(cells) != 3:
+            raise LayoutChanged(f"ratc: a row has {len(cells)} cells, not 3")
+        hike = _RATC_HIKE.fullmatch(" ".join(cells[0].split()))
+        length, difficulty = " ".join(cells[1].split()), fact(cells[2])
+        if hike is None or not re.fullmatch(r"\d+(?:\.\d+)?", length) or not difficulty or " " in difficulty:
+            raise LayoutChanged(f"ratc: {cells!r} is not 'Hike N: ...' with its miles and one word of difficulty")
+        if int(hike["number"]) != len(rows) + 1:
+            raise LayoutChanged(f"ratc: hike {hike['number']} follows hike {len(rows)}")
+        rows.append(
+            {
+                "name": fact(hike["name"]),
+                "section": f"Hike {hike['number']}",
+                "distance_mi": float(length),
+                "distance_text": f"{length} Length (miles)",
+                "difficulty": difficulty,
+                "link": page.url,
+                "source_url": page.url,
+            }
+        )
+    if not rows:
+        raise LayoutChanged("ratc: the hikes table holds no hike")
+    return rows
+
+
 def _amc_itineraries(page: Page, fetch) -> list[dict]:
     """The Appalachian Mountain Club's 'Outdoor Itineraries & Trip Ideas' (outdoors.org/resources/itineraries/).
 
@@ -2012,6 +2058,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
         _tuscarora_sections, columns={"map": "text", "max_elevation_ft": "double", "min_elevation_ft": "double"}
     ),
     "kta_favorite_hikes": SiteParser(_kta_favorite_hikes),
+    "ratc_at_hikes": SiteParser(_ratc_at_hikes),
     "amc_itineraries": SiteParser(_amc_itineraries, columns={"duration": "text"}),
     "ata_passages": SiteParser(
         _ata_passages,

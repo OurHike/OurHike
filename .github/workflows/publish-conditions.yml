@@ -613,8 +613,18 @@ jobs:
           "$RUNNER_TEMP/dbt/bin/dbt" deps --profiles-dir .
           printf -- '- dbt deps, on a cache miss: %s s\n\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
+      # The packages' own files, hash-pinned (decision 144; pipeline-tests.yml's
+      # dbt job says why and what was measured): a cache hit is checked as well
+      # as a fresh deps, before any dbt command reads a macro in a job holding
+      # the raw store's and the bucket's write keys, and the save below waits
+      # for it, so a tree that fails is never cached.
+      - name: Check dbt's packages against their pinned hashes (dbt path)
+        id: packages-pinned
+        if: env.PHONE_FILES == 'dbt'
+        run: python3 check_dbt_packages.py
+
       - name: Save dbt's packages (dbt path)
-        if: always() && env.PHONE_FILES == 'dbt' && steps.deps.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
+        if: always() && env.PHONE_FILES == 'dbt' && steps.deps.outcome == 'success' && steps.packages-pinned.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
         continue-on-error: true
         uses: actions/cache/save@v6
         with:

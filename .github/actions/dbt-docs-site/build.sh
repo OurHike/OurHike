@@ -72,6 +72,10 @@ if $deps; then
 else
   echo "dbt deps: skipped (--no-dbt-deps), using pipeline/dbt/dbt_packages/ as it is"
 fi
+# The packages' own files, hash-pinned (pipeline/ELT.md decision 144), either
+# way: dbt compiles their macros and models into the page, which runs on
+# ourhike.org's origin.
+python ../check_dbt_packages.py
 # No --vars, ever: dbt_rt.invocations publishes vars_override with the page.
 # The base's trailing `?` is deliberate: duckdb-wasm/loader.js says why.
 dbt docs generate --profiles-dir . --output-dir "$out" --duckdb-cdn-base "/data/duckdb/duckdb.js?"

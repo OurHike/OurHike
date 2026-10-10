@@ -253,8 +253,14 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt deps --profiles-dir .
 
+      # The packages' own files, hash-pinned (decision 144): pipeline-tests.yml's
+      # dbt job says why. Checked on a hit too, and before the save.
+      - name: Check dbt's packages against their pinned hashes
+        id: packages-pinned
+        run: python3 check_dbt_packages.py
+
       - name: Save dbt's packages
-        if: always() && steps.deps.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
+        if: always() && steps.deps.outcome == 'success' && steps.packages-pinned.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
         continue-on-error: true
         uses: actions/cache/save@v6
         with:

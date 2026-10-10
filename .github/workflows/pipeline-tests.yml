@@ -425,10 +425,11 @@ jobs:
       # A hit skips deps: measured
       # 2026-10-05 on dbt 2.0.6 in a sandbox, `dbt parse` with dbt_packages/
       # in place and no deps that session finished "'parse' successfully".
-      # Saved straight after a deps that succeeded, never after a failed one,
-      # whose half-written folder a later hit would build on.
-      # .github/tests/test_dbt_packages_cache.py holds this shape in every job
-      # that runs deps.
+      # Saved only after a deps that succeeded, never after a failed one,
+      # whose half-written folder a later hit would build on, and only once
+      # the check below has passed the tree, so a tree that fails it is never
+      # cached. .github/tests/test_dbt_packages_cache.py holds this shape in
+      # every job that runs deps.
       - name: Restore dbt's packages
         id: dbt-packages
         if: steps.scope.outputs.run == 'true'
@@ -443,23 +444,29 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt deps --profiles-dir .
 
-      - name: Save dbt's packages
-        if: always() && steps.deps.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
-        continue-on-error: true
-        uses: actions/cache/save@v6
-        with:
-          path: pipeline/dbt/dbt_packages
-          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
-
       # THE PACKAGES' OWN FILES, HASH-PINNED (decision 144): packages.yml and
       # package-lock.yml pin versions, and nothing checked what a version's
       # tarball holds. Restored from the cache or written by deps just now,
       # every file under dbt_packages/ must match dbt/packages.sha256 before
       # dbt reads one (check_dbt_packages.py says how the list was made).
+      # Measured on run 38020970450 (9c4d81ac, 2026-10-10): "Check dbt's
+      # packages" passed on a cache hit, a tree only a runner's successful
+      # deps can have saved, so the list holds what deps writes on a runner.
+      # The hourly, checks and monthly jobs run the same step in the same
+      # place, and the docs site's build.sh before `dbt docs generate`.
       - name: Check dbt's packages against their pinned hashes
+        id: packages-pinned
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline
         run: python3 check_dbt_packages.py
+
+      - name: Save dbt's packages
+        if: always() && steps.deps.outcome == 'success' && steps.packages-pinned.outcome == 'success' && hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/dbt/dbt_packages
+          key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
 
       # The v2 YAML check: dbt-oss 2.0.5 refused this project's v1-shaped
       # YAML with 64 errors until it moved to v2's shape, which 2.0.6 parses

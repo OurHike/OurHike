@@ -6235,20 +6235,6 @@ checked = [
 where = ["https://dnrmaps.wi.gov/arcgis/rest/services", "https://iceagetrail.org/"]
 reason = "drawn from wi_dnr/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
-[iditarod.challenges]
-confirmed = 2026-10-04
-summary = """
-The passport stamps, whose locations the page does not list, and not landed (decision 54 wave 5,
-section K, 2026-10-04).
-
-/passport-stamp-program.html says the Iditarod NHT has 'a total of 9 stamps at different locations' and lists none;
-the coverage audit places the list on page 14 of the Visitor Guide PDF, a magazine layout (suggested_hikes.py)."""
-checked = [
-    "https://www.iditarod100.org/passport-stamp-program.html (HTTP 200, 84,171 bytes, 2026-10-04): '9 stamps at different locations', no list",
-]
-where = ["https://www.iditarod100.org/passport-stamp-program.html"]
-reason = "not published as a list: the page names no stamp location; the guide's list is a magazine page"
-
 [iditarod.closures]
 confirmed = 2026-10-03
 summary = """

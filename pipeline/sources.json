@@ -17895,6 +17895,35 @@
       "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are names, joined to no POI, and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
     },
     {
+      "key": "iditarod_passport_stamps",
+      "title": "Iditarod NHT Passport Stamp Program sites, from the Iditarod Historic Trail Alliance's Visitor Guide (iditarodnhtvisitorguide.pdf)",
+      "provider": "Iditarod Historic Trail Alliance",
+      "kind": "published_notices",
+      "url": "https://www.iditarod100.org/uploads/5/2/4/5/52459009/iditarodnhtvisitorguide.pdf",
+      "steward": "Iditarod Historic Trail Alliance",
+      "attribution": "Iditarod Historic Trail Alliance",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, decision 70's for a club's hike list, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, town and the link) and never the club's prose, as gatc_georgia_4000's row asks for GATC's list. The site's footer reserves all rights (quoted in `terms`).",
+      "licence_basis": "unresolved",
+      "terms": "The site footer, read 2026-10-10 on passport-stamp-program.html and plan-your-trip.html: \"Copyright 2002-2026 Iditarod National Historic Trail, Inc. dba Iditarod Historic Trail Alliance ... All Rights Reserved\". No terms page.",
+      "reader": "ContentPdf (extract/_pdf_content.py), family `iditarod_passport_stamps`",
+      "person_fields": [],
+      "person_fields_comment": "None: the family reads the 'Passport Stamp Participants' list's site names and towns and nothing else, so no person's name, e-mail address or telephone number can land; the guide's photograph credits name people and its pages name historical figures, and neither is read. No metadata field lands but the two dates.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the site as the guide names it: unique on all 11 rows read 2026-10-10.",
+      "freshness": {
+        "kind": "file_validator",
+        "url": "https://www.iditarod100.org/uploads/5/2/4/5/52459009/iditarodnhtvisitorguide.pdf",
+        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither. On 2026-10-10 the file sent an ETag, so an unchanged guide is not read again."
+      },
+      "discovered_via": "not_available.toml's [iditarod.challenges] note (section K, 2026-10-04: 'the guide's list is a magazine page'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10T19:57:31Z: robots.txt (217 bytes) disallows /ajax/ and /apps/ and asks no Crawl-delay; the guide answered HTTP 200, application/pdf, 11,786,538 bytes, ETag '\"db04f23239b5093d965ad41b5cc8d44d\"', Last-Modified 2024-04-05; 24 pages, the metadata's CreationDate 2018-03-20 and ModDate 2018-06-02. Its table of contents puts 'INHT Stamp Program' on page 14; the list itself is on the PDF's 15th page under 'Iditarod NHT Passport Stamp Participants': 11 sites in 9 towns (Seward, Hope, Portage, Girdwood, Anchorage with three, Knik, Wasilla, McGrath, Nome). The text layer splits some words after their first capital ('K enai Fjords', 'V isitor'), which the family joins. The Alliance's own passport-stamp-program.html (read 2026-10-10, HTTP 200, 87,243 bytes) lists no site and says the trail has 'a total of 9 stamps at different locations'; whether that is one stamp a town neither source says, so the guide's 2018 list may not be today's.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are museums and visitor centres by name, joined to no POI, and its 2018 list may not be the Alliance's current one (the current page counts 9 stamps against the list's 11 sites in 9 towns), so it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
+    },
+    {
       "key": "census_tiger_states",
       "title": "TIGER/Line Shapefiles 2025: states and equivalent entities (U.S. Census Bureau)",
       "provider": "U.S. Census Bureau",
@@ -19752,6 +19781,10 @@
         "state": "not_asked",
         "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent. Its point-of-interest layers, registered under decision 54 (2026-10-03) at reaches_hikers: false, are covered by the same answer."
       },
+      "Iditarod Historic Trail Alliance": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its Visitor Guide's passport stamp sites under section K's per-site readers (2026-10-10) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
       "PASDA": {
         "state": "not_asked",
         "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent. Its point-of-interest layers, registered under decision 54 (2026-10-03) at reaches_hikers: false, are covered by the same answer."
@@ -20787,6 +20820,11 @@
         "provider": "Alaska Trails",
         "name": "Alaska Trails",
         "note": "An Alaska trails advocacy organization publishing a statewide trail database. States no terms, so it ships on the maintainer's authorisation rather than theirs. Also registered for its points of interest under decision 54 (2026-10-03), at reaches_hikers: false."
+      },
+      "org:iditarod": {
+        "provider": "Iditarod Historic Trail Alliance",
+        "name": "Iditarod Historic Trail Alliance",
+        "note": "The Iditarod National Historic Trail's nonprofit partner (iditarod100.org), whose alignment arrives through BLM's row; registered for its Visitor Guide's passport stamp sites (section K's per-site readers, 2026-10-10), at reaches_hikers: false."
       },
       "org:ctdeep": {
         "provider": "CT DEEP",
@@ -22760,6 +22798,43 @@
               }
             },
             "note": "AccessType 'Trailhead'. Status Proposed on 26 of the layer's 183 points, as for parking."
+          }
+        }
+      },
+      "Iditarod Historic Trail Alliance": {
+        "probed_date": "2026-10-10",
+        "types": {
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its Visitor Guide's passport stamp sites under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [iditarod.points_of_interest] row (decision 88)."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its Visitor Guide's passport stamp sites under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [iditarod.points_of_interest] row (decision 88)."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its Visitor Guide's passport stamp sites under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [iditarod.points_of_interest] row (decision 88)."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its Visitor Guide's passport stamp sites under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [iditarod.points_of_interest] row (decision 88)."
+          },
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its Visitor Guide's passport stamp sites under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [iditarod.points_of_interest] row (decision 88)."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its Visitor Guide's passport stamp sites under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [iditarod.points_of_interest] row (decision 88)."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its Visitor Guide's passport stamp sites under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [iditarod.points_of_interest] row (decision 88)."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its Visitor Guide's passport stamp sites under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [iditarod.points_of_interest] row (decision 88)."
           }
         }
       },

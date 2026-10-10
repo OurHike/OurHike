@@ -915,8 +915,9 @@ class TestTheRegistryTheConsoleReads:
         # 144 since section K's per-site readers (2026-10-10) registered the Old Dominion Appalachian Trail Club
         # (org:odatc), for its circuit hikes page. 145 since the same readers registered the Susquehanna Appalachian
         # Trail Club (org:satc), for its 'Hiking In Central Pennsylvania' directory. 146 since they registered the
-        # Colorado Fourteeners Initiative (org:cfi), for its peak pages' recommended routes.
-        assert len(orgs) == 146
+        # Colorado Fourteeners Initiative (org:cfi), for its peak pages' recommended routes. 147 since they registered
+        # the Iditarod Historic Trail Alliance (org:iditarod), for its Visitor Guide's passport stamp sites.
+        assert len(orgs) == 147
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -959,6 +960,7 @@ class TestTheRegistryTheConsoleReads:
             "org:gmc",
             "org:hhc",
             "org:iata",
+            "org:iditarod",
             "org:indnr",
             "org:iowadnr",
             "org:kingcountyparks",

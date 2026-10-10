@@ -369,3 +369,36 @@ def test_a_great_hikes_form_whose_list_is_not_its_titles_count_refuses():
     longer = (TTA_TEXT[0] + "Fixture Extra\n",)
     with pytest.raises(PdfLayoutChanged, match="lists 4 hikes and its title states 3"):
         PDF_FAMILIES["tta_great_hikes"].read(PdfFacts(texts=longer), TTA)
+
+
+IDITAROD = "https://www.iditarod100.org/uploads/5/2/4/5/52459009/iditarodnhtvisitorguide.pdf"
+#: An invented text layer set as the Visitor Guide's stamp page is: prose, the heading, 'Town: Site' lines, a name
+#: wrapped onto a one-word line and one onto a bracket, two more sites under one town, a word split after its first
+#: capital, and a sidebar question that ends the list.
+IDITAROD_TEXT = (
+    "Fixture prose about the program.\n",
+    "Iditarod National Historic Trail \nPassport Stamp Program\nFixture prose (see full list below).\n"
+    "Iditarod NHT Passport Stamp \nParticipants\nFixtureport: Fixture Fjords Information \nCenter\n"
+    "Fixtureton:  Fixture Field Office (Fixture \nTract) \nFixture Public Lands Information Center  \n"
+    "(Downtown Fixtureton) \nFixture V isitors Center\nWhy November 10, 1978?\nFixture prose with a Fixture: colon.\n",
+)
+
+
+def test_a_passport_stamp_site_lands_its_name_and_town_wrapped_names_joined_and_the_sidebar_unread():
+    rows = PDF_FAMILIES["iditarod_passport_stamps"].read(PdfFacts(texts=IDITAROD_TEXT), IDITAROD)
+
+    assert [(row["place"], row["name"]) for row in rows] == [
+        ("Fixtureport", "Fixture Fjords Information Center"),
+        ("Fixtureton", "Fixture Field Office (Fixture Tract)"),
+        ("Fixtureton", "Fixture Public Lands Information Center (Downtown Fixtureton)"),
+        ("Fixtureton", "Fixture Visitors Center"),
+    ], "a site under the same town is its own row; the sidebar question ends the list"
+    assert {row["challenge"] for row in rows} == {"Iditarod NHT Passport Stamp Program"}
+
+
+def test_a_visitor_guide_without_its_stamp_list_or_whose_list_never_ends_refuses():
+    with pytest.raises(PdfLayoutChanged, match="no 'Iditarod NHT Passport Stamp Participants' list"):
+        PDF_FAMILIES["iditarod_passport_stamps"].read(PdfFacts(texts=(IDITAROD_TEXT[0],)), IDITAROD)
+    endless = (IDITAROD_TEXT[1].split("Why November")[0],)
+    with pytest.raises(PdfLayoutChanged, match="never ends"):
+        PDF_FAMILIES["iditarod_passport_stamps"].read(PdfFacts(texts=endless), IDITAROD)

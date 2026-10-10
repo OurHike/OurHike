@@ -17155,25 +17155,31 @@ terms = "https://www.wta.org/our-work/about/terms-of-service (decision 53's inve
 reason = "needs a per-site reader that reads only changed pages at a 60 s Crawl-delay, not built in this pull request; its terms are the maintainer's to rule on first"
 
 [wta.suggested_hikes]
-confirmed = 2026-10-04
+confirmed = 2026-10-10
 summary = """
-Published, and not landed: a reader at WTA's Crawl-delay would take hours, and its terms restrict
-the Content to internal use (decision 54 wave 5, section K, 2026-10-04).
+Published as a listing a reader can take, and not landed: its read budget on the monthly lane is the maintainer's
+call (section K's per-site readers, 2026-10-10).
 
-wta.org/go-outside/hikes lists '4268 Hikes', each with length, elevation gain, highest point and rating, 30 a page
-(`b_start:int=30` to `4260`). wta.org's robots.txt asks `Crawl-delay: 60` of every agent, so the listing alone is
-143 requests, about two and a half hours, and the hike pages 71 hours (Reasoned from those two counts). WTA's Terms
-of Service allow its Content to be used 'solely for internal informational purposes' (quoted in `terms`), which
-restricts reuse and refuses no reading. Needs a per-site reader and a read budget that fits the monthly lane, not
-built in this pull request; the terms are for the maintainer."""
+wta.org/go-outside/hikes lists its hikes 30 a page over 143 pages (`b_start:int=30` to `4260`). Each hike is an h3
+linking its page, a region ('Snoqualmie Region > Snoqualmie Pass'), and a definition list: Length ('4.4 miles,
+roundtrip'), Elevation Gain ('1,600 feet'), Highest Point ('2,600 feet') and Rating (hikers' average); the summary
+under it is WTA's prose. So a ContentPages parser is a short one, and robots.txt allows every listing page. What
+holds it is time: robots.txt asks `Crawl-delay: 60` of every agent, so the listing alone is 143 requests, about
+2 h 23 min, in refresh-reference.yml's extract job, whose limit is 240 minutes and whose measured runs took 105 to
+161.5 minutes (Reasoned from those numbers: the reads run four folders at a time, so WTA's would run beside the
+rest, and whether the job still fits depends on when it starts). The terms limit the Content to 'internal
+informational purposes' (quoted in `terms`); decision 55 names that wording as a copying restriction, not a
+refusal to read, and decision 70 answers it for a club's hike list as facts and a link. They name no bar on
+automated access."""
 checked = [
-    "https://www.wta.org/go-outside/hikes (HTTP 200, 286,082 bytes, 2026-10-04): '4268 Hikes'",
-    "robots.txt (2026-10-04): `Crawl-delay: 60` under `User-agent: *`",
-    "https://www.wta.org/our-work/about/terms-of-service (HTTP 200, 2026-10-04), section 3, quoted in `terms`",
+    "https://www.wta.org/go-outside/hikes (HTTP 200, 274,518 bytes, 2026-10-10T19:48:19Z): 30 hikes, a pager to page 143, each hike's h3, region, Length, Elevation Gain, Highest Point and Rating",
+    "robots.txt (1,376 bytes, 2026-10-10): `Crawl-delay: 60`; its 12 rules (Plone's view and form paths) disallow none of /go-outside/hikes, ?b_start:int=30 or ?b_start:int=4260, as extract/_robots.py matches them",
+    "https://www.wta.org/our-work/about/terms-of-service (HTTP 200, 112,851 bytes, 2026-10-10): searched for automat, robot, scrap, crawl and spider, none found; section 3 quoted in `terms`",
+    ".github/workflows/refresh-reference.yml's extract job: `timeout-minutes: 240`, and its comment's measured step times (105 to 127 minutes on monthly runs 18 to 22; 161.5 on run 13)",
 ]
 where = ["https://www.wta.org/go-outside/hikes", "https://www.wta.org/our-work/about/terms-of-service"]
 terms = "'You may view, copy, download, and print Content that is available on this website, subject to the following conditions: The Content may be used solely for internal informational purposes. No part of this website or its Content may be reproduced or transmitted in any form, by any means, electronic or mechanical, including photocopying and recording, for any other purpose. The Content may not be modified.'"
-reason = "needs a per-site reader, not built in this pull request: 4,268 hikes, 30 a page, at a 60 s Crawl-delay need a read budget of hours, and the terms limit the Content to internal use, for the maintainer"
+reason = "waits on the maintainer's call on the read budget, not on a parser: 143 listing requests at WTA's Crawl-delay of 60 s are about 2 h 23 min a month in a 240-minute job; #1811 — Fast follows after PR #1805's dlt → dbt re-platform: the hiker's own download choice, the cutover, and what the port found in today's code"
 
 [wta.trail_lines]
 confirmed = 2026-10-01

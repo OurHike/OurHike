@@ -523,7 +523,8 @@ green on a runner in 46 s on 2026-10-01; at fd38fe24 the build step alone took
 
 ```sh
 # restore ~/.cache/com.getdbt/adbc and ~/.duckdb/extensions/v1.5.4 (actions/cache, keyed on requirements-dbt.txt)
-pip install --require-hashes -r requirements-dbt.txt   # dbt==2.0.6, sqlfluff==4.3.0, duckdb==1.5.5, each file's sha256 checked
+pip install --require-hashes -r requirements-dbt-build.txt                       # packaging, which dbt's sdist builds with
+pip install --require-hashes --no-build-isolation -r requirements-dbt.txt        # dbt==2.0.6, sqlfluff==4.3.0, duckdb==1.5.5, each file's sha256 checked
 python -m venv "$RUNNER_TEMP/extract" && "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
 "$RUNNER_TEMP/extract/bin/python" generate_dbt.py      # both generators' models, never committed (decision 91); they import dlt
 # restore dbt/dbt_packages (actions/cache, keyed on packages.yml and package-lock.yml)
@@ -585,13 +586,15 @@ otherwise reports the suite SKIPPED in its last line. A `dbt-oss 2.0.5` first
 on `PATH` is reported by name and skipped. `.claude/hooks/session-start.sh`
 does not install `requirements-dbt.txt`, so make a Python 3.12 virtualenv
 **outside the repository** (the session's scratchpad) and put it first. The
-file is hash-pinned (`pipeline/ELT.md` decision 144), so install it with
-`--require-hashes`, as every CI job does, and recompile it only with the
-`pip-compile --generate-hashes` command its header records:
+file is hash-pinned (`pipeline/ELT.md` decision 144), so install it as every
+CI job does: dbt's build requirement first from `requirements-dbt-build.txt`,
+then the file with `--require-hashes --no-build-isolation`. Recompile either
+file only with the `pip-compile --generate-hashes` command its header records:
 
 ```sh
 python3.12 -m venv "$SCRATCH/dbtvenv"
-"$SCRATCH/dbtvenv/bin/pip" install --require-hashes -r pipeline/requirements-dbt.txt
+"$SCRATCH/dbtvenv/bin/pip" install --require-hashes -r pipeline/requirements-dbt-build.txt
+"$SCRATCH/dbtvenv/bin/pip" install --require-hashes --no-build-isolation -r pipeline/requirements-dbt.txt
 PATH="$SCRATCH/dbtvenv/bin:$PATH" scripts/test.sh --no-dbt-deps   # after the clones below
 ```
 

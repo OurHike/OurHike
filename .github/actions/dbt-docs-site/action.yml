@@ -77,9 +77,13 @@ runs:
     # Hash-checked (pipeline/ELT.md decision 144): the page this action builds
     # runs on ourhike.org's origin, and dbt writes that page's own scripts
     # from what this step installs (DuckDB-WASM's come from npm ci, below).
+    # dbt's build requirement first, so the build fetches nothing unhashed
+    # (pipeline/requirements-dbt-build.in says why).
     - name: Install dbt
       shell: bash
-      run: pip install --require-hashes -r pipeline/requirements-dbt.txt
+      run: |
+        pip install --require-hashes -r pipeline/requirements-dbt-build.txt
+        pip install --require-hashes --no-build-isolation -r pipeline/requirements-dbt.txt
 
     # The dbt generators' output, which is not committed (pipeline/ELT.md
     # decision 91), written before build.sh's dbt reads the project. On a venv

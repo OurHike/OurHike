@@ -531,7 +531,8 @@ if selected_has dbt; then
     echo "-- dbt suite: SKIPPED, no dbt ${DBT_PIN:-?} first on PATH (found: ${dbt_found})."
     echo "   Make a venv outside the repository, install the pins, and put it first on PATH:"
     echo "     python3.12 -m venv ~/.venvs/ourhike-dbt"
-    echo "     ~/.venvs/ourhike-dbt/bin/pip install --require-hashes -r pipeline/requirements-dbt.txt"
+    echo "     ~/.venvs/ourhike-dbt/bin/pip install --require-hashes -r pipeline/requirements-dbt-build.txt"
+    echo "     ~/.venvs/ourhike-dbt/bin/pip install --require-hashes --no-build-isolation -r pipeline/requirements-dbt.txt"
     echo "     PATH=~/.venvs/ourhike-dbt/bin:\$PATH scripts/test.sh"
     echo "   CI runs it regardless (.github/workflows/pipeline-tests.yml's dbt job)."
     skipped+=("dbt suite (no dbt ${DBT_PIN:-?} on PATH)")

@@ -15,7 +15,10 @@
 # pipeline/, on Python 3.12, with the command the .txt's header records:
 #   pip-compile --generate-hashes --output-file=requirements-dbt.txt --strip-extras requirements-dbt.in
 # .github/tests/test_dbt_install_is_hash_pinned.py fails a compile that drops
-# the hashes and an install that drops the flag.
+# the hashes and an install that drops the flag. These hashes do not reach the
+# `packaging` that dbt's sdist builds with: requirements-dbt-build.in pins it,
+# says why, and is installed first, so this file installs with
+# --no-build-isolation.
 #
 # duckdb is pinned identically to requirements.in's hand-written pin, and for
 # the same ABI reason - the spatial extension is ABI-locked to the exact

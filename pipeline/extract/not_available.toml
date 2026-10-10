@@ -961,22 +961,6 @@ DCR's park alerts layer, the live channel for the Massachusetts A.T.'s state lan
 once in _shared/ma_dcr/ as `ma_dcr_park_alerts` (decision 34), and its warnings are split from its
 closures in dbt."""
 
-[amc_ct.challenges]
-confirmed = 2026-10-04
-summary = """
-The East of the River Hiker Badge's 2019 form, and not landed (decision 54 wave 5, section K,
-2026-10-04).
-
-EOR_HikerBadgeForm.pdf (2019, 3 pages) lists about 27 eastern Connecticut trails, each with a source code for the
-guidebook that describes it (W, the CT Walk Book; H, 50 Hikes, 1998; ...); some names wrap across lines with no
-code. Its page 3 names the badge committee's members with their home addresses and telephone numbers, people's,
-never read. A reader for this form is a per-family reader not built here."""
-checked = [
-    "https://ct-amc.org/wp/wp-content/uploads/2019/07/EOR_HikerBadgeForm.pdf (HTTP 200, 143,557 bytes, Last-Modified 2019-07-21, 2026-10-04): 3 pages",
-]
-where = ["https://ct-amc.org/wp/wp-content/uploads/2019/07/EOR_HikerBadgeForm.pdf"]
-reason = "needs a per-site reader, not built in this pull request: a 2019 form whose trail names wrap"
-
 [amc_ct.closures]
 confirmed = 2026-10-01
 summary = """

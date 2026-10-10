@@ -10973,6 +10973,35 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_amc_dv__amcdv_bear_safety reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "amc_ct_eor_hiker_badge",
+      "title": "AMC Connecticut Chapter East of the River Hiker Badge form (ct-amc.org's EOR_HikerBadgeForm.pdf)",
+      "provider": "AMC",
+      "kind": "published_notices",
+      "url": "https://ct-amc.org/wp/wp-content/uploads/2019/07/EOR_HikerBadgeForm.pdf",
+      "steward": "Appalachian Mountain Club, Connecticut Chapter",
+      "attribution": "Appalachian Mountain Club, Connecticut Chapter",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, decision 70's for a club's hike list, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind and the link) and never the club's prose, as gatc_georgia_4000's row asks for GATC's list.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the form states none, and ct-amc.org's home page links no terms page and states no copyright (read 2026-10-10).",
+      "reader": "ContentPdf (extract/_pdf_content.py), family `amc_ct_eor_hiker_badge`",
+      "person_fields": [],
+      "person_fields_comment": "None: the family reads the trail table's names and guidebook codes on pages 1 and 2 and stops at 'Where to find trail descriptions'. Page 3 names the badge committee's members with their home addresses and telephone numbers, and is never read; a form in which that end line disappears refuses rather than read on into it. The legend names a guidebook's author, which is not read either, and no metadata field lands but the two dates.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the trail as the form writes it ('Bigelow Hollow'), a wrapped name joined ('Mansfield Hollow State Park'): unique on all 26 rows read 2026-10-10.",
+      "freshness": {
+        "kind": "file_validator",
+        "url": "https://ct-amc.org/wp/wp-content/uploads/2019/07/EOR_HikerBadgeForm.pdf",
+        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither. On 2026-10-10 the file sent a Last-Modified and no ETag."
+      },
+      "discovered_via": "not_available.toml's [amc_ct.challenges] note (section K, 2026-10-04: 'a 2019 form whose trail names wrap'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10T18:35:09Z: robots.txt (67 bytes) disallows only /wp-admin/ and asks no Crawl-delay; the PDF answered HTTP 200, application/pdf, 143,557 bytes, Last-Modified 'Sun, 21 Jul 2019 20:44:25 GMT', no ETag; 3 pages, the metadata's dates 2019-07-21. Through pypdf 6.19.0 the table's rows are indented lines, a trail's name and its guidebook code: 17 trails on page 1 and 9 on page 2, 26 in all, one of them (Mansfield Hollow State Park) wrapped onto a second line with no code. Codes as the form's legend gives them, counted on the 26: W the CT Walk Book 14, H '50Hikes, 1998' 5, J the Joshua Tract Walk Book 3, S,H (Hiking in Southern New England and 50 Hikes) 1, T TNC/Country Walks in CT 1, CoE the Corps of Engineers 1, and none on the wrapped Mansfield Hollow State Park. The form is from 2019 and states no date its list holds to; whether the badge is still awarded the form does not say.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are trail names, joined to no POI or line; 14 of the 26 carry the CT Walk Book's code, which the form's legend says covers CFPA's Blue Trail system, so a mart would credit most of them to CFPA or a park rather than to the chapter. It stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
+    },
+    {
       "key": "amc_lodging",
       "title": "AMC lodging in the White Mountains (AMC's own layer)",
       "provider": "AMC",

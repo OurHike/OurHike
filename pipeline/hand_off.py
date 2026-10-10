@@ -67,6 +67,32 @@ left nothing to check" (an exporters-path leg, a build that failed before
 its put, or a push since the build); 1 for anything
 else, a store that cannot be read, a torn upload, a warehouse still holding
 a write-ahead log.
+
+THE HOUR'S COMPARISON TAKES A BUNDLE, NOT THE WAREHOUSE (open question 17, the
+maintainer's poll of 2026-10-10: "Compare every soak hour"):
+
+    python hand_off.py put-bundle --url URL --bundle DIR --run RUN [--attempt N] [--commit SHA]
+    python hand_off.py take-bundle --url URL --out DIR --run RUN [--commit SHA]
+
+hourly_parity.py's bundle, the answers today's exporters need and the six
+files the writers wrote, a few megabytes where the warehouse is 2,626,433,024
+bytes (soak run 624's log, 2026-10-10), goes beside the warehouse with a
+pointer of its own:
+
+    checks/parity_inputs.json.gz  every file of the bundle, as one gzipped JSON document {path: text}
+    checks/parity_inputs.json     which run put it, from which commit, its size and sha256: written last
+
+The same rules as the warehouse's, on their own pointer, so neither can make
+the other's take fail: one copy a leg, overwritten each build; `take-bundle`
+finds nothing to compare (NOT_HANDED_OFF) for another run's or another
+commit's bundle, and answers a later put landing mid-download the same way.
+The publish job puts it AFTER the warehouse, in the same capped step, so the
+checks' hand-off keeps every second it had (publish-conditions.yml's
+"Hand this build's warehouse to its checks"). A bundle is text alone, and a
+path in it that is absolute or climbs out of the directory is refused rather
+than written. It holds rows, so purge_person_fields.py (decision 56) unpacks
+it and reads each of its files' keys (read_bundle()), as it reads the
+warehouse beside it, and deletes the two together.
 """
 
 from __future__ import annotations
@@ -74,6 +100,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -94,6 +121,15 @@ GZIP_LEVEL = 1
 CHUNK = 1 << 20
 #: `take`'s exit when no warehouse at the store is the asked run's: something to say, not a failure of this file's.
 NOT_HANDED_OFF = 4
+#: The module docstring, "THE HOUR'S COMPARISON TAKES A BUNDLE".
+BUNDLE = f"{FOLDER}/parity_inputs.json.gz"
+BUNDLE_POINTER = f"{FOLDER}/parity_inputs.json"
+BUNDLE_FORMAT = 1
+#: The bundle's files are text, compressed at gzip's default level: a few megabytes, where the warehouse's level 1
+#: buys time on gigabytes (GZIP_LEVEL).
+BUNDLE_GZIP_LEVEL = 6
+#: A bundle path: relative, made of these characters alone, and never `..` (bundle_files()).
+BUNDLE_PATH = re.compile(r"[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*")
 
 
 class NotHandedOff(Exception):
@@ -210,6 +246,96 @@ def take(url: str, warehouse: Path, run: str, commit: str | None = None) -> str:
     )
 
 
+def bundle_files(folder: Path) -> dict[str, str]:
+    """{path under `folder`: its text} for every file in it, refusing a path BUNDLE_PATH does not allow."""
+    files = {}
+    for path in sorted(folder.rglob("*")):
+        if path.is_file():
+            relative = path.relative_to(folder).as_posix()
+            if not BUNDLE_PATH.fullmatch(relative) or ".." in relative.split("/"):
+                raise Refused(f"{relative} is not a path a bundle may carry")
+            files[relative] = path.read_text(encoding="utf-8")
+    return files
+
+
+def put_bundle(url: str, folder: Path, run: str, attempt: str = "1", commit: str | None = None) -> str:
+    """hourly_parity.py's bundle in `folder`, as one gzipped document under the store, then its pointer naming `run` and
+    `commit`. Returns what it did, for the log."""
+    started = time.monotonic()
+    if not folder.is_dir():
+        raise Refused(f"there is no bundle at {folder} to hand on")
+    files = bundle_files(folder)
+    store = Store(url)
+    store.check_reachable()
+    with tempfile.TemporaryDirectory() as scratch:
+        packed = Path(scratch) / "parity_inputs.json.gz"
+        text = json.dumps({"format": BUNDLE_FORMAT, "files": files}, sort_keys=True, ensure_ascii=False)
+        with gzip.GzipFile(packed, "wb", compresslevel=BUNDLE_GZIP_LEVEL, mtime=0) as out:
+            out.write(text.encode("utf-8"))
+        packed_size, packed_digest = packed.stat().st_size, _sha256(packed)
+        store.put(packed, BUNDLE)
+    pointer = {
+        "format": BUNDLE_FORMAT,
+        "run": run,
+        "attempt": attempt,
+        "commit": commit,
+        "files": len(files),
+        "gzip_bytes": packed_size,
+        "gzip_sha256": packed_digest,
+        "put_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+    store.write_text(BUNDLE_POINTER, json.dumps(pointer, indent=2, sort_keys=True) + "\n")
+    return (
+        f"handed run {run}.{attempt}'s comparison bundle, {len(files)} files, {packed_size} bytes gzipped, to "
+        f"{url}/{FOLDER}/, in {time.monotonic() - started:.2f} s"
+    )
+
+
+def take_bundle(url: str, out: Path, run: str, commit: str | None = None) -> str:
+    """The bundle `run` put, unpacked under `out`, its upload checked against its size and sha256 first. Raises
+    NotHandedOff when the store holds another run's or another commit's bundle, or none."""
+    started = time.monotonic()
+    store = Store(url)
+    store.check_reachable()
+    text = store.read_text(BUNDLE_POINTER)
+    if text is None:
+        raise NotHandedOff(f"no build has handed a comparison bundle to {url}/{FOLDER}/")
+    pointer = json.loads(text)
+    if pointer.get("format") != BUNDLE_FORMAT:
+        raise Refused(f"{url}/{BUNDLE_POINTER} is format {pointer.get('format')!r}; this file reads format {BUNDLE_FORMAT}")
+    if str(pointer.get("run")) != str(run):
+        raise NotHandedOff(
+            f"{url}/{FOLDER}/ holds run {pointer.get('run')}'s comparison bundle, put at {pointer.get('put_at')}, not run {run}'s"
+        )
+    if commit and pointer.get("commit") and pointer["commit"] != commit:
+        raise NotHandedOff(f"run {run}'s bundle was built on {pointer['commit'][:12]}, not this checkout's {commit[:12]}")
+    with tempfile.TemporaryDirectory() as scratch:
+        packed = Path(scratch) / "parity_inputs.json.gz"
+        store.get(BUNDLE, packed, BUNDLE_POINTER)
+        if (size := packed.stat().st_size) != pointer["gzip_bytes"] or _sha256(packed) != pointer["gzip_sha256"]:
+            now = json.loads(store.read_text(BUNDLE_POINTER) or "{}")
+            if str(now.get("run")) != str(run) or now.get("gzip_sha256") != pointer.get("gzip_sha256"):
+                raise NotHandedOff(f"a later build replaced run {run}'s bundle while it was being taken")
+            raise Refused(f"{url}/{BUNDLE} is {size} bytes, and {BUNDLE_POINTER} says {pointer['gzip_bytes']}: it tore")
+        with gzip.open(packed, "rb") as raw:
+            document = json.loads(raw.read().decode("utf-8"))
+    if document.get("format") != BUNDLE_FORMAT:
+        raise Refused(f"{url}/{BUNDLE} is format {document.get('format')!r}; this file reads format {BUNDLE_FORMAT}")
+    if out.exists():
+        shutil.rmtree(out)
+    for relative, body in sorted(document["files"].items()):
+        if not BUNDLE_PATH.fullmatch(relative) or ".." in relative.split("/"):
+            raise Refused(f"{url}/{BUNDLE} names {relative!r}, which is not a path a bundle may carry; nothing was written")
+    for relative, body in sorted(document["files"].items()):
+        path = out / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    return (
+        f"took run {run}.{pointer.get('attempt')}'s comparison bundle, {len(document['files'])} files from "
+        f"{pointer['gzip_bytes']} bytes gzipped, put at {pointer.get('put_at')}, in {time.monotonic() - started:.2f} s"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -221,7 +347,36 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--commit", help="put: the commit the build ran on; take: the checkout's, which must match")
         if name == "put":
             command.add_argument("--attempt", default="1", help="that run's attempt, for the log")
+    for name, help_ in (
+        ("put-bundle", "hand this build's comparison bundle on (hourly_parity.py bundle)"),
+        ("take-bundle", "take the comparison bundle a build handed on"),
+    ):
+        command = commands.add_parser(name, help=help_)
+        command.add_argument("--url", required=True, help="the leg's history store, as build_marts.py's --history-url")
+        command.add_argument("--run", required=True, help="the publish-conditions.yml run whose build it is")
+        command.add_argument("--commit", help="put-bundle: the commit the build ran on; take-bundle: the checkout's")
+        if name == "put-bundle":
+            command.add_argument("--bundle", required=True, type=Path, help="hourly_parity.py bundle's --out")
+            command.add_argument("--attempt", default="1", help="that run's attempt, for the log")
+        else:
+            command.add_argument("--out", required=True, type=Path, help="where the bundle's files are written")
     args = parser.parse_args(argv)
+    if args.command in ("put-bundle", "take-bundle"):
+        # A bundle that does not move costs this hour its comparison and nothing else: a warning, and the job that
+        # compares says the hour was not compared (hourly_parity.py). Never the warehouse's ::error.
+        try:
+            if args.command == "put-bundle":
+                message = put_bundle(args.url, args.bundle, args.run, args.attempt, args.commit)
+            else:
+                message = take_bundle(args.url, args.out, args.run, args.commit)
+        except NotHandedOff as nothing:
+            print(f"hand_off: {nothing}", flush=True)
+            return NOT_HANDED_OFF
+        except Exception as failed:  # noqa: BLE001 - any failure here is this hour's comparison's, said by name
+            print(f"::warning title=Comparison bundle not moved::{type(failed).__name__}: {failed}", flush=True)
+            return 1
+        print(f"hand_off: {message}", flush=True)
+        return 0
     try:
         if args.command == "put":
             message = put(args.url, args.warehouse, args.run, args.attempt, args.commit)

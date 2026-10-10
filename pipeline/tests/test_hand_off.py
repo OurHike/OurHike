@@ -6,6 +6,7 @@ writes a directory and an s3:// URL through the same methods.
 
 from __future__ import annotations
 
+import gzip
 import json
 
 import duckdb
@@ -127,3 +128,121 @@ def test_put_refuses_a_warehouse_that_is_not_there(tmp_path, capsys):
 
     assert hand_off.main(args) == 1
     assert "there is no warehouse at" in capsys.readouterr().out
+
+
+# --- the hour's comparison bundle (hourly_parity.py), beside the warehouse ---------------------------------------
+
+
+def _bundle(folder, marker="1"):
+    (folder / "raw" / "conditions").mkdir(parents=True, exist_ok=True)
+    (folder / "new").mkdir(parents=True, exist_ok=True)
+    (folder / "raw" / "conditions" / "nws_alerts.json").write_text('{"type": "FeatureCollection", "features": []}')
+    (folder / "new" / "conditions_closures.json").write_text(json.dumps({"generated_at": marker, "closures": []}))
+    (folder / "bundle.json").write_text(json.dumps({"format": "ourhike-hourly-parity-bundle/1"}))
+    return folder
+
+
+def _files(folder):
+    return {path.relative_to(folder).as_posix(): path.read_text() for path in folder.rglob("*") if path.is_file()}
+
+
+def test_a_bundle_put_by_one_run_is_taken_by_that_runs_comparison_file_for_file(tmp_path):
+    store, built, commit = tmp_path / "store", _bundle(tmp_path / "bundle"), "27f4ee3a" + "0" * 32
+
+    put = hand_off.put_bundle(str(store), built, "37800000001", "2", commit=commit)
+    taken = hand_off.take_bundle(str(store), tmp_path / "taken", "37800000001", commit=commit)
+
+    assert _files(tmp_path / "taken") == _files(built), "every file, every character of its text"
+    pointer = json.loads((store / hand_off.BUNDLE_POINTER).read_text())
+    assert (pointer["run"], pointer["attempt"], pointer["files"]) == ("37800000001", "2", 3)
+    assert "handed run 37800000001.2's comparison bundle, 3 files" in put
+    assert "took run 37800000001.2's comparison bundle" in taken
+
+
+def test_the_bundle_and_the_warehouse_keep_pointers_of_their_own_so_neither_take_reads_the_other(tmp_path):
+    """The checks take the warehouse and never the bundle; the comparison the bundle and never the warehouse. A put of
+    one leaves the other's pointer as it was, so a failed bundle can never cost the checks their hour."""
+    store = tmp_path / "store"
+    hand_off.put(str(store), _warehouse(tmp_path / "build.duckdb"), "7")
+    warehouse_pointer = (store / hand_off.POINTER).read_text()
+
+    hand_off.put_bundle(str(store), _bundle(tmp_path / "bundle"), "7")
+
+    assert (store / hand_off.POINTER).read_text() == warehouse_pointer
+    assert sorted(path.name for path in (store / hand_off.FOLDER).iterdir()) == [
+        "hand_off.json",
+        "parity_inputs.json",
+        "parity_inputs.json.gz",
+        "warehouse.duckdb.gz",
+    ]
+    hand_off.take(str(store), tmp_path / "checks.duckdb", "7")
+    assert _closures(tmp_path / "checks.duckdb") == 3
+
+
+def test_take_bundle_finds_nothing_for_another_run_or_commit_with_its_own_exit(tmp_path, capsys):
+    store = tmp_path / "store"
+    (store / hand_off.FOLDER).mkdir(parents=True)
+    args = ["take-bundle", "--url", str(store), "--out", str(tmp_path / "taken"), "--run", "7"]
+
+    assert hand_off.main(args) == hand_off.NOT_HANDED_OFF
+    hand_off.put_bundle(str(store), _bundle(tmp_path / "bundle"), "8", commit="27f4ee3a" + "0" * 32)
+    assert hand_off.main(args) == hand_off.NOT_HANDED_OFF
+    assert "holds run 8's comparison bundle" in capsys.readouterr().out
+    other = [*args[:-1], "8", "--commit", "fc32a8e6" + "0" * 32]
+    assert hand_off.main(other) == hand_off.NOT_HANDED_OFF
+    assert "not this checkout's fc32a8e60000" in capsys.readouterr().out
+    assert not (tmp_path / "taken").exists()
+
+
+def test_a_torn_bundle_is_a_warning_and_a_replaced_one_is_nothing_to_compare(tmp_path, monkeypatch, capsys):
+    """Never the warehouse's ::error: a bundle that does not come back costs this hour its comparison and nothing else."""
+    store = tmp_path / "store"
+    hand_off.put_bundle(str(store), _bundle(tmp_path / "bundle"), "7")
+    with (store / hand_off.BUNDLE).open("ab") as torn:
+        torn.write(b"half of a later upload")
+    args = ["take-bundle", "--url", str(store), "--out", str(tmp_path / "taken"), "--run", "7"]
+
+    assert hand_off.main(args) == 1
+    out = capsys.readouterr().out
+    assert "::warning title=Comparison bundle not moved::" in out and "::error" not in out
+    assert not (tmp_path / "taken").exists()
+
+    hand_off.put_bundle(str(store), _bundle(tmp_path / "bundle"), "7")
+    real_get = hand_off.Store.get
+
+    def get_after_a_later_put(self, relative, local, pointer=hand_off.POINTER):
+        hand_off.put_bundle(str(store), _bundle(tmp_path / "later", marker="2"), "8")
+        real_get(self, relative, local, pointer)
+
+    monkeypatch.setattr(hand_off.Store, "get", get_after_a_later_put)
+    assert hand_off.main(args) == hand_off.NOT_HANDED_OFF
+    assert "a later build replaced run 7's bundle" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("name", ["../escape.json", "/etc/passwd", "raw/../../escape.json", "raw/a b.json"])
+def test_a_bundle_path_that_is_absolute_or_climbs_out_is_refused_and_nothing_is_written(tmp_path, name):
+    store = tmp_path / "store"
+    hand_off.put_bundle(str(store), _bundle(tmp_path / "bundle"), "7")
+    with gzip.open(store / hand_off.BUNDLE, "rb") as packed:
+        document = json.loads(packed.read())
+    document["files"][name] = "planted"
+    with gzip.GzipFile(store / hand_off.BUNDLE, "wb", mtime=0) as packed:
+        packed.write(json.dumps(document).encode())
+    pointer = json.loads((store / hand_off.BUNDLE_POINTER).read_text())
+    pointer["gzip_bytes"] = (store / hand_off.BUNDLE).stat().st_size
+    pointer["gzip_sha256"] = hand_off._sha256(store / hand_off.BUNDLE)
+    (store / hand_off.BUNDLE_POINTER).write_text(json.dumps(pointer))
+
+    with pytest.raises(hand_off.Refused, match="not a path a bundle may carry"):
+        hand_off.take_bundle(str(store), tmp_path / "taken", "7")
+    assert not (tmp_path / "taken").exists() and not (tmp_path / "escape.json").exists()
+
+
+def test_put_bundle_refuses_a_folder_holding_a_name_a_bundle_may_not_carry(tmp_path, capsys):
+    built = _bundle(tmp_path / "bundle")
+    (built / "raw" / "a name with spaces.json").write_text("{}")
+
+    code = hand_off.main(["put-bundle", "--url", str(tmp_path / "store"), "--bundle", str(built), "--run", "7"])
+
+    assert code == 1 and "is not a path a bundle may carry" in capsys.readouterr().out
+    assert not (tmp_path / "store" / hand_off.BUNDLE_POINTER).exists()

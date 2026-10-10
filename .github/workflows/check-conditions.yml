@@ -88,6 +88,40 @@
 # and the take. On the fixtures in a sandbox the build took 202.8 s and its
 # checks run 362.8 s (Measured 2026-10-09; build_marts.py's docstring). This
 # job's step summaries settle a runner's.
+#
+# AND BESIDE THE CHECKS, THE SIX CONDITIONS FILES AGAINST TODAY'S EXPORTERS
+# (pipeline/ELT.md's open question 17, the maintainer's poll of 2026-10-10:
+# "Compare every soak hour"). Each leg's `parity` job takes the comparison
+# bundle its build handed off beside the warehouse: the answers that hour's
+# extract received from NWS and OurHike's Postgres, the ATC and NYNJTC rows
+# the build read, its weather squares and its exit, and the six files its
+# writers wrote and the build published (pipeline/hourly_parity.py says what
+# each family compares on, and why three of them cannot be fed that hour's
+# answers). It serves them to today's exporters and runs parity.py's six
+# families with --keys-only; its summary and its hourly-parity-<leg>
+# artifact give the answer family by family, with counts.
+#
+# HERE, NOT IN publish-conditions.yml, because every job of that file holds
+# publish-data until its run ends: a comparison there would keep the next
+# publisher queued longer each hour, and a queued publisher is what a third
+# entrant cancels with nothing red (#1513 - A queued publish is silently
+# cancelled when another one joins publish-data, and it looks like a green
+# build; review finding 3 of PR #1805 was the same hold). A JOB OF ITS OWN
+# beside `check`, not a step of it, so the checks keep every minute of their
+# 25, a difference and a failed check each go red under their own name, and
+# its 10-minute cap, under `check`'s beside it, leaves the sum above as it
+# is. It holds no concurrency group: two runs of one leg take two builds'
+# bundles and write nothing they share, and a group would let a third run
+# cancel a waiting one, an hour not compared.
+#
+# RED ONLY FOR A DIFFERENCE nothing explains, or a comparison that crashed.
+# An hour not compared (its input was not that hour's, its build held a
+# writer back, or no bundle of this build on this commit came, as after a
+# push since the build or on the exporters path) is a warning with its
+# reason, and gate_report.py --hourly-dir counts that hour as a hole in the
+# soak, never a pass. The bundle holds records, OurHike's reports among
+# them, so it moves only through the private history store; the artifact
+# holds keys and changed fields, never a record or a person field's value.
 name: Check the hourly conditions build
 
 # The build each run checked, in the run list.
@@ -419,3 +453,180 @@ jobs:
             ~/.cache/com.getdbt/adbc
             ~/.duckdb/extensions/v1.5.4
           key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
+
+  # The header's "AND BESIDE THE CHECKS": the six conditions files against
+  # today's exporters, on the answers this leg's build read.
+  parity:
+    name: Compare with today's exporters (${{ matrix.data_environment }})
+    runs-on: ubuntu-latest
+    # The steps' caps, 3 + 2 + 3 minutes, and about a minute of checkout,
+    # two Pythons and the upload, under `check`'s 25 beside it, so the
+    # header's sum stands. On the fixtures the comparison took 3.4 s in a
+    # shared sandbox, and 6.3 s at a load average of 46 on its 4 cores
+    # (Measured 2026-10-10); a runner's, on real volumes, is @unvalidated
+    # until this job's summary gives it.
+    timeout-minutes: 10
+    # `check`'s legs, by its rule and its two locks (held equal by
+    # .github/tests/test_hourly_parity_job.py).
+    strategy:
+      fail-fast: false
+      matrix:
+        data_environment: ${{ fromJSON((github.ref == 'refs/heads/main' && inputs.data_environment != 'ua') && '["production", "ua"]' || '["ua"]') }}
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      # `check`'s first four steps, word for word (the same test holds them
+      # so): the build_run refused unless it is a run id, the production leg
+      # refused from any ref but main, and run only while production's
+      # hourly leg is on the dbt path.
+      - name: Refuse a build_run that is not a run id
+        working-directory: .
+        env:
+          BUILD_RUN: ${{ inputs.build_run }}
+        run: |
+          if [[ ! "$BUILD_RUN" =~ ^[0-9]+$ ]]; then
+            printf -v shown '%q' "$BUILD_RUN"
+            echo "::error title=Not a run id::build_run $shown is not a publish-conditions.yml run id, which is digits alone; nothing was checked."
+            exit 1
+          fi
+          echo "build_run $BUILD_RUN has the shape of a run id."
+
+      - name: Refuse a production leg from any ref but main
+        working-directory: .
+        env:
+          LEG: ${{ matrix.data_environment }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$LEG" = "production" ] && [ "$REF" != "refs/heads/main" ]; then
+            echo "::error title=Production leg refused::$REF is not refs/heads/main, and only main writes production's conditions/. Nothing was checked or published for production."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - name: Check the production leg only while production's hourly leg is on the dbt path
+        id: wanted
+        working-directory: .
+        env:
+          LEG: ${{ matrix.data_environment }}
+        run: |
+          if [ "$LEG" != "production" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          read_from=.github/workflows/publish-conditions.yml
+          production=$(sed -n -E 's/^  PRODUCTION_PHONE_FILES: (exporters|dbt)$/\1/p' "$read_from")
+          case "$production" in
+            dbt)
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              ;;
+            exporters)
+              echo "::notice title=Production checks skipped::$read_from's PRODUCTION_PHONE_FILES is exporters, so production's hourly leg builds no warehouse to check. Changing that line to dbt, the cutover, runs this leg from then on."
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error title=Production's phone files not read::$read_from has no single line '  PRODUCTION_PHONE_FILES: exporters' or '  PRODUCTION_PHONE_FILES: dbt', so whether production's hourly leg built a warehouse is not known. Nothing was checked for production."
+              exit 1
+              ;;
+          esac
+
+      # 3.12 for the extract's venv: hand_off.py's take-bundle reads the
+      # private store through s3fs, and the closures and reports old sides
+      # import dlt, so pipeline-tests.yml's parity step runs those two on the
+      # extract's venv too. 3.14 for parity.py and the other old sides, on
+      # the pipeline's own pins.
+      - uses: actions/setup-python@v7
+        if: steps.wanted.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements-extract.txt
+
+      - uses: actions/setup-python@v7
+        if: steps.wanted.outputs.run == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      # Soak run 624 installed requirements.txt in 10 s, and the extract's
+      # and dbt's pins together in 21 s, both from the pip cache (Measured,
+      # its step times, 2026-10-10); three minutes only bounds a download
+      # that hangs.
+      - name: Install the pipeline's and the extract's pins
+        if: steps.wanted.outputs.run == 'true'
+        timeout-minutes: 3
+        run: |
+          pip install -r requirements.txt
+          python3.12 -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+
+      # This build's bundle and no other, as `check` takes its warehouse:
+      # hand_off.py's take-bundle finds nothing for another run's or another
+      # commit's (exit 4), as after a push since the build or on the
+      # exporters path, and says which. Any failure here, a store that
+      # cannot be read included, costs this hour its comparison and nothing
+      # else: the compare step then says every family was not compared, and
+      # goes red only for a difference.
+      - name: Take the comparison bundle this leg's build handed off
+        id: take
+        if: steps.wanted.outputs.run == 'true'
+        timeout-minutes: 2
+        env:
+          ENVIRONMENT: ${{ matrix.data_environment }}
+          BUILD_RUN: ${{ inputs.build_run }}
+          COMMIT: ${{ github.sha }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          set +e
+          "$RUNNER_TEMP/extract/bin/python" hand_off.py take-bundle --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
+            --out data/hourly_parity/bundle --run "$BUILD_RUN" --commit "$COMMIT"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "taken=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "taken=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # parity.py per family, --keys-only, on the bundle (hourly_parity.py
+      # compare): exit 1 for a difference nothing explains or a comparison
+      # that crashed, 0 otherwise, a family not compared included. Three
+      # minutes, @unvalidated: on the fixtures the six took 3.4 s together,
+      # 0.1 to 0.9 s each, most of it Python starting (Measured 2026-10-10 in
+      # a shared sandbox); the summary's seconds column gives a runner's.
+      - name: Compare the six conditions files with today's exporters
+        id: compare
+        if: steps.wanted.outputs.run == 'true'
+        timeout-minutes: 3
+        env:
+          LEG: ${{ matrix.data_environment }}
+          BUILD_RUN: ${{ inputs.build_run }}
+          COMMIT: ${{ github.sha }}
+          TAKEN: ${{ steps.take.outputs.taken }}
+        run: |
+          missing=()
+          if [ "$TAKEN" != "true" ]; then
+            missing=(--missing "no bundle of build run $BUILD_RUN on this commit could be taken from the leg's history store; the take step's line says why")
+          fi
+          python hourly_parity.py compare --bundle data/hourly_parity/bundle --out data/hourly_parity/result \
+            --summary "$GITHUB_STEP_SUMMARY" --extract-python "$RUNNER_TEMP/extract/bin/python" \
+            --run "$BUILD_RUN" --commit "$COMMIT" --leg "$LEG" --compared-in "$GITHUB_RUN_ID" "${missing[@]}"
+
+      # Keys and changed fields only, never a record (the header): what
+      # gate_report.py --hourly-dir reads, one artifact per leg per run.
+      # `overwrite`, so a re-run's attempt replaces the result it re-ran.
+      - name: Upload this hour's comparison, keys and changed fields only
+        if: ${{ !cancelled() && steps.wanted.outputs.run == 'true' && (steps.compare.outcome == 'success' || steps.compare.outcome == 'failure') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: hourly-parity-${{ matrix.data_environment }}
+          path: pipeline/data/hourly_parity/result/
+          retention-days: 90
+          if-no-files-found: error
+          overwrite: true

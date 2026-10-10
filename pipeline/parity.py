@@ -63,6 +63,16 @@ never either side's record (without_records()). build-reference.yml's parity
 job uses it, through parity_lane.py, because its results go into a public
 artifact, and its old side is today's exporters on every layer the raw store
 holds, held-back sources included.
+
+`--answers-dir DIR` reads one hour's answers in fixture mode's layout in
+place of data/raw/ (RAW_DIR, for that one comparison: answers_read_from()),
+so the six conditions families compare on real data every hour:
+check-conditions.yml's `parity` job runs
+
+    python parity.py closures --new <bundle>/new/conditions_closures.json --answers-dir <bundle>/raw --keys-only
+
+for each of them through hourly_parity.py, whose docstring says what each
+family's old side is fed.
 """
 
 from __future__ import annotations
@@ -281,8 +291,11 @@ def _atc_updates_old() -> dict:
 
     The scrape is fetch_atc_updates.py's own run over the pages fixture mode
     served (RAW_DIR's conditions/atc_trail_updates.json), where that file
-    exists, so both sides read the same pages; otherwise whatever cache a real
-    fetch left in data/raw/.
+    exists, so both sides read the same pages; otherwise the cache under
+    RAW_DIR, `atc_updates.json`: whatever a real fetch left in data/raw/, or,
+    with --answers-dir, the cache hourly_parity.py builds from the page rows the
+    hour's build read, since no hour's answers hold the listing pages today's
+    fetcher walks (hourly_parity.py's ATC_INPUT).
     """
     import tempfile
 
@@ -297,7 +310,10 @@ def _atc_updates_old() -> dict:
         raise SystemExit(f"export_atc_updates.py refuses reference/atc_updates.json, so it publishes nothing: {problems}")
     served = RAW_DIR / CONDITIONS_DIR / TEXT_FIXTURES["atc_trail_updates"]
     with tempfile.TemporaryDirectory() as folder:
-        cache = _atc_scrape_cache(json.loads(served.read_text(encoding="utf-8")), Path(folder)) if served.exists() else None
+        if served.exists():
+            cache = _atc_scrape_cache(json.loads(served.read_text(encoding="utf-8")), Path(folder))
+        else:
+            cache = RAW_DIR / "atc_updates.json"  # export_atc_updates.CACHE_PATH, unless --answers-dir moved RAW_DIR
         automatic, _ = export_atc_updates.automatic_rows(document, export_atc_updates.cached_updates(cache))
     return export_atc_updates.build_document(document, datetime.now(timezone.utc), automatic)
 
@@ -2762,12 +2778,37 @@ def write_result(json_dir: Path, document: dict) -> Path:
     return path
 
 
+@contextlib.contextmanager
+def answers_read_from(directory: Path | None) -> Iterator[None]:
+    """RAW_DIR moved to `directory` while an old side is built, then put back (--answers-dir).
+
+    The conditions families' old sides read RAW_DIR when they run (_atc_updates_old, _nynjtc_alerts_old,
+    _ConditionsDatabase), so one hour's answers in fixture mode's layout, hourly_parity.py's bundle, stand in for
+    data/raw/ for exactly one comparison; weather_alerts reads --raw-dir, which --answers-dir also defaults."""
+    global RAW_DIR
+    if directory is None:
+        yield
+        return
+    before, RAW_DIR = RAW_DIR, directory.resolve()
+    try:
+        yield
+    finally:
+        RAW_DIR = before
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("family", choices=sorted(FAMILIES))
     parser.add_argument("--new", type=Path, required=True, help="the file the family's pub_ writer wrote")
     parser.add_argument(
-        "--raw-dir", type=Path, default=Path("data/raw"), help="make_dbt_fixtures.py's files, for a family built from them"
+        "--raw-dir", type=Path, default=None, help="make_dbt_fixtures.py's files, for a family built from them (data/raw)"
+    )
+    parser.add_argument(
+        "--answers-dir",
+        type=Path,
+        default=None,
+        help="one hour's answers in fixture mode's layout (hourly_parity.py's bundle), which the conditions families' "
+        "old sides read in place of data/raw/ (RAW_DIR), and --raw-dir's default",
     )
     parser.add_argument(
         "--warehouse", type=Path, default=Path("data/warehouse.duckdb"), help="the built warehouse, for a family read from it"
@@ -2784,6 +2825,8 @@ def main(argv: list[str] | None = None) -> int:
         help="print and write each difference's key and changed fields, never either side's record (without_records())",
     )
     args = parser.parse_args(argv)
+    if args.raw_dir is None:
+        args.raw_dir = args.answers_dir if args.answers_dir is not None else Path("data/raw")
 
     family = FAMILIES[args.family]
 
@@ -2794,16 +2837,17 @@ def main(argv: list[str] | None = None) -> int:
         return exit_code
 
     try:
-        if family.v1_beside is not None:
-            old = family.old(args.new.parent / family.v1_beside)
-        elif family.reads_new_dir:
-            old = family.old(args.new.resolve().parent)
-        elif family.reads_warehouse:
-            old = family.old(args.raw_dir, args.warehouse)
-        elif family.reads_raw_dir:
-            old = family.old(args.raw_dir)
-        else:
-            old = family.old()
+        with answers_read_from(args.answers_dir):
+            if family.v1_beside is not None:
+                old = family.old(args.new.parent / family.v1_beside)
+            elif family.reads_new_dir:
+                old = family.old(args.new.resolve().parent)
+            elif family.reads_warehouse:
+                old = family.old(args.raw_dir, args.warehouse)
+            elif family.reads_raw_dir:
+                old = family.old(args.raw_dir)
+            else:
+                old = family.old()
     except SystemExit as refusal:
         # Some builders refuse rather than publish less (a reviewed file with
         # a row problem publishes nothing); the exit is theirs, unchanged.

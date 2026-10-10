@@ -300,12 +300,15 @@ def test_the_warehouse_crosses_through_the_legs_history_store_the_build_and_its_
     assert "hand_off.py put" in hand_off["run"] and "hand_off.py take" in take
     assert "--lane hourly --checks-only" in checks and "--history-on-failure degrade" in checks
     for workflow in (BAKE, CHECKS):
-        assert not [
-            step
-            for job in _load(workflow)["jobs"].values()
+        uploads = [
+            (job_id, step["with"]["path"])
+            for job_id, job in _load(workflow)["jobs"].items()
             for step in job.get("steps") or []
             if "upload-artifact" in str(step.get("uses", ""))
-        ], workflow.name
+        ]
+        # The one upload either workflow makes is the hourly comparison's result, keys and changed fields only
+        # (.github/tests/test_hourly_parity_job.py holds it): never the warehouse, nor the bundle beside it.
+        assert uploads == ([("parity", "pipeline/data/hourly_parity/result/")] if workflow == CHECKS else []), workflow.name
 
 
 def test_the_checks_take_a_warehouse_only_from_the_commit_they_checked_out():

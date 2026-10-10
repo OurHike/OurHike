@@ -23,7 +23,8 @@
 #      printed with its rows and how many carry a value, never a value.
 #   2. Reads every other object in the raw bucket by its own schema or keys
 #      (Parquet footers, DuckDB catalogs, the hourly hand-off's gzipped one
-#      among them, JSON keys), never by its date, and lists each that holds a
+#      among them, JSON keys, and the keys of each file in the hand-off's
+#      comparison bundle), never by its date, and lists each that holds a
 #      field, with the field's name and counts.
 #   3. delete=false stops there. delete=true deletes exactly what step 2
 #      listed, a pin, stored warehouse, served copy, row-history save or

@@ -1,7 +1,34 @@
 {
-  "generated_at": "2026-09-17T07:37:45.378624Z",
+  "generated_at": "2026-10-10T14:45:59.713211Z",
   "reviewed_at": "2026-08-24",
   "candidates": [
+    {
+      "atc_id": "ga-va-hurricane-isaias",
+      "title": "GA \u2013 VA: Hurricane Isaias",
+      "category": "Alert",
+      "states": [
+        "GA",
+        "NC",
+        "TN",
+        "VA"
+      ],
+      "mile_references": [],
+      "updated_at": "2026-10-09T16:59:33Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/ga-va-hurricane-isaias/",
+      "reason_not_auto_published": "0 mile references that do not agree on one place"
+    },
+    {
+      "atc_id": "georgia-byron-herbert-reece-side-trail-relocation",
+      "title": "Georgia: Byron Herbert Reece Side Trail Relocation",
+      "category": "Relocation",
+      "states": [
+        "GA"
+      ],
+      "mile_references": [],
+      "updated_at": "2026-10-07T13:54:29Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/georgia-byron-herbert-reece-side-trail-relocation/",
+      "reason_not_auto_published": "0 mile references that do not agree on one place"
+    },
     {
       "atc_id": "iron-mtn-gap-detour",
       "title": "NC/TN: Iron Mtn Gap Reopened",
@@ -47,48 +74,61 @@
       "reason_not_auto_published": "5 mile references that do not agree on one place"
     },
     {
-      "atc_id": "nc-tn-elk-river-area-debris-removal",
-      "title": "NC/TN: Elk River Area Debris Removal",
-      "category": "Construction",
+      "atc_id": "mt-riga-shelter-bear-activity",
+      "title": "Mt. Riga Shelter: Bear Activity",
+      "category": "Animal",
       "states": [
+        "CT"
+      ],
+      "mile_references": [],
+      "updated_at": "2026-10-07T14:21:49Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/mt-riga-shelter-bear-activity/",
+      "reason_not_auto_published": "0 mile references that do not agree on one place"
+    },
+    {
+      "atc_id": "nc-tn-missing-person-likely-nobo",
+      "title": "NC/TN: Missing Person, Likely NOBO",
+      "category": "Alert",
+      "states": [
+        "GA",
         "NC",
         "TN"
+      ],
+      "mile_references": [],
+      "updated_at": "2026-10-07T14:02:43Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/nc-tn-missing-person-likely-nobo/",
+      "reason_not_auto_published": "0 mile references that do not agree on one place"
+    },
+    {
+      "atc_id": "shenandoah-national-park-backcountry-camping-closure",
+      "title": "Shenandoah National Park: Backcountry Camping Closure",
+      "category": "Closure",
+      "states": [
+        "VA"
       ],
       "mile_references": [
         {
           "direction": "NOBO",
-          "start": 401.7,
+          "start": 918.7,
           "end": null,
-          "raw": "NOBO mile 401.7"
+          "raw": "NOBO mile 918.7"
         },
         {
           "direction": "NOBO",
-          "start": 402.0,
+          "start": 927.5,
           "end": null,
-          "raw": "NOBO mile 402"
+          "raw": "NOBO mile 927.5"
         },
         {
           "direction": "NOBO",
-          "start": 401.6,
+          "start": 919.6,
           "end": null,
-          "raw": "NOBO mile 401.6"
+          "raw": "NOBO mile 919.6"
         }
       ],
-      "updated_at": "2026-09-15T13:28:30Z",
-      "source_url": "https://appalachiantrail.org/trail-updates/nc-tn-elk-river-area-debris-removal/",
+      "updated_at": "2026-10-01T19:29:35Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/shenandoah-national-park-backcountry-camping-closure/",
       "reason_not_auto_published": "3 mile references that do not agree on one place"
-    },
-    {
-      "atc_id": "pennsylvania-missing-person-2",
-      "title": "Pennsylvania: Missing Person",
-      "category": "Alert",
-      "states": [
-        "PA"
-      ],
-      "mile_references": [],
-      "updated_at": "2026-09-03T12:57:04Z",
-      "source_url": "https://appalachiantrail.org/trail-updates/pennsylvania-missing-person-2/",
-      "reason_not_auto_published": "0 mile references that do not agree on one place"
     }
   ]
 }

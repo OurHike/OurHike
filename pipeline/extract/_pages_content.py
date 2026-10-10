@@ -2073,6 +2073,64 @@ def _sstc_sweet_16(page: Page, fetch) -> list[dict]:
     return rows
 
 
+_SPNHF_TIER_1 = re.compile(r".*Tier 1 \((?P<count>\d+) Reservations\).*")
+_SPNHF_PAGE = re.compile(r"/forest-reservation-challenge-[a-z0-9-]+/?")
+_SPNHF_REGION = re.compile(r"Tier 2 \((?P<region>[^)]+)\).*")
+SPNHF_TITLE = "Forest Reservation Challenge: "
+
+
+def _spnhf_forest_reservation_challenge(page: Page, fetch) -> list[dict]:
+    """The Forest Society's Forest Reservation Challenge (forestsociety.org/challenge): 33 reservations, 2026-10-10.
+
+    The challenge's page says Tier 1 is to visit them all, 'Tier 1 (33 Reservations)', and lists none: its list is a
+    PDF game board and the Reservation Guide. One page a reservation, /forest-reservation-challenge-<name>, is listed
+    by the site's sitemap (/sitemap.xml, the one place all 33 are listed), and each names its reservation in its h1,
+    'Forest Reservation Challenge: Creek Farm', its Tier 2 region in a line that opens 'Tier 2 (Seacoast):', and links
+    the reservation's page in the Reservation Guide (/property/<name>). The name, the region and both links are read;
+    the selfie locations and the discovery questions are the Society's wording and are not read, nor are the photos
+    participants send, which 'become the property of the Forest Society'. The pages the sitemap lists are held to the
+    count the challenge's page states, so a page dropped from the sitemap or added to it refuses rather than lands a
+    different list, and so does a page whose h1 is not 'Forest Reservation Challenge: <name>'.
+    """
+    stated = next((match for block in blocks(page.root) if (match := _SPNHF_TIER_1.fullmatch(block.text))), None)
+    if stated is None:
+        raise LayoutChanged("spnhf: the challenge page states no 'Tier 1 (N Reservations)'")
+    pages: list[str] = []
+    for loc in sitemap_locations(fetch(page.link("/sitemap.xml"))):
+        if _SPNHF_PAGE.fullmatch(urlparse(loc).path) and loc not in pages:
+            pages.append(loc)
+    if len(pages) != int(stated["count"]):
+        raise LayoutChanged(f"spnhf: the sitemap lists {len(pages)} challenge pages and the challenge states {stated['count']}")
+    rows = []
+    for href in pages:
+        reservation = fetch(href)
+        found = blocks(reservation.root)
+        title = next((block.text for block in found if block.level == 1), "")
+        if not title.startswith(SPNHF_TITLE):
+            raise LayoutChanged(f"spnhf: {href}'s h1 is {title!r}, not '{SPNHF_TITLE}<name>'")
+        region = next((match["region"] for block in found if (match := _SPNHF_REGION.match(block.text))), None)
+        guide = next(
+            (
+                link
+                for anchor in reservation.root.find_all("a")
+                if (link := reservation.link(anchor.get("href"))) and urlparse(link).path.startswith("/property/")
+            ),
+            None,
+        )
+        rows.append(
+            {
+                "challenge": "Forest Reservation Challenge",
+                "name": fact(title.removeprefix(SPNHF_TITLE)),
+                "item_type": "forest reservation",
+                "section": fact(region),
+                "guide_link": guide,
+                "link": reservation.url,
+                "source_url": reservation.url,
+            }
+        )
+    return rows
+
+
 def _ttc_scavenger_hunt(page: Page, fetch) -> list[dict]:
     """The Trail Conservancy's History of the Trail Scavenger Hunt (thetrailconservancy.org/programs/scavenger-hunt/).
 
@@ -2227,6 +2285,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
         _amc_four_thousand_footer_lists, columns={"rank": "bigint", "elevation_estimated": "bool", "trail": "text"}
     ),
     "sstc_sweet_16": SiteParser(_sstc_sweet_16),
+    "spnhf_forest_reservation_challenge": SiteParser(_spnhf_forest_reservation_challenge, columns={"guide_link": "text"}),
     "ttc_scavenger_hunt": SiteParser(_ttc_scavenger_hunt),
     "dcnr_geotrail": SiteParser(_dcnr_geotrail, columns={"theme": "text", "accessible": "bool"}),
     "cmc_lookout_towers": SiteParser(_cmc_lookout_towers),

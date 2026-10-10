@@ -11221,6 +11221,35 @@
       "reaches_hikers_comment": "True from 2026-10-04 (decision 63): int_places__club_units reads the layer whole as its sources.json place_kind says (park), and int_places__resolved measures each park as NY Parks' parks are measured, so places.json lists it by name. Properties the Forest Society opens to the public, by the layer's own title."
     },
     {
+      "key": "spnhf_forest_reservation_challenge",
+      "title": "Forest Society Forest Reservation Challenge: its 33 reservations (forestsociety.org/challenge)",
+      "provider": "SPNHF",
+      "kind": "published_notices",
+      "url": "https://www.forestsociety.org/challenge",
+      "steward": "Society for the Protection of New Hampshire Forests",
+      "attribution": "Society for the Protection of New Hampshire Forests",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, decision 70's for a club's hike list, and decision 47 (the ATC's list) is the maintainer's own authorisation for one club. So this row is `unresolved` until the maintainer decides whether a club's list of places publishes as its facts (each place's name, kind, region and the link) and never the club's prose, as gatc_georgia_4000's row asks for GATC's list.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the site's sitemap lists a privacy policy (/privacy-policy) and no terms of use, and the challenge pages link none (read 2026-10-10). The challenge page says of participants' photos: \"Photos submitted by participants become the property of the Forest Society.\"",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `spnhf_forest_reservation_challenge`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads each challenge page's h1, its 'Tier 2 (<region>)' line and two links, and nothing else, so no person's name, e-mail address or telephone number can land. The news teasers beside each page carry their authors' names, and the challenge's e-mail address takes participants' photos; neither is read.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the reservation as its page's h1 names it after 'Forest Reservation Challenge: ': unique on all 33 rows read 2026-10-10.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.forestsociety.org/challenge",
+        "notes": "No validator trusted: every run reads the challenge page, the sitemap and the 33 pages, and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). On 2026-10-10 the sitemap carried a weak ETag and a Last-Modified and the pages neither."
+      },
+      "discovered_via": "not_available.toml's [spnhf.challenges] note (section K, 2026-10-04: 'the reservations are on a PDF map and 33 pages'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10: robots.txt (2,141 bytes, a Drupal site's) disallows nothing the reader asks and asks no Crawl-delay. /challenge answered HTTP 200, 96,091 bytes, 18:35:08Z, stating 'Tier 1 (33 Reservations) and Tier 2 (subset of 3-7 Reservations within a specific region)'; /sitemap.xml HTTP 200, 588,297 bytes, 19:00:21Z, listing exactly 33 /forest-reservation-challenge-<name> pages; the 33 pages HTTP 200 each, 3,083,371 bytes in all, 19:23:05Z to 19:24:22Z at a 2 s gap. Every page's h1 reads 'Forest Reservation Challenge: <name>', every one carries a 'Tier 2 (<region>)' line (7 regions: Lakes Region 7, Monadnock Region 7, Merrimack Valley 5, Dartmouth-Lake Sunapee 4, White Mountains 4, Seacoast 3, Great North Woods 3) and links its /property/<name> page in the Reservation Guide. The selfie locations and discovery questions are the Society's wording and are not read. The 5 Hikes Challenge (a fall event with hidden 'tree cookies') and the Merrimack Paddle Challenge are other pages and are not read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), whose places are published POI ids. This list's places are reservations by name, joined to no POI (the Forest Society's own public-access layer, spnhf_public_access_properties, is the likely join), and it stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
+    },
+    {
       "key": "something_wild_podcast",
       "title": "Something Wild (podcast feed, NHPR with NH Audubon and the Forest Society)",
       "provider": "SPNHF",

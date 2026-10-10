@@ -10415,6 +10415,33 @@ def _sstc_sweet_16_page() -> str:
     )
 
 
+def _spnhf_challenge_pages() -> list[tuple[str, str, str]]:
+    """The challenge page stating its Tier 1 count, the site's sitemap listing that many challenge pages beside other
+    pages, and each challenge page as the Drupal theme sets it: an h1.page-title 'Forest Reservation Challenge:
+    <name>', the selfie paragraph, a 'Tier 2 (<region>):' line, the questions, and a Reservation Guide link."""
+    site = "https://www.forestsociety.org"
+    challenge = _k_page(
+        "Take the Forest Reservation Challenge! | Forest Society",
+        '<h1 class="page-title">Take the Forest Reservation Challenge!</h1><p>There are two ways to complete the Forest '
+        "Reservation Challenge, Tier 1 (2 Reservations) and Tier 2 (subset of 3-7 Reservations within a specific "
+        f'region).</p><p>Fixture prose.</p><a href="{site}/sitemap.xml">View our Sitemap</a>',
+    )
+    pages = {f"{site}/forest-reservation-challenge-fixture-{n}-forest": f"Fixture {n} Forest" for n in (1, 2)}
+    answers = [
+        (f"{site}/challenge", HTML, challenge),
+        (f"{site}/sitemap.xml", XML, _k_sitemap([f"{site}/challenge", f"{site}/5-hikes-challenge", *pages])),
+    ]
+    for url, name in pages.items():
+        body = (
+            f'<h1 class="page-title">Forest Reservation Challenge: {name}</h1><p>Fixture prose: take a self photo at '
+            "the fixture sign.</p><p>Tier 2 (Fixture Region): Capture one of the above photographs.</p><p>Fixture "
+            f'explanation of the discovery questions?</p><p>To learn more about {name}, visit our <a href="/property/'
+            f'{url.rsplit("challenge-", 1)[1]}">Reservation Guide</a>.</p>'
+        )
+        answers.append((url, HTML, _k_page(f"Forest Reservation Challenge: {name} | Forest Society", body)))
+    return answers
+
+
 def _ttc_scavenger_page() -> str:
     base = "https://thetrailconservancy.org/wp-content/uploads/2023/09"
     buttons = "".join(
@@ -10504,6 +10531,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         ],
         "amc_four_thousand_footer_lists": _amc4000_pages(),
         "sstc_sweet_16": [("https://www.standingstonetrail.org/sweet-16-trail-challenge", HTML, _sstc_sweet_16_page())],
+        "spnhf_forest_reservation_challenge": _spnhf_challenge_pages(),
         "ttc_scavenger_hunt": [("https://thetrailconservancy.org/programs/scavenger-hunt/", HTML, _ttc_scavenger_page())],
         "dcnr_geotrail": [
             ("https://www.pa.gov/agencies/dcnr/recreation/what-to-do/geocaching/dcnr-geo-trail", HTML, _dcnr_geotrail_page())
@@ -10545,6 +10573,7 @@ K_PAGES_ROWS = {
     "gatc_georgia_4000": 2,
     "amc_four_thousand_footer_lists": 4,
     "sstc_sweet_16": 2,
+    "spnhf_forest_reservation_challenge": 2,
     "ttc_scavenger_hunt": 2,
     "dcnr_geotrail": 2,
     "cmc_lookout_towers": 2,

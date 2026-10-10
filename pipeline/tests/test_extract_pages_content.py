@@ -685,6 +685,44 @@ def test_an_estimated_four_thousand_footer_keeps_its_asterisk_beside_its_number(
     }
 
 
+SPNHF = "https://www.forestsociety.org"
+
+
+def spnhf_rows(stated: int, pages: dict[str, str]) -> list[dict]:
+    """spnhf_forest_reservation_challenge over a challenge page stating `stated` and a sitemap listing `pages`."""
+    challenge = Page(f"{SPNHF}/challenge", parse_html(f"<p>Tier 1 ({stated} Reservations) and Tier 2 (subset).</p>"))
+    locs = "".join(f"<url><loc>{url}</loc></url>" for url in [f"{SPNHF}/5-hikes-challenge", *pages])
+    answers = {f"{SPNHF}/sitemap.xml": f"<urlset>{locs}</urlset>", **pages}
+    return SITE_PARSERS["spnhf_forest_reservation_challenge"].read(challenge, lambda url: Page(url, parse_html(answers[url])))
+
+
+def test_a_forest_reservation_lands_its_name_region_and_guide_page_and_never_its_questions():
+    url = f"{SPNHF}/forest-reservation-challenge-fixture-forest"
+    (row,) = spnhf_rows(
+        1,
+        {
+            url: "<h1>Forest Reservation Challenge: Fixture Forest</h1><p>Fixture prose: a selfie at the sign.</p>"
+            "<p>Tier 2 (Fixture Region): answer the following questions:</p><p>Who built Fixture Farm?</p>"
+            '<a href="/property/fixture-forest">Reservation Guide</a>'
+        },
+    )
+    assert (row["name"], row["section"], row["guide_link"], row["link"]) == (
+        "Fixture Forest",
+        "Fixture Region",
+        f"{SPNHF}/property/fixture-forest",
+        url,
+    )
+    assert "Who built" not in json.dumps(row) and "selfie" not in json.dumps(row)
+
+
+def test_a_forest_reservation_challenge_whose_sitemap_disagrees_with_its_stated_count_or_whose_page_moved_refuses():
+    page = {f"{SPNHF}/forest-reservation-challenge-a": "<h1>Forest Reservation Challenge: A</h1>"}
+    with pytest.raises(LayoutChanged, match="lists 1 challenge pages and the challenge states 2"):
+        spnhf_rows(2, page)
+    with pytest.raises(LayoutChanged, match="not 'Forest Reservation Challenge: <name>'"):
+        spnhf_rows(1, {f"{SPNHF}/forest-reservation-challenge-a": "<h1>Page not found</h1>"})
+
+
 def test_a_four_thousand_footer_index_missing_a_list_refuses():
     index = Page("https://www.amc4000footer.org/x.html", parse_html('<a href="whitemountainfourk.html">The White</a>'))
     with pytest.raises(LayoutChanged, match="not the three list pages"):

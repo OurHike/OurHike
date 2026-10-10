@@ -25,3 +25,4 @@ conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 50
 # before.
 [elementary_started]
 monthly = "2026-10-10, build-reference.yml run 38014567450 (monthly run 31), which saved Elementary's history: 5 tables, 859,804 bytes"
+conditions_ua = "by 2026-10-08 22:52 UTC: publish-conditions.yml run 596 (37930228326) restored Elementary's history from save 20261008T225246144583Z-cc6552, which an earlier hourly run wrote, and check-conditions.yml has saved it every hour since its run 1 (37931185273); run 15 (38041409377) saved 5 tables, 1,688,145 bytes"

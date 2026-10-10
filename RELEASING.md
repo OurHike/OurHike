@@ -598,6 +598,26 @@ as the compiled fallback a first run reads before it has reached the pointer, an
 [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) §4 has the rest. Which
 dispatch runs the upload is the release train's to wire, and none does yet.
 
+**Since decision 145 (poll, 2026-10-09) a deploy also refuses when the two name
+different releases.** A phone reads `DATA_RELEASE` on its first launch and
+`channels.json`'s entry from the launch after it reads the pointer, so a build
+whose two values disagree changes release under a new install.
+`.github/scripts/check_pin_matches_channels.py` compares them from the commit
+alone, for the environment read off the build's data base, and `pages.yml` and
+`ua.yml` run it before they deploy, as the step "Confirm DATA_RELEASE and
+channels.json name the same release". **When it fails, move `DATA_RELEASE` and
+that environment's entry to one release the environment holds, in one commit, and
+deploy that commit.** UA deploys every push to `main`, so a commit moving UA's
+entry moves `DATA_RELEASE` with it, and a tag cut from `main` needs production's
+entry moved to the same release first. A tag refused here cannot be redeployed as
+it stands, because the fix is a new commit and so a new version (§4); that is why
+`pages.yml` runs the check on a `draft_only` dispatch too. Pull request previews
+do not run it: their data environment is chosen at run time and they go when the
+pull request closes. Nor can it see a production promotion, which deploys nothing
+(a `channels.json` commit and a `publish.py --channels` dispatch): after one, a
+new install of the production build starts on its older `DATA_RELEASE` and moves
+on its second launch, until the next tag ships a build that names the new one.
+
 ## 11. What never waits for a release
 
 **Closures, hazard warnings and condition reports are not in a release.** They live in

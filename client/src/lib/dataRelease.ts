@@ -54,6 +54,14 @@
  * same of `channels.json`'s entry for this build's schema version, and that
  * the copy uploaded at that base, where one is, names the same release.
  *
+ * Since decision 145 both also refuse a build whose DATA_RELEASE is not that
+ * entry. A first run reads this constant and every launch after it has read
+ * the pointer takes the entry, so two different values are a phone that
+ * changes release on its second launch. This line therefore moves in one
+ * commit with UA's entry, because ua.yml deploys every push to `main`, and
+ * production's entry names the same release before a tag
+ * (.github/scripts/check_pin_matches_channels.py, RELEASING.md §10).
+ *
  * 2026-09-24-2 IS v1.3.2's DATA, minted by that release train on 2026-09-24.
  * Production's -1 is the vector data (both DEM variants had published flat
  * before it, so its folder carries them) and -2 the basemap: the last folder

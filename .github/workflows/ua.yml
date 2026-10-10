@@ -306,6 +306,18 @@ jobs:
               exit 1 ;;
           esac
 
+      # pages.yml's step of the same name (decision 145), against the entry
+      # for the environment read off UA's base: `ua`, or production's for a
+      # UA_DATA_BASE_URL override pointing there. `main` deploys here on
+      # every push, so a commit that moves UA's channels.json entry without
+      # DATA_RELEASE, or DATA_RELEASE without it, turns this run red. Move
+      # both in one commit.
+      - name: Confirm DATA_RELEASE and channels.json name the same release
+        if: steps.can.outputs.deploy == 'true'
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: python3 .github/scripts/check_pin_matches_channels.py
+
       - name: Publish UA
         id: deploy
         if: steps.can.outputs.deploy == 'true'

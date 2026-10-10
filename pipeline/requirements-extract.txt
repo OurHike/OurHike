@@ -28,6 +28,8 @@ dlt==1.30.0
     # via -r pipeline/requirements-extract.in
 duckdb==1.5.5
     # via -r pipeline/requirements-extract.in
+et-xmlfile==2.0.0
+    # via openpyxl
 frozenlist==1.8.0
     # via
     #   aiohttp
@@ -63,6 +65,8 @@ multidict==6.9.1
     #   aiobotocore
     #   aiohttp
     #   yarl
+openpyxl==3.1.5
+    # via -r pipeline/requirements-extract.in
 orjson==3.12.0 ; (python_full_version >= '3.14' and platform_python_implementation == 'PyPy') or (python_full_version >= '3.14' and sys_platform == 'emscripten') or (platform_python_implementation != 'PyPy' and sys_platform != 'emscripten')
     # via dlt
 packaging==26.3
@@ -147,5 +151,7 @@ win-precise-time==1.4.2 ; python_full_version < '3.13' and os_name == 'nt'
     # via dlt
 wrapt==2.5.0
     # via aiobotocore
+xlrd==2.0.2
+    # via -r pipeline/requirements-extract.in
 yarl==1.25.1
     # via aiohttp

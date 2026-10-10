@@ -514,6 +514,7 @@ YIELDS_GEOMETRY = {
     "ConditionsQuery": False,  # a closure's endpoints and a report's place land as lat and lon columns
     "ContentPages": False,
     "ContentPdf": False,
+    "ContentSheet": False,
     "DcnrParkAdvisories": False,
     "FeedNotices": False,
     "GeofabrikExtracts": False,
@@ -676,6 +677,22 @@ def test_the_pipeline_suite_installs_the_pypdf_the_extract_job_runs():
         lines = [line for line in path.read_text().splitlines() if line.startswith("pypdf==")]
         assert len(lines) <= 1, path
         return lines[0].split("==")[1] if lines else None
+
+    assert pin(PIPELINE_DIR / "requirements-extract.txt") is not None
+    assert pin(PIPELINE_DIR / "requirements-dev.in") == pin(PIPELINE_DIR / "requirements-extract.txt")
+    assert pin(PIPELINE_DIR / "requirements-dev.txt") == pin(PIPELINE_DIR / "requirements-extract.txt")
+
+
+@pytest.mark.parametrize("package", ["xlrd", "openpyxl"])
+def test_the_pipeline_suite_installs_the_workbook_readers_the_extract_job_runs(package):
+    """requirements-dev.in pins each workbook reader at requirements-extract.txt's version, as it does pypdf's, so
+    tests/test_extract_sheet_content.py opens a workbook with the reader the monthly extract job opens SMHC's and WMC's
+    with (extract/_sheet_content.py)."""
+
+    def pin(path: Path) -> str | None:
+        lines = [line for line in path.read_text().splitlines() if line.startswith(f"{package}==")]
+        assert len(lines) <= 1, path
+        return lines[0].split("==")[1].split()[0] if lines else None
 
     assert pin(PIPELINE_DIR / "requirements-extract.txt") is not None
     assert pin(PIPELINE_DIR / "requirements-dev.in") == pin(PIPELINE_DIR / "requirements-extract.txt")

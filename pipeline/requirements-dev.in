@@ -38,3 +38,9 @@ dlt[parquet]==1.30.0
 # requirements-extract.txt's, which test_extract_layout.py holds equal. Pure
 # Python, about 2 MB, with no dependencies of its own on Python 3.12.
 pypdf==6.19.0
+
+# xlrd and openpyxl, so the pipeline suite runs tests/test_extract_sheet_content.py,
+# which opens a workbook: the same pins as requirements-extract.txt's, which
+# test_extract_layout.py holds equal, as it does pypdf's. Both pure Python.
+xlrd==2.0.2
+openpyxl==3.1.5

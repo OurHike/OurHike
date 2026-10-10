@@ -397,6 +397,9 @@ CONTENT_COLUMNS = {
     # Section K's PDF reader (decision 54 wave 4, extract/_pdf_content.py): the same type columns as its page reader.
     ("suggested_hikes", "ContentPdf"): {"name": "name", "link": "link"},
     ("challenges", "ContentPdf"): {"name": "name", "link": "link"},
+    # Section K's hand-back, its workbook reader (extract/_sheet_content.py): the same type columns again.
+    ("suggested_hikes", "ContentSheet"): {"name": "name", "link": "link"},
+    ("challenges", "ContentSheet"): {"name": "name", "link": "link"},
     # A club page's points (extract/_pages_points.py's PagePoints) that a content file SHARES: one row per page, its
     # columns the ones the points row names for the type in `shared_page_rows` (page_rows_columns()), as NPS's are
     # its endpoint's. The Palmetto Trail's passages: the lead's ruling of 2026-10-04, one reader of its 33 pages.
@@ -461,6 +464,7 @@ CONTENT_PROSE = {
     # lands in the raw store, so none needs stopping here.
     "ContentPages": (),
     "ContentPdf": (),
+    "ContentSheet": (),
 }
 #: The readers whose tables are lookups beside a type's rows, staged in base only: a hike type's taxonomy terms.
 CONTENT_LOOKUPS = ("SiteTerms",)
@@ -547,14 +551,15 @@ class Table:
     @property
     def read_from_pdf(self) -> bool:
         """A table its reader takes off a PDF through pypdf: extract/_pdf_points.py's PdfPoints (a `pdf_points` row)
-        or extract/_pdf_content.py's ContentPdf. Fixture mode's Python need not have pypdf, so the fixture warehouse
-        never holds the table, and `dbt source freshness` would fail on it (CI's dbt job did, 2026-10-04, on
+        or extract/_pdf_content.py's ContentPdf; or a workbook, extract/_sheet_content.py's ContentSheet. Fixture mode's
+        Python need not have pypdf, and fixture mode serves no binary file, so the fixture warehouse never holds the
+        table, and `dbt source freshness` would fail on it (CI's dbt job did, 2026-10-04, on
         ata_water_cache_boxes, bmta_access_points and rmc_recommended_hikes). So its source table carries
         `freshness: null`. All seven such tables on 2026-10-09 were on the monthly lane, which no production job
         measures for freshness (generate_notice_models.py's MONTHLY_WARN_DAYS). A PDF notice is hourly and
         production measures it, so it keeps its freshness and is tagged generate_notice_models.py's PDF_NOTICE_TAG
         instead."""
-        return self.entry.get("kind") == PDF_POINTS_KIND or self.reader == "ContentPdf"
+        return self.entry.get("kind") == PDF_POINTS_KIND or self.reader in ("ContentPdf", "ContentSheet")
 
     def key_inputs(self) -> list[str]:
         """The key's inputs as generate_surrogate_key takes them: the registry key, then each measured field."""
@@ -847,7 +852,7 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
             *(
                 [
                     "        config:",
-                    "          # Read off a PDF, which the fixture warehouse never holds (Table.read_from_pdf):",
+                    "          # Read off a PDF or a workbook, which the fixture warehouse never holds (Table.read_from_pdf):",
                     "          # its fct_sources_without_freshness row in dbt_project_evaluator_exceptions.csv says why.",
                     "          freshness: null",
                 ]

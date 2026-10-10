@@ -447,8 +447,9 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # terms). Decision 126's ParkServe parks, held the same way (the maintainer's poll, 2026-10-09: "Load it,
     # held"), add 1 `stated_by_org`: the Trust for Public Land's item states its terms.
     # Section K's hand-back (2026-10-10) adds 7 `public_gis`: ATA's six photo layers and RCO's camping photos, whose
-    # layers state no terms and whose photographs state no licence, all held.
-    assert counts == {"maintainer_authorisation": 249, "public_gis": 279, "stated_by_org": 208, "unresolved": 28}
+    # layers state no terms and whose photographs state no licence, all held. It adds 1 `unresolved` too: SMHC's
+    # 900 Miler Club list, a challenge list, which no decision answers yet.
+    assert counts == {"maintainer_authorisation": 249, "public_gis": 279, "stated_by_org": 208, "unresolved": 29}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

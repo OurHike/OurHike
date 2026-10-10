@@ -17715,33 +17715,58 @@
     },
     {
       "key": "wmc_hike_ratings",
-      "title": "Wasatch Mountain Club Hiking Trail Database (WMCHikesCopyToWeb.pdf)",
+      "title": "Wasatch Mountain Club Hiking Trail Database (WMCHikesCopyToWeb.xlsx)",
       "provider": "WMC",
       "kind": "published_hikes",
-      "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf",
+      "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.xlsx",
       "steward": "Wasatch Mountain Club",
       "attribution": "Wasatch Mountain Club",
       "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Wasatch Mountain Club; the terms as found stay quoted in `terms`.",
       "licence_basis": "maintainer_authorisation",
-      "terms": "None found: the hike ratings page (/dan-smiths-hike-ratings-table) and the PDF state no terms or licence (read 2026-10-04); the coverage audit found the club's trip reports 'written by members' with no licence.",
-      "reader": "ContentPdf (extract/_pdf_content.py), family `wmc_hike_ratings`",
+      "terms": "None found: the hike ratings page (/dan-smiths-hike-ratings-table) and the PDF state no terms or licence (read 2026-10-04), and nor does the workbook's Hikes sheet (read 2026-10-10); the coverage audit found the club's trip reports 'written by members' with no licence.",
+      "reader": "ContentSheet (extract/_sheet_content.py), family `wmc_hike_ratings`",
       "person_fields": [],
-      "person_fields_comment": "None: the family reads the table's rows (the columns in extract/_pdf_content.py's TYPE_COLUMNS, its own and DOCUMENT_COLUMNS) and nothing else. The document's first page names the members who compiled the table, and its /Author metadata a member's first name; neither is read, and no metadata field lands but the two dates.",
+      "person_fields_comment": "None: the family reads the workbook's Hikes sheet (the columns in extract/_pages_content.py's TYPE_COLUMNS, its own and extract/_sheet_content.py's SHEET_DOCUMENT_COLUMNS) and nothing else. The workbook's CoverSheet names the members who compiled the table and its properties name its author and last editor; none of them is read.",
       "key_fields": [
         "name",
         "elevation_gain_text"
       ],
-      "key_comment": "The hike's name and its total ascent (`name`, `elevation_gain_text`): unique on all 157 rows read 2026-10-04. The name alone is not: 'SNAKE CREEK PASS FROM BRIGHTON LAKES TH.' is two rows, 1,344 and 1,312 feet of ascent, and the table carries no id.",
+      "key_comment": "The hike's name and its total ascent (`name`, `elevation_gain_text`): unique on all 157 rows of the PDF read 2026-10-04 and of the workbook read 2026-10-10. The name alone is not: 'SNAKE CREEK PASS FROM BRIGHTON LAKES TH.' is two rows in both, 1,344 and 1,312 feet of ascent, and the table carries no id.",
       "freshness": {
         "kind": "file_validator",
-        "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf",
-        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither."
+        "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.xlsx",
+        "notes": "ContentSheet's per-file check, ContentPdf's (extract/_sheet_content.py, extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither. The workbook came with Last-Modified and Content-Length and no ETag on 2026-10-10."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
-      "notes": "Read 2026-10-04T17:34:11Z at the host's `Crawl-delay: 10`: HTTP 200, application/pdf, 252,399 bytes, Last-Modified 2012-09-17, no ETag; 5 pages, the metadata's dates 2012-09-17 and its title 'WMCHikesCopyToWeb.xlsx'. The text layer reads cleanly: 157 rows on pages 2 to 5 under a repeated header, 155 with all four leading figures and 2 (Perkins Peak, Twin Lakes) with three, whose rating and miles land as unknown. 42 rows carry other-factor codes. The table's two hour estimates (the document's pace model, 'Estimated Only!') are not read. The ratings page says the PDF is 'The HIKES tab from the spreadsheet'; the spreadsheet (Last-Modified 2023-06-15, 66,121 bytes) is not read, as the extract venv has no spreadsheet reader, and whether its HIKES tab differs from the 2012 PDF is unchecked.",
+      "notes": "Read from the workbook since 2026-10-10 (section K's hand-back), at the host's `Crawl-delay: 10`: HTTP 200, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, 66,121 bytes, Last-Modified 2023-06-15, no ETag; three sheets, CoverSheet, Hikes (157 rows under its header) and DownloadFiles, of which Hikes alone is read. Until then the extract read the table's 2012 PDF (2026-10-04T17:34:11Z: 252,399 bytes, Last-Modified 2012-09-17, 157 rows, of which Perkins Peak and Twin Lakes stated no readable miles). Compared on 2026-10-10, the two hold the same 157 hikes, alike on name and ascent, way, trailhead and highest elevations, location and other-factor codes (42 rows carry codes), all 155 ratings both state agreeing to the PDF's one decimal; the workbook states the two missing miles, 8.3 and 3.8. The PDF is a SAME_AS copy in extract/wmc/suggested_hikes.py. The table's two hour estimates (its pace model, 'Estimated Only!' in the PDF) and the rating's four parts are not read.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
+      "key": "smhc_900_miler_trails",
+      "title": "Smoky Mountains Hiking Club 900 Miler Club trail list (its .xls workbook)",
+      "provider": "SMHC",
+      "kind": "published_notices",
+      "url": "https://smhclub.org/resources/Documents/900%20Mile%20Spreadsheet%20for%20Website%20Final%20Version%20Revision%20with%20Primary%20Source%20Data%20in%20Feet%2009212024.xls",
+      "redirect_hosts": ["cdn.wildapricot.com"],
+      "redirect_hosts_comment": "smhclub.org answers the workbook's link with one 307 to a signed URL on cdn.wildapricot.com, the CDN of the club's site platform, whose robots.txt answered 403, no rules (read 2026-10-10). Named so the extract session's cross-host refusal lets that one redirect through; a redirect anywhere else refuses the read.",
+      "steward": "Smoky Mountains Hiking Club",
+      "attribution": "Smoky Mountains Hiking Club",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 70 for suggested-hike lists. So this row is `unresolved` until the maintainer decides whether a club's list publishes as its facts (each trail's name and length, and the link) and never the club's prose. The trails are Great Smoky Mountains National Park's.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the 900 Miler Club page (https://smhclub.org/900-Miler-Club) states no terms, licence or copyright (read 2026-10-10), and the workbook's one read sheet states none.",
+      "reader": "ContentSheet (extract/_sheet_content.py), family `smhc_900_miler_trails`",
+      "person_fields": [],
+      "person_fields_comment": "None land: the family reads the trail list's name and length columns only. Columns F ('Date Completed') and G (notes) are a member's own checklist and are never read; the workbook's properties name its author and the person who last saved it and are never read; and the page's roster of members who finished the list is never read as data.",
+      "key_fields": ["name"],
+      "key_comment": "The trail's name (`name`): unique on all 157 trails read 2026-10-10.",
+      "freshness": {"kind": "file_validator", "url": "https://smhclub.org/resources/Documents/900%20Mile%20Spreadsheet%20for%20Website%20Final%20Version%20Revision%20with%20Primary%20Source%20Data%20in%20Feet%2009212024.xls", "notes": "ContentSheet's per-file check, ContentPdf's (extract/_sheet_content.py, extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither. Followed through the one redirect, the workbook came with Last-Modified 2024-09-21 and Content-Length and no ETag on 2026-10-10."},
+      "discovered_via": "Decision 54's section K (2026-10-04) left it unread, the extract venv having no spreadsheet reader (not_available.toml [smhc.challenges], from the coverage audit's reading of 2026-10-01); read live on 2026-10-10 under lib/user_agent.py's USER_AGENT, smhclub.org's robots.txt first (it disallows nothing read here and asks `Crawl-delay: 10`), then the page and the workbook, ten seconds or more apart.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10: the page links one workbook, which smhclub.org answers with a 307 to cdn.wildapricot.com; HTTP 200, application/vnd.ms-excel, 83,968 bytes, Last-Modified 2024-09-21. Two sheets, '900 Mile Club Spreadsheet' (401 rows by 7 columns) and an empty 'Sheet3'. 157 trails and 238 sections, summing to 796.73 miles, the sheet's own total, which the family checks every read. Lengths are the club's 'Primary source data (feet)', with each trail's miles beside them as the sheet states them.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), and this list's trails are names joined to no published trail. It stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
     },
     {
       "key": "cmc_lookout_towers",
@@ -20043,6 +20068,10 @@
         "state": "not_asked",
         "note": "Not asked. Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       },
+      "SMHC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
       "WMC": {
         "state": "not_asked",
         "note": "Not asked. Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
@@ -21123,10 +21152,15 @@
         "name": "Friends of the Blue Hills",
         "note": "A nonprofit friends group for the DCR's Blue Hills Reservation south of Boston; registered for its Suggested Hikes page (decision 54, wave 5, section K, 2026-10-04), at reaches_hikers: false."
       },
+      "org:smhc": {
+        "provider": "SMHC",
+        "name": "Smoky Mountains Hiking Club",
+        "note": "An A.T. maintaining club (trail_orgs.json: at_club) that keeps the 900 Miler Club's list of Great Smoky Mountains National Park's trails; registered for that list, a workbook (section K's hand-back, 2026-10-10), at reaches_hikers: false."
+      },
       "org:wmc": {
         "provider": "WMC",
         "name": "Wasatch Mountain Club",
-        "note": "A Salt Lake City outdoor club; registered for its Hiking Trail Database PDF, the hike ratings table of its spreadsheet (decision 54, wave 4, section K, 2026-10-04), at reaches_hikers: false."
+        "note": "A Salt Lake City outdoor club; registered for its Hiking Trail Database, the hike ratings table of its spreadsheet (decision 54, wave 4, section K, 2026-10-04; read from the workbook itself since 2026-10-10), at reaches_hikers: false."
       },
       "org:cmc": {
         "provider": "Carolina Mountain Club",
@@ -26781,6 +26815,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "SMHC": {
+        "probed_date": "2026-10-10",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
           }
         }
       },

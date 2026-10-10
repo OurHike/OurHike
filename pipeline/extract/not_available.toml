@@ -14418,22 +14418,6 @@ where = [
 ]
 reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
 
-[smhc.challenges]
-confirmed = 2026-10-04
-summary = """
-The 900 Miler Club's trail list as an Excel file, and not landed (decision 54 wave 5, section K,
-2026-10-04).
-
-The Great Smoky Mountains 900 Miler Club (every official park trail; '938 members as of 2026-09-08', a roster)
-publishes its trail list as an .xls workbook (83,968 bytes), which the extract venv cannot read: a spreadsheet
-reader is a dependency the maintainer decides. The trails are the park's (nps/). No request sent today."""
-checked = [
-    "(the coverage audit, 2026-10-01) /resources/Documents/900 Mile Spreadsheet ... 09212024.xls (83,968 bytes)",
-    "no request sent today: the coverage audit's reading, 2026-10-01",
-]
-where = ["https://smhclub.org/900-Miler-Club"]
-reason = "not read: the list is an Excel workbook, and the extract venv has no spreadsheet reader"
-
 [smhc.closures]
 confirmed = 2026-10-03
 summary = """

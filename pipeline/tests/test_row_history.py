@@ -72,6 +72,20 @@ def test_a_saved_history_restores_into_a_new_warehouse_row_for_row(tmp_path):
     assert ("TIMESTAMP",) in types, "dbt_valid_from comes back as the TIMESTAMP dbt wrote, not as text"
 
 
+def test_the_restore_and_save_lines_print_each_snapshots_rows_not_only_the_total(tmp_path):
+    """build-reference.yml run 2 restored 39,165,866 rows of history and saved 39,165,930 from the same inputs, and
+    nothing in either line said which snapshot held the 64 (pipeline/ELT.md, "Row dates")."""
+    rows = (("a", "h1", datetime(2026, 10, 3, 14, 0), None), ("b", "h2", datetime(2026, 10, 3, 14, 0), None))
+    store, _ = _cold_then_saved(tmp_path, rows)
+    second = tmp_path / "second.duckdb"
+
+    restored = restore(str(store), second, cold_start=False)
+    saved = save(str(store), second)
+
+    assert "1 snapshot tables, 2 rows (int_things__history 2)" in restored
+    assert "1 snapshot tables, 2 rows (int_things__history 2), to " in saved
+
+
 def test_history_json_records_rows_sha256_and_each_snapshots_history_start(tmp_path):
     store, _ = _cold_then_saved(tmp_path)
     pointer = json.loads((store / POINTER).read_text())

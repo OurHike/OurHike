@@ -704,7 +704,9 @@ def _restore_rows(store: Store, url: str, con: duckdb.DuckDBPyConnection, cold_s
                 raise Refused(f"{url}/{entry['file']} holds {rows} rows, and {POINTER} says {entry['rows']}")
             restored[table] = rows
     total = sum(restored.values())
-    message = f"restored save {pointer['save_id']} from {url}: {len(restored)} snapshot tables, {total} rows"
+    message = (
+        f"restored save {pointer['save_id']} from {url}: {len(restored)} snapshot tables, {total} rows ({_by_table(restored)})"
+    )
     return message, pointer["save_id"], restored
 
 
@@ -969,6 +971,17 @@ def _check_elementary_save(
     return _ElementarySave(tables, restored_save, alone, _pointer_verdict(store, url, restored_save, alone))
 
 
+def _by_table(counts: dict[str, int]) -> str:
+    """Each snapshot table's rows, by name, for the restore and save log lines: "podcasts 51, sources 1,204".
+
+    The totals alone could not say where two builds of one pin differ: build-reference.yml run 2 restored
+    39,165,866 rows of history and saved 39,165,930 from the same inputs (pipeline/ELT.md, "Row dates"), and
+    nothing in either log said which of the nine snapshots held the 64. Printed for every lane, so the next
+    build answers it.
+    """
+    return ", ".join(f"{table} {rows:,}" for table, rows in sorted(counts.items()))
+
+
 def _write_rows(store: Store, url: str, con: duckdb.DuckDBPyConnection, plan: _RowsSave, save_id: str) -> str:
     started = time.monotonic()
     entries = {}
@@ -994,8 +1007,8 @@ def _write_rows(store: Store, url: str, con: duckdb.DuckDBPyConnection, plan: _R
     store.write_text(POINTER, json.dumps(pointer, indent=2, sort_keys=True) + "\n")
     _prune(store, SAVES, save_id, plan.restored_save)
     return (
-        f"saved {len(entries)} snapshot tables, {sum(plan.counts.values())} rows, to {url} as save {save_id}, "
-        f"in {time.monotonic() - started:.2f} s"
+        f"saved {len(entries)} snapshot tables, {sum(plan.counts.values())} rows ({_by_table(plan.counts)}), to {url} "
+        f"as save {save_id}, in {time.monotonic() - started:.2f} s"
     )
 
 

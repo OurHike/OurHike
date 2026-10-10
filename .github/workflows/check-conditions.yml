@@ -273,7 +273,7 @@ jobs:
           python3.12 -m venv "$RUNNER_TEMP/extract"
           "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
           python3.12 -m venv "$RUNNER_TEMP/dbt"
-          "$RUNNER_TEMP/dbt/bin/pip" install --quiet -r requirements-dbt.txt
+          "$RUNNER_TEMP/dbt/bin/pip" install --quiet --require-hashes -r requirements-dbt.txt
 
       # The generators' output is never committed (decision 91), and the
       # checks parse the project as the build did.

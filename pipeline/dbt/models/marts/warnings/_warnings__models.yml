@@ -224,8 +224,11 @@ models:
       - name: ends_on
         description: >
           The day a club notice says it ends, as the source states it, in UTC;
-          null where the source states none. A notice past it is held back,
-          never published.
+          null where the source states none. A notice past it is kept, and
+          no longer closes the trail (int_closures__club_notices' rules 1 and
+          2): conditions/notices.json's `current_until` is this day, and the
+          phone greys the notice after it (the maintainer's frame A,
+          2026-10-10).
         data_type: date
       - name: source_edited_at
         description: >

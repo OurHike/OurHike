@@ -5,6 +5,7 @@ import {
   firstSeenRule,
   hazardView,
   newClubNotices,
+  noticeNotCurrent,
 } from './noticeSelection'
 import {
   newNoticeLabel,
@@ -42,6 +43,9 @@ function row(
   }
 }
 
+/** The phone's own calendar day the rows' `current_until` is read against. */
+const TODAY = '2026-10-10'
+
 describe('which file decision 67’s areas are drawn from (decision 84)', () => {
   const area = (id: string): TrailNotice =>
     row(`oprhp_hunting_areas:${id}`, null, {
@@ -66,11 +70,11 @@ describe('which file decision 67’s areas are drawn from (decision 84)', () => 
   } as FeatureCollection)
 
   it('draws nothing, and says so with null, with neither file on the phone', () => {
-    expect(hazardView(null, null, null, INDEX, null)).toBeNull()
+    expect(hazardView(null, null, null, INDEX, null, TODAY)).toBeNull()
   })
 
   it('draws the area from notices.json alone, where it crosses a held trail', () => {
-    expect(hazardView([area('1')], at, null, INDEX, null)?.areas).toHaveLength(1)
+    expect(hazardView([area('1')], at, null, INDEX, null, TODAY)?.areas).toHaveLength(1)
   })
 
   it('reads an arrived empty hazard file as no area, over an older notices.json', () => {
@@ -81,8 +85,61 @@ describe('which file decision 67’s areas are drawn from (decision 84)', () => 
       { items: [], generatedAt: at },
       INDEX,
       null,
+      TODAY,
     )
     expect(view?.areas).toEqual([])
+  })
+
+  // The maintainer's frame A (2026-10-10): an area whose own notice may no
+  // longer apply is still drawn, and the tapped stretch's advisory carries
+  // the area card's line, so no card shows it as current.
+  it('still draws an area past its current_until, and gives its stretch advisory the line', () => {
+    const view = hazardView(
+      [
+        { ...area('1'), current_until: null },
+        { ...area('2'), current_until: TODAY },
+      ],
+      at,
+      null,
+      INDEX,
+      null,
+      TODAY,
+    )
+    expect(view?.areas).toHaveLength(2)
+    const advisories = view?.advisoriesAt([-77, 34.3]) ?? []
+    expect(
+      Object.fromEntries(
+        advisories.map((advisory) => [advisory.id, advisory.notCurrent]),
+      ),
+    ).toEqual({
+      'oprhp_hunting_areas:1': 'Its source gives no date. It may no longer apply.',
+      'oprhp_hunting_areas:2': null,
+    })
+  })
+})
+
+describe('noticeNotCurrent, the verdict ATC’s tapped sheet takes from notices.json', () => {
+  const atc = row('atc_trail_updates:nolichucky', null, {
+    updated_at: '2025-12-10T15:00:00Z',
+    current_until: '2026-03-10',
+  })
+
+  it('gives the planned-hike list’s line for the same notice id', () => {
+    expect(noticeNotCurrent([atc], 'atc_trail_updates:nolichucky', TODAY)).toEqual({
+      line: 'Last reported December 10, 2025. It may no longer apply.',
+      saysUpdated: true,
+    })
+  })
+
+  it('gives no verdict without notices.json, or for a notice it does not hold', () => {
+    expect(noticeNotCurrent(null, 'atc_trail_updates:nolichucky', TODAY)).toBeNull()
+    expect(noticeNotCurrent([atc], 'atc_trail_updates:other', TODAY)).toBeNull()
+  })
+
+  it('gives none while the notice reads as current on the phone’s day', () => {
+    expect(
+      noticeNotCurrent([atc], 'atc_trail_updates:nolichucky', '2026-03-10'),
+    ).toBeNull()
   })
 })
 

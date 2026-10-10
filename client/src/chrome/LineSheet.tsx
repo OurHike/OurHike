@@ -133,8 +133,16 @@ export interface LineSheetProps {
    * area, shooting site or burned area the tapped point is inside or beside,
    * each a heading and OurHike's own sentence (lib/hazardAreas.ts). Empty or
    * absent, nothing is drawn. Never a closure: each says the trail is open.
+   * `notCurrent` is the area card's line once the area's own notice may no
+   * longer apply (lib/noticeCurrency.ts, the maintainer's frame A of
+   * 2026-10-10): the advisory greys and the line follows it.
    */
-  advisories?: ReadonlyArray<{ id: string; heading: string; body: string }>
+  advisories?: ReadonlyArray<{
+    id: string
+    heading: string
+    body: string
+    notCurrent?: string | null
+  }>
 }
 
 export function LineSheet({
@@ -194,14 +202,26 @@ export function LineSheet({
       {/* The stretch's advisories first among the facts (#1805, decision
           67): the mock the maintainer chose puts "Hunting allowed · Advisory"
           on the card for the stretch, and it is the line a hiker acts on. */}
-      {advisories.map((advisory) => (
-        <p className="line-sheet__advisory" key={advisory.id}>
-          <span className="planned-notices__tag planned-notices__tag--warn">
-            Advisory
-          </span>{' '}
-          <strong>{advisory.heading}.</strong> {advisory.body}
-        </p>
-      ))}
+      {advisories.map((advisory) =>
+        advisory.notCurrent ? (
+          <div className="notice--not-current" key={advisory.id}>
+            <p className="line-sheet__advisory">
+              <span className="planned-notices__tag planned-notices__tag--warn">
+                Advisory
+              </span>{' '}
+              <strong>{advisory.heading}.</strong> {advisory.body}
+            </p>
+            <p className="notice__not-current">{advisory.notCurrent}</p>
+          </div>
+        ) : (
+          <p className="line-sheet__advisory" key={advisory.id}>
+            <span className="planned-notices__tag planned-notices__tag--warn">
+              Advisory
+            </span>{' '}
+            <strong>{advisory.heading}.</strong> {advisory.body}
+          </p>
+        ),
+      )}
 
       {detail.destinationLine !== null && (
         <p className="closure-sheet__range">{detail.destinationLine}</p>

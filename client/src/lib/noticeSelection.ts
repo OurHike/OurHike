@@ -24,6 +24,7 @@ import {
   HAZARD_ADVISORIES,
 } from './hazardAreas'
 import type { HazardArea, StretchAdvisory } from './hazardAreas'
+import { notCurrent, type NotCurrent } from './noticeCurrency'
 import type { Position } from './noticeGeometry'
 import { newNoticesSince, type NewNotices, type TrailNotice } from './notices'
 import { plannedNotices, shownNotices, type PlannedNotices } from './plannedNotices'
@@ -225,6 +226,11 @@ export function plannedView({
  * notices.json here - a bucket without the hazard file, production until
  * the cutover - the areas come from it, as before decision 84: a missing
  * hazard file is never read as no hazard area.
+ *
+ * An area whose own notice no longer reads as current on `today` (the
+ * phone's calendar day, lib/noticeCurrency.ts) is still drawn, as every map
+ * drawing is: the stretch's advisory carries the area card's line instead,
+ * `notCurrent`, so no card shows it as current.
  */
 export function hazardView(
   notices: readonly TrailNotice[] | null,
@@ -232,6 +238,7 @@ export function hazardView(
   hazardFile: { items: readonly TrailNotice[]; generatedAt: Date } | null,
   trailIndex: TrailIndex | null,
   graph: TrailGraphIndex | null,
+  today: string,
 ): { areas: HazardArea[]; advisoriesAt: (at: Position) => StretchAdvisory[] } | null {
   const source =
     hazardFile !== null &&
@@ -248,6 +255,29 @@ export function hazardView(
       hazardsAt(areas, at).map((area) => ({
         id: area.notice.notice_id,
         ...HAZARD_ADVISORIES[area.hazard],
+        notCurrent: notCurrent(area.notice, today)?.line ?? null,
       })),
   }
+}
+
+/**
+ * What an ATC notice tapped on the map says about itself on `today`, from
+ * its row in conditions/notices.json (the panel's `clubNotices`), or null
+ * while it reads as current or no row carries a verdict.
+ *
+ * ATC's sheet reads its notice from conditions/atc_updates.json, whose shape
+ * decision 51 keeps as it is, so that file carries no `current_until`. The
+ * same notice's row in notices.json does, under the same id
+ * (`atc_trail_updates:<atc_id>`, lib/notices.ts's `atcUpdateAsNotice`), and
+ * that is the verdict the panel's list greys it by: the sheet takes it from
+ * there, so the two never disagree. A phone without notices.json has no
+ * verdict for any ATC notice, and its sheet reads as it always did.
+ */
+export function noticeNotCurrent(
+  notices: readonly TrailNotice[] | null,
+  noticeId: string,
+  today: string,
+): NotCurrent | null {
+  const notice = notices?.find((row) => row.notice_id === noticeId)
+  return notice === undefined ? null : notCurrent(notice, today)
 }

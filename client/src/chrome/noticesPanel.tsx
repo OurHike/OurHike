@@ -476,8 +476,17 @@ export function useNoticesPanel({
             hazardFile,
             trailIndex,
             graph,
+            today,
           ),
-    [clubNotices, clubNoticesGeneratedAt, hazardFile, selection, trailIndex, graph],
+    [
+      clubNotices,
+      clubNoticesGeneratedAt,
+      hazardFile,
+      selection,
+      trailIndex,
+      graph,
+      today,
+    ],
   )
   const hazardAreas = hazards?.areas ?? NO_HAZARD_AREAS
   const hazardAdvisoriesAt = hazards?.advisoriesAt ?? noAdvisories
@@ -620,6 +629,16 @@ export function useNoticesPanel({
             update={selectedUpdate}
             reviewedAt={reviewedAt}
             stewards={stewards}
+            // The verdict notices.json gives this notice on the phone's day,
+            // so the sheet greys it as the planned-hike list does (#1805,
+            // the maintainer's frame A); none without that file.
+            notCurrent={
+              selection?.noticeNotCurrent(
+                clubNotices,
+                `${ATC_SOURCE_KEY}:${selectedUpdate.atc_id}`,
+                today,
+              ) ?? null
+            }
             onClose={() => setSelectedBandId(null)}
           />
         ),
@@ -646,6 +665,7 @@ export function useNoticesPanel({
           <HazardAreaSheet
             notice={selectedHazard}
             stewards={stewards}
+            today={today}
             onClose={() => setSelectedHazardId(null)}
           />
         ),
@@ -655,6 +675,7 @@ export function useNoticesPanel({
             planned={planned}
             stewards={stewards}
             generatedAt={clubNoticesGeneratedAt}
+            today={today}
             onClose={() => setNoticesOpen(false)}
           />
         )
@@ -691,6 +712,9 @@ export function useNoticesPanel({
       hazardAreas,
       selectedHazard,
       clubNoticesGeneratedAt,
+      clubNotices,
+      selection,
+      today,
     ],
   )
 

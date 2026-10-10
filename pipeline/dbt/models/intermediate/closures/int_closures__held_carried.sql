@@ -29,14 +29,16 @@
 -- carried is a different claim from confirmed (Reasoned; macros/row_history.sql
 -- says what else moves a hash).
 --
--- WHAT ENDS IT EARLY: rule 1's dates (macros/notice_date_holds.sql), as for
--- a row read this build. A carried notice whose own end day is more than a
--- day behind the build's UTC date is dropped, so a closure its source says
--- has ended stops publishing although the source cannot be read; the
--- snapshot then closes its version. Only the end can pass while a row is
--- carried (its start was within the margin when it was read), and its
--- rescission day cannot be checked: rescinded_on does not reach the marts,
--- so the history holds none to carry.
+-- ITS OWN END DATE PASSING ENDS NOTHING, as for a row read this build (the
+-- maintainer's frame A, 2026-10-10; int_closures__club_notices' rule 1). A
+-- carried notice whose own end day is more than a day behind the build's UTC
+-- date stays carried, and rule 2 reads it again: it no longer closes the
+-- trail, so it lands in warnings as not reviewed, as a fresh read of it
+-- would. conditions/notices.json's `current_until` is its end date, and the
+-- phone greys it. Rule 1's holds (macros/notice_date_holds.sql) still apply,
+-- and cannot fire on a carried row: its start was within the margin when it
+-- was read, and its rescission day cannot be checked, because rescinded_on
+-- does not reach the marts, so the history holds none to carry.
 --
 -- WHAT IT DOES NOT DO. With OURHIKE_ROW_HISTORY=off, or on a cold start, the
 -- history is empty and nothing is carried, and so for a source held on every
@@ -154,11 +156,27 @@ read_back as (
             cast({{ python_run_stamp() }} as timestamptz)
         ) as carried_since
     from carried
+),
+
+-- Rule 2 on a carried row: a closure whose own end has passed since it was
+-- read no longer closes the trail, so it moves to the warnings mart with
+-- `obstructs_trail` null and `not_reviewed`, as int_closures__club_notices
+-- would judge it now. Every other carried row keeps its mart and its claim.
+judged as (
+    select
+        *,
+        {{ notice_has_ended('ends_on', notice_build_date()) }} as has_ended
+    from read_back
+    where
+        case
+            {{ notice_date_holds('starts_on', notice_build_date()) }}
+        end is null
 )
 
-select *
-from read_back
-where
-    case
-        {{ notice_date_holds('starts_on', 'ends_on', notice_build_date()) }}
-    end is null
+select
+    case when has_ended then 'warnings' else mart end as mart,
+    case when has_ended then null else obstructs_trail end as obstructs_trail,
+    case when has_ended then 'not_reviewed' else review_state end
+        as review_state,
+    * exclude (mart, obstructs_trail, review_state, has_ended)
+from judged

@@ -459,6 +459,17 @@ export interface OrgNotice {
   /** The notice's own start and end days, ISO, where the club states them. */
   starts_on?: string | null
   ends_on?: string | null
+  /**
+   * The last day the notice reads as current, an ISO day, or null where it
+   * gives no date that bounds it (pipeline/dbt/macros/notice_current_until.sql:
+   * its own end date, else a duration its title states from its own start,
+   * else its edit date plus 90 days). lib/noticeCurrency.ts compares it with
+   * the phone's own calendar and greys the notice after it (the maintainer's
+   * frame A, 2026-10-10). Absent, not null, on a file written before the
+   * field and on the two older files' rows: no verdict, so the notice reads
+   * as it always did.
+   */
+  current_until?: string | null
   /** When OurHike last read the source and found this, ISO UTC: the run
    *  log's latest read that loaded it or found it unchanged. */
   checked_at?: string | null

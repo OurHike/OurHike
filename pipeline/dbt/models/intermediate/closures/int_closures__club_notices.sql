@@ -10,36 +10,49 @@
 --
 -- THE RULES, each held by a unit test in _closures__intermediate.yml:
 --
--- 1. A NOTICE WHOSE STATED END HAS PASSED IS HELD BACK WITH THAT REASON, never
---    published as current (Standing Stone's closure pages still serve
---    closures that ended in 2022 and 2023, phase A). Its end is the day of
---    `ends_at` in UTC, and it is held once that day is more than one day
---    behind the build's UTC date: a day stated in a club's own zone has ended
---    everywhere in the United States, UTC-4 to UTC-10, by 10:00 UTC the day
---    after, so the margin errs toward showing a closure a day too long and
---    never hides one early (Reasoned, not measured on any source). An order
---    the source says was rescinded is held too, once the build's UTC date is
---    past the UTC day of its rescission: an order is lifted at that instant,
---    not at the end of a stated day, and the first build to hold it starts at
---    00:00 UTC the next day, after the instant whatever the zone it was
---    stated in. So it rounds toward showing an order up to a day after it
---    was lifted, never hiding one still in force (Reasoned, as above; with
---    no margin, before 2026-10-05, a Denver order rescinded at local
---    midnight was held from 18:00 local the evening before). A notice whose
---    own start is still to come is held too (Yellowstone's bear management
---    areas, New Jersey's WMA restrictions and King County's alerts state
---    one): held while its UTC start day is more than one day ahead, so the
---    margin shows a closure a day early, never a day late.
+-- 1. A NOTICE WHOSE STATED END HAS PASSED IS KEPT, and is never read as
+--    current. The maintainer's frame A (poll of 2026-10-10): a notice past
+--    its own end date stays in the list, greyed, rather than leaving it.
+--    Until then this rule held such a notice back, so UA's notices.json of
+--    2026-10-10 17:24 UTC carried none of them: 0 of its 1,464 rows with an
+--    end date had one already past. Standing Stone's closure pages, which
+--    still serve closures that ended in 2022 and 2023 (phase A), now reach a
+--    phone that way. conditions/notices.json's `current_until` is that end
+--    day (macros/notice_current_until.sql), and the phone greys the notice
+--    after it on its own clock, so a phone offline for days greys it on the
+--    day, which a build-time hold could not. Rule 2 below still reads it.
+--    Its end is the day of `ends_at` in UTC.
+--    TWO DATES STILL HOLD A NOTICE BACK (macros/notice_date_holds.sql). An
+--    order the source says was rescinded is held, once the build's UTC date
+--    is past the UTC day of its rescission: that is the source's own word
+--    that the order was lifted, as a status is, not a date OurHike reads an
+--    expiry from. An order is lifted at that instant, not at the end of a
+--    stated day, and the first build to hold it starts at 00:00 UTC the next
+--    day, after the instant whatever the zone it was stated in. So it rounds
+--    toward showing an order up to a day after it was lifted, never hiding
+--    one still in force (Reasoned, not measured on any source; with no
+--    margin, before 2026-10-05, a Denver order rescinded at local midnight
+--    was held from 18:00 local the evening before). And a notice whose own
+--    start is still to come is held (Yellowstone's bear management areas,
+--    New Jersey's WMA restrictions and King County's alerts state one):
+--    held while its UTC start day is more than one day ahead, so the margin
+--    shows a closure a day early, never a day late.
 -- 2. A STATUS ALONE IS NEVER READ AS CLOSED NOW WHEN ITS OWN END HAS PASSED.
 --    `obstructs_trail` is true only where the source's own status field
 --    holds a value seeds/notice_status_values.csv reads as `closes_trail`,
 --    the source files the notice under closures (its club's closures.py),
---    and rule 1 does not hold it: the USFS R06 fire closures carried
---    'Active' beside an end date already past on 112 of 938 lines, and CDPR
---    'Full Closure' beside a passed StatusReopenDate is the same shape
---    (pipeline/ELT.md, "Status, water and expiry rules", rule 1).
+--    rule 1 does not hold it, and its own end day is not more than one day
+--    behind the build's UTC date (macros/notice_date_holds.sql's
+--    notice_has_ended(): a day stated in a club's own zone has ended
+--    everywhere in the United States, UTC-4 to UTC-10, by 10:00 UTC the day
+--    after, so the margin reads a closure as closing a day too long, never a
+--    day too short; Reasoned, not measured on any source). The USFS R06 fire
+--    closures carried 'Active' beside an end date already past on 112 of 938
+--    lines, and CDPR 'Full Closure' beside a passed StatusReopenDate is the
+--    same shape (pipeline/ELT.md, "Status, water and expiry rules", rule 1).
 --    Everything else is null, which decision 7 lands in warnings as not
---    reviewed: miss rather than cry wolf.
+--    reviewed: miss rather than cry wolf. So a notice past its end lands in
+--    warnings, kept and not current, never in closures.
 -- 3. A STATUS THE SOURCE USES FOR "NOT CURRENT" HOLDS THE ROW: an inactive
 --    flag (CDTC's Active No, Wisconsin DNR's Active_Flag No), an unposted
 --    one (IATA's posted no), or an open one, which tells a hiker nothing.
@@ -122,8 +135,9 @@ read_status as (
             and lower(trim(notices.category)) = hazard_values.category_value
 ),
 
--- Rule 1's dates come last, from macros/notice_date_holds.sql, which
--- int_closures__held_carried applies to a carried row too.
+-- Rule 1's two holds come last, from macros/notice_date_holds.sql, which
+-- int_closures__held_carried applies to a carried row too; rule 2's end
+-- date is `has_ended`, which holds nothing back.
 judged as (
     select
         *,
@@ -142,9 +156,10 @@ judged as (
                     || ', is not one notice_hazard_areas reads as '
                     || hazard
             {{ notice_date_holds(
-                'starts_on', 'ends_on', 'build_date', rescinded_on='rescinded_on'
+                'starts_on', 'build_date', rescinded_on='rescinded_on'
             ) }}
-        end as held_because
+        end as held_because,
+        {{ notice_has_ended('ends_on', 'build_date') }} as has_ended
     from read_status
 )
 
@@ -161,6 +176,7 @@ select
             notice_type = 'closures'
             and status_reads = 'closes_trail'
             and held_because is null
+            and not has_ended
             then true
     end as obstructs_trail,
     case
@@ -168,6 +184,7 @@ select
             notice_type = 'closures'
             and status_reads = 'closes_trail'
             and held_because is null
+            and not has_ended
             then 'org_published'
         else 'not_reviewed'
     end as review_state,

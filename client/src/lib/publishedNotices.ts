@@ -101,6 +101,24 @@ function textOrNull(value: unknown): string | null {
 }
 
 /**
+ * A real ISO day ("2026-10-01"), or null: `current_until` as
+ * lib/noticeCurrency.ts can compare it. A day no calendar has, such as
+ * "2026-04-31", which V8 rolls over to May 1, is null too.
+ *
+ * Restated rather than imported from lib/noticeCurrency.ts (whose `isIsoDay`
+ * is the same three lines), for validPlace's reason below: that module rides
+ * in the chunk the panel and the sheets share, and importing it here would
+ * tie this lazy chunk to that one, and the eager entry's preload map to both.
+ */
+function isoDayOrNull(value: unknown): string | null {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+  const at = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === value
+    ? value
+    : null
+}
+
+/**
  * Category values that stand for no category, compared whole after trimming
  * and ignoring case, never as a part of a longer value.
  *
@@ -268,6 +286,11 @@ export function validNotice(value: unknown): OrgNotice | null {
         : null,
     starts_on: textOrNull(row.starts_on),
     ends_on: textOrNull(row.ends_on),
+    // Absent stays absent: a file from before the field makes no claim, and
+    // lib/noticeCurrency.ts reads that as current. Present, a value that is
+    // not a real ISO day is no date, which never reads as current - absent
+    // means unknown, never "still fine".
+    ...('current_until' in row ? { current_until: isoDayOrNull(row.current_until) } : {}),
     checked_at: textOrNull(row.checked_at),
     first_seen_at: textOrNull(row.first_seen_at),
     changed_at: textOrNull(row.changed_at),

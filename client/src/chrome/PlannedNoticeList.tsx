@@ -20,9 +20,20 @@
 // (decision 78), the club, the dates, where, and the club's own page. The
 // organization's name is read from the registry (ORG_NOTICES.md §6) and never
 // written here.
+//
+// A NOTICE THAT MAY NO LONGER APPLY STAYS, GREYED (the maintainer's frame A,
+// poll of 2026-10-10): past the last day conditions/notices.json gives it
+// (`current_until`), or with no date at all, its row keeps its place with its
+// tag and title in the secondary grey and one line under it, from
+// lib/noticeCurrency.ts - "Last reported March 5, 2026. It may no longer
+// apply." or "Its source gives no date. It may no longer apply." Where the
+// line carries the edit date, the "— updated" date is not repeated above it,
+// as the frame has it. Judged on the phone's own day (`today`), so a notice
+// greys on the day its date passes, offline or not.
 
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES, longDay } from '../lib/hazardAreas'
+import { notCurrent } from '../lib/noticeCurrency'
 import { noticeOrgLabel, noticeUpdatedAt, type TrailNotice } from '../lib/notices'
 import type { PlannedHikeNotices, PlannedNotices } from '../lib/plannedNotices'
 import { isSafeLink } from '../lib/safeLink'
@@ -33,6 +44,9 @@ export interface PlannedNoticeListProps {
   stewards: Stewards
   /** When conditions/notices.json was baked, for the age line. */
   generatedAt: Date | null
+  /** The phone's own calendar day (lib/passedToday.ts's `localDay`), which
+   *  each notice's `current_until` is read against. */
+  today: string
   onClose: () => void
 }
 
@@ -113,11 +127,21 @@ function allOf(notice: TrailNotice): string {
   return `All of ${names.length === 1 ? last : `${names.slice(0, -1).join(', ')} and ${last}`}`
 }
 
-function Row({ notice, org }: { notice: TrailNotice; org: string }) {
+function Row({
+  notice,
+  org,
+  today,
+}: {
+  notice: TrailNotice
+  org: string
+  today: string
+}) {
   const { text, warn } = tag(notice)
   const title = notice.title || `${org} notice`
   const category = categoryLine(notice, title, text)
-  const updatedAt = noticeUpdatedAt(notice)
+  const old = notCurrent(notice, today)
+  // The edit date once, in the greyed line where that line carries it.
+  const updatedAt = old?.saysUpdated ? null : noticeUpdatedAt(notice)
   const hazard =
     notice.hazard === null || notice.hazard === undefined
       ? null
@@ -135,7 +159,11 @@ function Row({ notice, org }: { notice: TrailNotice; org: string }) {
   )
 
   return (
-    <li className="atc-notices__item">
+    <li
+      className={
+        old === null ? 'atc-notices__item' : 'atc-notices__item notice--not-current'
+      }
+    >
       <p className="planned-notices__tagline">
         <span
           className={
@@ -156,6 +184,7 @@ function Row({ notice, org }: { notice: TrailNotice; org: string }) {
       <p className="closure-sheet__meta">
         {updatedAt === null ? org : `${org} — updated ${longDate(updatedAt)}`}
       </p>
+      {old !== null && <p className="notice__not-current">{old.line}</p>}
       {notice.carried_since && (
         <p className="atc-notices__offmap">
           OurHike hasn’t been able to read {possessive(org)} notices since{' '}
@@ -179,9 +208,11 @@ function Row({ notice, org }: { notice: TrailNotice; org: string }) {
 function Hike({
   hike,
   orgOf,
+  today,
 }: {
   hike: PlannedHikeNotices
   orgOf: (notice: TrailNotice) => string
+  today: string
 }) {
   const { stretch, onRoute, fromClubs, stateWide } = hike
   const count = onRoute.length + stateWide.length + fromClubs.length
@@ -213,14 +244,24 @@ function Hike({
           {onRoute.length > 0 && (
             <ul className="atc-notices__list" aria-label="On your route">
               {onRoute.map((notice) => (
-                <Row key={notice.notice_id} notice={notice} org={orgOf(notice)} />
+                <Row
+                  key={notice.notice_id}
+                  notice={notice}
+                  org={orgOf(notice)}
+                  today={today}
+                />
               ))}
             </ul>
           )}
           {stateWide.length > 0 && (
             <ul className="atc-notices__list" aria-label="For the whole state">
               {stateWide.map((notice) => (
-                <Row key={notice.notice_id} notice={notice} org={orgOf(notice)} />
+                <Row
+                  key={notice.notice_id}
+                  notice={notice}
+                  org={orgOf(notice)}
+                  today={today}
+                />
               ))}
             </ul>
           )}
@@ -232,7 +273,12 @@ function Hike({
               </p>
               <ul className="atc-notices__list" aria-label="From the clubs on your route">
                 {fromClubs.map((notice) => (
-                  <Row key={notice.notice_id} notice={notice} org={orgOf(notice)} />
+                  <Row
+                    key={notice.notice_id}
+                    notice={notice}
+                    org={orgOf(notice)}
+                    today={today}
+                  />
                 ))}
               </ul>
             </>
@@ -247,6 +293,7 @@ export function PlannedNoticeList({
   planned,
   stewards,
   generatedAt,
+  today,
   onClose,
 }: PlannedNoticeListProps) {
   const orgOf = noticeOrgLabel(stewards)
@@ -291,7 +338,7 @@ export function PlannedNoticeList({
         </div>
       ) : (
         planned.hikes.map((hike) => (
-          <Hike key={hike.stretch.id} hike={hike} orgOf={orgOf} />
+          <Hike key={hike.stretch.id} hike={hike} orgOf={orgOf} today={today} />
         ))
       )}
 

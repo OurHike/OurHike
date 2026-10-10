@@ -68,6 +68,33 @@ describe('a source_url', () => {
   })
 })
 
+// The last day a notice reads as current (pipeline/dbt/macros/
+// notice_current_until.sql), which lib/noticeCurrency.ts compares with the
+// phone's own day. Absent and null are different claims and stay apart.
+describe('a current_until', () => {
+  it('that is a real ISO day is kept as it came', () => {
+    expect(validNotice(row({ current_until: '2026-10-31' }))?.current_until).toBe(
+      '2026-10-31',
+    )
+  })
+
+  it('that is null stays null, a notice that gives no date at all', () => {
+    const notice = validNotice(row({ current_until: null }))
+    expect(notice).not.toBeNull()
+    expect(notice?.current_until).toBeNull()
+  })
+
+  it('that is no real day is null, never read as current', () => {
+    for (const value of ['2026-04-31', 'soon', '', 20261031]) {
+      expect(validNotice(row({ current_until: value }))?.current_until).toBeNull()
+    }
+  })
+
+  it('that is absent stays absent, so a file from before the field greys nothing', () => {
+    expect(validNotice(row()) ?? {}).not.toHaveProperty('current_until')
+  })
+})
+
 describe('a geometry place', () => {
   it.each([
     // What the writer's ST_AsGeoJSON makes of an empty polygon (the

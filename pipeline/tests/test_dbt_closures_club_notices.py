@@ -5,7 +5,9 @@ file row for row, so the test cannot pass on a vocabulary the build does not
 use. It also holds the two phase C cases the brief named to the seed: USFS
 R06's 'Active' and CDPR's 'Full Closure' are both read as closing, which is
 what makes "never closed now once its own end has passed" a rule about them
-rather than about rows that could never close anything.
+rather than about rows that could never close anything. And since the
+maintainer's frame A (poll of 2026-10-10), such a notice is kept, not held
+back: the phone greys it from conditions/notices.json's `current_until`.
 """
 
 import csv
@@ -15,7 +17,7 @@ import yaml
 
 DBT = Path(__file__).resolve().parent.parent / "dbt"
 CLOSURES = DBT / "models" / "intermediate" / "closures" / "_closures__intermediate.yml"
-TEST = "int_closures__club_notices_holds_back_what_its_own_dates_and_status_say_is_not_current"
+TEST = "int_closures__club_notices_keeps_an_ended_notice_without_closing_and_holds_back_what_its_status_says_is_not_current"
 
 
 def _unit_test() -> dict:
@@ -53,7 +55,8 @@ def test_the_two_named_status_cases_close_in_the_seed():
     assert ("cdpr_park_unit_status", "Full Closure") in closing
 
 
-def test_the_unit_test_holds_both_named_cases_back_once_their_end_has_passed():
+def test_the_unit_test_keeps_both_named_cases_once_their_end_has_passed_and_never_reads_them_as_closed():
+    """Frame A keeps them (held_because null) and rule 2 still refuses to read them as closing the trail."""
     test = _unit_test()
     (given,) = [g for g in test["given"] if g["input"] == "ref('int_closures__club_notices_unioned')"]
     expected = {row["notice_id"]: row for row in test["expect"]["rows"]}
@@ -67,4 +70,4 @@ def test_the_unit_test_holds_both_named_cases_back_once_their_end_has_passed():
     assert {row["source_key"] for row in ended} == {"usfs_r06_fire_closure_lines", "cdpr_park_unit_status"}
     for row in ended:
         out = expected[f"{row['source_key']}:{row['source_id']}"]
-        assert out["obstructs_trail"] is None and out["held_because"].startswith("its own end date"), row
+        assert out["obstructs_trail"] is None and out["held_because"] is None, row

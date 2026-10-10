@@ -94,9 +94,20 @@
 // not written) holds no shape, and shows no state-wide notice, as decision
 // 68 left them.
 //
-// AND IN TIME: a notice whose own start is after the hike's last planned day,
-// or whose own end is before its first, does not touch it. Most notices state
-// neither, and then only the place decides.
+// AND IN TIME: a notice whose own start is after the hike's last planned day
+// does not touch it. Most notices state no start, and then only the place
+// decides. ITS OWN END NEVER HIDES IT (the maintainer's frame A, 2026-10-10):
+// a notice past its end date stays in the panel, greyed with one line saying
+// so (lib/noticeCurrency.ts), and one that ends before the hike's first day
+// shows as current today, its "until" day in its row. Until then a notice
+// whose own end fell before the hike's first day was left out here, so a
+// closure that ended last week, and one a source forgot to extend, was never
+// shown at all.
+//
+// CURRENT FIRST, WITHIN EACH KIND. Closures lead every list, as before; among
+// closures, and among the rest, a notice that still reads as current on the
+// phone's day comes before one that may no longer apply, and then the most
+// recently updated first.
 //
 // WHICH CLUBS MAINTAIN THE ROUTE, from data the phone already has, never a
 // name match:
@@ -135,6 +146,7 @@ import {
   type GeometryParts,
   type Position,
 } from './noticeGeometry'
+import { isCurrentOn } from './noticeCurrency'
 import type { TrailNotice } from './notices'
 import type { NoticeStateArea } from './publishedConditions'
 import { clubTimeline, type ClubSections } from './clubSections'
@@ -455,12 +467,12 @@ function placedParts(
   return null
 }
 
-/** Whether a notice's own dates overlap the planned days. Absent dates are
- *  no constraint: most notices state neither. */
+/** Whether a notice can touch the planned days in time: false only when its
+ *  own start is after the last of them. An absent start is no constraint,
+ *  and its own end never is - a notice past its end shows greyed (the module
+ *  comment's frame A). */
 function overlapsInTime(notice: TrailNotice, stretch: PlannedStretch): boolean {
-  if (notice.starts_on && notice.starts_on > stretch.to) return false
-  if (notice.ends_on && notice.ends_on < stretch.from) return false
-  return true
+  return !(notice.starts_on && notice.starts_on > stretch.to)
 }
 
 function noticeProvider(
@@ -470,10 +482,16 @@ function noticeProvider(
   return notice.provider ?? byKey.get(notice.source_key)
 }
 
-/** Closures first, then the most recently updated. */
-function byWeight(a: TrailNotice, b: TrailNotice): number {
-  if (a.obstructs_trail !== b.obstructs_trail) return a.obstructs_trail ? -1 : 1
-  return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')
+/** Closures first; then, among closures and among the rest, a notice that
+ *  reads as current on `today` before one that may no longer apply; then the
+ *  most recently updated. */
+function byWeight(today: string): (a: TrailNotice, b: TrailNotice) => number {
+  return (a, b) => {
+    if (a.obstructs_trail !== b.obstructs_trail) return a.obstructs_trail ? -1 : 1
+    const current = isCurrentOn(a, today)
+    if (current !== isCurrentOn(b, today)) return current ? -1 : 1
+    return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')
+  }
 }
 
 /** A state's shape as the rule reads it, worked out once per shape. */
@@ -613,9 +631,10 @@ export function plannedNotices({
       else if (touch === 'from_club') fromClubs.push(notice)
       else if (touch === 'state_wide') stateWide.push(notice)
     }
-    onRoute.sort(byWeight)
-    fromClubs.sort(byWeight)
-    stateWide.sort(byWeight)
+    const weight = byWeight(today)
+    onRoute.sort(weight)
+    fromClubs.sort(weight)
+    stateWide.sort(weight)
     return { stretch, onRoute, fromClubs, stateWide }
   })
   return { hikes, empty: null, undated }

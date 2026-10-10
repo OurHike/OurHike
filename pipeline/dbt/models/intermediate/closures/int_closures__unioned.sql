@@ -23,10 +23,12 @@
 --   problems         why a row cannot publish, from its source's checks;
 --                    int_closures__gate holds back a source with any.
 --   notice_held_because
---                    why one club notice may not publish as current (its own
---                    end date passed, its own status says not current), set
---                    only on the club notices' branch; the finals leave such
---                    a row out and the gate does not hold its source for it.
+--                    why one club notice may not publish (its own status
+--                    says not current, its order was rescinded, its start
+--                    has not come; never its end date, which only stops it
+--                    closing the trail), set only on the club notices'
+--                    branch; the finals leave such a row out and the gate
+--                    does not hold its source for it.
 --
 -- `notice_id` is `<source key>:<the source's own id>` (features/ORG_NOTICES.md
 -- §2, the form nynjtc_alerts.json already publishes), and the marts' keys are

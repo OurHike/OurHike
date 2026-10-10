@@ -54,12 +54,17 @@ const STRETCH: PlannedStretch = {
   providers: new Set(['GMC']),
 }
 
-function renderList(planned: PlannedNotices) {
+/** The phone's own calendar day each row's `current_until` is read against
+ *  (lib/noticeCurrency.ts). */
+const TODAY = '2026-10-10'
+
+function renderList(planned: PlannedNotices, today: string = TODAY) {
   return render(
     <PlannedNoticeList
       planned={planned}
       stewards={STEWARDS}
       generatedAt={new Date('2026-10-04T12:00:00Z')}
+      today={today}
       onClose={() => undefined}
     />,
   )
@@ -407,5 +412,143 @@ describe('PlannedNoticeList', () => {
       ),
     ).toBeTruthy()
     expect(row('Fixture reroute').textContent).not.toMatch(/2026-10-/)
+  })
+  // The maintainer's frame A (poll of 2026-10-10): a notice that may no longer
+  // apply stays in the list, greyed, with one line under it. The rows mirror
+  // the frame's three, plus the two cases it did not draw. Every one is
+  // invented.
+  describe('a notice that may no longer apply (frame A)', () => {
+    const CURRENT = notice({
+      notice_id: 'gmc:a-current',
+      title: 'Bridge out at Mill Creek (fixture)',
+      obstructs_trail: true,
+      updated_at: '2026-10-08T12:00:00Z',
+      current_until: '2027-01-06',
+    })
+    const RAN_PAST_ITS_LIMIT = notice({
+      notice_id: 'gmc:b-lower-loop',
+      title: 'Lower loop closed for 3 to 6 months (fixture)',
+      obstructs_trail: true,
+      starts_on: '2025-01-06',
+      updated_at: '2026-03-05T12:00:00Z',
+      current_until: '2025-07-06',
+    })
+    const NO_DATE = notice({
+      notice_id: 'gmc:c-section-12',
+      title: 'Section 12 closed (fixture)',
+      obstructs_trail: true,
+      updated_at: null,
+      current_until: null,
+    })
+
+    it('greys a row past its current_until and says "Last reported March 5, 2026. It may no longer apply."', () => {
+      renderRows(CURRENT, RAN_PAST_ITS_LIMIT, NO_DATE)
+      const greyed = row('Lower loop closed for 3 to 6 months (fixture)')
+      expect(greyed.className).toContain('notice--not-current')
+      expect(
+        within(greyed).getByText('Last reported March 5, 2026. It may no longer apply.')
+          .className,
+      ).toBe('notice__not-current')
+      // The edit date once, in the line, as the frame prints it.
+      expect(within(greyed).getByText('Green Mountain Club').className).toBe(
+        'closure-sheet__meta',
+      )
+      expect(within(greyed).queryByText(/— updated/)).toBeNull()
+      // Still the closure it was, its link still there to check it.
+      expect(within(greyed).getByText('Closure')).toBeTruthy()
+      expect(
+        within(greyed).getByRole('link', { name: 'Read Green Mountain Club’s notice' }),
+      ).toBeTruthy()
+    })
+
+    it('greys a row that gives no date with "Its source gives no date. It may no longer apply."', () => {
+      renderRows(CURRENT, RAN_PAST_ITS_LIMIT, NO_DATE)
+      const greyed = row('Section 12 closed (fixture)')
+      expect(greyed.className).toContain('notice--not-current')
+      expect(
+        within(greyed).getByText('Its source gives no date. It may no longer apply.'),
+      ).toBeTruthy()
+    })
+
+    it('leaves a row inside its current_until as it was, with its "— updated" date', () => {
+      renderRows(CURRENT, RAN_PAST_ITS_LIMIT, NO_DATE)
+      const current = row('Bridge out at Mill Creek (fixture)')
+      expect(current.className).not.toContain('notice--not-current')
+      expect(within(current).queryByText(/may no longer apply/)).toBeNull()
+      expect(
+        within(current).getByText('Green Mountain Club — updated October 8, 2026'),
+      ).toBeTruthy()
+    })
+
+    it('reads current_until as the last current day: current on it, greyed the day after', () => {
+      const lastDay = notice({
+        notice_id: 'gmc:last-day',
+        title: 'Fixture order',
+        updated_at: '2026-07-12T23:59:59Z',
+        current_until: '2026-10-10',
+      })
+      renderRows(lastDay)
+      expect(row('Fixture order').className).not.toContain('notice--not-current')
+      cleanup()
+      renderList(
+        {
+          empty: null,
+          undated: 0,
+          hikes: [{ stretch: STRETCH, onRoute: [lastDay], stateWide: [], fromClubs: [] }],
+        },
+        '2026-10-11',
+      )
+      expect(
+        within(row('Fixture order')).getByText(
+          'Last reported July 12, 2026. It may no longer apply.',
+        ),
+      ).toBeTruthy()
+    })
+
+    it('says "Its source said it would end October 3, 2026." for a notice past its own end date', () => {
+      renderRows(
+        notice({
+          notice_id: 'gmc:ended',
+          title: 'Fixture campground closed',
+          starts_on: '2026-09-01',
+          ends_on: '2026-10-03',
+          current_until: '2026-10-03',
+        }),
+      )
+      const greyed = row('Fixture campground closed')
+      expect(
+        within(greyed).getByText(
+          'Its source said it would end October 3, 2026. It may no longer apply.',
+        ),
+      ).toBeTruthy()
+      // Its own dates still print, as they did.
+      expect(
+        within(greyed).getByText('from September 1, 2026 until October 3, 2026'),
+      ).toBeTruthy()
+    })
+
+    it('says "The time its source gave ran out" for a duration that ran out with no edit date', () => {
+      renderRows(
+        notice({
+          notice_id: 'gmc:ran-out',
+          title: 'Fixture bridge closure for two weeks',
+          starts_on: '2026-09-01',
+          updated_at: null,
+          current_until: '2026-09-15',
+        }),
+      )
+      expect(
+        within(row('Fixture bridge closure for two weeks')).getByText(
+          'The time its source gave ran out on September 15, 2026. It may no longer apply.',
+        ),
+      ).toBeTruthy()
+    })
+
+    it('greys nothing in a file that carries no current_until at all', () => {
+      // A copy of notices.json kept from before the field: no verdict.
+      renderRows(notice({ notice_id: 'gmc:old-file', title: 'Fixture old file row' }))
+      expect(row('Fixture old file row').className).not.toContain('notice--not-current')
+      expect(screen.queryByText(/may no longer apply/)).toBeNull()
+    })
   })
 })

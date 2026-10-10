@@ -19,9 +19,11 @@
 --
 -- EVERY CLUB'S WARNINGS-TYPE NOTICES too (int_warnings__unioned's club
 -- branch, decision 53's phase C), through the same gate and publication
--- check as the notices above. A club notice whose own end date has passed,
--- or whose own status says it is not current, is left out, from either
--- branch.
+-- check as the notices above. A club notice whose own status says it is not
+-- current, an order its source says was rescinded, or one whose own start is
+-- still to come, is left out, from either branch. One whose own end date has
+-- passed lands here, kept and no longer closing the trail (the maintainer's
+-- frame A, 2026-10-10; int_closures__club_notices' rules 1 and 2).
 --
 -- REBUILT WHOLE EACH RUN, as int_closures__final is, so a lifted notice
 -- leaves both, and both marts, in the same run.

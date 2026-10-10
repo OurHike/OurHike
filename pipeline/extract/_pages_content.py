@@ -1438,6 +1438,31 @@ def _fta_day_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+FLTC_SPECIAL_PLACES = "/plan-hikes-finger-lakes-trail/special-places/"
+
+
+def _fltc_special_places(page: Page, fetch) -> list[dict]:
+    """The Finger Lakes Trail Conference's Special Places (fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/).
+
+    The page features one place ('Below is just one of our Special Places; use the links on the right to visit
+    others.') and its sidebar's page list (li.page_item) links every page under it: 8 on 2026-10-10, places
+    ('Mitchellsville Gorge', 'Sweedler Preserve at Lick Brook') and themed pages ('Waterfall Hikes', 'Winter Hiking on
+    the Finger Lakes Trail', '3 Hikes Involving the Lithuanian Loop Trail'). Each child page's title and link are
+    read; the sidebar's other links (the parks, the maps, the end-to-end pages) are not special places and are not
+    read, nor is the featured place's article, whose byline names its authors. The pages themselves describe their
+    hikes in prose and are not fetched, so no distance lands.
+    """
+    rows, seen = [], set()
+    for item in page.root.find_all("li", cls="page_item"):
+        anchor = item.find("a")
+        href = page.link(anchor.get("href")) if anchor is not None else None
+        if not href or href in seen or not re.fullmatch(re.escape(FLTC_SPECIAL_PLACES) + r"[a-z0-9-]+/?", urlparse(href).path):
+            continue
+        seen.add(href)
+        rows.append({"name": fact(anchor.text()), "section": "Special Places", "link": href, "source_url": page.url})
+    return rows
+
+
 # '58.2 total miles / 14.1 off-road miles (24.2%)', as 25 of the 26 pages write it on 2026-10-04; Shawnee's 'Total
 # Miles / ... Off Road Miles', Norwalk's '66.1total miles' and one page's leading 'Miles: ' are the same line.
 _BUCKEYE_MILES = re.compile(
@@ -2286,6 +2311,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
     "mratc_suggested_hikes": SiteParser(_mratc_suggested_hikes),
     "msgtc_best_routes": SiteParser(_msgtc_best_routes, columns={"route": "text"}),
     "fta_day_hikes": SiteParser(_fta_day_hikes),
+    "fltc_special_places": SiteParser(_fltc_special_places),
     "buckeye_sections": SiteParser(_buckeye_sections, columns={"off_road_mi": "double"}),
     "smd_diablo_range_hikes": SiteParser(_smd_diablo_range_hikes),
     "satc_central_pa_hikes": SiteParser(_satc_central_pa_hikes),

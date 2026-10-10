@@ -10408,6 +10408,35 @@
       }
     },
     {
+      "key": "fltc_special_places",
+      "title": "FLTC Special Places (fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/)",
+      "provider": "FLTC",
+      "kind": "published_hikes",
+      "url": "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/",
+      "steward": "Finger Lakes Trail Conference",
+      "attribution": "Finger Lakes Trail Conference",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Finger Lakes Trail Conference; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: the page's footer links a privacy policy and the FLT Service Center, and no terms page (read 2026-10-10).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `fltc_special_places`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads the sidebar's links to pages under /special-places/ and nothing else, so no person's name, e-mail address or telephone number can land. The featured article's byline names its authors and the page's hidden pop-ups list former board members; neither is read.",
+      "key_fields": [
+        "link"
+      ],
+      "key_comment": "`link`, the special place's page: unique on all 8 rows read 2026-10-10, as are the names.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/",
+        "notes": "No validator trusted: every run reads the page and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). The 2026-10-10 read answered with neither an ETag nor a Last-Modified."
+      },
+      "discovered_via": "not_available.toml's [fltc.suggested_hikes] note (section K, 2026-10-04: 'places in prose, the passport hikes in booklets'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10T18:35:10Z: robots.txt (87 bytes) disallows /REF/ and /FLTC/ and asks no Crawl-delay; the page answered HTTP 200, 246,673 bytes. It features one place (Mitchellsville Gorge) and says 'use the links on the right to visit others': its sidebar links 8 pages under /special-places/: four places (Huckleberry Bog, Mitchellsville Gorge, Shindagin Hollow, Sweedler Preserve at Lick Brook), one set of hikes ('3 Hikes Involving the Lithuanian Loop Trail') and three themes ('Fall Foliage in the Catskills', 'Waterfall Hikes', 'Winter Hiking on the Finger Lakes Trail'). Three of the pages were read the same day: 'Waterfall Hikes' names five hikes in h2s with prose under each, and the Lithuanian page answered through a redirect to a '?doing_wp_cron=' URL, so a reader that followed the pages would need to drop that query. The rows are the list only: title and link.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link. Three of the eight rows are themed pages rather than one hike ('Winter Hiking on the Finger Lakes Trail'), so a mart would show them as the conference's suggestions with a link, not as routes. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "fta_fnst_closed_segments",
       "title": "Florida National Scenic Trail master: segments not open",
       "provider": "FTA",

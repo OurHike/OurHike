@@ -10177,6 +10177,26 @@ def _fta_page() -> str:
     )
 
 
+def _fltc_special_places_page() -> str:
+    """The Special Places page: one featured place with its byline, and the sidebar's WordPress page list, whose
+    links under /special-places/ are the special places and whose other links (a park) are not."""
+    base = "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail"
+    sidebar = "".join(
+        f'<li class="page_item page-item-{n}"><a href="{base}/{path}/">{name}</a></li>'
+        for n, path, name in (
+            (2230, "parks/fixture-state-park", "Fixture State Park"),
+            (1307, "special-places/fixture-gorge", "Fixture Gorge"),
+            (2291, "special-places/fixture-waterfall-hikes", "Fixture Waterfall Hikes"),
+        )
+    )
+    return _k_page(
+        "Special Places | Finger Lakes Trail Conference",
+        f'<h1 class="main-title entry-title"><a href="{base}/special-places/">Special Places</a></h1><p>Fixture prose: '
+        "use the links on the right to visit others.</p><h1>Fixture Gorge</h1><p>by Fixture Credit</p><p>Fixture "
+        f"paragraph.</p><aside><ul>{sidebar}</ul></aside>",
+    )
+
+
 def _buckeye_pages() -> list[tuple[str, str, str]]:
     index_url, section_url = "https://buckeyetrail.org/sections", "https://buckeyetrail.org/sections/fixture-falls"
     index = _k_page(
@@ -10526,6 +10546,9 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "mratc_suggested_hikes": [("https://www.mratc.org/suggested-hikes", HTML, _mratc_page())],
         "msgtc_best_routes": [("https://www.msgtc.org/faq/", HTML, _msgtc_faq_page())],
         "fta_day_hikes": [("https://floridatrail.org/day-hike/", HTML, _fta_page())],
+        "fltc_special_places": [
+            ("https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/", HTML, _fltc_special_places_page())
+        ],
         "buckeye_sections": _buckeye_pages(),
         "smd_diablo_range_hikes": [
             ("https://savemountdiablo.org/experience/field-guides/hikes-in-the-diablo-range/", HTML, _smd_page())
@@ -10573,6 +10596,7 @@ K_PAGES_ROWS = {
     "mratc_suggested_hikes": 2,
     "msgtc_best_routes": 2,
     "fta_day_hikes": 2,
+    "fltc_special_places": 2,
     "buckeye_sections": 1,
     "smd_diablo_range_hikes": 2,
     "satc_central_pa_hikes": 2,

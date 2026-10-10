@@ -563,6 +563,23 @@ def test_a_florida_map_whose_tooltips_do_not_match_its_stated_count_refuses():
         SITE_PARSERS["fta_day_hikes"].read(page, None)
 
 
+def test_an_fltc_special_place_is_a_sidebar_page_under_special_places_listed_once_and_nothing_else_is():
+    base = "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail"
+    items = "".join(
+        f'<li class="page_item"><a href="{base}/{path}">{name}</a></li>'
+        for path, name in (
+            ("parks/fixture-park/", "Fixture Park"),
+            ("special-places/fixture-gorge/", "Fixture Gorge"),
+            ("special-places/fixture-gorge/", "Fixture Gorge"),
+            ("special-places/fixture-gorge/photos/", "Fixture Gorge Photos"),
+        )
+    )
+    page = Page(f"{base}/special-places/", parse_html(f"<h1>Fixture Gorge</h1><p>by Fixture Author</p><ul>{items}</ul>"))
+    rows = SITE_PARSERS["fltc_special_places"].read(page, None)
+    assert [(row["name"], row["link"]) for row in rows] == [("Fixture Gorge", f"{base}/special-places/fixture-gorge/")]
+    assert "Fixture Author" not in json.dumps(rows)
+
+
 def test_a_florida_shape_lands_only_where_the_line_names_one():
     assert _pages_content._fta_route("4.8 mile loop") == "loop"
     assert _pages_content._fta_route("3.6 miles round trip") == "round trip"

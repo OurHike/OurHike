@@ -5313,21 +5313,6 @@ guest is now FLTC's marketing director. That is not an FLTC feed. `FLT News` is 
 checked = ['WP search for "podcast" returned 0.']
 where = ["https://services7.arcgis.com/GwV4OWqOyYWWUpBK/arcgis/rest/services", "https://fingerlakestrail.org/"]
 
-[fltc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Published as passport booklets and a page of special places, and not landed (decision 54 wave 5,
-section K, 2026-10-04).
-
-The Passport Hikes are three booklets of 12 hikes (the coverage audit) and the 21 PassportHikes waypoints are an
-ArcGIS layer's, the lead's; /plan-hikes-finger-lakes-trail/special-places/ describes places in prose; the
-Cross-County Hike Series is events. fingerlakestrail.org's robots.txt disallows /FLTC/ and /REF/."""
-checked = [
-    "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/ (HTTP 200, 243,667 bytes, 2026-10-04T15:38:10Z): places in prose",
-]
-where = ["https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/"]
-reason = "needs a per-site reader, not built in this pull request: places in prose, the passport hikes in booklets"
-
 [fmst.challenges]
 confirmed = 2026-10-04
 summary = """

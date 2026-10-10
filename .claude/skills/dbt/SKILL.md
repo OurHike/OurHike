@@ -493,8 +493,12 @@ R2 keys, format, coordinate decimals, offline tier and size budget.
 
 ## Docs and charts are built, never committed
 
-- **dbt docs publish at `https://ourhike.org/data/`, never under `/app/`**
-  (decision 10: counts only, no maps). On v2 the output is `index.html`, an
+- **dbt docs publish at `https://docs.ourhike.org/data/`, never under `/app/`**
+  (decision 10: counts only, no maps; decision 144: a host of their own, off
+  the app's origin, with `ourhike.org/data/` serving them only until that
+  host does, and every preview its own at `/data/`). Anything in the docs
+  that links from the root must still work under `/data/` on any host:
+  `.github/scripts/docs_host.py` says why. On v2 the output is `index.html`, an
   assets directory and Parquet: on stage 1's fixtures, 315 assets and 38
   Parquet files, 12,301,390 bytes on 2.0.6 (2026-10-01). `--static` and
   `--empty-catalog` exist on neither 2.0.5 nor 2.0.6 (`dbt docs generate

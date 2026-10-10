@@ -166,6 +166,29 @@ The line worth holding: **UA is disposable and production is not.** Anything tha
 makes UA precious — real hiker accounts, data anyone would miss — has quietly turned
 it into a second production, and then there is no free place to break things.
 
+### 3e. The data docs' own host
+
+Production's data docs, the dbt docs and the data-quality page, are served from
+**`docs.ourhike.org`**, a Cloudflare Pages project named `ourhike-docs`, and not from
+the app's origin, where any script of theirs could read a signed-in hiker's session
+([pipeline/ELT.md](pipeline/ELT.md) decision 144). The tag deploys them: `pages.yml`'s
+**Deploy the data docs to docs.ourhike.org** job runs after the build job has
+published `ourhike.org`, and uploads the same `/data/` that job assembled. For a
+release that means three things.
+
+- **Its failure does not fail the release.** It is a red job that nothing else waits
+  for: the app is already live, the draft release is unaffected, and `ourhike.org`
+  keeps sending visitors to whatever `docs.ourhike.org` last served. Re-dispatching
+  the tag (§11b) retries it.
+- **`ourhike.org/data/` follows the host, one deploy behind.** The build job asks
+  `docs.ourhike.org` before it builds the site. When the host already serves the docs,
+  `ourhike.org/data/` becomes pages that send a visitor there and the site's data links
+  point there; when it does not, `ourhike.org/data/` serves the docs itself, as it did
+  before. So the deploy that first fills the host still serves them in place, and the
+  next one moves them (LAUNCH_CHECKLIST.md 3c).
+- **UA and previews do not use it.** UA has no docs; a preview serves its own at
+  `/data/`, beside its app and on the same origin.
+
 ## 4. Versions
 
 `vMAJOR.MINOR.PATCH`, tagged, with the meanings chosen for what they cost a hiker
@@ -678,6 +701,12 @@ than a hope:
 - **A migration must not have burned the bridge.** §8c's expand-and-contract rule is
   what keeps the previous release able to run against the current schema. It is a
   rollback rule as much as a compatibility one.
+
+Re-deploying a tag re-deploys its data docs to `docs.ourhike.org` too (§3e). A tag from
+before decision 144's move, one whose `pages.yml` has no docs-host job, serves the docs
+at `ourhike.org/data/` again and leaves `docs.ourhike.org` serving the newer ones until
+the next tag; nothing then links to a host with nothing on it, but dbt's page is back
+on the app's origin for as long as that tag is production.
 
 ## 12. Who may cut a release
 

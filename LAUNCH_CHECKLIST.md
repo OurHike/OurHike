@@ -212,6 +212,33 @@ Two things to check after that redeploy:
 
 **After step 3 you have a working offline map.** Steps 4–6 are only needed for contributions — reporting, closures, accounts.
 
+### 3c. The data docs' own host: `docs.ourhike.org` (decision 144)
+
+**Why.** The dbt docs and the data-quality page were served at `ourhike.org/data/`, the same origin as the app at `/app/`, where a signed-in hiker's session lives in browser storage — so any script on `/data/` (dbt's own page, DuckDB-WASM) could read it. Decision 144 in [pipeline/ELT.md](pipeline/ELT.md) hash-pinned those scripts, and the maintainer's poll of 2026-10-10 moves them to **`docs.ourhike.org`**, served by a Cloudflare Pages project named **`ourhike-docs`**. `pages.yml` already deploys there on every tag, in its **Deploy the data docs to docs.ourhike.org** job; what no workflow can do is create the project or attach the domain.
+
+**Status, 2026-10-10: steps 1 and 2 are done.** The maintainer created `ourhike-docs`, deployed a one-file placeholder to it and attached `docs.ourhike.org`; at 21:07 UTC both `https://docs.ourhike.org/` and `https://ourhike-docs.pages.dev/` answered 200 with valid TLS, and at 21:15 UTC the deploy's own probe read the placeholder as not yet the docs, as it should. Steps 3 and 6 remain.
+
+**Until both exist, visitors find the docs where they always were.** That job fails, red, naming which of the two is missing; the app still deploys; and `ourhike.org/data/` keeps serving the docs itself. (The quality page's address line already reads `docs.ourhike.org/data/quality`, and its nav and footer name the site's pages in full; both lead to the same pages as before.)
+
+1. **Create the project.** Cloudflare dashboard → Workers & Pages → Create → Pages → **Upload assets** (Direct Upload, no Git connection). Name it exactly `ourhike-docs`: `pages.yml`'s `env:` holds that name, and the job looks the project up by it. If the dashboard will not create the project without files, upload any single file (an empty `index.html` will do); the first deploy replaces it. `@unvalidated`: whether the dashboard insists on an upload was not seen from here.
+2. **Attach the custom domain.** `ourhike-docs` → Custom domains → **Set up a custom domain** → `docs.ourhike.org`. The `ourhike.org` zone is on Cloudflare (3b), so Cloudflare should offer to add the DNS record itself; if it asks you to add it, the record is a `CNAME` from `docs` to `ourhike-docs.pages.dev`. Wait for the domain to read **Active**: until it does, the job fails saying so, with the status Cloudflare reports.
+3. **Re-paste the R2 CORS policy** (1.4). `python pipeline/check_deployment.py --print-cors-policy` now names `https://docs.ourhike.org`, because the quality page reads two `data_quality.json` files from the bucket in the visitor's browser. Until it is pasted, the daily **Check deployment** run reports that origin's three checks as failing, none of them blocking: nobody downloads a map from there.
+4. **Nothing in Supabase, on purpose.** `docs.ourhike.org` belongs on neither project's redirect list: the docs sign nobody in, and `pipeline/check_auth_redirects.py` asks both projects to refuse a sign-in redirect to it.
+5. **Nothing new in GitHub.** The job reads 3a's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. "Cloudflare Pages: Edit" is granted for the whole account, so the token reaches the new project too. Reasoned, not yet proven: the first deploy proves it, and a refusal there prints Cloudflare's own message.
+6. **Then deploy, twice.** Only a tag that carries this change can do it, because a dispatch runs the tag's own `pages.yml`, and a tag from before this change has no docs job. The first such tag fills `docs.ourhike.org` when it deploys, if steps 1 and 2 are done by then. Once its **Deploy the data docs to docs.ourhike.org** job is green, dispatch **Deploy Pages** against the same tag (RELEASING.md §11b): that run's build job finds the docs there, so it turns `ourhike.org/data/` into pages that send a visitor on and points the site's two data links at the new host. If steps 1 and 2 came after that tag, dispatch it twice: once to fill the host, once to move. Why two runs: the build job publishes `ourhike.org` before the docs job uploads, so that a tag the release gates refuse deploys nothing anywhere; `.github/scripts/docs_host.py` has the reasoning in full.
+
+**What a visitor sees.** Until step 6's second run, `ourhike.org/data/` and `ourhike.org/data/quality/` serve the docs as they always have, and the footer's "How the data is built" and "Data quality" lead there. After it, each of those two addresses is a page that sends the browser on to the same address on `docs.ourhike.org`: at once with JavaScript, carrying a `#/…` deep link into the docs with it; by a refresh without JavaScript; and with a plain link for a browser that follows neither. The footer links point at `https://docs.ourhike.org/data/` and `https://docs.ourhike.org/data/quality/` directly, `docs.ourhike.org/` itself sends a visitor to `/data/`, and the quality page's own nav and footer lead back to `ourhike.org`.
+
+**Verify:**
+
+```
+curl -sS https://docs.ourhike.org/ | grep ourhike-docs-build         # the front page names the commit it was built from
+curl -sS https://ourhike.org/data/ | grep 'docs.ourhike.org/data/'    # after the second run: the old address sends visitors on
+python pipeline/check_deployment.py --base https://data.ourhike.org  # after step 3: the docs origin may read the bucket
+```
+
+To a non-browser agent such as `curl`, the custom domain can answer with a hidden `<a href="https://docs.ourhike.org/cdn-cgi/content?id=…">` added right after `<body>`: a bot setting on the zone (AI Labyrinth by its look), seen on the placeholder on 2026-10-10 and absent on `ourhike-docs.pages.dev`. It is Cloudflare's, not the bundle's, and the deploy's checks ignore it (`.github/scripts/docs_host.py`, `EDGE_PATHS`).
+
 ---
 
 ## 4. Supabase — authentication

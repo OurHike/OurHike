@@ -1,4 +1,4 @@
-// ourhike.org/data/quality/ on a laptop while the anomaly checks are still
+// docs.ourhike.org/data/quality/ on a laptop while the anomaly checks are still
 // learning, drawn from the INVENTED learning files in
 // site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md decision 102): the
 // monthly build is the third of the 11 an anomaly check needs before it can
@@ -34,7 +34,7 @@ import {
 import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 
 export const caption =
-  'ourhike.org/data/quality/ on a laptop while the anomaly checks are learning, from INVENTED example files (no release carries the file yet): the monthly card says they can’t flag anything until 11 builds, and each kind of check says what it covers. Nothing in this frame was measured.'
+  'docs.ourhike.org/data/quality/ on a laptop while the anomaly checks are learning, from INVENTED example files (no release carries the file yet): the monthly card says they can’t flag anything until 11 builds, and each kind of check says what it covers. Nothing in this frame was measured.'
 export const alt =
   'The data quality page at desktop width, scrolled to a dashed amber pill saying the figures are invented, above two white cards. "Monthly build" reads "Release 2026-10-03-2 · built 7 Oct 2026, 06:12 UTC, 17 hours ago", three pills with 0 warnings and 0 failed, and a learning line, "Learning, 3 of 11 builds", with a sentence saying its anomaly checks cannot flag anything until they have 11 builds and pass until then even if something is wrong. "Hourly conditions" beside it has every check passed. Below, the heading "The five kinds of check" over five cards - Freshness, Volume, Schema, dbt tests and Anomalies - each with a green "All pass", a large count, a sentence saying what that kind of check looks at, and on Freshness, Volume and Anomalies the line "Learning, 3 of 11 monthly builds: until then its anomaly checks can’t flag anything."'
 

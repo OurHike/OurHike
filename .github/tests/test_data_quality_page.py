@@ -94,6 +94,14 @@ def test_the_page_is_pointed_after_it_is_copied_in(workflow: str, assemble: str)
     assert commands.index("cp -r site/dist/. _site/") < commands.index(DOCS_COPY) < commands.index(COMMAND)
 
 
+def test_the_docs_host_gets_the_page_as_pointed():
+    """pages.yml's copy for docs.ourhike.org (pipeline/ELT.md decision 144) is made from `_site/data/` after the
+    page is pointed, so the page there reads the same data as the app this deploy ships."""
+    commands = _commands(_step("pages.yml", "Assemble the site")["run"])
+    (bundle,) = [i for i, command in enumerate(commands) if "docs_host.py bundle _site " in command]
+    assert commands.index(COMMAND) < bundle
+
+
 def _guard(workflow: str, assemble: str) -> str:
     """The lines of the step from its data/ guard to the docs copy, exactly as written."""
     lines = _step(workflow, assemble)["run"].splitlines()

@@ -284,7 +284,9 @@ settings:
     where: secret
     required: true
     why: >-
-      Lets pr-preview.yml upload a preview build to Cloudflare Pages. Needs the
+      Lets pr-preview.yml upload a preview build to Cloudflare Pages, ua.yml
+      upload UA, and pages.yml upload the data docs to their own project,
+      ourhike-docs, at docs.ourhike.org (pipeline/ELT.md decision 144). Needs the
       "Cloudflare Pages: Edit" permission and nothing else - it is not the R2
       token above and should not be made one, because a token that can publish
       previews has no business overwriting the live map data. Required for the
@@ -298,7 +300,7 @@ settings:
     where: secret
     required: true
     why: >-
-      Which Cloudflare account the preview is uploaded to. On the Secrets tab
+      Which Cloudflare account the previews, UA and the data docs are uploaded to. On the Secrets tab
       for the same reason R2_ENDPOINT_URL is - an account id is not secret in
       the way a token is, but it is not something to hand out either, and these
       two name the same account. A repository secret rather than an

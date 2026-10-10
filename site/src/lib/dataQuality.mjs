@@ -1,4 +1,4 @@
-// What ourhike.org/data/quality/ shows, worked out from the two files it reads
+// What docs.ourhike.org/data/quality/ shows, worked out from the two files it reads
 // (pipeline/ELT.md, "Data quality (decision 102)", step 4 of its order of
 // work). Pure: no fetch, no DOM, no clock it was not handed. So every state
 // the page can be in - nothing published, one lane only, learning, all green,

@@ -20,7 +20,17 @@
 // donating. The maintainer decided the other way on 2026-09-17, against the
 // handoff's own nav: an organization that has come this far is the visitor
 // this row should serve, and `Add your trails` is what the design puts here.
+//
+// `site` PREFIXES EVERY LINK, and is empty on every page but the ones under
+// /data/, which docs.ourhike.org serves: there it is the site's own address,
+// because that host has none of these pages (Base.astro says which pages,
+// and pipeline/ELT.md decision 144 why).
 import Mark from './Mark.astro'
+
+interface Props {
+  site?: string
+}
+const { site = '' } = Astro.props
 
 const here = Astro.url.pathname
 const links = [
@@ -31,7 +41,7 @@ const links = [
 ---
 
 <nav class="wrap nav" aria-label="Site">
-  <a class="nav__brand" href="/">
+  <a class="nav__brand" href={`${site}/`}>
     <Mark id="nav-mark" size={34} />
     <span class="nav__word">OurHike</span>
   </a>
@@ -39,7 +49,7 @@ const links = [
     links.map((link) => (
       <a
         class="nav__link"
-        href={link.href}
+        href={`${site}${link.href}`}
         aria-current={here === link.href ? 'page' : undefined}
       >
         {link.label}
@@ -48,7 +58,7 @@ const links = [
   }
   <a
     class="nav__cta"
-    href="/for-orgs/"
+    href={`${site}/for-orgs/`}
     aria-current={here === '/for-orgs/' ? 'page' : undefined}
   >
     Add your trails

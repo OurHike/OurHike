@@ -13,7 +13,7 @@ import {
 } from '../../site/src/lib/dataQualityExamples.mjs'
 
 /**
- * ourhike.org/data/quality/'s controls, driven the way a reader drives them -
+ * docs.ourhike.org/data/quality/'s controls, driven the way a reader drives them -
  * the keyboard first - against an INVENTED pair of files with 43 entries and
  * 38 series (site/src/lib/dataQualityExamples.mjs). The maintainer's round-3
  * choice (pipeline/ELT.md decision 102, 2026-10-08): every failure listed and

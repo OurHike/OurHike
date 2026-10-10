@@ -11,11 +11,13 @@ stays on.
 The cases are the ones a reworked sheet and a person's data turn on: a header that moved refuses rather than
 relabels, a sheet that is not the family's is never read (WMC's cover sheet names its compilers), a member's own
 column never lands, an empty cell lands as unknown, the sheet's own total is checked, and every row carries the
-workbook's manifest and no document property.
+workbook's manifest and no document property. And openpyxl parses through defusedxml here, as in the extract job,
+so a workbook whose XML declares an entity is refused.
 """
 
 import io
 import json
+import zipfile
 
 import openpyxl
 import pytest
@@ -120,6 +122,37 @@ def test_a_file_in_neither_workbook_format_is_refused_by_its_first_bytes_not_its
 def test_a_workbook_without_the_familys_sheet_is_refused():
     with pytest.raises(SheetLayoutChanged, match="no sheet 'Hikes'"):
         sheet_cells(workbook({"Sheet1": [["Name"]]}), "Hikes", WMC)
+
+
+def test_openpyxl_parses_through_defusedxml_in_this_environment():
+    """openpyxl guards against quadratic-blowup and billion-laughs XML only when defusedxml can be imported (its
+    documentation; openpyxl/xml/__init__.py's DEFUSEDXML). The extract job parses .xlsx files fetched from club
+    websites while it holds the raw store's write keys, so requirements-extract.in pins defusedxml and
+    requirements-dev.in the same version: an environment that loses it fails here rather than parsing unguarded."""
+    import openpyxl.xml
+
+    assert openpyxl.xml.DEFUSEDXML is True
+
+
+def test_a_workbook_whose_sheet_xml_declares_an_entity_is_refused_before_any_cell_is_read():
+    """What defusedxml changes, shown: the same workbook with one entity declared in its sheet's XML. openpyxl wraps
+    defusedxml's refusal in its own ValueError; unguarded, it would read the sheet as if nothing were there."""
+    from defusedxml import EntitiesForbidden
+
+    body = workbook({"Hikes": WMC_CELLS})
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    (sheet,) = [name for name in parts if name.startswith("xl/worksheets/sheet")]
+    parts[sheet] = b'<!DOCTYPE worksheet [<!ENTITY fixture "fixture">]>' + parts[sheet]
+    poisoned = io.BytesIO()
+    with zipfile.ZipFile(poisoned, "w") as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+
+    with pytest.raises(ValueError) as refused:
+        sheet_cells(poisoned.getvalue(), "Hikes", WMC)
+
+    assert isinstance(refused.value.__cause__, EntitiesForbidden)
 
 
 def test_an_empty_cell_comes_back_as_none_and_text_is_stripped():

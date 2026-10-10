@@ -44,6 +44,8 @@ coverage==7.15.4
     # via pytest-cov
 cryptography==50.0.0
     # via moto
+defusedxml==0.7.1
+    # via -r pipeline/requirements-dev.in
 dlt==1.30.0
     # via -r pipeline/requirements-dev.in
 duckdb==1.5.5

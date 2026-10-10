@@ -24,6 +24,8 @@ charset-normalizer==3.5.2
     # via requests
 click==8.5.0
     # via dlt
+defusedxml==0.7.1
+    # via -r pipeline/requirements-extract.in
 dlt==1.30.0
     # via -r pipeline/requirements-extract.in
 duckdb==1.5.5

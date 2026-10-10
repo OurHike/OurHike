@@ -69,3 +69,14 @@ pypdf
 # which name people.
 xlrd
 openpyxl
+
+# defusedxml, for openpyxl's sake. openpyxl's documentation says it does not
+# guard against quadratic-blowup or billion-laughs XML by default, and that
+# with defusedxml installed it parses through defusedxml instead
+# (openpyxl/xml/__init__.py's DEFUSEDXML). This job parses .xlsx files fetched
+# from club websites while it holds the raw store's write keys. 0.7.1
+# (2021-03-08, PSF licence, a 25,604-byte pure-Python wheel with no
+# dependencies) is the newest release on PyPI's own record, read 2026-10-10;
+# 0.8.0 exists only as release candidates (2023-09), which the compile leaves
+# out. tests/test_extract_sheet_content.py fails if openpyxl does not use it.
+defusedxml

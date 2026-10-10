@@ -683,11 +683,11 @@ def test_the_pipeline_suite_installs_the_pypdf_the_extract_job_runs():
     assert pin(PIPELINE_DIR / "requirements-dev.txt") == pin(PIPELINE_DIR / "requirements-extract.txt")
 
 
-@pytest.mark.parametrize("package", ["xlrd", "openpyxl"])
+@pytest.mark.parametrize("package", ["xlrd", "openpyxl", "defusedxml"])
 def test_the_pipeline_suite_installs_the_workbook_readers_the_extract_job_runs(package):
     """requirements-dev.in pins each workbook reader at requirements-extract.txt's version, as it does pypdf's, so
     tests/test_extract_sheet_content.py opens a workbook with the reader the monthly extract job opens SMHC's and WMC's
-    with (extract/_sheet_content.py)."""
+    with (extract/_sheet_content.py), and through the XML parser that job's openpyxl uses (defusedxml)."""
 
     def pin(path: Path) -> str | None:
         lines = [line for line in path.read_text().splitlines() if line.startswith(f"{package}==")]

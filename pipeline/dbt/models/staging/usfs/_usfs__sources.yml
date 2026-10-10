@@ -1,0 +1,56 @@
+version: 2
+
+sources:
+  - name: usfs
+    description: >
+      USFS's registered layers, landed by the extract's usfs/ folder
+      (pipeline/extract/usfs/) as raw_usfs__<key>, and staged once each by a
+      base model here. Descriptions transcribed from sources.json's titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_usfs__usfs_trails
+        data_tests:
+          # Rows sharing base_usfs__trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usfs_trails'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          National Forest System Trails (USFS, nationwide) (sources.json
+          `usfs_trails`). Key: globalid unique on 86,417 live rows.
+      - name: raw_usfs__usfs_rec_sites
+        data_tests:
+          # Rows sharing base_usfs__rec_sites's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'usfs_rec_sites'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          USFS Recreation Sites (INFRA, nationwide) (sources.json
+          `usfs_rec_sites`). Key: globalid unique on 31,415 live rows.

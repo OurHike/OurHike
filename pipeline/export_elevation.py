@@ -629,9 +629,11 @@ DEFAULT_TILE_WORKERS = 8
 # no cache-list change - checked against that file 2026-09-08.
 #
 # WHAT IT COSTS, since a cache that is itself a problem is worth naming before
-# somebody finds it. One entry is a ~23-character key, a value and two
-# separators - call it 35 bytes of JSON. Run #88 sampled 138,695 points for
-# the A.T. profile (measured, 2026-09-08), so that half is about 5 MB. The
+# somebody finds it. One entry is a key of about 36 characters since decision
+# 115 keyed each point exactly (SAMPLE_CACHE_KEYS has the measurement), a
+# value of up to 17 digits and three separators - call it 60 bytes of JSON.
+# Run #88 sampled 138,695 points for the A.T. profile (measured, 2026-09-08),
+# so that half is about 8 MB (Reasoned: the count times 60 bytes). The
 # junction-graph half is `sum(round(length_m / 25) + 1)` over 468,743 edges,
 # and **nobody has computed it** - `@unvalidated`. The first real run settles
 # it in two ways at once: the sampler's own log line prints the point count,
@@ -642,42 +644,60 @@ DEFAULT_TILE_WORKERS = 8
 SAMPLE_CACHE_NAME = "samples.json"
 SAMPLE_CACHE_PATH = ELEVATION_INDEX_PATH.parent / SAMPLE_CACHE_NAME
 
-# Decimal places a cached point's lon/lat is keyed at. Six is ~0.11 m of
-# longitude at the equator and less further north, against the ~10 m posting
-# of the DEM being sampled. It exists to make a key that survives a float's
-# round trip through JSON, not to snap anything to a grid.
+# What a samples.json key is, written into the file as its `keys` field: the
+# point itself (decision 115, the maintainer's poll of 2026-10-09). Each
+# coordinate is written as Python's repr writes a double, the shortest text
+# that reads back to that same double, so two points share a key only when
+# they are one point, and a lookup can only ever answer the point that was
+# asked. (0.0 and -0.0 are one point under two keys, which costs a read and
+# never a wrong answer.)
 #
-# WHAT THAT ACTUALLY BOUNDS, said no stronger than it is. Two points sharing a
-# key are within ~0.11 m of each other, which is NOT the same as landing in
-# the same pixel - a pixel boundary can run between them, and then one is
-# answered with the other's pixel. What is bounded is the error that costs:
-# the ground's own rise across 0.11 m, which on a 45-degree slope is 0.11 m
-# and on anything a trail is graded for is less. That is two orders under
-# lib/elevation_gain.py's 3.0 m dead band, and the reasoning is the arithmetic
-# above rather than a measurement of the corridor.
+# WHAT IT REPLACED. Until decision 115 a point was keyed to 6 decimals, and a
+# key held the pixel of the first point asked under it and gave it to every
+# later one, on the argument that two points under one key lie within ~0.11 m.
+# But the read is nearest-neighbour, so a point answered from a key its
+# neighbour wrote across a 3DEP pixel edge takes the next pixel's value: the
+# step between two pixels ~10 m apart, not the ground's rise across 0.11 m.
+# Monthly run 30 (refresh-reference.yml 37772454847) answered all 22,000,918
+# of its points from a cache earlier runs wrote, and 133 samples on 123
+# junction-graph edges carried the neighbouring pixel's value, up to 19 ft on
+# one sample and 15 ft on one edge's gain, in both directions (Measured
+# 2026-10-08 by reading those samples cold); its parity, today's exporters on
+# a cold cache, answered 304 graph points from keys the A.T. profile had asked
+# (its log). Commit 38467bc7 made step_dem_sampling.py re-read every point
+# whose 6-decimal key could hold another pixel. Under this key no point can be
+# answered for another, so that re-read is gone and the dbt lane reads through
+# this cache under the same rule as every exporter.
 #
-# WHOSE PIXEL IT IS, since the sentence above opens the question and stopping
-# there would leave it. Whoever asked first: this file is shared by all three
-# exporters and outlives the run, so a key the A.T. profile writes can later be
-# answered to the junction graph and the other way round. publish-vector-data.
-# yml runs export_elevation.py before both network steps, so on a cold cache
-# the published profile is always its own points; on a warm one a colliding
-# graph point from the previous run can answer it. The consequence is that
-# elevation_profile.json's own hash can move without the DEM moving - by at
-# most that 0.11 m of ground, which is under the dead band the gain sum uses
-# and above the 0.1 ft the record is rounded to. Nobody has seen a collision;
-# at 25 m spacing they need a graph point and a trail sample to agree to six
-# decimal places.
-CACHE_KEY_DECIMALS = 6
+# WHAT IT COSTS. A point that differs from another only in the last bits of a
+# double is now read on its own. Measured 2026-10-09 in this sandbox on 3,000
+# synthetic pairs of edges meeting at a vertex given at 6 decimals, sampled by
+# export_network_elevation.edge_sample_points: both edges sampled the shared
+# vertex as the same double at all 3,000, and the 198,272 points asked held
+# 195,272 keys under either rule, so no read was added. Synthetic lines, not
+# the real graph. The keys are longer: 35.6 characters on those points against
+# 20.0, about 16 more bytes an entry in the file and in memory. And slower to
+# make: 1.05 us a point against 0.54 on 200,000 random points the same day,
+# which over run 30's 22,000,918 is about 11 s (Reasoned from that rate).
+#
+# A FILE FROM BEFORE NEVER ANSWERS. An old key can equal a new one:
+# "-84.150001,34.650001" is the 6-decimal key every point within half a
+# millionth of a degree of that one was stored under, and that one point's
+# exact key as well. So _load_sample_cache reads a file only when its `keys`
+# is this value, every file written before decision 115 carries none and is
+# discarded whole, and the first run after it reads every point from the
+# tiles, as the first run after a re-fly does.
+SAMPLE_CACHE_KEYS = "exact"
 
 
 def _cache_key(lon: float, lat: float) -> str:
-    """The sample cache's key for a point: lon then lat, the argument order
-    the sampler itself takes. (fetch_trail_water.py's EPQS cache writes the
-    same shape lat-first; they are different files and neither reads the
-    other, so the orders are allowed to differ - what matters is that one
-    file is written and read by one convention.)"""
-    return f"{lon:.{CACHE_KEY_DECIMALS}f},{lat:.{CACHE_KEY_DECIMALS}f}"
+    """The sample cache's key for a point: its own lon then lat, each as repr
+    writes the double (SAMPLE_CACHE_KEYS), in the argument order the sampler
+    takes. float() first, so a numpy double is keyed as the Python float it
+    equals, never as "np.float64(...)". (fetch_trail_water.py's EPQS cache
+    keys lat-first at 6 decimals; they are different files and neither reads
+    the other.)"""
+    return f"{float(lon)!r},{float(lat)!r}"
 
 
 def _is_a_stored_sample(value) -> bool:
@@ -746,6 +766,12 @@ def _load_sample_cache(path: Path, marker: str | None) -> dict[str, float | None
     there to be keyed against, and a cache nothing can invalidate must not
     serve a safety path.
 
+    A FILE KEYED UNDER ANOTHER RULE IS DISCARDED WHOLE TOO: its `keys` must be
+    SAMPLE_CACHE_KEYS. Every file written before decision 115 keyed a point to
+    6 decimals and carries no `keys`, and one of its keys can be the exact key
+    of a point it was never read at (SAMPLE_CACHE_KEYS says how), so not one
+    entry of it is served.
+
     WHAT THIS GUARD CANNOT SEE is a marker that is present and edition-blind:
     a cell whose HEAD failed contributes a constant to it, so the marker holds
     still while that cell's ground moves. That is handled where the entries
@@ -766,7 +792,7 @@ def _load_sample_cache(path: Path, marker: str | None) -> dict[str, float | None
         stored = json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
-    if not isinstance(stored, dict) or stored.get("marker") != marker:
+    if not isinstance(stored, dict) or stored.get("keys") != SAMPLE_CACHE_KEYS or stored.get("marker") != marker:
         return {}
     samples = stored.get("samples")
     if not isinstance(samples, dict) or not all(_is_a_stored_sample(value) for value in samples.values()):
@@ -779,10 +805,11 @@ def _write_sample_cache(path: Path, marker: str | None, samples: dict[str, float
     fetch_trail_water.py's `_write_elevation_cache` uses, for the same reason:
     a run killed partway through (which is exactly what #1287 was) must leave
     the previous cache intact rather than a half-written file the next run
-    would refuse to parse."""
+    would refuse to parse. `keys` says which rule the keys were written under,
+    so a later rule can refuse this file (_load_sample_cache)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"marker": marker, "samples": samples}))
+    tmp.write_text(json.dumps({"keys": SAMPLE_CACHE_KEYS, "marker": marker, "samples": samples}))
     tmp.replace(path)
 
 
@@ -1205,7 +1232,8 @@ class ElevationSampler:
     def sample_many(self, points: list[tuple[float, float]]) -> list[float | None]:
         """Batched point sampling, through the per-point cache.
 
-        Each point is keyed by its rounded lon/lat (see _cache_key). A key
+        Each point is keyed by its own exact lon/lat (_cache_key, decision
+        115), so an answer is only ever the DEM's at the point asked. A key
         already known - from this run, or from the cache file the last run
         left beside the tile index - costs nothing at all: no open, no range
         request, no block read. Only the keys nobody has answered yet reach
@@ -1236,9 +1264,10 @@ class ElevationSampler:
         The cache is only as good as the points staying put. They do: the
         sample positions come from the trail geometry and a fixed interval
         through deterministic transforms, so two runs over unchanged geometry
-        ask the same questions. Change SAMPLE_INTERVAL_METERS, or let a source
-        redraw its lines, and the new points simply miss - which is correct,
-        not a failure.
+        ask the same questions, to the bit. Change SAMPLE_INTERVAL_METERS, let
+        a source redraw its lines, or let a PROJ upgrade move a transform's
+        last bit, and the new points simply miss - which is correct, not a
+        failure.
         """
         keys = [_cache_key(lon, lat) for lon, lat in points]
         unseen: dict[str, tuple[float, float]] = {}
@@ -1348,6 +1377,58 @@ def measure_cross_part_gaps(parts_meters: list[LineString]) -> tuple[float, floa
     return total_gap_m, max_gap_m
 
 
+def profile_records(samples) -> tuple[list[dict], int]:
+    """The published records from (mile, elevation_m, part) per sample, in
+    walk order, with the mile already rounded to the three decimals the
+    artifact publishes. Returns (records, clipped_count).
+
+    build_profile's own loop, moved here unchanged so that the dbt port of
+    it (pipeline/dbt/models/intermediate/elevation/int_elevation__profile)
+    can be held to it on the same rows by tests/test_dbt_elevation_parity.py
+    (#1793, stage 3); build_profile calls it and publishes what it returns."""
+    records = []
+    previous_part = None
+    high_water = float("-inf")
+    clipped_count = 0
+    for mile, elevation_m, part in samples:
+        # Clipped on the ROUNDED mile - the value the artifact actually
+        # publishes - not the raw one. Two samples from different pieces can
+        # sit closer than the 3-decimal precision at a seam (the real run
+        # that found this had exactly two such pairs in 138,710 samples),
+        # and clipping the raw value would let them through as equal
+        # published neighbours, breaking the strictly-increasing contract by
+        # a rounding artifact.
+        #
+        # Where two pieces cover the same stretch of trail - duplicate
+        # geometry surviving the merge, see ORDERING.md's degree-6 nodes -
+        # their calibrated mile ranges overlap, and publishing both would
+        # put the same miles on the axis twice (and their phantom gain in
+        # the total, twice). The first piece to reach a mile keeps it.
+        if mile <= high_water:
+            clipped_count += 1
+            continue
+        high_water = mile
+        record = {
+            "distance_mi": mile,
+            "elevation_ft": round(elevation_m / METERS_PER_FOOT, 1) if elevation_m is not None else None,
+        }
+        # Only on the first emitted sample of a piece, and absent everywhere
+        # else (#559). A `part` index on all ~139,000 records would say the
+        # same thing and cost about a megabyte on an artifact hikers download
+        # over a trailhead's signal; the seams are 558 of them. A reader that
+        # does not know the key ignores it, which is what makes this additive.
+        #
+        # Including the very first sample, where breaking a run is a no-op.
+        # Uniform is worth more than clever here: a consumer should be able to
+        # write "start a new run at every part_start" without special-casing
+        # index 0.
+        if part != previous_part:
+            record["part_start"] = True
+            previous_part = part
+        records.append(record)
+    return records, clipped_count
+
+
 def build_profile(
     centerline_path: Path, markers_path: Path, elevation_index_path: Path, interval_m: float
 ) -> tuple[list[dict], dict]:
@@ -1393,46 +1474,12 @@ def build_profile(
     finally:
         sampler.close()
 
-    records = []
-    previous_part = None
-    high_water = float("-inf")
-    clipped_count = 0
-    for (distance_m, _pt, part), elevation_m in zip(samples_meters, elevations_m):
-        # Clipped on the ROUNDED mile - the value the artifact actually
-        # publishes - not the raw one. Two samples from different pieces can
-        # sit closer than the 3-decimal precision at a seam (the real run
-        # that found this had exactly two such pairs in 138,710 samples),
-        # and clipping the raw value would let them through as equal
-        # published neighbours, breaking the strictly-increasing contract by
-        # a rounding artifact.
-        mile = round(calibrated[part].mile_at(distance_m - offsets[part]), 3)
-        # Where two pieces cover the same stretch of trail - duplicate
-        # geometry surviving the merge, see ORDERING.md's degree-6 nodes -
-        # their calibrated mile ranges overlap, and publishing both would
-        # put the same miles on the axis twice (and their phantom gain in
-        # the total, twice). The first piece to reach a mile keeps it.
-        if mile <= high_water:
-            clipped_count += 1
-            continue
-        high_water = mile
-        record = {
-            "distance_mi": mile,
-            "elevation_ft": round(elevation_m / METERS_PER_FOOT, 1) if elevation_m is not None else None,
-        }
-        # Only on the first emitted sample of a piece, and absent everywhere
-        # else (#559). A `part` index on all ~139,000 records would say the
-        # same thing and cost about a megabyte on an artifact hikers download
-        # over a trailhead's signal; the seams are 558 of them. A reader that
-        # does not know the key ignores it, which is what makes this additive.
-        #
-        # Including the very first sample, where breaking a run is a no-op.
-        # Uniform is worth more than clever here: a consumer should be able to
-        # write "start a new run at every part_start" without special-casing
-        # index 0.
-        if part != previous_part:
-            record["part_start"] = True
-            previous_part = part
-        records.append(record)
+    # The mile each sample publishes, rounded to three decimals before the
+    # clip in profile_records reads it.
+    records, clipped_count = profile_records(
+        (round(calibrated[part].mile_at(distance_m - offsets[part]), 3), elevation_m, part)
+        for (distance_m, _pt, part), elevation_m in zip(samples_meters, elevations_m)
+    )
 
     diagnostics = {
         "cross_part_gaps": cross_part_gaps,

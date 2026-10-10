@@ -6,8 +6,10 @@ Every failure this file guards is SILENT and prints a wrong sentence under an
 organization's name on a hiker's phone. There is no crash to notice:
 
 - A steward whose data does not ship, named anyway, with a licence beside it.
-  Two of them are in the registry right now (GATC, NYS OPRHP), both fetched
-  for review only pending a licence answer.
+  GATC and NYS OPRHP were the first two, both fetched for review only
+  pending a licence answer; GATC's water list and alerts ship since decision
+  75 (2026-10-04), and test_names_no_steward_that_is_fetch_and_review_only
+  now asks the rule of every steward.
 - A steward whose data DOES ship, omitted, when its licence obliges the
   attribution the omission removes.
 - A tier or a licence inferred rather than recorded, which reads exactly like
@@ -547,12 +549,30 @@ class TestAgainstTheRealRegistry:
         self.real()
 
     def test_names_no_steward_that_is_fetch_and_review_only(self):
-        # Measured 2026-08-23: GATC's own licence field says "Nothing from this
-        # source reaches a published artifact until GATC answers a
-        # redistribution ask".
+        """A steward none of whose rows reaches a hiker is not named. This used
+        to be GATC by name (measured 2026-08-23, its licence field said nothing
+        reached a published artifact until GATC answered a redistribution ask);
+        the rule outlived GATC's turn, so it is asked of every steward."""
+        registry = json.loads((ROOT / "sources.json").read_text())
+        stewards: dict[str, bool] = {}
+        for source in registry["sources"]:
+            name = source.get("steward")
+            if name:
+                stewards[name] = stewards.get(name, False) or bool(source.get("reaches_hikers"))
+        review_only = {name for name, ships in stewards.items() if not ships}
         named = {s["name"] for s in self.real()["stewards"]}
 
-        assert not any("Georgia" in n for n in named)
+        assert review_only, "no steward is review-only, so this proves nothing"
+        assert not named & review_only
+
+    def test_names_gatc_now_that_its_water_and_alerts_ship(self):
+        """GATC moved from review-only to shipped on 2026-10-04 (decision 75:
+        its water list placed from its own miles, its alerts as facts and a
+        link), the same turn OPRHP's and NYNJTC's lines took below. A steward
+        whose data is on a hiker's phone is named."""
+        named = {s["name"] for s in self.real()["stewards"]}
+
+        assert "Georgia Appalachian Trail Club" in named
 
     def test_names_the_two_trail_stewards_now_that_their_lines_ship(self):
         """OPRHP and NYNJTC moved from held-back to shipped on 2026-08-24
@@ -785,17 +805,19 @@ class TestTheRegistryTheConsoleReads:
         return export_sources.build_registry(json.loads((ROOT / "sources.json").read_text()))
 
     def test_names_the_sources_that_reach_no_hiker(self):
-        """The whole reason for a second artifact. GATC and the held-back
-        OPRHP layer are registrations somebody has to be able to see."""
+        """The whole reason for a second artifact. GATC's news feed (held for
+        its mix of news and notices since its water list shipped, decision 75)
+        and the held-back OPRHP layer are registrations somebody has to be able
+        to see."""
         keys = {row["key"] for row in self.real()["sources"]}
 
-        assert "gatc_water_sources" in keys
+        assert "gatc_news_feed" in keys
         assert "oprhp_park_polygons" in keys
 
     def test_carries_the_flag_rather_than_filtering_on_it(self):
         rows = {row["key"]: row for row in self.real()["sources"]}
 
-        assert rows["gatc_water_sources"]["reaches_hikers"] is False
+        assert rows["gatc_news_feed"]["reaches_hikers"] is False
         assert rows["nynjtc_trail_alerts"]["reaches_hikers"] is True
 
     def test_every_row_carries_the_stable_id_of_its_organization(self):
@@ -853,26 +875,111 @@ class TestTheRegistryTheConsoleReads:
         Spelled out rather than counted, because the point of the case is that
         a registration cannot arrive without somebody writing its id down: a
         length assertion alone would pass for any seventeen, including
-        seventeen typos.
+        seventeen typos. 30 until 2026-10-03, when decision 53's JSON API
+        notice sources registered four more (FMST, FoOT, PA DCNR, TEHCC).
         """
         orgs = self.real()["organizations"]
 
-        assert len(orgs) == 30
+        # 52 since decision 53's ArcGIS closure and warning layers (2026-10-03) registered 18
+        # stewards with no row before, 62 since decision 54's places wave registered 10, and
+        # 77 since its trail-line rows (2026-10-03) registered 15: ATA, Austin PARD,
+        # the Bay Area Ridge Trail Council, Chesapeake Conservancy, the City of Des Moines,
+        # GMC, Indiana and Iowa DNR, Lake County MN, OCTA, ONDA, Oregon Metro, SHTA, TKO and TPWD.
+        # 78 since decision 54's points of interest (2026-10-03) registered org:cfpa.
+        # 79 since its second batch of points registered org:blackhillstrails.
+        # 92 since decision 53's page and post notices for folders n to z and _shared/ (2026-10-03)
+        # registered 13 more; their other 4 stewards (Indiana DNR, SHTA, TKO, TPWD) already had rows.
+        # 104 since its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03)
+        # registered 12 more; their other 3 stewards (ATA, CFPA, GMC) already had rows.
+        # 113 since decision 54's wave 3 content feeds (section C, 2026-10-04) registered Save Mount
+        # Diablo (its podcast) and NMVFO (its Hike New Mexico pages), and waves 2 and 3's GIS files
+        # (2026-10-04) registered 7: the Bartram Trail Conference, the Condor Trail Association, the
+        # Hoosier Hikers Council, MDHTA, OCVT, the Potomac Heritage Trail Association and RMFI.
+        # 116 since decision 54's waves 4 and 5 content pages and PDFs (section K, 2026-10-04) registered
+        # the Mazamas (its Hike List View), the Randolph Mountain Club (its Recommended Hikes PDF) and the
+        # Keystone Trails Association (its Favorite Hikes in Pennsylvania), 117 since its third batch
+        # registered the Friends of the Blue Hills (its Suggested Hikes page), and 118 since its fourth
+        # registered the Wasatch Mountain Club (its Hiking Trail Database PDF), and 119 since its fifth
+        # registered the Carolina Mountain Club (its Lookout Tower Challenge), and 120 since its sixth
+        # registered the Tennessee Trails Association (its 36 Great Hikes form), and 121 since decision 76
+        # (section B, 2026-10-04) registered the U.S. Census Bureau (org:census), for the TIGER/Line state
+        # boundaries a state-wide notice is placed by. Recounted from the merged registry 2026-10-05.
+        # 122 since decision 54's wave 6 (2026-10-08) registered Parks & Trails New York (org:ptny), for
+        # its view of the Empire State Trail's closed sections. 134 since decision 122 (the maintainer's poll,
+        # 2026-10-09) registered the first batch of 12 candidate stewards, every layer held while each one's
+        # trail_orgs.json row waits for the maintainer's review. 135 since the same day registered the NYS Canal
+        # Corporation (org:nyscanal), held like the rest. 142 since review page 02's held loads registered 7 more
+        # candidate stewards (Illinois DNR, NETT, the Eastern Trail Alliance, Maine Huts & Trails, RCTC, the
+        # Peninsula Trails Coalition and Maricopa County Parks). 143 since decision 126 (the maintainer's
+        # poll, 2026-10-09) registered the Trust for Public Land (org:tpl) for ParkServe's parks, held.
+        assert len(orgs) == 143
         assert {org["steward_id"] for org in orgs} == {
+            "org:akstateparks",
             "org:alaskatrails",
+            "org:amc",
+            "org:ata",
             "org:atc",
+            "org:austinpard",
             "org:azgeo",
+            "org:bartram",
+            "org:blackhillstrails",
             "org:blm",
+            "org:bmecc",
+            "org:bmta",
+            "org:bta",
+            "org:catamount",
+            "org:cdpr",
+            "org:census",
             "org:cdtc",
+            "org:cfpa",
+            "org:chesapeakeconservancy",
+            "org:cmc",
+            "org:cohos",
+            "org:condor",
             "org:cpw",
+            "org:ctc",
             "org:ctdeep",
+            "org:cvatc",
+            "org:desmoines",
             "org:duluth",
+            "org:ebrpd",
+            "org:fbh",
+            "org:fltc",
+            "org:fmst",
+            "org:foot",
+            "org:foothills",
+            "org:fpc",
+            "org:fta",
             "org:gatc",
+            "org:gmc",
+            "org:hhc",
+            "org:iata",
+            "org:indnr",
+            "org:iowadnr",
+            "org:kingcountyparks",
+            "org:kta",
+            "org:lakecountymn",
+            "org:lsht",
+            "org:madcr",
             "org:massgis",
+            "org:matc",
+            "org:mazamas",
+            "org:mdhta",
+            "org:mcomd",
+            "org:midpen",
             "org:mohonk",
+            "org:mratc",
+            "org:msgtc",
+            "org:msta",
+            "org:mtsg",
+            "org:nbatc",
+            "org:nchpta",
             "org:ncparks",
             "org:ncta",
             "org:ndmc",
+            "org:nhgranit",
+            "org:nifc",
+            "org:nmvfo",
             "org:njdep",
             "org:nps",
             "org:nycdot",
@@ -880,15 +987,79 @@ class TestTheRegistryTheConsoleReads:
             "org:nynjtc",
             "org:nysdec",
             "org:nysoprhp",
+            "org:octa",
+            "org:ocvt",
+            "org:odfw",
+            "org:ohta",
+            "org:onda",
+            "org:oregonmetro",
             "org:osm",
+            "org:ota",
+            "org:padcnr",
             "org:pasda",
+            "org:patc",
+            "org:pcf",
             "org:pcta",
+            "org:phta",
+            "org:pnta",
+            "org:portlandparks",
+            "org:ptny",
+            "org:ridgetrail",
+            "org:rmc",
+            "org:rmfi",
+            "org:sbts",
+            "org:sccparks",
+            "org:shta",
+            "org:smd",
+            "org:spnhf",
+            "org:sstc",
+            "org:sta",
+            "org:tatc",
+            "org:tdec",
+            "org:tehcc",
+            "org:tko",
+            "org:tpwd",
             "org:trta",
+            "org:trustees",
+            "org:tta",
+            "org:ttc",
             "org:ugrc",
+            "org:usace",
             "org:usfs",
+            "org:usfws",
             "org:usgs",
+            "org:utahffsl",
+            "org:wadnr",
+            "org:waldotrails",
             "org:warco",
             "org:wdnr",
+            "org:wmc",
+            "org:wsprc",
+            "org:wta",
+            # Decision 122 (2026-10-09): batch 01's candidate stewards, every layer held.
+            "org:dlnhc",
+            "org:flstateparks",
+            "org:gap",
+            "org:idpr",
+            "org:midnr",
+            "org:montourtrail",
+            "org:mostateparks",
+            "org:ngpc",
+            "org:oprd",
+            "org:r2r",
+            "org:tahoepyramid",
+            "org:vtrans",
+            "org:nyscanal",
+            # Review page 02 (decision 122, 2026-10-09): 7 more candidate stewards, every layer held.
+            "org:ildnr",
+            "org:nett",
+            "org:easterntrail",
+            "org:mainehuts",
+            "org:rctc",
+            "org:peninsulatrails",
+            "org:maricopaparks",
+            # Decision 126 (2026-10-09): the Trust for Public Land, for ParkServe's parks, held.
+            "org:tpl",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

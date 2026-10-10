@@ -1,0 +1,120 @@
+version: 2
+
+# Each trail model's key is `trail_segment_key` (decision 40), tested
+# not_null and unique. Each also carries the layer's object id (`fid` on the
+# Long Path, `objectid` on the Highlands Trail), which is the id
+# export_nearby_trails.py publishes for its lines; it is tested the same
+# way, because two lines sharing it, or a line without it, would publish an
+# id that exporter does not (the model's comment has the measurement).
+#
+# The `loaded_at` not_null test says the extract's `_loaded_at` stamp
+# survived staging, and nothing about the rows. The same arrangement holds
+# in mohonk/ and oprhp/.
+models:
+  - name: stg_nynjtc__long_path
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_long_path')
+          config:
+            severity: warn
+    description: >
+      The Long Path's per-segment attributes - the first trail in this
+      warehouse that is not the A.T. - with the layer's object id, FID,
+      which is each line's published id. `blaze` is a plain string ('aqua'
+      on all 43 rows), passed through undecoded.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nynjtc_long_path, lp_section, mileage,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
+      - name: fid
+        description: >
+          The layer's object id (its metadata's objectIdField, FID), which
+          ArcGIS writes as each GeoJSON feature's `id` (43 of 43 equal, read
+          live 2026-10-09). export_nearby_trails.py publishes it as
+          `nynjtc_long_path:<FID>`, and int_trail_lines__network_judged
+          publishes the same. Not the key: decision 40 never keys on an
+          object id alone.
+        data_tests: [not_null, unique]
+      - name: loaded_at
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
+        data_tests: [not_null]
+      - name: source_row
+        description: >
+          The row's place in the raw table, which is the order the layer's
+          pages served the features (the model's comment says why, and what
+          is unmeasured). step_long_path_guide.py reads the lines in this
+          order, and int_trail_lines__network_judged numbers a line
+          `generated-<n>` by it only where `fid` is null, which no row is.
+        data_tests: [not_null, unique]
+  - name: stg_nynjtc__highlands_trail
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_highlands_trail')
+          config:
+            severity: warn
+    description: >
+      The Highlands Trail's 12 sections, with the layer's object id,
+      OBJECTID, which is each line's published id. NO BLAZE COLUMN, because
+      the layer publishes no blaze field - a stated absence, not a gap to
+      fill.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nynjtc_highlands_trail, section_name,
+          the registry key first and then the columns measured unique for
+          this layer.
+        data_tests: [not_null, unique]
+      - name: objectid
+        description: >
+          The layer's object id (its metadata's objectIdField, OBJECTID),
+          which ArcGIS writes as each GeoJSON feature's `id` (12 of 12 equal,
+          read live 2026-10-09). export_nearby_trails.py publishes it as
+          `nynjtc_highlands_trail:<OBJECTID>`, and
+          int_trail_lines__network_judged publishes the same. Not the key:
+          decision 40 never keys on an object id alone.
+        data_tests: [not_null, unique]
+      - name: loaded_at
+        description: The extract's `_loaded_at` for the read this row came from, naive UTC.
+        data_tests: [not_null]
+      - name: source_row
+        description: >
+          The row's place in the raw table, which is the order the layer's
+          pages served the features (the model's comment says why, and what
+          is unmeasured). int_trail_lines__network_judged numbers a line
+          `generated-<n>` by it only where `objectid` is null, which no row
+          is.
+        data_tests: [not_null, unique]
+
+  - name: stg_nynjtc__long_path_guide
+    description: >
+      NYNJTC's Long Path guide, one row per section page, as the guide_pages
+      kind parsed it: the section's number, title and stated distance, and
+      its Parking, Camping and Detailed Trail Description entries as JSON.
+      Read by step_long_path_guide, which places them (PO36).
+    columns:
+      - name: guide_section_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nynjtc_long_path_guide and the section's number.
+        data_tests: [not_null, unique]
+      - name: section_number
+        description: The section's number, the Long Path layer's LP_Section.
+        data_tests: [not_null, unique]
+      - name: distance_miles
+        description: The section's stated distance; null where the page states none, and nothing on it is placed by mile.
+      - name: entries
+        description: The Detailed Trail Description block's mile-marked entries, as JSON.
+      - name: _loaded_at
+        description: When the extract read the page.
+        data_tests: [not_null]

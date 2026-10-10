@@ -59,19 +59,38 @@ export function conditionsCacheKey(key: string): string {
 }
 
 /**
- * The most bytes one stored artifact may occupy.
+ * The longest document this keeps, as `JSON.stringify(document).length`: the
+ * launch budget (lib/artifactBudget.ts, itself `@unvalidated`), the size this
+ * app already says a phone can parse whole, so a file shown online is a file
+ * kept for offline.
  *
- * @unvalidated 2 MB is picked, not measured. The real artifacts are far
- * smaller - closures, reports and notes are a few hundred rows of short JSON
- * - so this is not a budget anybody is spending, it is a ceiling that stops a
- * pathological bake (a runaway export, a bucket serving the wrong file) from
- * growing into the space a hiker's 1.18 GB archive lives in. What would
- * settle it: the actual size distribution of `conditions/*.json` across a
- * month of publishes, which nothing records today. Until then it is set high
- * enough that no real artifact can reach it and low enough that six of them
- * together are noise beside one downloaded map.
+ * Reasoned, from UA's files measured 2026-10-09, in the same characters:
+ *
+ *   conditions/notices.json         11,811,478   8,309 notices
+ *   places.json, dbt's               8,385,360   33,309 places
+ *   conditions/weather_alerts.json   1,004,717   204 alerts
+ *   conditions/hazard_areas.json       947,767   338 areas
+ *
+ * The four come to 22,149,322, beside a 1.18 GB downloaded map. The ceiling
+ * was 2 MiB, picked when what this kept was closures, reports and notes, "a
+ * few hundred rows of short JSON", and it deleted the first two above on
+ * every download: a planned hike's closures vanished at its first relaunch
+ * with no signal, and offline place search had nothing to search.
+ * notices.json has been bigger still, 24,966,662 bytes on soak run 536
+ * (decision 77), and this keeps that with a quarter to spare.
+ *
+ * Above it the gap remains: lib/publishedConditions.ts, lib/placesData.ts
+ * and lib/weatherData.ts do not weigh what they fetch, so a document over the
+ * budget is shown online and still not kept. Keeping costs the main thread
+ * once per download: `JSON.stringify` of notices.json took 168 ms and
+ * `structuredClone` 485 ms, in Node on the sandbox (measured 2026-10-09).
+ *
+ * RESTATED, NOT IMPORTED, and conditionsCache.test.ts holds the two equal.
+ * Importing LAUNCH_ARTIFACT_BUDGET_BYTES split lib/artifactBudget.ts into an
+ * eager chunk of its own, 141 bytes compressed for one number: 13 eager
+ * chunks at 242,098 against 12 at 241,957 (`npm run build`, 2026-10-09).
  */
-export const MAX_CACHED_BYTES = 2 * 1024 * 1024
+export const MAX_CACHED_BYTES = 33_554_432
 
 /**
  * Keep this artifact for the next time the phone has no signal.

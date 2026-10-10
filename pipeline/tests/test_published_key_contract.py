@@ -48,6 +48,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 import archive_nynjtc_sheet_extents
 import export_podcasts
@@ -59,10 +60,14 @@ from lib.r2_keys import validate_key
 CLIENT_SRC = Path(__file__).resolve().parents[2] / "client" / "src"
 CONFIG = CLIENT_SRC / "lib" / "config.ts"
 PUBLISHED_CONDITIONS = CLIENT_SRC / "lib" / "publishedConditions.ts"
+#: The conditions/notices.json reader, behind import() for the launch budget, which declares the keys of the files it
+#: reads beside that one: conditions/notice_states.json (decision 76) and conditions/hazard_areas.json (decision 84).
+PUBLISHED_NOTICES = CLIENT_SRC / "lib" / "publishedNotices.ts"
 HIKING_DETAIL = CLIENT_SRC / "lib" / "hikingDetail.ts"
 PACKAGES = CLIENT_SRC / "lib" / "packages.ts"
 MAP_SHEETS = CLIENT_SRC / "lib" / "mapSheets.ts"
 PODCASTS = CLIENT_SRC / "lib" / "podcasts.ts"
+DBT_PUBLISH = Path(__file__).resolve().parents[1] / "dbt" / "models" / "publish"
 
 # Named as a set rather than left implicit in the calls below, because
 # tests/test_ci_scope.py reads it: the pipeline workflow lists these files
@@ -70,7 +75,7 @@ PODCASTS = CLIENT_SRC / "lib" / "podcasts.ts"
 # suite, and a narrow list is only honest while it is complete. Add a client
 # file to this module and it belongs here in the same edit - the scope test is
 # what makes forgetting a failure rather than a silent hole.
-CLIENT_FILES_READ = (CONFIG, PUBLISHED_CONDITIONS, HIKING_DETAIL, PACKAGES, MAP_SHEETS, PODCASTS)
+CLIENT_FILES_READ = (CONFIG, PUBLISHED_CONDITIONS, PUBLISHED_NOTICES, HIKING_DETAIL, PACKAGES, MAP_SHEETS, PODCASTS)
 
 
 def _read(path: Path) -> str:
@@ -156,7 +161,13 @@ def client_conditions_keys() -> dict[str, str]:
         "pattern here rather than leaving this matching nothing - an empty census "
         "passes silently, which is the failure this file exists to prevent."
     )
-    return {key: f"publishedConditions.ts {name}" for name, key in found}
+    keys = {key: f"publishedConditions.ts {name}" for name, key in found}
+    # publishedNotices.ts, which the conditions hook loads behind import(), declares the one key it reads beside
+    # conditions/notices.json there rather than here, so that it adds no launch byte (decision 76).
+    lazy = re.findall(r"export const (PUBLISHED_\w+_KEY) = '(conditions/[^']+)'", _read(PUBLISHED_NOTICES))
+    assert lazy, "publishedNotices.ts declares no `PUBLISHED_..._KEY = 'conditions/...'`; fix the pattern here"
+    keys.update({key: f"publishedNotices.ts {name}" for name, key in lazy})
+    return keys
 
 
 def client_background_archives() -> dict[str, str]:
@@ -494,6 +505,31 @@ def published(tmp_path, monkeypatch) -> set[str]:
     return set(publish.collect_artifacts())
 
 
+def dbt_exposure_keys() -> set[str]:
+    """Every key a dbt writer's exposure names (`config.meta.r2_keys`), read from the
+    publish folder's YAML - the same files publish.collect_dbt_phone_files
+    reads through dbt's manifest, so no third spelling."""
+    keys: set[str] = set()
+    for path in sorted(DBT_PUBLISH.glob("*.yml")):
+        for exposure in yaml.safe_load(path.read_text(encoding="utf-8")).get("exposures") or []:
+            keys.update(((exposure.get("config") or {}).get("meta") or {}).get("r2_keys") or [])
+    assert keys, f"No exposure in {DBT_PUBLISH} names an r2_key; the reader above matched nothing."
+    return keys
+
+
+#: Client keys only a dbt writer writes: a 404 on a bucket the exporters
+#: still publish (production until the cutover, decision 30), so each must be
+#: one the client reads as optional and falls back from. conditions/notices.json
+#: (#1805, decision 53 phase D) is: lib/useConditions.ts keeps the panel on
+#: atc_updates.json and nynjtc_alerts.json while it is absent. Named rather
+#: than derived, so a second dbt-only key is a decision somebody writes here.
+#: conditions/notice_states.json (decision 76) is too: lib/publishedNotices.ts reads a 404 as no states' shapes, and
+#: the planned-hike panel then shows no state-wide notice, as decision 68 left them.
+#: conditions/hazard_areas.json (decision 84) is too: lib/publishedNotices.ts reads a 404 as no answer, and
+#: chrome/noticesPanel.tsx then draws the hazard areas from notices.json where that file has reached the phone.
+DBT_ONLY_CLIENT_KEYS = {"conditions/notices.json", "conditions/notice_states.json", "conditions/hazard_areas.json"}
+
+
 def test_every_key_the_app_fetches_is_a_key_the_pipeline_publishes(published):
     """The whole point of the file, in one assertion.
 
@@ -508,6 +544,10 @@ def test_every_key_the_app_fetches_is_a_key_the_pipeline_publishes(published):
     # (export_podcasts.py, #1683). Joined here rather than folded into
     # collect_artifacts(), because neither is part of a release.
     written = published | {archive_nynjtc_sheet_extents.ARCHIVE_KEY, export_podcasts.PODCASTS_KEY}
+    # And the keys the dbt writers publish on OURHIKE_PHONE_FILES=dbt, which
+    # the exporters' census above cannot see (DBT_ONLY_CLIENT_KEYS says which
+    # client keys only they write, and the test below holds that list).
+    written |= dbt_exposure_keys()
     missing = {key: asked_by for key, asked_by in client_keys().items() if key not in written}
 
     assert not missing, (
@@ -594,3 +634,17 @@ def test_this_is_actually_reading_the_client(published):
     assert len(keys) >= 12
     assert len(client_background_archives()) == 3
     assert len(published) >= 15
+
+
+def test_a_client_key_only_dbt_writes_is_one_the_client_can_do_without(published):
+    """The keys the app fetches that only a dbt writer publishes, against the
+    list a person wrote down: each is a 404 on production until the cutover,
+    so a new one needs the client to fall back from it, and a line above."""
+    written = published | {archive_nynjtc_sheet_extents.ARCHIVE_KEY, export_podcasts.PODCASTS_KEY}
+    dbt_only = {key for key in client_keys() if key not in written and key in dbt_exposure_keys()}
+    assert dbt_only == DBT_ONLY_CLIENT_KEYS, (
+        "The client keys only a dbt writer publishes have changed. Each is a 404 on a "
+        "bucket the exporters publish, so the client has to read it as optional; say "
+        "how in DBT_ONLY_CLIENT_KEYS's comment and update the set.\n"
+        f"  now: {sorted(dbt_only)}\n  listed: {sorted(DBT_ONLY_CLIENT_KEYS)}"
+    )

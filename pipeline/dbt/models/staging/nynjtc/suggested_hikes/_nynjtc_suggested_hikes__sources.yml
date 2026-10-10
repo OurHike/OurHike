@@ -1,0 +1,89 @@
+version: 2
+
+# NYNJTC's hikes, in their own file beside _nynjtc__sources.yml, which
+# declares the club's trail extracts under the same source name: dbt merges
+# the tables of one source across files (dbt 2.0.6, parsed 2026-10-02, as
+# _nynjtc_alerts__sources.yml found), and each block's own config applies to
+# its own tables. Read by the suggested_hikes family (pipeline/ELT.md's
+# ledger, SH01-SH14).
+sources:
+  - name: nynjtc
+    description: >
+      NYNJTC's own layers and feeds, landed by the extract's nynjtc/ folder.
+      This file holds its hikes: the Hike Finder export (sources.json's
+      `nynjtc_hike_finder`, landed by nynjtc/suggested_hikes.py) and the
+      reviewed hike-photograph join (reference/nynjtc_hike_photos.json,
+      landed by nynjtc/photos.py).
+    schema: raw
+    config:
+      meta:
+        cadence: monthly
+    tables:
+      - name: raw_nynjtc__nynjtc_hike_finder
+        config:
+          loaded_at_field: _loaded_at
+          freshness:
+            # The export serves no ETag, Last-Modified or feed (measured
+            # 2026-09-15), so PublishedHikes' change check answers UNKNOWN and
+            # every monthly run reloads the table: a `_loaded_at` older than a
+            # month and a few days is a monthly run that did not happen.
+            # @unvalidated: 35 days is a month plus the lane's slack, not a
+            # measurement; stage 5 of #1793 — Rebuild the data platform as
+            # dlt → dbt: seven contracted marts, a monthly refresh, published
+            # docs, and lighter phone downloads settles the per-cadence limits.
+            warn_after: {count: 35, period: day}
+        data_tests:
+          # Rows sharing base_nynjtc__nynjtc_hike_finder's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nynjtc_hike_finder'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          The Hike Finder export (heardimmunity.org/hikefinder, behind a site
+          password since 2026-09-15), one row per hike as lib/hikefinder.py's
+          parse_hike() and as_cache_entry() read the page: 385 hikes on
+          2026-09-15, ids 1-450 with gaps, 113 of them with a published GPX
+          track. Nested values stay one JSON column each (`start`, the lists,
+          `raw_fields`); `gpx` is the track as served, null on a page with
+          none and on one whose GPX holds no point (PublishedHikes).
+        columns:
+          - name: id
+            description: The export's own hike id, `hike.php?id=<id>`. Unique by construction of the listing.
+          - name: start
+            description: >
+              The page's one coordinate as JSON, {lat, lon, label}, or null
+              where the page carries none or one outside the NYNJTC box
+              lib/hikefinder.py's _in_range() refuses (SH01).
+      - name: raw_nynjtc__nynjtc_hike_photos
+        data_tests:
+          # Rows sharing base_nynjtc__nynjtc_hike_photos's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/nynjtc_hike_photos.json'", "_row"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          reference/nynjtc_hike_photos.json, the hike-to-photograph join a
+          person confirmed row by row against match_wayback_hike_photos.py's
+          sheet: 119 rows on 2026-10-02, each the JSON its reviewer wrote, in
+          `row_json`. A row names a hike, a photograph's sha256 and its
+          photographer's credit.

@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: base_blm__trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('blm', 'raw_blm__blm_trails')
+          config:
+            severity: warn
+    description: >
+      BLM trails and routes (Natl GTLF public display), every row, keyed and
+      deduped. Nothing reads it yet: the stage-3 unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          blm_trails, geometry_key(geom), blm_miles, route_plan_id, def_fet2,
+          plan_season_rstrct_code, route_prmry_nm, the registry key first and
+          then the columns measured unique for this layer.
+        data_tests: [not_null, unique]

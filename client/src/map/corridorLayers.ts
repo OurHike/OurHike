@@ -8,7 +8,7 @@
 // nothing about either, and this is the module that knows about MapLibre. The
 // published artifact carries mile ranges and no geometry, so `trailSlice` is
 // what makes it drawable - and its MultiLineString result is why the runs
-// below are multi-part rather than one line each.
+// map/corridorFeatures.ts builds are multi-part rather than one line each.
 //
 // TWO COLOURS, AND BOTH ALREADY EXISTED
 //
@@ -82,11 +82,20 @@ import type {
   PointLike,
 } from 'maplibre-gl'
 import { NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
-import { clubBoundaryMiles, clubTimeline, type ClubSections } from '../lib/clubSections'
-import { PROFILED_TRAIL } from '../lib/highlightDetail'
-import type { Highlight } from '../lib/highlights'
-import { trailPointAtMile, trailSlice, type TrailIndex } from '../lib/trailPosition'
 import { whenStyleReady } from './styleReady'
+import {
+  CORRIDOR_KIND_PROPERTY,
+  HIGHLIGHT_ID_PROPERTY,
+  UNATTRIBUTED_KIND,
+  type CorridorFeatureCollection,
+} from './corridorFeatures'
+
+// The features themselves - kinds, properties, the collection and the
+// functions that build it - live in map/corridorFeatures.ts, so the shell
+// can build the collection without bringing this module into the eager
+// bundle (features/LAUNCH_BUDGET.md §4.4). Re-exported, so nothing that
+// imported one from here has to change.
+export * from './corridorFeatures'
 
 export const CORRIDOR_SOURCE_ID = 'corridor'
 
@@ -94,20 +103,6 @@ export const CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID = 'corridor-unattributed-casi
 export const CORRIDOR_UNATTRIBUTED_LAYER_ID = 'corridor-unattributed'
 export const CORRIDOR_BOUNDARY_LAYER_ID = 'corridor-boundary'
 export const CORRIDOR_HIGHLIGHT_LAYER_ID = 'corridor-highlight'
-
-/** Which of this source's two kinds of feature a layer wants. Both ride in one
- *  source because they are one answer - the corridor read end to end - and a
- *  second source would be a second thing to keep in step. */
-export const CORRIDOR_KIND_PROPERTY = 'corridor_kind'
-export const UNATTRIBUTED_KIND = 'unattributed'
-export const BOUNDARY_KIND = 'boundary'
-export const HIGHLIGHT_KIND = 'highlight'
-
-/** Where a highlight marker carries its id, so a tap resolves to a record.
- *  A property rather than the GeoJSON feature id, for the reason
- *  CLOSURE_ID_PROPERTY gives: MapLibre runs a string feature id through
- *  parseInt, and a highlight id is a slug. */
-export const HIGHLIGHT_ID_PROPERTY = 'highlight_id'
 
 /**
  * Where the corridor view's drawn trails give way to the tiled ones.
@@ -190,131 +185,6 @@ export interface CorridorTrailPaint {
   blazeWidth: number
   /** The casing under it, already including its overhang. */
   casingWidth: number
-}
-
-interface CorridorProperties {
-  [CORRIDOR_KIND_PROPERTY]: string
-  /** Present only on a highlight mark. */
-  [HIGHLIGHT_ID_PROPERTY]?: string
-}
-
-export interface CorridorFeatureCollection {
-  type: 'FeatureCollection'
-  features: Array<{
-    type: 'Feature'
-    geometry:
-      | { type: 'MultiLineString'; coordinates: Array<Array<[number, number]>> }
-      | { type: 'Point'; coordinates: [number, number] }
-    properties: CorridorProperties
-  }>
-}
-
-export const EMPTY_CORRIDOR: CorridorFeatureCollection = {
-  type: 'FeatureCollection',
-  features: [],
-}
-
-/**
- * The published attribution, in map coordinates.
- *
- * A run or a boundary the centerline index cannot place yields no coordinates
- * and is dropped. That is a gap in what this build knows rather than a
- * decision, and it is safe to drop for the reason closureBands gives about its
- * own: the words are elsewhere. A hiker who taps a stretch this declines to
- * draw still gets the club from lib/clubSections.ts, which never needed
- * geometry to answer.
- */
-export function corridorFeatures(
-  sections: ClubSections,
-  index: TrailIndex,
-): CorridorFeatureCollection {
-  const timeline = clubTimeline(sections)
-
-  const unattributed = sections.unattributed.flatMap((range) => {
-    const lines = trailSlice(index, range.startMile, range.endMile)
-    if (lines.length === 0) return []
-    return [
-      {
-        type: 'Feature' as const,
-        geometry: { type: 'MultiLineString' as const, coordinates: lines },
-        properties: { [CORRIDOR_KIND_PROPERTY]: UNATTRIBUTED_KIND },
-      },
-    ]
-  })
-
-  const boundaries = clubBoundaryMiles(timeline).flatMap((mile) => {
-    const point = trailPointAtMile(index, mile)
-    if (point === null) return []
-    return [
-      {
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: point },
-        properties: { [CORRIDOR_KIND_PROPERTY]: BOUNDARY_KIND },
-      },
-    ]
-  })
-
-  return { type: 'FeatureCollection', features: [...unattributed, ...boundaries] }
-}
-
-/**
- * The highlights, as one mark each at the start of the first A.T. leg (#858).
- *
- * A POINT rather than a line along the walk, and that is the two-colour
- * decision showing through: the trail's own colour means `blaze_color`, so a
- * highlight cannot recolour the ground it covers. It marks where the walk
- * BEGINS and the sheet says how far it runs - which is also the only thing
- * that stays true for a highlight whose other legs are on trails this map may
- * not be drawing (features/NEARBY_TRAILS.md: one chosen trail at a time).
- *
- * One mark, not every leg: a loop that leaves the A.T. and comes back is one
- * place on the corridor, and three marks for it would read as three walks.
- *
- * The FIRST leg that is on the A.T., rather than the first leg outright. All
- * ten entries published today are single-leg A.T. highlights, so nothing
- * exercises the difference yet - but a loop is naturally written in walking
- * order, and Franconia Ridge's is `[Falling Waters, A.T., Old Bridle Path]`.
- * Keyed off leg zero, that record would draw no mark at all and simply not be
- * on the map, which is the silent absence rather than the honest one.
- */
-export function highlightFeatures(
-  highlights: readonly Highlight[],
-  index: TrailIndex,
-): CorridorFeatureCollection {
-  const features = highlights.flatMap((highlight) => {
-    const leg = highlight.legs.find((candidate) => candidate.trail === PROFILED_TRAIL)
-    // A highlight entirely off the A.T. has no place on this map to mark. It
-    // still exists as a record; features/NEARBY_TRAILS.md's one-trail-at-a-time
-    // rule is what would eventually draw it.
-    if (leg === undefined) return []
-    const point = trailPointAtMile(index, leg.startMile)
-    if (point === null) return []
-    return [
-      {
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: point },
-        properties: {
-          [CORRIDOR_KIND_PROPERTY]: HIGHLIGHT_KIND,
-          [HIGHLIGHT_ID_PROPERTY]: highlight.id,
-        },
-      },
-    ]
-  })
-  return { type: 'FeatureCollection', features }
-}
-
-/** The corridor and the highlights in one collection - one source, because
- *  they are one answer about the same stretch of map. */
-export function corridorWithHighlights(
-  sections: ClubSections,
-  highlights: readonly Highlight[],
-  index: TrailIndex,
-): CorridorFeatureCollection {
-  const corridor = corridorFeatures(sections, index)
-  return {
-    type: 'FeatureCollection',
-    features: [...corridor.features, ...highlightFeatures(highlights, index).features],
-  }
 }
 
 /**

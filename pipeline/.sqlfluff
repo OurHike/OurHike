@@ -1,10 +1,36 @@
-# SQLFluff over the dbt models (pipeline/DBT.md's linting section). The dbt
-# templater so {{ ref() }}/{{ source() }} lint as what they compile to;
-# duckdb dialect to match the warehouse.
+# SQLFluff over the dbt models (pipeline/DBT.md's linting section); duckdb
+# dialect to match the warehouse.
 #
-# Lint from pipeline/ with OURHIKE_WAREHOUSE=data/warehouse.duckdb - the dbt
-# templater compiles against the real profile, whose default path is
-# relative to dbt/ where dbt itself runs.
+# THE JINJA TEMPLATER, NOT THE DBT ONE, since dbt v2 (#1793 — Rebuild the
+# data platform as dlt → dbt: seven contracted marts, a monthly refresh,
+# published docs, and lighter phone downloads). sqlfluff-templater-dbt
+# compiles through dbt-core 1.x, and the maintainer chose one dbt version
+# everywhere: dbt v2 (the full dbt 2.0.6 since decision 32; dbt-oss 2.0.5
+# before it), with no dbt-core beside it. The jinja templater needs no dbt
+# and no warehouse; CI still runs the lint last in its job, so a failed build
+# reports first (pipeline-tests.yml's sqlfluff step says why).
+#
+# `dbt lint` reads this file too (decision 33 runs it beside SQLFluff in the
+# CI job). It warns that it supports only SQLFluff's `dbt` templater and
+# carries on, and it is not the enforced lint: measured 2026-10-01 on dbt
+# 2.0.6, it failed a planted CP01 but passed a planted LT01 that SQLFluff
+# fails. SQLFluff, with this file as written, is the gate.
+#
+# What that costs: `ref()` and `source()` render as placeholder names rather
+# than the relations dbt compiles. Package macros do NOT cost anything any
+# more: dbt/sqlfluff_libs/dbt_utils.py renders each dbt_utils macro from the
+# installed package's own files (the maintainer on the hand-written stand-in
+# that file used to be: "Get the actual dbt_utils package. Dont reinvent the
+# wheel."), and on 2026-10-01 its output equalled dbt 2.0.6's compile on all
+# 27 staging models' key and dedupe lines. So the lint needs `dbt deps` to
+# have run, and runs after it, in CI and in scripts/test.sh. `dbt build` on
+# the fixtures is still what checks the compiled result.
+# Measured 2026-10-01 on the 32 files under dbt/models and dbt/tests,
+# sqlfluff 4.3.0: 0 violations either way, 3.0 s serial on the jinja
+# templater against 9.7 s on the dbt templater (plan/06-dbt-tooling.md).
+#
+# Lint from pipeline/: `sqlfluff lint dbt/models dbt/tests`. The two paths
+# below resolve relative to this file.
 #
 # DBT.md's instruction was to run the default rules against the real models
 # first and prune only what proves noisy, with the evidence. Two prunes:
@@ -28,20 +54,47 @@
 # - RF04 for `name` and `source` only: these are lib/poi_schema.py's own
 #   unified record keys, and the models' whole job is to land on that
 #   schema; renaming to appease a keyword list would put a second
-#   vocabulary between the warehouse and the export.
+#   vocabulary between the warehouse and the export. `provider` joins them
+#   for the same reason: it is sources.json's own key for who publishes a
+#   layer, and the sources family's models and files all carry it. `label`
+#   joins them too: int_trail_lines__coded_domains' columns are fixed as
+#   (source_key, field_name, code, label) so that an extract table of the
+#   layers' coded values can replace its var without touching a reader.
+#   `type` joins them for the phone-file writers: it is GeoJSON's own member
+#   name (`"type": "FeatureCollection"`), and COPY's JSON format writes each
+#   column as a member of that name, so the writer's column cannot be renamed.
 [sqlfluff]
 dialect = duckdb
-templater = dbt
+templater = jinja
 sql_file_ext = .sql
 exclude_rules = ST06
+# 0 turns off the skip for files over 20,000 bytes. A skipped file is an
+# unlinted file, and SQLFluff says so only as a warning, so the step stays
+# green: int_podcasts__checked.sql, 20,789 bytes, was skipped that way
+# (2026-10-01, sqlfluff 4.3.0). The skip guards against parser lock on
+# generated SQL, and since decision 91 the lint covers generate_dbt.py's
+# models as well as the hand-written ones: 1,168 generated files beside 345
+# (counted 2026-10-09), the largest generated one 26,232 bytes, which the
+# default would skip unlinted. Keeping 0 is a bet that no generated file
+# locks the parser, @unvalidated beyond the lint finishing over all of them;
+# if one ever locks it, skip that file by name, not by size.
+large_file_skip_byte_limit = 0
 
-[sqlfluff:templater:dbt]
-project_dir = ./dbt
-profiles_dir = ./dbt
+# apply_dbt_builtins gives ref/source/config/var/is_incremental stand-ins.
+# library_path makes dbt/sqlfluff_libs/dbt_utils.py the `dbt_utils`
+# namespace, which renders the real package from dbt/dbt_packages/, and
+# load_macros_from_path lets a model call this project's own macros.
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = True
+library_path = dbt/sqlfluff_libs
+load_macros_from_path = dbt/macros
+# phone_file.sql is a `{% materialization %}`, a dbt tag plain Jinja does not
+# have, and no model calls it as a macro.
+exclude_macros_from_path = dbt/macros/materializations
 
 [sqlfluff:indentation]
 indented_joins = false
 template_blocks_indent = false
 
 [sqlfluff:rules:references.keywords]
-ignore_words = name,source
+ignore_words = name,source,provider,label,type

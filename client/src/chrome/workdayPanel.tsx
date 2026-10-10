@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react'
 import type { MapScreenProps } from './MapScreen'
-import { WorkdaySheet } from './WorkdaySheet'
+import { WorkdaySheet } from '../screens/deferred'
 import {
   opportunitiesUsable,
   upcomingWorkProjects,

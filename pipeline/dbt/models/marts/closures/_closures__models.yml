@@ -1,0 +1,470 @@
+version: 2
+
+models:
+  - name: closures
+    description: >
+      What blocks the trail, from every source that says so (decision 6):
+      one row per organization notice, closed area or OurHike closure whose
+      `obstructs_trail` is true (decision 7), from a source that passed
+      int_closures__gate and may publish, and the last good rows of a notice
+      source the gate holds this build, marked with `carried_since` (decision
+      53, phase D). Rebuilt whole each run, so a lifted closure leaves it,
+      and the warnings mart, in the same run.
+      conditions/atc_updates.json, conditions/nynjtc_alerts.json and
+      conditions/closures.json are written from it with the warnings mart.
+    config:
+      access: public
+      contract:
+        enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is today's shape at today's keys, and every pub_ writer
+    # reading this mart pins it, ref('closures', v=1), so a later latest
+    # version cannot move a published file. A removed, renamed or retyped
+    # column ships as a v2 beside v1 until v1's deprecation_date;
+    # check_contract_versions.py holds that against the base's manifest. dbt
+    # 2.0.6 builds v1 as closures_v1 and keeps `closures` as a view of the latest
+    # version (measured 2026-10-02, on a scratch copy of this project).
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: closures
+    data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py: after the
+      # writers in CI's fixture build, and every hour in check-conditions.yml
+      # once the hourly build has published (build_marts.py's
+      # HOURLY_LANE_CHECKS, decision 110). The rows at each build;
+      # the rows per club and source, so one club's notices vanishing cannot
+      # hide inside the total; and each column's null rate, the geometry and
+      # the long text (a reporter's note, NYS Parks' place description) left
+      # out. The closure dates' own checks are on their columns. No
+      # exposure_schema_validity: five phone files read this mart, and with
+      # more than one Elementary 0.26.0 checks a column only through
+      # context["render"], which dbt 2.0.6 does not have (the test errored,
+      # measured 2026-10-08), so it could check nothing here.
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(geom_geojson|note|closure_place)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      # A.T. miles inside the trail's own extent (ATC's half-mile markers,
+      # 0.5-2197.5; lib/atc_updates.py's TRAIL_MILE_MIN and TRAIL_MILE_MAX) and
+      # in order. ERROR for ATC's rows, which int_closures__atc_checked refuses
+      # otherwise (CL01, CL03), so this can only fire on a bug in the gate.
+      - dbt_utils.expression_is_true:
+          name: closures_atc_miles_are_inside_the_trail_and_in_order
+          arguments:
+            expression: >
+              mile_start between {{ var('atc_trail_mile_min') }} and {{ var('atc_trail_mile_max') }}
+              and mile_end between {{ var('atc_trail_mile_min') }} and {{ var('atc_trail_mile_max') }}
+              and mile_end >= mile_start
+          config:
+            where: "source_key = 'atc_trail_updates'"
+      # WARN for every other row with a mile: export_conditions.py publishes
+      # OurHike's verified closures whatever their miles, and the backend
+      # bounds them itself (finite, swapped into order on the way in,
+      # app/schemas/closure.py), so one out-of-extent closure is reported
+      # rather than allowed to hold every OurHike closure back.
+      - dbt_utils.expression_is_true:
+          name: closures_other_miles_are_inside_the_trail_and_in_order
+          arguments:
+            expression: >
+              mile_start between {{ var('atc_trail_mile_min') }} and {{ var('atc_trail_mile_max') }}
+              and mile_end between {{ var('atc_trail_mile_min') }} and {{ var('atc_trail_mile_max') }}
+              and mile_end >= mile_start
+          config:
+            where: "mile_start is not null or mile_end is not null"
+            severity: warn
+      # A mile is an A.T. mile, and comes with its other end.
+      - dbt_utils.expression_is_true:
+          name: closures_miles_come_in_pairs_on_the_at
+          arguments:
+            expression: "(mile_start is null) = (mile_end is null) and (mile_start is null or trail_id = 'AT')"
+      # A closed area is in lon/lat (pipeline/ELT.md, "Geometry rules every
+      # mart obeys"): GeoJSON text cannot carry metres any more than a
+      # geometry contract could refuse them.
+      - dbt_utils.expression_is_true:
+          name: closures_areas_are_in_lon_lat
+          arguments:
+            expression: >
+              st_xmin(st_geomfromgeojson(geom_geojson)) >= -180
+              and st_xmax(st_geomfromgeojson(geom_geojson)) <= 180
+              and st_ymin(st_geomfromgeojson(geom_geojson)) >= -90
+              and st_ymax(st_geomfromgeojson(geom_geojson)) <= 90
+          config:
+            where: "geom_geojson is not null"
+      # The lon/lat swap test, which the range test above cannot be: a swapped
+      # point is still inside +/-180 and +/-90. Its boxes and their evidence are
+      # tests/generic/lands_in_the_region_its_source_publishes_in.sql's.
+      # A swap in stg_oprhp__trail_closures passed every other test while every
+      # closed section left nearby_trails.geojson (measured 2026-10-03).
+      #
+      # WARN, NOT ERROR (decision 81): int_closures__rows_outside_region runs
+      # the same boxes before the gate, which holds such a source, so a row
+      # this finds is one that hold leaves in the mart: a row carried from
+      # the row history, or an NWS alert, which reaches the warnings mart
+      # past the gate (the gate holds NWS's own file instead).
+      # `holds_a_source` makes build_marts.py print the rows and turn the run
+      # red after the publish. At error, one source's rows stopped every
+      # hourly file (soak runs 525 to 527).
+      - lands_in_the_region_its_source_publishes_in:
+          name: closures_areas_land_in_the_region_their_source_publishes_in
+          arguments:
+            geometry: st_geomfromgeojson(geom_geojson)
+          config:
+            severity: warn
+            meta:
+              holds_a_source: true
+    columns:
+      - name: closure_id
+        description: >
+          `<source key>:<the source's own id>`: `atc_trail_updates:<ATC's
+          slug>`, `oprhp_trail_closures:<the area's key>`,
+          `ourhike_closures:<the closure's UUID>`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: club
+        description: The extract folder that landed the row (atc, nynjtc, nysparks, ourhike).
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: >
+          The registry key, or for OurHike's own rows the key
+          unregistered_publishing_sources lets publish. Tested against
+          int_sources__publication, which holds both: the sources mart holds
+          registered sources only.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          # Its source may publish, not only exist: a plain relationships test
+          # passes a row whose source is registered but held back.
+          - dbt_utils.relationships_where:
+              arguments:
+                to: ref('int_sources__publication')
+                field: source_key
+                to_condition: may_publish
+      - name: _loaded_at
+        description: When the extract loaded the row's source.
+        data_type: timestamptz
+        constraints:
+          - type: not_null
+      - name: notice_kind
+        description: atc_trail_update, nynjtc_trail_alert, oprhp_closure_area or ourhike_closure.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: obstructs_trail
+        description: >
+          Always true: a hiker is stopped from walking through (decision 7).
+          The test holds it, not a check constraint: dbt 2.0.6 warns that a
+          check "is not supported by duckdb, and will be ignored"
+          (ConstraintNotSupported, dbt1110, measured 2026-10-02).
+        data_type: boolean
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true]
+      - name: review_state
+        description: >
+          Who stands behind it: `reviewed` (a person read ATC's page),
+          `moderator_verified` (OurHike's moderators), `org_published` (NYS
+          Parks' own layer).
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [reviewed, moderator_verified, org_published]
+      - name: atc_id
+        description: ATC's slug for an ATC update, published as `atc_id`.
+        data_type: varchar
+      - name: title
+        description: The notice's headline, as its source wrote it.
+        data_type: varchar
+      - name: category
+        description: ATC's own category, from the closed set it publishes.
+        data_type: varchar
+      - name: states
+        description: The states an ATC update names, as the reviewer wrote them.
+        data_type: json
+      - name: locality
+        description: Roughly where an organization notice is, from its own place terms.
+        data_type: varchar
+      - name: trail_id
+        description: AT for an A.T. mile range; OurHike's own trail id for its closures.
+        data_type: varchar
+      - name: mile_start
+        description: >
+          The NOBO A.T. mile from Springer the block starts at, null where the
+          source places it by area alone. Within 0.5-2197.5 for ATC's rows.
+        data_type: double
+      - name: mile_end
+        description: >
+          The mile it ends at, never before mile_start for ATC's rows: a
+          reversed range is refused, not swapped.
+        data_type: double
+      - name: starts_on
+        description: >
+          The day a club notice says it starts, as the source states it, in
+          UTC; null where the source states none (decision 53's phase C reads
+          it before publishing). A hunting area's season where its layer gives
+          one, and never a season OurHike supplied (decision 67).
+        data_type: date
+        data_tests:
+          # A closure date (decision 102): its null rate against the builds
+          # before, at warn, here and on ends_on and expected_reopen.
+          # Elementary's minimum and maximum are numeric monitors only (0.26.0's
+          # get_available_monitors()), so a date gets its null rate alone.
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - name: ends_on
+        description: >
+          The day a club notice says it ends, as the source states it, in UTC;
+          null where the source states none. A notice past it is held back,
+          never published.
+        data_type: date
+        data_tests:
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - name: source_edited_at
+        description: >
+          The row's own edit date from its source (ATC's `updated_at`), null
+          where the source gives none: NYS Parks publishes none, and OurHike's
+          rows carry their own reported and verified times instead.
+        data_type: timestamptz
+      - name: updated_at
+        description: The source's own date as it is published, text as written.
+        data_type: varchar
+      - name: source_url
+        description: The source's own page for the notice, an http(s) link.
+        data_type: varchar
+      - name: list_position
+        description: The row's place in its source file where the file's order is published (ATC's reviewed file).
+        data_type: bigint
+      - name: closure_kind
+        description: "`area` for a NYS Parks closed area, which closes ground rather than a stretch of trail."
+        data_type: varchar
+      - name: closure_reason
+        description: A closed area's reason, NYS Parks' whole `Name`, verbatim.
+        data_type: varchar
+      - name: closure_place
+        description: Where a closed area is, NYS Parks' `Descript`, verbatim.
+        data_type: varchar
+      - name: geom_geojson
+        description: >
+          A closed area's polygon in lon/lat, as GeoJSON. Text rather than a
+          geometry: on dbt 2.0.6 a contracted model with a GEOMETRY column
+          fails its contract check ("Failed to convert type BinaryView ... not
+          supported for DuckDB", measured 2026-10-02), and the same column as
+          text builds.
+        data_type: varchar
+      - name: closure_uuid
+        description: An OurHike closure's UUID, published as `id`.
+        data_type: varchar
+      - name: reported_at
+        description: When the hiker filed an OurHike closure.
+        data_type: timestamptz
+      - name: reason_type
+        description: An OurHike closure's reason (storm_damage, flooding, maintenance, relocation, other).
+        data_type: varchar
+      - name: note
+        description: The reporter's own words on an OurHike closure.
+        data_type: varchar
+      - name: closure_status
+        description: closed or reroute_available, published as `status`.
+        data_type: varchar
+      - name: moderation_status
+        description: Always verified.
+        data_type: varchar
+      - name: verified_at
+        description: When a moderator verified it.
+        data_type: timestamptz
+      - name: closed_since
+        description: When the trail closed, where the reporter said; null otherwise, never guessed.
+        data_type: timestamptz
+      - name: expected_reopen
+        description: When it is expected to reopen, where anyone said; null otherwise.
+        data_type: timestamptz
+        data_tests:
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - name: reroute_url
+        description: A page describing the way around, where there is one.
+        data_type: varchar
+      - name: start_lat
+        description: Where the closure's start mile physically is (#674), or null for one filed before the columns existed.
+        data_type: double
+      - name: start_lon
+        description: The longitude of the same point.
+        data_type: double
+      - name: end_lat
+        description: Where its end mile physically is.
+        data_type: double
+      - name: end_lon
+        description: The longitude of the same point.
+        data_type: double
+      - name: source_row_key
+        description: The row's key in its staging model, for lineage.
+        data_type: varchar
+      - name: carried_since
+        description: >
+          Null on a row this build read from its source. Set on a row of a
+          notice source int_closures__gate holds back this build: the last
+          good row the previous build's history held, kept rather than
+          dropped (decision 53, phase D; int_closures__held_carried), and
+          this is when carrying it began. It stays put while the hold lasts.
+        data_type: timestamptz
+      - name: _first_seen_at
+        description: "{{ doc('row_first_seen_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                # warn only on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already.
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+      - name: _changed_at
+        description: "{{ doc('row_changed_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+
+unit_tests:
+  - name: closures_takes_what_blocks_the_trail_from_a_source_that_passed_and_may_publish
+    description: >
+      Decision 7's split, the closures mart's half: a notice whose
+      obstructs_trail is true, from a source int_closures__gate passed and
+      int_sources__publication lets publish. A false and a null go to the
+      warnings mart (warnings_takes_every_notice_that_does_not_block_and_reads_a_null_as_not_reviewed),
+      a closure from a held-back source goes nowhere, and so does one from a
+      source that may not publish; a held source's last good closures row
+      (int_closures__held_carried) lands.
+    model: int_closures__final
+    given:
+      - input: ref('int_closures__unioned')
+        rows:
+          - {notice_id: 'atc_trail_updates:a1', source_key: atc_trail_updates, obstructs_trail: true, review_state: reviewed}
+          - {notice_id: 'atc_trail_updates:a2', source_key: atc_trail_updates, obstructs_trail: false, review_state: reviewed}
+          - {notice_id: 'nynjtc_trail_alerts:n1', source_key: nynjtc_trail_alerts, obstructs_trail: null, review_state: not_reviewed}
+          - {notice_id: 'ourhike_closures:c1', source_key: ourhike_closures, obstructs_trail: true, review_state: moderator_verified}
+          - {notice_id: 'oprhp_trail_closures:o1', source_key: oprhp_trail_closures, obstructs_trail: true, review_state: org_published}
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: atc_trail_updates, passed: true}
+          - {source_key: nynjtc_trail_alerts, passed: true}
+          - {source_key: ourhike_closures, passed: false}
+          - {source_key: oprhp_trail_closures, passed: true}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: atc_trail_updates, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, may_publish: true}
+          - {source_key: ourhike_closures, may_publish: true}
+          - {source_key: oprhp_trail_closures, may_publish: false}
+          - {source_key: feed_a, may_publish: true}
+          - {source_key: feed_b, may_publish: false}
+      # A feed's notice the window aged out is carried in (decision 53's
+      # phase C), from the closures mart only, and only where its source may
+      # publish: the gate's read checks do not apply to the last good rows.
+      - input: ref('int_closures__window_carried')
+        rows:
+          - {mart: closures, notice_id: 'feed_a:item-1', source_key: feed_a, obstructs_trail: true, review_state: org_published}
+          - {mart: closures, notice_id: 'feed_b:item-2', source_key: feed_b, obstructs_trail: true, review_state: org_published}
+          - {mart: warnings, notice_id: 'feed_a:item-3', source_key: feed_a, obstructs_trail: null, review_state: not_reviewed}
+      # A notice source the gate holds keeps its last good rows (decision 53's
+      # phase D), each in the mart it was in: int_closures__held_carried has
+      # already read the gate, so every closures row it hands over lands.
+      - input: ref('int_closures__held_carried')
+        rows:
+          - {mart: closures, notice_id: 'held_c:1', source_key: held_c, obstructs_trail: true, review_state: org_published, carried_since: '2026-10-04 10:00:00+00'}
+          - {mart: warnings, notice_id: 'held_c:2', source_key: held_c, obstructs_trail: null, review_state: not_reviewed, carried_since: '2026-10-04 10:00:00+00'}
+    expect:
+      rows:
+        - {closure_id: 'atc_trail_updates:a1', obstructs_trail: true, review_state: reviewed}
+        - {closure_id: 'feed_a:item-1', obstructs_trail: true, review_state: org_published}
+        - {closure_id: 'held_c:1', obstructs_trail: true, review_state: org_published}
+
+  - name: closures_keeps_a_feed_notices_own_start_date_when_its_window_carries_it
+    description: >
+      The closures mart's half of
+      warnings_keeps_a_feed_notices_own_start_date_when_its_window_carries_it:
+      a carried feed closure keeps its own `starts_on`.
+    model: int_closures__final
+    given:
+      - input: ref('int_closures__unioned')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows: []
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: feed_a, may_publish: true}
+      - input: ref('int_closures__window_carried')
+        format: sql
+        rows: |
+          select
+              mart,
+              notice_id,
+              'a' as club,
+              'feed_a' as source_key,
+              cast('2026-10-04 00:00:00+00' as timestamptz) as _loaded_at,
+              'club_feed_notices' as notice_kind,
+              obstructs_trail,
+              review_state,
+              'Fixture ' || notice_id as title,
+              cast(null as varchar) as category,
+              cast(null as varchar) as locality,
+              cast('2026-09-21' as date) as starts_on,
+              cast(null as date) as ends_on,
+              cast(null as timestamptz) as source_edited_at,
+              cast(null as varchar) as updated_at,
+              'https://fixture.invalid/?p=751' as source_url,
+              cast(null as varchar) as geom_geojson,
+              'k-' || notice_id as source_row_key
+          from (
+              values
+              ('closures', 'feed_a:item-1', true, 'org_published'),
+              ('warnings', 'feed_a:item-3', cast(null as boolean), 'not_reviewed')
+          ) as carried (mart, notice_id, obstructs_trail, review_state)
+      - input: ref('int_closures__held_carried')
+        rows: []
+    expect:
+      rows:
+        - {closure_id: 'feed_a:item-1', starts_on: '2026-09-21', ends_on: null, source_url: 'https://fixture.invalid/?p=751'}

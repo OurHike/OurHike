@@ -1,0 +1,160 @@
+version: 2
+
+# OurHike's own conditions rows from its Postgres, in their own file beside
+# _ourhike__sources.yml, which declares OurHike's monthly reviewed files under
+# the same source name: dbt merges one source's tables across files (dbt
+# 2.0.6, parsed 2026-10-02), and each block's config applies to its own.
+sources:
+  - name: ourhike
+    description: >
+      OurHike's own data. This file holds the rows its Postgres serves to
+      the conditions bake, landed by the extract's _shared/ourhike/
+      closures.py, reports.py and field_notes.py through each
+      export_conditions.py query, whole (decision 6): moderator-verified
+      closures, public reports, visible field notes and corroborated
+      disputes. Who reported, who verified and who hid a row never leave the
+      database (_kinds.py's WITHHELD_COLUMNS).
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      meta:
+        cadence: hourly
+      freshness:
+        # ConditionsQuery has no change check that can answer FRESH, so every
+        # run reads every table and `_loaded_at` moves every run.
+        # @unvalidated: 7 hours is pipeline/ELT.md's hourly row, the worst
+        # measured publish-conditions.yml gap (6.3 h) rounded up; the 99th
+        # percentile of _extract_runs.checked_at gaps over 30 days settles it.
+        warn_after: {count: 7, period: hour}
+    tables:
+      - name: raw_ourhike__closures
+        data_tests:
+          # Rows sharing base_ourhike__closures's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ourhike_closures'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          OurHike's moderator-verified closures, PUBLIC_CLOSURES_SQL's rows:
+          `moderation_status = 'verified'`, every status, ordered by mile and
+          id. Key: `id`, the closure's UUID primary key.
+        columns:
+          - name: id
+            description: The closure's UUID primary key, as text.
+            data_tests: [not_null]
+      - name: raw_ourhike__reports
+        data_tests:
+          # Rows sharing base_ourhike__reports's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ourhike_reports'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          OurHike's public reports, PUBLIC_REPORTS_SQL's rows: `status IN
+          ('verified', 'resolved') AND visibility = 'public'`, every
+          severity. conditions/reports.json carries them all; the warnings
+          mart takes the serious ones. Key: `id`, the report's UUID.
+        columns:
+          - name: id
+            description: The report's UUID primary key, as text.
+            data_tests: [not_null]
+      - name: raw_ourhike__notes
+        data_tests:
+          # Rows sharing base_ourhike__notes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ourhike_notes'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          OurHike's visible field notes, PUBLIC_NOTES_SQL's rows: each place's
+          five most recent inside 90 days. No mart reads them;
+          export_conditions.py writes conditions/notes.json (WN11). Key: `id`.
+        columns:
+          - name: id
+            description: The note's UUID primary key, as text.
+            data_tests: [not_null]
+      - name: raw_ourhike__disputes
+        data_tests:
+          # Rows sharing base_ourhike__disputes's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'ourhike_disputes'", "poi_id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          The places field notes say are gone, PUBLIC_DISPUTES_SQL's rows:
+          one per POI that two accounts or more have marked not found inside
+          180 days, as a count, never an account. No mart reads them;
+          export_conditions.py writes conditions/disputes.json (WN11). Key:
+          `poi_id`, the query's GROUP BY.
+        columns:
+          - name: poi_id
+            description: The disputed place's published POI id.
+            data_tests: [not_null]

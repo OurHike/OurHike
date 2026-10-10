@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: base_nycparks__nyc_drinking_fountains
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nycparks', 'raw_nycparks__nyc_drinking_fountains')
+          config:
+            severity: warn
+    description: >
+      NYC Parks Drinking Fountains (outdoor types), every row, keyed and
+      deduped. Nothing reads it yet: the stage-3 unions of #1793 do.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nyc_drinking_fountains, "system", gispropnum, the registry key first
+          and then the columns measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nycparks__nyc_park_polygons
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nycparks', 'raw_nycparks__nyc_park_polygons')
+          config:
+            severity: warn
+    description: >
+      NYC Parks Properties (park boundaries), every row, keyed and deduped.
+      Nothing reads it yet: the stage-3 unions of #1793 do.
+    columns:
+      - name: park_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nyc_park_polygons and gispropnum, the registry key first and then
+          the column measured unique for this layer (2,061 of 2,061 live rows,
+          2026-10-03).
+        data_tests: [not_null, unique]
+  - name: base_nycparks__nyc_parks_trails
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nycparks', 'raw_nycparks__nyc_parks_trails')
+          config:
+            severity: warn
+    description: >
+      NYC Parks Trails (five boroughs), every row, keyed and deduped. Nothing
+      reads it yet: the stage-3 unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nyc_parks_trails, geometry_key(geom), date_collected, the registry
+          key first and then the columns measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nycparks__nyc_public_restrooms
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nycparks', 'raw_nycparks__nyc_public_restrooms')
+          config:
+            severity: warn
+    description: >
+      NYC Public Restrooms (operational), every row, keyed and deduped.
+      Nothing reads it yet: the stage-3 unions of #1793 do.
+    columns:
+      - name: poi_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          nyc_public_restrooms, geometry_key(geom), the registry key first and
+          then the columns measured unique for this layer.
+        data_tests: [not_null, unique]

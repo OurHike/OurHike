@@ -1,0 +1,115 @@
+# Builds the dbt docs site served at ourhike.org/data/ (pipeline/ELT.md,
+# "Docs and charts at https://ourhike.org/data/") for the two workflows that
+# assemble a site: pages.yml (production, at a v* tag) and pr-preview.yml.
+# ua.yml has no site and does not call it. One action rather than two
+# copies, so the Python version, the cache key and the telemetry opt-out
+# cannot drift apart. The caller copies `dir` into `_site/data/` and runs
+# pipeline/check_docs_site.py --served on that copy, because the copy is what
+# ships.
+#
+# WITH DuckDB-WASM OF OUR OWN at /data/duckdb/, which the page loads its
+# engine from, never a CDN (pipeline/ELT.md decision 93; build.sh and
+# duckdb-wasm/loader.js say how, and what was measured). It is most of the
+# site's size: measured 2026-10-06 on builds of 24da1f07 and of this change,
+# the site went from 355 files, 14,425,647 bytes, to 365 files, 95,913,727
+# bytes, the 10 added files being 81,489,844 bytes under duckdb/. A visitor
+# whose browser takes the eh bundle loads 38,289,185 of them; one that takes
+# mvp, 43,303,400. Before, the page fetched the same WASM, workers and
+# parquet extension from jsDelivr and extensions.duckdb.org (and jsDelivr's
+# own bundle in duckdb.js's place), and jsDelivr sent duckdb-eh.wasm brotli,
+# 7,124,338 bytes (pipeline/ELT.md, measured 2026-10-01). Whether GitHub
+# Pages and Cloudflare Pages compress our copy in transit is unmeasured;
+# gzip -9 makes the eh file 7,639,912 bytes, so the most a visitor can lose
+# to it is about 26.6 MB, once, before the browser caches it.
+#
+# AGAINST AN EMPTY WAREHOUSE, never fixtures or real data: the page is
+# public, counts only and no maps (decision 10), and a warehouse with no
+# tables cannot put a row in it. Measured 2026-10-03, dbt 2.0.6, this
+# project: on a DuckDB file with no tables, `dbt docs generate` compiled all
+# 1,845 nodes and wrote 355 files, 13,165,633 bytes (315 assets, 38
+# Parquet), in 17.0 s through build.sh (30.7 s on an earlier run), with
+# dbt_rt.relations, run_results and adapter_queries empty, and
+# check_docs_site.py passed it. The fixture build's docs that day had the
+# same 1,567 columns and 559 declared types (no actual type in either), plus
+# 2,012 run results of fixture tests that say nothing about OurHike's data.
+# It works on a runner too: PR Preview run 37408628196 (fd38fe24,
+# 2026-10-06) built it in 36 s, and the run passed.
+#
+# NO SECRET. Nothing here reads one. dbt_rt.invocations publishes each
+# invocation's `args` and `vars_override`, so nothing may reach this build
+# through `--vars`; check_docs_site.py fails a page that records one.
+
+name: dbt docs site
+description: Build the dbt docs site for /data/ against an empty warehouse, and say where it is.
+
+outputs:
+  dir:
+    description: >-
+      The directory `dbt docs generate` wrote, index.html, assets/ and the
+      Parquet under info_schema/, with DuckDB-WASM under duckdb/. Under the
+      runner's temp directory, never in the checkout.
+    value: ${{ steps.build.outputs.dir }}
+
+runs:
+  using: composite
+  steps:
+    # 3.12 for the dbt job's reason: requirements-dbt.txt was compiled on it.
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: |
+          pipeline/requirements-dbt.txt
+          pipeline/requirements-extract.txt
+
+    # The cache entry pipeline-tests.yml's dbt job saves, and says what is
+    # in. Restored only, never saved here: a miss re-downloads dbt's DuckDB
+    # driver and v2's spatial build, slower but never wrong. The profile loads
+    # spatial on every connection, so even an empty-warehouse compile needs it.
+    - name: Restore dbt's DuckDB driver and v2's spatial extension
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          ~/.cache/com.getdbt/adbc
+          ~/.duckdb/extensions/v1.5.4
+        key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
+
+    # Hash-checked (pipeline/ELT.md decision 144): the page this action builds
+    # runs on ourhike.org's origin, and dbt writes that page's own scripts
+    # from what this step installs (DuckDB-WASM's come from npm ci, below).
+    # dbt's build requirement first, so the build fetches nothing unhashed
+    # (pipeline/requirements-dbt-build.in says why).
+    - name: Install dbt
+      shell: bash
+      run: |
+        pip install --require-hashes -r pipeline/requirements-dbt-build.txt
+        pip install --require-hashes --no-build-isolation -r pipeline/requirements-dbt.txt
+
+    # The dbt generators' output, which is not committed (pipeline/ELT.md
+    # decision 91), written before build.sh's dbt reads the project. On a venv
+    # of the extract's pins: the generators read its club folders, whose
+    # modules import dlt, and requirements-dbt.txt cannot share a venv with
+    # them (pipeline-tests.yml's dbt job says why).
+    - name: Generate the dbt models
+      shell: bash
+      working-directory: pipeline
+      run: |
+        python -m venv "$RUNNER_TEMP/dbt-docs-extract"
+        "$RUNNER_TEMP/dbt-docs-extract/bin/pip" install --quiet -r requirements-extract.txt
+        "$RUNNER_TEMP/dbt-docs-extract/bin/python" generate_dbt.py
+
+    # For build.sh's DuckDB-WASM: npm ci of duckdb-wasm/package-lock.json, and
+    # stage.mjs. No npm cache, so each run fetches the packages from the
+    # registry and checks them against the lockfile.
+    - uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+
+    - name: Build the docs site
+      id: build
+      shell: bash
+      env:
+        OUT: ${{ runner.temp }}/dbt-docs
+      run: |
+        bash "$GITHUB_ACTION_PATH/build.sh" "$OUT"
+        echo "dir=$OUT" >> "$GITHUB_OUTPUT"

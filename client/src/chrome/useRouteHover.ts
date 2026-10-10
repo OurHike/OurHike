@@ -21,7 +21,7 @@ import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl'
 import {
   DAY_HIKE_CASING_LAYER_ID,
   DAY_HIKE_OUTER_CASING_LAYER_ID,
-} from '../map/dayHikeLayers'
+} from '../map/dayHikeLayerIds'
 
 export const ROUTE_HOVER_LAYER_IDS: readonly string[] = [
   DAY_HIKE_CASING_LAYER_ID,

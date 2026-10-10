@@ -5,7 +5,7 @@
 // the shelf answers with none, validated on BOTH ways through because a
 // stored document is no more trustworthy than a fetched one. The kept copy
 // goes through lib/conditionsCache.ts - the mechanism the conditions
-// artifacts already use, with the same 2 MB ceiling and the same never-throw
+// artifacts already use, with the same size ceiling and the same never-throw
 // posture - rather than a second cache with a different set of failure modes.
 //
 // NEVER FATAL, copied from lib/publishedConditions.ts: an unreachable bucket,
@@ -365,7 +365,7 @@ export async function fetchHikeDetail(
  * decision rather than an omission, given this whole split exists over a byte
  * ceiling. conditionsCache.ts's MAX_CACHED_BYTES is PER ARTIFACT, not per
  * store, so it bounds one detail and not the family: the largest of the 201
- * published on 2026-09-15 is 10,086 B, 0.48% of it. What bounds the family is
+ * published on 2026-09-15 is 10,086 B, 0.03% of it. What bounds the family is
  * how many walks a hiker opened - all 385 would be about 2.3 MB, beside the
  * 1.18 GB a downloaded map occupies - and the thing bought with it is that an
  * already-read walk reads again with no signal.

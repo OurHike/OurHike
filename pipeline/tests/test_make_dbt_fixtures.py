@@ -128,9 +128,11 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
         "one thing no 'code 3 = the A.T.' reading explains, and it is why sources.json keeps the field "
         "@unvalidated even though NH GRANIT's white-blazed set independently names nearly the same trails"
     )
-    assert park_polygon_columns.isdisjoint({"Name", "NAME", "OBJECTID"}), (
-        "sources.json records no field name for oprhp_park_polygons, so its fixture must invent none - "
-        "a property here would be a schema nobody measured, and DBT.md's Phase D section says why it is unstaged"
+    declared = {"GlobalID", "Name", "MasterAreaID", "Category"}
+    assert park_polygon_columns - {"OGC_FID", "geom", "_loaded_at", "_source_path"} == declared, (
+        "oprhp_park_polygons' fixture carries the three fields its sources.json entry declares (id_field, "
+        "name_field, unit_field) and the Category export_places.py reads, all four read off the live layer on "
+        "2026-10-02, and nothing else: a property beyond those would be a schema nobody measured"
     )
 
 

@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: base_nynjtc__nynjtc_trail_alerts
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_trail_alerts')
+          config:
+            severity: warn
+    description: >
+      NYNJTC's Trail Alerts posts, keyed, with the fields a published row is
+      built from and none of NYNJTC's body text. Read by
+      int_closures__nynjtc_checked.
+    columns:
+      - name: trail_alert_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          `nynjtc_trail_alerts` and the post's WordPress id.
+        data_tests: [not_null, unique]
+      - name: slug
+        description: The post's slug, which a published row's notice_id is built from.
+      - name: title_json
+        description: >
+          The post's `title` as WordPress serves it, an object whose
+          `rendered` member is the HTML, entities and tags still in.
+      - name: modified_at
+        description: >
+          NYNJTC's own last edit of the alert, site-local time read as UTC
+          (a known error of a few hours, WN08).
+  - name: base_nynjtc__nynjtc_trail_alerts_terms
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_trail_alerts_terms')
+          config:
+            severity: warn
+    description: >
+      NYNJTC's place terms, one row per term in each of the four taxonomies a
+      post is tagged from. Read by int_closures__nynjtc_checked.
+    columns:
+      - name: place_term_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          `nynjtc_trail_alerts_terms`, the taxonomy and the term's id.
+        data_tests: [not_null, unique]
+      - name: taxonomy
+        description: trail, park, region or state.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [trail, park, region, state]
+      - name: term_name
+        description: The term's name as WordPress stores it, HTML-escaped.

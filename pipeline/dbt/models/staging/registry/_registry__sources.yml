@@ -1,0 +1,68 @@
+version: 2
+
+sources:
+  - name: registry
+    description: >
+      The source registry and the reviewed files it names, landed by the
+      extract's _shared/registry/ folder (pipeline/extract/_shared/registry/),
+      each whole, as one row of the JSON a person reviewed into git.
+    schema: raw
+    config:
+      meta:
+        cadence: monthly
+      # No freshness: a reviewed file's `_loaded_at` moves only when its
+      # bytes do, as for the podcasts source.
+    tables:
+      - name: raw_registry__sources
+        data_tests:
+          # Rows sharing base_registry__sources's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'sources.json'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          pipeline/sources.json, the registry of every upstream data source:
+          64 registered sources on 2026-10-01, and the top-level blocks that
+          are facts about an organization (its licence terms, donate line,
+          paper-map store, steward id and mark asks). One row. Key: the file,
+          which is the row.
+        columns:
+          - name: row_json
+            description: The whole document as written, as JSON text, `_README` aside.
+            data_tests: [not_null]
+      - name: raw_registry__nynjtc_paper_maps
+        data_tests:
+          # Rows sharing base_registry__nynjtc_paper_maps's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/nynjtc_paper_maps.json'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          reference/nynjtc_paper_maps.json, a person's join of NYNJTC's store
+          products to the map sheets each holds and the parks each sheet
+          covers, named by sources.json's `nynjtc_store` block. One row. Key:
+          the file, which is the row.
+        columns:
+          - name: row_json
+            description: The whole document as written, as JSON text.
+            data_tests: [not_null]

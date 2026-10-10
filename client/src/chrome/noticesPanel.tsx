@@ -18,6 +18,29 @@
 // ORG_NOTICES.md §3 is why that is the honest split rather than a stopgap:
 // `unplaced` is a first-class arm of the union, not a failure to place.
 //
+// EVERY CLUB, ONCE conditions/notices.json IS HERE (#1805, decisions 66 and
+// 67). That file carries every club's notices, and a list of all of them is
+// a feed, so with it the panel becomes the maintainer's rule instead: the
+// notices that touch a hike planned in the next 7 days (lib/plannedNotices.ts
+// says what counts as planned and what "touches" means), and an empty state
+// that says why when nothing is planned - never every club. Decision 67's
+// hunting areas, shooting sites and burned areas come out of the same file,
+// or out of conditions/hazard_areas.json, which a phone reads whatever is
+// planned (decision 84), drawn where a trail this phone holds crosses one.
+// Without the file - a
+// bucket the exporters still publish - everything above is exactly as it
+// was. The map's A.T. bands and dots come from ATC's own file either way.
+//
+// A PLANNED HIKE WHOSE FILE IS NOT ON THE PHONE SAYS SO (option A of the
+// maintainer's poll of 2026-10-09). A hike is planned, and lib/useConditions.ts
+// has settled that this phone holds no copy of notices.json for a reason a
+// connection can change (`clubNoticesMissing`: a first run with no signal, a
+// file over lib/conditionsCache.ts's ceiling relaunched offline, a download
+// that failed). The legend row reads "Notices for your planned hikes: not on
+// this phone yet", and today's list of ATC's and NYNJTC's notices opens under
+// a warning that a closure on the hike will not show here. While the first
+// download is in flight, or after a 404, the panel is today's, unchanged.
+//
 // All of it used to live in App.tsx as three `useState`s, five `useMemo`s, one
 // `useCallback` and about forty lines of JSX inside the `<MapScreen>` call -
 // at roughly lines 640, 1,490 and 4,440 of a 4,706-line file, each block
@@ -39,7 +62,7 @@
 // every fixture in MapScreen.test.tsx, which is churn that hides behaviour
 // rather than protecting it.
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   atcBandCandidates,
   atcPointNotices,
@@ -61,9 +84,34 @@ import { viewportMiles } from '../lib/viewportMiles'
 import type { BoundingBox } from '../lib/legendContents'
 import type { TrailIndex } from '../lib/trailPosition'
 import type { Stewards } from '../lib/stewards'
+import { EMPTY_CLUB_SECTIONS, type ClubSections } from '../lib/clubSections'
+import { anyHikePlanned, type DayHike } from '../lib/dayHikes'
+import type { Trip } from '../lib/trips'
+import { routeLines, type TrailGraphIndex } from '../lib/trailGraph'
+import { resolveDayHike } from '../lib/dayHikeCard'
+import { localDay } from '../lib/passedToday'
+import type { HazardArea, StretchAdvisory } from '../lib/hazardAreas'
+import type { Position } from '../lib/noticeGeometry'
+
+/** lib/noticeSelection.ts, once loaded: kept at module scope so a remount
+ *  after the first load has it on its first render. */
+type NoticeSelection = typeof import('../lib/noticeSelection')
+let loadedSelection: NoticeSelection | null = null
+
+/** The routing lib/noticeSelection.ts is handed, from modules the first
+ *  frame already holds. */
+const ROUTING = { resolveDayHike, routeLines }
+
+function noAdvisories(): StretchAdvisory[] {
+  return []
+}
 import type { MapScreenProps } from './MapScreen'
-import { OrgNoticeSheet } from './OrgNoticeSheet'
-import { NoticeList } from '../screens/deferred'
+import {
+  HazardAreaSheet,
+  NoticeList,
+  OrgNoticeSheet,
+  PlannedNoticeList,
+} from '../screens/deferred'
 
 /**
  * The `MapScreenProps` fields this feature owns.
@@ -84,7 +132,16 @@ export type NoticesMapProps = Pick<
   | 'noticeList'
   | 'newNoticeCount'
   | 'newNoticeLabel'
+  | 'noticeRowLabel'
+  | 'hazardAreas'
+  | 'onSelectHazardArea'
+  | 'hazardAreaSheet'
 >
+
+/** No hazard area, as one shared reference for a phone with neither
+ *  conditions/notices.json nor hazard_areas.json - a fresh array per render would re-push the
+ *  map's source on every one. */
+const NO_HAZARD_AREAS: readonly HazardArea[] = []
 
 export interface NoticesPanel {
   /** Spread into `<MapScreen>`. */
@@ -99,6 +156,17 @@ export interface NoticesPanel {
    * hiker can reopen, and the banner is not a screen at all.
    */
   sheetOpen: boolean
+  /**
+   * Decision 67's areas the map is drawing (#1805), for the tapped line's
+   * card, which prints an area's advisory on the stretch inside it
+   * (chrome/tappedLinePanel.tsx). Returned beside `mapScreen` rather than in
+   * it because it is that panel's input, not this screen's.
+   */
+  hazardAreas: readonly HazardArea[]
+  /** The advisories for a tapped place on a trail: each drawn area it is
+   *  inside or beside. Always a function, answering none until the rule has
+   *  loaded and none on a phone with neither file that carries the areas. */
+  hazardAdvisoriesAt: (at: Position) => StretchAdvisory[]
 }
 
 export interface NoticesInput {
@@ -135,7 +203,60 @@ export interface NoticesInput {
   bbox: BoundingBox
   /** The shell's clock, so the "new notices" window moves with it. */
   now: Date
+  /**
+   * Every club's notices from conditions/notices.json (#1805, decision 53
+   * phase D), or null when that file has not reached this phone.
+   *
+   * NULL KEEPS TODAY'S PANEL: the two files above, NoticeList, the extent
+   * scoping. Present, the panel becomes decision 66's - the notices that
+   * touch a hike planned in the next 7 days (lib/plannedNotices.ts) - and
+   * decision 67's hazard areas draw. The map's A.T. bands and dots come
+   * from `updates` either way.
+   */
+  clubNotices?: readonly TrailNotice[] | null
+  /** When conditions/notices.json was baked. */
+  clubNoticesGeneratedAt?: Date | null
+  /**
+   * Whether the bucket serves conditions/notices.json though this phone has
+   * not downloaded it (lib/useConditions.ts): decision 77 downloads it only
+   * once a hike is planned. With it and nothing planned, the panel is still
+   * decision 66's, saying no hike is planned, and never the list above. With
+   * a hike planned it counts for nothing: a planned hike's notices come only
+   * from the file, never from its absence.
+   */
+  clubNoticesListed?: boolean
+  /**
+   * Whether lib/useConditions.ts has settled that this phone holds no copy
+   * of conditions/notices.json for a planned hike, for a reason a connection
+   * can change (its `clubNoticesMissing`). With a hike planned and the file
+   * absent, the legend row and the top of today's list then say so, in the
+   * words the maintainer chose (option A of the poll of 2026-10-09); the
+   * list itself is today's. Counts for nothing once the file is here, or
+   * with nothing planned.
+   */
+  clubNoticesMissing?: boolean
+  /**
+   * conditions/hazard_areas.json (decision 84), read whatever is planned,
+   * or null when it has not reached this phone. Decision 67's areas draw
+   * from it, or from `clubNotices` when that file is the newer of the two
+   * or this one is missing (lib/noticeSelection.ts's `hazardView`), so a
+   * phone with no hike planned still draws them and none draws twice.
+   */
+  hazardFile?: { items: readonly TrailNotice[]; generatedAt: Date } | null
+  /** The hiker's long-hike plans (lib/trips.ts). */
+  trips?: readonly Trip[]
+  /** The hiker's day hikes (lib/dayHikes.ts). */
+  dayHikes?: readonly DayHike[]
+  /** The trail graph this phone holds, or null: what routes a day hike and
+   *  what decision 67's areas are checked against beside the A.T. */
+  graph?: TrailGraphIndex | null
+  /** ATC's club sections (lib/clubSections.ts): which club maintains each
+   *  A.T. mile, for a long hike's clubs. */
+  clubSections?: ClubSections
 }
+
+const NO_TRIPS: readonly Trip[] = []
+const NO_DAY_HIKES: readonly DayHike[] = []
 
 export function useNoticesPanel({
   updates,
@@ -145,8 +266,19 @@ export function useNoticesPanel({
   trailIndex,
   bbox,
   now,
+  clubNotices = null,
+  clubNoticesGeneratedAt = null,
+  clubNoticesListed = false,
+  clubNoticesMissing = false,
+  hazardFile = null,
+  trips = NO_TRIPS,
+  dayHikes = NO_DAY_HIKES,
+  graph = null,
+  clubSections = EMPTY_CLUB_SECTIONS,
 }: NoticesInput): NoticesPanel {
   const [selectedBandId, setSelectedBandId] = useState<string | null>(null)
+  /** The tapped hazard area, by notice id (#1805). */
+  const [selectedHazardId, setSelectedHazardId] = useState<string | null>(null)
   /**
    * Whether the full list of notices is open.
    *
@@ -244,9 +376,131 @@ export function useNoticesPanel({
    * ATC FIRST, deliberately. The order here is the order the banner names
    * organizations in, and the A.T. is the trail this app is holding.
    */
-  const allNotices = useMemo<TrailNotice[]>(
+  const legacyNotices = useMemo<TrailNotice[]>(
     () => [...updates.map(atcUpdateAsNotice), ...orgNotices],
     [updates, orgNotices],
+  )
+
+  /**
+   * Decision 66's panel (#1805): each hike planned in the next 7 days and
+   * the notices that touch it, or why there is none. Only with
+   * conditions/notices.json, or with the bucket serving it and nothing
+   * planned; otherwise the panel stays today's.
+   *
+   * Keyed on the calendar day rather than the clock, so a minute's tick does
+   * not re-run the geometry: the window only moves at midnight.
+   */
+  /**
+   * The rule and the geometry (lib/noticeSelection.ts), imported when the
+   * panel first becomes decision 66's and not before: the launch budget's
+   * reason, which that module's header gives. Until it has loaded, such a
+   * phone shows the planned-hike row with nothing counted yet,
+   * never today's list of everything - which would flash the old panel for a
+   * moment on every launch.
+   */
+  const [selection, setSelection] = useState<NoticeSelection | null>(loadedSelection)
+
+  const hikePlanned = anyHikePlanned(trips, dayHikes)
+  /** Whether the panel is decision 66's: conditions/notices.json is on the
+   *  phone, whether or not its rule has finished loading - or the bucket
+   *  serves it and nothing is planned, so decision 77 downloaded nothing. */
+  const clubMode = clubNotices !== null || (clubNoticesListed && !hikePlanned)
+  /** Whether today's list is shown to a hiker with a hike planned whose
+   *  notices this phone does not hold, and has to say so first. */
+  const plannedMissing = clubNotices === null && hikePlanned && clubNoticesMissing
+
+  // Also for the hazard areas' own file alone (decision 84): a phone with
+  // nothing planned and no notices.json still draws them. An import that
+  // fails (a stale precache, no signal) is asked for again when the next
+  // notices or hazard file lands: App holds this hook for the app's life.
+  const wantsSelection = clubMode || hazardFile !== null
+  useEffect(() => {
+    if (!wantsSelection || selection !== null) return
+    let live = true
+    void import('../lib/noticeSelection').then(
+      (module) => {
+        loadedSelection = module
+        if (live) setSelection(module)
+      },
+      () => undefined,
+    )
+    return () => {
+      live = false
+    }
+  }, [wantsSelection, selection, clubNotices, hazardFile])
+
+  const today = localDay(now)
+  const view = useMemo(
+    () =>
+      !clubMode || selection === null
+        ? null
+        : selection.plannedView({
+            notices: clubNotices ?? [],
+            trips,
+            dayHikes,
+            today,
+            trailIndex,
+            graph,
+            routing: ROUTING,
+            clubSections,
+            stewards,
+          }),
+    [
+      clubMode,
+      clubNotices,
+      selection,
+      trips,
+      dayHikes,
+      today,
+      trailIndex,
+      graph,
+      clubSections,
+      stewards,
+    ],
+  )
+  const planned = view?.planned ?? null
+
+  /**
+   * Decision 67's areas a trail on this phone runs through (#1805), drawn
+   * under the trail, from conditions/hazard_areas.json or notices.json,
+   * whichever lib/noticeSelection.ts's `hazardView` takes (decision 84); an
+   * area no held trail meets is not drawn (lib/hazardAreas.ts).
+   */
+  const hazards = useMemo(
+    () =>
+      selection === null
+        ? null
+        : selection.hazardView(
+            clubNotices,
+            clubNoticesGeneratedAt,
+            hazardFile,
+            trailIndex,
+            graph,
+          ),
+    [clubNotices, clubNoticesGeneratedAt, hazardFile, selection, trailIndex, graph],
+  )
+  const hazardAreas = hazards?.areas ?? NO_HAZARD_AREAS
+  const hazardAdvisoriesAt = hazards?.advisoriesAt ?? noAdvisories
+
+  const selectedHazard = useMemo(
+    () =>
+      selectedHazardId === null
+        ? null
+        : (hazardAreas.find((area) => area.notice.notice_id === selectedHazardId)
+            ?.notice ?? null),
+    [hazardAreas, selectedHazardId],
+  )
+
+  /**
+   * What the "new notices" dot counts and opening the list silences. With
+   * the planned-hike panel that is exactly what the panel shows, which is
+   * what #1155 — Opening the notices list silences notices it did not show
+   * asked of the old list: a hiker is never told of news the list will not
+   * show them, nor silenced on it.
+   */
+  const allNotices = useMemo<TrailNotice[]>(
+    () => (!clubMode ? legacyNotices : (view?.shown ?? [])),
+    [clubMode, view, legacyNotices],
   )
 
   /**
@@ -271,8 +525,11 @@ export function useNoticesPanel({
     // silenceVersion is not read inside - it is the dependency that re-runs
     // this after a dismissal writes new watermarks. See its declaration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    () => newNoticesSince(allNotices, now, readNoticeSilence),
-    [allNotices, now, silenceVersion],
+    () =>
+      view === null
+        ? newNoticesSince(allNotices, now, readNoticeSilence)
+        : view.newSince(now, readNoticeSilence),
+    [allNotices, now, silenceVersion, view],
   )
 
   const silenceNotices = useCallback(() => {
@@ -371,7 +628,37 @@ export function useNoticesPanel({
       newNoticeCount: newNotices?.count ?? 0,
       newNoticeLabel:
         newNotices === null ? undefined : newNoticeLabel(newNotices, stewards),
-      noticeList: noticesOpen ? (
+      // The maintainer's words for a planned hike's missing notices (option
+      // A of the poll of 2026-10-09): set, the legend shows the row however
+      // few notices the phone holds, so a first run with no signal still
+      // reaches the sentence saying why.
+      noticeRowLabel: plannedMissing
+        ? 'Notices for your planned hikes: not on this phone yet'
+        : !clubMode
+          ? undefined
+          : allNotices.length === 0
+            ? 'Notices for your planned hikes'
+            : `Notices for your planned hikes (${allNotices.length})`,
+      hazardAreas,
+      onSelectHazardArea: setSelectedHazardId,
+      hazardAreaSheet:
+        selectedHazard === null ? null : (
+          <HazardAreaSheet
+            notice={selectedHazard}
+            stewards={stewards}
+            onClose={() => setSelectedHazardId(null)}
+          />
+        ),
+      noticeList: !noticesOpen ? null : clubMode ? (
+        planned === null ? null : (
+          <PlannedNoticeList
+            planned={planned}
+            stewards={stewards}
+            generatedAt={clubNoticesGeneratedAt}
+            onClose={() => setNoticesOpen(false)}
+          />
+        )
+      ) : (
         <NoticeList
           notices={allNotices}
           drawnIds={drawnIds}
@@ -379,9 +666,10 @@ export function useNoticesPanel({
           stewards={stewards}
           extent={extent}
           now={now}
+          plannedNoticesMissing={plannedMissing}
           onClose={() => setNoticesOpen(false)}
         />
-      ) : null,
+      ),
     }),
     [
       bandsOnMap,
@@ -397,8 +685,19 @@ export function useNoticesPanel({
       newNotices,
       noticesOpen,
       drawnIds,
+      planned,
+      clubMode,
+      plannedMissing,
+      hazardAreas,
+      selectedHazard,
+      clubNoticesGeneratedAt,
     ],
   )
 
-  return { mapScreen, sheetOpen: selectedBandId !== null }
+  return {
+    mapScreen,
+    sheetOpen: selectedBandId !== null || selectedHazard !== null,
+    hazardAreas,
+    hazardAdvisoriesAt,
+  }
 }

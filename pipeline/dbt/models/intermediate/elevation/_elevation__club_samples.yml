@@ -1,0 +1,257 @@
+version: 2
+
+# The clubs' own elevation layers (decision 54's wave 1), after
+# int_elevation__unioned: the rules pipeline/ELT.md's "What wave 1's live
+# reads found that phase C must honour" gives them, each with a unit test
+# below. Neither model is read by a mart: every layer here is held back by
+# its sources.json row.
+models:
+  - name: int_elevation__club_samples
+    description: >
+      Every elevation the clubs' registered elevation layers publish, one row per sample (a vertex
+      of a line whose Z is its elevation, or a feature with an elevation field), in the unit its own
+      layer's sources.json row names and converted from it: metres and feet as text at 2 decimals,
+      null where the row names no unit. Two-dimensional geometry, and no sample usable to calibrate
+      anything until a step compares it with 3DEP.
+    data_tests:
+      # Absent is unknown in both units at once: a unit nobody named gives neither.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(elevation_m is null) = (elevation_ft is null)"
+      # The calibration rule: an unchecked Z never calibrates.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not usable_for_calibration or checked_against_dem"
+      # The dimension rule: no Z rides out of this model.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "geom_wkt is null or not st_hasz(st_geomfromtext(geom_wkt))"
+    columns:
+      - name: elevation_sample_key
+        description: >
+          The sample's key: dbt_utils.generate_surrogate_key over the feature's key
+          (elevation_feature_key) and sample_seq.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null]
+      - name: club
+        description: The extract folder that landed the layer.
+      - name: elevation_feature_key
+        description: The feature's key, from its base model.
+        data_tests: [not_null]
+      - name: sample_seq
+        description: The vertex's place in its feature (1 for a feature whose elevation is a field).
+        data_tests: [not_null]
+      - name: geom_wkt
+        description: The sample's point, or its feature for a field layer, in OGC:CRS84, two-dimensional, as WKT.
+      - name: elevation_source
+        description: The row's sources.json `elevation_source`, `geometry Z` or `field <name>`.
+      - name: elevation_unit
+        description: The row's sources.json `elevation_unit`, `metres` or `feet`; null where the row names none.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['metres', 'feet']
+      - name: elevation_as_published
+        description: The elevation as the layer gives it, as text, before any conversion.
+      - name: elevation_m
+        description: The elevation in metres, at 2 decimals, as text; null where the layer names no unit or the value is not a number.
+      - name: elevation_ft
+        description: The elevation in feet, at 2 decimals, as text; null exactly where elevation_m is.
+      - name: band_low_ft
+        description: For a layer publishing elevation bands (PCTA's), the band's lower bound in feet; null otherwise.
+      - name: band_high_ft
+        description: The band's upper bound in feet; null for the open top band and for a sample that is not a band.
+      - name: checked_against_dem
+        description: Whether a step of this build compared the sample with 3DEP. False on every row, because none does yet.
+      - name: usable_for_calibration
+        description: True only on a sample checked against 3DEP that has an elevation, so false on every row today.
+      - name: _loaded_at
+        description: When the extract landed the layer's row.
+  - name: int_elevation__source_extents
+    description: >
+      One row per elevation layer in int_elevation__unioned: its rows, how many carry a geometry,
+      the extent of their own vertices, and the narrowest region box those vertices fit
+      (macros/lands_outside_its_region.sql's vertex_region). The evidence a source's region box is
+      set from, never a server's returnExtentOnly.
+    columns:
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null, unique]
+      - name: row_count
+        description: Rows the union holds for the layer.
+      - name: rows_with_geometry
+        description: Of those, rows with a geometry.
+      - name: lon_min
+        description: The smallest longitude of any vertex.
+      - name: lon_max
+        description: The largest longitude of any vertex.
+      - name: lat_min
+        description: The smallest latitude of any vertex.
+      - name: lat_max
+        description: The largest latitude of any vertex.
+      - name: vertex_region
+        description: >
+          The narrowest of the eastern, national and us_and_territories boxes holding every vertex;
+          null when none does, which a lon/lat swap makes so.
+
+unit_tests:
+  - name: elevation_club_samples_convert_by_each_rows_own_unit
+    model: int_elevation__club_samples
+    description: >
+      Units per row (pipeline/ELT.md, "What wave 1's live reads found"): ATC's ATX Z is metres and
+      NCTA's Z field is feet, so each converts by its own row's unit, and a layer whose row names no
+      unit gets no elevation in either, rather than a guessed one. 1,600.48 m is 5,250.92 ft;
+      1,432.97 ft is 436.77 m (0.3048 m to the foot).
+    given:
+      - input: ref('int_elevation__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              elevation_feature_key,
+              published_elevation,
+              st_geomfromtext(geom_wkt) as geom,
+              cast(null as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('atc_atx_centerline', 'atc', 'atx-1', null, 'LINESTRING Z (-74 41 1600.48, -74 41.005 330.5)'),
+              ('ncta_kek_mileage_elev', 'ncta', 'kek-1', '1432.97', 'POINT (-91 48)'),
+              ('no_unit_layer', 'njgin', 'nounit-1', '1803', 'POINT (-74.5 41.2)')
+          ) as unioned (source_key, club, elevation_feature_key, published_elevation, geom_wkt)
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "atc_atx_centerline", "entry": "{\"key\": \"atc_atx_centerline\", \"elevation_source\": \"geometry Z\", \"elevation_unit\": \"metres\"}"}
+          - {"source_key": "ncta_kek_mileage_elev", "entry": "{\"key\": \"ncta_kek_mileage_elev\", \"elevation_source\": \"field Z\", \"elevation_unit\": \"feet\"}"}
+          - {"source_key": "no_unit_layer", "entry": "{\"key\": \"no_unit_layer\", \"elevation_source\": \"field ELEVATION\"}"}
+    expect:
+      rows:
+        - {"elevation_feature_key": "atx-1", "sample_seq": 1, "elevation_unit": "metres", "elevation_as_published": "1600.48", "elevation_m": "1600.48", "elevation_ft": "5250.92"}
+        - {"elevation_feature_key": "atx-1", "sample_seq": 2, "elevation_unit": "metres", "elevation_as_published": "330.5", "elevation_m": "330.50", "elevation_ft": "1084.32"}
+        - {"elevation_feature_key": "kek-1", "sample_seq": 1, "elevation_unit": "feet", "elevation_as_published": "1432.97", "elevation_m": "436.77", "elevation_ft": "1432.97"}
+        - {"elevation_feature_key": "nounit-1", "sample_seq": 1, "elevation_unit": null, "elevation_as_published": "1803", "elevation_m": null, "elevation_ft": null}
+  - name: elevation_club_samples_leave_no_z_on_any_geometry
+    model: int_elevation__club_samples
+    description: >
+      Units and dimensions (pipeline/ELT.md, "What wave 1's live reads found"): a Z-enabled line
+      needs ST_Force2D before the network, so each of its vertices comes out as a two-dimensional
+      point, and a point that arrived with a Z loses it too. A line with no geometry (ATX repeats
+      segment 25-01-03 18 times with none) gives no sample.
+    given:
+      - input: ref('int_elevation__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              elevation_feature_key,
+              published_elevation,
+              st_geomfromtext(geom_wkt) as geom,
+              cast(null as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('atc_atx_centerline', 'atc', 'atx-1', null, 'LINESTRING Z (-74 41 330.5, -74 41.005 343)'),
+              ('atc_atx_centerline', 'atc', 'atx-copy', null, null),
+              ('nj_high_elevation_points', 'njgin', 'nj-1', '1803', 'POINT Z (-74.6 41.3 549.6)')
+          ) as unioned (source_key, club, elevation_feature_key, published_elevation, geom_wkt)
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "atc_atx_centerline", "entry": "{\"key\": \"atc_atx_centerline\", \"elevation_source\": \"geometry Z\", \"elevation_unit\": \"metres\"}"}
+          - {"source_key": "nj_high_elevation_points", "entry": "{\"key\": \"nj_high_elevation_points\", \"elevation_source\": \"field ELEVATION\", \"elevation_unit\": \"feet\"}"}
+    expect:
+      rows:
+        - {"elevation_feature_key": "atx-1", "sample_seq": 1, "geom_wkt": "POINT (-74 41)", "elevation_m": "330.50"}
+        - {"elevation_feature_key": "atx-1", "sample_seq": 2, "geom_wkt": "POINT (-74 41.005)", "elevation_m": "343.00"}
+        - {"elevation_feature_key": "nj-1", "sample_seq": 1, "geom_wkt": "POINT (-74.6 41.3)", "elevation_m": "549.55"}
+  - name: elevation_club_samples_never_calibrate_from_an_unchecked_z
+    model: int_elevation__club_samples
+    description: >
+      ATC's Z checked against 3DEP before any calibration (pipeline/ELT.md, "What wave 1's live
+      reads found"): no step compares a sample with 3DEP yet, so every sample, ATX's metres
+      included, is unchecked and unusable for calibration, however plausible its value.
+    given:
+      - input: ref('int_elevation__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              elevation_feature_key,
+              published_elevation,
+              st_geomfromtext(geom_wkt) as geom,
+              cast(null as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('atc_atx_centerline', 'atc', 'atx-1', null, 'LINESTRING Z (-68.92 45.9 1600.48, -68.93 45.89 1300)'),
+              ('pasda_county_max_elevations', 'pasda', 'pa-1', '3213', 'POINT (-78.5 40.0)')
+          ) as unioned (source_key, club, elevation_feature_key, published_elevation, geom_wkt)
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "atc_atx_centerline", "entry": "{\"key\": \"atc_atx_centerline\", \"elevation_source\": \"geometry Z\", \"elevation_unit\": \"metres\"}"}
+          - {"source_key": "pasda_county_max_elevations", "entry": "{\"key\": \"pasda_county_max_elevations\", \"elevation_source\": \"field Max_Elevat\", \"elevation_unit\": \"feet\"}"}
+    expect:
+      rows:
+        - {"elevation_feature_key": "atx-1", "sample_seq": 1, "checked_against_dem": false, "usable_for_calibration": false}
+        - {"elevation_feature_key": "atx-1", "sample_seq": 2, "checked_against_dem": false, "usable_for_calibration": false}
+        - {"elevation_feature_key": "pa-1", "sample_seq": 1, "checked_against_dem": false, "usable_for_calibration": false}
+  - name: elevation_club_samples_read_both_band_label_spellings
+    model: int_elevation__club_samples
+    description: >
+      PCTA's bands are labels, not elevations: '0 - 1000 ft' with a hyphen, '1000−2000 ft' with a
+      minus sign (U+2212, as twelve of the fourteen live labels write it), and an open top band
+      '13000 ft +'. Each gives its bounds in feet and no single elevation; a label that is neither
+      gives neither.
+    given:
+      - input: ref('int_elevation__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              elevation_feature_key,
+              published_elevation,
+              st_geomfromtext(geom_wkt) as geom,
+              cast(null as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('pcta_per_thousand_ft', 'pcta', 'band-1', '0 - 1000 ft', 'LINESTRING (-116.47 32.59, -116.48 32.6)'),
+              ('pcta_per_thousand_ft', 'pcta', 'band-2', '1000−2000 ft', 'LINESTRING (-116.48 32.6, -116.49 32.61)'),
+              ('pcta_per_thousand_ft', 'pcta', 'band-14', '13000 ft +', 'LINESTRING (-118.29 36.45, -118.3 36.46)'),
+              ('pcta_per_thousand_ft', 'pcta', 'band-x', 'unknown', 'LINESTRING (-118.3 36.46, -118.31 36.47)')
+          ) as unioned (source_key, club, elevation_feature_key, published_elevation, geom_wkt)
+      - input: ref('stg_registry__sources')
+        rows:
+          - {"source_key": "pcta_per_thousand_ft", "entry": "{\"key\": \"pcta_per_thousand_ft\", \"elevation_source\": \"field Elevation_Range\", \"elevation_unit\": \"feet\"}"}
+    expect:
+      rows:
+        - {"elevation_feature_key": "band-1", "band_low_ft": 0, "band_high_ft": 1000, "elevation_m": null}
+        - {"elevation_feature_key": "band-2", "band_low_ft": 1000, "band_high_ft": 2000, "elevation_m": null}
+        - {"elevation_feature_key": "band-14", "band_low_ft": 13000, "band_high_ft": null, "elevation_m": null}
+        - {"elevation_feature_key": "band-x", "band_low_ft": null, "band_high_ft": null, "elevation_m": null}
+  - name: elevation_source_extents_count_a_row_with_no_geometry_but_not_its_vertices
+    model: int_elevation__source_extents
+    description: >
+      A region box is set from the rows' own vertices (pipeline/ELT.md, "What wave 1's live reads
+      found"): ATX's 18 rows with no geometry count as rows and add no vertex, and its vertices
+      fit the eastern box.
+    given:
+      - input: ref('int_elevation__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              'atc' as club,
+              elevation_feature_key,
+              cast(null as varchar) as published_elevation,
+              st_geomfromtext(geom_wkt) as geom,
+              cast(null as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('atc_atx_centerline', 'atx-1', 'LINESTRING Z (-84.19 34.63 1150, -68.92 45.9 1600.48)'),
+              ('atc_atx_centerline', 'atx-copy', null)
+          ) as unioned (source_key, elevation_feature_key, geom_wkt)
+    expect:
+      rows:
+        - {"source_key": "atc_atx_centerline", "row_count": 2, "rows_with_geometry": 1, "vertex_region": "eastern"}

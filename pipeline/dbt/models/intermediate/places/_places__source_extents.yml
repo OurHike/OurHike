@@ -1,0 +1,139 @@
+version: 2
+
+# The clubs' own places layers (decision 54's wave 1), after
+# int_places__unioned. No mart reads them: every layer here is held back by
+# its sources.json row.
+models:
+  - name: int_places__source_extents
+    description: >
+      One row per places layer in int_places__unioned: its rows, how many carry a geometry, the
+      extent of their own vertices, and the narrowest region box those vertices fit
+      (macros/lands_outside_its_region.sql's vertex_region). The evidence a source's region box is
+      set from, never a server's returnExtentOnly. Also how many of its points the union cleared as
+      outside its box, and whether that is too many for stray points.
+    data_tests:
+      # A layer read lon/lat swapped loses every point to the union's
+      # clearing, and so passes its swap test: this is the test that fails
+      # it instead.
+      - dbt_utils.expression_is_true:
+          name: places_layer_loses_no_more_than_a_stray_point_or_two_outside_its_region
+          arguments:
+            expression: "not loses_too_many_points_outside_region"
+      # The record of every stray point cleared, one warned row per layer
+      # that lost any, so a monthly run's log names the layers to look at.
+      - dbt_utils.expression_is_true:
+          name: places_layer_had_a_point_cleared_outside_its_region
+          arguments:
+            expression: "points_outside_region = 0"
+          config:
+            severity: warn
+    columns:
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null, unique]
+      - name: row_count
+        description: Rows the union holds for the layer.
+      - name: rows_with_geometry
+        description: Of those, rows with a geometry, after the union cleared any stray point.
+      - name: lon_min
+        description: The smallest longitude of any vertex.
+      - name: lon_max
+        description: The largest longitude of any vertex.
+      - name: lat_min
+        description: The smallest latitude of any vertex.
+      - name: lat_max
+        description: The largest latitude of any vertex.
+      - name: vertex_region
+        description: >
+          The narrowest of the eastern, national and us_and_territories boxes holding every vertex;
+          null when none does, which a lon/lat swap makes so.
+      - name: points_outside_region
+        description: >
+          Rows the union landed as one point outside the box the layer is held to, and cleared
+          (int_places__unioned's `point_outside_region`): not among `rows_with_geometry`.
+        data_tests: [not_null]
+      - name: loses_too_many_points_outside_region
+        description: >
+          True where `points_outside_region` is every one of the layer's located rows, or more than
+          one and more than 1% of them (macros/lands_outside_its_region.sql's
+          loses_too_many_points_outside_its_region, which says why and that the share is
+          @unvalidated): too many for stray points, as a lon/lat swap clears all of them.
+        data_tests: [not_null]
+
+unit_tests:
+  - name: places_source_extents_are_read_from_vertices_never_a_server_extent
+    model: int_places__source_extents
+    description: >
+      A server's extent can lie (pipeline/ELT.md, "What wave 1's live reads found"): USFWS's trail
+      segments answered returnExtentOnly with lat -24.99 to 90 while their vertices span lat 13.64
+      to 63.20 and lon -159.48 to 144.87. The extent here is the vertices', so those fit
+      us_and_territories; a New York park's fit the eastern box, a Utah town's the national one,
+      and a swapped point (lat -74) fits none.
+    given:
+      - input: ref('int_places__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              'fixture' as club,
+              place_key,
+              cast(null as varchar) as name,
+              cast(null as varchar) as category,
+              st_geomfromtext(geom_wkt) as geom,
+              false as point_outside_region,
+              cast(null as json) as properties,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('usfws_refuge_boundaries', 'r1', 'POINT (-159.48 22.0)'),
+              ('usfws_refuge_boundaries', 'r2', 'POINT (144.87 13.64)'),
+              ('usfws_refuge_boundaries', 'r3', 'POINT (-150.0 63.20)'),
+              ('dec_lands', 'd1', 'POLYGON ((-74 41, -73.99 41, -73.99 41.01, -74 41))'),
+              ('ugrc_cities_towns', 'u1', 'POINT (-111.89 40.76)'),
+              ('swapped_layer', 's1', 'POINT (41.0 -74.0)')
+          ) as unioned (source_key, place_key, geom_wkt)
+    expect:
+      rows:
+        - {"source_key": "usfws_refuge_boundaries", "row_count": 3, "rows_with_geometry": 3, "lon_min": -159.48, "lon_max": 144.87, "lat_min": 13.64, "lat_max": 63.2, "vertex_region": "us_and_territories"}
+        - {"source_key": "dec_lands", "row_count": 1, "rows_with_geometry": 1, "lon_min": -74.0, "lon_max": -73.99, "lat_min": 41.0, "lat_max": 41.01, "vertex_region": "eastern"}
+        - {"source_key": "ugrc_cities_towns", "row_count": 1, "rows_with_geometry": 1, "lon_min": -111.89, "lon_max": -111.89, "lat_min": 40.76, "lat_max": 40.76, "vertex_region": "national"}
+        - {"source_key": "swapped_layer", "row_count": 1, "rows_with_geometry": 1, "lon_min": 41.0, "lon_max": 41.0, "lat_min": -74.0, "lat_max": -74.0, "vertex_region": null}
+  - name: places_source_extents_count_the_points_cleared_and_fail_a_layer_that_lost_too_many
+    model: int_places__source_extents
+    description: >
+      A layer read lon/lat swapped loses every point to int_places__unioned's clearing, so its swap
+      test passes on what is left; this model is what fails it. Invented layers: one shaped like
+      monthly run 19's nps_api_places, 3 points cleared of 303 located (under 1%), passes; so does a
+      layer of 3 that lost one; a swapped layer that lost all 4, a layer of one that lost its one, and
+      a layer that lost 2 of 50 do not.
+    given:
+      - input: ref('int_places__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              'fixture' as club,
+              source_key || ':' || n as place_key,
+              cast(null as varchar) as name,
+              cast(null as varchar) as category,
+              case when not cleared then st_point(-74.0, 41.0) end as geom,
+              cleared as point_outside_region,
+              cast(null as json) as properties,
+              cast('2026-10-05 00:00:00+00' as timestamptz) as _loaded_at
+          from (
+              select 'national_list' as source_key, n, n < 3 as cleared from range(303) as t (n)
+              union all
+              select 'small_layer', n, n = 0 from range(3) as t (n)
+              union all
+              select 'swapped_layer', n, true from range(4) as t (n)
+              union all
+              select 'one_point_layer', n, true from range(1) as t (n)
+              union all
+              select 'fifty_point_layer', n, n < 2 from range(50) as t (n)
+          )
+    expect:
+      rows:
+        - {"source_key": "national_list", "row_count": 303, "rows_with_geometry": 300, "points_outside_region": 3, "loses_too_many_points_outside_region": false}
+        - {"source_key": "small_layer", "row_count": 3, "rows_with_geometry": 2, "points_outside_region": 1, "loses_too_many_points_outside_region": false}
+        - {"source_key": "swapped_layer", "row_count": 4, "rows_with_geometry": 0, "points_outside_region": 4, "loses_too_many_points_outside_region": true}
+        - {"source_key": "one_point_layer", "row_count": 1, "rows_with_geometry": 0, "points_outside_region": 1, "loses_too_many_points_outside_region": true}
+        - {"source_key": "fifty_point_layer", "row_count": 50, "rows_with_geometry": 48, "points_outside_region": 2, "loses_too_many_points_outside_region": true}

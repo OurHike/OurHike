@@ -1,0 +1,266 @@
+version: 2
+
+# Decision 53's phase C: the club notice sources' seeds. Four are reviewed by
+# hand row by row (notice_source_fields, notice_status_values, decision 67's
+# notice_hazard_areas and decision 76's notice_states), one is a
+# person's mark on a notice (notice_marks), and one is written by
+# pipeline/generate_notice_models.py from the extract's own declarations
+# (notice_readers), which tests/test_generated_notice_models.py holds to what
+# the generator writes.
+seeds:
+  - name: notice_source_fields
+    description: >
+      Which of an ArcGIS notice layer's own fields fills each role of the
+      shared club-notice shape: title, category, status, start, end,
+      rescinded, edited, link and a place name. One row per layer, each field
+      named as the layer publishes it (dlt lowercases it), from the field
+      list decision 53's inventory read on 2026-10-03, which
+      make_dbt_fixtures.py's NOTICE_LAYERS records. An empty field means the
+      layer has none, and the role is null, never filled in.
+      pipeline/generate_notice_models.py reads it to write each layer's
+      staging model; tests/test_generated_notice_models.py fails a field the
+      layer's measured list does not hold. Reasoned from the field names and
+      the inventory notes quoted in `why`, and not read against live values,
+      except where `why` says so.
+    config:
+      column_types:
+        source_key: varchar
+        title: varchar
+        category: varchar
+        status: varchar
+        starts: varchar
+        ends: varchar
+        rescinded: varchar
+        edited: varchar
+        link: varchar
+        locality: varchar
+        why: varchar
+    columns:
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests: [not_null, unique]
+      - name: title
+        description: >
+          The field holding the notice's own headline or name, or words in
+          single quotes that every row of the layer is titled with, where the
+          layer's only such field holds a code a hiker cannot read (decision
+          95: CPW's conflict areas, whose ACTIVITYCO reads BBHCA or MLHCA).
+      - name: category
+        description: >
+          The source's own category or type field, as text, or words in
+          single quotes as for `title`.
+      - name: status
+        description: The source's own status field, which notice_status_values reads.
+      - name: starts
+        description: When the notice starts, as the source states it.
+      - name: ends
+        description: When the notice ends, as the source states it; past it, the notice is held back.
+      - name: rescinded
+        description: When the source says an order was rescinded.
+      - name: edited
+        description: The row's own edit date, never a load stamp.
+      - name: link
+        description: The field holding a page a hiker can read, never a REST endpoint.
+      - name: locality
+        description: The source's own words for where (a forest, a park, a county).
+      - name: why
+        description: The evidence for the row, quoted from its sources.json notes where they hold it.
+  - name: notice_status_values
+    description: >
+      What a value of a source's own status field means, where the source's
+      own words or the inventory's counts say: `closes_trail` (the row says
+      the trail or area it draws is closed, read only before its own end date
+      passes) or `not_current` (an inactive, unposted or open row, held back
+      as no notice). A value not listed reads as neither, and its notice
+      lands in warnings as not reviewed (decision 7): miss rather than cry
+      wolf. A closed park, site, trailhead or access point is not listed as
+      `closes_trail`, because none of them says the trail is closed.
+      @unvalidated per row except where `why` quotes a measured count; what
+      settles each is the source's own documentation of its values.
+    config:
+      column_types:
+        source_key: varchar
+        status_value: varchar
+        reads_as: varchar
+        why: varchar
+    columns:
+      - name: source_key
+        description: The source's sources.json key.
+        data_tests: [not_null]
+      - name: status_value
+        description: The value as the source writes it, compared without case or surrounding space.
+        data_tests: [not_null]
+      - name: reads_as
+        description: closes_trail or not_current.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [closes_trail, not_current]
+      - name: why
+        description: The evidence, quoted from the source's sources.json notes where they hold it.
+  - name: notice_hazard_areas
+    description: >
+      The notice sources that are an area a hiker walks into rather than a
+      notice about the trail (decision 67, 2026-10-04): hunting areas,
+      recreational shooting sites and burned areas. Each publishes as a
+      warning that never closes a trail, drawn where a downloaded trail
+      crosses it, with `hazard` saying which. A source with a
+      `category_value` publishes only the rows whose own category (the
+      field notice_source_fields names) is one listed, compared without
+      case or surrounding space, so a parcel the layer itself marks as no
+      hunting is held back rather than drawn as a hunting area; an empty
+      `category_value` publishes every row. int_closures__club_notices holds
+      the rest back with the category in the reason. Reasoned from the
+      values quoted in `why`; a value the layer adds later is held back
+      until a row lists it, which misses a new hunting category rather than
+      drawing a safety zone as one.
+    config:
+      column_types:
+        source_key: varchar
+        hazard: varchar
+        category_value: varchar
+        why: varchar
+    columns:
+      - name: source_key
+        description: The source's sources.json key.
+        data_tests: [not_null]
+      - name: hazard
+        description: hunting, shooting or burned_area; the same for every row of one source.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [hunting, shooting, burned_area]
+      - name: category_value
+        description: A category value that means the hazard is there, as the source writes it; empty for every row.
+      - name: why
+        description: The evidence, quoted from the source's sources.json notes or the inventory's saved reads.
+  - name: notice_marks
+    description: >
+      A person's mark on one notice: `lifted` ends a notice that a feed's
+      window no longer carries (int_closures__window_carried keeps such a
+      notice otherwise, because a window is not a list, decision 53 phase C).
+      Empty until somebody marks one; each row is reviewed in a pull
+      request like any other seed.
+    config:
+      column_types:
+        source_key: varchar
+        notice_id: varchar
+        mark: varchar
+        marked_on: date
+        reviewed_in: varchar
+        why: varchar
+    columns:
+      - name: source_key
+        description: The notice's source.
+      - name: notice_id
+        description: The notice, as the closures and warnings marts key it.
+        data_tests: [unique]
+      - name: mark
+        description: lifted, the one mark there is.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [lifted]
+      - name: marked_on
+        description: The day the person checked the source.
+      - name: reviewed_in
+        description: >
+          The pull request that reviewed the row, by number and title; never a
+          person's name or contact.
+      - name: why
+        description: What the person read that ends the notice.
+  - name: notice_readers
+    description: >
+      Every closures and warnings resource the extract declares, one row per
+      raw table: its registry key, club folder, type, reader, whether its
+      answer is a window (a feed's newest items) or the whole list, and the
+      staging model that stages it (`hand` for ATC's, NYNJTC's, NYS Parks',
+      OurHike's and NWS's, which have their own). Written by
+      pipeline/generate_notice_models.py from extract/_contract.py's
+      discover(); int_closures__gate reads its sources from it, the registry
+      and the run log, and int_closures__window_carried its windows.
+    config:
+      column_types:
+        source_key: varchar
+        club: varchar
+        notice_type: varchar
+        reader: varchar
+        listing: varchar
+        raw_table: varchar
+        staged_by: varchar
+        steward_kind: varchar
+    columns:
+      - name: raw_table
+        description: The raw table the resource lands, raw_<club>__<key>.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The resource's key, a sources.json key or another kind the extract claims.
+        data_tests: [not_null]
+      - name: notice_type
+        description: closures or warnings, the club file that declares it.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [closures, warnings]
+      - name: listing
+        description: window or full.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [window, full]
+      - name: steward_kind
+        description: >
+          club or agency: club where trail_orgs.json types the folder's
+          organization as one (generate_notice_models.py's CLUB_TYPES), agency
+          for the other types there and for every extract/_shared/ folder.
+          pub_conditions_notices publishes it, and the phone's planned-hike
+          panel shows an agency's notice only where it is placed (decision
+          66's "clubs only"). OurHike's own and NWS's rows read agency and
+          never reach notices.json.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [club, agency]
+  - name: notice_states
+    description: >
+      The agency notice sources that speak for a whole state (decision 76,
+      the maintainer's poll of 2026-10-04 from statewide_notice_mock.html's
+      frame A): BLM's state fire-restriction pages and CT DEEP's state parks
+      emergency message. Such a notice is placed by its state, on that
+      agency's land: the phone shows it to a hike planned in a named state
+      that walks the agency's trails (client/src/lib/plannedNotices.ts), and
+      a Utah notice never to a Colorado hike. Reviewed by hand row by row,
+      each state read from the source's own data (its URL, its key or its
+      page), which `evidence` quotes; tests/test_notice_states_seed.py holds
+      each quotation to the source's sources.json row. Of the 22 agency
+      notices UA's live notices.json held unplaced on 2026-10-04, these are
+      the 13 that are state-wide; the other 9 speak for the nation, a city,
+      a district or one park, and stay unplaced.
+    data_tests:
+      # Two-letter codes, one space between: what int_closures__notice_state_shapes splits on.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "regexp_full_match(states, '[A-Z]{2}( [A-Z]{2})*')"
+    config:
+      column_types:
+        source_key: varchar
+        states: varchar
+        evidence: varchar
+    columns:
+      - name: source_key
+        description: The notice source's sources.json key.
+        data_tests: [not_null, unique]
+      - name: states
+        description: >
+          The two-letter USPS codes of the states it speaks for, separated by
+          a space ("OR WA" for BLM's one Oregon and Washington page).
+        data_tests: [not_null]
+      - name: evidence
+        description: >
+          Where the state was read, each quotation in single quotes as the
+          source's sources.json row spells it: the URL's path, the page's
+          title as the extract landed it, or the registry's own note.
+        data_tests: [not_null]

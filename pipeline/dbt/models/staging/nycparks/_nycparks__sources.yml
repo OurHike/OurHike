@@ -1,0 +1,108 @@
+version: 2
+
+sources:
+  - name: nycparks
+    description: >
+      NYC Parks's registered layers, landed by the extract's nycparks/ folder
+      (pipeline/extract/nycparks/) as raw_nycparks__<key>, and staged once
+      each by a base model here. Descriptions transcribed from sources.json's
+      titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_nycparks__nyc_drinking_fountains
+        data_tests:
+          # Rows sharing base_nycparks__nyc_drinking_fountains's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nyc_drinking_fountains'", "\"system\"", "gispropnum"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          NYC Parks Drinking Fountains (outdoor types) (sources.json
+          `nyc_drinking_fountains`). Key: system and gispropnum, unique on
+          3,195 live rows.
+      - name: raw_nycparks__nyc_park_polygons
+        data_tests:
+          # Rows sharing base_nycparks__nyc_park_polygons's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nyc_park_polygons'", "gispropnum"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          NYC Parks Properties (park boundaries) (sources.json
+          `nyc_park_polygons`). Key: gispropnum, the registry's `id_field`,
+          unique and non-null on 2,061 of 2,061 live rows (measured
+          2026-10-03). The layer has no `system` column: that is the drinking
+          fountains' (Socrata enfh-gkve declares 33 columns, none of them
+          `system`).
+      - name: raw_nycparks__nyc_parks_trails
+        data_tests:
+          # Rows sharing base_nycparks__nyc_parks_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nyc_parks_trails'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))", "date_collected"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          NYC Parks Trails (five boroughs) (sources.json `nyc_parks_trails`).
+          Key: geometry and date_collected, 7,055 of 7,055 live rows after 4
+          exact copies; date_collected is null on 4. Re-measured 2026-10-03:
+          7,059 rows, and each copy differs from the row it repeats only in
+          Socrata's row id, `_socrata_id`, which duplicates_are_exact skips.
+      - name: raw_nycparks__nyc_public_restrooms
+        data_tests:
+          # Rows sharing base_nycparks__nyc_public_restrooms's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nyc_public_restrooms'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          NYC Public Restrooms (operational) (sources.json
+          `nyc_public_restrooms`). Key: geometry, 973 of 973 live rows after 2
+          exact copies. Re-measured 2026-10-03: 975 rows, and each copy
+          differs from the row it repeats only in Socrata's row id,
+          `_socrata_id`, which duplicates_are_exact skips.

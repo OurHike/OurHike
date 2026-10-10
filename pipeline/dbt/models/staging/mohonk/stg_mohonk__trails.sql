@@ -1,7 +1,11 @@
--- Mohonk Preserve's trails and carriage roads, attributes only - same scope
--- line as stg_nynjtc__long_path, and no id column for the same reason (no
--- `id_field` recorded, and OGC_FID is GDAL's row number rather than
--- Mohonk's identity).
+-- Mohonk Preserve's trails and carriage roads, keyed on GlobalID (decision
+-- 40), with their geometry. `globalid` and `geom` are carried for
+-- int_trail_lines__network_unioned, which publishes these lines from stage 3 of
+-- #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
+-- monthly refresh, published docs, and lighter phone downloads; until then
+-- this model was attributes only, as stg_nynjtc__long_path was. `globalid`
+-- is also what lib/feature_id.py builds the published `id` from, so it is
+-- staged as itself and not only inside the key.
 --
 -- 304 polyline segments, measured live 2026-08-25 via returnCountOnly. The
 -- measured field list is Name/General_Classification/Classification/Use_/
@@ -23,18 +27,35 @@
 -- staged because they differ - 298 of 304 rows read Owner 'Mohonk Preserve'
 -- and 6 read 'NYS OPRHP/PIPC' with Manager still Mohonk.
 with source as (
-    select * from {{ source('mohonk', 'raw_mohonk__mohonk_trails') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('mohonk', 'raw_mohonk__mohonk_trails') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'mohonk_trails'",
+            'globalid',
+        ]) }} as trail_segment_key,
+        globalid,
+        name,
+        general_classification,
+        classification,
+        use as permitted_use,
+        blaze,
+        mileage,
+        surface,
+        owner,
+        manager,
+        _loaded_at as loaded_at,
+        geom
+    from source
 )
 
-select
-    name,
-    general_classification,
-    classification,
-    use_ as permitted_use,
-    blaze,
-    mileage,
-    surface,
-    owner,
-    manager,
-    _loaded_at as loaded_at
-from source
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='trail_segment_key', order_by='trail_segment_key'
+) }}

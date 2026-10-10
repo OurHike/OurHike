@@ -3,9 +3,9 @@ version: 2
 sources:
   - name: oprhp
     description: >
-      NYS OPRHP's Parks Explorer feature layers, fetched by
-      fetch_external_layers.py into data/raw/external/ and loaded untouched
-      by load_raw.py. Descriptions transcribed from sources.json's measured
+      NYS OPRHP's Parks Explorer feature layers, landed by the extract's
+      nysparks/ folder (pipeline/extract/nysparks/) as raw_nysparks__<key>.
+      Descriptions transcribed from sources.json's measured
       notes.
 
       WHAT THE LICENCE SAYS, because it is not the same answer for every
@@ -13,15 +13,32 @@ sources:
       most of these layers out of a published artifact today is that nothing
       exports them, not a permissions question.
     schema: raw
-    loaded_at_field: _loaded_at
-    freshness:
-      # load_raw.py's cadence, not OPRHP's - the fetcher owns real upstream
-      # change-detection via editingInfo.dataLastEditDate, verified live on
-      # all four of these layers 2026-08-18. @unvalidated threshold, same
-      # open question as _atc__sources.yml.
-      warn_after: {count: 7, period: day}
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not OPRHP's - the extract owns real upstream
+        # change-detection via editingInfo.dataLastEditDate, verified live on
+        # all four of these layers 2026-08-18. @unvalidated threshold, same
+        # open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
     tables:
-      - name: raw_oprhp__oprhp_trails
+      - name: raw_nysparks__oprhp_trails
+        data_tests:
+          # Rows sharing stg_oprhp__trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'oprhp_trails'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS Parks Trails, statewide Transportation layer (sources.json:
           discovered 2026-08-18). 16,641 polyline segments, measured that
@@ -35,7 +52,39 @@ sources:
               registry's measurement records. Only this name and Map_Blaze
               were written down; the other two are staged nowhere rather than
               guessed at.
-      - name: raw_oprhp__oprhp_trail_closures
+      - name: raw_nysparks__oprhp_trail_closures
+        data_tests:
+          # Rows sharing stg_oprhp__trail_closures's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'oprhp_trail_closures'", "name", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        config:
+          # The one table here on the hourly conditions lane (#1152 - Move
+          # OPRHP's temporary closures onto the conditions clock, where a safety
+          # layer belongs), so not the source's 7 days on `_loaded_at`: how long
+          # since the extract read the layer or confirmed it unchanged, from its
+          # run log (macros/last_read_or_confirmed_at.sql). A refusal is a
+          # warning on the hourly run since decision 100 (the maintainer's poll
+          # of 2026-10-07), and red here after 24 hours unread: the thresholds
+          # are generate_notice_models.py's FRESHNESS_HOURS, graded there, and
+          # tests/test_notice_source_freshness.py holds these to them.
+          # publish-conditions.yml's freshness step selects `conditions_job`.
+          loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+          tags: [conditions_job]
+          freshness:
+            warn_after: {count: 12, period: hour}
+            error_after: {count: 24, period: hour}
         description: >
           NYS Parks Temporary Trail Closures (sources.json: discovered
           2026-08-18). TEMPORARY closure polygons - 4 features on 2026-08-18,
@@ -46,7 +95,23 @@ sources:
           evidenced, through the entry's `reason_field` (Name) and
           `place_field` (Descript), and those two are all
           stg_oprhp__trail_closures stages.
-      - name: raw_oprhp__oprhp_facilities
+      - name: raw_nysparks__oprhp_facilities
+        data_tests:
+          # Rows sharing stg_oprhp__facilities's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'oprhp_facilities'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS Parks Facilities (sources.json: discovered 2026-08-18). 8,823
           point features statewide. The layer's own display name is 'NY State
@@ -67,15 +132,34 @@ sources:
               own visitor app SHOWS, not what exists on the ground - which is
               why export_nearby_poi.py reads the N side as low confidence
               rather than dropping it.
-      - name: raw_oprhp__oprhp_park_polygons
+      - name: raw_nysparks__oprhp_park_polygons
+        data_tests:
+          # Rows sharing base_oprhp__park_polygons's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'oprhp_park_polygons'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           NYS Park Polygons, unit boundaries (sources.json: discovered
-          2026-08-18). 858 park-unit boundary polygons, measured that day.
+          2026-08-18). 858 polygons, one per parcel rather than per park,
+          measured live again on 2026-10-02 (last edited 2026-08-21).
 
-          LOADED AND DELIBERATELY NOT STAGED, the only registered ArcGIS
-          layer in that position. sources.json records a count and a
-          last-edit date for it and NOT ONE FIELD NAME, so a staging model
-          would be a column list nobody has measured. The raw table is the
-          honest stopping point; DBT.md's Phase D section records the
-          exclusion and what would end it - one field-metadata read of the
-          service.
+          STAGED ONCE, by base_oprhp__park_polygons, for the places family.
+          It stood unstaged while sources.json recorded no field name for
+          it; the entry has since declared name_field Name, id_field GlobalID
+          and unit_field MasterAreaID (#1371 — First run's "where do you
+          hike" has nothing to search until the waypoints land, and no park
+          is on any phone: publish a places index), and the field-metadata read
+          that DBT.md's Phase D section asked for was made on 2026-10-02:
+          GlobalID unique on all 858 rows, MasterAreaID a small integer null
+          on one.

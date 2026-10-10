@@ -506,6 +506,89 @@ def test_extracts_already_on_disk_cost_nothing(tmp_path, monkeypatch):
     trail_water.ensure_state_extracts()
 
 
+# --- --derive: the monthly build's form, from files on disk alone (#1652) ----
+
+
+def _as_landed(raw_dir, layer, features):
+    """An as-landed ATC layer as extract/_run.py writes it: GeoJSON, the server's own field names."""
+    (raw_dir / f"{layer}.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+
+
+def _landed_site(global_id, name, lon=-74.0, lat=41.0):
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+        "properties": {"GlobalID": global_id, "Name": name},
+    }
+
+
+def _derive_on_disk(tmp_path, monkeypatch, states=("georgia", "maine")):
+    monkeypatch.setattr(trail_water, "AT_STATES", list(states))
+    monkeypatch.setattr(trail_water, "OSM_RAW_DIR", tmp_path / "osm")
+    monkeypatch.setattr(trail_water, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(trail_water, "OUT_PATH", tmp_path / "trail_water.json")
+    (tmp_path / "osm").mkdir()
+
+    def never(*args, **kwargs):
+        raise AssertionError("--derive fetches nothing: not ATC's layers, not an extract")
+
+    monkeypatch.setattr(trail_water, "fetch_atc_features", never)
+    monkeypatch.setattr(trail_water, "fetch_states", never)
+
+
+def test_derive_reads_the_as_landed_sites_in_fetch_atc_features_shape_and_order(tmp_path, monkeypatch):
+    _derive_on_disk(tmp_path, monkeypatch)
+    _as_landed(
+        tmp_path,
+        "shelters",
+        [
+            _landed_site("{B}", "Zeta Shelter"),
+            _landed_site("{A}", "Alpha Shelter"),
+            {"type": "Feature", "geometry": None, "properties": {"GlobalID": "{C}"}},
+        ],
+    )
+    _as_landed(tmp_path, "campsites", [_landed_site("{D}", None, lon=-74.5, lat=41.5)])
+
+    sites = trail_water.from_disk_sites(tmp_path)
+
+    assert [row["global_id"] for row in sites["shelters"]] == ["{A}", "{B}"], "by name then id, and no point no row"
+    assert sites["campsites"] == [{"global_id": "{D}", "name": None, "lat": 41.5, "lon": -74.5}]
+
+
+def test_derive_refuses_a_missing_extract_rather_than_fetching_it(tmp_path, monkeypatch, capsys):
+    _derive_on_disk(tmp_path, monkeypatch)
+    (tmp_path / "osm" / "georgia-latest.osm.pbf").write_bytes(b"present")
+
+    assert trail_water.main(["--derive"]) == 1
+    assert "no extract on disk for maine" in capsys.readouterr().out
+    assert not (tmp_path / "trail_water.json").exists()
+
+
+def test_derive_writes_the_same_file_from_the_sites_and_extracts_on_disk(tmp_path, monkeypatch):
+    _derive_on_disk(tmp_path, monkeypatch)
+    for state in ("georgia", "maine"):
+        (tmp_path / "osm" / f"{state}-latest.osm.pbf").write_bytes(b"present")
+    _as_landed(tmp_path, "shelters", [_landed_site("shelter-1", "Test Shelter")])
+    _as_landed(tmp_path, "campsites", [_landed_site("camp-1", "Test Camp", lat=42.0)])
+    asked = []
+
+    def streams(sites, fetch_extracts=True):
+        asked.append(fetch_extracts)
+        return {"shelter-1": [_stream_beside(_site())]}
+
+    monkeypatch.setattr(trail_water, "collect_streams", streams)
+    monkeypatch.setattr(trail_water, "elevation_ft", lambda lat, lon: 2000.0)
+
+    assert trail_water.main(["--derive"]) == 0
+
+    written = json.loads((tmp_path / "trail_water.json").read_text())
+    assert asked == [False], "the extracts are read off disk, never fetched"
+    assert [(site["atc_global_id"], site["water"] is not None) for site in written["sites"]] == [
+        ("shelter-1", True),
+        ("camp-1", False),
+    ]
+
+
 # --- the elevation cache is written in batches (#1768) ----------------------
 
 
@@ -531,6 +614,13 @@ def _fake_epqs(monkeypatch, tmp_path):
     return cache_path, writes
 
 
+def _stored(cache_path):
+    """The answers the cache file holds, in the shape _write_elevation_cache() writes: its key rule, then the answers."""
+    stored = json.loads(cache_path.read_text())
+    assert stored["keys"] == trail_water.ELEVATION_CACHE_KEYS
+    return stored["elevations"]
+
+
 def test_a_run_of_lookups_writes_the_cache_once_per_batch_not_once_per_lookup(tmp_path, monkeypatch):
     """Before #1768, 120 lookups meant 120 writes of 1..120 rows (7,260 rows).
     With a batch of 50: two writes mid-run, one at the flush - 100 + 100 + 120
@@ -542,7 +632,7 @@ def test_a_run_of_lookups_writes_the_cache_once_per_batch_not_once_per_lookup(tm
     trail_water.flush_elevation_cache()
 
     assert writes == [50, 100, 120]
-    assert len(json.loads(cache_path.read_text())) == 120
+    assert len(_stored(cache_path)) == 120
 
 
 def test_a_flush_with_nothing_new_writes_nothing(tmp_path, monkeypatch):
@@ -578,4 +668,269 @@ def test_main_flushes_the_cache_even_when_it_refuses(tmp_path, monkeypatch):
     monkeypatch.setattr(trail_water, "collect_streams", refuse)
 
     assert trail_water.main([]) == 1
-    assert len(json.loads(cache_path.read_text())) == 1
+    assert len(_stored(cache_path)) == 1
+
+
+def test_an_epqs_lookup_that_fails_or_answers_null_is_not_cached_so_the_next_attempt_asks_again(tmp_path, monkeypatch):
+    """The rule that makes carrying this file between runs safe (publish-vector-data.yml's FETCH_OUTPUTS, and
+    the monthly lane since ARC-3 of PR #1805's second review, whose refresh-reference.yml pin job and
+    build-reference.yml build job each restore and save it): only an answered elevation is kept.
+    A null value, or five failed tries, must reach the next attempt as a question, never as a cached unknown."""
+    cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
+    monkeypatch.setattr(trail_water.time, "sleep", lambda _seconds: None)
+
+    class Null:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"value": None}
+
+    def down(*_args, **_kwargs):
+        raise trail_water.requests.ConnectionError("EPQS is down")
+
+    monkeypatch.setattr(trail_water.requests, "get", lambda *a, **k: Null())
+    assert trail_water.elevation_ft(40.0, -75.0) is None
+    monkeypatch.setattr(trail_water.requests, "get", down)
+    assert trail_water.elevation_ft(41.0, -75.0) is None
+    trail_water.flush_elevation_cache()
+
+    assert not cache_path.exists() or _stored(cache_path) == {}
+    assert trail_water._elevation_cache() == {}
+
+
+def test_prefetching_asks_each_uncached_point_once_never_more_than_epqs_at_once_together_and_the_gate_then_asks_nothing(
+    tmp_path, monkeypatch
+):
+    """Monthly run 23 (37408053482, 2026-10-06) spent 2 h 56 min in step_osm_water_grade asking EPQS one point at a
+    time, silently, until the job's 240 minutes ran out. prefetch_elevations() asks several at once and logs as it
+    goes; elevation_ft() then answers every prefetched point from memory."""
+    import threading
+    import time as real_time
+
+    cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
+    monkeypatch.setattr(trail_water, "_EPQS_DECLINED", set())
+    lock = threading.Lock()
+    in_flight = [0]
+    most = [0]
+    asked = []
+
+    class Answer:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"value": 1234.0}
+
+    def slow_get(_url, params, **_kwargs):
+        with lock:
+            in_flight[0] += 1
+            most[0] = max(most[0], in_flight[0])
+            asked.append((params["y"], params["x"]))
+        real_time.sleep(0.02)
+        with lock:
+            in_flight[0] -= 1
+        return Answer()
+
+    monkeypatch.setattr(trail_water.requests, "get", slow_get)
+    points = [(40.0 + i / 1000, -75.0) for i in range(40)]
+    said = []
+    assert trail_water.prefetch_elevations(points + points[:5], say=said.append, every=10) == 40
+
+    assert sorted(asked) == sorted(points)
+    assert 2 <= most[0] <= trail_water.EPQS_AT_ONCE
+    assert said[0].startswith("EPQS: 40 points to look up")
+    assert said[-1].startswith("  EPQS: 40/40 asked, 40 answered")
+
+    def no_network(*_args, **_kwargs):
+        raise AssertionError("elevation_ft asked EPQS for a point the prefetch already answered")
+
+    monkeypatch.setattr(trail_water.requests, "get", no_network)
+    assert [trail_water.elevation_ft(lat, lon) for lat, lon in points] == [1234.0] * 40
+    trail_water.flush_elevation_cache()
+    assert len(_stored(cache_path)) == 40
+
+
+def test_a_point_the_prefetch_got_no_answer_for_is_declined_this_run_without_asking_again_and_is_never_cached(
+    tmp_path, monkeypatch
+):
+    """The prefetch spends a point's TRIES, so elevation_ft() must not spend them a second time in the same run.
+    The decline stays in memory: the cache file holds only answered elevations, so the next run asks again."""
+    cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
+    monkeypatch.setattr(trail_water, "_EPQS_DECLINED", set())
+    monkeypatch.setattr(trail_water.time, "sleep", lambda _seconds: None)
+
+    class Null:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"value": None}
+
+    calls = []
+
+    def null_or_down(_url, params, **_kwargs):
+        calls.append(params["y"])
+        if params["y"] < 41:
+            return Null()
+        raise trail_water.requests.ConnectionError("EPQS is down")
+
+    monkeypatch.setattr(trail_water.requests, "get", null_or_down)
+    trail_water.prefetch_elevations([(40.0, -75.0), (41.0, -75.0)], say=lambda _message: None)
+    assert sorted(calls) == [40.0] + [41.0] * trail_water.TRIES
+
+    calls.clear()
+    assert trail_water.elevation_ft(40.0, -75.0) is None
+    assert trail_water.elevation_ft(41.0, -75.0) is None
+    assert calls == []
+    trail_water.flush_elevation_cache()
+    assert not cache_path.exists() or _stored(cache_path) == {}
+
+
+# --- the elevation cache keys each point exactly (decision 131) -------------
+
+# Two points 4.4 mm apart, which the 6-decimal key wrote as one: "41.000000,-74.000000".
+POINT_A = (41.0, -74.0)
+POINT_B = (41.0 + 4e-8, -74.0)
+
+
+def _epqs_by_point(monkeypatch, tmp_path, answer):
+    """_fake_epqs, with EPQS answering each point as answer(lat, lon) and every (lat, lon) it is asked recorded in order."""
+    cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
+    monkeypatch.setattr(trail_water, "_EPQS_DECLINED", set())
+    asked = []
+
+    class Answer:
+        def __init__(self, value):
+            self.value = value
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"value": self.value}
+
+    def get(_url, params, **_kwargs):
+        asked.append((params["y"], params["x"]))
+        return Answer(answer(params["y"], params["x"]))
+
+    monkeypatch.setattr(trail_water.requests, "get", get)
+    return cache_path, asked
+
+
+def _a_cell_edge_between(lat, _lon):
+    """EPQS's answer either side of a 3DEP cell edge that runs between POINT_A and POINT_B."""
+    return 1000.0 if lat == POINT_A[0] else 1009.0
+
+
+def test_elevation_ft_answers_two_points_inside_one_six_decimal_box_each_with_its_own_epqs_elevation(tmp_path, monkeypatch):
+    _cache_path, asked = _epqs_by_point(monkeypatch, tmp_path, _a_cell_edge_between)
+    assert f"{POINT_A[0]:.6f},{POINT_A[1]:.6f}" == f"{POINT_B[0]:.6f},{POINT_B[1]:.6f}"
+
+    assert trail_water.elevation_ft(*POINT_A) == 1000.0
+    assert trail_water.elevation_ft(*POINT_B) == 1009.0
+    assert asked == [POINT_A, POINT_B]
+
+
+def test_a_later_run_asks_epqs_for_a_point_whose_only_cached_neighbour_is_4_mm_away(tmp_path, monkeypatch):
+    """The cache file is carried from run to run (refresh-reference.yml's pin job, build-reference.yml's build job,
+    publish-vector-data.yml's FETCH_OUTPUTS), so the old key's substitution reached across runs, not only within one."""
+    _cache_path, asked = _epqs_by_point(monkeypatch, tmp_path, _a_cell_edge_between)
+    assert trail_water.elevation_ft(*POINT_A) == 1000.0
+    trail_water.flush_elevation_cache()
+
+    monkeypatch.setattr(trail_water, "_ELEVATION_CACHE", None)  # the next run reads the file afresh
+    assert trail_water.elevation_ft(*POINT_B) == 1009.0
+    assert trail_water.elevation_ft(*POINT_A) == 1000.0
+    assert asked == [POINT_A, POINT_B]
+
+
+def test_prefetch_elevations_asks_for_both_points_inside_one_six_decimal_box(tmp_path, monkeypatch):
+    _cache_path, asked = _epqs_by_point(monkeypatch, tmp_path, _a_cell_edge_between)
+
+    assert trail_water.prefetch_elevations([POINT_A, POINT_B], say=lambda _message: None) == 2
+    assert sorted(asked) == sorted([POINT_A, POINT_B])
+
+    monkeypatch.setattr(trail_water.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked again")))
+    assert [trail_water.elevation_ft(*POINT_A), trail_water.elevation_ft(*POINT_B)] == [1000.0, 1009.0]
+
+
+def test_resolve_site_refuses_a_steep_walk_whose_stream_point_lies_25_mm_from_a_gentle_walks_cached_one(tmp_path, monkeypatch):
+    """The cache is the water-grade gate's input. A campsite 5 m south of a shelter and 2.5 cm east of it reaches the
+    same stream 2.5 cm from the shelter's stream point, inside one 6-decimal box. Under the old key the campsite's walk
+    was graded on the shelter's stream point, 1 ft below the shelter, and published; here it is graded on its own,
+    120 ft down, and refused."""
+    stream_lat = 41.0 + _north(20)
+    stream = {
+        "source": "nhd",
+        "stream_id": "1",
+        "name": "Stony Brook",
+        "flow": None,
+        "paths": [[[-74.001, stream_lat], [-73.999, stream_lat]]],
+    }
+    shelter = {"global_id": "shelter-1", "name": "Test Shelter", "lat": 41.0, "lon": -74.0}
+    campsite = {"global_id": "camp-1", "name": "Test Campsite", "lat": 41.0 - _north(5), "lon": -74.0 + 3e-7}
+    shelter_stream = closest_point_on_paths(shelter["lat"], shelter["lon"], stream["paths"])[1:]
+    campsite_stream = closest_point_on_paths(campsite["lat"], campsite["lon"], stream["paths"])[1:]
+    assert shelter_stream != campsite_stream
+    assert f"{shelter_stream[0]:.6f},{shelter_stream[1]:.6f}" == f"{campsite_stream[0]:.6f},{campsite_stream[1]:.6f}"
+
+    def ground(lat, lon):
+        if lat < 41.0 + _north(10):
+            return 2000.0  # both sites
+        return 1999.0 if (lat, lon) == shelter_stream else 1880.0
+
+    _cache_path, _asked = _epqs_by_point(monkeypatch, tmp_path, ground)
+
+    assert resolve_site(shelter, "shelters", [stream])["water"] is not None
+    refused = resolve_site(campsite, "campsites", [stream])
+    assert refused["water"] is None
+    assert refused["candidate"]["water_elevation_ft"] == 1880.0
+    assert "scramble" in refused["unresolved"]
+
+
+def test_the_cache_key_is_each_coordinate_exactly_and_reads_back_to_the_same_doubles():
+    import numpy as np
+
+    for lat, lon in [(41.123456789012345, -74.98765432101234), POINT_B, (40.000001, -75.000001), (np.float64(41.5), -74.25)]:
+        key = trail_water._elevation_key(lat, lon)
+        assert tuple(float(part) for part in key.split(",")) == (float(lat), float(lon))
+    assert trail_water._elevation_key(np.float64(41.5), -74.25) == "41.5,-74.25"
+
+
+def test_a_cache_file_written_before_decision_131_is_discarded_whole_even_where_an_old_key_is_a_new_exact_key(
+    tmp_path, monkeypatch
+):
+    """'40.000001,-75.000001' was the 6-decimal key of every point within half a millionth of a degree of it, and is
+    that one point's exact key too, so an old file's answer for it could be any of those points'."""
+    cache_path, asked = _epqs_by_point(monkeypatch, tmp_path, lambda _lat, _lon: 1000.0)
+    cache_path.write_text(json.dumps({"40.000001,-75.000001": 9999.0, "41.000000,-74.000000": 9999.0}))
+    assert trail_water._elevation_key(40.000001, -75.000001) == "40.000001,-75.000001"
+
+    assert trail_water.elevation_ft(40.000001, -75.000001) == 1000.0
+    assert asked == [(40.000001, -75.000001)]
+    assert trail_water._elevation_cache() == {"40.000001,-75.000001": 1000.0}
+
+
+def test_the_cache_file_names_its_key_rule_and_one_under_another_rule_or_in_another_shape_is_discarded_whole(
+    tmp_path, monkeypatch
+):
+    cache_path, _asked = _epqs_by_point(monkeypatch, tmp_path, lambda _lat, _lon: 1000.0)
+    trail_water.elevation_ft(41.0, -74.0)
+    trail_water.flush_elevation_cache()
+    assert json.loads(cache_path.read_text()) == {"keys": "exact", "elevations": {"41.0,-74.0": 1000.0}}
+    assert trail_water._load_elevation_cache(cache_path) == {"41.0,-74.0": 1000.0}
+
+    for foreign in (
+        {"keys": "6dp", "elevations": {"41.0,-74.0": 9999.0}},
+        {"elevations": {"41.0,-74.0": 9999.0}},
+        {"keys": "exact", "elevations": {"41.0,-74.0": 9999.0, "41.5,-74.0": "9999"}},
+        {"keys": "exact", "elevations": {"41.0,-74.0": 9999.0, "41.5,-74.0": math.nan}},
+        {"keys": "exact", "elevations": {"41.0,-74.0": True}},
+        {"keys": "exact", "elevations": [9999.0]},
+    ):
+        cache_path.write_text(json.dumps(foreign))
+        assert trail_water._load_elevation_cache(cache_path) == {}, foreign
+    cache_path.write_text('{"keys": "exact", "elevations": {"41.0,-74.0": 99')
+    assert trail_water._load_elevation_cache(cache_path) == {}
+    assert trail_water._load_elevation_cache(tmp_path / "absent.json") == {}

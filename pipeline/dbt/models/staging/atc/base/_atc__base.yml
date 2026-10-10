@@ -1,0 +1,143 @@
+version: 2
+
+models:
+  - name: base_atc__atc_trail_updates
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a key unique by
+      # construction is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('atc', 'raw_atc__atc_trail_updates')
+          config:
+            severity: warn
+    description: >
+      reference/atc_updates.json, ATC's Trail Updates as a person reviewed
+      them: every row, keyed, each still the JSON its reviewer wrote, with the
+      file's own fields beside it. Read by int_closures__atc_checked.
+    columns:
+      - name: atc_update_row_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and the row's place in it.
+        data_tests: [not_null, unique]
+      - name: file_row
+        description: The row's place in the file, from 0. The published order.
+        data_tests: [not_null]
+      - name: atc_update
+        description: The row as its reviewer wrote it, as JSON.
+        data_tests: [not_null]
+      - name: reviewed_file
+        description: >
+          The file's fields besides `updates`: `reviewed_at`, `reviewed_by`,
+          `source_marker` and `source`, as JSON. The same on every row.
+  - name: base_atc__atc_updates
+    data_tests:
+      # Says how many rows the dedupe dropped, which for the one row of a
+      # file is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('atc', 'raw_atc__atc_updates')
+          config:
+            severity: warn
+    description: >
+      reference/atc_updates.json whole, as its one row, keyed: where
+      int_closures__gate reads the review and pub_conditions_atc_updates
+      its `reviewed_at`, however many rows `updates` holds.
+    columns:
+      - name: atc_updates_document_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and its landed path.
+        data_tests: [not_null, unique]
+      - name: document_json
+        description: The file as its reviewer wrote it, `_README` aside, as JSON.
+        data_tests: [not_null]
+  - name: base_atc__atc_trail_updates_pages
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a slug unique by
+      # construction is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('atc', 'raw_atc__atc_trail_updates_pages')
+          config:
+            severity: warn
+    description: >
+      ATC's Trail Updates as their website shows them: one row per update
+      the trail-updates sitemap lists, as lib/atc_scrape.py parses its page,
+      keyed. Read by int_closures__atc_automatic, which decides which rows
+      may publish without a person (CL07-CL10).
+    columns:
+      - name: atc_trail_update_page_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the registry key and ATC's slug.
+        data_tests: [not_null, unique]
+      - name: slug
+        description: ATC's slug for the update.
+        data_tests: [not_null]
+      - name: sitemap_row
+        description: The update's place in the sitemap, from 0.
+      - name: sitemap_lastmod
+        description: The sitemap's lastmod for the page, as written.
+      - name: title
+        description: The update's headline, as parse_update() read it, never stripped.
+      - name: category
+        description: ATC's category from the chip; null where the page has none.
+      - name: states
+        description: The chip's state codes, as JSON.
+      - name: date_modified
+        description: The page's JSON-LD dateModified, as written.
+      - name: date_published
+        description: The page's JSON-LD datePublished, as written.
+      - name: miles
+        description: Every mile reference the parse read, in order, as JSON.
+      - name: source_url
+        description: The update's own page.
+      - name: page_sha256
+        description: The page's sha256, for provenance.
+  - name: base_atc__water_distance
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a key unique by
+      # construction is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('atc', 'raw_atc__water_distance')
+          config:
+            severity: warn
+    description: >
+      reference/water_distance.json, one row per A.T. shelter and campsite,
+      keyed: CSI's distance to the nearest water in feet, how ATC arrived at
+      it, and where there is none, why. Read by
+      int_points_of_interest__water, which publishes the distance and its
+      provenance together or not at all.
+    columns:
+      - name: water_distance_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and atc_global_id.
+        data_tests: [not_null, unique]
+      - name: layer
+        description: The sources.json layer the site is on, `shelters` or `campsites`.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [shelters, campsites]
+      - name: atc_global_id
+        description: ATC's GlobalID for the site.
+        data_tests: [not_null, unique]
+      - name: distance_ft
+        description: >
+          CSI's distance to the nearest water, in feet, as
+          build_water_distance.py accepted it (0 and negative values are
+          refused there and arrive as null). Null means nobody has said,
+          never a dry site.
+      - name: provenance
+        description: >
+          CSI's Nearest_Water_Source, verbatim: FarOut, NHDP_HR_Stream and
+          NHDP_HR_Pond are measured against a mapped point; OSA_Field_Estimate
+          is a steward's round number, which the phone prints with a tilde.
+      - name: unresolved
+        description: Why the row carries no distance, where it carries none.
+      - name: file_row
+        description: The row's place in the file, from 0.

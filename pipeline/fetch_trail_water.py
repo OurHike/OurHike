@@ -117,7 +117,19 @@ it came from, and a merged one names both, so the attribution travels with
 the record rather than sitting in a registry line somebody has to find.
 
 Usage:
-    python fetch_trail_water.py
+    python fetch_trail_water.py            # ATC's two layers and the extracts fetched as needed
+    python fetch_trail_water.py --derive   # from files on disk alone (refresh-reference.yml's pin job)
+
+`--derive` is the monthly lane's form (#1652 — Download OSM's Geofabrik
+extracts at most once a month, into a private raw bucket that outlives the
+7-day Actions cache): the shelters and campsites are the ATC layers as the
+monthly extract landed them, its as-landed copy at data/raw/shelters.geojson
+and data/raw/campsites.geojson (extract/_run.py's as_landed_path()), read
+in fetch_atc_features' shape and order; the fourteen state extracts are the
+ones the pin job pulled from the raw store into OSM_RAW_DIR, and a missing one
+refuses the derivation rather than being fetched (from_disk_sites() and
+missing_extracts()). The NHD subregions and EPQS are read as always. The
+rule, the guards and the file written are the same either way.
 
 A derivation this expensive must not be able to quietly replace good output
 with less of it, so the write is guarded: a hydrography read that returned no
@@ -127,6 +139,7 @@ than overwrites. See those two for why each is the guard it is.
 """
 
 import argparse
+import concurrent.futures
 import json
 import math
 import sys
@@ -141,6 +154,7 @@ from build_water_distance import fetch_atc_features
 from export_basemap import AT_STATES, OSM_RAW_DIR, fetch_states
 from lib import fetch_receipts
 from lib.http_retry import download_with_retry
+from lib.nhd import NHD_GPKG_URL
 from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
@@ -195,7 +209,6 @@ NHD_LINEAGE_TAGS = ("NHD:FCode", "NHD:ReachCode", "NHD:ComID")
 # NHD is a frozen snapshot - USGS retired it 2023-10-01 and its 3DHP
 # successor drops the flow classification entirely (WATER_SOURCES.md §5) -
 # which is the second reason the answer is checked in rather than re-fetched.
-NHD_GPKG_URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/HU4/GPKG/NHD_H_{huc4}_HU4_GPKG.zip"
 
 # The 21 subregions the trail actually crosses, from the WBD's own polygons
 # queried against the centerline (not its bounding box, which is a slab of
@@ -519,7 +532,7 @@ def ensure_state_extracts() -> None:
         fetch_states(missing, OSM_RAW_DIR)
 
 
-def collect_streams(sites: list[dict]) -> dict[str, list[dict]]:
+def collect_streams(sites: list[dict], fetch_extracts: bool = True) -> dict[str, list[dict]]:
     """Walk both hydrographies once, collecting every site's candidate streams.
 
     One dataset at a time, each dropped before the next is read: fourteen
@@ -530,8 +543,11 @@ def collect_streams(sites: list[dict]) -> dict[str, list[dict]]:
 
     Raises on a dataset that loads no stream reaches (EMPTY_READ): see
     MAX_SITE_WATER_DROP_RATIO for why that is half of this file's guard.
+    With `fetch_extracts` false (--derive) a missing extract is never
+    fetched: the loop below raises FileNotFoundError on it instead.
     """
-    ensure_state_extracts()
+    if fetch_extracts:
+        ensure_state_extracts()
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     con.execute("CREATE OR REPLACE TABLE sites (global_id VARCHAR, geom GEOMETRY)")
@@ -725,11 +741,84 @@ def elevation_ft(lat: float, lon: float) -> float | None:
     ground does not move between runs, and re-deriving with a tighter
     MAX_GRADE should cost the reading of the hydrography and not several
     hundred more round trips to a service that answers in seconds apiece.
+    The cache is keyed on the point itself (ELEVATION_CACHE_KEYS), so a
+    cached answer is only ever EPQS's answer for the point being asked.
+
+    A point prefetch_elevations() already asked this run and got no answer
+    for is declined here without asking again: it has had its TRIES.
     """
     cache = _elevation_cache()
-    key = f"{lat:.6f},{lon:.6f}"
+    key = _elevation_key(lat, lon)
     if key in cache:
         return cache[key]
+    if key in _EPQS_DECLINED:
+        return None
+    elevation = _ask_epqs(lat, lon)
+    if elevation is not None:
+        cache[key] = elevation
+        _note_elevation_added(cache)
+    return elevation
+
+
+# What an epqs_elevations.json key is, written into the file as its `keys`
+# field: the point itself (decision 131, the maintainer's poll of 2026-10-09,
+# the rule decision 115 gave export_elevation.py's DEM sample cache in
+# ffea5e31). Each coordinate is written as Python's repr writes a double, the
+# shortest text that reads back to that same double, so two points share a key
+# only when they are one point, and a cached answer is only ever EPQS's answer
+# for the point that was asked. (0.0 and -0.0 are one point under two keys,
+# which costs a lookup and never a wrong answer.)
+#
+# WHAT IT REPLACED. Until decision 131 a point was keyed "lat,lon" to 6
+# decimals, about 0.11 m, and a key held the answer for the first point asked
+# under it and gave it to every later point inside the same 0.11 m box. The
+# cache feeds the water-grade gate: both ends of every walk to water that
+# resolve_site() grades here and that build_osm_water_reach.apply_grade_gate()
+# grades for OSM water (step_site_water.py --derive, step_osm_water_grade.py,
+# and parity.py's old side for a monthly run's pinned points). So a later
+# point could be graded on another point's ground. How far off depends on how
+# EPQS reads 3DEP: if it answers from the cell a point falls in, as
+# export_elevation.py's sampler does, two points either side of a cell edge
+# differ by the step between cells, the case decision 115 measured on the DEM
+# sample cache (monthly run 30: up to 19 ft on one sample). How EPQS reads it
+# is not recorded here, and nobody has checked a run for a water verdict the
+# old key changed; the exact key removes the cause either way.
+#
+# WHAT IT COSTS. A point that differs from another only in the last bits of a
+# double is now asked on its own: the two sides of a monthly parity compute a
+# walk's far end each in their own SQL, and where those differ in the last
+# bits the second side asks EPQS again (Reasoned; nobody has compared the two
+# sides' walk ends bit for bit). Keys are longer and slower to make: 36.1
+# characters against 20.0, and 1.03 us a key against 0.59, on 200,000 random
+# points in the A.T. states' box (Measured 2026-10-09 in this sandbox,
+# synthetic points, not the corridor's).
+#
+# A FILE FROM BEFORE NEVER ANSWERS. An old key can equal a new one:
+# "40.000001,-75.000001" is the 6-decimal key every point within half a
+# millionth of a degree of that one was stored under, and that one point's
+# exact key as well. So _load_elevation_cache() reads a file only when its
+# `keys` is this value. Every file written before decision 131 is a bare map
+# of keys to feet, carries no `keys` and is discarded whole, so each carried
+# cache's first run after it asks EPQS for every point again: monthly runs 20
+# to 22 graded the same 3,118 corridor OSM water points with nothing cached
+# in 21.3, 41.5 and 54.2 min one at a time, and run 24 asked 2,342 points
+# four at a time in 33.2 min (build-reference.yml's build job and parity.py's
+# _osm_water_old() record both). The cache's path and name are unchanged, so
+# no workflow changes.
+ELEVATION_CACHE_KEYS = "exact"
+
+
+def _elevation_key(lat: float, lon: float) -> str:
+    """The EPQS cache's key for a point: its own lat then lon, each as repr
+    writes the double (ELEVATION_CACHE_KEYS). float() first, so a numpy double
+    is keyed as the Python float it equals, never as "np.float64(...)". Lat
+    first, as this file has always keyed; export_elevation.py's DEM sample
+    cache keys lon first, and neither file is read by the other's code."""
+    return f"{float(lat)!r},{float(lon)!r}"
+
+
+def _ask_epqs(lat: float, lon: float) -> float | None:
+    """One point's EPQS answer in feet, after up to TRIES tries, or None. Touches no cache."""
     for attempt in range(TRIES):
         try:
             response = requests.get(
@@ -740,14 +829,72 @@ def elevation_ft(lat: float, lon: float) -> float | None:
             )
             response.raise_for_status()
             value = response.json().get("value")
-            elevation = None if value is None else float(value)
-            if elevation is not None:
-                cache[key] = elevation
-                _note_elevation_added(cache)
-            return elevation
+            return None if value is None else float(value)
         except Exception:  # noqa: BLE001 - retried, then declined
             time.sleep(2**attempt)
     return None
+
+
+# How many EPQS lookups prefetch_elevations() keeps in flight at once.
+# elevation_ft() asks one point at a time, and monthly run 23
+# (refresh-reference.yml 37408053482, 2026-10-06) spent 2 h 56 min in
+# step_osm_water_grade asking that way, with nothing in the log, until the
+# job's 240 minutes ran out. One EPQS answer took 3.7 s from the sandbox that
+# day (measured 2026-10-06), against the ~1.9 s apply_grade_gate()'s docstring
+# records, and the step asks for both ends of every one of the 3,118 corridor
+# points (runs 20 to 22) that passes the distance gate. Four at once divides
+# that wait by about four (Reasoned: each lookup is independent and spends its
+# time waiting on the network). @unvalidated: 4 is picked as modest for a public
+# service that publishes no rate limit (its robots.txt answers 403, read
+# 2026-10-06), not measured against one. What would settle it is the step's
+# answered-per-minute line on a monthly run, and any 429 or 503 EPQS sends
+# back at this number.
+EPQS_AT_ONCE = 4
+
+# Points prefetch_elevations() asked this run that EPQS did not answer: kept
+# in memory only, never in the cache file, so the next run asks again (the
+# rule test_an_epqs_lookup_that_fails_or_answers_null_is_not_cached_so_the_next_attempt_asks_again
+# holds).
+_EPQS_DECLINED: set[str] = set()
+
+
+def _say(message: str) -> None:
+    print(message, flush=True)
+
+
+def prefetch_elevations(points, at_once: int = EPQS_AT_ONCE, say=_say, every: int = 250) -> int:
+    """Ask EPQS for every (lat, lon) not already cached, at_once at a time, and cache the answers.
+
+    The answers go in elevation_ft()'s own cache and in the same flush
+    batches, so a gate that then asks elevation_ft() for these points reads
+    them from memory. The lookups run in threads; the cache is written only
+    here, on the calling thread. Prints how far it has got every `every`
+    lookups, so a slow EPQS is visible in the log while it is slow. Returns how
+    many points it asked for.
+    """
+    cache = _elevation_cache()
+    wanted: dict[str, tuple[float, float]] = {}
+    for lat, lon in points:
+        key = _elevation_key(lat, lon)
+        if key not in cache and key not in _EPQS_DECLINED:
+            wanted.setdefault(key, (lat, lon))
+    if not wanted:
+        return 0
+    say(f"EPQS: {len(wanted):,} points to look up, {at_once} at a time ({len(cache):,} already cached)")
+    started = time.monotonic()
+    answered = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=at_once) as pool:
+        for done, (key, elevation) in enumerate(zip(wanted, pool.map(lambda point: _ask_epqs(*point), wanted.values())), 1):
+            if elevation is None:
+                _EPQS_DECLINED.add(key)
+            else:
+                cache[key] = elevation
+                answered += 1
+                _note_elevation_added(cache)
+            if done % every == 0 or done == len(wanted):
+                minutes = (time.monotonic() - started) / 60
+                say(f"  EPQS: {done:,}/{len(wanted):,} asked, {answered:,} answered, {minutes:.1f} min")
+    return len(wanted)
 
 
 _ELEVATION_CACHE: dict[str, float] | None = None
@@ -756,8 +903,38 @@ _ELEVATION_CACHE: dict[str, float] | None = None
 def _elevation_cache() -> dict[str, float]:
     global _ELEVATION_CACHE
     if _ELEVATION_CACHE is None:
-        _ELEVATION_CACHE = json.loads(ELEVATION_CACHE_PATH.read_text()) if ELEVATION_CACHE_PATH.exists() else {}
+        _ELEVATION_CACHE = _load_elevation_cache(ELEVATION_CACHE_PATH)
     return _ELEVATION_CACHE
+
+
+def _load_elevation_cache(path: Path) -> dict[str, float]:
+    """The answers a cache file holds, or none at all.
+
+    DISCARDED WHOLE, never in part, when its `keys` is not
+    ELEVATION_CACHE_KEYS: every file written before decision 131 keyed a point
+    to 6 decimals, and one of its keys can be the exact key of a point it was
+    never asked for (ELEVATION_CACHE_KEYS says how), so not one entry of it is
+    served. Discarded too when it cannot be read or is not the shape
+    _write_elevation_cache() writes, every answer a finite number of feet
+    (json.loads reads a bare NaN or Infinity as a float, as
+    export_elevation._is_a_stored_sample() says): a lost answer costs one more
+    EPQS lookup, and a wrong one a wrong grade.
+    """
+    try:
+        stored = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(stored, dict) or stored.get("keys") != ELEVATION_CACHE_KEYS:
+        return {}
+    elevations = stored.get("elevations")
+    if not isinstance(elevations, dict) or not all(_is_feet(feet) for feet in elevations.values()):
+        return {}
+    return elevations
+
+
+def _is_feet(value) -> bool:
+    """Whether a value read back out of the cache file can be an elevation: a finite real number, and not a bool."""
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
 # How many new lookups pile up before the cache file is rewritten (#1768).
@@ -787,9 +964,12 @@ def flush_elevation_cache() -> None:
 
 
 def _write_elevation_cache(cache: dict[str, float]) -> None:
+    """The cache, written whole through a temporary file. `keys` says which
+    rule the keys were written under, so a later rule can refuse the file
+    (_load_elevation_cache())."""
     ELEVATION_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = ELEVATION_CACHE_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cache))
+    tmp.write_text(json.dumps({"keys": ELEVATION_CACHE_KEYS, "elevations": cache}))
     tmp.replace(ELEVATION_CACHE_PATH)
 
 
@@ -995,20 +1175,70 @@ def main(argv: list[str] | None = None) -> int:
         flush_elevation_cache()  # also on a refusal or a crash, so answered lookups are kept
 
 
+#: The two ATC layers this derives site water for, in the order the file lists them.
+SITE_LAYERS = ("shelters", "campsites")
+
+
+def from_disk_sites(raw_dir: Path | None = None) -> dict[str, list[dict]]:
+    """Each ATC layer from its as-landed GeoJSON under `raw_dir`, as fetch_atc_features returns it: {global_id, name, lat,
+    lon} for every feature with a point, by name then id. Raises FileNotFoundError for a layer with no file, and
+    ValueError for one with no point, as fetch_atc_features refuses an empty layer. `raw_dir` is RAW_DIR unless named,
+    read when called, so a test redirecting RAW_DIR redirects this."""
+    raw_dir = RAW_DIR if raw_dir is None else raw_dir
+    by_layer = {}
+    for layer in SITE_LAYERS:
+        features = json.loads((raw_dir / f"{layer}.geojson").read_text(encoding="utf-8")).get("features") or []
+        rows = [
+            {
+                "global_id": feature["properties"]["GlobalID"],
+                "name": feature["properties"].get("Name"),
+                "lat": feature["geometry"]["coordinates"][1],
+                "lon": feature["geometry"]["coordinates"][0],
+            }
+            for feature in features
+            if (feature.get("geometry") or {}).get("coordinates")
+        ]
+        if not rows:
+            raise ValueError(f"The as-landed ATC {layer} layer holds no feature with a point")
+        by_layer[layer] = sorted(rows, key=lambda row: (row["name"] or "", row["global_id"]))
+    return by_layer
+
+
+def missing_extracts() -> list[str]:
+    """The AT_STATES whose extract is not under OSM_RAW_DIR."""
+    return [state for state in AT_STATES if not (OSM_RAW_DIR / f"{state}-latest.osm.pbf").exists()]
+
+
 def _run(argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--derive",
+        action="store_true",
+        help="from files on disk alone: the as-landed ATC layers and the extracts already in data/raw/osm/, never fetched",
+    )
+    args = parser.parse_args(argv)
 
-    features_by_layer = {}
-    for layer in ("shelters", "campsites"):
-        print(f"Fetching the ATC {layer} layer ...")
-        features_by_layer[layer] = fetch_atc_features(layer)
+    if args.derive:
+        if missing := missing_extracts():
+            print(f"Refusing to derive: no extract on disk for {', '.join(missing)}, and --derive fetches none.")
+            return 1
+        print(f"Reading the as-landed ATC layers under {RAW_DIR} ...")
+        try:
+            features_by_layer = from_disk_sites()
+        except (OSError, ValueError, KeyError) as refusal:
+            print(f"Refusing to derive: {refusal}.")
+            return 1
+    else:
+        features_by_layer = {}
+        for layer in SITE_LAYERS:
+            print(f"Fetching the ATC {layer} layer ...")
+            features_by_layer[layer] = fetch_atc_features(layer)
     sites = [feature for features in features_by_layer.values() for feature in features]
     print(f"  {len(sites)} shelters and campsites.")
 
     print(f"Reading streams: {len(AT_STATES)} OSM state extracts, then {len(NHD_HU4S)} USGS subregions ...")
     try:
-        candidates = collect_streams(sites)
+        candidates = collect_streams(sites, fetch_extracts=False) if args.derive else collect_streams(sites)
     except ValueError as refusal:
         print(f"Refusing to write: {refusal}.")
         return 1

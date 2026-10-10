@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: base_extract__runs
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a log written once per run is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('extract', '_extract_runs')
+          config:
+            severity: warn
+    description: >
+      The extract's run log, one row per resource per run, keyed: what each
+      run loaded and the upstream's own count read in it. int_closures__gate
+      reads it to tell a NYNJTC category NYNJTC's own site counted empty from
+      a read that broke.
+    columns:
+      - name: extract_run_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the run and the resource.
+        data_tests: [not_null, unique]
+      - name: table_name
+        description: The raw table the resource lands, as dlt names it.
+        data_tests: [not_null]
+      - name: outcome
+        description: >
+          What the run did with the resource: `loaded`, `skipped` (FRESH),
+          `refused`, `incomplete`, `unverified` or `unavailable`.
+        data_tests: [not_null]
+      - name: rows_loaded
+        description: The rows the run loaded into the table; null where it loaded none (skipped or refused).
+      - name: count_proof
+        description: >
+          The upstream's own count read in the same run, null where the
+          platform gives none or the resource did not run.

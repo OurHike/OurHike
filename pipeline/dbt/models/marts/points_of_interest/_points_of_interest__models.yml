@@ -1,0 +1,451 @@
+version: 2
+
+models:
+  - name: points_of_interest
+    description: >
+      Every POI a phone is given, one row each, keyed by the id it publishes
+      under: the A.T. family's (the eight poi_<type>.geojson files), the
+      other organizations' (nearby_poi.geojson) and the tombstones of every
+      POI the identity ledger has retired (retired_poi.geojson). Only rows
+      whose source may publish (int_sources__publication). Geometry is
+      `geom_geojson` text at the precision each file prints. The safety
+      fields are each a test here, and pipeline/ELT.md's "The eleven marts"
+      says why each one.
+    config:
+      access: public
+      contract:
+        enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is today's shape at today's keys, and every pub_ writer
+    # reading this mart pins it, ref('points_of_interest', v=1). v2
+    # (points_of_interest_v2.sql) holds each POI's position once, as
+    # geom_geojson at 6 decimals, for the v2/poi_<type>.geojson and
+    # v2/nearby_poi.geojson files the pub_poi_<type>_v2 and pub_nearby_poi_v2
+    # writers write beside v1 (stage 6 of #1793; pipeline/ELT.md, "Making the
+    # download smaller"). v1 stays the latest version, so an unpinned ref
+    # reads v1; v2 is a version ahead of it until a v2 release ships. dbt
+    # 2.0.6 builds points_of_interest_v1 and points_of_interest_v2 and keeps
+    # `points_of_interest` as a view of the latest version.
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: points_of_interest
+      - v: 2
+        defined_in: points_of_interest_v2
+        columns:
+          - include: all
+            exclude: [lat, lon, geom_geojson]
+          - name: geom_geojson
+            description: >
+              The POI's one position, an RFC 7946 Point in lon/lat at 6
+              decimals: Python's round(x, 6) of the lat and lon the row's v1
+              file prints as properties, which is what a v1 phone reads
+              (GDAL's printing for poi_<type>.geojson, every digit for the
+              other two files). Moved at most 0.056 m per axis from v1's.
+            data_type: varchar
+            constraints:
+              - type: not_null
+            data_tests: [not_null]
+        # The safety fields' tests, as v1 carries them (the values are v1's),
+        # and the position's: a point, in lon/lat, with at most 6 decimals.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "mile is null or (trail_id = 'AT' and not_on_at is null)"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "capacity is null or capacity >= 1"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "water_distance_ft is null or water_distance_ft > 0"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "(water_distance_ft is null) = (water_distance_source is null)"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "phone_files = 'retired_poi' or confidence in ('high', 'low')"
+          - dbt_utils.expression_is_true:
+              name: points_of_interest_v2_positions_are_lon_lat_points_at_six_decimals
+              arguments:
+                expression: >-
+                  st_geometrytype(st_geomfromgeojson(geom_geojson)) = 'POINT'
+                  and st_x(st_geomfromgeojson(geom_geojson)) between -180 and 180
+                  and st_y(st_geomfromgeojson(geom_geojson)) between -90 and 90
+                  and cast(printf('%.6f', st_x(st_geomfromgeojson(geom_geojson))) as double)
+                  = st_x(st_geomfromgeojson(geom_geojson))
+                  and cast(printf('%.6f', st_y(st_geomfromgeojson(geom_geojson))) as double)
+                  = st_y(st_geomfromgeojson(geom_geojson))
+          # The same rows as v1: the cut drops none and adds none.
+          - dbt_utils.equal_rowcount:
+              arguments:
+                compare_model: ref('points_of_interest', v=1)
+          # Elementary's checks, as v1 carries them (below).
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.dimension_anomalies:
+              arguments:
+                dimensions: [club, source_key]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.all_columns_anomalies:
+              arguments:
+                column_anomalies: [null_percent]
+                exclude_regexp: "^(geom_geojson|description|nearby|photos)$"
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+    data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: the rows at each build; the rows per club and source, so one
+      # club's layer vanishing cannot hide inside the national total; and each
+      # column's null rate, the geometry and the long text (a description, the
+      # site and photo JSON) left out. The water distance's own check is on
+      # its column. No exposure_schema_validity: three phone files read v1 and
+      # nine read v2, and with more than one Elementary 0.26.0 checks a column
+      # only through context["render"], which dbt 2.0.6 does not have (the
+      # test errored, measured 2026-10-08), so it could check nothing here.
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(geom_geojson|description|nearby|photos)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      # The lon/lat swap test on what ships. A stray point upstream (three
+      # USFS recreation sites on 2026-10-03,
+      # tests/singular/assert_pois_land_in_the_region_this_build_covers.sql)
+      # is allowed into the intermediates and never into this mart. The boxes
+      # are macros/lands_outside_its_region.sql's.
+      - lands_in_the_region_its_source_publishes_in:
+          name: points_of_interest_land_in_the_region_their_source_publishes_in
+          arguments:
+            geometry: st_geomfromgeojson(geom_geojson)
+      # mile only on an A.T. POI that is on the A.T. (PO10, PO11):
+      # attach_miles() "always succeeds - there is no distance at which it
+      # declines", so a mile anywhere else is a perfectly formed wrong one.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "mile is null or (trail_id = 'AT' and not_on_at is null)"
+          config:
+            severity: error
+      # Absent is unknown, never zero (PO13).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "capacity is null or capacity >= 1"
+          config:
+            severity: error
+      # CSI's 0 and negative distances are refused upstream
+      # (build_water_distance.py), and a distance never ships without the
+      # source the phone prints its tilde from (PO14, PO15).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "water_distance_ft is null or water_distance_ft > 0"
+          config:
+            severity: error
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(water_distance_ft is null) = (water_distance_source is null)"
+          config:
+            severity: error
+      # Every live POI ships at a confidence; a tombstone has none to give.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "phone_files = 'retired_poi' or confidence in ('high', 'low')"
+          config:
+            severity: error
+      # Decision 65's season caution rides only on unconfirmed water: a
+      # caution on a confirmed source, or on a shelter, would be a display
+      # outrunning its source.
+      - dbt_utils.expression_is_true:
+          name: points_of_interest_season_cautions_are_on_unconfirmed_water
+          arguments:
+            expression: "water_caution is null or (poi_type = 'water' and confidence = 'low')"
+          config:
+            severity: error
+      # The text parses as the point it says it is, at most an ulp or three
+      # from the source's own lon and lat (GDAL's printing moves a
+      # poi_<type>.geojson coordinate by that much, never more).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              st_geometrytype(st_geomfromgeojson(geom_geojson)) = 'POINT'
+              and abs(st_x(st_geomfromgeojson(geom_geojson)) - lon) < 1e-9
+              and abs(st_y(st_geomfromgeojson(geom_geojson)) - lat) < 1e-9
+          config:
+            severity: error
+      # A live POI's type is one a release publishes; a tombstone's may be
+      # one it withdrew (5,319 crossings, #1674).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              phone_files = 'retired_poi'
+              or poi_type in ('shelter', 'campsite', 'water', 'resupply', 'viewpoint', 'parking', 'privy', 'trailhead')
+          config:
+            severity: error
+    columns:
+      - name: poi_id
+        description: >
+          The id the POI publishes under: the identity ledger's for the A.T.
+          family, `{source}:{source_feature_id}` for the other organizations
+          (unledgered, an open question in pipeline/ELT.md's "Where state
+          lives"), the retired id for a tombstone. Unique across all three
+          files, so an id ATC re-published after it was retired fails the
+          build here, as verify_release.py's check 21 would fail the release.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [unique]
+      - name: poi_key
+        description: The staging model's key, the ledger row's for a tombstone, and the anchor's for a synthesized water point.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [unique]
+      - name: phone_files
+        description: "Which file the row is in: `poi_by_type` (poi_<type>.geojson), `nearby_poi` or `retired_poi`."
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [poi_by_type, nearby_poi, retired_poi]
+      - name: poi_type
+        description: lib/poi_schema.py's POI_TYPES for a live POI; a tombstone keeps the type it published as.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('poi_types')
+                field: poi_type
+      - name: trail_id
+        description: "`AT` for the A.T. family, the organization's own trail id for the others (PO37); null on a tombstone."
+        data_type: varchar
+      - name: source
+        description: What the POI's derived id starts with, e.g. `atc_shelters`, `atc_csi`, `NYSDEC`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_feature_id
+        description: The source's own id for the feature, as text.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_feature_id_json
+        description: The same id as the JSON value the source wrote; nearby_poi.geojson publishes it with that type.
+        data_type: json
+      - name: name
+        description: The name the POI publishes, null where it has none.
+        data_type: varchar
+      - name: lat
+        description: The source's latitude, as the source holds it.
+        data_type: double
+        constraints:
+          - type: not_null
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -90
+                max_value: 90
+      - name: lon
+        description: The source's longitude, as the source holds it.
+        data_type: double
+        constraints:
+          - type: not_null
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -180
+                max_value: 180
+      - name: geom_geojson
+        description: >
+          The point as RFC 7946 GeoJSON text in lon/lat, at the precision the
+          row's file prints today: GDAL's for poi_<type>.geojson, every digit
+          for the other two.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: mile
+        description: >
+          NOBO miles from Springer on the calibrated axis, three decimals.
+          Null off the A.T. family, and on a POI on another organization's
+          trail.
+        data_type: double
+      - name: not_on_at
+        description: The other organization's trail an A.T.-family point sits on, which withholds its mile.
+        data_type: varchar
+      - name: confidence
+        description: "`high` or `low` on every live POI; null on a tombstone."
+        data_type: varchar
+      - name: capacity
+        description: How many the shelter sleeps, from reference/shelter_capacity.json; null where nobody has said, never 0.
+        data_type: integer
+      - name: water_distance_ft
+        description: CSI's distance to the nearest water in ATC's feet, on a shelter, a campsite or a synthesized water point.
+        data_type: integer
+        data_tests:
+          # A safety column (decision 102): its null rate, shortest and
+          # longest distance against the builds before, at warn.
+          - elementary.column_anomalies:
+              arguments:
+                column_anomalies: [null_percent, min, max]
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - name: water_distance_source
+        description: >
+          How ATC arrived at the distance, CSI's Nearest_Water_Source verbatim:
+          OSA_Field_Estimate is a steward's round number, which the phone
+          prints with a tilde.
+        data_type: varchar
+      - name: description
+        description: The POI's one sentence, null where nothing usable is stated.
+        data_type: varchar
+      - name: nearby
+        description: The parts around a site's anchor, as JSON the phone writes the sentence from.
+        data_type: json
+      - name: lp_section
+        description: The Long Path section a guide waypoint is on.
+        data_type: integer
+      - name: section_mile
+        description: The guide's own mile from the section's start; never an A.T. mile.
+        data_type: double
+      - name: placement
+        description: stated, at NYNJTC's coordinates, or interpolated, by the guide's mile along the line.
+        data_type: varchar
+      - name: source_url
+        description: The guide page the waypoint came from.
+        data_type: varchar
+      - name: position_error_m
+        description: On an interpolated guide waypoint, INTERPOLATION_ERROR_M (500 m), the measured p90 of how far the estimate sits from the place.
+        data_type: integer
+      - name: off_trail_miles
+        description: How far off the Long Path the guide says the place is; the pin marks where the walker leaves the trail.
+        data_type: double
+      - name: water_reliability
+        description: reliable or unreliable, where the guide says which of a water source; null where it does not.
+        data_type: varchar
+      - name: water_caution
+        description: >
+          Decision 65: 'no_shutoff_season' on a plumbed tap or fountain whose layer records no
+          shutoff season (int_points_of_interest__cautioned), which the waypoint card reads to
+          say taps like it are often off out of season. Only ever on low-confidence water; null on
+          every other POI, and on a tap whose layer's own winter status says it is open in winter.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['no_shutoff_season']
+      - name: photo_key
+        description: >
+          The card photo's bucket key, photos/<digest>.jpg (PO24); null where the
+          POI has no photo to show, including a Commons photo the face screen
+          flagged and nobody has cleared (PO38).
+        data_type: varchar
+      - name: photo_page_url
+        description: The card photo's page, the credit link.
+        data_type: varchar
+      - name: photo_author
+        description: Who the card photo credits.
+        data_type: varchar
+      - name: photo_license
+        description: The licence the card photo ships under.
+        data_type: varchar
+      - name: photo_taken
+        description: When the card photo was taken, an ISO date.
+        data_type: varchar
+      - name: photos
+        description: Every photo shown for the POI, card photo first, as JSON.
+        data_type: json
+      - name: site_id
+        description: The site's anchor's id, null on a POI in no site.
+        data_type: varchar
+      - name: site_role
+        description: "`anchor` or `member`."
+        data_type: varchar
+      - name: site_name
+        description: The anchor's name.
+        data_type: varchar
+      - name: trails_closed_within_m
+        description: >
+          On a trailhead whose every trail line within that many metres (100)
+          is closed, export_nearby_poi.py's TRAILS_CLOSED_PROPERTY; the phone
+          draws the trailhead with a closure cross. Null is "not marked",
+          never "open".
+        data_type: integer
+      - name: retired
+        description: The release that retired a tombstone's id; null on a live POI.
+        data_type: varchar
+      - name: superseded_by
+        description: The live POI that took a tombstone's place, where one did.
+        data_type: varchar
+      - name: record_order
+        description: >
+          The row's place in its file: export_poi.py's record order, the
+          order export_nearby_poi.py reads its layers and rows in, and a
+          tombstone's id order.
+        data_type: bigint
+        constraints:
+          - type: not_null
+      - name: club
+        description: The pipeline/extract/ folder that extracted the row, `ourhike` for a tombstone.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: The row's source, as int_sources__publication keys it.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          # Its source may publish, not only exist: a plain relationships test
+          # passes a row whose source is registered but held back.
+          - dbt_utils.relationships_where:
+              arguments:
+                to: ref('int_sources__publication')
+                field: source_key
+                to_condition: may_publish
+      - name: _loaded_at
+        description: When the extract landed the row.
+        data_type: timestamptz
+        constraints:
+          - type: not_null
+      - name: _first_seen_at
+        description: "{{ doc('row_first_seen_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                # warn only on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already.
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+      - name: _changed_at
+        description: "{{ doc('row_changed_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"

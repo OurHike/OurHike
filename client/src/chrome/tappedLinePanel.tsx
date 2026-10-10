@@ -40,6 +40,13 @@ import type { ElevationProfile } from '../lib/elevationProfile'
 import type { PaceProfile } from '../lib/pace'
 import type { MileRange } from '../lib/walkedMiles'
 import type { UnitSystem } from '../lib/userPreferences'
+import type { StretchAdvisory } from '../lib/hazardAreas'
+
+/** No advisory anywhere: a phone without decision 67's areas. One shared
+ *  reference, for NO_PAPER_MAPS's reason. */
+function noAdvisories(): StretchAdvisory[] {
+  return []
+}
 
 /** No paper map, as one shared reference: the sheet's detail is memoised on
  *  it, and a fresh empty array per render would rebuild the detail on every
@@ -58,6 +65,10 @@ export interface TappedLinePanel {
 }
 
 export interface TappedLineInput {
+  /** Decision 67's advisories for a tapped place (#1805): each drawn
+   *  hunting area, shooting site or burned area it is inside or beside, from
+   *  chrome/noticesPanel.tsx, which owns the areas. Absent is none. */
+  hazardAdvisoriesAt?: (at: [number, number]) => StretchAdvisory[]
   spurs: Record<string, SpurRecord>
   pois: readonly StoredPoi[]
   units: UnitSystem
@@ -151,6 +162,7 @@ function takeProps(
 }
 
 export function useTappedLinePanel({
+  hazardAdvisoriesAt = noAdvisories,
   spurs,
   pois,
   units,
@@ -393,6 +405,16 @@ export function useTappedLinePanel({
           <LineSheet
             detail={lineDetail}
             onClose={() => setSelectedLine(null)}
+            // The advisories for the tapped stretch (#1805, decision 67):
+            // each drawn hunting area, shooting site or burned area the
+            // tapped point is inside or beside. The point is already on the
+            // line (map/lineTaps.ts), so this is the stretch the hiker
+            // touched, not wherever the thumb landed.
+            advisories={
+              selectedLine === null
+                ? []
+                : hazardAdvisoriesAt([selectedLine.at[0], selectedLine.at[1]])
+            }
             {...takeProps(
               selectedLine === null ? null : trailIdForSource(selectedLine.source),
               takenTrailId,
@@ -428,6 +450,7 @@ export function useTappedLinePanel({
       takenTrailId,
       takenByHike,
       onTakeTrail,
+      hazardAdvisoriesAt,
     ],
   )
 

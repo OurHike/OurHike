@@ -1,18 +1,33 @@
--- Staged but NOT unioned into dim_pois: whether a bridge is a hiker-facing
--- POI type is a product call (#99), recorded as deliberately-unmapped in
--- the poi_type_mapping seed - the same greppable posture as opentrail's
--- 'c' and 't' codes - rather than decided in passing by a staging model.
+-- Staged but NOT unioned into points_of_interest: whether a bridge is a hiker-
+-- facing POI type is a product call (#99), recorded as deliberately-unmapped in
+-- the poi_type_mapping seed - the same greppable posture as opentrail's 'c' and
+-- 't' codes - rather than decided in passing by a staging model.
 with source as (
-    select * from {{ source('atc', 'raw_atc__bridges') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as decision 40 has staging do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('atc', 'raw_atc__bridges') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'bridges'",
+            'globalid',
+        ]) }} as poi_key,
+        cast(globalid as varchar) as source_id,
+        name,
+        status,
+        type as bridge_type,
+        super_stru as superstructure,
+        st_x(geom) as longitude,
+        st_y(geom) as latitude,
+        _loaded_at as loaded_at
+    from source
 )
 
-select
-    cast(globalid as varchar) as source_id,
-    name,
-    status,
-    type as bridge_type,
-    super_stru as superstructure,
-    st_x(geom) as longitude,
-    st_y(geom) as latitude,
-    _loaded_at as loaded_at
-from source
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='poi_key', order_by='source_id'
+) }}

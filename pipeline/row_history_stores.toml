@@ -1,0 +1,27 @@
+# The row-history stores that have been saved to at least once, by name: the
+# store URL's last part, so `monthly` for s3://<R2_RAW_BUCKET>/history/monthly.
+# Each names the run that first saved it.
+#
+# build_marts.py refuses a store listed here that holds no history.json,
+# because that is lost history, and a cold start would date every row as
+# first seen in that build. A store not listed may cold-start, with a
+# warning. List a store in the pull request after its first run has saved,
+# never before (pipeline/row_history.py, build_marts.py's docstring).
+#
+# Read with tomllib, so build_marts.py stays standard-library only.
+
+[started]
+monthly = "2026-10-07, refresh-reference.yml run 37614075245 (monthly run 25), which saved 9 snapshot tables, 26,016,290 rows"
+conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 505), which saved 2 snapshot tables, 457 rows"
+
+# The same stores, by the same names, once Elementary's history (decision 102)
+# has been saved there: each names the run whose save first wrote its
+# elementary.json. Every store above was saved before decision 102, so each
+# holds a history.json and no elementary.json, and the first run with
+# Elementary there starts that history, with a warning, which is not a loss.
+# Once a store is listed here, a missing elementary.json is refused as lost
+# history (row_history.py, "THE COLD START"). Only a store listed under
+# [started] may be listed here. List one after its first run has saved, never
+# before.
+[elementary_started]
+monthly = "2026-10-10, build-reference.yml run 38014567450 (monthly run 31), which saved Elementary's history: 5 tables, 859,804 bytes"

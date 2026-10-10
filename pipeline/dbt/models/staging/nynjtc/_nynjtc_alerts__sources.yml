@@ -1,0 +1,114 @@
+version: 2
+
+# NYNJTC's Trail Alerts, in their own file beside _nynjtc__sources.yml, which
+# declares the club's trail extracts under the same source name: dbt merges
+# the tables of one source across files (dbt 2.0.6, parsed 2026-10-02), and
+# each block's own config applies to its own tables.
+sources:
+  - name: nynjtc
+    description: >
+      NYNJTC's own layers and feeds, landed by the extract's nynjtc/ folder.
+      This file holds its Trail Alerts (sources.json's `nynjtc_trail_alerts`),
+      landed by nynjtc/closures.py, which warnings.py shares.
+    schema: raw
+    config:
+      # How long since the extract last read the posts or confirmed them
+      # unchanged, from its run log (macros/last_read_or_confirmed_at.sql).
+      # `_loaded_at` moves only when NYNJTC's (id, modified) set does
+      # (WordpressPosts' change check), so a quiet week read as stale on it.
+      # A refusal is a warning on the hourly run since decision 100 (the
+      # maintainer's poll of 2026-10-07), and red here once NYNJTC has gone
+      # unread for 24 hours. The thresholds are generate_notice_models.py's
+      # FRESHNESS_HOURS, graded there; tests/test_notice_source_freshness.py
+      # holds these to them. publish-conditions.yml's freshness step selects
+      # `conditions_job`.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      tags: [conditions_job]
+      meta:
+        cadence: hourly
+      freshness:
+        warn_after: {count: 12, period: hour}
+        error_after: {count: 24, period: hour}
+    tables:
+      - name: raw_nynjtc__nynjtc_trail_alerts
+        data_tests:
+          # Rows sharing base_nynjtc__nynjtc_trail_alerts's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nynjtc_trail_alerts'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          The Trail Alerts category's posts as NYNJTC's WordPress REST API
+          serves them, one row per post: 18 on 2026-10-01, the oldest from
+          2024-01-11. Nested values stay one JSON column each (`title`,
+          `content`, and the place-term id lists `trail`, `park`, `region`
+          and `state`), and the fields that name a person never land
+          (_kinds.py's WP_DROPPED). The body, `content`, is NYNJTC's writing
+          and stays in the private raw store: nynjtc_notices_licence
+          authorises the headline, locality, `modified` date and URL only.
+          Key: the post's WordPress id.
+        columns:
+          - name: id
+            description: The post's WordPress id.
+            data_tests: [not_null]
+      - name: raw_nynjtc__nynjtc_trail_alerts_terms
+        data_tests:
+          # Rows sharing base_nynjtc__nynjtc_trail_alerts_terms's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nynjtc_trail_alerts_terms'", "taxonomy", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        config:
+          meta:
+            # Read once a day on the hourly lane: a renamed term moves no
+            # post's `modified` (extract/_kinds.py's TERMS_CADENCE_REASON).
+            cadence: daily
+          # A daily resource goes unread for up to a day by design
+          # (extract/_run.py's due()), so its thresholds are the hourly ones
+          # plus that day (FRESHNESS_HOURS' daily row).
+          freshness:
+            warn_after: {count: 36, period: hour}
+            error_after: {count: 48, period: hour}
+        description: >
+          The four place taxonomies a post is tagged from (lib/nynjtc_alerts.py's
+          PLACE_TAXONOMIES: trail, park, region, state), one row per term with
+          its taxonomy: 45, 125, 13 and 3 terms on 2026-10-02. Names arrive
+          HTML-escaped, `&amp;` once. Key: the taxonomy and the term's id.
+        columns:
+          - name: id
+            description: The term's WordPress id, which a post's taxonomy list carries.
+            data_tests: [not_null]

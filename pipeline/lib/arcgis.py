@@ -12,13 +12,98 @@ directory away from the module that never called it.
 """
 
 import json
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 import requests
 
-from lib.http_retry import request_with_retry
+from lib.http_retry import DEFAULT_BACKOFF_SECONDS, DEFAULT_RETRYABLE_STATUSES, request_with_retry
 
 PAGE_SIZE = 1000
+
+# A PAGE QUERY WHOSE GET URL WOULD BE LONGER THAN THIS GOES AS A POST FORM,
+# the same parameters in the body (query_page()). Measured 2026-10-03 on
+# services3.arcgis.com's WFIGS_Interagency_Perimeters_Current/FeatureServer/0,
+# whose 118 kept fields make a 3,018-character query: a GET of 2,075
+# characters answered 200, one of 2,622 answered 404, and the whole query as
+# a POST answered all 113 features. 2,000 sits under the longest GET seen to
+# answer. Where between 2,075 and 2,622 that host's limit lies is
+# @unvalidated, and other hosts' limits are unmeasured; a shorter query is
+# sent by GET exactly as before, so no layer read today changes request.
+GET_URL_LIMIT = 2000
+
+# A PAGE THAT ANSWERS 5xx IS HALVED AT ONCE, down to one feature, rather
+# than retried at its size over the caller's whole backoff.
+# Measured 2026-10-03 on apps.fs.usda.gov's EDW_Wilderness_02/MapServer/0
+# (449 polygons): returnCountOnly answered 449 in 6.7 s, while a page of 1,000
+# answered "Error performing query operation" (500) in 19 s, 250 answered 500
+# in 8.7 s, and 100 answered 200 with 12,757,608 bytes in 7.2 s. Monthly run 10
+# (refresh-reference.yml 37156600376) spent the monthly lane's 18-minute
+# ladder retrying the page of 1,000 and failed the run.
+#
+# ONE FEATURE THAT STILL ANSWERS 5xx IS ASKED ONCE MORE AT
+# PRECISION_FALLBACK decimal places, with the caller's whole backoff, so a
+# server that is really down still gets its full wait. Measured 2026-10-04 on
+# EDW_OtherNationalDesignatedArea_01/MapServer/0 (227 polygons), which monthly
+# run 11 (37177022235) failed on at a page of 31: every feature answered alone
+# but the one at offset 83, which answered 500 in 10.3 s, 80 bytes as Esri JSON,
+# and 200 with 27,015,430 bytes at geometryPrecision=6. Six decimal places of a
+# degree is at most 0.11 m, finer than a phone's GPS fix (Reasoned), and only
+# that feature is rounded: the next page goes back to the last size that
+# answered. A caller that sets its own geometry_precision keeps it.
+PRECISION_FALLBACK = 6
+
+# A PAGE SIZE HALVED BY A CLUSTER OF HEAVY FEATURES GROWS BACK once the
+# cluster is behind it: after GROW_AFTER_PAGES pages in a row have answered at
+# one size, the next is asked at twice that, never above the size the read
+# began at. Measured 2026-10-09 on TPL's ParkServe_ProdNew/MapServer/2
+# (154,780 park polygons): 116 pages of 1,000 answered in 119 s (0.49 to
+# 3.8 s each) up to offset 116,000, where pages of 1,000 down to 31 answered
+# 500, pages of 15 answered 19 to 24 MB each, and the size was down to 1 by
+# offset 116,063; the feature at 116,065 answered only at 6 decimals, 28.7 MB
+# alone. With no rule to grow the size back, the loop read the 38,700
+# features after the cluster one a request, 0.454 s each: about 4.9 hours
+# (Reasoned from that rate; the run was stopped at offset 117,595).
+#
+# 3 is @unvalidated: a starting value, not a measurement. Its cost is
+# Reasoned: back from one feature to 1,000 takes 10 doublings, 30 pages and
+# 3,069 features. What would settle it: the request count and the read's
+# seconds on the layers the monthly lane halves (ParkServe, EDW_Wilderness_02,
+# PASDA's DCNR trails) over a few monthly runs.
+#
+# A GROWN SIZE THE SERVER REFUSES WAITS TWICE AS LONG BEFORE IT IS TRIED
+# AGAIN: the refused page halves as before, and the next growth needs twice
+# the pages in a row the last one did, until a grown size answers and the
+# wait goes back to GROW_AFTER_PAGES. So a server that refuses every page
+# above some size is asked above it after 3, 6, 12, 24 ... pages, about
+# log2(pages / 3) times in a whole read rather than every 3 pages (Measured
+# on the fake server in tests/test_lib_arcgis.py, 2026-10-09: 5 tries at 448
+# in a read of 30,000 features at 224 a page, 160 requests in all). And a
+# cluster of heavy features longer than the wait still lets the size grow
+# back, at most about as many pages again past its end as it took to cross
+# (Reasoned: a try refused after W pages makes the next wait 2W). Giving up
+# on a size after two refusals, tried first, made a ten-feature cluster a
+# ceiling: the two-feature try fell inside it twice, and the rest of the read
+# went one feature a request (the first heavy-cluster test in
+# tests/test_lib_arcgis.py, 2026-10-09).
+GROW_AFTER_PAGES = 3
+
+
+def query_page(
+    query_url: str,
+    params: dict,
+    *,
+    session=None,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    retryable_statuses: tuple[int, ...] = DEFAULT_RETRYABLE_STATUSES,
+):
+    """One page query: a GET, or a POST form when the GET's URL would pass GET_URL_LIMIT."""
+    url = requests.Request("GET", query_url, params=params).prepare().url
+    method, fields = ("get", {"params": params}) if len(url) <= GET_URL_LIMIT else ("post", {"data": params})
+    return request_with_retry(
+        query_url, session=session, method=method, timeout=60, backoff=backoff, retryable_statuses=retryable_statuses, **fields
+    )
 
 
 def fetch_layer_geojson(
@@ -63,44 +148,325 @@ def fetch_layer_geojson(
     the same requests answer `{"error": {"code": 500, "message": "Error
     performing query operation"}}`, which is why a refusal is either an
     unparsable body or an error object. The halving repeats the SAME offset
-    at the smaller size, keeps that size for the rest of the layer, and
-    gives up at a page of one with the server's own words, so a layer that
-    is genuinely broken still fails - after at most ten extra requests
-    (1,000 halves to 1 in ten steps), which is what a wrong registration
-    costs here instead of a silent skip. Whether a server refuses by count
-    or by bytes is not distinguished, because it does not change what to do.
+    at the smaller size, keeps that size until GROW_AFTER_PAGES pages in a
+    row have answered at it (then doubles it, never past the size the read
+    began at), and gives up at a page of one with the server's own words,
+    so a layer that is genuinely broken still fails - after at most ten
+    extra requests (1,000 halves to 1 in ten steps), which is what a wrong
+    registration costs here instead of a silent skip. Whether a server
+    refuses by count or by bytes is not distinguished, because it does not
+    change what to do.
+    """
+    query_url = layer_url.rstrip("/") + "/query"
+    features = []
+    for batch in iter_layer_pages(layer_url, out_fields=out_fields, geometry_precision=geometry_precision, page_size=page_size):
+        features.extend(batch)
+    check_not_truncated(query_url, len(features))
+    return {"type": "FeatureCollection", "features": features}
+
+
+def iter_layer_pages(
+    layer_url: str,
+    *,
+    out_fields: str = "*",
+    geometry_precision: int | None = None,
+    page_size: int | None = None,
+    where: str = "1=1",
+    session=None,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    return_z: bool = False,
+    paginate: bool = True,
+):
+    """Yield each page of GeoJSON features `fetch_layer_geojson` would collect, in order.
+
+    The loop itself, with every rule fetch_layer_geojson's docstring states:
+    stop on an empty page and never a short one, advance by the rows the
+    page returned, halve a refused page and grow it back once
+    GROW_AFTER_PAGES pages in a row have answered. It is a generator so the dlt
+    resource in extract/_kinds.py can yield page by page through THIS loop
+    rather than a second one (#1793, pipeline/ELT.md) - a second pager is
+    the thing #1295 removed, and dlt's own OffsetPaginator steps by `limit`
+    rather than by rows returned, which skips rows on any server whose
+    `maxRecordCount` sits below the page asked for (ELT.md, "dlt
+    configuration requirements": 4 of 10 rows, measured 2026-10-01).
+
+    `where` is the entry's own filter, for a layer read only through the
+    agency's status field (ELT.md, "Status layers are often stale"). The
+    count that proves a short read must be taken under the same clause, so
+    `layer_count` takes it too. `session` is the caller's, so a caller that
+    names itself to the server (lib/user_agent.py) does so on every page.
+    `backoff` is the caller's too: how long each page waits out a server that
+    stops answering (lib/http_retry.py).
+
+    A SERVER THAT IGNORES `resultOffset` IS REFUSED, not looped on. One that
+    does not support pagination answers every offset with page one, and
+    this loop, which stops only on an empty page, would never stop (ELT.md
+    asks for a `maximum_offset` on every layer for this reason; @unvalidated
+    against a live server, since none registered here has been seen doing
+    it). Two consecutive pages identical feature for feature cannot come
+    from one layer read in order, so the second one raises.
+
+    `return_z` KEEPS EACH VERTEX'S ELEVATION, which `f=geojson` drops.
+    Measured 2026-10-03 on ATC's Z-enabled `ATX_Ratings/FeatureServer/9`:
+    `f=geojson&returnZ=true` answered 2-D coordinates, while `f=json&returnZ=true`
+    answered [x, y, z] on every vertex. So with `return_z` the pages are asked
+    for as Esri JSON with `returnZ=true` and converted here, by
+    `esri_feature_to_geojson`, into the same GeoJSON features this loop yields
+    otherwise, each coordinate carrying its Z. It is the same loop - stop on
+    an empty page, advance by rows returned, halve a refused page, refuse a
+    repeated one - so it is not a second pager. Off by default, and with it
+    off the request is exactly what it was before (tests/test_lib_arcgis.py
+    pins the whole query).
+
+    `paginate=False` IS FOR A SERVER THAT REFUSES `resultOffset`, one whose
+    layer metadata reads `advancedQueryCapabilities.supportsPagination: false`.
+    Measured 2026-10-03 on cicgis.org's `Chesapeake/CAJO/MapServer/0`: a paged
+    query answers `{"error": {"code": 400, "message": "Pagination is not
+    supported."}}`, which this loop would halve down to a page of one and then
+    fail on. That layer answers `returnIdsOnly` (843 ids under `FID`) and an
+    `objectIds` query by GET and by POST alike, so `iter_pages_by_object_id`
+    reads the ids once and then the features in batches of `page_size`, in
+    object-id order. The caller sets `page_size` no larger than the layer's
+    `maxRecordCount`; the proof of a whole read stays the caller's
+    `returnCountOnly` count.
     """
     query_url = layer_url.rstrip("/") + "/query"
     records = PAGE_SIZE if page_size is None else page_size
-    features = []
+    if not paginate:
+        yield from iter_pages_by_object_id(
+            query_url,
+            out_fields=out_fields,
+            geometry_precision=geometry_precision,
+            batch_size=records,
+            where=where,
+            session=session,
+            backoff=backoff,
+            return_z=return_z,
+        )
+        return
     offset = 0
+    previous = None
+    initial = records  # the size the read began at, to go back to when no page has answered yet
+    last_good = None  # the last page size that answered, to go back to after one rounded feature
+    rounded = False  # this one feature is being asked at PRECISION_FALLBACK
+    answered_in_a_row = 0  # pages answered at `records` since it last changed (GROW_AFTER_PAGES)
+    wait = GROW_AFTER_PAGES  # pages in a row the next growth needs; doubles when a grown size is refused
+    probing = False  # `records` was just grown, and this page is the first asked at it
+
+    def halved() -> int:
+        """The next size after `records` was refused; a grown size refused at once makes the next growth wait longer."""
+        nonlocal answered_in_a_row, wait, probing
+        if probing:
+            wait *= 2
+        answered_in_a_row, probing = 0, False
+        return records // 2
+
+    def grown() -> int:
+        """`records` after a page answered at it: twice that once `wait` pages in a row have, up to `initial`."""
+        nonlocal answered_in_a_row, wait, probing
+        if probing:
+            wait, probing = GROW_AFTER_PAGES, False
+        answered_in_a_row += 1
+        if answered_in_a_row < wait or records >= initial:
+            return records
+        larger = min(records * 2, initial)
+        print(f"  {query_url} answered {answered_in_a_row} pages of {records} in a row; asking {larger}")
+        answered_in_a_row, probing = 0, True
+        return larger
+
     while True:
         params = {
-            "where": "1=1",
+            "where": where,
             "outFields": out_fields,
             "outSR": 4326,
             "f": "geojson",
             "resultOffset": offset,
             "resultRecordCount": records,
         }
+        if return_z:
+            params["f"] = "json"
+            params["returnZ"] = "true"
         if geometry_precision is not None:
             params["geometryPrecision"] = geometry_precision
-        resp = request_with_retry(query_url, params=params, timeout=60)
+        elif rounded:
+            params["geometryPrecision"] = PRECISION_FALLBACK
+        # A 5xx is not retried at a size it can be halved from, nor before the rounded ask; that
+        # last ask gets the caller's whole backoff. A timeout keeps the backoff at every size: a
+        # stalled server, as DEC's was on 2026-10-03, hung its count query too.
+        last_chance = rounded or (records <= 1 and geometry_precision is not None)
+        statuses = DEFAULT_RETRYABLE_STATUSES if last_chance else (429,)
+        try:
+            resp = ask_until_let_in(
+                lambda: query_page(query_url, params, session=session, backoff=backoff, retryable_statuses=statuses),
+                query_url,
+            )
+        except requests.HTTPError as failure:
+            status = failure.response.status_code if failure.response is not None else None
+            if last_chance or status is None or status < 500:
+                raise
+            if records > 1:
+                smaller = halved()
+                print(f"  {query_url} answered {status} at a page of {records}; retrying at {smaller}")
+                records = smaller
+            else:
+                print(
+                    f"  {query_url} answered {status} for the feature at offset {offset}; asking it at {PRECISION_FALLBACK} decimals"
+                )
+                rounded = True
+            continue
         refusal = page_refusal(resp)
         if refusal is not None:
             if records <= 1:
                 raise RuntimeError(f"{query_url} {refusal} at a page of 1 feature")
-            smaller = records // 2
+            smaller = halved()
             print(f"  {query_url} {refusal} at a page of {records}; retrying at {smaller}")
             records = smaller
             continue
         batch = resp.json().get("features", [])
+        if return_z:
+            batch = [esri_feature_to_geojson(feature) for feature in batch]
         if not batch:
-            break
-        features.extend(batch)
+            return
+        if batch == previous:
+            raise RuntimeError(f"{query_url} answered offset {offset} with the page before it; it ignores resultOffset")
+        yield batch
+        previous = batch
         offset += len(batch)
-    check_not_truncated(query_url, len(features))
-    return {"type": "FeatureCollection", "features": features}
+        if rounded:
+            # With no page answered before it, the one rounded feature is no size to keep: a fast 5xx burst on
+            # the first page halved 1,000 to 1 and would have read the rest of the layer a feature a request
+            # (review finding EXD-5). A server that really cannot take `initial` halves again, ten requests at most.
+            # After a cluster, `last_good` can itself be one feature (ParkServe's was, 2026-10-09), which grown()
+            # doubles back from, GROW_AFTER_PAGES pages at a time.
+            rounded = False
+            records = last_good or initial
+            answered_in_a_row, probing = 0, False
+        else:
+            last_good = records
+            records = grown()
+
+
+def feature_object_id(feature: dict, oid_field: str | None):
+    """A page's feature's object id, or None where it carries none: GeoJSON's `id`, else the id field's value."""
+    if feature.get("id") is not None:
+        return feature["id"]
+    properties = feature.get("properties") or {}
+    return properties.get(oid_field) if oid_field else None
+
+
+def iter_pages_by_object_id(
+    query_url: str,
+    *,
+    out_fields: str = "*",
+    geometry_precision: int | None = None,
+    batch_size: int = PAGE_SIZE,
+    where: str = "1=1",
+    session=None,
+    backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
+    return_z: bool = False,
+):
+    """Yield a non-paginating layer's features in pages, by object id: iter_layer_pages' `paginate=False` path.
+
+    One `returnIdsOnly` query under `where`, then the ids in ascending order,
+    `batch_size` at a time, each batch POSTed as `objectIds`. POST, because a
+    thousand ids are several kilobytes of URL, past the 2,048-byte query
+    string IIS allows by default (Reasoned from IIS's documented default; the
+    measured layer answered GET and POST the same for 3 ids). A batch the
+    server refuses is asked for again at half the size, as a refused page is.
+    A server that answers a batch with features whose ids it was not asked
+    for is ignoring `objectIds` and is refused, rather than read as the
+    layer. An empty id list is an empty layer; whether it is a whole one is
+    the caller's `returnCountOnly` check, as for the paged loop.
+    """
+    answer = ask_until_let_in(
+        lambda: request_with_retry(
+            query_url,
+            session=session,
+            params={"where": where, "returnIdsOnly": "true", "f": "json"},
+            timeout=60,
+            backoff=backoff,
+        ),
+        query_url,
+    )
+    refusal = page_refusal(answer)
+    if refusal is not None:
+        raise RuntimeError(f"{query_url} {refusal} when asked for its object ids")
+    body = answer.json()
+    oid_field = body.get("objectIdFieldName")
+    ids = sorted(body.get("objectIds") or [])
+    size = batch_size
+    index = 0
+    while index < len(ids):
+        batch = ids[index : index + size]
+        form = {"objectIds": ",".join(str(oid) for oid in batch), "outFields": out_fields, "outSR": 4326, "f": "geojson"}
+        if return_z:
+            form["f"] = "json"
+            form["returnZ"] = "true"
+        if geometry_precision is not None:
+            form["geometryPrecision"] = geometry_precision
+        resp = ask_until_let_in(
+            lambda: request_with_retry(query_url, session=session, method="post", data=form, timeout=60, backoff=backoff),
+            query_url,
+        )
+        refusal = page_refusal(resp)
+        if refusal is not None:
+            if size <= 1:
+                raise RuntimeError(f"{query_url} {refusal} for 1 object id")
+            print(f"  {query_url} {refusal} for {size} object ids; retrying at {size // 2}")
+            size //= 2
+            continue
+        features = resp.json().get("features", [])
+        if return_z:
+            features = [esri_feature_to_geojson(feature) for feature in features]
+        asked = set(batch)
+        stray = [oid for oid in (feature_object_id(f, oid_field) for f in features) if oid is not None and oid not in asked]
+        if stray:
+            raise RuntimeError(f"{query_url} answered object ids it was not asked for ({stray[:3]}); it ignores objectIds")
+        yield features
+        index += len(batch)
+
+
+def esri_geometry_to_geojson(geometry: dict | None) -> dict | None:
+    """One Esri JSON geometry as a GeoJSON geometry, every coordinate kept as the server sent it, Z included.
+
+    Points, multipoints and polylines, which is every Z-enabled layer
+    registered so far: a polyline of one path is a LineString and of several
+    a MultiLineString, as `f=geojson` answers them. An empty geometry is None,
+    GeoJSON's null geometry. A POLYGON RAISES: Esri rings are told apart as
+    outer or hole by their winding and must be regrouped, which this does not
+    do yet, and a polygon read wrong is worse than one not read. A Z-enabled
+    polygon layer is read without `return_z` until somebody builds that.
+    """
+    if not geometry:
+        return None
+    if "x" in geometry:
+        if geometry.get("x") is None or geometry.get("x") == "NaN":
+            return None
+        coordinates = [geometry["x"], geometry["y"]]
+        if geometry.get("z") is not None:
+            coordinates.append(geometry["z"])
+        return {"type": "Point", "coordinates": coordinates}
+    if "points" in geometry:
+        return {"type": "MultiPoint", "coordinates": geometry["points"]} if geometry["points"] else None
+    if "paths" in geometry:
+        paths = [path for path in geometry["paths"] if path]
+        if not paths:
+            return None
+        if len(paths) == 1:
+            return {"type": "LineString", "coordinates": paths[0]}
+        return {"type": "MultiLineString", "coordinates": paths}
+    if "rings" in geometry:
+        raise ValueError("an Esri polygon is not converted with its Z yet; read this layer without return_z")
+    raise ValueError(f"an Esri geometry of no known shape: {sorted(geometry)}")
+
+
+def esri_feature_to_geojson(feature: dict) -> dict:
+    """One Esri JSON feature as the GeoJSON feature `f=geojson` would have answered, its Z kept."""
+    return {
+        "type": "Feature",
+        "properties": feature.get("attributes") or {},
+        "geometry": esri_geometry_to_geojson(feature.get("geometry")),
+    }
 
 
 def check_not_truncated(query_url: str, fetched: int) -> None:
@@ -123,17 +489,74 @@ def check_not_truncated(query_url: str, fetched: int) -> None:
     turn a missing capability into an outage. @unvalidated: the support
     is asserted by the ArcGIS REST spec, not checked per registered source.
     """
+    count = layer_count(query_url)
+    if count is not None and fetched < count:
+        raise RuntimeError(f"{query_url} holds {count} features but {fetched} were fetched; the layer was truncated")
+
+
+def layer_count(
+    query_url: str, *, where: str = "1=1", session=None, backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS
+) -> int | None:
+    """The server's own `returnCountOnly` count for `where`, or None when it cannot be read.
+
+    Split out of check_not_truncated so the extract run check can record
+    the count as the proof an empty or short table needs (pipeline/ELT.md,
+    "A full reload that cannot empty a safety table"). None is printed with
+    its reason and is never a count of zero: an allowed-empty closures layer
+    without a readable count is UNKNOWN there, not a quiet trail.
+    """
     try:
-        resp = request_with_retry(query_url, params={"where": "1=1", "returnCountOnly": "true", "f": "json"}, timeout=60)
+        resp = request_with_retry(
+            query_url,
+            session=session,
+            params={"where": where, "returnCountOnly": "true", "f": "json"},
+            timeout=60,
+            backoff=backoff,
+        )
         count = resp.json().get("count")
     except (ValueError, AttributeError, requests.RequestException) as exc:
         print(f"  {query_url} count check skipped: {exc}")
-        return
+        return None
     if not isinstance(count, int):
         print(f"  {query_url} count check skipped: no integer count in the answer")
-        return
-    if fetched < count:
-        raise RuntimeError(f"{query_url} holds {count} features but {fetched} were fetched; the layer was truncated")
+        return None
+    return count
+
+
+#: ArcGIS Online answers a rate-limited query with HTTP 200 and a JSON error object of code 429, "Unable to perform
+#: query. Too many requests." Oregon Metro's trails on services2.arcgis.com did so in monthly run 14
+#: (refresh-reference.yml 37207306294, 2026-10-04), and the paged loop read it as a page too large and halved down to
+#: one feature before giving up, which stopped the whole monthly extract. A throttled answer is never halved: the same
+#: request is made again after each wait here, and only after the last one does the read fail. @unvalidated: Esri
+#: publishes no figure for how long an anonymous client is held back, so the 7.5 minutes this ladder waits in all is a
+#: guess. The next throttled run's log, which names every wait, would settle it.
+THROTTLE_WAITS_SECONDS = (30, 60, 120, 240)
+
+
+def is_throttled(resp) -> bool:
+    """Whether this answer is ArcGIS's rate limit, an error object of code 429 in the body, whatever the HTTP status."""
+    try:
+        body = resp.json()
+    except ValueError:
+        return False
+    error = body.get("error") if isinstance(body, dict) else None
+    return bool(error) and str(error.get("code")) == "429"
+
+
+def ask_until_let_in(ask: Callable[[], requests.Response], what: str) -> requests.Response:
+    """`ask()`'s answer, asked again after each of THROTTLE_WAITS_SECONDS while it is throttled (is_throttled).
+
+    Raises RuntimeError, naming the server's words, when the last wait is spent and the answer is still the rate
+    limit, so a caller never halves a page or reads a refusal as an answer."""
+    for wait in (*THROTTLE_WAITS_SECONDS, None):
+        resp = ask()
+        if not is_throttled(resp):
+            return resp
+        if wait is None:
+            raise RuntimeError(f"{what} {page_refusal(resp)} after {len(THROTTLE_WAITS_SECONDS)} waits for its rate limit")
+        print(f"  {what} answered its rate limit (429 in the body); asking again in {wait} s")
+        time.sleep(wait)
+    raise AssertionError("unreachable")
 
 
 def page_refusal(resp) -> str | None:

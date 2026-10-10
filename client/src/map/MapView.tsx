@@ -58,6 +58,7 @@ import {
   type CorridorFeatureCollection,
 } from './corridorLayers'
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
+import type { HazardArea } from '../lib/hazardAreas'
 import { attachCoverageSeams } from './coverageLayers'
 import type { SeamEdge } from '../lib/coverageCells'
 import {
@@ -261,6 +262,15 @@ export interface MapViewProps {
   /** A tap landed on an ATC band, by band id. The shell decides what to show
    *  - this component deliberately does not know what a sheet is. */
   onSelectAtcUpdate?: (bandId: string) => void
+  /**
+   * Decision 67's hunting areas, shooting sites and burned areas a trail on
+   * this phone runs through (#1805, lib/hazardAreas.ts), drawn under the
+   * trail and never as a closure.
+   */
+  hazardAreas?: readonly HazardArea[]
+  /** A tap landed on a hazard area and on nothing drawn over it, by notice
+   *  id. Hits only, like the ATC band's. */
+  onSelectHazardArea?: (noticeId: string) => void
   /** A tap landed on the closure tape, by closure id (#1373, F12) - the tap
    *  #245 left waiting. Hits only, like the ATC band's. */
   onSelectClosure?: (closureId: string) => void
@@ -572,6 +582,37 @@ const NO_DROUGHT: readonly DroughtBand[] = []
 const NO_SEAMS: readonly SeamEdge[] = []
 const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
+const NO_HAZARD_AREAS: readonly HazardArea[] = []
+
+/** map/hazardAreaTaps.ts, imported the first time an area is drawn or a tap
+ *  on one is wired, and kept: most phones never cross one, so it stays out of
+ *  the launch bytes (features/LAUNCH_BUDGET.md §3). A failed import is not
+ *  kept - a precache a service-worker update left stale fails it with no
+ *  signal - so the next area to draw asks again, as lib/deferredScreen.tsx's
+ *  screens do. */
+type HazardAreaTaps = typeof import('./hazardAreaTaps')
+let hazardAreaTaps: Promise<HazardAreaTaps> | null = null
+
+/** Runs `attach` once map/hazardAreaTaps.ts has loaded, and returns a detach
+ *  that holds whether the import has settled yet or not. */
+function attachHazardLazily(attach: (taps: HazardAreaTaps) => () => void): () => void {
+  let detach: (() => void) | null = null
+  let detached = false
+  hazardAreaTaps ??= import('./hazardAreaTaps').catch((error: unknown) => {
+    hazardAreaTaps = null
+    throw error
+  })
+  void hazardAreaTaps.then(
+    (taps) => {
+      if (!detached) detach = attach(taps)
+    },
+    () => undefined,
+  )
+  return () => {
+    detached = true
+    detach?.()
+  }
+}
 const NO_WARNINGS: readonly WarningPoint[] = []
 const NO_WORKDAYS: readonly WorkdayPoint[] = []
 const NO_DISPUTES: readonly DisputePoint[] = []
@@ -603,6 +644,8 @@ export function MapView({
   atcUpdates = NO_ATC_UPDATES,
   atcUpdatePoints = NO_ATC_POINTS,
   onSelectAtcUpdate,
+  hazardAreas = NO_HAZARD_AREAS,
+  onSelectHazardArea,
   onSelectClosure,
   onSelectWarning,
   warnings = NO_WARNINGS,
@@ -1179,6 +1222,16 @@ export function MapView({
     return attachAtcUpdateData(map, atcUpdates, atcUpdatePoints)
   }, [map, atcUpdates, atcUpdatePoints])
 
+  // Nothing to draw and nothing drawn yet loads nothing; once an area has
+  // been drawn, an empty list still goes through, to clear it.
+  const hazardsDrawn = useRef(false)
+  useEffect(() => {
+    if (map === null) return
+    if (hazardAreas.length === 0 && !hazardsDrawn.current) return
+    hazardsDrawn.current = true
+    return attachHazardLazily((taps) => taps.attachHazardData(map, hazardAreas))
+  }, [map, hazardAreas])
+
   useEffect(() => {
     if (map === null) return
     return attachWarningData(map, warnings)
@@ -1396,6 +1449,17 @@ export function MapView({
     if (pressPlateOpen) return
     return attachAtcUpdateTaps(map, onSelectAtcUpdate)
   }, [map, onSelectAtcUpdate, onRouteTap, pressPlateOpen])
+
+  // Decision 67's areas (#1805), under the same suppressions, and last in
+  // line for a touch (map/hazardAreaTaps.ts's attachHazardTaps). No area,
+  // no tap to wire.
+  const anyHazardArea = hazardAreas.length > 0
+  useEffect(() => {
+    if (map === null || onSelectHazardArea === undefined || onRouteTap !== undefined)
+      return
+    if (pressPlateOpen || !anyHazardArea) return
+    return attachHazardLazily((taps) => taps.attachHazardTaps(map, onSelectHazardArea))
+  }, [map, onSelectHazardArea, onRouteTap, pressPlateOpen, anyHazardArea])
 
   // The two safety marks (#1373, F12), under the same suppressions: a point
   // dropped on barrier tape must not also open its sheet over the builder.

@@ -186,6 +186,22 @@
   margin-right: 6px;
 }
 
+/* A club's own line (decision 64): the tag the card the maintainer chose
+   from drew beside the trail's name, small capitals on the sunken panel, so
+   a hiker comparing two sheets can tell a club line from the network's at a
+   glance; the sentence after it says what the tag means. */
+.line-sheet__tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-radius: 4px;
+}
+
 .map-plate__position {
   margin: 2px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -2740,6 +2756,105 @@
   color: var(--fg-2);
 }
 
+/* The list's first line while a planned hike's notices are not on the phone
+   (NoticeList's `plannedNoticesMissing`): the warning box of option A in the
+   maintainer's poll of 2026-10-09. The caution surface under `--fg-1`, the
+   pair .planned-notices__category below already holds in both themes
+   (design-system/tokens/contrast.test.ts), with the warn notice's orange
+   rule down its left edge (chrome/notice.css's .notice--warn). Full body
+   weight, never dimmed, for .atc-notices__offmap's reason: this is the
+   caveat the rows under it depend on. */
+.atc-notices__missing {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-left: 4px solid var(--accent-blaze-orange);
+  border-radius: 8px;
+  background: var(--surface-warning);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
+/* ---------- Notices for your planned hikes (#1805, decision 66) ---------- */
+
+/* One section per hike planned in the next 7 days, its name and days as the
+   heading the rows sit under - the mock's "Notices for your maps" card,
+   carried to the rule the maintainer chose. */
+.planned-notices__hike {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
+}
+
+.planned-notices__hike-title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.planned-notices__dates {
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-weight: 400;
+  color: var(--fg-2);
+}
+
+.planned-notices__tagline {
+  margin: 0;
+}
+
+/* The mock's `.tag`: a small mono label ahead of the title. Two registers and
+   no more - the sunken sage one for a notice, and the caution tint for a
+   closure or an area advisory (decision 67's "Advisory"). Semantic tokens,
+   so both flip with the theme and the text keeps `--fg-1`'s contrast on
+   them; never the closure band's red, because an advisory is not a closure. */
+.planned-notices__tag {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: 1px;
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+}
+
+.planned-notices__tag--warn {
+  background: var(--surface-warning);
+}
+
+/* The source's own category under a row's title (decision 78): card N2's
+   frame A, the maintainer's pick on 2026-10-05, draws it as the card's warn
+   line, a caution-tinted strip the row's width. The tint is
+   `--surface-warning` and the text `--fg-1`, for the reason the warm tag
+   above gives, so "Closed" keeps its contrast in both themes. */
+.planned-notices__category {
+  margin: 3px 0 0;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  background: var(--surface-warning);
+  color: var(--fg-1);
+}
+
+.planned-notices__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+/* Decision 67's line on a tapped stretch's card: the advice first, in the
+   card's own body size, with the warm tag ahead of it. */
+.line-sheet__advisory {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-1);
+}
+
 /* ---------- Waypoint card (tapped pin) ---------- */
 
 /* Floats beside the pin it describes rather than docking at the bottom edge -
@@ -3864,6 +3979,21 @@ a.poi-card__credit::after {
   font-size: 12px;
   color: var(--fg-2);
   background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+/* Decision 65's season caution on a plumbed tap: the unverified line's
+   panel, with a left rule in the warning ink, so it reads as a second and
+   different claim beside "nobody has confirmed this one" rather than as more
+   of the same sentence. Not the trails-closed line's full weight: the tap may
+   well be on, and the caution is to carry enough, not to stay away. */
+.poi-card__season-caution {
+  margin: var(--space-1, 4px) 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-left: 3px solid var(--warning, #b26a00);
   border-radius: 10px;
 }
 

@@ -1,29 +1,559 @@
-# A placeholder, so the monthly lane can be dispatched before the pull request
-# that builds it merges.
+# The monthly lane's scheduled half: dlt extracts every monthly resource into
+# the private raw store, the raw inputs are pinned, and build-reference.yml is
+# dispatched to build the warehouse and every mart from that pin and stage the
+# dbt writers' files as a UA release. Designed in pipeline/ELT.md,
+# "Workflows", for #1793 - Rebuild the data platform as dlt -> dbt: seven
+# contracted marts, a monthly refresh, published docs, and lighter phone
+# downloads.
 #
-# GitHub accepts a workflow_dispatch only for a workflow whose file exists on
-# the default branch, and the run then uses the file at the ref it was
-# dispatched on. PR #1805 - dlt -> dbt re-platform as one go/no-go change
-# builds the real monthly lane in this file on claude/intelligent-feynman-sw3ewm,
-# and its go/no-go gate (pipeline/ELT.md on that branch, decision 30) needs one
-# real monthly run on UA before it merges. This file is only what lets
+# TWO WORKFLOWS, SO THAT A FIX TO A FAILED BUILD DOES NOT COST A NEW EXTRACT
+# (the maintainer's choice B, by poll, 2026-10-08). About ten of monthly runs
+# 17 to 29 failed after a good extract (ELT.md's ledger, "The gate's monthly
+# run"), and each fix then paid for a fresh extract, because a re-run is tied
+# to its own run's commit. On monthly run 29 (37726904273, the Actions API's
+# step times) the extract job took 107 min and the build job's steps down to
+# the pin 45.5 more, against 81 for the steps after it. So this file extracts
+# and pins, and build-reference.yml builds from a pin it is handed by name,
+# which a person can hand it too (ELT.md, "Rebuilding from a pin").
 #
-#   gh workflow run refresh-reference.yml --ref claude/intelligent-feynman-sw3ewm
+# NOTHING HERE CAN REACH PRODUCTION (ELT.md, "Why a scheduled run cannot
+# reach production"; .github/tests/test_refresh_reference.py and
+# test_build_reference.py hold it):
+#   - This file takes no input, and build-reference.yml's only input is the
+#     raw_run. Both of its publish steps ("Publish to UA" and "Put the podcast
+#     list in place on UA") set OURHIKE_DATA_ENV to the literal `ua`.
+#     publish.py scopes every key it writes by that value (lib/data_env.py).
+#   - Phones follow channels.json (decision 44), which only the release
+#     train uploads (`publish.py --channels`).
+#   - Promotion is the release train's, built from this run's pinned inputs
+#     (steps/raw_inputs/<raw_run>/), so what is promoted is what UA showed.
 #
-# be accepted. Dispatched on main it does nothing: no checkout, no secret, no
-# write, no schedule. That pull request replaces it with the lane.
-name: Refresh reference data (placeholder)
+# FOUR JOBS, EACH HOLDING ONLY ITS OWN CREDENTIALS:
+#   extract   R2_RAW_* and HIKEFINDER_PASSWORD, no public-bucket key. Lands
+#             every monthly resource in the private raw store (`our-hike-raw`,
+#             decision 43), checked before and after the load, plus the
+#             as-landed copy build-reference.yml's parity job reads, and OSM's
+#             fourteen Geofabrik extracts as files at most once in 30 days
+#             (#1652).
+#   pin       R2_RAW_* only, writing only under steps/. Today's fetchers'
+#             files, the DEM tile index and the water scans of the extracts,
+#             and the pin of all of it with the raw tables.
+#   dispatch  No secret: the run's own token, with `actions: write`, which no
+#             other job here holds. Starts build-reference.yml on this run's
+#             ref with this run's raw_run, and prints the command that does
+#             it again.
+#   refused   No credential. Fails the run when the extract left a layer out.
+#
+# NOT HERE YET: `notes` (decision 14's note ageing), `verify`
+# (verify-release.yml has no workflow_call), the cell and shard cutters
+# (cut_cells.py and cut_trail_graph.py read the exporters' files, not
+# data/processed/dbt/), and `maintain`, which waits for DuckLake (ELT.md
+# stage 3).
+name: Refresh reference data
 
 on:
+  schedule:
+    # 05:15 UTC on the 3rd (ELT.md, "The schedule: 05:15 UTC on the 3rd"):
+    # clear of the hourly slots (:07, :37, :40, :55) and of every daily or
+    # weekly job in .github/workflows/README.md. Off the 1st only by analogy
+    # with avoiding :00 (@unvalidated: GitHub's load by day of month is
+    # unmeasured; scheduled runs' queue delays on the 1st against other days
+    # would settle it). Schedules fire from main only. If the extract behind
+    # the newest build on main whose "Confirm UA serves what the build wrote"
+    # job passed (build-reference.yml, which this file dispatches) is over 35
+    # days old, check-upstream-freshness.yml reports it in #478 - Upstream
+    # data freshness, and a dispatch of this file is the fallback.
+    - cron: "15 5 3 * *"
+  # No inputs, on purpose: the environment is not a choice here.
   workflow_dispatch:
 
-permissions: {}
+# ONE RUN AT A TIME, IN THIS FILE AND build-reference.yml TOGETHER, because
+# between them they are the only writers of the raw store's monthly prefix
+# and of the step cache under steps/ (ELT.md, "One catalog per lake, one
+# writer"), and both declare this group. So the build this run's dispatch
+# job starts waits, queued, until this run has ended, and a run of either
+# file dispatched while the other is going waits behind it. The cost: GitHub
+# keeps one pending run per group, so a run that queues while another is
+# already waiting cancels the waiting one, which does not go red. A dispatch
+# of either file made between this run's dispatch and this run's end, which
+# leaves only the `refused` job to run (Reasoned: a minute or so), would
+# cancel the build this run started; the dispatch job's summary has the
+# command that starts it again.
+concurrency:
+  group: raw-lake-monthly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  # dlt's telemetry is on by default and would send from a job holding R2
+  # write keys (the dlt skill, rule 3). Every job here inherits this.
+  RUNTIME__DLTHUB_TELEMETRY: "false"
+  # dbt's documented opt-out, and the only switch set (pipeline-tests.yml's
+  # dbt job says why: the dbt Product Licensing Agreement, section 3.2).
+  DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
+  # The two answer caches publish-vector-data.yml carries in FETCH_OUTPUTS,
+  # at the paths the code reads them from (fetch_trail_water.py's
+  # ELEVATION_CACHE_PATH, export_elevation.py's SAMPLE_CACHE_PATH;
+  # pipeline/tests/test_fetch_cache_paths.py holds them). The list the pin
+  # job's restore and save read. build-reference.yml declares the same list
+  # for its build and parity jobs, which restore what the pin job saves:
+  # actions/cache finds an entry only by the same paths it was saved with,
+  # and .github/tests/test_build_reference.py holds the two lists equal.
+  ELEVATION_ANSWERS: |
+    pipeline/data/raw/epqs_elevations.json
+    pipeline/data/raw/elevation/samples.json
 
 jobs:
-  placeholder:
+  extract:
+    name: Extract the monthly resources into the raw store
+    runs-on: ubuntu-latest
+    # Measured: the full extract took 1 h 48 m on run 37058045092 and 1 h 45 m
+    # on 37081046157 (2026-10-02/03), of which Hike Finder's crawl delay is
+    # about 64 min for its 386 requests (the dlt skill, "Terms are never routed
+    # around"). 120 left 12 minutes, so the limit was 180. Decision 54's
+    # layers took run 37182708502's extract step (run 13) to 161.5 min, about
+    # 50 of it reading one layer at a time and about 103 normalizing in one
+    # process (extract/_run.py's MONTHLY_NORMALIZE_WORKERS). The reads now run four
+    # folders at a time and normalize on four processes, and each request ArcGIS
+    # Online throttles may wait 450 s (lib/arcgis.py's THROTTLE_WAITS_SECONDS).
+    # Monthly runs 18 to 22 (2026-10-04/05) took the extract step 105 to 127
+    # minutes (the Actions API's step times, read 2026-10-06), so 240 keeps run
+    # 13's figure with 78 minutes to spare and the slowest since with 113. Their
+    # "Seconds:" lines, which split reading from normalizing, were not read.
+    #
+    # OSM'S EXTRACTS ADD TO IT ONCE IN 30 DAYS (#1652, extract/_geofabrik.py):
+    # 3.44 GB from Geofabrik, which build-basemap.yml fetched in under 1.5 min
+    # (run 30957719854: 12.5 min end to end, Planetiler about 11 of them), then
+    # put into R2 (@unvalidated: the runner-to-R2 rate for a file this size is
+    # unmeasured). The resource starts no download after 20 minutes
+    # (DOWNLOAD_BUDGET_SECONDS), so its worst case is about 20 min plus one
+    # extract's own transfer, say 30: 161.5 + 30 = 191.5 of the 240.
+    timeout-minutes: 240
+    outputs:
+      raw_run: ${{ steps.extract.outputs.raw_run }}
+      partial: ${{ steps.extract.outputs.partial }}
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements-extract.txt
+
+      # Stops here, naming each missing secret, rather than failing somewhere
+      # inside dlt (ELT.md, "Secrets and buckets"). HIKEFINDER_PASSWORD only
+      # warns: without it Hike Finder is read anonymously, and the resource's
+      # listing guard refuses a locked export.
+      - name: Name every secret this job needs, and stop if one is missing
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          R2_RAW_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          R2_RAW_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
+        run: |
+          missing=()
+          for name in R2_ENDPOINT_URL R2_RAW_BUCKET R2_RAW_ACCESS_KEY_ID R2_RAW_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Raw store secrets missing::${missing[*]} not set; nothing was extracted (pipeline/ELT.md, Secrets and buckets)."
+            exit 1
+          fi
+          if [ -z "$HIKEFINDER_PASSWORD" ]; then
+            echo "::warning title=HIKEFINDER_PASSWORD is not set::NYNJTC's Hike Finder is read as an anonymous reader this run."
+          fi
+
+      # requirements-extract.txt alone: dlt and its 41 dependencies stay out
+      # of every job that holds the public bucket's keys (CONTRIBUTING.md,
+      # "Changing a Python dependency"; ELT.md's dlt configuration table).
+      - name: Install the extract's own pins
+        run: |
+          python -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+
+      # extract/_run.py's after-run check failing exits 1 after the run log
+      # is written, and nothing it loaded is read. A layer whose read fails,
+      # or which the run check or dlt's schema contract refuses, is left out
+      # on its own while the rest load (_run.py's ISOLATING_LANES): its last
+      # committed table stands, and the run exits 3, which this step turns
+      # into `partial` so the build reads what did load and the last job
+      # still goes red. The step summary names each layer and why. --as-landed writes each ArcGIS, Socrata and opentrail layer
+      # back out as today's fetcher's file, under as_landed/<load_id>/, for
+      # the parity job. --cross-lane-inputs also reads the one hourly-lane
+      # table a monthly node needs (_run.py's ALSO_READS). The run's id is
+      # the raw_run every later job names.
+      - name: Extract every monthly resource
+        id: extract
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          # `auto` is R2's documented region. dlt has written R2 with it on
+          # publish-conditions run 481 and on this lane's run 37081046157.
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+          HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
+          # The NPS Data API's places and campgrounds (decision 54 waves 2
+          # and 3, extract/_ogc.py's JsonFeatures). Unset, both tables are
+          # withdrawn with a warning and the run stays green; their base models
+          # read an absent table as no rows (dbt/macros/raw_or_empty.sql).
+          NPS_API_KEY: ${{ secrets.NPS_API_KEY }}
+        run: |
+          set +e
+          "$RUNNER_TEMP/extract/bin/python" -m extract._run --lane monthly \
+            --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" \
+            --as-landed --cross-lane-inputs --normalize-workers 4 \
+            --report-json "$RUNNER_TEMP/extract_run.json" --summary "$GITHUB_STEP_SUMMARY"
+          status=$?
+          set -e
+          raw_run=""
+          if [ -f "$RUNNER_TEMP/extract_run.json" ]; then
+            raw_run=$(python -c 'import json, sys; print(json.load(open(sys.argv[1])).get("run_id") or "")' "$RUNNER_TEMP/extract_run.json")
+          fi
+          echo "raw_run=$raw_run" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Monthly extract"
+            echo
+            echo "raw_run: \`${raw_run:-none}\`, exit $status"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -eq 3 ]; then
+            echo "partial=true" >> "$GITHUB_OUTPUT"
+            status=0
+          fi
+          exit "$status"
+
+      - name: Keep the run's own report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-extract-report
+          path: ${{ runner.temp }}/extract_run.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  # THE PIN, AND WHAT IT HOLDS BESIDE THE TABLES (ELT.md, "Storage tiers",
+  # the raw_inputs row): today's fetchers' files, the DEM tile index and the
+  # two water scans, under steps/raw_inputs/<raw_run>/, write-once. Its steps
+  # down from "Is this raw_run pinned already" are the ones the build job ran
+  # down to the pin before choice B, moved whole.
+  pin:
+    name: Pin the raw inputs, the DEM tile index and the water scans
+    needs: extract
+    runs-on: ubuntu-latest
+    # Measured on monthly run 29 (37726904273, the Actions API's step times):
+    # today's fetchers' files and the DEM tile index 28 min, OSM's extracts
+    # and the water scans 5, the pin 12.5. The pin took 27 to 38 min on runs
+    # 37109384156, 37121837559, 37132427696 and 37182708502.
+    #
+    # THE WATER SCANS ADD, ON A FIRST ATTEMPT (#1652), bounded from figures
+    # this repository already holds rather than measured here:
+    #   - the pull of 3.44 GB from R2: @unvalidated, 6 min at 10 MB/s;
+    #   - fetch_osm_water.py's scan: under 15 min, the ~15 min
+    #     publish-vector-data.yml's include_osm_water gives for download and
+    #     scan together;
+    #   - fetch_trail_water.py --derive: ~30 min, include_trail_water's own
+    #     figure (21 NHD subregions, the OSM stream scan, EPQS).
+    # The scan step stops itself at 75. With about 4.5 min for the two venvs
+    # (the parity job's figure on run 29, its pin load in it), the worst case
+    # is 4.5 + 28 + 6 + 75 + 38 = 151.5 min, which 180 leaves 28.5 (Reasoned
+    # from those figures).
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: pipeline
+    env:
+      RAW_RUN: ${{ needs.extract.outputs.raw_run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # 3.12, as the build's. No dbt runs here, so only the extract's pins
+      # and the pipeline's, each in a venv of its own.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pipeline/requirements-extract.txt
+            pipeline/requirements.txt
+
+      - name: Name every secret this job needs, and stop if one is missing
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          R2_RAW_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          R2_RAW_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+        run: |
+          missing=()
+          for name in R2_ENDPOINT_URL R2_RAW_BUCKET R2_RAW_ACCESS_KEY_ID R2_RAW_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Raw store secrets missing::${missing[*]} not set; nothing was built."
+            exit 1
+          fi
+          if [ -z "$RAW_RUN" ]; then
+            echo "::error title=No raw_run::the extract job named no run, so there is nothing to pin."
+            exit 1
+          fi
+
+      # The fetchers and the two scanners import shapely, pyproj, rasterio and
+      # requests, and read DuckDB's spatial extension; the store is read
+      # through the extract's own pins.
+      - name: Install the extract's pins and the pipeline's pins
+        run: |
+          python -m venv "$RUNNER_TEMP/extract"
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+          python -m venv "$RUNNER_TEMP/pipeline"
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet -r requirements.txt
+          "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "duckdb-extension-spatial==$("$RUNNER_TEMP/pipeline/bin/python" -c 'import duckdb; print(duckdb.__version__)')"
+          "$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py
+
+      # THE EPQS ANSWERS AND THE DEM SAMPLES, as build-reference.yml's build
+      # job carries them between attempts (its restore says when a cached
+      # answer may be used, and how an entry crosses from this workflow to
+      # that one). fetch_trail_water.py --derive asks EPQS through the first
+      # file, so the newest entry comes down before it, and what the scan was
+      # answered goes back up at the end of this job, for the build this run
+      # dispatches. The key is the build's idiom: never hit exactly, take the
+      # newest entry by prefix. Before the pin's check, so a rerun that
+      # already has a pin pays a few seconds for an entry it does not read.
+      - name: Restore the EPQS answers and the DEM samples
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.ELEVATION_ANSWERS }}
+          key: monthly-elevation-answers-${{ github.run_id }}
+          restore-keys: monthly-elevation-answers-
+
+      # THE PIN: a write-once copy of this run's raw inputs (ELT.md, "Storage
+      # tiers", the raw_inputs row). A rerun builds from the first attempt's
+      # pin, so every step down to the pin runs only when there is none.
+      - name: Is this raw_run pinned already
+        id: pinned
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          if "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse has-pin --lane monthly \
+            --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" --steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN"; then
+            echo "raw_run $RAW_RUN is already pinned; building from that pin."
+            echo "pinned=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pinned=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The as-landed files come down first, because fetch_elevation.py
+      # computes the DEM tile index from the A.T. corridor
+      # (data/raw/centerline.geojson) and the network's cells
+      # (data/processed/nearby_trails.geojson, which export_nearby_trails.py
+      # writes first, as publish-vector-data.yml does; used for the cell list
+      # only), and fetch_trail_water.py --derive reads ATC's shelters and
+      # campsites from them. DEM tiles are read in place (decision 35), so the
+      # pin freezes which tiles, not their bytes.
+      - name: Today's fetchers' files for this raw_run, and the DEM tile index
+        if: steps.pinned.outputs.pinned != 'true'
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse as-landed --lane monthly \
+            --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" --steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN" --raw-dir data/raw
+          "$RUNNER_TEMP/pipeline/bin/python" export_nearby_trails.py
+          "$RUNNER_TEMP/pipeline/bin/python" fetch_elevation.py
+
+      # OSM'S WATER, FROM THE EXTRACTS THE RAW STORE KEEPS (#1652 - Download
+      # OSM's Geofabrik extracts at most once a month, into a private raw
+      # bucket that outlives the 7-day Actions cache; extract/_geofabrik.py).
+      # Each copy the store's index names comes down into data/raw/osm/, held
+      # to its sha256, and the last landed scans (the newest earlier pin's)
+      # are put where the two scanners write, so each scan's own drop guard
+      # compares against them and a refusal leaves them standing. A missing
+      # or unreadable copy warns, and the build lands the last landed scans
+      # rather than scanning a partial set; with none it says so here, in the
+      # run summary, and publishes no OSM water, as before #1652.
+      - name: OSM's Geofabrik extracts and the last landed water scans, from the raw store
+        id: osm
+        if: steps.pinned.outputs.pinned != 'true'
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: >-
+          "$RUNNER_TEMP/extract/bin/python" -m extract._geofabrik pull --lane monthly
+          --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly" --steps-url "s3://$R2_RAW_BUCKET/steps"
+          --raw-run "$RAW_RUN" --raw-dir data/raw
+          --summary "$GITHUB_STEP_SUMMARY" --github-output "$GITHUB_OUTPUT"
+
+      # The two scans today's publish runs behind include_osm_water and
+      # include_trail_water, over the copies just pulled and nothing fetched:
+      # fetch_osm_water.py finds every extract on disk, and --derive reads
+      # ATC's sites from the as-landed copy and refuses a missing extract. NHD's
+      # subregions and EPQS are read as always. A scan that refuses or fails
+      # leaves the last landed one in place (the next step says which landed),
+      # so this step never fails the build, and its own timeout is the bound
+      # in the job's comment: ~15 + ~30 min, with 30 to spare.
+      #
+      # DISK: the 14 extracts are 3.44 GB (pipeline/BASEMAP.md, run
+      # 30957719854), and fetch_trail_water.py holds one NHD subregion at a
+      # time, its ~270 MB zip and the GeoPackage unpacked from it, each
+      # deleted before the next (collect_streams). Even all of the "~5.7 GB of
+      # USGS subregions" include_trail_water quotes, at once, beside the
+      # extracts is 9.1 GB, inside the 14 GB GitHub documents for a hosted
+      # runner's disk (and the 88 GB free BASEMAP.md measured on one). The
+      # extracts are deleted here, before dbt and the warehouse need the disk.
+      - name: Scan the extracts for water (fetch_osm_water.py, fetch_trail_water.py --derive)
+        if: steps.pinned.outputs.pinned != 'true' && steps.osm.outputs.extracts == 'complete'
+        timeout-minutes: 75
+        continue-on-error: true
+        run: |
+          set +e
+          "$RUNNER_TEMP/pipeline/bin/python" fetch_osm_water.py
+          osm=$?
+          "$RUNNER_TEMP/pipeline/bin/python" fetch_trail_water.py --derive
+          site=$?
+          set -e
+          rm -f data/raw/osm/*-latest.osm.pbf
+          if [ "$osm" -ne 0 ]; then
+            echo "::warning title=OSM water scan refused or failed::fetch_osm_water.py exited $osm; the build lands the last landed points, if any"
+          fi
+          if [ "$site" -ne 0 ]; then
+            echo "::warning title=Site water derivation refused or failed::fetch_trail_water.py --derive exited $site; the build lands the last landed site water, if any"
+          fi
+
+      - name: Say which water scans this build lands
+        if: always() && steps.pinned.outputs.pinned == 'false'
+        run: |
+          rm -f data/raw/osm/*-latest.osm.pbf
+          "$RUNNER_TEMP/extract/bin/python" -m extract._geofabrik landed --raw-dir data/raw --summary "$GITHUB_STEP_SUMMARY"
+
+      # The tables, their as-landed files, the DEM index and the water scans,
+      # at the paths extract/_geofabrik.py's SCANS names: not the scanners'
+      # own, because parity.py's old side would find osm_water.geojson there
+      # without the reach file export_poi.py refuses to run without.
+      - name: Pin this run's raw inputs
+        if: steps.pinned.outputs.pinned != 'true'
+        env:
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+        run: |
+          store=(--lane monthly --bucket-url "s3://$R2_RAW_BUCKET/raw/dlt/monthly")
+          pinned=(--steps-url "s3://$R2_RAW_BUCKET/steps" --raw-run "$RAW_RUN")
+          extras=(--extra elevation/tile_index.json=data/raw/elevation/tile_index.json)
+          if [ -f data/raw/osm_water.geojson ]; then
+            extras+=(--extra derived/osm_water.geojson=data/raw/osm_water.geojson)
+          fi
+          if [ -f data/raw/trail_water.json ]; then
+            extras+=(--extra derived/trail_water.json=data/raw/trail_water.json)
+          fi
+          "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse pin "${store[@]}" "${pinned[@]}" "${extras[@]}"
+
+      # What the scans were answered, for the build this run dispatches,
+      # whose restore takes the newest entry under this prefix. Also when a
+      # scan or the pin failed, as the build's save is. Keyed on the files, so
+      # a run whose scans asked nothing new computes an existing entry's key,
+      # which actions/cache/save does not overwrite.
+      - name: Save the EPQS answers and the DEM samples
+        if: always() && hashFiles('pipeline/data/raw/epqs_elevations.json', 'pipeline/data/raw/elevation/samples.json') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.ELEVATION_ANSWERS }}
+          key: monthly-elevation-answers-${{ hashFiles('pipeline/data/raw/epqs_elevations.json', 'pipeline/data/raw/elevation/samples.json') }}
+
+  # THE BUILD IS build-reference.yml, started here by name with this run's
+  # raw_run, so the same command starts it again on the same pin (this
+  # file's header says why there are two). Through the API's
+  # workflow_dispatch, which this job's token may trigger: "workflow_dispatch
+  # and repository_dispatch events always create workflow runs", where most
+  # events a GITHUB_TOKEN triggers start none (GitHub's docs, "Triggering a
+  # workflow from a workflow", read 2026-10-08). Not workflow_run, which
+  # fires only for a workflow file on the default branch, and this lane is
+  # not on it until PR #1805 - dlt -> dbt re-platform as one go/no-go change
+  # - merges.
+  #
+  # ON THIS RUN'S REF, by name, so the build restores the EPQS answers the pin
+  # job saved (an actions/cache entry belongs to its branch; the build's
+  # restore says how) and builds with the ref's code: its newest commit when
+  # the build starts, which is this run's own unless something landed on the
+  # ref meanwhile. GitHub takes a workflow_dispatch only for a workflow file
+  # that exists on the default branch ("This event will only trigger a
+  # workflow run if the workflow file exists on the default branch", its
+  # docs, "Events that trigger workflows"), which is why 39fe1f13 put a
+  # refresh-reference.yml placeholder on main for #1809 - refresh-reference.yml
+  # has to exist on main before PR #1805's monthly lane can be dispatched for
+  # its go/no-go run. Until a build-reference.yml is on main the same way, a
+  # dispatch from a branch is refused and this job goes red with the pin
+  # made. @unvalidated, as every dispatch from here is: no run has made one.
+  dispatch:
+    name: Start the build from this pin (build-reference.yml)
+    needs: [extract, pin]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The dispatch's one permission, on this job alone: gh reads the workflow
+    # by its file name and posts the dispatch, two `actions` endpoints and
+    # nothing else on github.com (gh's pkg/cmd/workflow/run, read 2026-10-08).
+    permissions:
+      actions: write
+    steps:
+      # The command first, into the run's summary, so it is there to run by
+      # hand when the dispatch below fails; %q keeps it a command a shell
+      # reads back as it was meant, whatever the ref is called.
+      - name: Dispatch build-reference.yml on this ref, with this run's raw_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RAW_RUN: ${{ needs.extract.outputs.raw_run }}
+          REF: ${{ github.ref_name }}
+        run: |
+          printf -v again 'gh workflow run build-reference.yml --repo %q --ref %q -f %q' "$GITHUB_REPOSITORY" "$REF" "raw_run=$RAW_RUN"
+          {
+            echo "## Build from this pin"
+            echo
+            echo "raw_run \`$RAW_RUN\` is pinned under \`steps/raw_inputs/$RAW_RUN/\`. To build from it again, with no new extract:"
+            echo
+            echo '```'
+            echo "$again"
+            echo '```'
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$again"
+          gh workflow run build-reference.yml --repo "$GITHUB_REPOSITORY" --ref "$REF" -f "raw_run=$RAW_RUN"
+          echo "This run dispatched build-reference.yml on \`$REF\` with this raw_run. It waits in the raw-lake-monthly group until this run ends." >> "$GITHUB_STEP_SUMMARY"
+
+  # Last, so a layer refused on its own has not held back the ones that
+  # loaded, and the run still goes red for it: decision 30's gate counts "no
+  # failed check", and a refusal is one. The hourly legs only warn since
+  # decisions 100 and 101, because publish-conditions.yml's dbt source
+  # freshness turns a source red within a day; this lane runs no freshness
+  # check on live data, so a red there would come a month or more late
+  # (Reasoned), and this job keeps its red. The extract job's summary names
+  # each layer and why. It waits on this file's jobs alone: the build,
+  # publish and parity are build-reference.yml's run, which starts once this
+  # one ends and goes red or green on its own.
+  refused:
+    name: Fail the run if a layer was refused on its own
+    needs: [extract, pin, dispatch]
+    if: always() && needs.extract.outputs.partial == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
-      - name: Say what this is
-        run: |
-          echo "Placeholder. The monthly lane is refresh-reference.yml on the branch of PR #1805; dispatch it with --ref that branch."
+      - run: |
+          echo "::error title=A monthly layer was refused::The extract left at least one layer out, and its last committed table stood in for it. The extract job's summary names it and the reason; everything else loaded."
+          exit 1

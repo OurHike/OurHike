@@ -22,6 +22,11 @@ import { dirname, resolve } from 'node:path'
 
 export const OUT_OF_TREE_READS = [
   'pipeline/reference/gain_vectors.json',
+  // The region boxes every geometry mart is held to (its region_boxes()
+  // macro), which decision 31's map shots follow: regionMapShots.test.ts
+  // fails a box with no preview-shots/map-region-*.mjs recipe to photograph
+  // the ground it covers (pipeline/ELT.md, "The go/no-go gate").
+  'pipeline/dbt/macros/lands_outside_its_region.sql',
   // The list-layout contract and the step-with-a-link case moved with the
   // content when the one-page site became the built site (#116): the rules
   // live in the stylesheet, the markup in the install page.

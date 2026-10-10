@@ -1,9 +1,21 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { act, cleanup, renderHook } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
+import type { FeatureCollection } from 'geojson'
 import { useNoticesPanel } from './noticesPanel'
 import { ATC_SOURCE_KEY, noticeSilenceKey, type TrailNotice } from '../lib/notices'
 import type { AtcUpdate } from '../lib/atcUpdates'
 import type { Stewards } from '../lib/stewards'
+import type { DayHike } from '../lib/dayHikes'
+import { HAZARD_ADVISORIES } from '../lib/hazardAreas'
+import { buildTrailIndex } from '../lib/trailPosition'
 
 // #327 moved this feature out of App.tsx whole. These tests are about the
 // seams the move created - what the hook hands back, and what it still has to
@@ -253,5 +265,491 @@ describe('a second publisher, through the same hook', () => {
     expect(result.current.mapScreen.newNoticeLabel).toBe(
       'New York-New Jersey Trail Conference · New notice issued',
     )
+  })
+})
+
+describe('with conditions/notices.json (#1805, decision 66)', () => {
+  // NOW is noon UTC on 2026-08-13, which is that same calendar day in every
+  // zone from UTC-11 to UTC+11, so a day hike dated that day is in the window.
+  const TODAY = '2026-08-13'
+
+  function dayHike(date: string | null): DayHike {
+    return {
+      id: 'hike-1',
+      name: 'Harriman loop',
+      date,
+      segments: [
+        [
+          { coord: [-74.1, 41.25], poiId: null },
+          { coord: [-74.09, 41.25], poiId: null },
+        ],
+      ],
+      figures: {
+        miles: 5,
+        legs: [
+          {
+            name: 'Fixture Trail',
+            source: 'nynjtc_trail_alerts',
+            blaze_color: null,
+            miles: 5,
+          },
+        ],
+      },
+      looped: false,
+      recorded: 'planned',
+      note: '',
+    }
+  }
+
+  function clubPanel(
+    clubNotices: readonly TrailNotice[] | null,
+    dayHikes: readonly DayHike[],
+  ) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [update()],
+        orgNotices: [orgNotice()],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: NOW,
+        clubNotices,
+        clubNoticesGeneratedAt: NOW,
+        dayHikes,
+      }),
+    )
+  }
+
+  it('keeps today’s list, row and count while the file has not reached this phone', () => {
+    const { result } = clubPanel(null, [dayHike(TODAY)])
+    expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
+    expect(result.current.mapScreen.noticeCount).toBe(2)
+    expect(result.current.hazardAreas).toEqual([])
+  })
+
+  // The rule loads behind import() once the file is here (the hook's
+  // comment says why), so each test below waits on the count or the list
+  // the loaded rule produces, never on a timer.
+  it('counts only what touches a planned hike, and offers the row with nothing to count', async () => {
+    const touching = orgNotice({
+      notice_id: 'nynjtc_trail_alerts:near',
+      updated_at: hoursBefore(3),
+    })
+    const elsewhere = orgNotice({
+      notice_id: 'faraway_club:1',
+      source_key: 'faraway_club',
+      provider: 'Faraway Club',
+    })
+
+    const planned = clubPanel([touching, elsewhere], [dayHike(TODAY)])
+    await waitFor(() => expect(planned.result.current.mapScreen.noticeCount).toBe(1))
+    expect(planned.result.current.mapScreen.noticeRowLabel).toBe(
+      'Notices for your planned hikes (1)',
+    )
+    // The dot counts what the panel shows, so opening it silences only that.
+    expect(planned.result.current.mapScreen.newNoticeCount).toBe(1)
+    cleanup()
+
+    const none = clubPanel([touching, elsewhere], [dayHike(null)])
+    expect(none.result.current.mapScreen.noticeCount).toBe(0)
+    expect(none.result.current.mapScreen.noticeRowLabel).toBe(
+      'Notices for your planned hikes',
+    )
+    expect(none.result.current.mapScreen.newNoticeCount).toBe(0)
+  })
+
+  it('opens the planned-hike panel rather than the list of everything', async () => {
+    const { result } = clubPanel([orgNotice()], [dayHike(TODAY)])
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    await waitFor(() => expect(result.current.mapScreen.noticeList).not.toBeNull())
+    const list = result.current.mapScreen.noticeList as {
+      type: { displayName?: string }
+    }
+    expect(list.type.displayName).toBe('Deferred(PlannedNoticeList)')
+  })
+
+  // Decision 77: a phone downloads conditions/notices.json only once a hike
+  // is planned, and lib/useConditions.ts says when the bucket serves it
+  // anyway (`clubNoticesListed`, a HEAD request's answer).
+  function listedPanel(dayHikes: readonly DayHike[]) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [update()],
+        orgNotices: [orgNotice()],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: NOW,
+        clubNotices: null,
+        clubNoticesGeneratedAt: null,
+        clubNoticesListed: true,
+        dayHikes,
+      }),
+    )
+  }
+
+  it('says no hike is planned, never the list of everything, when the bucket serves notices.json and nothing is planned', async () => {
+    const { result } = listedPanel([])
+    expect(result.current.mapScreen.noticeRowLabel).toBe('Notices for your planned hikes')
+    expect(result.current.mapScreen.noticeCount).toBe(0)
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    await waitFor(() => expect(result.current.mapScreen.noticeList).not.toBeNull())
+    const list = result.current.mapScreen.noticeList as {
+      type: { displayName?: string }
+      props: {
+        planned: { empty: string | null; hikes: unknown[] }
+        generatedAt: Date | null
+      }
+    }
+    expect(list.type.displayName).toBe('Deferred(PlannedNoticeList)')
+    expect(list.props.planned.empty).toBe('nothing_planned')
+    expect(list.props.planned.hikes).toEqual([])
+    expect(list.props.generatedAt).toBeNull()
+  })
+
+  it('keeps today’s list for a planned hike whose notices.json has not arrived, rather than calling it clear', () => {
+    // The file is what a planned hike's notices come from, so its absence
+    // must never read as "nothing touches this hike".
+    const { result } = listedPanel([dayHike(TODAY)])
+    expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
+    expect(result.current.mapScreen.noticeCount).toBe(2)
+  })
+
+  // Option A of the maintainer's poll of 2026-10-09: a hike is planned and
+  // lib/useConditions.ts has settled that this phone holds no copy of
+  // conditions/notices.json (`clubNoticesMissing`) - a first run with no
+  // signal, a file over lib/conditionsCache.ts's ceiling relaunched offline,
+  // or a download that failed. The approved words, all three of them:
+  const MISSING_ROW = 'Notices for your planned hikes: not on this phone yet'
+  const MISSING_WARNING =
+    'This phone has no notices for your planned hikes yet. Connect once to get them. Until then, a closure on your hike will not show here.'
+  const MISSING_HEADING = 'Trail notices this phone has'
+
+  function missingPanel(
+    dayHikes: readonly DayHike[],
+    {
+      clubNotices = null,
+      clubNoticesListed = true,
+    }: { clubNotices?: readonly TrailNotice[] | null; clubNoticesListed?: boolean } = {},
+  ) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [update()],
+        orgNotices: [orgNotice()],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: NOW,
+        clubNotices,
+        clubNoticesGeneratedAt: clubNotices === null ? null : NOW,
+        clubNoticesListed,
+        clubNoticesMissing: true,
+        dayHikes,
+      }),
+    )
+  }
+
+  it(`labels the legend row "${MISSING_ROW}" when a planned hike's notices.json is missing`, () => {
+    const { result } = missingPanel([dayHike(TODAY)])
+    expect(result.current.mapScreen.noticeRowLabel).toBe(MISSING_ROW)
+    // The list it opens is ATC's and NYNJTC's, as today's is, so the count
+    // and the new-notices dot still count those two.
+    expect(result.current.mapScreen.noticeCount).toBe(2)
+    expect(result.current.mapScreen.newNoticeCount).toBe(2)
+  })
+
+  it(`opens ATC's and NYNJTC's list under the warning and the heading "${MISSING_HEADING}"`, async () => {
+    const { result } = missingPanel([dayHike(TODAY)])
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    render(<>{result.current.mapScreen.noticeList}</>)
+
+    // NoticeList arrives through import() (screens/deferred.ts), so the
+    // dialog is waited for rather than read straight after the render.
+    const list = await screen.findByRole(
+      'dialog',
+      { name: MISSING_HEADING },
+      { timeout: 5_000 },
+    )
+    const warning = within(list).getByText(MISSING_WARNING)
+    const heading = within(list).getByRole('heading', { name: MISSING_HEADING })
+    const rows = within(list).getAllByRole('listitem')
+    // The warning first, then the heading, then the rows.
+    expect(
+      warning.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      heading.compareDocumentPosition(rows[0]) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // ATC's and NYNJTC's rows, exactly as today's list draws them.
+    expect(rows).toHaveLength(2)
+    expect(within(list).getByText('Harpers Ferry: Footbridge Closure')).toBeVisible()
+    expect(within(list).getByText('A.T. Detour at Harriman State Park')).toBeVisible()
+    // Opening it is still reading those two, which silences their dot.
+    expect(result.current.mapScreen.newNoticeCount).toBe(0)
+  })
+
+  it('keeps the planned-hike panel and its counted row when notices.json is on this phone', async () => {
+    const { result } = missingPanel([dayHike(TODAY)], { clubNotices: [orgNotice()] })
+    await waitFor(() =>
+      expect(result.current.mapScreen.noticeRowLabel).toBe(
+        'Notices for your planned hikes (1)',
+      ),
+    )
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    await waitFor(() => expect(result.current.mapScreen.noticeList).not.toBeNull())
+    const list = result.current.mapScreen.noticeList as {
+      type: { displayName?: string }
+    }
+    expect(list.type.displayName).toBe('Deferred(PlannedNoticeList)')
+  })
+
+  it('keeps the "no hike planned" panel with nothing planned, on a bucket that serves notices.json', () => {
+    const { result } = missingPanel([])
+    expect(result.current.mapScreen.noticeRowLabel).toBe('Notices for your planned hikes')
+    expect(result.current.mapScreen.noticeCount).toBe(0)
+  })
+
+  it('keeps today’s "Read all" row with nothing planned, on a bucket that has not said it serves notices.json', async () => {
+    const { result } = missingPanel([], { clubNoticesListed: false })
+    expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
+    expect(result.current.mapScreen.noticeCount).toBe(2)
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    render(<>{result.current.mapScreen.noticeList}</>)
+    const list = await screen.findByRole(
+      'dialog',
+      { name: 'Every trail notice OurHike holds' },
+      { timeout: 5_000 },
+    )
+    expect(within(list).queryByText(MISSING_WARNING)).toBeNull()
+    expect(within(list).getByRole('heading', { name: '2 trail notices' })).toBeVisible()
+  })
+})
+
+describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)', () => {
+  // Decision 77 downloads notices.json only once a hike is planned, and the
+  // areas were drawn from it alone, so a phone with nothing planned drew
+  // none. These hold the panel to the maintainer's answer: the areas' own
+  // file, read whatever is planned, and never an area drawn twice.
+
+  /** A centerline due north along 77° W, 34° to 35° N, as
+   *  lib/hazardAreas.test.ts's own. */
+  const INDEX = buildTrailIndex({
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { source: 'centerline' },
+        geometry: {
+          type: 'LineString',
+          coordinates: Array.from({ length: 101 }, (_, i) => [-77, 34 + i * 0.01]),
+        },
+      },
+    ],
+  } as FeatureCollection)
+
+  /** An invented hunting area the centerline crosses at 34.3° N. */
+  function huntingArea(id: string, west = -77.01, east = -76.99): TrailNotice {
+    return orgNotice({
+      notice_id: `oprhp_hunting_areas:${id}`,
+      source_key: 'oprhp_hunting_areas',
+      title: `Fixture hunting area ${id}`,
+      hazard: 'hunting',
+      updated_at: null,
+      place: {
+        kind: 'geometry',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [west, 34.3],
+              [east, 34.3],
+              [east, 34.31],
+              [west, 34.31],
+              [west, 34.3],
+            ],
+          ],
+        },
+      },
+    })
+  }
+
+  function hazardPanel({
+    clubNotices = null,
+    clubNoticesGeneratedAt = null,
+    hazardFile = null,
+  }: {
+    clubNotices?: readonly TrailNotice[] | null
+    clubNoticesGeneratedAt?: Date | null
+    hazardFile?: { items: readonly TrailNotice[]; generatedAt: Date } | null
+  }) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [],
+        orgNotices: [],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: INDEX,
+        bbox: BBOX,
+        now: NOW,
+        clubNotices,
+        clubNoticesGeneratedAt,
+        hazardFile,
+      }),
+    )
+  }
+
+  it('draws an area from hazard_areas.json, with its advisory on the tapped stretch, on a phone with no hike planned and no notices.json', async () => {
+    const { result } = hazardPanel({
+      hazardFile: { items: [huntingArea('1')], generatedAt: NOW },
+    })
+    await waitFor(() => expect(result.current.hazardAreas).toHaveLength(1))
+    expect(result.current.mapScreen.hazardAreas).toBe(result.current.hazardAreas)
+    expect(result.current.hazardAdvisoriesAt([-77, 34.305])).toEqual([
+      { id: 'oprhp_hunting_areas:1', ...HAZARD_ADVISORIES.hunting },
+    ])
+    // The planned-hike panel is not what this file turns on: with neither
+    // notices.json nor a plan the list stays today's.
+    expect(result.current.mapScreen.noticeRowLabel).toBeUndefined()
+  })
+
+  it('draws an area once when both files hold it from one build', async () => {
+    const area = huntingArea('1')
+    const { result } = hazardPanel({
+      clubNotices: [area],
+      clubNoticesGeneratedAt: NOW,
+      hazardFile: { items: [area], generatedAt: NOW },
+    })
+    await waitFor(() => expect(result.current.hazardAreas).toHaveLength(1))
+    expect(result.current.hazardAdvisoriesAt([-77, 34.305])).toHaveLength(1)
+  })
+
+  it('takes the areas from whichever file is newer, so a copy kept from before decision 77 never outranks a fresh hazard file', async () => {
+    const older = new Date(NOW.getTime() - 30 * 86_400_000)
+    const fresh = hazardPanel({
+      clubNotices: [huntingArea('kept-copy')],
+      clubNoticesGeneratedAt: older,
+      hazardFile: { items: [huntingArea('fresh')], generatedAt: NOW },
+    })
+    await waitFor(() => expect(fresh.result.current.hazardAreas).toHaveLength(1))
+    expect(fresh.result.current.hazardAreas[0].notice.notice_id).toBe(
+      'oprhp_hunting_areas:fresh',
+    )
+    cleanup()
+
+    const newerNotices = hazardPanel({
+      clubNotices: [huntingArea('this-hour')],
+      clubNoticesGeneratedAt: NOW,
+      hazardFile: { items: [huntingArea('last-month')], generatedAt: older },
+    })
+    await waitFor(() => expect(newerNotices.result.current.hazardAreas).toHaveLength(1))
+    expect(newerNotices.result.current.hazardAreas[0].notice.notice_id).toBe(
+      'oprhp_hunting_areas:this-hour',
+    )
+  })
+
+  it('draws the areas from notices.json on a bucket without hazard_areas.json, never reading the missing file as no area', async () => {
+    const { result } = hazardPanel({
+      clubNotices: [huntingArea('1')],
+      clubNoticesGeneratedAt: NOW,
+    })
+    await waitFor(() => expect(result.current.hazardAreas).toHaveLength(1))
+  })
+})
+
+describe('the "new notices" banner with conditions/notices.json (decision 87)', () => {
+  // A notice with no `updated_at` of its own counts as new only if OurHike
+  // first saw it after its source's earliest row in the file, and is
+  // announced with no verb, never "issued".
+  // Invented rows shaped like soak run 536's: every first_seen_at between
+  // 2026-10-03T20:24Z and 2026-10-05T00:23Z, the file generated at 00:23:54Z.
+  const LATER = new Date('2026-10-05T00:30:00Z')
+  const DAY = '2026-10-05'
+
+  function hike(): DayHike {
+    return {
+      id: 'hike-1',
+      name: 'Harriman loop',
+      date: DAY,
+      segments: [
+        [
+          { coord: [-74.1, 41.25], poiId: null },
+          { coord: [-74.09, 41.25], poiId: null },
+        ],
+      ],
+      figures: {
+        miles: 5,
+        legs: [
+          {
+            name: 'Fixture Trail',
+            source: 'nynjtc_trail_alerts',
+            blaze_color: null,
+            miles: 5,
+          },
+        ],
+      },
+      looped: false,
+      recorded: 'planned',
+      note: '',
+    }
+  }
+
+  /** NYNJTC's unplaced notices touch a hike on NYNJTC's trails. */
+  function seen(id: string, firstSeenAt: string): TrailNotice {
+    return orgNotice({
+      notice_id: `nynjtc_trail_alerts:${id}`,
+      updated_at: null,
+      first_seen_at: firstSeenAt,
+      changed_at: firstSeenAt,
+    })
+  }
+
+  const INITIAL_LOAD = [
+    seen('one', '2026-10-03T20:24:05Z'),
+    seen('two', '2026-10-03T20:24:05Z'),
+  ]
+
+  function bannerPanel(clubNotices: readonly TrailNotice[]) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [],
+        orgNotices: [],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: LATER,
+        clubNotices,
+        clubNoticesGeneratedAt: new Date('2026-10-05T00:23:54Z'),
+        dayHikes: [hike()],
+      }),
+    )
+  }
+
+  it('stays dark for the notices OurHike first saw with their source, the file’s initial load', async () => {
+    const { result } = bannerPanel(INITIAL_LOAD)
+    await waitFor(() => expect(result.current.mapScreen.noticeCount).toBe(2))
+    expect(result.current.mapScreen.newNoticeCount).toBe(0)
+  })
+
+  it('counts a closure with no updated_at that OurHike first saw in a later build as "New notice", and silences it once the list is read', async () => {
+    const { result } = bannerPanel([
+      ...INITIAL_LOAD,
+      seen('closure', '2026-10-04T22:01:56Z'),
+    ])
+    await waitFor(() => expect(result.current.mapScreen.newNoticeCount).toBe(1))
+    expect(result.current.mapScreen.newNoticeLabel).toBe(
+      'New York-New Jersey Trail Conference · New notice',
+    )
+
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    expect(result.current.mapScreen.newNoticeCount).toBe(0)
+    expect(localStorage.getItem(`${NYNJTC_SILENCE_KEY}:seen`)).toBe(
+      '2026-10-04T22:01:56.000Z',
+    )
+    // The club's own clock is not touched by a first-seen dismissal.
+    expect(localStorage.getItem(NYNJTC_SILENCE_KEY)).toBeNull()
   })
 })

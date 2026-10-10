@@ -75,6 +75,10 @@ on:
         description: "Bring the recovered NYNJTC archive to the runner and park it. One-time; leave unticked."
         type: boolean
         default: false
+      refetch_photos:
+        description: "Fetch every photo again, ignoring the cached and published photo outcomes. One-time, for a bucket that does not hold the photos those outcomes vouch for; leave unticked."
+        type: boolean
+        default: false
       include_osm_water:
         description: "Fetch OSM water points (Geofabrik extracts, ~3.5 GB / ~15 min; a cached scan whose receipt verifies is reused without re-fetching). Untick to publish with opentrail's water alone."
         type: boolean
@@ -159,7 +163,19 @@ jobs:
     # line landed with; this is the belt while the first run after the merge
     # measures whether they brought the build back under the old ceiling,
     # and it comes back down when that run says so.
-    timeout-minutes: 180
+    #
+    # A refetch_photos run gets 330 (2026-10-02). Run 165 (37051778628), the
+    # first cold photo fetch into our-hike, spent 1 h 39 m on ATC's photos and
+    # 36 m on Commons', and was cancelled at 180 inside "Form or read a route
+    # for every NYNJTC hike", before anything published, with elevation off.
+    # The steps after the photos took 44 m to reach that point, so a cold run
+    # reaches the routes at about 3 h. On warm run 166 (37073452481) the routes
+    # and every step after them took 8 m, so a cold run needs about 3 h 10 m;
+    # 330 leaves about 2 h for slower photo fetches and stays under a hosted
+    # runner's 360.
+    # @unvalidated: one cold run measured; what would settle it is the next
+    # refetch_photos run's own step times.
+    timeout-minutes: ${{ inputs.refetch_photos && 330 || 180 }}
     defaults:
       run:
         working-directory: pipeline
@@ -384,8 +400,29 @@ jobs:
       # (or a fresh environment prefix), and an absent outcome file just means
       # a cold crawl - the state this step exists to make rare, not an error.
       # An empty DATA_BASE_URL variable skips the step entirely.
+      #
+      # refetch_photos: an outcome record says a photo was uploaded once, to
+      # the bucket it was published to, so after a bucket move it vouches for
+      # bytes that are not there. Run 164 (37000311109, 2026-10-02), the first
+      # vector publish after the public bucket moved to `our-hike` with no
+      # copy (pipeline/ELT.md decision 43), restored the cached outcomes, and
+      # publish.py's verify_photo_promises rightly refused the release,
+      # uploading nothing: 3,033 photo keys the POI files referenced were
+      # neither local nor in the bucket. Starting cold makes the fetchers
+      # download every photo and publish.py upload it to the bucket that now
+      # serves it. The face gate is unchanged: its decisions are keyed by each
+      # photo's digest, and a re-fetched photo is the same bytes, so a held
+      # photo stays held (Reasoned: a source that re-encoded an image would
+      # give a new digest, which the gate then screens as a new photo).
+      - name: Start the photo outcomes cold
+        if: inputs.include_photos && inputs.refetch_photos
+        run: |
+          rm -f data/raw/poi_images.json data/raw/poi_images_atc.json
+          rm -rf data/raw/poi_photos
+          echo "Photo outcomes cleared: every photo is fetched again and uploaded to this run's bucket."
+
       - name: Restore photo outcomes from the published data
-        if: inputs.include_photos
+        if: inputs.include_photos && !inputs.refetch_photos
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
         run: |

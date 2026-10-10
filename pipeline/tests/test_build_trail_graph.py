@@ -27,6 +27,7 @@ fail by connecting MORE is not obviously an improvement.
 import json
 
 import pytest
+from pyproj import Geod
 
 import build_trail_graph as graph_builder
 
@@ -149,6 +150,25 @@ def test_a_closed_trail_is_never_routable_and_the_refusal_is_counted():
     # A router that paths down a trail NYS OPRHP marks closed is the failure
     # this assertion exists to prevent.
     assert all(edge["trail_id"] != "oprhp_trails:9" for edge in graph["edges"])
+
+
+def test_a_club_line_is_drawn_and_never_an_edge():
+    """Decision 64: nearby_trails.geojson carries the clubs' own lines with `line_kind` 'club', and none routes,
+    even where it meets a network line end to end, until a dedupe step has checked it against the network."""
+    network = _feature([(LON, LAT), (LON + 0.01, LAT)])
+    club = _feature(
+        [(LON + 0.01, LAT), (LON + 0.02, LAT)],
+        feature_id="fltc_flt_main:abc",
+        source="fltc_flt_main",
+        trail_status=None,
+        line_kind="club",
+    )
+
+    graph, stats = _build(network, club)
+
+    assert stats["lines_routable"] == 1
+    assert stats["refused"]["club_line"] == 1
+    assert all(edge["trail_id"] != "fltc_flt_main:abc" for edge in graph["edges"])
 
 
 def test_closed_matching_ignores_case_and_padding_because_stewards_publish_both():
@@ -337,6 +357,27 @@ def test_edge_lengths_are_metres_and_roughly_the_ground_distance():
 
     assert len(graph["edges"]) == 1
     assert 700 < graph["edges"][0]["length_m"] < 950
+
+
+def _geodesic_kilometre(lon, lat, azimuth):
+    """Two points 1,000 m apart along `azimuth` on the WGS84 ellipsoid, placed with pyproj's Geod."""
+    end_lon, end_lat, _ = Geod(ellps="WGS84").fwd(lon, lat, azimuth, 1000.0)
+    return [(lon, lat), (end_lon, end_lat)]
+
+
+@pytest.mark.parametrize(
+    ("lon", "lat", "azimuth", "conus_albers_m"),
+    [(-149.9, 61.2, 0, 887.73), (LON, LAT, 90, 992.04)],
+    ids=["a north-south kilometre at Anchorage, Alaska", "an east-west kilometre at Harriman, New York"],
+)
+def test_an_edges_length_m_is_its_wgs84_geodesic_not_its_epsg5070_length(lon, lat, azimuth, conus_albers_m):
+    """Decision 90 (the maintainer, 2026-10-06): EPSG:5070 is equal-area for the lower 48 only, and its metre is not
+    the ground's. These two kilometres read `conus_albers_m` there (measured 2026-10-06 with pyproj), which is what
+    length_m published before; the phone sums length_m for a route's miles and its Naismith time."""
+    graph, _ = _build(_feature(_geodesic_kilometre(lon, lat, azimuth)))
+
+    (edge,) = graph["edges"]
+    assert edge["length_m"] == pytest.approx(1000.0, abs=0.005), f"EPSG:5070 reads {conus_albers_m} m"
 
 
 def test_an_empty_collection_builds_an_empty_graph_rather_than_failing():

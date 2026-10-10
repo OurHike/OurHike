@@ -89,6 +89,11 @@ import {
   ROUTE_LABEL_LAYER_ID,
 } from './routeLayers'
 import { DROUGHT_LAYER_ID } from '../lib/droughtStyle'
+import {
+  HAZARD_EDGE_LAYER_ID,
+  HAZARD_FILL_LAYER_ID,
+  HAZARD_POINT_LAYER_ID,
+} from './hazardAreaLayers'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
 // quads cannot be restyled, cannot be read at a zoom it was not drawn for, and
@@ -726,6 +731,15 @@ describe('the offline-only background', () => {
       // is a visibility flip, not an add and remove, so it is in the stack
       // whether or not it is drawn.
       DROUGHT_LAYER_ID,
+      // Decision 67's hazard areas (#1805): a hunting area, a shooting site
+      // or a burned area a downloaded trail crosses, washed under every
+      // trail line so the line is drawn over it whole. They survive the
+      // subtraction for the closures' reason: the area comes from the
+      // downloaded conditions/notices.json, and a hiker with no signal is
+      // still walking into it. Empty until that file lands.
+      HAZARD_FILL_LAYER_ID,
+      HAZARD_EDGE_LAYER_ID,
+      HAZARD_POINT_LAYER_ID,
       // The edge of the download (#557): over the ground it is an edge of,
       // under every trail line, closure and pin - a seam takes away the
       // sheet, never the hazard (features/OFFLINE_COVERAGE.md §8). Empty

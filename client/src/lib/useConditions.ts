@@ -36,6 +36,7 @@ import {
   fetchPublishedReports,
   fetchPublishedWorkProjects,
   type OrgNotice,
+  type PublishedConditions,
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
@@ -135,6 +136,56 @@ export interface Conditions {
    */
   orgNotices: readonly OrgNotice[]
   /**
+   * Every club's notices, from conditions/notices.json (#1805, decision 53
+   * phase D), or null when that file has not reached this phone.
+   *
+   * NULL IS THE ORDINARY STATE WHILE THE EXPORTERS PUBLISH: no exporter
+   * writes the file, only the dbt path does, so on such a bucket it 404s and
+   * the notices panel keeps reading `atcUpdates` and `orgNotices` exactly as
+   * before. An EMPTY list is a different claim - the file arrived and no
+   * club has a notice - and the two are kept apart for that reason.
+   *
+   * The map's A.T. bands and dots still come from `atcUpdates`: ATC's own
+   * file, unchanged (decision 51), is what draws them.
+   */
+  clubNotices: readonly OrgNotice[] | null
+  /** When conditions/notices.json was baked, for the panel's "as of". */
+  clubNoticesGeneratedAt: Date | null
+  /**
+   * Whether the bucket has said it serves conditions/notices.json, though
+   * this phone may not have downloaded it (decision 77): what keeps the
+   * notices panel the planned-hike one on a phone with nothing planned,
+   * which downloads nothing. False until a HEAD request answers 200, and
+   * never set back by a 404 or a dead spot, as a held list is never taken
+   * away. lib/publishedNotices.ts's `noticesListed` says why a HEAD and not
+   * the manifest.
+   */
+  clubNoticesListed: boolean
+  /**
+   * Whether a hike is planned and this phone holds no copy of
+   * conditions/notices.json, settled: the last planned-hike read ended with
+   * nothing, for a reason a connection can change (lib/publishedNotices.ts's
+   * `readPublishedNotices` lists them; never a 404). What
+   * chrome/noticesPanel.tsx says to the hiker, in option A of the
+   * maintainer's poll of 2026-10-09.
+   *
+   * FALSE UNTIL A READ SETTLES, so a phone whose first download is in flight
+   * keeps today's panel, with no wording of its own for that state. Once
+   * true it stays true while a retry is in flight, which is still the truth
+   * (the phone holds no copy yet), and the warning does not flicker off and
+   * on again. False whenever `clubNotices` holds a list.
+   */
+  clubNoticesMissing: boolean
+  /**
+   * Decision 67's hunting areas, shooting sites and burned areas, from
+   * conditions/hazard_areas.json (decision 84), read whatever is planned,
+   * or null when that file has not reached this phone. Like `clubNotices`,
+   * never set back to null by a 404 or a dead spot, and null is "no
+   * answer", never "no hazard area": chrome/noticesPanel.tsx then draws the
+   * areas from notices.json if this phone holds it.
+   */
+  hazardFile: PublishedConditions<OrgNotice> | null
+  /**
    * This week's drought bands, and the week they describe (#720).
    *
    * Empty rather than null when there is nothing: unlike a closure, an
@@ -166,13 +217,22 @@ export interface Conditions {
 
 /**
  * @param ready Whether the launch is past its first frame (#1302,
- *   lib/useAfterFirstFrame.ts). The eight published reads and the four live
+ *   lib/useAfterFirstFrame.ts). The nine published reads and the four live
  *   ones below wait for it; nothing they feed changes what the first frame
  *   is, and every line they fill renders "unknown" until they land anyway.
  *   Defaults to true so a screen or a test that mounts this hook alone
  *   behaves as before.
+ * @param hikePlanned Whether the hiker has any hike planned
+ *   (lib/dayHikes.ts's `anyHikePlanned`): conditions/notices.json, about
+ *   2 MB gzipped, is downloaded only while it is true (decision 77), and the
+ *   moment it turns true, not at the next hourly read. Defaults to true for
+ *   the same reason `ready` does.
  */
-export function useConditions(online: boolean, ready = true): Conditions {
+export function useConditions(
+  online: boolean,
+  ready = true,
+  hikePlanned = true,
+): Conditions {
   // One state each rather than a list plus a separate "where did this come
   // from", because the two reads race and updating two states from a race is
   // how you get fresh closures labelled stale. lib/conditionState.ts owns the
@@ -192,6 +252,14 @@ export function useConditions(online: boolean, ready = true): Conditions {
     useState<ConditionState<DisputeSummary>>(UNAVAILABLE)
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
   const [orgNotices, setOrgNotices] = useState<readonly OrgNotice[]>([])
+  const [clubNotices, setClubNotices] = useState<PublishedConditions<OrgNotice> | null>(
+    null,
+  )
+  const [clubNoticesListed, setClubNoticesListed] = useState(false)
+  const [clubNoticesMissing, setClubNoticesMissing] = useState(false)
+  const [hazardFile, setHazardFile] = useState<PublishedConditions<OrgNotice> | null>(
+    null,
+  )
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
@@ -388,6 +456,59 @@ export function useConditions(online: boolean, ready = true): Conditions {
     }
   }, [online, refreshCount, ready])
 
+  // Every club's notices in one file (#1805), in an effect of its own so
+  // that planning a hike reads it at once without re-reading the rest.
+  // DOWNLOADED ONLY WHILE A HIKE IS PLANNED (decision 77): it is about 2 MB
+  // gzipped, and only the planned-hike panel and the areas drawn for it read
+  // it. With nothing planned, lib/publishedNotices.ts's readPublishedNotices
+  // reads the copy this phone kept, if any, and asks the bucket with a HEAD
+  // whether it serves the file at all, so the panel stays the planned-hike
+  // one. A null keeps whatever this phone already holds: a 404 on a bucket
+  // the exporters publish is the ordinary state, and a dead spot must not
+  // take a held list away. The reader comes in behind import(), for the
+  // launch budget (lib/publishedNotices.ts says why); a chunk that cannot
+  // load reads as no file, exactly as a 404 does.
+  //
+  // THE HAZARD AREAS RIDE THE SAME EFFECT, PLANNED OR NOT (decision 84):
+  // conditions/hazard_areas.json is read on each run of this effect - at
+  // launch, on each refresh and visibility read, as notices.json was before
+  // decision 77, and once more when planning changes - with the same rule
+  // that a null keeps what this phone holds. ON A PROMISE OF ITS OWN: at a
+  // weak-signal trailhead the areas waited behind a planned hike's download
+  // of notices.json (UA's was 11,811,546 bytes on 2026-10-09), or behind the
+  // HEAD with nothing planned.
+  useEffect(() => {
+    if (!ready) return
+    let cancelled = false
+    const reader = import('./publishedNotices')
+    void reader
+      .then(({ readPublishedNotices }) => readPublishedNotices(hikePlanned, { online }))
+      .then(
+        ({ published, listed, missing }) => {
+          if (cancelled) return
+          if (published !== null) setClubNotices(published)
+          if (listed) setClubNoticesListed(true)
+          // Every settled read answers it, and only a settled one: a read
+          // in flight leaves the last answer standing (see the field). If
+          // publishedNotices.ts's chunk cannot load, the rejection handler
+          // below sets nothing, so the panel keeps the last answer too.
+          setClubNoticesMissing(missing)
+        },
+        () => undefined,
+      )
+    void reader
+      .then(({ fetchPublishedHazardAreas }) => fetchPublishedHazardAreas({ online }))
+      .then(
+        (hazards) => {
+          if (!cancelled && hazards !== null) setHazardFile(hazards)
+        },
+        () => undefined,
+      )
+    return () => {
+      cancelled = true
+    }
+  }, [online, refreshCount, ready, hikePlanned])
+
   // The map's own reads (#232), deliberately not gated on an account: browsing
   // has never needed one, and the reads send a token only if there is one
   // (lib/api.ts).
@@ -464,6 +585,11 @@ export function useConditions(online: boolean, ready = true): Conditions {
     atcUpdates,
     atcReviewedAt,
     orgNotices,
+    clubNotices: clubNotices?.items ?? null,
+    clubNoticesGeneratedAt: clubNotices?.generatedAt ?? null,
+    clubNoticesListed,
+    clubNoticesMissing: clubNotices === null && clubNoticesMissing,
+    hazardFile,
     drought,
     droughtWeek,
     workProjects,

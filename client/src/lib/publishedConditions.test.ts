@@ -15,7 +15,10 @@ const BASE = 'https://cdn.example.org'
 async function loadWithBase(base: string | undefined) {
   vi.resetModules()
   vi.stubEnv('VITE_DATA_BASE_URL', base ?? '')
-  return await import('./publishedConditions')
+  return {
+    ...(await import('./publishedConditions')),
+    ...(await import('./publishedNotices')),
+  }
 }
 
 function mockResponse(body: unknown, { status = 200 } = {}) {
@@ -353,5 +356,216 @@ describe('fetchPublishedNynjtcAlerts', () => {
     const { fetchPublishedNynjtcAlerts } = await loadWithBase(BASE)
 
     expect(await fetchPublishedNynjtcAlerts()).toBeNull()
+  })
+})
+
+// conditions/notices.json (#1805, decision 53 phase D): every club's notices,
+// in the shape pipeline/dbt's pub_conditions_notices writes.
+const A_NOTICES_DOCUMENT = {
+  generated_at: '2026-10-04T12:00:00Z',
+  notices: [
+    {
+      notice_id: 'usfs_baer_assessments:1',
+      source_key: 'usfs_baer_assessments',
+      club: 'usfs',
+      provider: 'USFS',
+      steward_kind: 'agency',
+      title: 'FIXTURE FIRE',
+      category: null,
+      locality: 'Fixture National Forest',
+      place: {
+        kind: 'geometry',
+        geometry: { type: 'Point', coordinates: [-74.1, 41.2] },
+      },
+      hazard: 'burned_area',
+      obstructs_trail: false,
+      starts_on: '2026-08-26',
+      ends_on: null,
+      updated_at: null,
+      checked_at: null,
+      first_seen_at: '2026-10-03T00:00:00Z',
+      changed_at: '2026-10-03T00:00:00Z',
+      carried_since: null,
+      source_url: null,
+      review_state: 'unreviewed',
+    },
+    // No id: nothing could key it, so it is the one row refused.
+    { source_key: 'club_page', title: 'Fixture' },
+    // A place and a hazard this build cannot read repair to unplaced and none.
+    {
+      notice_id: 'club_page:2',
+      source_key: 'club_page',
+      title: 42,
+      place: { kind: 'somewhere_new' },
+      steward_kind: 'federation',
+      hazard: 'avalanche',
+      obstructs_trail: 'yes',
+      review_state: 'reviewed',
+    },
+  ],
+}
+
+describe('fetchPublishedNotices', () => {
+  it('reads the file under its own key and keeps every row it can key', async () => {
+    const fetchSpy = mockResponse(A_NOTICES_DOCUMENT)
+    const { fetchPublishedNotices, PUBLISHED_NOTICES_KEY } = await loadWithBase(BASE)
+
+    const published = await fetchPublishedNotices()
+
+    expect(PUBLISHED_NOTICES_KEY).toBe('conditions/notices.json')
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${BASE}/conditions/notices.json`,
+      expect.anything(),
+    )
+    expect(published?.items.map((notice) => notice.notice_id)).toEqual([
+      'usfs_baer_assessments:1',
+      'club_page:2',
+    ])
+    expect(published?.items[0].hazard).toBe('burned_area')
+    expect(published?.items[0].steward_kind).toBe('agency')
+    expect(published?.items[0].place).toEqual({
+      kind: 'geometry',
+      geometry: { type: 'Point', coordinates: [-74.1, 41.2] },
+    })
+  })
+
+  it('repairs a field it cannot read to its honest empty value, never a guess', async () => {
+    mockResponse(A_NOTICES_DOCUMENT)
+    const { fetchPublishedNotices } = await loadWithBase(BASE)
+
+    const repaired = (await fetchPublishedNotices())?.items[1]
+
+    expect(repaired?.title).toBe('')
+    expect(repaired?.place).toEqual({ kind: 'unplaced' })
+    expect(repaired?.hazard).toBeNull()
+    // A kind this build does not know is unknown, which the planned-hike
+    // panel reads as the older provider match, never as an agency's.
+    expect(repaired?.steward_kind).toBeNull()
+    // Only `true` blocks: a closure is never inferred from a value that is
+    // not one.
+    expect(repaired?.obstructs_trail).toBe(false)
+    expect(repaired?.updated_at).toBeNull()
+  })
+
+  it('is null on the exporters’ bucket, which writes no such file', async () => {
+    mockResponse('', { status: 404 })
+    const { fetchPublishedNotices } = await loadWithBase(BASE)
+
+    expect(await fetchPublishedNotices()).toBeNull()
+  })
+
+  it('is never missing for a planned hike on a build with no bucket configured', async () => {
+    // readPublishedNotices's `missing` says a connection could bring the
+    // file. With no bucket there is no file to bring, so the planned-hike
+    // warning ("not on this phone yet") must not show on such a build.
+    const fetchSpy = mockResponse(A_NOTICES_DOCUMENT)
+    const { readPublishedNotices } = await loadWithBase(undefined)
+
+    expect(await readPublishedNotices(true, { online: true })).toEqual({
+      published: null,
+      listed: false,
+      missing: false,
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+// Decision 76: a state-wide notice names its states, and
+// conditions/notice_states.json carries their shapes, read beside it.
+const A_STATE_WIDE_DOCUMENT = {
+  generated_at: '2026-10-04T12:00:00Z',
+  notices: [
+    {
+      notice_id: 'agency_fire:1',
+      source_key: 'agency_fire',
+      title: 'Fixture fire restrictions',
+      place: { kind: 'unplaced' },
+      steward_kind: 'agency',
+      states: ['OR', 'WA'],
+    },
+    {
+      notice_id: 'agency_fire:2',
+      source_key: 'agency_fire',
+      title: 'Fixture notice with unreadable states',
+      place: { kind: 'unplaced' },
+      steward_kind: 'agency',
+      states: ['or', 5],
+    },
+  ],
+}
+
+const A_NOTICE_STATES_DOCUMENT = {
+  generated_at: '2026-10-01T06:00:00Z',
+  states: [
+    {
+      state: 'OR',
+      name: 'Oregon',
+      edge_margin_m: 500,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [-124, 42],
+            [-117, 42],
+            [-117, 46],
+            [-124, 42],
+          ],
+        ],
+      },
+    },
+    // No margin it could hold a route to: left out, so WA has no shape here.
+    {
+      state: 'WA',
+      name: 'Washington',
+      edge_margin_m: 0,
+      geometry: { type: 'Polygon', coordinates: [] },
+    },
+  ],
+}
+
+function mockByKey(bodies: Record<string, unknown>) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    const key = Object.keys(bodies).find((name) => url.endsWith(name))
+    return key === undefined
+      ? new Response('', { status: 404 })
+      : new Response(JSON.stringify(bodies[key]), { status: 200 })
+  })
+}
+
+describe('fetchPublishedNotices with the states’ shapes (decision 76)', () => {
+  it('attaches the shape of each named state the file holds, and leaves the rest out', async () => {
+    const fetchSpy = mockByKey({
+      'conditions/notices.json': A_STATE_WIDE_DOCUMENT,
+      'conditions/notice_states.json': A_NOTICE_STATES_DOCUMENT,
+    })
+    const { fetchPublishedNotices, PUBLISHED_NOTICE_STATES_KEY } =
+      await loadWithBase(BASE)
+
+    const items = (await fetchPublishedNotices())?.items ?? []
+
+    expect(PUBLISHED_NOTICE_STATES_KEY).toBe('conditions/notice_states.json')
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${BASE}/conditions/notice_states.json`,
+      expect.anything(),
+    )
+    expect(items[0].states).toEqual(['OR', 'WA'])
+    expect(items[0].state_areas?.map((area) => [area.state, area.name])).toEqual([
+      ['OR', 'Oregon'],
+    ])
+    // Codes it cannot read are not states, and a row left with none is an
+    // ordinary unplaced notice.
+    expect(items[1].states).toBeUndefined()
+    expect(items[1].state_areas).toBeUndefined()
+  })
+
+  it('attaches no shape where the bucket has no states file, so no state-wide notice can match', async () => {
+    mockByKey({ 'conditions/notices.json': A_STATE_WIDE_DOCUMENT })
+    const { fetchPublishedNotices } = await loadWithBase(BASE)
+
+    const items = (await fetchPublishedNotices())?.items ?? []
+
+    expect(items[0].states).toEqual(['OR', 'WA'])
+    expect(items[0].state_areas).toBeUndefined()
   })
 })

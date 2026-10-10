@@ -207,6 +207,8 @@ attribution so that screen has one place to read them from when it does.
 
 import json
 import math
+import resource
+import time
 from pathlib import Path
 
 import duckdb
@@ -218,6 +220,7 @@ from shapely.geometry import MultiLineString, shape
 from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
 
+from build_trail_graph import _geodesic_lengths
 from export_trails import (
     _TO_METRIC,
     OVERVIEW_SIMPLIFY_TOLERANCE_M,
@@ -329,6 +332,25 @@ TILES_ARTIFACT_NAME = "nearby_trails.pmtiles"
 TILES_LAYER = "trails"
 TILES_MIN_ZOOM = 5
 TILES_MAX_ZOOM = 14
+
+# The tiler reads each line cut into runs of at most this many vertices,
+# consecutive runs sharing their end vertex, each run carrying its line's
+# properties (#1796). GDAL clips every feature against every tile it touches,
+# so one long feature costs its vertex count times its tile count: the
+# Continental Divide Trail arrives as a handful of features, one of them
+# 704,095 vertices. Measured 2026-10-02 on the network's 7 lines over 50,000
+# vertices (1,648,401 of its 17,292,860), z5-z14: whole, they had not tiled
+# after 25 minutes; cut at 1,000, they tiled in 47.3 s. The step that runs
+# this took 5m24s on run 153's 104,990 records and 38m12s on run 163's
+# 329,849, before the cut. With it, run 166 (37073452481, 2026-10-02) tiled
+# the whole network's 329,690 records in 461 s, and the step took 12m55s; its
+# peak RSS rose from 7,801 MB to 11,072 MB during the tiling, on a
+# 15,990 MB runner. A tile draws the same line either way, since a tile only
+# ever holds a line's clipped pieces; what changes is the archive's bytes and
+# its per-tile feature counts. @unvalidated as a size: any value of 2 or more
+# draws the same, and the whole network's cost at sizes other than 1,000 was
+# not measured.
+TILES_CHUNK_VERTICES = 1_000
 
 
 def _metres_per_pixel(zoom: float, latitude: float = 40.0) -> float:
@@ -478,6 +500,40 @@ def _miles_all(geoms: np.ndarray) -> list[float]:
     call (#1661): the same GEOS length of the same reprojected coordinates,
     divided the same way, so the same floats."""
     return (shapely.length(reproject(geoms, _TO_METRIC)) / METERS_PER_MILE).tolist()
+
+
+def _geodesic_miles_all(geoms: np.ndarray) -> list[float]:
+    """Each parsed lon/lat geometry's length in miles on the WGS84 ellipsoid:
+    the `length_miles` a published line carries (decision 97, the
+    maintainer's poll of 2026-10-06, as decision 90 measures the graph's
+    edges).
+
+    Not `_miles_all`, whose EPSG:5070 is equal-area for the lower 48 only and
+    whose metre is not the ground's: five miles due north read 4.44 miles at
+    Anchorage and 5.04 at Harriman (measured 2026-10-06 with pyproj). The
+    through-route threshold and the merges above still read `_miles_all`, so
+    which lines are named does not move with this.
+
+    build_trail_graph._geodesic_lengths sums pyproj's segment geodesics, one
+    array call for every part at once; a MultiLineString's parts are summed
+    and the jump between two parts is no part of the trail. A part of fewer
+    than two vertices has no length, and is left out before that call, which
+    reads each part's vertex count less one as its segments.
+    int_trail_lines__network_published measures the same length with
+    macros/geodesic_length_m.sql; tests/test_dbt_trail_lines_network_parity.py
+    holds the two, and pyproj's own Geod.geometry_length, to a micrometre.
+
+    What it costs over `_miles_all`, measured 2026-10-07 on UA's published
+    nearby_trails.geojson (329,446 lines, 17,228,035 vertices), one process
+    each in a shared 4-core sandbox: 10.9 s and a peak 1,149 MiB above its
+    input, against 6.7 s and 871 MiB."""
+    parts, owner = shapely.get_parts(geoms, return_index=True)
+    counts = shapely.get_num_coordinates(parts)
+    measured = counts >= 2
+    parts, owner, counts = parts[measured], owner[measured], counts[measured]
+    coordinates = shapely.get_coordinates(parts)
+    lengths = _geodesic_lengths(coordinates[:, 0], coordinates[:, 1], counts.tolist())
+    return (np.bincount(owner, weights=lengths, minlength=len(geoms)) / METERS_PER_MILE).tolist()
 
 
 # How close two rows must come to count as the same tread, in EPSG:5070
@@ -680,10 +736,12 @@ def _above_the_seam_floor(records: list[dict]) -> list[dict]:
     answer this - `_through_routes` decides it and leaves the answer on each
     record under `_THROUGH_ROUTE_KEY`.
 
-    In EPSG:5070 metres, like every other distance this export takes, which is
-    equal-area rather than conformal - so a "pixel" here is a few percent off
-    a screen pixel across CONUS. Consistency with `simplify_records`' own
-    tolerance is worth more than that, since the two are compared.
+    In EPSG:5070 metres, like every other distance this export decides on
+    (only the published `length_miles` is measured on the WGS84 ellipsoid,
+    decision 97), which is equal-area rather than conformal - so a "pixel"
+    here is a few percent off a screen pixel across CONUS. Consistency with
+    `simplify_records`' own tolerance is worth more than that, since the two
+    are compared.
     """
     if not records:
         return []
@@ -1441,7 +1499,7 @@ def records_to_geojson(records: list[dict]) -> dict:
     at the precision NEARBY_COORDINATE_DECIMALS caps."""
     geoms = from_wkt_all([record["wkt"] for record in records])
     features = []
-    for record, length_miles, geometry in zip(records, _miles_all(geoms), _rounded_geometries(geoms)):
+    for record, length_miles, geometry in zip(records, _geodesic_miles_all(geoms), _rounded_geometries(geoms)):
         features.append(
             {
                 "type": "Feature",
@@ -1471,11 +1529,21 @@ def records_to_geojson(records: list[dict]) -> dict:
                     # NOT the steward's claim, so nothing downstream may
                     # present it as one.
                     #
-                    # `_miles` is export_trails.py's EPSG:5070 transform, the
-                    # one this file already names a trail and merges a
-                    # duplicate on either side of - one way of measuring
-                    # distance, not a second. `_miles_all` is it for every
-                    # record at once.
+                    # MEASURED ON THE WGS84 ELLIPSOID (_geodesic_miles_all;
+                    # decision 97, the maintainer's poll of 2026-10-06), as the
+                    # graph's edges are since decision 90, so the edges
+                    # lineClimb sums and the line they are held against are
+                    # one measure. It was export_trails.py's EPSG:5070 length
+                    # (`_miles`) until then, which read five miles due north
+                    # as 4.44 at Anchorage (measured 2026-10-06 with pyproj)
+                    # where the edges read 5.00. Against lineClimb's 8%
+                    # COVERAGE_TOLERANCE, a phone there holding nine tenths of
+                    # a north-south trail would print its climb as the whole
+                    # trail's, and one holding all of an east-west trail,
+                    # whose kilometre EPSG:5070 reads as 1,126.4 m there
+                    # (decision 90's measured scale), would be told it holds
+                    # part (Reasoned from those figures). A trail is still
+                    # named and merged on `_miles`.
                     "length_miles": round(length_miles, 2),
                     # Every record this export builds carries a status. A
                     # shared-ground pair's A.T. half (#1384) carries none,
@@ -1548,6 +1616,101 @@ def exported_bbox(records: list[dict]) -> list[float] | None:
         max(b[2] for b in bounds),
         max(b[3] for b in bounds),
     ]
+
+
+def _simplified_part_by_part(records: list[dict], tolerance_m: float) -> list[dict]:
+    """simplify_records, with its never-drop rule asked of each part of a
+    MultiLineString rather than of the whole line: a part that would come
+    back with fewer than two distinct vertices keeps its own, and every other
+    part is simplified. A LineString, or anything else, is simplify_records'
+    own answer, and so is a MultiLineString none of whose parts collapse:
+    Douglas-Peucker simplifies each part of one on its own (Reasoned, and
+    Measured below).
+
+    WHY THE SKETCH NEEDS IT: simplify_records keeps the WHOLE line it was
+    given when any part collapses. Douglas-Peucker hands a closed ring shorter
+    than its tolerance back as its two equal endpoints, and CDTC publishes the
+    Continental Divide as eight lines, one a state, five of them
+    MultiLineStrings carrying such rings: 27 of them, 0.2 to 21.3 m long, in
+    cdtc_centerline:2, 3, 5, 7 and 8 (Measured 2026-10-05 on the records UA's
+    release 2026-10-03-2 published in nearby_trails.geojson, 704,095
+    vertices in :3 alone). So write_overview's 100 m and 937 m passes both
+    kept those five states at the 1 m line's density, and the sketch drew
+    the CDT from 1,244,673 coordinates. Part by part, a ring keeps its few
+    vertices (which _drawn_at_the_cut then leaves out, as one grid point),
+    and the rest of the state is simplified like every other trail.
+
+    The ring keeps its own vertices rather than being dropped here, for
+    simplify_records' own reason (this pipeline has lost trail geometry
+    silently before): whether a part draws anything is decided once, at the
+    grid the sketch is cut to, by _drawn_at_the_cut.
+
+    WHAT IT MOVES, Measured 2026-10-05 by re-running write_overview over all
+    329,446 of those records. It answers differently from simplify_records
+    for 431 records at 100 m and 636 at 937 m, and every one is a
+    MultiLineString simplify_records kept whole. The sketch goes from
+    4,851,338 bytes and 270,158 coordinates to 2,597,165 and 139,566, the
+    CDT's share from 52,430 coordinates to 1,736. And two through routes stop
+    qualifying, because _through_routes now measures them on the 100 m line
+    its own comment says it reads rather than on a 1 m line kept whole:
+    pasda_dcnr_trails' Panther Snowmobile Trails (50.1 miles to 49.1) and
+    Rock Run ATV Trails (54.0 to 41.2), each one MultiLineString record."""
+    if tolerance_m == 0:
+        return simplify_records(records, tolerance_m)
+    geoms = from_wkt_all([record["wkt"] for record in records])
+    is_multi = (shapely.get_type_id(geoms) == 5) & ~shapely.is_empty(geoms)
+    multi = np.flatnonzero(is_multi).tolist()
+    single = np.flatnonzero(~is_multi).tolist()
+    out: list = [None] * len(records)
+    for index, record in zip(single, simplify_records([records[i] for i in single], tolerance_m)):
+        out[index] = record
+    if multi:
+        parts, owner = shapely.get_parts(geoms[multi], return_index=True)
+        simplified = simplify_records(
+            [{"wkt": wkt} for wkt in shapely.to_wkt(parts, rounding_precision=-1).tolist()], tolerance_m
+        )
+        rebuilt = shapely.multilinestrings(from_wkt_all([part["wkt"] for part in simplified]), indices=owner)
+        for index, wkt in zip(multi, shapely.to_wkt(rebuilt, rounding_precision=-1).tolist()):
+            out[index] = {**records[index], "wkt": wkt}
+    return out
+
+
+def _drawn_at_the_cut(lines: list[list[list[float]]]) -> list[list[list[float]]]:
+    """`lines`, already cut to OVERVIEW_SEAM_DECIMALS, without what the cut
+    made of them that draws nothing: a vertex equal to the one before it is
+    dropped, and then a line left with fewer than two vertices - every vertex
+    on one grid point - is dropped whole.
+
+    WHY: the cut lands neighbouring vertices on the same grid point wherever a
+    line is denser than the 0.001-degree grid, which is any part
+    write_overview's two simplifications hand back at its own density
+    (_simplified_part_by_part keeps a part's own vertices wherever
+    simplifying would leave it with fewer than two distinct ones), and
+    nothing removed the copies. Measured 2026-10-05 on UA's release
+    2026-10-03-2, built without this rule or that function: its
+    network_overview.geojson was 41,216,145 bytes and 2,351,742 coordinates,
+    over the client's 33,554,432-byte launch budget
+    (client/src/lib/artifactBudget.ts), and `cdtc_centerline` alone was
+    1,244,673 coordinates of which 49,277 were distinct. This rule applied to
+    that file gives 4,851,329 bytes and 270,144 coordinates, every one of its
+    211 features still there.
+
+    WHAT A PHONE DRAWS IS UNCHANGED, Reasoned from maplibre-gl 6.7.0's
+    LineBucket.addLine() (src/data/bucket/line_bucket.ts): it skips a vertex
+    equal to the next one and ignores a line left with fewer than two
+    vertices, so both were drawing nothing already. A group none of whose
+    lines survive writes no feature rather than an empty MultiLineString:
+    write_overview skips a record with no line left, so it never opens that
+    record's group."""
+    drawn = []
+    for line in lines:
+        kept = line[:1]
+        for vertex in line[1:]:
+            if vertex != kept[-1]:
+                kept.append(vertex)
+        if len(kept) >= 2:
+            drawn.append(kept)
+    return drawn
 
 
 def write_overview(records: list[dict]) -> dict:
@@ -1635,7 +1798,7 @@ def write_overview(records: list[dict]) -> dict:
     source the registry gains, and that they move LESS than linearly now is the
     whole point of the floor.
     """
-    coarse = simplify_records(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
+    coarse = _simplified_part_by_part(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
 
     qualifying = _through_routes(coarse)
     for index, record in enumerate(coarse):
@@ -1655,7 +1818,7 @@ def write_overview(records: list[dict]) -> dict:
     # 100 + 937 m from where it started, which is under a pixel and a half at
     # the seam and a fourteenth of one at the opening camera.
     kept = _above_the_seam_floor(coarse)
-    seam = simplify_records(kept, OVERVIEW_SEAM_TOLERANCE_M)
+    seam = _simplified_part_by_part(kept, OVERVIEW_SEAM_TOLERANCE_M)
 
     # The group key is always this four-tuple, name "" standing for "not a
     # qualifying named trail" - never None, which would make sorted() below
@@ -1664,7 +1827,10 @@ def write_overview(records: list[dict]) -> dict:
     # this export's existing convention for closure_kind above.
     groups: dict[tuple[str, str, str, str], list[list[list[float]]]] = {}
     coarse_lines = _overview_coordinates_all(from_wkt_all([record["wkt"] for record in seam]), OVERVIEW_SEAM_DECIMALS)
-    for record, lines in zip(seam, coarse_lines):
+    for record, cut in zip(seam, coarse_lines):
+        lines = _drawn_at_the_cut(cut)
+        if not lines:
+            continue
         # THE NAME WRITTEN IS THE TRAIL'S, not the spelling the steward
         # published: USFS's "PCT: MT HOOD" and "PCNST" are both the Pacific
         # Crest Trail, and a map labelling one of them "PCNST" has told a
@@ -1726,6 +1892,35 @@ def write_overview(records: list[dict]) -> dict:
     }
 
 
+def tile_input_sql(lines_sql: str, most: int = TILES_CHUNK_VERTICES) -> str:
+    """`lines_sql`'s rows, in its order, with every line of more than `most`
+    vertices cut into its parts and each part into runs of at most `most`
+    vertices that share their end vertex (TILES_CHUNK_VERTICES). Every other
+    column rides each run unchanged; a line at or under the cap passes through
+    as it is."""
+    return f"""
+        WITH src AS (SELECT *, row_number() OVER () AS _tile_row FROM ({lines_sql})),
+        parts AS (
+            SELECT * EXCLUDE (geom, part), part.geom AS geom, part.path AS _tile_part
+            FROM (SELECT *, unnest(ST_Dump(geom)) AS part FROM src WHERE ST_NPoints(geom) > {most})
+        ),
+        vertices AS (
+            SELECT *, list_transform(ST_Dump(ST_Points(geom)), point -> point.geom) AS _tile_vertices FROM parts
+        ),
+        runs AS (
+            SELECT * EXCLUDE (geom, _tile_vertices),
+                ST_MakeLine(list_slice(_tile_vertices, _tile_start, _tile_start + {most - 1})) AS geom
+            FROM vertices, generate_series(1, len(_tile_vertices) - 1, {most - 1}) AS starts(_tile_start)
+        )
+        SELECT * EXCLUDE (_tile_row, _tile_part, _tile_start) FROM (
+            SELECT *, NULL::INTEGER[] AS _tile_part, 0 AS _tile_start FROM src WHERE ST_NPoints(geom) <= {most}
+            UNION ALL BY NAME
+            SELECT * FROM runs
+        )
+        ORDER BY _tile_row, _tile_part, _tile_start
+    """
+
+
 def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict:
     """Tile the artifact just written into TILES_ARTIFACT_NAME and return its
     manifest entry (#1257).
@@ -1765,7 +1960,7 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
         lines = f"{lines} UNION ALL BY NAME SELECT * FROM ST_Read('{concurrent_path.as_posix()}')"
     con.execute(
         f"""
-        COPY ({lines})
+        COPY ({tile_input_sql(lines)})
         TO '{path.as_posix()}'
         WITH (
             FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}',
@@ -1853,6 +2048,33 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
         "bbox": exported_bbox(records),
         "sources": per_source,
     }
+
+
+def _rss_mb() -> float | None:
+    """This process's resident memory now, in MB, from /proc; None where there is no /proc."""
+    try:
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) / 1024
+    except OSError:
+        return None
+    return None
+
+
+def _progress(started: float, step: str) -> None:
+    """One line before each pass after the closures step, which used to run silent (#1796).
+
+    Seven passes ran between "closed area(s)" and the first write message with
+    no output at all, and on runs 157, 158 and 160 the hosted runner was lost
+    inside that span, so the log could not say which pass it was. Each line
+    carries the elapsed time, this process's resident memory now and its peak
+    so far (ru_maxrss is KiB on Linux), which is what tells a pass that is
+    merely slow from one that is exhausting the machine.
+    """
+    now = _rss_mb()
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    rss = "unknown" if now is None else f"{now:,.0f} MB"
+    print(f"  [{time.monotonic() - started:7.1f}s] {step} (rss {rss}, peak {peak:,.0f} MB)", flush=True)
 
 
 def main() -> dict:
@@ -1958,25 +2180,39 @@ def main() -> dict:
     # (Douglas-Peucker, endpoints preserved, and a degenerate result falls back
     # to the original geometry rather than being dropped) that a second copy
     # would be one edit away from losing.
+    passes_started = time.monotonic()
+    try:
+        total = next(line for line in Path("/proc/meminfo").read_text().splitlines() if line.startswith("MemTotal:"))
+        print(f"  machine memory: {int(total.split()[1]) / 1024:,.0f} MB", flush=True)
+    except (OSError, StopIteration):
+        pass
+    _progress(passes_started, f"simplifying {len(all_records):,} records")
     simplified = simplify_records(all_records)
+    _progress(passes_started, "writing the network lines")
     manifest = write_artifact(simplified, per_source)
     manifest["closures"] = closure_stats
     manifest["duplicates"] = duplicate_stats
     # The shared-ground pairs (#1384), from the records just written plus the
     # A.T.'s centerline, into their own file - never into the one above, for
     # the eleven readers the module docstring counts.
+    _progress(passes_started, "loading the A.T. centerline")
     at_records = load_at_centerline()
-    pairs, shared = find_shared_ground(simplified + at_records)
+    _progress(passes_started, f"finding shared ground among {len(simplified) + len(at_records):,} lines")
+    pairs, shared = find_shared_ground(simplified + at_records, progress=lambda step: _progress(passes_started, step))
+    _progress(passes_started, f"writing the shared ground ({len(pairs):,} pairs)")
     manifest["concurrent"] = write_concurrent(pairs, shared, at_paired=bool(at_records))
     # The corridor-view sketch, from the same simplified records the artifact
     # was just written from - export_trails.py's ordering, for its reason: the
     # overview simplifies the same geometry a second time at its own coarser
     # tolerance.
+    _progress(passes_started, "writing the overview")
     manifest["overview"] = write_overview(simplified)
     # The same lines as vector tiles (#1257), cut from the file just written
     # so the two cannot disagree - see write_tiles for what a phone gains.
     # The pairs ride in the tiles, and only when there are any to ride.
+    _progress(passes_started, "cutting the vector tiles")
     manifest["tiles"] = write_tiles(Path(manifest["path"]), Path(manifest["concurrent"]["path"]) if pairs else None)
+    _progress(passes_started, "every pass done")
 
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
@@ -1992,7 +2228,9 @@ def main() -> dict:
         f"{'' if concurrent['at_paired'] else ' (network only)'} "
         f"(within {concurrent['tolerance_m']:g} m for {concurrent['min_length_m']:g} m or more; "
         f"{concurrent['dropped_short']} shorter pieces dropped, {concurrent['dropped_unpainted']} with no blaze to paint, "
-        f"{concurrent['dropped_same_blaze']} in one paint, {concurrent['nameless_skipped']} nameless lines skipped) "
+        f"{concurrent['dropped_same_blaze']} in one paint, {concurrent['nameless_skipped']} nameless lines skipped; "
+        f"{concurrent['skipped_unpainted_pairs']} pairs with no paint on one side and "
+        f"{concurrent['skipped_same_blaze_pairs']} in one paint never built) "
         f"-> {concurrent['path']}"
     )
 

@@ -8,6 +8,7 @@ checked-in blob. See ../../TESTING.md for the philosophy this follows.
 """
 
 import socket
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -15,6 +16,29 @@ import pytest
 import export_poi
 import publish
 from lib import fetch_receipts
+
+#: One file each dbt generator writes on every run (pipeline/generate_dbt.py): make_dbt_staging.py's ignore list and
+#: generate_notice_models.py's readers seed. Neither is committed (decision 91).
+GENERATED_TREE = (
+    Path(__file__).resolve().parent.parent / "dbt" / "models" / ".gitignore",
+    Path(__file__).resolve().parent.parent / "dbt" / "seeds" / "notice_readers.csv",
+)
+
+
+def pytest_sessionstart(session):
+    """Refuse to start without the dbt generators' output, rather than test half the dbt project.
+
+    Decision 91 stopped committing the 1,636 files make_dbt_staging.py and generate_notice_models.py write, and
+    tests here walk the models on disk (test_dbt_keys.py keys every base model it finds; test_build_marts.py reads
+    every model's YAML). On a tree the generators never wrote, those would pass over the hand-written half alone and
+    say nothing about the rest. CI's pytest job and scripts/test.sh run generate_dbt.py first."""
+    missing = [str(path.relative_to(path.parents[2])) for path in GENERATED_TREE if not path.exists()]
+    if missing:
+        pytest.exit(
+            f"the dbt generators' output is not on disk ({', '.join(missing)} missing): "
+            "run `python generate_dbt.py` from pipeline/ first, then the suite again",
+            returncode=4,
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -110,6 +134,26 @@ def spatial_con():
     connection = spatial_connection()
     yield connection
     connection.close()
+
+
+@pytest.fixture(autouse=True)
+def robots_txt_answers_no_rules(request, monkeypatch):
+    """Every request the extract sends first reads its origin's robots.txt, once a run (extract/_robots.py).
+
+    Here every origin answers as a 404 would, no rules, and nothing is sent
+    for it, so a test's request_history and call counts stay the requests its
+    reader makes, and no test needs a robots.txt answer it is not about. A test
+    about robots.txt is marked `robots_txt_read`: its origins answer through
+    requests_mock like any other URL. Each test starts and ends with nothing
+    read, as each run does.
+    """
+    from extract import _robots
+
+    _robots.forget()
+    if request.node.get_closest_marker("robots_txt_read") is None:
+        monkeypatch.setattr(_robots, "read_robots_txt", _robots.no_rules)
+    yield
+    _robots.forget()
 
 
 @pytest.fixture(autouse=True)

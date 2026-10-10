@@ -1,0 +1,633 @@
+// Which clubs' notices a hiker sees (#1805, decision 66).
+//
+// The maintainer's answer, by poll on 2026-10-04, in their own words: "Every
+// notice that touches a planned hike in the next 7 days. for a long hike get
+// everything along the planned hike in the next 7". conditions/notices.json
+// carries every club's notices - 129 clubs once decision 53's phases land -
+// and a list of all of them is the feed features/ORG_NOTICES.md §9 warns a
+// warning surface turns into. This module is the rule that keeps it a
+// warning: the notices that touch what the hiker is about to walk, and
+// nothing else.
+//
+// THE WINDOW is today and the six days after it, by the phone's own calendar
+// (lib/passedToday.ts's `localDay`) - seven days, `NOTICE_WINDOW_DAYS`. A day
+// dated in it is planned "in the next 7 days"; the seventh day after today is
+// not. The maintainer's number, so it is not tagged as a guess.
+//
+// WHAT IS A PLANNED HIKE, from what the phone already stores:
+//
+//  - a DAY HIKE (lib/dayHikes.ts) the hiker laid out (`recorded: 'planned'`)
+//    and dated inside the window. Its route is the graph's own routing of its
+//    tapped ends (lib/dayHikeCard.ts's `resolveDayHike`, handed in as a
+//    `DayHikeRouter`) where this phone holds the graph cells, else the
+//    tapped ends joined - which says so
+//    (`routeResolved`), because a straight line between two taps is not where
+//    the hiker walks;
+//  - the DAYS OF A LONG HIKE's plans (lib/trips.ts, each trip a lib/plan.ts
+//    plan on the A.T.'s mile axis) that are dated inside the window and not
+//    yet walked. That is the maintainer's "for a long hike get everything
+//    along the planned hike in the next 7": a thru-hike starting tomorrow is
+//    the next seven days of it, never all 2,197 miles. A short trip that
+//    falls inside the window whole is all of it, by the same rule. A hiker
+//    behind their dates also has the unwalked days dated before today, which
+//    are the miles they walk next (`plannedStretches` says why).
+//
+// An UNDATED plan is not planned for any day, so it is not in the window:
+// thru-hikers plan loosely and plan.ts makes the date optional for that
+// reason. The panel says how many it skipped, rather than guessing a date.
+//
+// WHAT "TOUCHES" MEANS, from the notice's own place (ORG_NOTICES.md §3):
+//
+//  - `at_miles` (ATC): its miles overlap a long hike's planned miles, or its
+//    stretch of the A.T. centerline meets a day hike's route;
+//  - `geometry` (a club's own polygon, line or point, decision 67's hazard
+//    areas among them): it meets the route within `NOTICE_REACH_FEET`;
+//  - `unplaced` and `org_terms`: the club that posted it maintains a trail
+//    the route uses. `org_terms` is read as unplaced on purpose - no reviewed
+//    table maps NYNJTC's terms to features yet, and ORG_NOTICES.md §4's rule
+//    is that "an unmapped term places nothing".
+//
+// CLUBS ONLY, FOR AN UNPLACED NOTICE. The maintainer's answer, by poll on
+// 2026-10-04: an agency's notice shows only where it is placed on or near the
+// route, and an unplaced one shows only from a club. An agency posts across a
+// whole forest or state - USFS, NPS, a state's parks - so "it manages a trail
+// you walk" would hand a hiker every notice it has; a club's are about its
+// own trails. notices.json says which (`steward_kind`, from trail_orgs.json's
+// type); a file without the field keeps the provider match, so a missing
+// field shows a notice rather than hiding one.
+//
+// EXCEPT A STATE-WIDE ONE, PLACED BY ITS STATE (decision 76, the maintainer's
+// poll of 2026-10-04 from statewide_notice_mock.html's frame A): BLM's Utah
+// fire restrictions name no shape, and apply to all of BLM's land in Utah. An
+// agency's unplaced notice whose row names `states`
+// (pipeline/dbt/seeds/notice_states.csv: BLM's 12 state fire-restriction
+// pages and CT DEEP's state parks emergency message on 2026-10-04) shows to a
+// hike that
+//
+//  - walks that agency's trails: the notice's provider is one of the route's
+//    providers, the same match a club's notice takes;
+//  - is in one of those states: some vertex of the route is inside the
+//    state's shape (conditions/notice_states.json, which
+//    lib/publishedNotices.ts attaches as `state_areas`) and farther than the
+//    shape's `edge_margin_m` from its edge. A vertex nearer an edge counts
+//    for no state, so a hike within the margin of a state line misses the
+//    notice rather than being shown the next state's: a Utah notice never
+//    shows for a Colorado hike. The margin and the measurement behind it
+//    are pipeline/dbt's int_closures__notice_state_shapes';
+//  - and overlaps it in time, as every notice must.
+//
+// Three limits, each a miss and never a wrong state:
+//
+//  - PER ROUTE, NOT PER LEG. A day hike's legs carry no geometry, so the
+//    rule asks whether the route walks the agency's trails and whether the
+//    route is in the state, separately. A route on BLM's trails in Colorado
+//    that also walks a Forest Service trail into Utah is shown BLM Utah's
+//    notice;
+//  - NO LONG HIKE. A long hike's providers are the A.T. centerline's and
+//    the clubs ATC's sections name, never an agency's, so no state-wide
+//    agency notice reaches one;
+//  - ALASKA STATE PARKS' PAGE IS NOT IN THE SEED, and could not match
+//    anyway: it is an index of per-park reports, not a notice about all of
+//    Alaska, and no trail line on a phone is published under its provider.
+//
+// A phone without conditions/notice_states.json (a bucket the dbt path has
+// not written) holds no shape, and shows no state-wide notice, as decision
+// 68 left them.
+//
+// AND IN TIME: a notice whose own start is after the hike's last planned day,
+// or whose own end is before its first, does not touch it. Most notices state
+// neither, and then only the place decides.
+//
+// WHICH CLUBS MAINTAIN THE ROUTE, from data the phone already has, never a
+// name match:
+//
+//  - a day hike's legs carry the registry key of each trail line they walk
+//    (`source`, and `concurrent_sources` where one tread carries two
+//    designations, #1115); stewards.json (lib/stewards.ts) lists which
+//    provider each key belongs to;
+//  - a long hike walks the A.T.: the provider of the A.T. centerline's key
+//    (`centerline`), plus every club ATC's own club-sections layer
+//    (club_sections.json, lib/clubSections.ts) assigns a planned mile to,
+//    by its acronym - GMC on a Vermont stretch, NYNJTC through Harriman -
+//    or, for AMC's chapters, by the reviewed `SECTION_PROVIDERS` table. An
+//    acronym no notice carries as its provider matches nothing, so no
+//    acronym is dropped and none is fuzzily joined;
+//  - a day hike with a leg on the A.T. adds the clubs whose sections hold
+//    its A.T. miles (lib/dayHikeOnTrail.ts, off the centerline index), the
+//    same way.
+//
+// A notice names its club by the `provider` notices.json carries, else by
+// its source key through the same stewards.json.
+//
+// NOTHING IS PICKED WITH NO PLANNED HIKE IN THE WINDOW. The panel says why
+// and how to change that (chrome/PlannedNoticeList.tsx). Showing every club
+// instead is the feed this decision exists to avoid; the notices the map
+// draws still open their own sheet when tapped.
+
+import { anyHikePlanned, type DayHike, type DayHikeLeg } from './dayHikes'
+import { dayHikeOnTrail } from './dayHikeOnTrail'
+import {
+  geometryParts,
+  insideByMoreThan,
+  linesMeetParts,
+  partsBounds,
+  type Bounds,
+  type GeometryParts,
+  type Position,
+} from './noticeGeometry'
+import type { TrailNotice } from './notices'
+import type { NoticeStateArea } from './publishedConditions'
+import { clubTimeline, type ClubSections } from './clubSections'
+import type { Stewards } from './stewards'
+import type { RouteLeg } from './trailGraph'
+import { trailPointAtMile, trailSlice, type TrailIndex } from './trailPosition'
+import type { Trip } from './trips'
+
+/** Today and the six days after it. The maintainer's number (decision 66). */
+export const NOTICE_WINDOW_DAYS = 7
+
+/**
+ * How far from a route a placed notice may be and still touch it.
+ *
+ * @unvalidated 300 ft is picked, not measured. The notice and the route are
+ * usually drawn by different organizations - a club's own closure point
+ * against the trail graph's line, or ATC's centerline - and two maps of one
+ * tread sit apart: the median ATC shelter is 21 m from its nearest CSI
+ * shelter row (pipeline/build_water_distance.py's docstring), so 300 ft
+ * (91 m) is about four of those, wide enough that a point published on the
+ * club's own line still meets the same trail drawn by somebody else, and
+ * short of the next trail over in most terrain. It errs toward showing: a
+ * notice 250 ft off the route is shown, which is the cheap mistake. What
+ * would settle it: the distance from each live placed notice to the nearest
+ * network line, which nobody has measured.
+ */
+export const NOTICE_REACH_FEET = 300
+
+/** The registry key of the A.T. centerline (pipeline/sources.json). */
+export const AT_CENTERLINE_SOURCE_KEY = 'centerline'
+
+/** One hike the hiker has planned inside the window, as the rule reads it. */
+export interface PlannedStretch {
+  /** Stable across renders: `trip:<id>` or `day-hike:<id>`. */
+  id: string
+  kind: 'day_hike' | 'long_hike'
+  /** What the hiker calls it. */
+  label: string
+  /** The first and last planned day inside the window, ISO dates. */
+  from: string
+  to: string
+  /** A long hike's planned A.T. miles, merged, each `[low, high]`. Empty for
+   *  a day hike. */
+  atSpans: Array<[number, number]>
+  /** Where the route runs, as `[lon, lat]` lines. Empty when the phone holds
+   *  neither the centerline nor the graph to draw it with. */
+  lines: Position[][]
+  /** False when `lines` is a day hike's tapped ends joined, because this
+   *  phone could not route them; placed notices are then matched to that
+   *  rougher line and the panel says so. */
+  routeResolved: boolean
+  /** The registry providers of the trails it walks. */
+  providers: ReadonlySet<string>
+}
+
+/** What one planned hike is shown. */
+export interface PlannedHikeNotices {
+  stretch: PlannedStretch
+  /** Placed notices that meet the route, closures first. */
+  onRoute: TrailNotice[]
+  /** Unplaced notices from the clubs that maintain its trails; never an
+   *  agency's (the module comment's "clubs only"). */
+  fromClubs: TrailNotice[]
+  /** An agency's state-wide notices for a state the route is in, on the
+   *  agency's trails (decision 76). */
+  stateWide: TrailNotice[]
+}
+
+export type NoPlannedHike =
+  /** No day hike laid out and no long-hike plan at all. */
+  | 'nothing_planned'
+  /** Plans exist, and none has a day dated in the window. */
+  | 'nothing_in_the_window'
+
+export interface PlannedNotices {
+  hikes: PlannedHikeNotices[]
+  /** Null when at least one hike is planned in the window. */
+  empty: NoPlannedHike | null
+  /** Plans that carry no date at all, which no window can hold. */
+  undated: number
+}
+
+/** ISO day `offset` days from `day`, in UTC date arithmetic as lib/plan.ts's
+ *  `dateOfDay` does it, so the window does not move with a DST change. */
+export function shiftDay(day: string, offset: number): string {
+  const [year, month, date] = day.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, date + offset)).toISOString().slice(0, 10)
+}
+
+/** Whether an ISO day is inside the window that starts `today`. */
+export function inNoticeWindow(day: string, today: string): boolean {
+  return day >= today && day <= shiftDay(today, NOTICE_WINDOW_DAYS - 1)
+}
+
+function mergeSpans(spans: Array<[number, number]>): Array<[number, number]> {
+  const sorted = spans
+    .map(([a, b]): [number, number] => [Math.min(a, b), Math.max(a, b)])
+    .sort((x, y) => x[0] - y[0])
+  const merged: Array<[number, number]> = []
+  for (const span of sorted) {
+    const last = merged[merged.length - 1]
+    if (last !== undefined && span[0] <= last[1]) last[1] = Math.max(last[1], span[1])
+    else merged.push([span[0], span[1]])
+  }
+  return merged
+}
+
+/** The A.T. between two miles as lines, or a point where the span has no
+ *  length - or nothing, before the centerline has loaded. */
+function centerlineLines(
+  index: TrailIndex | null,
+  low: number,
+  high: number,
+): Position[][] {
+  if (index === null) return []
+  if (low === high) {
+    const at = trailPointAtMile(index, low)
+    return at === null ? [] : [[at, at]]
+  }
+  return trailSlice(index, low, high)
+}
+
+/** Provider of every registry key the stewards list names. */
+function providersByKey(stewards: Stewards): Map<string, string> {
+  const byKey = new Map<string, string>()
+  for (const steward of stewards)
+    for (const key of steward.keys) byKey.set(key, steward.provider)
+  return byKey
+}
+
+/**
+ * The registry provider of each club-section acronym that is not spelled as
+ * its provider: a reviewed table, never a name match.
+ *
+ * ATC's club-sections layer names AMC's three A.T. chapters `AMC-DV`,
+ * `AMC-CT` and `AMC-WMA` (UA's club_sections.json, release 2026-10-03-2:
+ * "Appalachian Mountain Club - Delaware Valley Chapter", "- Connecticut
+ * Chapter" and "- Western Massachusetts Chapter"), while their notices carry
+ * the provider `AMC` (amcdv_bear_safety, amc_wma_at_campsites and
+ * amc_wma_at_parking in soak run 536's notices.json). The other 27 acronyms
+ * in that file are matched as spelled. A row is added here only after
+ * somebody has read both files for it.
+ */
+const SECTION_PROVIDERS: ReadonlyMap<string, string> = new Map([
+  ['AMC-DV', 'AMC'],
+  ['AMC-CT', 'AMC'],
+  ['AMC-WMA', 'AMC'],
+])
+
+/**
+ * The A.T.'s provider and every club whose section holds one of `spans`, as
+ * the provider its notices carry.
+ *
+ * Every acronym is kept, whether or not stewards.json lists it: that file
+ * changes only with a release while notices.json changes hourly (on UA's
+ * release 2026-10-03-2, 29 of the 30 acronyms were in no steward row), and
+ * an acronym no notice carries matches nothing anyway.
+ */
+function atProviders(
+  spans: Array<[number, number]>,
+  clubSections: ClubSections,
+  byKey: Map<string, string>,
+): Set<string> {
+  const providers = new Set<string>()
+  const atProvider = byKey.get(AT_CENTERLINE_SOURCE_KEY)
+  if (atProvider !== undefined) providers.add(atProvider)
+  for (const run of clubTimeline(clubSections)) {
+    if (run.club === null) continue
+    if (spans.some(([low, high]) => run.startMile <= high && run.endMile >= low)) {
+      providers.add(SECTION_PROVIDERS.get(run.club.acronym) ?? run.club.acronym)
+    }
+  }
+  return providers
+}
+
+/**
+ * A day hike's route as the phone's graph routes it: the lines it walks and
+ * the legs it walks them on, or null when this phone cannot route it (no
+ * graph cells with their vertices, or ends the graph no longer connects).
+ *
+ * Handed in by the caller rather than imported, because the routing lives in
+ * lib/dayHikeCard.ts and lib/trailGraph.ts, which the first frame already
+ * holds, and this module loads behind import() (lib/noticeSelection.ts); an
+ * import here would split those modules into a chunk of their own for both
+ * to share, which the launch budget measured as bytes it does not have.
+ */
+export type DayHikeRouter = (
+  hike: DayHike,
+) => { lines: Position[][]; legs: ReadonlyArray<RouteLeg | DayHikeLeg> } | null
+
+/** Every planned hike with a day inside the window. */
+export function plannedStretches({
+  trips,
+  dayHikes,
+  today,
+  trailIndex,
+  routeDayHike,
+  clubSections,
+  stewards,
+}: {
+  trips: readonly Trip[]
+  dayHikes: readonly DayHike[]
+  today: string
+  trailIndex: TrailIndex | null
+  routeDayHike: DayHikeRouter | null
+  clubSections: ClubSections
+  stewards: Stewards
+}): PlannedStretch[] {
+  const byKey = providersByKey(stewards)
+  const stretches: PlannedStretch[] = []
+
+  const lastDay = shiftDay(today, NOTICE_WINDOW_DAYS - 1)
+  for (const trip of trips) {
+    if (trip.recorded === true) continue
+    const { stops, days } = trip.plan
+    const dated = days.map((day) => (day.walked === true ? undefined : day.date))
+    // A hiker BEHIND their dates has unwalked days dated before today, and
+    // those are the miles they walk next (plan.ts's `currentDayIndex`: "the
+    // calendar is a label, where the hiker is is a fact"; a plan is re-dated
+    // only on the hiker's say, lib/cascade.ts). So they are taken too, while
+    // the plan still has an unwalked day in the window - a plan with none is
+    // one nobody is walking, and shows nothing. Walked days are a prefix
+    // (plan.ts's validator), so this adds exactly the days behind. A hiker
+    // AHEAD of their dates is still read by the calendar: the days dated past
+    // the window are left out, though they may reach them this week.
+    if (!dated.some((date) => date !== undefined && inNoticeWindow(date, today))) continue
+    const spans: Array<[number, number]> = []
+    const dates: string[] = []
+    dated.forEach((date, index) => {
+      if (date === undefined || date > lastDay) return
+      const start = stops[index]
+      const end = stops[index + 1]
+      if (start === undefined || end === undefined) return
+      spans.push([start.mile, end.mile])
+      dates.push(date < today ? today : date)
+    })
+    if (spans.length === 0) continue
+    const atSpans = mergeSpans(spans)
+    dates.sort()
+    stretches.push({
+      id: `trip:${trip.id}`,
+      kind: 'long_hike',
+      label: trip.name,
+      // A day behind is walked today at the earliest, so the stretch starts
+      // today and a notice that ended yesterday does not touch it.
+      from: dates[0],
+      to: dates[dates.length - 1],
+      atSpans,
+      lines: atSpans.flatMap(([low, high]) => centerlineLines(trailIndex, low, high)),
+      routeResolved: trailIndex !== null,
+      providers: atProviders(atSpans, clubSections, byKey),
+    })
+  }
+
+  for (const hike of dayHikes) {
+    if (hike.recorded !== 'planned' || hike.date === null) continue
+    if (!inNoticeWindow(hike.date, today)) continue
+    const routed = routeDayHike === null ? null : routeDayHike(hike)
+    const routeResolved = routed !== null && routed.lines.length > 0
+    const lines: Position[][] = routeResolved
+      ? routed.lines
+      : hike.segments.map((segment) => segment.map((end) => end.coord))
+    const legs = routed?.legs ?? hike.figures.legs
+    const providers = new Set<string>()
+    let onTheAt = false
+    for (const leg of legs) {
+      for (const key of [leg.source, ...(leg.concurrent_sources ?? [])]) {
+        if (key === AT_CENTERLINE_SOURCE_KEY) onTheAt = true
+        const provider = key === null ? undefined : byKey.get(key)
+        if (provider !== undefined) providers.add(provider)
+      }
+    }
+    // A leg on the A.T. is maintained by the club whose section it is in,
+    // which no leg's key names: the clubs come from the hike's A.T. miles,
+    // as a long hike's do. Where the centerline is not loaded yet there are
+    // no miles, and only the A.T.'s own provider is matched.
+    const atStretch =
+      onTheAt && trailIndex !== null ? dayHikeOnTrail(hike, trailIndex) : null
+    if (atStretch !== null) {
+      const span: [number, number] = [atStretch.fromMile, atStretch.toMile]
+      for (const provider of atProviders([span], clubSections, byKey))
+        providers.add(provider)
+    }
+    stretches.push({
+      id: `day-hike:${hike.id}`,
+      kind: 'day_hike',
+      label: hike.name,
+      from: hike.date,
+      to: hike.date,
+      atSpans: [],
+      lines,
+      routeResolved,
+      providers,
+    })
+  }
+
+  return stretches.sort(
+    (a, b) => a.from.localeCompare(b.from) || a.label.localeCompare(b.label),
+  )
+}
+
+/** The parts a placed notice occupies, or null for one with no place. The
+ *  A.T. ones come off the centerline, so they need it loaded. */
+function placedParts(
+  notice: TrailNotice,
+  trailIndex: TrailIndex | null,
+): GeometryParts | null {
+  const { place } = notice
+  if (place.kind === 'geometry') return geometryParts(place.geometry)
+  if (place.kind === 'at_miles') {
+    const low = Math.min(place.start, place.end)
+    const high = Math.max(place.start, place.end)
+    const lines = centerlineLines(trailIndex, low, high)
+    return lines.length === 0
+      ? null
+      : { points: [], lines: lines.map((line) => [...line]), polygons: [] }
+  }
+  return null
+}
+
+/** Whether a notice's own dates overlap the planned days. Absent dates are
+ *  no constraint: most notices state neither. */
+function overlapsInTime(notice: TrailNotice, stretch: PlannedStretch): boolean {
+  if (notice.starts_on && notice.starts_on > stretch.to) return false
+  if (notice.ends_on && notice.ends_on < stretch.from) return false
+  return true
+}
+
+function noticeProvider(
+  notice: TrailNotice,
+  byKey: Map<string, string>,
+): string | undefined {
+  return notice.provider ?? byKey.get(notice.source_key)
+}
+
+/** Closures first, then the most recently updated. */
+function byWeight(a: TrailNotice, b: TrailNotice): number {
+  if (a.obstructs_trail !== b.obstructs_trail) return a.obstructs_trail ? -1 : 1
+  return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')
+}
+
+/** A state's shape as the rule reads it, worked out once per shape. */
+const STATE_PARTS = new WeakMap<
+  NoticeStateArea,
+  { parts: GeometryParts; bounds: Bounds | null }
+>()
+
+function stateParts(area: NoticeStateArea): {
+  parts: GeometryParts
+  bounds: Bounds | null
+} {
+  let found = STATE_PARTS.get(area)
+  if (found === undefined) {
+    const parts = geometryParts(area.geometry)
+    found = { parts, bounds: partsBounds(parts) }
+    STATE_PARTS.set(area, found)
+  }
+  return found
+}
+
+/** Whether some vertex of the route is inside one of the notice's states by
+ *  more than that state's margin (the module comment's decision 76). */
+function routeInItsStates(notice: TrailNotice, stretch: PlannedStretch): boolean {
+  for (const area of notice.state_areas ?? []) {
+    const { parts, bounds } = stateParts(area)
+    if (bounds === null) continue
+    for (const line of stretch.lines) {
+      for (const at of line) {
+        if (
+          at[0] < bounds.minLon ||
+          at[0] > bounds.maxLon ||
+          at[1] < bounds.minLat ||
+          at[1] > bounds.maxLat
+        ) {
+          continue
+        }
+        if (insideByMoreThan(at, parts, area.edge_margin_m)) return true
+      }
+    }
+  }
+  return false
+}
+
+/** Whether one notice touches one planned hike (the module comment's rule). */
+export function noticeTouches(
+  notice: TrailNotice,
+  stretch: PlannedStretch,
+  trailIndex: TrailIndex | null,
+  byKey: Map<string, string>,
+): 'on_route' | 'from_club' | 'state_wide' | null {
+  if (!overlapsInTime(notice, stretch)) return null
+  const { place } = notice
+  // A geometry with no coordinate this build can read (an empty polygon, as
+  // the writer's ST_AsGeoJSON prints one, or a collection nested past
+  // MAX_COLLECTION_DEPTH) places nothing, so it is read as unplaced: kept as
+  // placed it would meet no route and show from no club either.
+  const shape = place.kind === 'geometry' ? geometryParts(place.geometry) : null
+  if (
+    place.kind === 'unplaced' ||
+    place.kind === 'org_terms' ||
+    (shape !== null && partsBounds(shape) === null)
+  ) {
+    const provider = noticeProvider(notice, byKey)
+    const onItsTrails = provider !== undefined && stretch.providers.has(provider)
+    if (notice.steward_kind === 'agency') {
+      return onItsTrails && routeInItsStates(notice, stretch) ? 'state_wide' : null
+    }
+    return onItsTrails ? 'from_club' : null
+  }
+  if (place.kind === 'at_miles') {
+    const low = Math.min(place.start, place.end)
+    const high = Math.max(place.start, place.end)
+    if (stretch.atSpans.some(([a, b]) => low <= b && high >= a)) return 'on_route'
+  }
+  if (stretch.lines.length === 0) return null
+  const parts = shape ?? placedParts(notice, trailIndex)
+  if (parts === null) return null
+  return linesMeetParts(stretch.lines, parts, NOTICE_REACH_FEET) ? 'on_route' : null
+}
+
+/** The panel's whole answer: each planned hike in the window and the notices
+ *  that touch it, or why there is nothing to show. */
+export function plannedNotices({
+  notices,
+  trips,
+  dayHikes,
+  today,
+  trailIndex,
+  routeDayHike,
+  clubSections,
+  stewards,
+}: {
+  notices: readonly TrailNotice[]
+  trips: readonly Trip[]
+  dayHikes: readonly DayHike[]
+  today: string
+  trailIndex: TrailIndex | null
+  routeDayHike: DayHikeRouter | null
+  clubSections: ClubSections
+  stewards: Stewards
+}): PlannedNotices {
+  const stretches = plannedStretches({
+    trips,
+    dayHikes,
+    today,
+    trailIndex,
+    routeDayHike,
+    clubSections,
+    stewards,
+  })
+  const plannedDayHikes = dayHikes.filter((hike) => hike.recorded === 'planned')
+  const plannedTrips = trips.filter((trip) => trip.recorded !== true)
+  const undated =
+    plannedDayHikes.filter((hike) => hike.date === null).length +
+    plannedTrips.filter((trip) => trip.plan.days.every((day) => day.date === undefined))
+      .length
+
+  if (stretches.length === 0) {
+    return {
+      hikes: [],
+      empty: anyHikePlanned(trips, dayHikes)
+        ? 'nothing_in_the_window'
+        : 'nothing_planned',
+      undated,
+    }
+  }
+
+  const byKey = providersByKey(stewards)
+  const hikes = stretches.map((stretch) => {
+    const onRoute: TrailNotice[] = []
+    const fromClubs: TrailNotice[] = []
+    const stateWide: TrailNotice[] = []
+    for (const notice of notices) {
+      const touch = noticeTouches(notice, stretch, trailIndex, byKey)
+      if (touch === 'on_route') onRoute.push(notice)
+      else if (touch === 'from_club') fromClubs.push(notice)
+      else if (touch === 'state_wide') stateWide.push(notice)
+    }
+    onRoute.sort(byWeight)
+    fromClubs.sort(byWeight)
+    stateWide.sort(byWeight)
+    return { stretch, onRoute, fromClubs, stateWide }
+  })
+  return { hikes, empty: null, undated }
+}
+
+/** Every notice the panel shows, once, across its hikes - what the "new
+ *  notices" dot counts and what opening the panel silences. */
+export function shownNotices(planned: PlannedNotices): TrailNotice[] {
+  const seen = new Map<string, TrailNotice>()
+  for (const hike of planned.hikes) {
+    for (const notice of [...hike.onRoute, ...hike.stateWide, ...hike.fromClubs])
+      seen.set(notice.notice_id, notice)
+  }
+  return [...seen.values()]
+}

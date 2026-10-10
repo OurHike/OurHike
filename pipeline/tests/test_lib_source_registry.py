@@ -15,8 +15,14 @@ from pathlib import Path
 
 from lib.source_registry import (
     ARCGIS_FEATURE_LAYER,
+    CLUB_ARCGIS_LAYER,
     EXTERNAL_ARCGIS_LAYER,
+    GIS_FILE,
+    JSON_FEATURES,
     KNOWN_KINDS,
+    OGC_FEATURES,
+    PAGE_POINTS,
+    PDF_POINTS,
     POI_SOURCE_KEYS,
     PUBLISHED_HIKES,
     PUBLISHED_NOTICES,
@@ -465,3 +471,71 @@ def test_the_greenway_layer_never_ships_an_on_street_bike_lane():
     entry = find_source(load_registry(REAL_REGISTRY), "nyc_dot_greenways")
 
     assert entry["where"] == "status='Current' AND grnwy='Greenway' AND onoffst='OFF'"
+
+
+# --- club_arcgis_layer: read by pipeline/extract/ alone (decision 54) -------
+
+# A club layer shaped the way decision 54's wave 1 registers one: an ArcGIS
+# URL, a type field, and `reaches_hikers` true, so that no reader skips it on
+# that flag alone. Appended to the real registry, so the test bites before any
+# real row of the kind exists and keeps biting on every row added later.
+CLUB_LAYER_PROBE = {
+    "key": "club_layer_probe",
+    "kind": CLUB_ARCGIS_LAYER,
+    "title": "A club's point layer (probe)",
+    "provider": "Probe",
+    "url": "https://services.arcgis.com/probe/arcgis/rest/services/Points/FeatureServer/0",
+    "id_field": "GlobalID",
+    "name_field": "Name",
+    "type_field": "Type",
+    "reaches_hikers": True,
+}
+
+
+def test_no_legacy_reader_selects_a_club_arcgis_layer_row(tmp_path, monkeypatch):
+    """The property that keeps the legacy publish off the club hosts decision 54 registers.
+
+    publish-vector-data.yml runs fetch_external_layers.py, which fetches every
+    row external_sources() returns whatever its reaches_hikers says, and fails
+    the whole publish on one failed or empty layer. A club layer selected by
+    any reader below would put the A.T.'s water and shelters at the mercy of
+    a club's server, and a row export_nearby_poi.poi_sources() selected would
+    ship that club's points outside dbt's publication gate. The kind keeps the
+    kind-based readers away. poi_sources() and export_trails.py select on
+    `poi_type` and `blaze_field` instead, so a club row carrying either fails
+    here too.
+    """
+    import export_nearby_poi
+    import export_nearby_trails
+    import export_trails
+    import fetch_all
+    import fetch_external_layers
+    import load_raw
+
+    registry = load_registry(REAL_REGISTRY)
+    registry["sources"] = [*registry["sources"], CLUB_LAYER_PROBE]
+    path = tmp_path / "sources.json"
+    path.write_text(json.dumps(registry))
+    monkeypatch.setattr(load_raw, "SOURCES_PATH", path)
+    # Decision 54's waves 2 and 3 register their GIS files and geographic APIs for the extract alone, as wave 1
+    # registers its ArcGIS layers, and waves 4 and 5 their club pages' and PDFs' points (section S), so no legacy
+    # reader may select those rows either.
+    extract_only = {CLUB_ARCGIS_LAYER, GIS_FILE, OGC_FEATURES, JSON_FEATURES, PAGE_POINTS, PDF_POINTS}
+    club_keys = {entry["key"] for entry in registry["sources"] if source_kind(entry) in extract_only}
+
+    selected = {
+        "fetch_all.arcgis_sources": {e["key"] for e in fetch_all.arcgis_sources(registry)},
+        "fetch_external_layers.external_sources": {e["key"] for e in fetch_external_layers.external_sources(registry)},
+        "load_raw.registered_layers": {key for _, key, _ in load_raw.registered_layers()},
+        "export_nearby_poi.poi_sources": {e["key"] for e in export_nearby_poi.poi_sources(registry)},
+        "export_trails.load_line_sources": {e["key"] for e in export_trails.load_line_sources(path)},
+        "export_nearby_trails.network_line_sources": {e["key"] for e in export_nearby_trails.network_line_sources(registry)},
+        "export_nearby_trails.closure_area_sources": {e["key"] for e in export_nearby_trails.closure_area_sources(registry)},
+    }
+
+    assert all(selected.values()), f"a reader selected nothing from the real registry, so this proves nothing: {selected}"
+    leaked = {reader: sorted(keys & club_keys) for reader, keys in selected.items() if keys & club_keys}
+    assert not leaked, (
+        "legacy readers select extract-only rows (club_arcgis_layer, gis_file, ogc_features, json_features, page_points, "
+        f"pdf_points), which only pipeline/extract/ may read: {leaked}"
+    )

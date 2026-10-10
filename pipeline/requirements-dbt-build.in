@@ -1,0 +1,23 @@
+# What dbt's sdist needs in order to build, pinned and hashed like everything
+# it builds (pipeline/ELT.md decision 144). requirements-dbt.txt's hashes
+# cover dbt's sdist and every wheel, and they do not reach this: the 2.0.6
+# sdist's pyproject.toml declares `requires = ["packaging>=24"]` for its build
+# backend, and pip installs a build's requirements into a throwaway
+# environment from PyPI, at the newest version the range allows, with no hash
+# even under --require-hashes (measured 2026-10-10 on pip 24.0: "Collecting
+# packaging>=24 ... Successfully installed packaging-26.3"). The backend
+# imports it before it fetches and checks dbt's wheel, so it is code that runs
+# inside the check.
+#
+# So every install puts this file in first, hash-checked, and then installs
+# requirements-dbt.txt with --no-build-isolation, which builds dbt with what
+# is already installed and fetches nothing for the build. Without this file
+# in first, that build stops with "No module named 'packaging'" rather than
+# fetching it (measured the same day). pip 25.3 and later have
+# --build-constraint, which hash-checks a build's requirements too (measured
+# on pip 26.2.1), but the venvs CI makes carry pip 25.0.1 (run 38001863592).
+#
+# Read the build requirements again from dbt's sdist when the dbt pin moves.
+# Compile from pipeline/ on Python 3.12:
+#   pip-compile --generate-hashes --output-file=requirements-dbt-build.txt --strip-extras requirements-dbt-build.in
+packaging>=24

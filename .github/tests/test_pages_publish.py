@@ -24,8 +24,10 @@ concurrency group that looks like queueing and is not.
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import stat
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -612,6 +614,12 @@ class TestTheCustomDomainAndTheBuildAgree:
         assert "://" not in self._host()
         assert "/" not in self._host()
 
+    def test_the_dbt_link_checks_refuse_links_to_the_cnames_host(self):
+        """Decision 94: pipeline/dbt/macros/link_into_the_app.sql refuses a closure link back into the app by its
+        host, read from dbt_project.yml's `app_host` var, which has to be site/CNAME's or it refuses nothing."""
+        variables = yaml.safe_load((REPO_ROOT / "pipeline" / "dbt" / "dbt_project.yml").read_text(encoding="utf-8"))["vars"]
+        assert variables["app_host"] == self._host()
+
     def test_the_app_is_built_for_a_subpath_of_the_custom_domain_root(self):
         """The apex serves the landing page; the app lives under it.
 
@@ -829,3 +837,420 @@ class TestDraftingWithoutDeploying:
         assert "%{http_code}" in post
         assert "::error::Drafting" in run
         assert ".message" in run
+
+
+class TestTheDataDocs:
+    """The dbt docs at `/data/` (pipeline/ELT.md, "Docs and charts at https://ourhike.org/data/").
+
+    Stage 7 of **#1793 — Rebuild the data platform as dlt → dbt: seven
+    contracted marts, a monthly refresh, published docs, and lighter phone
+    downloads**. Production and every preview serve the page beside the app,
+    built by `.github/actions/dbt-docs-site` and checked by
+    `pipeline/check_docs_site.py` as copied; UA has no site and gets none. The
+    first three tests are the three assertions ELT.md names; the fourth is
+    its "the docs step needs no secret".
+    """
+
+    ACTION = REPO_ROOT / ".github" / "actions" / "dbt-docs-site"
+    CHECKER = REPO_ROOT / "pipeline" / "check_docs_site.py"
+    SITE_BUILDS = [("pages.yml", "Assemble the site"), ("pr-preview.yml", "Assemble the preview")]
+
+    @staticmethod
+    def _steps(workflow: str) -> list[dict]:
+        parsed = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
+        return [step for job in parsed["jobs"].values() for step in job["steps"]]
+
+    @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+    def test_both_site_builds_assemble_the_docs_at_data_index_html(self, workflow, assemble):
+        """Built before the assembly, copied into `_site/data/` by it, and checked there.
+
+        The check is on the copy because the copy is what ships, and it is the
+        only thing between a preview and its trap: `_site/404.html` is the app
+        shell, so a missing `_site/data/index.html` would be answered with the
+        app rather than with a failure.
+        """
+        jobs = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))["jobs"]
+        (builder,) = [
+            job for job in jobs.values() if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        (assembler,) = [job for job in jobs.values() if any(s.get("name") == assemble for s in job["steps"])]
+        build = next(step for step in builder["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        step = next(step for step in assembler["steps"] if step.get("name") == assemble)
+        if builder is assembler:
+            names = [s.get("name") for s in builder["steps"]]
+            assert names.index(build["name"]) < names.index(assemble)
+            assert step["env"]["DOCS_DIR"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+        else:
+            # Built in a job of its own (pages.yml, SEC-8 of PR #1805's second review) and handed over as an
+            # artifact, downloaded before the assembly to the path it copies from.
+            upload = next(s for s in builder["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact@"))
+            assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+            names = [s.get("name") for s in assembler["steps"]]
+            download = next(
+                s
+                for s in assembler["steps"]
+                if str(s.get("uses", "")).startswith("actions/download-artifact@") and s["with"]["name"] == upload["with"]["name"]
+            )
+            assert names.index(download["name"]) < names.index(assemble)
+            assert step["env"]["DOCS_DIR"] == download["with"]["path"]
+        assert 'cp -r "$DOCS_DIR"/. _site/data/' in step["run"]
+        assert "python pipeline/check_docs_site.py _site/data" in step["run"]
+        # And the checker is what refuses a site with no index.html.
+        assert 'site / "index.html"' in self.CHECKER.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+    def test_nothing_lands_under_the_apps_data_path(self, workflow, assemble):
+        """`/app/` is the app's base path and its PWA scope, so docs there would be the installed app's.
+
+        Everything copied under `_site/app/` is the app's own build, and
+        client/public, which Vite copies into that build, holds no `data/`.
+        """
+        steps = self._steps(workflow)
+        run = next(step for step in steps if step.get("name") == assemble)["run"]
+        copies = [line.split() for line in run.splitlines() if line.strip().startswith("cp ")]
+        into_app = [words for words in copies if words[-1].startswith("_site/app")]
+        assert into_app and all(words[-2] == "client/dist/." for words in into_app), into_app
+        docs = [words for words in copies if '"$DOCS_DIR"/.' in words]
+        assert [words[-1] for words in docs] == ["_site/data/"]
+        assert "_site/app/data" not in yaml.safe_dump(steps)
+        assert not (REPO_ROOT / "client" / "public" / "data").exists()
+
+    def test_ua_still_deploys_client_dist_alone(self):
+        """UA has no site, and giving it one is a separate decision (ELT.md)."""
+        steps = self._steps("ua.yml")
+        deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
+        assert "pages deploy client/dist" in deploy["with"]["command"]
+        assert "_site" not in yaml.safe_dump(steps)
+        assert all(step.get("uses") != "./.github/actions/dbt-docs-site" for step in steps)
+        assert "check_docs_site" not in yaml.safe_dump(steps)
+
+    def test_the_docs_build_reads_no_secret_and_passes_no_vars(self):
+        """`dbt_rt.invocations` publishes `args` and `vars_override` with the page.
+
+        So the build holds no secret to leak, and nothing reaches dbt through
+        `--vars`; check_docs_site.py refuses a page that records one anyway.
+        """
+        action = (self.ACTION / "action.yml").read_text(encoding="utf-8")
+        assert "secrets." not in action
+        for workflow, _ in self.SITE_BUILDS:
+            build = next(step for step in self._steps(workflow) if step.get("uses") == "./.github/actions/dbt-docs-site")
+            assert "secrets." not in yaml.safe_dump(build)
+        script = (self.ACTION / "build.sh").read_text(encoding="utf-8")
+        commands = [line for line in script.splitlines() if not line.strip().startswith("#")]
+        assert not [line for line in commands if "--vars" in line]
+        assert "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false" in script
+
+    def test_the_deploy_job_leaves_no_write_token_on_disk_for_the_docs_build(self):
+        """pages.yml's build job holds `contents: write` and replaces gh-pages,
+        and runs two npm installs; until SEC-8 of PR #1805's second review it
+        ran the docs build too, which installs dbt, runs `dbt deps` and
+        downloads a native driver, none of them hash-pinned. A checkout that
+        persists its token leaves that token in .git/config for every one of
+        them to read.
+
+        The publish needs no persisted token: it pushes from a fresh `git init`
+        through a remote URL carrying the token it is handed, so the checkout
+        can keep none.
+        """
+        parsed = yaml.safe_load((WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8"))
+        steps = parsed["jobs"]["build"]["steps"]
+        checkouts = [step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")]
+        assert checkouts, "the build job checks the repository out"
+        assert all(step.get("with", {}).get("persist-credentials") is False for step in checkouts)
+        publish = next(step for step in steps if step.get("uses") == "./.github/actions/publish-to-pages")
+        assert publish["with"]["token"] == "${{ secrets.GITHUB_TOKEN }}"
+        assert "x-access-token:${{ inputs.token }}@" in (ACTION_DIR / "action.yml").read_text(encoding="utf-8")
+        script = SCRIPT.read_text(encoding="utf-8")
+        assert 'git init -q "$WORK"' in script
+        assert 'git -C "$WORK" remote add origin "$REMOTE_URL"' in script
+
+    def test_the_docs_build_runs_in_a_job_whose_token_can_only_read(self):
+        """SEC-8 of PR #1805's second review: a token kept out of .git/config is still in the job's secrets, which
+        every step's process can reach, and the docs build installs dbt, fetches dbt's packages by tag and a native
+        driver, none of them hash-pinned. So /data/ is built in a job of its own whose token can read and not push,
+        and the job that pushes gh-pages only downloads what that job built, installing and running nothing of dbt's.
+        """
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8"))["jobs"]
+        builders = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert len(builders) == 1, builders
+        docs = jobs[builders[0]]
+        build = next(step for step in docs["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        upload = next(step for step in docs["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact@"))
+        assert docs.get("permissions") == {"contents": "read"}
+        assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+
+        (deploy_id,) = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(step.get("uses") == "./.github/actions/publish-to-pages" for step in job["steps"])
+        ]
+        deploy = jobs[deploy_id]
+        needs = deploy.get("needs") or []
+        assert builders[0] in ([needs] if isinstance(needs, str) else needs)
+        assert not any("dbt" in str(step.get("uses", "")) for step in deploy["steps"])
+        assert "requirements-dbt" not in yaml.safe_dump(deploy["steps"]) and "dbt deps" not in yaml.safe_dump(deploy["steps"])
+        download = next(
+            step
+            for step in deploy["steps"]
+            if str(step.get("uses", "")).startswith("actions/download-artifact@")
+            and step["with"]["name"] == upload["with"]["name"]
+        )
+        assemble = next(step for step in deploy["steps"] if step.get("name") == "Assemble the site")
+        assert assemble["env"]["DOCS_DIR"] == download["with"]["path"]
+
+    def test_the_preview_builds_the_docs_in_a_job_holding_no_secret_and_no_write(self):
+        """The same split for pr-preview.yml, whose deploying job holds CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, the
+        Supabase values and `pull-requests: write`: the docs are built in a job of its own that can only read and is
+        handed no secret, and the preview job downloads the directory and runs nothing of dbt's or npm's for it.
+        """
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8"))["jobs"]
+        builders = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert len(builders) == 1, builders
+        docs = jobs[builders[0]]
+        assert docs.get("permissions") == {"contents": "read"}
+        assert "secrets." not in yaml.safe_dump(docs) and "vars." not in yaml.safe_dump(docs)
+        checkout = next(s for s in docs["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        assert checkout.get("with", {}).get("persist-credentials") is False
+        build = next(step for step in docs["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        upload = next(step for step in docs["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact@"))
+        assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+
+        preview = jobs["preview"]
+        needs = preview.get("needs") or []
+        assert builders[0] in ([needs] if isinstance(needs, str) else needs)
+        assert not any(step.get("uses") == "./.github/actions/dbt-docs-site" for step in preview["steps"])
+        download = next(
+            step
+            for step in preview["steps"]
+            if str(step.get("uses", "")).startswith("actions/download-artifact@")
+            and step["with"]["name"] == upload["with"]["name"]
+        )
+        assemble = next(step for step in preview["steps"] if step.get("name") == "Assemble the preview")
+        assert assemble["env"]["DOCS_DIR"] == download["with"]["path"]
+
+    def test_the_preview_still_runs_its_teardown_when_a_pull_request_closes(self):
+        """A closed pull request builds no docs, and the preview job, which needs the docs job, must still remove the
+        previews and post its closing comment rather than be skipped behind the skipped build."""
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8"))["jobs"]
+        (docs_id,) = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert jobs[docs_id]["if"] == "github.event.action != 'closed'"
+        condition = jobs["preview"]["if"]
+        assert "!cancelled()" in condition
+        assert f"needs.{docs_id}.result == 'success'" in condition
+        assert "github.event.action == 'closed'" in condition
+
+
+class TestTheDataDocsLoadNoCodeFromAnotherOrigin:
+    """Decision 93 (pipeline/ELT.md), answering SEC-1 of PR #1805's second review.
+
+    The /data/ page runs on the app's origin, where a signed-in hiker's
+    session is kept, so DuckDB-WASM is served from our own site at
+    /data/duckdb/ (.github/actions/dbt-docs-site/duckdb-wasm/loader.js says
+    how, and what was measured) and both copies that ship are checked with
+    check_docs_site.py --served, which refuses code from another origin.
+    """
+
+    DOCS = REPO_ROOT / ".github" / "actions" / "dbt-docs-site"
+    DUCKDB = DOCS / "duckdb-wasm"
+    # Each pair of dbt and @duckdb/duckdb-wasm whose /data/ page has been
+    # loaded in a browser with nothing leaving the local server (2.0.6 and
+    # 1.32.0: Chromium, 2026-10-06, the eh and mvp bundles both). dbt's page
+    # builds DuckDB's URLs in jsDelivr's layout and calls selectBundle,
+    # AsyncDuckDB, ConsoleLogger and LogLevel, which loader.js serves; a new
+    # dbt may change either, or name a newer DuckDB-WASM.
+    CHECKED = {("2.0.6", "1.32.0")}
+
+    @pytest.mark.parametrize(("workflow", "assemble"), TestTheDataDocs.SITE_BUILDS)
+    def test_both_site_builds_check_the_docs_as_the_copy_they_serve(self, workflow, assemble):
+        steps = TestTheDataDocs._steps(workflow)
+        run = next(step for step in steps if step.get("name") == assemble)["run"]
+        assert "python pipeline/check_docs_site.py _site/data --served" in run
+
+    def test_the_docs_build_points_duckdb_wasm_at_the_copy_it_stages_under_data(self):
+        script = (self.DOCS / "build.sh").read_text(encoding="utf-8")
+        (generate,) = [line for line in script.splitlines() if line.strip().startswith("dbt docs generate")]
+        base = re.search(r'--duckdb-cdn-base "([^"]+)"', generate)
+        assert base is not None, generate
+        # stage.mjs writes loader.js as duckdb.js, in the directory build.sh copies to $out/duckdb: /data/duckdb/.
+        assert base.group(1) == "/data/duckdb/duckdb.js?"
+        assert 'cp -r "$duckdb_dir" "$out/duckdb"' in script
+        assert "join(out, 'duckdb.js')" in (self.DUCKDB / "stage.mjs").read_text(encoding="utf-8")
+
+    def test_the_pinned_duckdb_wasm_is_one_this_dbt_s_page_was_loaded_with(self):
+        requirements = (REPO_ROOT / "pipeline" / "requirements-dbt.txt").read_text(encoding="utf-8")
+        # The pin line ends in ` \` since the file is hash-pinned (decision 144): its hashes follow on their own lines.
+        dbt = re.search(r"^dbt==([^\s\\;]+)", requirements, re.MULTILINE).group(1)
+        manifest = json.loads((self.DUCKDB / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads((self.DUCKDB / "package-lock.json").read_text(encoding="utf-8"))
+        pinned = manifest["dependencies"]["@duckdb/duckdb-wasm"]
+        assert lock["packages"]["node_modules/@duckdb/duckdb-wasm"]["version"] == pinned
+        assert lock["packages"]["node_modules/@duckdb/duckdb-wasm"]["integrity"].startswith("sha512-")
+        assert (dbt, pinned) in self.CHECKED, (
+            f"dbt {dbt} with @duckdb/duckdb-wasm {pinned} has not been loaded in a browser: open /data/ with "
+            "nothing but the local server reachable, then add the pair"
+        )
+
+    def test_the_loader_keeps_duckdb_s_extensions_on_our_own_site(self):
+        """DuckDB loads parquet from extensions.duckdb.org unless told otherwise (measured 2026-10-06, 18 requests)."""
+        loader = (self.DUCKDB / "loader.js").read_text(encoding="utf-8")
+        assert "SET custom_extension_repository = '${repository}'" in loader
+        assert "new URL('extensions', here)" in loader
+        assert "SET lock_configuration = true" in loader
+        pins = (self.DUCKDB / "extensions.sha256").read_text(encoding="utf-8").splitlines()
+        pin = re.compile(r"[0-9a-f]{64}  v\d+\.\d+\.\d+/wasm_(eh|mvp)/\w+\.duckdb_extension\.wasm")
+        assert pins and all(pin.fullmatch(line) for line in pins), pins
+
+
+class TestTheUploadedPointer:
+    """Both deploy guards hold the committed channels.json to the copy phones read.
+
+    Phones read `${base}/channels.json`, which only the release train's
+    `publish.py --channels` uploads (RELEASING.md §10), and the guard used to
+    read only `../channels.json`, so a deploy went green while phones followed
+    another release. That was the first defect in the client review of
+    **#1805 — dlt → dbt re-platform as one go/no-go change: every club through
+    dlt, eleven contracted marts writing every phone file, and the hourly and
+    monthly lanes**. The step's own script runs here against a stub `curl`
+    serving a fake bucket, because the refusal is in the shell.
+    """
+
+    STEP = "Confirm channels.json's release exists"
+    BASE = "https://data.example.org"
+    WORKFLOWS = ["pages.yml", "ua.yml"]
+    # The base each environment's build is given (lib/dataRelease.ts's
+    # environmentOf): production is the bucket root, UA is its prefix.
+    PREFIXES = {"production": "", "ua": "/environments/ua"}
+
+    @classmethod
+    def _script(cls, workflow: str) -> str:
+        parsed = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
+        steps = [step for job in parsed["jobs"].values() for step in job["steps"]]
+        return next(step for step in steps if step.get("name") == cls.STEP)["run"]
+
+    @staticmethod
+    def _committed() -> dict:
+        return json.loads((REPO_ROOT / "channels.json").read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _stub_curl(directory: Path) -> None:
+        """A `curl` answering from `$STUB_BUCKET`: 200 with the file's bytes,
+        404 for a missing one, or the code in a `<file>.status` beside it.
+        Honours `-o`, `-w '%{http_code}'` and `-f` as the real one does."""
+        script = r"""#!/usr/bin/env bash
+out=""; fmt=""; fail=false; url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -w) fmt="$2"; shift 2 ;;
+    --retry|--max-time) shift 2 ;;
+    -f*) fail=true; shift ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+path="$STUB_BUCKET/${url#"$STUB_BASE"/}"
+if [ -f "$path.status" ]; then code=$(cat "$path.status"); elif [ -f "$path" ]; then code=200; else code=404; fi
+if [ "$code" = 200 ] && [ -n "$out" ]; then cp "$path" "$out"; fi
+if [ -n "$fmt" ]; then printf '%s' "$code"; fi
+if [ "$code" != 200 ] && $fail; then echo "curl: (22) The requested URL returned error: $code" >&2; exit 22; fi
+exit 0
+"""
+        path = directory / "curl"
+        path.write_text(script, encoding="utf-8")
+        path.chmod(path.stat().st_mode | stat.S_IEXEC)
+
+    def _run(self, tmp_path: Path, workflow: str, environment: str, uploaded: dict | None, *, status: int | None = None):
+        """The step against `environment`'s base, where the committed entry's
+        manifest is published and `uploaded` (None for no copy) is at the root."""
+        prefix = self.PREFIXES[environment]
+        root = tmp_path / "bucket" / prefix.strip("/")
+        release = self._committed()[environment]["v1"]
+        manifest = root / "releases" / release / "manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{"artifacts": {}}', encoding="utf-8")
+        if uploaded is not None:
+            (root / "channels.json").write_text(json.dumps(uploaded), encoding="utf-8")
+        if status is not None:
+            (root / "channels.json.status").write_text(str(status), encoding="utf-8")
+        stubs = tmp_path / "stubs"
+        stubs.mkdir()
+        self._stub_curl(stubs)
+        runner_temp = tmp_path / "runner-temp"
+        runner_temp.mkdir()
+        return subprocess.run(
+            # How Actions runs a `run:` block under bash.
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", self._script(workflow)],
+            cwd=REPO_ROOT / "client",
+            env={
+                **os.environ,
+                "PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}",
+                "DATA_URL": f"{self.BASE}{prefix}",
+                "RUNNER_TEMP": str(runner_temp),
+                "STUB_BUCKET": str(tmp_path / "bucket"),
+                "STUB_BASE": self.BASE,
+            },
+            capture_output=True,
+            text=True,
+        )
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    @pytest.mark.parametrize("environment", ["production", "ua"])
+    def test_an_uploaded_copy_naming_the_committed_release_passes(self, tmp_path, workflow, environment):
+        completed = self._run(tmp_path, workflow, environment, self._committed())
+
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert "The uploaded channels.json at" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    @pytest.mark.parametrize("environment", ["production", "ua"])
+    def test_an_uploaded_copy_naming_another_release_fails_and_names_the_fix(self, tmp_path, workflow, environment):
+        """The regression: the committed entry resolves, and phones follow another."""
+        uploaded = self._committed()
+        uploaded[environment]["v1"] = "2026-01-01"
+
+        completed = self._run(tmp_path, workflow, environment, uploaded)
+
+        assert completed.returncode != 0
+        assert "::error::" in completed.stdout
+        assert "publish.py --channels" in completed.stdout
+        # The uploaded entry is remote text, and never reaches a workflow command.
+        assert "2026-01-01" not in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_an_uploaded_copy_with_no_entry_for_this_environment_fails(self, tmp_path, workflow):
+        uploaded = self._committed()
+        del uploaded["ua"]
+
+        completed = self._run(tmp_path, workflow, "ua", uploaded)
+
+        assert completed.returncode != 0
+        assert "publish.py --channels" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_no_uploaded_copy_passes_with_a_notice(self, tmp_path, workflow):
+        """A 404: phones then read the compiled DATA_RELEASE, checked one step earlier."""
+        completed = self._run(tmp_path, workflow, "production", None)
+
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert "::notice::" in completed.stdout
+        assert "DATA_RELEASE" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_an_unreadable_uploaded_copy_fails(self, tmp_path, workflow):
+        """Neither a copy nor a 404, so nothing says which release phones follow."""
+        completed = self._run(tmp_path, workflow, "production", self._committed(), status=503)
+
+        assert completed.returncode != 0
+        assert "answered 503" in completed.stdout

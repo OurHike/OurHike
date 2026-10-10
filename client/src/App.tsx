@@ -423,6 +423,7 @@ import { useTrailGraph } from './lib/useTrailGraph'
 import { orgLabelFrom, orgProviderFrom, trailSourceTableFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
+  anyHikePlanned,
   loadDayHikes,
   logWalk,
   saveDayHikeOpenId,
@@ -518,7 +519,7 @@ import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
 } from './chrome/waypointFiltersPanel'
-import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiLayers'
+import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiLayerIds'
 import { useTappedLinePanel } from './chrome/tappedLinePanel'
 import {
   paceEstimate,
@@ -544,7 +545,7 @@ import {
   type PlannedHike,
 } from './lib/plannedHike'
 import { closureBands } from './map/closureLayers'
-import { corridorWithHighlights, EMPTY_CORRIDOR } from './map/corridorLayers'
+import { corridorWithHighlights, EMPTY_CORRIDOR } from './map/corridorFeatures'
 import {
   isSeriousWarning,
   placeAll,
@@ -1530,13 +1531,23 @@ function App() {
     atcUpdates,
     atcReviewedAt,
     orgNotices,
+    clubNotices,
+    clubNoticesGeneratedAt,
+    clubNoticesListed,
+    clubNoticesMissing,
+    hazardFile,
     drought,
     droughtWeek,
     workProjects,
     workProjectsGeneratedAt,
     lastSyncedAt,
     markSynced,
-  } = useConditions(online, afterFirstFrame)
+  } = useConditions(
+    online,
+    afterFirstFrame,
+    // Decision 77: conditions/notices.json only once a hike is planned.
+    anyHikePlanned(tripStore.trips, dayHikeStore.hikes),
+  )
 
   /**
    * This phone's own just-written notes, echoed locally (FIELD_NOTES.md).
@@ -3449,6 +3460,25 @@ function App() {
     trailIndex,
     bbox,
     now,
+    // Decision 66's panel and decision 67's areas (#1805), from
+    // conditions/notices.json when it has reached this phone: the hikes it
+    // picks notices for, and the trails it checks an area against. The graph
+    // with its vertices where the builder has pulled them, else the topology
+    // alone, which routes nothing - the panel then says so.
+    clubNotices,
+    clubNoticesGeneratedAt,
+    clubNoticesListed,
+    // Option A of the maintainer's poll of 2026-10-09: a planned hike whose
+    // notices.json this phone does not hold says so on the legend row and
+    // at the top of the list.
+    clubNoticesMissing,
+    // Decision 84: the hazard areas from their own file, read whatever is
+    // planned, so a phone with no hike planned still draws them.
+    hazardFile,
+    trips: tripStore.trips,
+    dayHikes: dayHikeStore.hikes,
+    graph: dayHikeIndex ?? graphIndex,
+    clubSections,
   })
   /** The closure tape's and the warning pin's sheets (#1373, F12) - the two
    *  the map drew marks for and never opened. */
@@ -3694,6 +3724,9 @@ function App() {
   }, [])
 
   const line = useTappedLinePanel({
+    // Decision 67's drawn areas (#1805), whose advisory the card prints on
+    // the stretch inside one.
+    hazardAdvisoriesAt: atc.hazardAdvisoriesAt,
     spurs,
     pois,
     units,

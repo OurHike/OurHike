@@ -1,0 +1,143 @@
+---
+// ourhike.org/data/quality/ - every check Elementary ran on the data in the
+// release this build ships, and on the latest hourly run of trail conditions,
+// counted (pipeline/ELT.md, "Data quality (decision 102)", step 4). Mock B's
+// layout, which the maintainer chose by poll on 2026-10-07.
+//
+// THE FIGURES ARE NOT IN THIS FILE. The page reads two `data_quality.json`
+// files in the visitor's browser - the monthly one in the pinned release's
+// folder, the hourly one beside the other conditions files - and draws only
+// what they say (src/lib/dataQuality.mjs; LANE_KEYS there is where the two
+// keys live). Public and counts only, decision 10's rule for /data/: the
+// files carry counts, table names and expected ranges, never a row.
+//
+// TWO PLACEHOLDERS, SUBSTITUTED AT DEPLOY. `__DATA_BASE_URL__` and
+// `__DATA_RELEASE__` stay as they are in the repository and in site/dist;
+// .github/scripts/configure_quality_page.py replaces them in the assembled
+// `_site/data/quality/index.html`, in pages.yml from the DATA_BASE_URL the app
+// is built with and in pr-preview.yml from the base that preview's app reads,
+// with client/src/lib/dataRelease.ts's DATA_RELEASE in both. They are data
+// attributes in the HTML rather than strings in the script because Astro may
+// put the script in a file of its own under /_astro/, where the substitution
+// would not find them. A page whose base was never substituted says it is not
+// configured rather than guessing one - the status page's rule.
+//
+// UNDER /data/, WHICH IS THE DBT DOCS' PATH. Both workflows copy the docs into
+// `_site/data/` after the site, and refuse a site that puts anything there
+// but `quality/`, and docs that bring a `quality/` of their own, so neither
+// copy can silently replace the other.
+import Base from '../../../layouts/Base.astro'
+import DataNav from '../../../components/DataNav.astro'
+
+const title = 'Data quality — OurHike'
+const description =
+  'Every check that ran on the trail data OurHike publishes, counted: the monthly release and the latest hourly run of trail conditions. Counts and table names, never rows.'
+---
+
+<Base title={title} description={description}>
+  <DataNav />
+  <div
+    class="wrap dq"
+    id="data-quality"
+    data-base="__DATA_BASE_URL__"
+    data-release="__DATA_RELEASE__"
+  >
+    {
+      /* One shape per state, so a pill is never told by its colour alone:
+         a check in a circle, an exclamation in a triangle, a cross in a
+         square, a clock for a check still learning. The inner marks are in
+         the surface colour, so they flip with the theme; the exclamation
+         stays dark because the triangle is blaze yellow in both themes. */
+    }
+    <svg class="dq-sprite" aria-hidden="true" focusable="false">
+      <symbol id="dq-i-ok" viewBox="0 0 16 16">
+        <circle cx="8" cy="8" r="7" fill="currentColor"></circle>
+        <path
+          d="M4.6 8.3l2.2 2.2 4.6-4.8"
+          fill="none"
+          style="stroke: var(--bg-surface)"
+          stroke-width="1.9"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
+      </symbol>
+      <symbol id="dq-i-warn" viewBox="0 0 16 16">
+        <path d="M8 1.2l7.2 13.1H.8z" fill="currentColor"></path>
+        <path d="M8 6v3.6" stroke="#2b2620" stroke-width="1.8" stroke-linecap="round"
+        ></path>
+        <circle cx="8" cy="12" r="1" fill="#2b2620"></circle>
+      </symbol>
+      <symbol id="dq-i-bad" viewBox="0 0 16 16">
+        <rect x="1" y="1" width="14" height="14" rx="3" fill="currentColor"></rect>
+        <path
+          d="M5.2 5.2l5.6 5.6M10.8 5.2l-5.6 5.6"
+          style="stroke: var(--bg-surface)"
+          stroke-width="1.9"
+          stroke-linecap="round"></path>
+      </symbol>
+      <symbol id="dq-i-wait" viewBox="0 0 16 16">
+        <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"
+        ></circle>
+        <path
+          d="M8 4.6V8l2.4 1.6"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
+      </symbol>
+    </svg>
+
+    <header class="dq-intro">
+      <p class="eyebrow">ourhike.org/data/quality</p>
+      <h1>Data quality</h1>
+      <p class="dq-lede">
+        Every check that ran on the data in this release, and on the latest hourly
+        run of trail conditions. The checks run on every build. Nothing on this page
+        is a sample of anyone's data: it shows counts and the names of tables, never
+        their rows.
+      </p>
+    </header>
+
+    <section class="dq-runs" aria-label="The two builds">
+      <article class="dq-panel dq-run" data-card="monthly">
+        <h2 class="dq-run__title">Monthly build</h2>
+        <p class="dq-run__meta">Reading…</p>
+      </article>
+      <article class="dq-panel dq-run" data-card="hourly">
+        <h2 class="dq-run__title">Hourly conditions</h2>
+        <p class="dq-run__meta">Reading…</p>
+      </article>
+    </section>
+
+    <div class="dq-body" data-slot="body" aria-busy="true"></div>
+
+    <noscript>
+      <p class="dq-panel dq-notice">
+        This page reads its figures in your browser, from the files each build
+        publishes, so it needs JavaScript to show them.
+      </p>
+    </noscript>
+
+    <div class="dq-colophon">
+      <p>
+        Checks run by <a href="https://github.com/elementary-data/elementary"
+          >Elementary</a
+        >, an open-source dbt package (Apache-2.0), on every build. Elementary is set
+        not to save failing rows, so none can appear here.
+      </p>
+      <p data-slot="made-from" hidden></p>
+      <p>
+        What each kind of check looks at, and where it runs, is written up in <a
+          href="https://github.com/OurHike/OurHike/blob/main/pipeline/ELT.md#the-checks-and-where-each-goes"
+          >the data platform's notes</a
+        >.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    import { start } from '../../../scripts/dataQuality.js'
+
+    start(document.getElementById('data-quality'))
+  </script>
+</Base>

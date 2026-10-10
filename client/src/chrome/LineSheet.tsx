@@ -19,6 +19,27 @@ import { useEffect, useState } from 'react'
 import type { LineDetail } from '../lib/lineDetail'
 
 /**
+ * What the sheet says about a club's own line (decision 64), in the words of
+ * the card the maintainer chose from (decisions-64-67-mock.html section 1).
+ *
+ * A club line is drawn as soon as its layer's rules are in, and joins routes,
+ * route distances and the trail graph only after a dedupe step has checked it
+ * against the lines already drawn - many repeat one (FLTC's and NCTA's shared
+ * stretch, three copies of the Superior Hiking Trail). Nothing in this build
+ * routes on one: the graph is built without it. So the sheet says so, and
+ * offers no day-hike point on it, rather than letting a tap promise a walk the
+ * builder will then refuse. Here rather than in lib/lineDetail.ts, which the
+ * launch loads, because this sheet is deferred (screens/deferred.ts).
+ *
+ * The sentence names the reason, a repeat of a trail already drawn, rather
+ * than the check that looks for one: "until it is checked against the lines
+ * already there" told a hiker a step was pending without saying why it
+ * mattered (the word-choice review of #1805, 2026-10-09).
+ */
+export const CLUB_LINE_SENTENCE =
+  'Shown, but not yet used for routes or distances: it may repeat a trail already on the map.'
+
+/**
  * The steward's own marker for a line lib/trails.ts does not name, fetched
  * only once a sheet is on screen.
  *
@@ -107,6 +128,13 @@ export interface LineSheetProps {
   /** Let a tapped trail go - the plate back to the place or to "No trail
    *  taken". Passed only when `taken` is 'tap'. */
   onLetGo?: () => void
+  /**
+   * Decision 67's advisories for the stretch tapped (#1805): one per hunting
+   * area, shooting site or burned area the tapped point is inside or beside,
+   * each a heading and OurHike's own sentence (lib/hazardAreas.ts). Empty or
+   * absent, nothing is drawn. Never a closure: each says the trail is open.
+   */
+  advisories?: ReadonlyArray<{ id: string; heading: string; body: string }>
 }
 
 export function LineSheet({
@@ -116,6 +144,7 @@ export function LineSheet({
   taken,
   onTakeTrail,
   onLetGo,
+  advisories = [],
 }: LineSheetProps) {
   // The registry's mark wins; the steward's is what a line it does not name
   // can still wear.
@@ -162,6 +191,18 @@ export function LineSheet({
         </p>
       )}
 
+      {/* The stretch's advisories first among the facts (#1805, decision
+          67): the mock the maintainer chose puts "Hunting allowed · Advisory"
+          on the card for the stretch, and it is the line a hiker acts on. */}
+      {advisories.map((advisory) => (
+        <p className="line-sheet__advisory" key={advisory.id}>
+          <span className="planned-notices__tag planned-notices__tag--warn">
+            Advisory
+          </span>{' '}
+          <strong>{advisory.heading}.</strong> {advisory.body}
+        </p>
+      ))}
+
       {detail.destinationLine !== null && (
         <p className="closure-sheet__range">{detail.destinationLine}</p>
       )}
@@ -205,6 +246,17 @@ export function LineSheet({
           On the range class, since it is a fact about where the trail is. */}
       {detail.sharedLine !== null && (
         <p className="closure-sheet__range">{detail.sharedLine}</p>
+      )}
+
+      {/* A club's own line (decision 64): drawn and not routed, said under
+          what the line is and above the closure and the source, the order
+          the card the maintainer chose put it in. A tag and a sentence,
+          because the tag is what a hiker comparing two sheets scans for and
+          the sentence is what it means. */}
+      {detail.isClubLine && (
+        <p className="closure-sheet__meta line-sheet__club" role="note">
+          <span className="line-sheet__tag">Club line</span> {CLUB_LINE_SENTENCE}
+        </p>
       )}
 
       {/* The long-term closure (§3). On `closure-sheet__status`, which is the
@@ -259,12 +311,15 @@ export function LineSheet({
           line is right above this, and offering a hiker a walk down a trail
           the router will then decline to route is worse than offering
           nothing - it is the app promising with one sentence what it refuses
-          with the next. */}
-      {onAddToDayHike !== undefined && detail.closureLine === null && (
-        <button type="button" className="line-sheet__add" onClick={onAddToDayHike}>
-          Add this point to a day hike
-        </button>
-      )}
+          with the next. A club line the same (decision 64): the day-hike
+          builder routes on the graph, which no club line is in. */}
+      {onAddToDayHike !== undefined &&
+        detail.closureLine === null &&
+        !detail.isClubLine && (
+          <button type="button" className="line-sheet__add" onClick={onAddToDayHike}>
+            Add this point to a day hike
+          </button>
+        )}
 
       {/* Taking the trail (the review of #1374): what puts its name and mark
           on the plate. A sentence where it is already taken, a button where

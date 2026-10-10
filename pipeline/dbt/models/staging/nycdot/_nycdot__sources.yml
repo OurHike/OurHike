@@ -1,0 +1,83 @@
+version: 2
+
+sources:
+  - name: nycdot
+    description: >
+      NYC DOT's registered layers, landed by the extract's nycdot/ folder
+      (pipeline/extract/nycdot/) as raw_nycdot__<key>, and staged once each by
+      a base model here. Descriptions transcribed from sources.json's titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_nycdot__nyc_cscl_paths
+        data_tests:
+          # Rows sharing base_nycdot__nyc_cscl_paths's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nyc_cscl_paths'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          NYC Street Centerline - pedestrian ways (path, boardwalk, step
+          street, non-vehicular) (sources.json `nyc_cscl_paths`). Key:
+          globalid unique on 6,496 of 6,496 live rows.
+      - name: raw_nycdot__nyc_park_drives
+        data_tests:
+          # Rows sharing base_nycdot__nyc_park_drives's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nyc_park_drives'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          NYC park drives that are closed to cars (Central Park and Prospect
+          Park) (sources.json `nyc_park_drives`). Key: globalid unique on
+          6,496 of 6,496 live rows of the Centerline dataset the drives are a
+          filtered subset of.
+      - name: raw_nycdot__nyc_dot_greenways
+        data_tests:
+          # Rows sharing base_nycdot__nyc_dot_greenways's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nyc_dot_greenways'", "segmentid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          NYC DOT Greenways (current, off-street) (sources.json
+          `nyc_dot_greenways`). Key: segmentid, 2,995 of 2,995 live rows after
+          44 exact copies: every repeated segmentid was a repeated record.
+          Re-measured 2026-10-03: 3,039 rows, and each copy differs from the
+          row it repeats only in Socrata's row id, `_socrata_id`, which
+          duplicates_are_exact skips.

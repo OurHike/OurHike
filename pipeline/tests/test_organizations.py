@@ -113,8 +113,16 @@ def test_every_source_records_what_its_licence_rests_on():
     the `<x>_licence` blocks, and anything wanting to COUNT them had to decide
     by reading those sentences - "which would print a licence claim for data
     nobody publishes the first time one was reworded".
+
+    `public_gis` joined the three on 2026-10-03 with decision 54's first
+    registrations: decision 21a's presumption for a GIS layer an organization
+    publishes itself, anonymously, on a public endpoint (pipeline/ELT.md, "Who
+    may publish", rule 3), which the `publishable_licence_bases` seed already
+    admits for GIS kinds. It is not `stated_by_org`, because the organization
+    stated nothing, and not `maintainer_authorisation`, because the
+    presumption is a rule over every such layer rather than one ruling.
     """
-    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved"}
+    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved", "public_gis"}
     unclassified = [s["key"] for s in REGISTRY["sources"] if s.get("licence_basis") not in vocabulary]
 
     assert unclassified == [], (
@@ -290,9 +298,180 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
 
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
+
+    THE SECOND `unresolved` (2026-10-01) is The Green Tunnel's feed,
+    `green_tunnel_podcast`: registered because the maintainer reviewed it as
+    ATC-sponsored, with nobody yet asked what of the feed may show, and
+    `reaches_hikers: false` until somebody is.
+
+    DECISION 53'S JSON API SOURCES (2026-10-03, phase B) add seven, 32 -> 36
+    and 30 -> 33. NPS's alerts and road events and USGS's elevated volcanoes
+    are federal works, `stated_by_org` on the nps_trails reading. PA DCNR's
+    park advisories, TEHCC's wiki announcements, FoOT's condition sheet and
+    FMST's recovery map have no terms anybody read that reach this use, and
+    publish on the maintainer's decision 53 (facts and a link), which is
+    `maintainer_authorisation`. All seven are `reaches_hikers: false` until
+    phase C has a mart read their tables.
+
+    DECISION 54'S ELEVATION ROWS (2026-10-03), all `reaches_hikers: false`:
+    ATC's Z centerline, `atc_atx_centerline`, rests on `atc_licence` (+1
+    here); NJDEP's county high points, `nj_high_elevation_points`, carry the
+    Data Distribution Agreement `njdep_licence` reads (+1 `stated_by_org`);
+    and NCTA's, PCTA's and PASDA's four state nothing and are `public_gis`.
+
+    DECISION 54'S PLACES WAVE, FEDERAL (2026-10-03): 19 place layers - NPS,
+    BLM, USFS, USFWS and USGS boundaries and gazetteers - each `stated_by_org`
+    on 17 U.S.C. 105, the reading usfs_licence records, and each at
+    `reaches_hikers: false` until a mart reads it.
+
+    DECISION 54'S PLACES WAVE, STATE AND CITY (2026-10-03): 34 layers, 9
+    `stated_by_org` (CC0, CC BY 4.0, NJDEP's Data Distribution Agreement) and
+    25 `public_gis` (decision 21(a)), each at `reaches_hikers: false`.
+
+    DECISION 54'S PLACES WAVE, CLUBS (2026-10-03): 30 layers, 28 `public_gis`,
+    CDTC's CC BY sections `stated_by_org`, and one `unresolved`: the Buckeye
+    Trail Association's map outlines, extracted under decision 39 from a
+    `refuse` organization and never published until its permission is
+    recorded.
+
+    DECISION 54'S TRAIL-LINE ROWS, FEDERAL (2026-10-03), all `reaches_hikers:
+    false`: the Park Service's, BLM's and USFS Region 6's 27. 23 are federal
+    works on section 105's reading (`stated_by_org`), and 4 are NPS-hosted
+    layers whose own items say a county, a university, an intern or a
+    contractor made them (`public_gis`, decision 21a).
+
+    DECISION 54'S TRAIL-LINE ROWS, CLUBS AND AGENCIES (2026-10-03), all
+    `reaches_hikers: false`: 71 more. 70 rest on decision 21a's presumption
+    (`public_gis`), and USACE Mobile District's trails are a federal work
+    (`stated_by_org`).
+
+    DECISION 54'S POINTS OF INTEREST, WATER AND SHELTERS FIRST (2026-10-03),
+    all `reaches_hikers: false`: 36 club point layers. 32 that state nothing
+    or only a disclaimer are `public_gis`; BLM's recreation sites, NPS's
+    points and the Smokies' shelters are federal works, `stated_by_org` as
+    blm_trails and nps_trails are; and NJDEP's open-space points carry the
+    Data Distribution Agreement, `stated_by_org` as njdep_park_trails is.
+
+    DECISION 54'S POINTS OF INTEREST, THE REST (2026-10-03), all
+    `reaches_hikers: false`: 33 more. 19 `public_gis` (PA DCNR's five, TDEC's
+    three Tennessee State Parks layers and the Cumberland Trail's three, NC
+    DPR's park offices, the Ridge Trail's campsites, SBTS's trailheads, CPW's
+    two, UGRC's state park campsites and Black Hills Trails' two), and 14
+    `stated_by_org`: USGS's six and USFWS's two as federal works, CT DEEP's
+    two under CC0, UGRC's trailheads and highest peaks under CC BY 4.0, and
+    MA DCR's two Blue Hills layers, whose licenseInfo grants copying and use.
+
+    DECISION 53'S PAGE AND POST NOTICES, FOLDERS N TO Z AND _shared/ (2026-10-03): 68 rows, all
+    `reaches_hikers: false`. 16 `stated_by_org`: 15 USFS forests' alerts pages and NPS's Natchez
+    Trace status page, federal works on 17 U.S.C. 105. 1 `unresolved`: TATC's republished
+    ridgerunner reports, whose licence is the maintainer's open question. 51
+    `maintainer_authorisation`: decision 53's facts and a link, and for the 23 whose terms restrict
+    copying but not reading (OTA's 14 section pages, DEC, EBRPD, TPWD's two parks, WTA, mass.gov,
+    IN.gov, nc.gov and SBTS's copyright line), decision 55, their terms quoted on each row.
+
+    DECISION 53'S PAGES, FEEDS AND WORDPRESS SOURCES, FOLDERS A TO M (2026-10-03): 113 rows, all
+    `reaches_hikers: false`. 87 `maintainer_authorisation`, on decision 53 (facts and a link) or,
+    where the terms restrict copying and not reading, decision 55 (ATA, Buckeye, the City of Duluth,
+    the Mid State Trail, the New England Trail's footer); BLM's 26 `stated_by_org`, federal works on
+    17 U.S.C. 105.
+
+    DECISION 54'S WAVE 3, CONTENT FEEDS AND APIS (section C, 2026-10-04): 34 rows, all
+    `reaches_hikers: false`. 11 `stated_by_org`, federal works on 17 U.S.C. 105: six podcast feeds
+    (USFS's two, BLM's, USGS's, USFWS's and NPS's Park Postcards) and NPS's five content lists. 8
+    `maintainer_authorisation`: club hike, itinerary and wiki lists, on decision 70 (the
+    maintainer's poll, 2026-10-04: a club's hike list publishes as facts and a link). 15
+    `unresolved`: thirteen podcast feeds whose <copyright> reserves rights or states nothing that
+    reaches this use, TEHCC's wiki challenge items, and TKO's spring fundraiser hike posts, kept off
+    decision 70 on the lead's ruling of 2026-10-04 because decision 73 is TKO's. Each quotes what it
+    found on its row; publication is the maintainer's call, in dbt, once a mart reads them.
+
+    DECISION 54'S WAVES 2 AND 3, GIS FILES AND GEOGRAPHIC APIS (2026-10-04): 30 rows, registered at
+    `reaches_hikers: false`, one of them (Forest Park's trailheads) flipped once its rules were in dbt.
+    26 `public_gis`: the clubs' own KML, KMZ, GPX, GeoJSON and CSV files and Google My Maps, and
+    MTSG's map-location route, which state no licence or only a copyright line (decision 21a; OTA's
+    and NC High Peaks' restrictive site text quoted on each row, decision 37). 4 `stated_by_org`: 3
+    federal works on 17 U.S.C. 105, the Forest Service's Nez Perce NHT My Map and the NPS Data API's
+    places and campgrounds, and FMST's trailheads sheet, whose own first line says it "can be used or
+    adapted as you like", an act of consent like PCTA's.
+
+    DECISION 54'S WAVES 4 AND 5, POINTS ON CLUB PAGES AND IN CLUB PDFS (section S, 2026-10-04): rows
+    registered at `reaches_hikers: false`. `public_gis` for the clubs' own pages and PDFs of points that state
+    no licence (decision 21a's presumption, read as mtsg_map_locations' row reads it, which decision 69 extended to
+    a club's own page or PDF of points on 2026-10-04); `unresolved` for the ATA's water cache boxes,
+    whose terms ask written permission for information published online, which no decision answers for points.
+
+    DECISION 54'S WAVES 4 AND 5, CONTENT PAGES AND PDFS (section K, 2026-10-04): 34 rows, all
+    `reaches_hikers: false`: 28 read by extract/_pages_content.py, 5 by extract/_pdf_content.py and
+    1 WordPress post types; 24 `maintainer_authorisation`, 10 `unresolved`. Decision 70 (the
+    maintainer's poll, 2026-10-04) publishes a club's hike list as facts and a link, so 24 of its 25
+    suggested-hike rows are `maintainer_authorisation` and CDTC's stays `unresolved` until its terms
+    can be read. A challenge list publishes on no decision yet, so each of those quotes the terms it
+    found on its row and waits on the maintainer, in dbt, once a mart reads it.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 32, "stated_by_org": 30, "unresolved": 1}
+    # Decision 53's ArcGIS closure and warning layers (2026-10-03) add 76 rows, all reaches_hikers false: 11 `maintainer_authorisation`, 35 `public_gis`, 30 `stated_by_org`.
+    # Decision 53's page and post notices, folders n to z and _shared/ (2026-10-03), add 68: 51, 16 and 1 (above).
+    # Its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03) add 113: 87 and 26 (above).
+    # Decision 54's wave 3 content feeds and APIs (section C) add 34: 11, 8 (decision 70's hike lists) and 15; waves 2
+    # and 3's GIS files and geographic APIs add 30: 26 `public_gis` and 4 `stated_by_org` (above). Waves 4 and 5's
+    # points (section S) add 6: 5 `public_gis` and 1 `unresolved`; their content pages and PDFs (section K) add 34: 24
+    # `maintainer_authorisation` (decision 70's hike lists) and 10 `unresolved` (above). Section S's second batch adds
+    # 3 `public_gis` (BRBTC's sections, the Palmetto Trail's passages and OHTA's trailheads), and its fourth 1
+    # `public_gis` (PATC's Tuscarora access points and camping), recounted from the registry 2026-10-04. Decision 75
+    # (section G, 2026-10-04) moves GATC's water PDF from `unresolved` to `maintainer_authorisation`: the maintainer's
+    # answer to card Q5, with GATC's answer still not in. Decision 76 (section B, 2026-10-04) adds 1 `stated_by_org`:
+    # the Census Bureau's TIGER/Line states, a federal work on 17 U.S.C. 105 whose own metadata says it is "free to
+    # use". Recounted from the merged registry 2026-10-05. Decision 54's wave 6 (2026-10-08) adds 1 `stated_by_org`:
+    # the Empire State Trail's features (oprhp_est_trail_features), whose item carries OPRHP's terms word for word.
+    # Its closures and warnings add 4: the trail's work zones (`stated_by_org`, the same item) and Land Between The
+    # Lakes' alerts (`stated_by_org`, a federal work), the trail's closures page (`maintainer_authorisation`,
+    # decision 53's facts and a link) and Parks & Trails New York's closures view (`public_gis`). Its two line
+    # layers, the trail's segments and connector trails, add 2 `stated_by_org` on the same item's terms.
+    # Decision 133 (the maintainer's poll, 2026-10-09) moves TATC's republished ATC ridgerunner reports
+    # (tatc_ridgerunner_reports) from `unresolved` to `maintainer_authorisation`: decision 107's facts and a link
+    # reach them, rather than waiting on #458.
+    # Decision 122 (the maintainer's poll, 2026-10-09) loads every layer of a candidate steward, held, while its
+    # trail_orgs.json row waits; its first batch adds 27: 16 `public_gis` (the stewards' own ArcGIS layers that
+    # state no terms), 7 `stated_by_org` (IDPR's two layers and NGPC's five hunting-unit layers, whose items state
+    # terms) and 4 `maintainer_authorisation` (decision 53's facts and a link, for GAP's and R2R's posts and
+    # Tahoe-Pyramid's and the Montour Trail's pages). The NYS Canal Corporation's three, held the same way (the
+    # lead's call, 2026-10-09), add 2 `public_gis` (its own layers, its terms quoted) and 1 `maintainer_authorisation`
+    # (its alerts page). Review page 02's held loads (the same decisions) add 23 `maintainer_authorisation` (Illinois
+    # DNR's closures page, the Eastern Trail's and Maine Huts & Trails' conditions pages, three Rachel Carson
+    # Trails Conservancy trail pages, the Olympic Discovery Trail's alerts feed, Maricopa County's 14 park news
+    # feeds, TPWD's Caprock Canyons alert page and Washington State Parks' alerts page), 1 `public_gis` (the Baker
+    # Trail's GeoJSON) and 2 `stated_by_org` (the NorthEast Texas Trail Coalition's two layers, whose items state
+    # terms). Decision 126's ParkServe parks, held the same way (the maintainer's poll, 2026-10-09: "Load it,
+    # held"), add 1 `stated_by_org`: the Trust for Public Land's item states its terms.
+    assert counts == {"maintainer_authorisation": 249, "public_gis": 272, "stated_by_org": 208, "unresolved": 28}
+
+
+#: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6
+#: admits under `public_gis` beside the GIS endpoints.
+CLUB_POINTS_KINDS = frozenset({"page_points", "pdf_points", "json_features"})
+
+
+def test_a_public_gis_page_pdf_or_map_route_is_a_clubs_own_points_and_carries_no_prose():
+    """Decision 69 (the maintainer's poll, 2026-10-04, cards Q1 and 8a) extends decision 21a's presumption to the
+    points a club prints on its own page or PDF, and to the route its own website's map reads them from: facts
+    only, none of the page's prose. int_sources__publication's rule 6 admits those kinds by `kind` alone, because
+    no model there knows an organization's type, so this holds the rest. Each such row is claimed by a club folder
+    whose trail_orgs.json `type` is a club's (generate_notice_models.py's CLUB_TYPES, decision 68's split), and it
+    names no `asset_field` or `facility_field`, the one route by which a club point's own text becomes the
+    sentence on its card (int_points_of_interest__described)."""
+    from extract._contract import discover, slug_for_folder
+    from generate_notice_models import CLUB_TYPES
+
+    types = {row["slug"]: row["type"] for row in json.loads((ROOT / "reference" / "trail_orgs.json").read_text())["orgs"]}
+    folder_of = {key: club_file.club for club_file in discover() for key in club_file.claims}
+    rows = [s for s in REGISTRY["sources"] if s.get("licence_basis") == "public_gis" and s.get("kind") in CLUB_POINTS_KINDS]
+
+    assert len(rows) == 10, sorted(s["key"] for s in rows)
+    org_type = {s["key"]: types.get(slug_for_folder(folder_of.get(s["key"], ""))) for s in rows}
+    not_a_club = {key: kind for key, kind in org_type.items() if kind not in CLUB_TYPES}
+    assert not not_a_club, f"decision 69 reaches a club's own points only: {not_a_club}"
+    prose = sorted(s["key"] for s in rows if s.get("asset_field") or s.get("facility_field"))
+    assert not prose, f"decision 69 publishes facts only, never a page's text as a card's sentence: {prose}"

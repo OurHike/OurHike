@@ -1,4 +1,41 @@
+# Everything dbt writes here is generated, and none of it is committed
+# (CONTRIBUTING.md, "Data does not go in commits"). target/ holds the
+# compiled SQL, the manifest, the run artifacts, and v2's docs site
+# (index.html, its assets and Parquet) once `dbt docs generate` has run.
 dbt_packages/
 logs/
 target/
 .user.yml
+# dbt-oss 2.0.5 appended this line itself on its first `dbt deps` here
+# (2026-10-01), before decision 32 moved the project to the full dbt 2.0.6.
+# The directory never appeared in this sandbox under either distribution,
+# where deps cannot finish, so what v2 keeps in it is unread; it is ignored
+# so that wherever v2 does write it, it cannot be committed.
+dbt_internal_packages/
+
+# THE TWO GENERATORS' OUTPUT, never committed (ELT.md decision 91, the
+# maintainer's poll of 2026-10-06): every place that parses this project runs
+# pipeline/generate_dbt.py first, which writes it. Exact paths and narrow
+# patterns only, each a set the generator itself already claims as its own,
+# so none can hide a hand-written file (tests/test_dbt_generated_staging.py
+# checks that no committed file matches one, and that every file either
+# generator writes does).
+#
+# make_dbt_staging.py: everything under models/ is listed by exact path in
+# models/.gitignore, which that generator writes, because its base and
+# staging models share their folders and names with hand-written ones. That
+# list itself, and its regions macro outside models/:
+/models/.gitignore
+/macros/generated_regions.sql
+# generate_notice_models.py: its owned_on_disk() claims every file under a
+# staging folder's notices/ (it deletes any there it does not write), its two
+# unions' parts by these two globs, and the six files after them.
+/models/staging/*/notices/
+/models/intermediate/closures/int_closures__club_notices_part_*_unioned.sql
+/models/intermediate/warnings/int_warnings__notice_wording_part_*_unioned.sql
+/models/intermediate/closures/int_closures__club_notices_unioned.sql
+/models/intermediate/closures/_closures__club_notices_unioned.yml
+/models/intermediate/warnings/int_warnings__notice_wording_unioned.sql
+/models/intermediate/warnings/_warnings__notice_wording_unioned.yml
+/seeds/notice_readers.csv
+/macros/generated_notice_regions.sql

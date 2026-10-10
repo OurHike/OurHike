@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: base_ct_deep__blue_blazed
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('ct_deep', 'raw_ct_deep__ct_deep_blue_blazed')
+          config:
+            severity: warn
+    description: >
+      Connecticut Blue-Blazed Hiking Trails, every row, keyed and deduped.
+      Nothing reads it yet: the stage-3 unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          ct_deep_blue_blazed, trailname, par_name, geometry_key(geom), the
+          registry key first and then the columns measured unique for this
+          layer.
+        data_tests: [not_null, unique]

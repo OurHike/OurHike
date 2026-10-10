@@ -77,6 +77,9 @@ export interface TappedLine {
   /** The other trail on this stretch of treadway, on a shared-ground half
    *  (#1384, map/sharedGround.ts); null on every plain line. */
   sharedWith: string | null
+  /** `club` on a club's own line, drawn and never routed (decision 64);
+   *  null on every network and A.T. line, which carry no `line_kind`. */
+  lineKind: string | null
   /** Whether the tap landed on the trail's BADGE rather than its line
    *  (#1306): a badge takes an untaken trail, a line only ever informs. */
   badge: boolean
@@ -203,6 +206,9 @@ function asTappedLine(
     // The other trail on this stretch, on a shared-ground half (#1384,
     // map/sharedGround.ts); absent on every plain line.
     sharedWith: stringProp(feature.properties, 'concurrent_with'),
+    // A club's own line (decision 64): pipeline/dbt's nearby_trails.geojson
+    // marks it, and lib/lineDetail.ts says what that means for the hiker.
+    lineKind: stringProp(feature.properties, 'line_kind'),
     at: nearestVertex(feature.geometry, near),
   }
 }

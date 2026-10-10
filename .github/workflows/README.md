@@ -97,9 +97,19 @@ staleness boundary test in #32, green on the pull request and red on the merge.
 
 ### Builds or publishes data
 
-All six publishing paths share `concurrency: publish-data`, so two of them can
-never interleave. All are dispatch-only except `publish-conditions.yml` and
-`publish-weather.yml`.
+Every job that runs `publish.py` to write a version in the nine publishing
+paths shares `concurrency: publish-data`, so two of them can never
+interleave; `refresh-reference.yml` publishes through the `build-reference.yml`
+run it dispatches, whose `publish` job holds the group. The one exception is
+`check-conditions.yml`, whose `publish.py --sidecar` puts one object,
+`conditions/data_quality.json`, in place and touches no `latest.json`: each
+of its legs holds `conditions-checks-<leg>` instead, a group no publisher
+holds, so it never cancels a publisher queued anywhere (#1513 — A queued
+publish is silently cancelled when another one joins publish-data, and it
+looks like a green build). All
+are dispatch-only except `publish-conditions.yml`, `publish-weather.yml` and
+`refresh-reference.yml`, and of those only `publish-conditions.yml` writes
+production on its schedule.
 
 | | |
 |---|---|
@@ -107,8 +117,26 @@ never interleave. All are dispatch-only except `publish-conditions.yml` and
 | `build-dem.yml` | DEM archive → `build`, `publish` |
 | `build-raster.yml` | raster background → `disabled`, `compute-cells`, `render`, `assemble`, `publish` — **switched off for v2** (#855): the `disabled` job refuses every dispatch in seconds unless `run_despite_withdrawal` is ticked |
 | `publish-vector-data.yml` | trails, POIs and the manifest hikers download → `build`, `publish` |
-| `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch |
+| `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch → `publish`, one leg per data environment, then `checks`, which starts `check-conditions.yml` once both legs have published and alone holds `actions: write`. The legs hold no group beside the workflow's `publish-data` |
+| `check-conditions.yml` | every Elementary check of the hourly lane (decision 110), over the warehouse each leg's build handed off through its history store, then that leg's `conditions/data_quality.json` → `check`, one leg per data environment. Dispatch-only, by `publish-conditions.yml`'s `checks` job, with `data_environment` and a required `build_run`; production only from `main` and only while production's hourly leg is on the dbt path. Never a phone file or `latest.json`; each leg holds `conditions-checks-<leg>`, which no publisher holds, so the next build never waits for its checks, and `pipeline/row_history.py`'s "TWO WRITERS, ONE POINTER" keeps their two saves of the leg's history apart |
 | `publish-weather.yml` | the NBM forecast for every trail square, one file per cell, and the active NWS alerts over trail squares, to UA only → `build`, `publish` — hourly as well as dispatch, only `publish` holds the group, and either half publishes without the other (#1056) |
+| `refresh-reference.yml` | the monthly lane of `pipeline/ELT.md`, its scheduled half: every monthly dlt resource into the private raw store, the raw inputs pinned under `steps/raw_inputs/<raw_run>/`, then a dispatch of `build-reference.yml` with that `raw_run` → `extract`, `pin`, `dispatch`, `refused`. No input; monthly as well as dispatch. Only `dispatch` holds a permission beyond reading, `actions: write`. Shares `raw-lake-monthly` with `build-reference.yml`, so the build it starts waits for it to end |
+| `build-reference.yml` | the monthly lane's build from a pin (the maintainer's choice B, 2026-10-08): every mart through `build_marts.py --lane monthly` from a pinned `raw_run`, a release staged on UA from the dbt writers' files, and decision 30's parity on the same pin → `build`, `publish`, `confirm`, `parity`, `parity-report`. Dispatch-only, with one required input, `raw_run`, held to an extract run id's shape; `refresh-reference.yml` starts it after each pin, and a person can start it on any pinned `raw_run` to try a fix without a new extract. UA only, by a literal. Only `publish` holds `publish-data` |
+
+One more workflow feeds a publish without being one, so it holds its own
+group, `extract-notices`, and never `publish-data`:
+
+| | |
+|---|---|
+| `extract-notices.yml` | every club's and agency's closures and warnings notices into the private raw store, every 4 hours with up to an hour to read (`pipeline/ELT.md` decision 61), then a write-once copy of what a build reads, which `publish-conditions.yml`'s hourly dbt path adds to its warehouse → `extract`, one leg per environment, production from `main` only. Writes no phone file |
+
+And one only ever removes from the raw store, holding the monthly lane's
+group, `raw-lake-monthly`, so it never runs beside `refresh-reference.yml` or
+`build-reference.yml`:
+
+| | |
+|---|---|
+| `purge-person-fields.yml` | decision 56's purge (`pipeline/ELT.md`): proves the raw store's current tables hold no person field, lists every other stored object that still holds one, by key with each field's name and counts and never a value, and with `delete=true` deletes exactly those → `purge`. Dispatch-only, its one input the boolean `delete`, default `false`, which `main`'s placeholder carries too (**PR #1827 — Add dispatch-only build-reference.yml and purge-person-fields.yml placeholders to main**). Holds the raw store's key and nothing else. A delete it refuses deletes nothing; one it makes can take the pin UA serves, after which the next promotion needs a fresh UA build |
 
 `publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
 both run under the `production` environment whenever they will actually
@@ -133,8 +161,8 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 |---|---|---|
 | `check-deployment.yml` | tracking issue | sends a real `Origin` for every declared origin — the one check that would have caught #427 — and ages the newest `conditions/*` stamp, which is what notices the hourly bake having stopped (#1129) |
 | `check-deployed-app.yml` | tracking issue | whether the deployed app draws a trail at all |
-| `check-upstream-freshness.yml` | tracking issue | whether ATC and the other upstreams have moved |
-| `build-data-release.yml` | job summary | whether the week's upstream movement is worth dispatching a build for (#1314) - `check-upstream-freshness.yml`'s sibling, weekly rather than daily, and reporting to a summary because its answer is a recommendation rather than an alarm |
+| `check-upstream-freshness.yml` | tracking issue | whether ATC and the other upstreams have moved, and whether the extract behind the last `build-reference.yml` run on main that refreshed UA began more than 35 days ago |
+| `build-data-release.yml` | job summary | whether the week's upstream movement is worth dispatching a build for (#1314) - `check-upstream-freshness.yml`'s sibling, weekly rather than daily, and reporting to a summary because its answer is a recommendation rather than an alarm. Its scheduled run gives way, planning nothing, once a `build-reference.yml` run on main has refreshed UA; a dispatch still plans |
 | `smoke-published.yml` | tracking issue | the published artifacts, weekly |
 | `check-pending-approvals.yml` | tracking issue | whether a run is sitting in `waiting` for an approval nobody was told about |
 | `check-auth-redirects.yml` | tracking issue | whether a sign-in can still come back to a declared origin (#488) |
@@ -228,7 +256,8 @@ gathered rather than restated.
 | When | | |
 |---|---|---|
 | `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the tightest cadence here, because its worst case is a production publish expiring unapproved at 30 days |
-| `25 6 * * 1` | Mondays | `build-data-release.yml` — early, because the answer is most useful before the week's work is planned |
+| `15 5 3 * *` | the 3rd of each month | `refresh-reference.yml` — the 05:00 hour holds no other daily or weekly job, `:15` misses the four hourly slots, and the 3rd is off the 1st by analogy with the `:00` rule only (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd"). The `build-reference.yml` run it dispatches has no schedule of its own |
+| `25 6 * * 1` | Mondays | `build-data-release.yml` — early, because the answer is most useful before the week's work is planned; gives way once the monthly lane's build has refreshed UA |
 | `20 7 * * *` | daily | `check-upstream-freshness.yml` |
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
 | `45 7 * * 1` | Mondays | `protections-check.yml` |
@@ -236,6 +265,7 @@ gathered rather than restated.
 | `50 8 * * *` | daily | `propose-atc-updates.yml` — reads the same cache `publish-conditions.yml`'s hourly leg does, so a slot near it rather than far from it |
 | `40 * * * *` | hourly | `publish-conditions.yml` — moved off daily by #720; still shown here at its :40-past-the-hour slot, which is what keeps it clear of `check-pending-approvals.yml` above |
 | `55 * * * *` | hourly | `publish-weather.yml` — NBM runs a new cycle every hour and NWS alerts change by the minute; `:55` is a minute nothing else here uses, and like every cron in this table it fires about five times a day in practice (#1346) |
+| `22 2-22/4 * * *` | every 4 hours | `extract-notices.yml` — decision 61's clock for every club's notices; `:22` is a minute nothing else here uses, and 02:22 starts the day off midnight UTC. Its own group, so it never waits on, or holds up, the hourly publish |
 | `15 9 * * *` | daily | `check-deployment.yml` — after `publish-conditions`, so a publish that breaks something is noticed the same day |
 | `30 9 * * *` | daily | `check-deployed-app.yml` |
 | `45 9 * * *` | daily | `check-auth-redirects.yml` — after `check-deployed-app`, so an already-broken app is not a second alarm for the same cause |

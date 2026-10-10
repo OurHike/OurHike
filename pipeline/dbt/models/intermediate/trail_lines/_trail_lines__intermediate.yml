@@ -1,0 +1,894 @@
+version: 2
+
+models:
+  - name: int_trail_lines__mile_axis_pieces
+    description: >
+      The A.T. centerline merged into as few pieces as touch, each oriented
+      and put in order along a straight Springer->Katahdin line: steps EL01
+      and EL02 of the mile axis (pipeline/ELT.md), which
+      export_elevation.load_merged_trail_line and ordered_oriented_parts do
+      today. ATC's half-mile markers then calibrate these pieces in
+      int_trail_lines__mile_axis_markers and
+      int_trail_lines__mile_axis_calibration. The pieces are WKT text so a
+      unit test can read them; the model's comment says why.
+    columns:
+      - name: pre_calibration_order
+        description: >
+          The piece's place along the straight axis, from 0: the index of
+          export_elevation's `parts_meters` list, which its STRtrees are built
+          over. A tie between two equally near pieces goes to the lower one
+          (int_trail_lines__mile_axis_markers).
+        data_tests: [not_null, unique]
+      - name: merge_part_index
+        description: >
+          The piece's place in ST_LineMerge's output, from 1, before sorting.
+          Breaks a tie in the straight-axis projection, as Python's stable
+          sort keeps the merge order.
+      - name: reversed_by_straight_axis
+        description: >
+          True where the piece's first vertex projected further along the
+          straight axis than its last, so it was turned round.
+      - name: geom_wkt
+        description: >
+          The piece as oriented, lon/lat (x first, GeoJSON's order), as WKT
+          at full precision.
+        data_tests: [not_null]
+      - name: geom_5070_wkt
+        description: >
+          The same piece in EPSG:5070 metres (NAD83 / Conus Albers),
+          transformed with always_xy as reproject_lines_to_meters does, as
+          WKT at full precision.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__mile_axis_markers
+    description: >
+      Which of ATC's half-mile markers calibrates which centerline piece, and
+      where along it: the snap of step EL03 (pipeline/ELT.md),
+      export_elevation._snap_markers_to_parts plus calibrate_parts_to_markers'
+      fallback for a piece no marker snapped to. One row per (piece, marker)
+      pair. The model's comment says how ties are broken where the Python's
+      STRtree has no rule.
+    columns:
+      - name: axis_marker_key
+        description: >
+          The pair's key: dbt_utils.generate_surrogate_key over
+          pre_calibration_order and marker_row. A marker can calibrate two
+          pieces: its own, and a markerless piece it is nearest to.
+        data_tests: [not_null, unique]
+      - name: pre_calibration_order
+        description: The piece, as int_trail_lines__mile_axis_pieces numbers it.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_trail_lines__mile_axis_pieces')
+                field: pre_calibration_order
+      - name: marker_row
+        description: The marker's place in stg_atc__half_mile_markers (its source_row).
+        data_tests: [not_null]
+      - name: point_id
+        description: ATC's Point_ID for the marker.
+      - name: measure_mi
+        description: ATC's `Measure`, the marker's mile from Springer, as published.
+        data_tests: [not_null]
+      - name: snapped
+        description: >
+          True where the marker is within mile_axis_marker_snap_max_m of the
+          piece and no piece is nearer. False where the piece had no marker
+          of its own and takes its nearest marker outright.
+        data_tests: [not_null]
+      - name: distance_m
+        description: >
+          The marker's distance from the piece in EPSG:5070 metres. Reported
+          only; the Python does not record it.
+      - name: along_m
+        description: >
+          How far along the piece, as int_trail_lines__mile_axis_pieces
+          oriented it, the marker's nearest point lies, in metres:
+          st_linelocatepoint times the piece's length. Never negative; a
+          marker beyond an end reads that end.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__mile_axis_calibration
+    description: >
+      How ATC's half-mile markers orient and scale each centerline piece
+      (EL03): export_elevation._calibrated_part and calibrate_parts_to_markers'
+      sort, one row per piece in mile order, the piece as WKT.
+      int_trail_lines__mile_axis is this with the WKT made into geometry, and
+      its columns say what each of these is.
+    columns:
+      - name: piece_id
+        description: The piece's place on the axis, from 0, Springer to Katahdin.
+        data_tests: [not_null, unique]
+      - name: pre_calibration_order
+        description: The piece's number in int_trail_lines__mile_axis_pieces.
+        data_tests: [not_null, unique]
+      - name: geom_5070_wkt
+        description: The piece in EPSG:5070 metres as WKT, turned round where reversed_by_markers.
+        data_tests: [not_null]
+      - name: calibration_json
+        description: >
+          The piece's length_m, start_mile, end_mile, anchor_along_mi and
+          anchor_mile as one JSON object, which int_trail_lines__mile_axis
+          has as columns and describes. JSON so a unit test compares them to
+          the bit (the model's comment says why dbt 2.0.6 cannot otherwise).
+        data_tests: [not_null]
+
+  - name: int_trail_lines__mile_axis
+    description: >
+      The A.T.'s one mile axis (#652 — The elevation profile's mile axis is
+      out of order in 18 places, by up to 46 miles; #753 — Publish a mile on
+      every POI, because this codebase measures a mile two different ways
+      and a plan cannot survive that): each centerline piece oriented
+      and scaled by ATC's half-mile markers, in mile order, in EPSG:5070
+      metres. The SQL form of export_elevation.calibrated_trail_axis, which
+      every published A.T. mile comes off: POI `mile`, spur `junction_mile`,
+      trail_miles.json's per-vertex miles and the profile's `distance_mi`.
+      A consumer finds a point's nearest piece (ties to the lower piece_id),
+      reads its along-distance in miles, and passes it to the mile_at_along()
+      macro with the piece's two anchor lists; the model's comment shows the
+      four lines.
+    data_tests:
+      # The WKT round trip and the reversal leave the length alone: the
+      # length the calibration measured is the length a consumer measures.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: st_length(geom_5070) = length_m
+      # Every published A.T. mile comes off this axis. With no pieces (no
+      # markers landed, or none near the line) a mile would be nobody's, so
+      # the build stops, as export_poi.py and export_spurs.py stop without the
+      # markers; export_trails.py holds back trail_miles.json alone.
+      - dbt_utils.at_least_one:
+          name: int_trail_lines__mile_axis_has_a_piece
+          arguments:
+            column_name: piece_id
+    columns:
+      - name: piece_id
+        description: >
+          The piece's place on the axis, from 0, Springer to Katahdin: the
+          index of calibrated_trail_axis's list, sorted by start_mile with
+          ties kept in the straight-axis order.
+        data_tests: [not_null, unique]
+      - name: pre_calibration_order
+        description: The piece's number in int_trail_lines__mile_axis_pieces.
+        data_tests: [not_null, unique]
+      - name: geom_5070
+        description: >
+          The piece in EPSG:5070 metres, full resolution, oriented so the
+          mile grows along it. Never the 1 m navigation line (decision 8).
+      - name: length_m
+        description: >
+          The piece's length in metres, st_length of geom_5070: shapely's
+          `line.length` on the same line, to the bit (measured 2026-10-02).
+        data_tests: [not_null]
+      - name: start_mile
+        description: >
+          The mile at the piece's first vertex, mile_at(0.0). Can sit below
+          the first anchor's mile: before its first marker a piece extends at
+          one mile per mile.
+        data_tests: [not_null]
+      - name: end_mile
+        description: The mile at the piece's last vertex, mile_at(length_m).
+        data_tests: [not_null]
+      - name: anchor_along_mi
+        description: >
+          The calibration's control points' along-distances on geom_5070, in
+          miles, ascending: CalibratedPart.alongs_mi. Parallel to
+          anchor_mile.
+      - name: anchor_mile
+        description: >
+          ATC's Measure at each control point, made monotone with a running
+          maximum: CalibratedPart.miles. Between two control points a mile is
+          interpolated; past either end it grows at one mile per mile.
+      - name: anchor_count
+        description: How many control points calibrate the piece, 1 or more.
+        data_tests: [not_null]
+      - name: snapped_marker_count
+        description: >
+          How many of those markers snapped to the piece. 0 where the piece
+          is anchored from its nearest marker outright.
+        data_tests: [not_null]
+      - name: reversed_by_markers
+        description: >
+          True where the markers' mile fell along the straight-axis
+          orientation, so the piece was turned round.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__mile_axis_holdout
+    description: >
+      How well the mile axis reproduces ATC's own miles on markers it never
+      saw (export_elevation.measure_marker_agreement, EL04), one row, with the
+      held-out gate as three tests: export_elevation.require_marker_agreement
+      refuses an axis on any one. Today only export_elevation.py runs that
+      gate; here it sits upstream of every A.T. mile.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: median_within_gate
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: p95_within_gate
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: max_within_gate
+      # The gate passes when it scored nothing: no piece with four snapped
+      # markers holds a marker out, and three errors of 0.0 clear every bar,
+      # as export_elevation.measure_marker_agreement's single 0.0 clears
+      # require_marker_agreement. A warning, not a refusal, because the CI
+      # fixture's axis holds no such piece; on ATC's live layers 2,020
+      # markers are scored (2026-10-02). Whether a gate that scored nothing
+      # should stop the build is the maintainer's call.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__mile_axis_holdout_warns_when_it_scored_nothing
+          arguments:
+            expression: "holdout_marker_count > 0"
+          config:
+            severity: warn
+    columns:
+      - name: holdout_marker_count
+        description: >
+          How many markers were held out and scored: the odd-numbered snapped
+          markers of every piece with four or more.
+        data_tests: [not_null, unique]
+      - name: holdout_median_mi
+        description: The median held-out error, in miles.
+      - name: holdout_p95_mi
+        description: The 95th-percentile held-out error, in miles, interpolated as numpy's default does.
+      - name: holdout_max_mi
+        description: The largest held-out error, in miles.
+      - name: median_within_gate
+        description: holdout_median_mi is at most mile_axis_holdout_max_median_mi (0.05).
+      - name: p95_within_gate
+        description: holdout_p95_mi is at most mile_axis_holdout_max_p95_mi (0.25).
+      - name: max_within_gate
+        description: holdout_max_mi is at most mile_axis_holdout_max_mi (1.0).
+
+  - name: int_trail_lines__coded_domains
+    description: >
+      Each ArcGIS coded-value domain a trail_lines source decodes against,
+      one row per code (TL02): side_trails' Blaze, which
+      int_trail_lines__blazes decodes trails.geojson's blaze_color with,
+      and its Type, which the spurs read. export_trails.py and
+      export_spurs.py fetch these live mid-transform; here they are a frozen
+      copy, the var trail_lines_coded_domains, @unvalidated until the
+      extract lands the layers' field metadata, which replaces the var in
+      this one model and leaves these columns alone.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_key, field_name, code]
+      # lib/spurs.decode_type reads a label back to its code, ignoring case,
+      # and takes the first match: with one label per code that is the match.
+      - dbt_utils.unique_combination_of_columns:
+          name: int_trail_lines__coded_domains_labels_name_one_code
+          arguments:
+            combination_of_columns: [source_key, field_name, lower(label)]
+    columns:
+      - name: source_key
+        description: The registry key of the layer whose field this is.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_registry__sources')
+                field: source_key
+      - name: field_name
+        description: >
+          The field, spelled as the layer and sources.json spell it ('Blaze',
+          'Type'), not as dlt lowercases its column.
+        data_tests: [not_null]
+      - name: code
+        description: One code of the field's domain, as text.
+        data_tests: [not_null]
+      - name: label
+        description: What the code decodes to, the domain's own name for it.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__at_sources
+    description: >
+      The A.T. build's line sources (TL01), export_trails.load_line_sources():
+      every registry entry with a blaze_field or blaze_default key that is not
+      another organization's layer, today centerline and side_trails.
+    columns:
+      - name: source_key
+        description: The registry key.
+        data_tests:
+          - not_null
+          - unique
+          # fail_if_incomplete(): a source with no line feature stops the
+          # build rather than shrinking the map.
+          - dbt_utils.relationships_where:
+              name: int_trail_lines__at_sources_each_has_a_line
+              arguments:
+                to: ref('int_trail_lines__at_features')
+                field: source_key
+                to_condition: has_line_geometry
+      - name: file_row
+        description: The entry's place in sources.json, the order export_trails.py reads the sources in.
+      - name: blaze_field
+        description: The field a feature's blaze is read from, where the source has one.
+      - name: blaze_default
+        description: The blaze of a feature that has none, where the source states one.
+      - name: staged
+        description: >
+          Whether a staging model lands the source's features. Only
+          centerline and side_trails are staged, so a new A.T. line source
+          stops the build here rather than vanishing from the map.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true]
+
+  - name: int_trail_lines__at_features
+    description: >
+      Every staged feature of the A.T.'s line sources before the clip, as
+      export_trails.build_trail_records() makes them: its published id (TL05),
+      name and blaze, and whether it has a line geometry (TL04).
+    columns:
+      - name: trail_segment_key
+        description: The staging key.
+        data_tests: [not_null, unique]
+      - name: trail_line_id
+        description: "`<source>:<feature id>`, lib/feature_id.py's chain."
+        data_tests: [not_null, unique]
+      - name: feature_id
+        description: >
+          The GlobalID, else the OBJECTID (side trails only), else
+          `generated-<source_row>`. resolve_feature_id() warns on the last;
+          so does this.
+        data_tests:
+          - dbt_utils.expression_is_true:
+              name: int_trail_lines__at_features_warns_of_a_feature_with_no_id
+              arguments:
+                expression: "not like 'generated-%'"
+              config:
+                severity: warn
+      - name: blaze_color
+        description: int_trail_lines__blazes' colour for the feature.
+        data_tests: [not_null]
+      - name: has_line_geometry
+        description: >
+          Whether the geometry is a LineString or MultiLineString. Anything
+          else is skipped, with a warning, as export_trails.py warns and skips.
+        data_tests:
+          - accepted_values:
+              name: int_trail_lines__at_features_skips_a_feature_with_no_line
+              arguments:
+                values: [true]
+              config:
+                severity: warn
+
+  - name: int_trail_lines__corridor
+    description: >
+      The A.T.'s 30-mile corridor, lib/corridor.build_corridor(), one row:
+      the centerline's segments buffered in EPSG:5070, unioned, in lon/lat.
+    data_tests:
+      # lib/corridor.py's three build tests, as properties of the built row
+      # (a dbt 2.0.6 unit test cannot hold a GEOMETRY output):
+      # test_build_corridor_populates_a_single_non_empty_polygon, with the
+      # unique source_key below,
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "geom is not null and not st_isempty(geom)"
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__corridor_is_a_polygon
+          arguments:
+            expression: "st_geometrytype(geom) in ('POLYGON', 'MULTIPOLYGON')"
+      # test_build_corridor_area_is_plausible_for_a_30_mile_buffer_around_the_fixture_line:
+      # a buffer of any line holds the disc around one of its points, and
+      # GEOS's 32-sided circle keeps 99.4% of it, so 3.1 r squared is a floor
+      # nothing degenerate passes,
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__corridor_holds_a_buffer_disc
+          arguments:
+            expression: >-
+              st_area(st_transform(geom, 'EPSG:4326', 'EPSG:5070', always_xy := true))
+              >= 3.1 * pow({{ var('trail_lines_corridor_buffer_miles') }} * 1609.344, 2)
+      # and test_build_corridor_keeps_the_result_in_the_source_hemisphere_not_axis_swapped:
+      # the A.T.'s corridor lies west of Greenwich and north of the equator,
+      # where a transform that lost always_xy would put it somewhere else.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__corridor_lies_where_the_trail_does
+          arguments:
+            expression: "st_xmax(geom) < 0 and st_ymin(geom) > 0"
+    columns:
+      - name: source_key
+        description: The layer the corridor is built from, centerline.
+        data_tests: [not_null, unique]
+
+  - name: int_trail_lines__at_clipped
+    description: >
+      The A.T.'s line features that touch the corridor, kept whole (TL14).
+    columns:
+      - name: trail_line_id
+        description: The published feature id.
+        data_tests: [not_null, unique]
+
+  - name: int_trail_lines__at_simplified
+    description: >
+      The A.T.'s published lines at the 1 m pass in EPSG:5070 (TL15), a line
+      the pass would leave undrawable kept at full resolution, with both
+      lengths. Measured 2026-10-02: on ATC's 4,221 live lines, ST_Simplify
+      gave shapely.simplify's vertices, every one to the bit.
+    data_tests:
+      # Douglas-Peucker can only shorten a line (pipeline/ELT.md's safety
+      # fields); the millimetre is the projection round trip's room.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__at_simplified_never_lengthens_a_line
+          arguments:
+            expression: "published_length_m <= length_m + 0.001"
+    columns:
+      - name: trail_line_id
+        description: The published feature id.
+        data_tests: [not_null, unique]
+      - name: simplified
+        description: False where the pass would have left a part with fewer than two distinct vertices and the full line was kept.
+      - name: length_m
+        description: The full-resolution line's length, EPSG:5070 metres.
+      - name: published_length_m
+        description: The published line's length, EPSG:5070 metres.
+
+  - name: int_trail_lines__at_chains
+    description: >
+      The centerline's 1 m lines merged into maximal chains (TL16), numbered
+      by bounds, `centerline:chain:<n>`. Measured 2026-10-02: on ATC's live
+      centerline, the 463 chains equal merge_chain_records()'s, ids, names and
+      vertices to the bit.
+    data_tests:
+      # The merge joins whole lines end to end, so each part lies in exactly
+      # one chain, and length_m counts it once.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__at_chains_hold_every_part_once
+          arguments:
+            expression: "part_count >= 1 and most_covering_chains = 1"
+      # Every chain is one LineString, the merge's parts dumped one to a row,
+      # so trail_miles.json's flat list per chain lines up with the
+      # coordinates the phone walks. vertex_miles() gives a MultiLineString
+      # record one list per part (test_export_trails.py's
+      # test_a_multilinestring_record_carries_one_list_per_part); here none
+      # reaches it.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__at_chains_are_linestrings
+          arguments:
+            expression: "starts_with(geom_wkt, 'LINESTRING ')"
+    columns:
+      - name: trail_line_id
+        description: "`centerline:chain:<n>`."
+        data_tests: [not_null, unique]
+      - name: chain_index
+        description: The chain's number, by (xmin, ymin, xmax, ymax), from 0.
+      - name: length_m
+        description: The chain's parts' full-resolution lengths, summed.
+      - name: part_count
+        description: How many segment parts the chain covers.
+      - name: most_covering_chains
+        description: The most chains any one of its parts lies in; 1 when the merge partitioned the parts.
+
+  - name: int_trail_lines__at_chain_miles
+    description: >
+      The chains with every vertex's A.T. mile (TL22), on the axis by the
+      axis_mile macro, rounded at 3 decimals as numpy rounds them, and the
+      count of steps against the chain's direction. Measured 2026-10-02: all
+      216,767 live vertex miles equal trail_miles.json's, with the same 112
+      backward steps.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__at_chain_miles_give_every_vertex_a_mile
+          arguments:
+            expression: "json_array_length(vertex_miles_json) = st_npoints(st_geomfromtext(geom_wkt))"
+    columns:
+      - name: trail_line_id
+        description: "`centerline:chain:<n>`."
+        data_tests: [not_null, unique]
+      - name: vertex_miles_json
+        description: Each vertex's mile, in order, as a JSON array.
+        data_tests: [not_null]
+      - name: monotonic_breaks
+        description: How many steps run against the chain's own direction.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__at_overview
+    description: >
+      The corridor-view sketch (TL17): each centerline segment's 1 m line
+      simplified again at 100 m, one row per part, its coordinates at 4
+      decimals.
+    columns:
+      - name: line_order
+        description: The line's place in the sketch's MultiLineString, from 0.
+        data_tests: [not_null, unique]
+      - name: coordinates_json
+        description: The line's coordinates, rounded, as a JSON array.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__spur_destinations
+    description: >
+      The published POIs a spur may lead to (TL28): the points_of_interest
+      mart's poi_<type>.geojson rows of the five DESTINATION_POI_TYPES, with
+      each one's published id, type, lat and lon as the file prints them,
+      and its place in load_destination_pois()'s list.
+    columns:
+      - name: poi_id
+        description: The POI's published id.
+        data_tests:
+          - not_null
+          - unique
+          # export_spurs.py's "no published POIs" warning
+          # (test_a_run_with_no_published_pois_warns_rather_than_resolving_nothing_quietly):
+          # every spur resolving to nothing reads as a trail network where
+          # nothing leads anywhere.
+          - dbt_utils.at_least_one:
+              name: int_trail_lines__spur_destinations_warns_when_no_poi_is_published
+              config:
+                severity: warn
+      - name: poi_type
+        description: One of DESTINATION_POI_TYPES.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [shelter, water, campsite, resupply, viewpoint]
+      - name: latitude
+        description: The POI's `lat` property as poi_<type>.geojson prints it.
+      - name: longitude
+        description: The POI's `lon` property as poi_<type>.geojson prints it.
+      - name: destination_order
+        description: The POI's place in load_destination_pois()'s list, from 0.
+        data_tests: [not_null, unique]
+
+  - name: int_trail_lines__spurs
+    description: >
+      Every side trail's decoded Type and, for a spur (Type 3), what
+      spurs.json says of it (TL27-TL29): where it leads, within 150 m of its
+      far end, and the A.T. mile it joins at. Measured 2026-10-02: on ATC's
+      live side trails, the same 784 spurs as export_spurs.py, every name,
+      length and junction mile to the bit (no destination either side: no
+      POI was loaded).
+    data_tests:
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__spurs_fields_are_the_spurs
+          arguments:
+            expression: >
+              is_spur or (destination_poi_id is null and junction_mile is null
+              and spur_record_json is null)
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__spurs_destinations_carry_their_distance
+          arguments:
+            expression: "(destination_poi_id is null) = (destination_distance_m is null)"
+    columns:
+      - name: trail_segment_key
+        description: The staging key.
+        data_tests: [not_null, unique]
+      - name: trail_line_id
+        description: The side trail's published id, spurs.json's key.
+        data_tests: [not_null, unique]
+      - name: type_code
+        description: The decoded Type, or null where it does not decode.
+      - name: type_undecodable
+        description: >
+          A Type that is there and does not decode, which export_spurs.py
+          counts in one warning and does not treat as a spur.
+        data_tests:
+          - accepted_values:
+              name: int_trail_lines__spurs_warns_of_an_undecodable_type
+              arguments:
+                values: [false]
+              config:
+                severity: warn
+      - name: spur_record_json
+        description: The spurs.json record, keys sorted, as JSON text.
+
+  - name: int_trail_lines__club_stretches
+    description: >
+      The runs of half-mile markers each maintaining club looks after, and
+      the runs the centerline names no club for (TL24-TL26), in mile order:
+      each marker takes the club of the centerline vertex nearest it within
+      100 m, a run breaks where the club changes or markers are more than
+      0.75 mi apart, each run owns a quarter mile either side, and the ends
+      are pinned to mile 0 and the last marker.
+    columns:
+      - name: run_order
+        description: The run's place in mile order, from 1.
+        data_tests: [not_null, unique]
+      - name: acronym
+        description: The club's acronym, stripped; null for a run no club is named for.
+      - name: start_mile
+        description: Where the run starts, in miles from Springer.
+      - name: end_mile
+        description: Where the run ends, in miles from Springer.
+      - name: stretch_json
+        description: The run as club_sections.json publishes a stretch, {start_mile, end_mile}, as JSON text.
+        data_tests: [not_null]
+
+  - name: int_trail_lines__club_names
+    description: >
+      Each club's name and region by acronym, from the trail_club_sections
+      polygons that may publish (lib/club_sections.canonical_clubs()), which
+      spell a club's name and never decide a stretch.
+    data_tests:
+      # Two polygons naming one acronym: the Python keeps the later, this the
+      # lower GlobalID's, so the two would name the club differently.
+      - dbt_utils.expression_is_true:
+          name: int_trail_lines__club_names_name_each_club_once
+          arguments:
+            expression: "polygon_count <= 1"
+          config:
+            severity: warn
+    columns:
+      - name: acronym
+        description: The polygon's ACROYNM, stripped; never empty or all digits.
+        data_tests: [not_null, unique]
+      - name: club_name
+        description: The polygon's TRAIL_CLUB, as the layer spells it.
+      - name: region
+        description: The polygon's REGION.
+      - name: polygon_count
+        description: How many polygons name the acronym.
+
+  - name: int_trail_lines__club_sections
+    description: >
+      club_sections.json's clubs, south to north, each with its name and
+      region from int_trail_lines__club_names and its stretches, and one row
+      for the unattributed stretches (lib/club_sections.assemble()).
+    columns:
+      - name: section_key
+        description: The club's acronym, or '(unattributed)' for the row of runs no club is named for.
+        data_tests: [not_null, unique]
+      - name: acronym
+        description: The club's acronym, stripped; null on the unattributed row.
+      - name: club_name
+        description: The polygon layer's TRAIL_CLUB for the acronym, or the acronym where it has none.
+      - name: region
+        description: The polygon layer's REGION for the acronym, or null where no polygon names it.
+      - name: miles
+        description: The club's stretches' miles, summed and rounded to one decimal.
+      - name: stretches_json
+        description: The stretches, in mile order, as JSON text.
+        data_tests: [not_null]
+      - name: club_order
+        description: The club's place in the file, by first stretch then acronym, from 0; null on the unattributed row.
+
+  - name: int_trail_lines__at_side_trails
+    description: >
+      The side trails trails.geojson publishes, each with its spur fields,
+      for the mart.
+    columns:
+      - name: trail_line_id
+        description: The published feature id.
+        data_tests: [not_null, unique]
+
+  - name: int_trail_lines__at_published
+    description: >
+      The A.T. half of the trail_lines mart: one row per line trails.geojson
+      publishes (the centerline's chains, side trails and spurs), in exactly
+      the mart's columns, which marts/trail_lines/_trail_lines__models.yml
+      describes, the geometry cut to 6 decimals unless that would collapse a
+      part. The mart unions it with int_trail_lines__network_published
+      and keeps the rows whose source may publish. Measured 2026-10-02: its
+      1,659 live lines equal export_trails.py's trails.geojson, ids, order,
+      properties and every coordinate cut to 6 decimals as
+      export_nearby_trails._rounded_geometry cuts it.
+    columns:
+      - name: trail_line_id
+        description: The published feature id, as the trail_lines mart describes it.
+        data_tests: [not_null, unique]
+  - name: int_trail_lines__final
+    description: >
+      The trail lines mart's rows before their row dates (decision 57):
+      what models/marts/trail_lines/trail_lines.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_trail_lines__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: trail_line_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
+
+unit_tests:
+  # One fixture runs through all four mile-axis steps, each test's given
+  # rows the previous test's expected rows, so the chain is the axis. Its
+  # five pieces reach every branch: two segments that merge into one piece
+  # (A), one digitized north to south (B), one the markers reverse with two
+  # markers at one along-distance (C), one with a single marker (E), one with
+  # none of its own that is anchored outright (D) and that the calibration
+  # moves after E, a marker out of mile order, a marker 50 m past a piece's
+  # end, one 9 km from anything, and a segment with no geometry.
+  # tests/test_dbt_trail_lines_parity.py runs export_elevation.py over the
+  # same rows and holds every expected row to the Python's answer.
+  #
+  # HOW EXACT A UNIT TEST IS HERE, measured 2026-10-02 on dbt 2.0.6: a VARCHAR,
+  # integer or boolean column is compared exactly, and a DOUBLE column only
+  # after rounding to one decimal place (int_trail_lines__mile_axis_calibration
+  # has the planted values). So the pieces are WKT and the calibration's
+  # numbers JSON, both compared to the bit; markers' along_m (metres) and the
+  # holdout's figures (miles) are compared to 0.1 here, and to the bit by the
+  # pytest against the Python, while the gate's three booleans are exact.
+  - name: int_trail_lines__mile_axis_pieces_merges_and_orders_like_export_elevation
+    description: >
+      export_elevation.load_merged_trail_line and ordered_oriented_parts on
+      seven segments: A's two halves merge, B is turned round, the null
+      segment is left out, and the straight axis puts D before E.
+    model: int_trail_lines__mile_axis_pieces
+    given:
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_row: 0, source_id: 'seg-a-south', geom: 'LINESTRING (-74 41, -74 41.004, -73.999 41.009, -73.9988 41.016)'}
+          - {source_row: 1, source_id: 'seg-b', geom: 'LINESTRING (-73.998 41.0385, -73.9982 41.0345)'}
+          - {source_row: 2, source_id: 'seg-a-north', geom: 'LINESTRING (-73.9988 41.016, -73.9985 41.024, -73.9984 41.03)'}
+          - {source_row: 3, source_id: 'seg-c', geom: 'LINESTRING (-73.999 41.042, -73.9975 41.0423, -73.996 41.0425)'}
+          - {source_row: 4, source_id: 'seg-null', geom: null}
+          - {source_row: 5, source_id: 'seg-e', geom: 'LINESTRING (-73.995 41.046, -73.995 41.049)'}
+          - {source_row: 6, source_id: 'seg-d', geom: 'LINESTRING (-73.997 41.0475, -73.9969 41.0477)'}
+    expect:
+      rows:
+        - {pre_calibration_order: 0, merge_part_index: 1, reversed_by_straight_axis: false, geom_wkt: 'LINESTRING (-74 41, -74 41.004, -73.999 41.009, -73.9988 41.016, -73.9985 41.024, -73.9984 41.03)', geom_5070_wkt: 'LINESTRING (1819414.0207331162 2210531.895375706, 1819311.2576319536 2210967.8419145243, 1819264.0117938193 2211531.916104956, 1819100.4097742995 2212298.642400845, 1818919.232665513 2213176.2618726515, 1818773.1991967324 2213832.0795941944)'}
+        - {pre_calibration_order: 1, merge_part_index: 3, reversed_by_straight_axis: true, geom_wkt: 'LINESTRING (-73.9982 41.0345, -73.998 41.0385)', geom_5070_wkt: 'LINESTRING (1818673.8209531882 2214326.3326910594, 1818587.2872141877 2214766.0921087842)'}
+        - {pre_calibration_order: 2, merge_part_index: 2, reversed_by_straight_axis: false, geom_wkt: 'LINESTRING (-73.999 41.042, -73.9975 41.0423, -73.996 41.0425)', geom_5070_wkt: 'LINESTRING (1818416.19479876 2215128.3964118646, 1818530.2411633802 2215189.793878746, 1818646.8554948443 2215240.294826096)'}
+        - {pre_calibration_order: 3, merge_part_index: 4, reversed_by_straight_axis: false, geom_wkt: 'LINESTRING (-73.997 41.0475, -73.9969 41.0477)', geom_5070_wkt: 'LINESTRING (1818437.2204460339 2215766.068016249, 1818440.1980638318 2215789.777832558)'}
+        - {pre_calibration_order: 4, merge_part_index: 5, reversed_by_straight_axis: false, geom_wkt: 'LINESTRING (-73.995 41.046, -73.995 41.049)', geom_5070_wkt: 'LINESTRING (1818638.089196617 2215640.867371095, 1818561.0025727577 2215967.810901836)'}
+
+  - name: int_trail_lines__mile_axis_markers_snaps_like_export_elevation
+    description: >
+      export_elevation._snap_markers_to_parts and the outright anchor:
+      eleven markers snap within 100 m (1010 from 50 m past C's west end),
+      D takes 1011 outright although 1011 snapped to E, and 1012 calibrates
+      nothing.
+    model: int_trail_lines__mile_axis_markers
+    given:
+      - input: ref('int_trail_lines__mile_axis_pieces')
+        rows:
+          - {pre_calibration_order: 0, geom_5070_wkt: 'LINESTRING (1819414.0207331162 2210531.895375706, 1819311.2576319536 2210967.8419145243, 1819264.0117938193 2211531.916104956, 1819100.4097742995 2212298.642400845, 1818919.232665513 2213176.2618726515, 1818773.1991967324 2213832.0795941944)'}
+          - {pre_calibration_order: 1, geom_5070_wkt: 'LINESTRING (1818673.8209531882 2214326.3326910594, 1818587.2872141877 2214766.0921087842)'}
+          - {pre_calibration_order: 2, geom_5070_wkt: 'LINESTRING (1818416.19479876 2215128.3964118646, 1818530.2411633802 2215189.793878746, 1818646.8554948443 2215240.294826096)'}
+          - {pre_calibration_order: 3, geom_5070_wkt: 'LINESTRING (1818437.2204460339 2215766.068016249, 1818440.1980638318 2215789.777832558)'}
+          - {pre_calibration_order: 4, geom_5070_wkt: 'LINESTRING (1818638.089196617 2215640.867371095, 1818561.0025727577 2215967.810901836)'}
+      - input: ref('stg_atc__half_mile_markers')
+        rows:
+          - {source_row: 0, source_id: '1000', measure_mi: 2.5, longitude: -73.9984014, latitude: 41.0285141}
+          - {source_row: 1, source_id: '1001', measure_mi: 0.5, longitude: -74.0000175, latitude: 41.001432}
+          - {source_row: 2, source_id: '1002', measure_mi: 1.5, longitude: -73.9987946, latitude: 41.0160177}
+          - {source_row: 3, source_id: '1003', measure_mi: 1.4, longitude: -73.9987893, latitude: 41.0162863}
+          - {source_row: 4, source_id: '1004', measure_mi: 1.0, longitude: -73.9990483, latitude: 41.0086981}
+          - {source_row: 5, source_id: '1005', measure_mi: 2.0, longitude: -73.9985373, latitude: 41.0231614}
+          - {source_row: 6, source_id: '1006', measure_mi: 2.8, longitude: -73.9981822, latitude: 41.034857}
+          - {source_row: 7, source_id: '1007', measure_mi: 3.0, longitude: -73.9980098, latitude: 41.0380678}
+          - {source_row: 8, source_id: '1008', measure_mi: 3.2, longitude: -73.996059, latitude: 41.0424921}
+          - {source_row: 9, source_id: '1009', measure_mi: 3.5, longitude: -73.999, latitude: 41.042}
+          - {source_row: 10, source_id: '1010', measure_mi: 3.6, longitude: -73.9995836, latitude: 41.0421025}
+          - {source_row: 11, source_id: '1011', measure_mi: 4.0, longitude: -73.995, latitude: 41.047429}
+          - {source_row: 12, source_id: '1012', measure_mi: 9.9, longitude: -73.9, latitude: 41.1}
+    expect:
+      rows:
+        - {pre_calibration_order: 0, marker_row: 1, point_id: '1001', measure_mi: 0.5, snapped: true, along_m: 160.3464625370607}
+        - {pre_calibration_order: 0, marker_row: 4, point_id: '1004', measure_mi: 1.0, snapped: true, along_m: 979.9146171278085}
+        - {pre_calibration_order: 0, marker_row: 2, point_id: '1002', measure_mi: 1.5, snapped: true, along_m: 1799.9242396113696}
+        - {pre_calibration_order: 0, marker_row: 3, point_id: '1003', measure_mi: 1.4, snapped: true, along_m: 1830.0006348711033}
+        - {pre_calibration_order: 0, marker_row: 5, point_id: '1005', measure_mi: 2.0, snapped: true, along_m: 2600.1063977775234}
+        - {pre_calibration_order: 0, marker_row: 0, point_id: '1000', measure_mi: 2.5, snapped: true, along_m: 3199.569499053477}
+        - {pre_calibration_order: 1, marker_row: 6, point_id: '1006', measure_mi: 2.8, snapped: true, along_m: 40.00107906121667}
+        - {pre_calibration_order: 1, marker_row: 7, point_id: '1007', measure_mi: 3.0, snapped: true, along_m: 399.801947781804}
+        - {pre_calibration_order: 2, marker_row: 9, point_id: '1009', measure_mi: 3.5, snapped: true, along_m: 0.0}
+        - {pre_calibration_order: 2, marker_row: 10, point_id: '1010', measure_mi: 3.6, snapped: true, along_m: 0.0}
+        - {pre_calibration_order: 2, marker_row: 8, point_id: '1008', measure_mi: 3.2, snapped: true, along_m: 251.6036292355373}
+        - {pre_calibration_order: 3, marker_row: 11, point_id: '1011', measure_mi: 4.0, snapped: false, along_m: 23.896058192562574}
+        - {pre_calibration_order: 4, marker_row: 11, point_id: '1011', measure_mi: 4.0, snapped: true, along_m: 160.00444930044873}
+
+  - name: int_trail_lines__mile_axis_calibration_orients_and_scales_like_export_elevation
+    description: >
+      export_elevation._calibrated_part and calibrate_parts_to_markers' sort:
+      the markers reverse C and keep its two end anchors in mile order, the
+      running maximum lifts 1003's 1.4 to 1.5, and E (3.90) comes before D
+      (3.99) though the straight axis had D first.
+    model: int_trail_lines__mile_axis_calibration
+    given:
+      - input: ref('int_trail_lines__mile_axis_pieces')
+        rows:
+          - {pre_calibration_order: 0, geom_5070_wkt: 'LINESTRING (1819414.0207331162 2210531.895375706, 1819311.2576319536 2210967.8419145243, 1819264.0117938193 2211531.916104956, 1819100.4097742995 2212298.642400845, 1818919.232665513 2213176.2618726515, 1818773.1991967324 2213832.0795941944)'}
+          - {pre_calibration_order: 1, geom_5070_wkt: 'LINESTRING (1818673.8209531882 2214326.3326910594, 1818587.2872141877 2214766.0921087842)'}
+          - {pre_calibration_order: 2, geom_5070_wkt: 'LINESTRING (1818416.19479876 2215128.3964118646, 1818530.2411633802 2215189.793878746, 1818646.8554948443 2215240.294826096)'}
+          - {pre_calibration_order: 3, geom_5070_wkt: 'LINESTRING (1818437.2204460339 2215766.068016249, 1818440.1980638318 2215789.777832558)'}
+          - {pre_calibration_order: 4, geom_5070_wkt: 'LINESTRING (1818638.089196617 2215640.867371095, 1818561.0025727577 2215967.810901836)'}
+      - input: ref('int_trail_lines__mile_axis_markers')
+        rows:
+          - {pre_calibration_order: 0, marker_row: 1, measure_mi: 0.5, snapped: true, along_m: 160.3464625370607}
+          - {pre_calibration_order: 0, marker_row: 4, measure_mi: 1.0, snapped: true, along_m: 979.9146171278085}
+          - {pre_calibration_order: 0, marker_row: 2, measure_mi: 1.5, snapped: true, along_m: 1799.9242396113696}
+          - {pre_calibration_order: 0, marker_row: 3, measure_mi: 1.4, snapped: true, along_m: 1830.0006348711033}
+          - {pre_calibration_order: 0, marker_row: 5, measure_mi: 2.0, snapped: true, along_m: 2600.1063977775234}
+          - {pre_calibration_order: 0, marker_row: 0, measure_mi: 2.5, snapped: true, along_m: 3199.569499053477}
+          - {pre_calibration_order: 1, marker_row: 6, measure_mi: 2.8, snapped: true, along_m: 40.00107906121667}
+          - {pre_calibration_order: 1, marker_row: 7, measure_mi: 3.0, snapped: true, along_m: 399.801947781804}
+          - {pre_calibration_order: 2, marker_row: 9, measure_mi: 3.5, snapped: true, along_m: 0.0}
+          - {pre_calibration_order: 2, marker_row: 10, measure_mi: 3.6, snapped: true, along_m: 0.0}
+          - {pre_calibration_order: 2, marker_row: 8, measure_mi: 3.2, snapped: true, along_m: 251.6036292355373}
+          - {pre_calibration_order: 3, marker_row: 11, measure_mi: 4.0, snapped: false, along_m: 23.896058192562574}
+          - {pre_calibration_order: 4, marker_row: 11, measure_mi: 4.0, snapped: true, along_m: 160.00444930044873}
+    expect:
+      rows:
+        - {piece_id: 0, pre_calibration_order: 0, anchor_count: 6, snapped_marker_count: 6, reversed_by_markers: false,
+           calibration_json: '{"length_m":3365.9360592256835,"start_mile":0.40036532740230757,"end_mile":2.603375387842628,"anchor_along_mi":[0.0996346725976924,0.608890713935497,1.1184210707041935,1.1371096762849355,1.6156312123309393,1.9881203142730683],"anchor_mile":[0.5,1.0,1.5,1.5,2.0,2.5]}'}
+        - {piece_id: 1, pre_calibration_order: 1, anchor_count: 2, snapped_marker_count: 2, reversed_by_markers: false,
+           calibration_json: '{"length_m":448.1924067440993,"start_mile":2.775144481812952,"end_mile":3.030068437178313,"anchor_along_mi":[0.024855518187048058,0.2484254129519879],"anchor_mile":[2.8,3.0]}'}
+        - {piece_id: 2, pre_calibration_order: 2, anchor_count: 3, snapped_marker_count: 3, reversed_by_markers: true,
+           calibration_json: '{"length_m":256.60274819928077,"start_mile":3.1968936914893624,"end_mile":3.6,"anchor_along_mi":[0.0031063085106375365,0.15944555557996348,0.15944555557996348],"anchor_mile":[3.2,3.5,3.6]}'}
+        - {piece_id: 3, pre_calibration_order: 4, anchor_count: 1, snapped_marker_count: 1, reversed_by_markers: false,
+           calibration_json: '{"length_m":335.908350404574,"start_mile":3.900577844574902,"end_mile":4.109301616748269,"anchor_along_mi":[0.09942215542509789],"anchor_mile":[4.0]}'}
+        - {piece_id: 4, pre_calibration_order: 3, anchor_count: 1, snapped_marker_count: 0, reversed_by_markers: false,
+           calibration_json: '{"length_m":23.896058192562574,"start_mile":3.985151677831115,"end_mile":4.0,"anchor_along_mi":[0.014848322168885318],"anchor_mile":[4.0]}'}
+
+  - name: int_trail_lines__mile_axis_holdout_refuses_a_median_over_the_gate
+    description: >
+      export_elevation.measure_marker_agreement on the fixture: A is the one
+      piece with four or more markers, so its three odd-numbered markers are
+      scored on its even ones. Their median error, 0.119 mi, is over the
+      0.05 gate, so require_marker_agreement would refuse this axis.
+    model: int_trail_lines__mile_axis_holdout
+    given:
+      - input: ref('int_trail_lines__mile_axis_pieces')
+        rows:
+          - {pre_calibration_order: 0, geom_5070_wkt: 'LINESTRING (1819414.0207331162 2210531.895375706, 1819311.2576319536 2210967.8419145243, 1819264.0117938193 2211531.916104956, 1819100.4097742995 2212298.642400845, 1818919.232665513 2213176.2618726515, 1818773.1991967324 2213832.0795941944)'}
+          - {pre_calibration_order: 1, geom_5070_wkt: 'LINESTRING (1818673.8209531882 2214326.3326910594, 1818587.2872141877 2214766.0921087842)'}
+          - {pre_calibration_order: 2, geom_5070_wkt: 'LINESTRING (1818416.19479876 2215128.3964118646, 1818530.2411633802 2215189.793878746, 1818646.8554948443 2215240.294826096)'}
+          - {pre_calibration_order: 3, geom_5070_wkt: 'LINESTRING (1818437.2204460339 2215766.068016249, 1818440.1980638318 2215789.777832558)'}
+          - {pre_calibration_order: 4, geom_5070_wkt: 'LINESTRING (1818638.089196617 2215640.867371095, 1818561.0025727577 2215967.810901836)'}
+      - input: ref('int_trail_lines__mile_axis_markers')
+        rows:
+          - {pre_calibration_order: 0, marker_row: 1, measure_mi: 0.5, snapped: true, along_m: 160.3464625370607}
+          - {pre_calibration_order: 0, marker_row: 4, measure_mi: 1.0, snapped: true, along_m: 979.9146171278085}
+          - {pre_calibration_order: 0, marker_row: 2, measure_mi: 1.5, snapped: true, along_m: 1799.9242396113696}
+          - {pre_calibration_order: 0, marker_row: 3, measure_mi: 1.4, snapped: true, along_m: 1830.0006348711033}
+          - {pre_calibration_order: 0, marker_row: 5, measure_mi: 2.0, snapped: true, along_m: 2600.1063977775234}
+          - {pre_calibration_order: 0, marker_row: 0, measure_mi: 2.5, snapped: true, along_m: 3199.569499053477}
+          - {pre_calibration_order: 1, marker_row: 6, measure_mi: 2.8, snapped: true, along_m: 40.00107906121667}
+          - {pre_calibration_order: 1, marker_row: 7, measure_mi: 3.0, snapped: true, along_m: 399.801947781804}
+          - {pre_calibration_order: 2, marker_row: 9, measure_mi: 3.5, snapped: true, along_m: 0.0}
+          - {pre_calibration_order: 2, marker_row: 10, measure_mi: 3.6, snapped: true, along_m: 0.0}
+          - {pre_calibration_order: 2, marker_row: 8, measure_mi: 3.2, snapped: true, along_m: 251.6036292355373}
+          - {pre_calibration_order: 3, marker_row: 11, measure_mi: 4.0, snapped: false, along_m: 23.896058192562574}
+          - {pre_calibration_order: 4, marker_row: 11, measure_mi: 4.0, snapped: true, along_m: 160.00444930044873}
+    expect:
+      rows:
+        - {holdout_marker_count: 3, holdout_median_mi: 0.1187934678077942, holdout_p95_mi: 0.1266391550328631, holdout_max_mi: 0.12751089805787075, median_within_gate: false, p95_within_gate: true, max_within_gate: true}
+
+  # The other two refusal branches, on one straight 8,192 m piece whose
+  # markers sit at whole metres, so every along-distance is exact in both
+  # implementations and the errors are the ones the miles were chosen to
+  # give: 0.0, 0.02 and about 0.9 mi, then about 1.33 mi.
+  - name: int_trail_lines__mile_axis_holdout_refuses_a_p95_over_the_gate
+    description: >
+      A p95 of 0.81 mi with the median and maximum inside the gate:
+      require_marker_agreement refuses on the p95 alone.
+    model: int_trail_lines__mile_axis_holdout
+    given:
+      - input: ref('int_trail_lines__mile_axis_pieces')
+        rows:
+          - {pre_calibration_order: 0, geom_5070_wkt: 'LINESTRING (0 0, 8192 0)'}
+      - input: ref('int_trail_lines__mile_axis_markers')
+        rows:
+          - {pre_calibration_order: 0, marker_row: 0, measure_mi: 0.0, snapped: true, along_m: 0.0}
+          - {pre_calibration_order: 0, marker_row: 1, measure_mi: 1.02, snapped: true, along_m: 1609.0}
+          - {pre_calibration_order: 0, marker_row: 2, measure_mi: 2.0, snapped: true, along_m: 3218.0}
+          - {pre_calibration_order: 0, marker_row: 3, measure_mi: 3.0, snapped: true, along_m: 4827.0}
+          - {pre_calibration_order: 0, marker_row: 4, measure_mi: 4.0, snapped: true, along_m: 6436.0}
+          - {pre_calibration_order: 0, marker_row: 5, measure_mi: 5.87, snapped: true, along_m: 8000.0}
+    expect:
+      rows:
+        - {holdout_marker_count: 3, holdout_median_mi: 0.020000000000000018, holdout_p95_mi: 0.8103579098067286, holdout_max_mi: 0.8981754553408097, median_within_gate: true, p95_within_gate: false, max_within_gate: true}
+
+  - name: int_trail_lines__mile_axis_holdout_refuses_a_maximum_over_the_gate
+    description: >
+      A held-out error of 1.33 mi: over the 1.0 mi maximum, and with three
+      errors that also puts the p95 over its gate.
+    model: int_trail_lines__mile_axis_holdout
+    given:
+      - input: ref('int_trail_lines__mile_axis_pieces')
+        rows:
+          - {pre_calibration_order: 0, geom_5070_wkt: 'LINESTRING (0 0, 8192 0)'}
+      - input: ref('int_trail_lines__mile_axis_markers')
+        rows:
+          - {pre_calibration_order: 0, marker_row: 0, measure_mi: 0.0, snapped: true, along_m: 0.0}
+          - {pre_calibration_order: 0, marker_row: 1, measure_mi: 1.02, snapped: true, along_m: 1609.0}
+          - {pre_calibration_order: 0, marker_row: 2, measure_mi: 2.0, snapped: true, along_m: 3218.0}
+          - {pre_calibration_order: 0, marker_row: 3, measure_mi: 3.0, snapped: true, along_m: 4827.0}
+          - {pre_calibration_order: 0, marker_row: 4, measure_mi: 4.0, snapped: true, along_m: 6436.0}
+          - {pre_calibration_order: 0, marker_row: 5, measure_mi: 6.3, snapped: true, along_m: 8000.0}
+    expect:
+      rows:
+        - {holdout_marker_count: 3, holdout_median_mi: 0.020000000000000018, holdout_p95_mi: 1.1973579098067284, holdout_max_mi: 1.3281754553408094, median_within_gate: true, p95_within_gate: false, max_within_gate: false}

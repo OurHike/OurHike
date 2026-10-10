@@ -1,0 +1,906 @@
+"""row_history.py: the row-history snapshots and Elementary's history kept between runs, and every way a restore
+or a save refuses.
+
+Each test builds a small warehouse with an int_<mart>__history table in the `intermediate` schema shaped
+like a dbt snapshot (key, _row_hash and the four dbt_ columns), so nothing here runs dbt. tests/test_dbt_row_dates_builds.py drives
+dbt itself through two builds and a restore. Elementary's tables are shaped the same way, further down.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta
+
+import duckdb
+import pytest
+
+import row_history
+from row_history import POINTER, ColdStartRefused, Refused, restore, save
+
+
+def _snapshot(warehouse, table="int_things__history", rows=((("a", "h1", datetime(2026, 10, 3, 14, 0), None)),)):
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema if not exists intermediate")
+        con.execute(
+            f"create or replace table intermediate.{table} (thing_key varchar, _row_hash varchar, dbt_scd_id varchar, "
+            "dbt_updated_at timestamp, dbt_valid_from timestamp, dbt_valid_to timestamp)"
+        )
+        con.executemany(
+            f"insert into intermediate.{table} values (?, ?, ?, ?, ?, ?)",
+            [(key, hashed, f"{key}{hashed}", started, started, ended) for key, hashed, started, ended in rows],
+        )
+
+
+def _rows(warehouse, table="int_things__history"):
+    with duckdb.connect(str(warehouse)) as con:
+        return con.execute(f"select * from intermediate.{table} order by all").fetchall()
+
+
+def _cold_then_saved(tmp_path, rows=None):
+    """A store that one build has started: restore with a cold start, a snapshot built, saved."""
+    store, warehouse = tmp_path / "store", tmp_path / "first.duckdb"
+    restore(str(store), warehouse, cold_start=True)
+    _snapshot(warehouse, **({"rows": rows} if rows else {}))
+    save(str(store), warehouse)
+    return store, warehouse
+
+
+def test_restore_refuses_an_empty_store_unless_a_cold_start_is_allowed(tmp_path):
+    with pytest.raises(ColdStartRefused, match="refusing to start the row history again"):
+        restore(str(tmp_path / "store"), tmp_path / "w.duckdb", cold_start=False)
+
+
+def test_main_answers_a_refused_cold_start_with_exit_2_and_another_refusal_with_1(tmp_path, capsys):
+    store, warehouse = str(tmp_path / "store"), str(tmp_path / "w.duckdb")
+    assert row_history.main(["restore", "--url", store, "--warehouse", warehouse]) == 2
+    assert row_history.main(["save", "--url", store, "--warehouse", warehouse]) == 1
+    assert "::error title=Row history" in capsys.readouterr().out
+
+
+def test_a_saved_history_restores_into_a_new_warehouse_row_for_row(tmp_path):
+    rows = (("a", "h1", datetime(2026, 10, 3, 14, 0), None), ("b", "h2", datetime(2026, 10, 3, 14, 0), datetime(2026, 11, 3)))
+    store, first = _cold_then_saved(tmp_path, rows)
+    second = tmp_path / "second.duckdb"
+
+    message = restore(str(store), second, cold_start=False)
+
+    assert "restored save" in message
+    assert _rows(second) == _rows(first)
+    with duckdb.connect(str(second)) as con:
+        columns = "select data_type from information_schema.columns where table_name = 'int_things__history'"
+        types = con.execute(columns).fetchall()
+    assert ("TIMESTAMP",) in types, "dbt_valid_from comes back as the TIMESTAMP dbt wrote, not as text"
+
+
+def test_history_json_records_rows_sha256_and_each_snapshots_history_start(tmp_path):
+    store, _ = _cold_then_saved(tmp_path)
+    pointer = json.loads((store / POINTER).read_text())
+
+    entry = pointer["tables"]["int_things__history"]
+    assert entry["rows"] == 1 and len(entry["sha256"]) == 64
+    assert entry["history_started_at"] == "2026-10-03T14:00:00Z"
+    assert pointer["previous_save_id"] is None, "the first save follows a cold start"
+    assert (store / entry["file"]).exists()
+
+
+def test_restore_refuses_a_file_whose_sha256_is_not_what_history_json_says(tmp_path):
+    store, _ = _cold_then_saved(tmp_path)
+    entry = json.loads((store / POINTER).read_text())["tables"]["int_things__history"]
+    (store / entry["file"]).write_bytes(b"not the parquet that was saved")
+
+    with pytest.raises(Refused, match="has sha256"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+
+
+def test_restore_refuses_a_file_history_json_names_that_is_gone(tmp_path):
+    store, _ = _cold_then_saved(tmp_path)
+    entry = json.loads((store / POINTER).read_text())["tables"]["int_things__history"]
+    (store / entry["file"]).unlink()
+
+    with pytest.raises(Refused, match="is not there"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=True)
+
+
+def test_a_restore_that_fails_leaves_no_receipt_so_its_warehouse_cannot_be_saved(tmp_path):
+    store, warehouse = _cold_then_saved(tmp_path)
+    entry = json.loads((store / POINTER).read_text())["tables"]["int_things__history"]
+    (store / entry["file"]).write_bytes(b"torn")
+
+    with pytest.raises(Refused):
+        restore(str(store), warehouse, cold_start=False)
+    with pytest.raises(Refused, match="no restore receipt"):
+        save(str(store), warehouse)
+
+
+def test_save_refuses_a_warehouse_restore_never_ran_against(tmp_path):
+    warehouse = tmp_path / "w.duckdb"
+    _snapshot(warehouse)
+
+    with pytest.raises(Refused, match="no restore receipt"):
+        save(str(tmp_path / "store"), warehouse)
+
+
+def test_save_refuses_a_store_other_than_the_one_restored_from(tmp_path):
+    store, warehouse = _cold_then_saved(tmp_path)
+
+    with pytest.raises(Refused, match="was restored from"):
+        save(str(tmp_path / "elsewhere"), warehouse)
+
+
+def test_save_refuses_a_snapshot_that_holds_fewer_rows_than_were_restored(tmp_path):
+    rows = (("a", "h1", datetime(2026, 10, 3), None), ("b", "h2", datetime(2026, 10, 3), None))
+    store, _ = _cold_then_saved(tmp_path, rows)
+    second = tmp_path / "second.duckdb"
+    restore(str(store), second, cold_start=False)
+    _snapshot(second, rows=rows[:1])
+
+    with pytest.raises(Refused, match="fewer rows than were restored"):
+        save(str(store), second)
+
+
+def test_save_refuses_when_another_run_saved_after_this_warehouse_restored(tmp_path):
+    store, _ = _cold_then_saved(tmp_path)
+    late, early = tmp_path / "late.duckdb", tmp_path / "early.duckdb"
+    restore(str(store), late, cold_start=False)
+    restore(str(store), early, cold_start=False)
+    save(str(store), early)
+
+    with pytest.raises(Refused, match="another run saved in between"):
+        save(str(store), late)
+
+
+def test_a_second_save_points_back_at_the_first_and_old_saves_beyond_keep_saves_go(tmp_path, monkeypatch):
+    monkeypatch.setattr(row_history, "KEEP_SAVES", 2)
+    store, _ = _cold_then_saved(tmp_path)
+    first = json.loads((store / POINTER).read_text())["save_id"]
+    for name in ("b.duckdb", "c.duckdb"):
+        restore(str(store), tmp_path / name, cold_start=False)
+        save(str(store), tmp_path / name)
+
+    pointer = json.loads((store / POINTER).read_text())
+    folders = sorted(path.name for path in (store / "saves").iterdir())
+    assert len(folders) == 2 and pointer["save_id"] in folders and first not in folders
+    assert pointer["previous_save_id"] in folders
+
+
+def test_a_cold_start_drops_whatever_history_the_warehouse_already_held(tmp_path):
+    warehouse = tmp_path / "w.duckdb"
+    _snapshot(warehouse)
+
+    restore(str(tmp_path / "store"), warehouse, cold_start=True)
+
+    with duckdb.connect(str(warehouse)) as con:
+        tables = "select count(*) from information_schema.tables where table_schema = 'intermediate'"
+        assert con.execute(tables).fetchone() == (0,)
+
+
+def test_only_tables_named_history_are_saved_restored_or_dropped_never_the_intermediate_models_beside_them(tmp_path):
+    store, warehouse = tmp_path / "store", tmp_path / "w.duckdb"
+    restore(str(store), warehouse, cold_start=True)
+    _snapshot(warehouse)
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create table intermediate.int_things__final as select 1 as thing")
+    save(str(store), warehouse)
+
+    assert set(json.loads((store / POINTER).read_text())["tables"]) == {"int_things__history"}
+    restore(str(store), warehouse, cold_start=False)
+    with duckdb.connect(str(warehouse)) as con:
+        assert con.execute("select thing from intermediate.int_things__final").fetchall() == [(1,)]
+
+
+def test_a_store_url_that_is_not_a_directory_file_or_s3_is_refused():
+    with pytest.raises(Refused, match="a history store is a directory"):
+        row_history.Store("https://example.org/history")
+
+
+# --- Names read back from the store (lib/store_names.py) ----------------------------------------------------------
+#
+# history.json and elementary.json are written by a save, and could be by anyone else holding the store's key. The
+# review of PR #1805 measured a crafted table name writing a file outside restore's temporary directory; each test
+# below fails on the code before lib/store_names.py.
+
+
+@pytest.mark.parametrize(
+    "crafted",
+    [
+        "../../escaped__history",  # climbs out of the temporary directory restore downloads into
+        'int_things" (n int); --__history',  # ends its quoted identifier
+        "Int_Things__History",  # a name no dbt snapshot here has
+        "int_things__final",  # not a snapshot table: an intermediate model beside them
+    ],
+)
+def test_restore_refuses_a_history_json_table_that_is_not_a_snapshot_name_and_writes_no_file_outside(
+    tmp_path, monkeypatch, crafted
+):
+    store, _ = _cold_then_saved(tmp_path)
+    pointer = json.loads((store / POINTER).read_text())
+    pointer["tables"][crafted] = pointer["tables"].pop("int_things__history")
+    (store / POINTER).write_text(json.dumps(pointer))
+    # restore's TemporaryDirectory is made under tmp_path/tmp, so the climbing name reaches tmp_path, never `/`.
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setattr(row_history.tempfile, "tempdir", str(tmp_path / "tmp"))
+
+    with pytest.raises(Refused, match="names a table"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+    assert not (tmp_path / "escaped__history.parquet").exists(), "history.json's name wrote outside the scratch directory"
+
+
+def test_restore_refuses_a_history_json_file_that_climbs_out_of_the_store(tmp_path):
+    """The snapshot's own file, copied beside the store, still matches the sha256 the crafted pointer keeps."""
+    store, _ = _cold_then_saved(tmp_path)
+    pointer = json.loads((store / POINTER).read_text())
+    entry = pointer["tables"]["int_things__history"]
+    (tmp_path / "beside-the-store.parquet").write_bytes((store / entry["file"]).read_bytes())
+    entry["file"] = "../beside-the-store.parquet"
+    (store / POINTER).write_text(json.dumps(pointer))
+
+    with pytest.raises(Refused, match="names a path"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+
+
+def test_restore_refuses_an_elementary_json_file_that_climbs_out_of_the_store(tmp_path):
+    store, _ = _first_build(tmp_path)
+    pointer = _elementary_pointer(store)
+    entry = pointer["tables"]["dbt_invocations"]
+    (tmp_path / "beside-the-store.parquet").write_bytes((store / entry["file"]).read_bytes())
+    entry["file"] = "../beside-the-store.parquet"
+    (store / row_history.ELEMENTARY_POINTER).write_text(json.dumps(pointer))
+
+    with pytest.raises(row_history.ElementaryRefused, match="names a path"):
+        restore(str(store), tmp_path / "second.duckdb", cold_start=False)
+
+
+def test_save_refuses_a_snapshot_table_whose_name_would_end_the_copy_statements_file_name(tmp_path):
+    """save() writes each snapshot table to `<scratch>/<table>.parquet` inside a quoted COPY ... TO, so a quote in a
+    warehouse's table name is refused before anything is written, wherever the table came from."""
+    store, warehouse = tmp_path / "store", tmp_path / "w.duckdb"
+    restore(str(store), warehouse, cold_start=True)
+    _snapshot(warehouse, table='"int_o\'brien__history"')
+
+    with pytest.raises(Refused, match="names a table"):
+        save(str(store), warehouse)
+    assert not (store / POINTER).exists(), "nothing is written when a save is refused"
+
+
+# --- Elementary's history (row_history.py's docstring, "ELEMENTARY'S HISTORY") ---
+#
+# Each warehouse below holds Elementary 0.26.0's five kept tables with the columns row_history.py reads and one value,
+# filled the way Elementary fills them: a check with no timestamp column adds one metric row a build, bucket_end the
+# build's start; a check with one appends buckets it already has again under the same `id` with a later `updated_at`
+# (handle_tests_results.sql's insert_data_monitoring_metrics(); get_anomaly_scores_query.sql reads the newest).
+# test_result_rows holds what a run stored of its scored buckets, one JSON row each with the keys a scratch project's
+# rows carried on dbt 2.0.6 (2026-10-08), and the rows the save must never keep beside them.
+
+BUILD_1, BUILD_2 = datetime(2026, 10, 1, 6, 0), datetime(2026, 10, 2, 6, 0)
+ELEMENTARY_TABLES = {
+    "data_monitoring_metrics": "id varchar, full_table_name varchar, metric_name varchar, metric_value float, "
+    "bucket_start timestamp, bucket_end timestamp, updated_at timestamp, created_at timestamp",
+    "schema_columns_snapshot": "column_state_id varchar, full_table_name varchar, column_name varchar, "
+    "data_type varchar, detected_at timestamp, created_at timestamp",
+    "elementary_test_results": "id varchar, test_unique_id varchar, status varchar, invocation_id varchar, "
+    "detected_at timestamp, created_at timestamp",
+    "dbt_invocations": "invocation_id varchar, command varchar, created_at timestamp",
+    "test_result_rows": "elementary_test_results_id varchar, result_row varchar, detected_at timestamp, "
+    "created_at timestamp, row_index integer, test_type varchar",
+}
+
+
+def _elementary_tables(warehouse):
+    """Elementary's own tables as `dbt run --select package:elementary` leaves them: created empty on a cold start,
+    and left as they are over a restored history, whose rows its incremental models keep."""
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create schema if not exists elementary")
+        for table, columns in ELEMENTARY_TABLES.items():
+            con.execute(f"create table if not exists elementary.{table} ({columns})")
+
+
+def _elementary_build(warehouse, at, invocation, *, rows=100.0, columns=("id", "name")):
+    """What one build's checks add: a row count with no timestamp column, today's bucket of a timestamped one (the
+    same id for every build that day, so a second is a rewrite), a schema snapshot of `things`, two test results and
+    the invocation."""
+    day = at.replace(hour=0)
+    with duckdb.connect(str(warehouse)) as con:
+        con.executemany(
+            "insert into elementary.data_monitoring_metrics values (?, 'things', ?, ?, ?, ?, ?, ?)",
+            [
+                (f"row_count {at}", "row_count", rows, None, at, at, at),
+                (f"by_day {day}", "row_count_by_day", rows / 2, day, day + timedelta(days=1), at, at),
+            ],
+        )
+        con.executemany(
+            "insert into elementary.schema_columns_snapshot values (?, 'things', ?, 'varchar', ?, ?)",
+            [(f"things.{column}", column, at, at) for column in columns],
+        )
+        con.executemany(
+            "insert into elementary.elementary_test_results values (?, ?, 'pass', ?, ?, ?)",
+            [(f"{invocation}.{test}", test, invocation, at, at) for test in ("volume", "schema")],
+        )
+        con.execute("insert into elementary.dbt_invocations values (?, 'test', ?)", [invocation, at])
+
+
+def _elementary_rows(warehouse, table, columns="*"):
+    with duckdb.connect(str(warehouse)) as con:
+        return con.execute(f"select {columns} from elementary.{table} order by all").fetchall()
+
+
+def _elementary_pointer(store):
+    return json.loads((store / row_history.ELEMENTARY_POINTER).read_text())
+
+
+def _first_build(tmp_path, **build):
+    """A store one build has started, Elementary's history with it: a cold start, a build, a save at BUILD_1."""
+    store, warehouse = tmp_path / "store", tmp_path / "first.duckdb"
+    restore(str(store), warehouse, cold_start=True)
+    _snapshot(warehouse)
+    _elementary_tables(warehouse)
+    _elementary_build(warehouse, BUILD_1, "inv1", **build)
+    save(str(store), warehouse, keep_days=21, now=BUILD_1)
+    return store, warehouse
+
+
+def _next_build(tmp_path, store, name="second.duckdb", **policy):
+    """A fresh warehouse restored from the store, Elementary's own tables over it, as build_marts.py runs them."""
+    warehouse = tmp_path / name
+    restore(str(store), warehouse, cold_start=False, **policy)
+    _elementary_tables(warehouse)
+    return warehouse
+
+
+def test_two_builds_one_store_the_third_restores_both_builds_rows_and_a_rewritten_bucket_once(tmp_path):
+    store, _ = _first_build(tmp_path)
+    second = _next_build(tmp_path, store)
+    assert _elementary_rows(second, "dbt_invocations", "invocation_id") == [("inv1",)]
+
+    _elementary_build(second, BUILD_1.replace(hour=18), "inv2", rows=104.0)
+    message = save(str(store), second, keep_days=21, now=BUILD_1.replace(hour=18))
+    third = _next_build(tmp_path, store, "third.duckdb")
+
+    assert "Elementary's history: saved" in message
+    assert _elementary_rows(third, "dbt_invocations", "invocation_id") == [("inv1",), ("inv2",)]
+    assert len(_elementary_rows(third, "elementary_test_results")) == 4, "two results a build, both builds"
+    metrics = _elementary_rows(third, "data_monitoring_metrics", "metric_name, metric_value")
+    assert metrics == [("row_count", 100.0), ("row_count", 104.0), ("row_count_by_day", 52.0)], (
+        "one row count a build, and the day's bucket once, as build 2 rewrote it"
+    )
+
+
+def test_a_store_saved_before_elementary_starts_its_history_only_when_allowed(tmp_path):
+    """Every store saved before decision 102 holds a history.json and no elementary.json."""
+    store, _ = _cold_then_saved(tmp_path)
+    (store / row_history.ELEMENTARY_POINTER).unlink()
+
+    with pytest.raises(row_history.ElementaryColdStartRefused, match="refusing to start Elementary's history again"):
+        restore(str(store), tmp_path / "refused.duckdb", cold_start=False)
+    message = restore(str(store), tmp_path / "second.duckdb", cold_start=False, elementary_cold_start=True)
+
+    assert "restored save" in message and "Elementary's history: cold start" in message
+    assert row_history.main(["restore", "--url", str(store), "--warehouse", str(tmp_path / "w.duckdb")]) == 2
+
+
+def test_elementary_json_records_each_tables_rows_bytes_sha256_and_window_and_the_save_before(tmp_path):
+    store, _ = _first_build(tmp_path)
+    second = _next_build(tmp_path, store)
+    _elementary_build(second, BUILD_2, "inv2")
+    save(str(store), second, keep_days=21, now=BUILD_2)
+
+    pointer, rows_pointer = _elementary_pointer(store), json.loads((store / POINTER).read_text())
+    entry = pointer["tables"]["dbt_invocations"]
+    assert set(pointer["tables"]) == set(row_history.KEPT)
+    assert entry["rows"] == 2 and entry["bytes"] == (store / entry["file"]).stat().st_size and len(entry["sha256"]) == 64
+    assert (entry["oldest"], entry["newest"]) == ("2026-10-01T06:00:00Z", "2026-10-02T06:00:00Z")
+    assert pointer["keep_days"] == 21 and pointer["kept_since"] == "2026-09-11T06:00:00Z"
+    assert pointer["save_id"] == rows_pointer["save_id"], "one save id for both parts of one save"
+    assert pointer["previous_save_id"] == rows_pointer["previous_save_id"] is not None
+
+
+def test_retention_keeps_the_window_and_each_tables_latest_snapshot_whatever_its_age(tmp_path):
+    store, _ = _first_build(tmp_path, columns=("id", "name", "gone"))
+    second = _next_build(tmp_path, store)
+    later = BUILD_1 + timedelta(days=30)
+    _elementary_build(second, later, "inv2", columns=("id", "name"))
+    with duckdb.connect(str(second)) as con:
+        con.execute(
+            "insert into elementary.schema_columns_snapshot values ('other.id', 'other', 'id', 'varchar', ?, ?)",
+            [BUILD_1 - timedelta(days=200)] * 2,
+        )
+
+    save(str(store), second, keep_days=21, now=later)
+    third = _next_build(tmp_path, store, "third.duckdb")
+
+    assert _elementary_rows(third, "dbt_invocations", "invocation_id") == [("inv2",)], "inv1 is 30 days old"
+    assert {row[0] for row in _elementary_rows(third, "elementary_test_results", "invocation_id")} == {"inv2"}
+    assert {row[0] for row in _elementary_rows(third, "data_monitoring_metrics", "bucket_end")} == {
+        later,
+        later.replace(hour=0) + timedelta(days=1),
+    }
+    assert _elementary_rows(third, "schema_columns_snapshot", "full_table_name, column_name, detected_at") == [
+        ("other", "id", BUILD_1 - timedelta(days=200)),
+        ("things", "id", later),
+        ("things", "name", later),
+    ], "a schema check reads only a table's latest snapshot: that one is kept whatever its age, and an older one is not"
+
+
+def test_save_refuses_a_restored_row_gone_from_the_warehouse_and_writes_nothing(tmp_path):
+    store, _ = _first_build(tmp_path)
+    before = (store / POINTER).read_text(), (store / row_history.ELEMENTARY_POINTER).read_text()
+    second = _next_build(tmp_path, store)
+    _elementary_build(second, BUILD_2, "inv2")
+    with duckdb.connect(str(second)) as con:
+        con.execute(
+            "delete from elementary.data_monitoring_metrics where metric_name = 'row_count' and bucket_end = ?", [BUILD_1]
+        )
+
+    with pytest.raises(row_history.ElementaryRefused, match=r"restored and now gone .*data_monitoring_metrics 1 of 2"):
+        save(str(store), second, keep_days=21, now=BUILD_2)
+    assert ((store / POINTER).read_text(), (store / row_history.ELEMENTARY_POINTER).read_text()) == before
+
+
+def test_a_rewritten_bucket_keeps_its_id_so_the_guard_lets_it_through_and_its_newest_row_is_saved(tmp_path):
+    """The row history's rule has it backwards here: the saved copy holds fewer metric rows than the warehouse."""
+    store, _ = _first_build(tmp_path)
+    second = _next_build(tmp_path, store)
+    with duckdb.connect(str(second)) as con:
+        con.execute(
+            "insert into elementary.data_monitoring_metrics select id, full_table_name, metric_name, 61, bucket_start, "
+            "bucket_end, ?, ? from elementary.data_monitoring_metrics where metric_name = 'row_count_by_day'",
+            [BUILD_1.replace(hour=9)] * 2,
+        )
+        assert con.execute("select count(*) from elementary.data_monitoring_metrics").fetchone() == (3,)
+
+    save(str(store), second, keep_days=21, now=BUILD_1.replace(hour=9))
+
+    assert _elementary_pointer(store)["tables"]["data_monitoring_metrics"]["rows"] == 2
+    third = _next_build(tmp_path, store, "third.duckdb")
+    assert ("row_count_by_day", 61.0) in _elementary_rows(third, "data_monitoring_metrics", "metric_name, metric_value")
+
+
+def test_save_refuses_an_elementary_table_restored_and_gone(tmp_path):
+    store, _ = _first_build(tmp_path)
+    second = _next_build(tmp_path, store)
+    with duckdb.connect(str(second)) as con:
+        con.execute("drop table elementary.elementary_test_results")
+
+    with pytest.raises(row_history.ElementaryRefused, match="restored and now gone: elementary_test_results"):
+        save(str(store), second, keep_days=21, now=BUILD_2)
+
+
+def test_save_refuses_when_another_run_saved_elementarys_history_after_this_warehouse_restored(tmp_path):
+    store, _ = _first_build(tmp_path)
+    late, early = _next_build(tmp_path, store, "late.duckdb"), _next_build(tmp_path, store, "early.duckdb")
+    save(str(store), early, keep_days=21, now=BUILD_2)
+    # The snapshots' receipt is moved on, so that only Elementary's own check stands between `late` and the store.
+    with duckdb.connect(str(late)) as con:
+        con.execute("update row_history.restored set save_id = ?", [json.loads((store / POINTER).read_text())["save_id"]])
+
+    with pytest.raises(row_history.ElementaryRefused, match="another run saved Elementary's history in between"):
+        save(str(store), late, keep_days=21, now=BUILD_2)
+
+
+def test_a_torn_elementary_file_fails_the_whole_restore_by_default_and_leaves_no_receipt(tmp_path):
+    store, _ = _first_build(tmp_path)
+    entry = _elementary_pointer(store)["tables"]["elementary_test_results"]
+    (store / entry["file"]).write_bytes(b"torn")
+    warehouse = tmp_path / "second.duckdb"
+
+    with pytest.raises(row_history.ElementaryRefused, match="has sha256"):
+        restore(str(store), warehouse, cold_start=False)
+    with pytest.raises(Refused, match="no restore receipt"):
+        save(str(store), warehouse)
+    assert row_history.main(["restore", "--url", str(store), "--warehouse", str(warehouse)]) == 1
+
+
+def test_under_degrade_a_torn_elementary_file_restores_the_snapshots_and_none_of_elementarys_history(tmp_path, capsys):
+    store, _ = _first_build(tmp_path)
+    good = _elementary_pointer(store)["save_id"]
+    entry = _elementary_pointer(store)["tables"]["elementary_test_results"]
+    (store / entry["file"]).write_bytes(b"torn")
+    warehouse = tmp_path / "second.duckdb"
+
+    code = row_history.main(["restore", "--url", str(store), "--warehouse", str(warehouse), "--elementary-on-failure", "degrade"])
+
+    assert code == row_history.ELEMENTARY_DEGRADED_EXIT
+    assert "::error title=Elementary's history not restored::" in capsys.readouterr().out
+    assert _rows(warehouse) == _rows(tmp_path / "first.duckdb"), "the snapshots, a hiker's row dates, are restored"
+    with duckdb.connect(str(warehouse)) as con:
+        tables = "select count(*) from information_schema.tables where table_schema = 'elementary'"
+        assert con.execute(tables).fetchone() == (0,), "its checks see no earlier build rather than part of one"
+    _elementary_tables(warehouse)
+    _elementary_build(warehouse, BUILD_2, "inv2")
+
+    message = save(str(store), warehouse, keep_days=21, elementary_on_failure="degrade", now=BUILD_2)
+
+    assert "none of it is saved" in message
+    assert json.loads((store / POINTER).read_text())["previous_save_id"] is not None, "the snapshots were saved"
+    assert _elementary_pointer(store)["save_id"] == good, "elementary.json keeps naming the last good save"
+
+
+def test_under_degrade_a_refused_elementary_save_still_saves_the_snapshots(tmp_path):
+    store, _ = _first_build(tmp_path)
+    good, rows_before = _elementary_pointer(store)["save_id"], json.loads((store / POINTER).read_text())["save_id"]
+    second = _next_build(tmp_path, store)
+    with duckdb.connect(str(second)) as con:
+        con.execute("delete from elementary.dbt_invocations")
+
+    with pytest.raises(row_history.ElementaryDegraded) as degraded:
+        save(str(store), second, keep_days=21, elementary_on_failure="degrade", now=BUILD_2)
+
+    assert "restored and now gone" in degraded.value.failure and "saved 1 snapshot tables" in degraded.value.done
+    assert json.loads((store / POINTER).read_text())["previous_save_id"] == rows_before
+    assert _elementary_pointer(store)["save_id"] == good
+
+
+def test_only_the_five_kept_tables_are_restored_dropped_or_saved_never_elementarys_others(tmp_path):
+    store, warehouse = tmp_path / "store", tmp_path / "w.duckdb"
+    restore(str(store), warehouse, cold_start=True)
+    _elementary_tables(warehouse)
+    _elementary_build(warehouse, BUILD_1, "inv1")
+    with duckdb.connect(str(warehouse)) as con:
+        con.execute("create table elementary.dbt_run_results as select 'model.x' as unique_id")
+    save(str(store), warehouse, keep_days=21, now=BUILD_1)
+
+    assert set(_elementary_pointer(store)["tables"]) == set(row_history.KEPT)
+    restore(str(store), warehouse, cold_start=False)
+    assert _elementary_rows(warehouse, "dbt_run_results") == [("model.x",)]
+
+
+# --- test_result_rows (row_history.py's docstring, "THE BANDS") ---
+
+#: Planted wherever a stored row could carry something other than a band: none may reach the store.
+NOT_A_BAND = ("SECRET-DESCRIPTION", "SECRET-VALUE", "SECRET-CLUB", "SECRET-PERSON", "41.0123", "secret_column")
+
+
+def _scored(con, result, bucket, band, *, at, index, metric="row_count", column=None, dimension=None):
+    """One scored bucket as an anomaly check's run stores it: every key Elementary 0.26.0 writes, its band among them,
+    and the ones the save must drop (a description, the anomalous value, the training figures)."""
+    low, high = band
+    row = {
+        "id": f"{result}.{bucket}",
+        "metric_id": f"{metric}.{bucket}",
+        "test_unique_id": "test.x.volume",
+        "full_table_name": "W.MARTS.THINGS",
+        "column_name": column,
+        "metric_name": metric,
+        "bucket_end": bucket.isoformat(),
+        "metric_value": 100.0,
+        "min_metric_value": low,
+        "max_metric_value": high,
+        "anomaly_score": 0.5,
+        "is_anomalous": False,
+        "training_avg": 99.5,
+        "training_stddev": 1.2,
+        "training_set_size": 4,
+        "dimension": dimension,
+        "dimension_value": "SECRET-CLUB" if dimension else None,
+        "anomalous_value": "SECRET-VALUE",
+        "anomaly_description": "SECRET-DESCRIPTION",
+    }
+    con.execute(
+        "insert into elementary.test_result_rows values (?, ?, ?, ?, ?, 'anomaly_detection')",
+        [result, json.dumps(row), at, at, index],
+    )
+
+
+def _not_bands(con, at):
+    """What a build could also leave in test_result_rows, none of it a band: a dbt test's failing row (a row of the
+    tested table, a person's name and a coordinate in it), a schema change, and a bucket stored without a range."""
+    con.execute(
+        "insert into elementary.elementary_test_results values ('inv1.not_null', 'not_null', 'warn', 'inv1', ?, ?)", [at, at]
+    )
+    con.executemany(
+        "insert into elementary.test_result_rows values (?, ?, ?, ?, ?, ?)",
+        [
+            ("inv1.not_null", json.dumps({"reporter_name": "SECRET-PERSON", "lat": 41.0123}), at, at, 1, "dbt_test"),
+            ("inv1.schema", json.dumps({"column_name": "secret_column", "data_type": "varchar"}), at, at, 1, "schema_change"),
+            (
+                "inv1.volume",
+                json.dumps({"metric_name": "row_count", "bucket_end": "2026-09-30T06:00:00"}),
+                at,
+                at,
+                9,
+                "anomaly_detection",
+            ),
+        ],
+    )
+
+
+def _saved_test_result_rows(store):
+    """The saved test_result_rows file, each row's band as a dict, oldest bucket first."""
+    entry = _elementary_pointer(store)["tables"]["test_result_rows"]
+    with duckdb.connect() as con:
+        rows = con.execute(
+            "select elementary_test_results_id, result_row, row_index from read_parquet(?)", [str(store / entry["file"])]
+        ).fetchall()
+    return sorted(((result, json.loads(row), index) for result, row, index in rows), key=lambda each: each[1]["bucket_end"])
+
+
+def _every_saved_value(store):
+    """Every value of every file Elementary's part of the store holds, as text."""
+    with duckdb.connect() as con:
+        values = []
+        for path in (store / row_history.ELEMENTARY_SAVES).rglob("*.parquet"):
+            values += [
+                str(value) for row in con.execute("select * from read_parquet(?)", [str(path)]).fetchall() for value in row
+            ]
+    return " ".join(values)
+
+
+def test_test_result_rows_keeps_each_scored_buckets_band_in_five_fields_and_no_other_row(tmp_path):
+    store, warehouse = tmp_path / "store", tmp_path / "w.duckdb"
+    restore(str(store), warehouse, cold_start=True)
+    _elementary_tables(warehouse)
+    _elementary_build(warehouse, BUILD_1, "inv1")
+    with duckdb.connect(str(warehouse)) as con:
+        _scored(con, "inv1.volume", BUILD_1 - timedelta(hours=12), (95.0, 105.0), at=BUILD_1, index=1)
+        _scored(con, "inv1.volume", BUILD_1, (96.0, 104.5), at=BUILD_1, index=2)
+        # A dimension's rows name a value of its column: never kept, though they carry a band.
+        _scored(con, "inv1.volume", BUILD_1, (1.0, 9.0), at=BUILD_1, index=3, metric="dimension", dimension="club")
+        _not_bands(con, BUILD_1)
+
+    save(str(store), warehouse, keep_days=21, now=BUILD_1)
+
+    assert _saved_test_result_rows(store) == [
+        (
+            "inv1.volume",
+            {
+                "metric_name": "row_count",
+                "column_name": None,
+                "bucket_end": (BUILD_1 - timedelta(hours=12)).isoformat(),
+                "min_metric_value": 95.0,
+                "max_metric_value": 105.0,
+            },
+            1,
+        ),
+        (
+            "inv1.volume",
+            {
+                "metric_name": "row_count",
+                "column_name": None,
+                "bucket_end": BUILD_1.isoformat(),
+                "min_metric_value": 96.0,
+                "max_metric_value": 104.5,
+            },
+            2,
+        ),
+    ]
+    saved = _every_saved_value(store)
+    for planted in NOT_A_BAND:
+        assert planted not in saved, planted
+
+
+def test_a_band_an_earlier_run_gave_the_oldest_bucket_is_restored_and_a_rescored_bucket_keeps_the_newest(tmp_path):
+    """Build 2's run scores every bucket of its window but the oldest, which it cannot (one value has no spread):
+    that bucket's band is the one build 1's run gave it, and it is restored. The bucket both runs scored keeps build
+    2's band, the newest, and build 1's row for it is dropped."""
+    oldest, both = BUILD_1 - timedelta(days=1), BUILD_1
+    store, first = tmp_path / "store", tmp_path / "first.duckdb"
+    restore(str(store), first, cold_start=True)
+    _elementary_tables(first)
+    _elementary_build(first, BUILD_1, "inv1")
+    with duckdb.connect(str(first)) as con:
+        _scored(con, "inv1.volume", oldest, (90.0, 110.0), at=BUILD_1, index=1)
+        _scored(con, "inv1.volume", both, (95.0, 105.0), at=BUILD_1, index=2)
+    save(str(store), first, keep_days=21, now=BUILD_1)
+
+    second = _next_build(tmp_path, store)
+    _elementary_build(second, BUILD_2, "inv2")
+    with duckdb.connect(str(second)) as con:
+        _scored(con, "inv2.volume", both, (97.0, 103.0), at=BUILD_2, index=1)
+        _scored(con, "inv2.volume", BUILD_2, (98.0, 102.0), at=BUILD_2, index=2)
+    save(str(store), second, keep_days=21, now=BUILD_2)
+
+    assert [
+        (result, row["bucket_end"], row["min_metric_value"], row["max_metric_value"])
+        for result, row, _ in _saved_test_result_rows(store)
+    ] == [
+        ("inv1.volume", oldest.isoformat(), 90.0, 110.0),
+        ("inv2.volume", both.isoformat(), 97.0, 103.0),
+        ("inv2.volume", BUILD_2.isoformat(), 98.0, 102.0),
+    ]
+    third = _next_build(tmp_path, store, "third.duckdb")
+    assert len(_elementary_rows(third, "test_result_rows")) == 3
+    assert "Elementary's history: saved" in save(str(store), third, keep_days=21, now=BUILD_2), (
+        "every restored band is still in the warehouse, so the guard by key lets the next save through"
+    )
+
+
+def test_a_store_saved_before_the_bands_were_kept_restores_without_them_and_saves_them_from_then_on(tmp_path):
+    store, _ = _first_build(tmp_path)
+    pointer = _elementary_pointer(store)
+    del pointer["tables"]["test_result_rows"]
+    (store / row_history.ELEMENTARY_POINTER).write_text(json.dumps(pointer))
+    second = _next_build(tmp_path, store)
+    _elementary_build(second, BUILD_2, "inv2")
+    with duckdb.connect(str(second)) as con:
+        _scored(con, "inv2.volume", BUILD_2, (98.0, 102.0), at=BUILD_2, index=1)
+
+    save(str(store), second, keep_days=21, now=BUILD_2)
+
+    assert [result for result, _, _ in _saved_test_result_rows(store)] == ["inv2.volume"]
+
+
+def test_a_band_older_than_keep_days_goes_with_its_result(tmp_path):
+    store, _ = _first_build(tmp_path)
+    second = _next_build(tmp_path, store)
+    later = BUILD_1 + timedelta(days=30)
+    _elementary_build(second, later, "inv2")
+    with duckdb.connect(str(second)) as con:
+        _scored(con, "inv1.volume", BUILD_1, (95.0, 105.0), at=BUILD_1, index=1)
+        _scored(con, "inv2.volume", later, (96.0, 104.0), at=later, index=1)
+
+    save(str(store), second, keep_days=21, now=later)
+
+    assert [result for result, _, _ in _saved_test_result_rows(store)] == ["inv2.volume"], "inv1 is 30 days old"
+
+
+def test_elementarys_saves_beyond_keep_saves_go_from_its_own_folder_and_share_the_snapshots_save_ids(tmp_path, monkeypatch):
+    monkeypatch.setattr(row_history, "KEEP_SAVES", 2)
+    store, _ = _first_build(tmp_path)
+    first = _elementary_pointer(store)["save_id"]
+    for hour, name in ((7, "b.duckdb"), (8, "c.duckdb")):
+        warehouse = _next_build(tmp_path, store, name)
+        _elementary_build(warehouse, BUILD_1.replace(hour=hour), name)
+        save(str(store), warehouse, keep_days=21, now=BUILD_1.replace(hour=hour))
+
+    folders = sorted(path.name for path in (store / row_history.ELEMENTARY_SAVES).iterdir())
+    assert len(folders) == 2 and first not in folders and _elementary_pointer(store)["save_id"] in folders
+    assert sorted(path.name for path in (store / "saves").iterdir()) == folders
+
+
+def test_save_refuses_to_keep_less_than_a_day():
+    with pytest.raises(Refused, match="at least one day"):
+        save("/nowhere", "/nowhere.duckdb", keep_days=0)
+
+
+def test_the_default_keep_days_is_the_longest_any_lane_keeps_and_the_exit_codes_agree():
+    """build_marts.py imports only the standard library, so it holds its own copies of both numbers."""
+    import build_marts
+
+    assert row_history.ELEMENTARY_KEEP_DAYS == max(build_marts.ELEMENTARY_KEEP_DAYS.values())
+    assert row_history.ELEMENTARY_DEGRADED_EXIT == build_marts.ELEMENTARY_DEGRADED_EXIT
+    assert build_marts.ELEMENTARY_DEGRADED_EXIT not in (0, 1, 2, *build_marts.PUBLISHABLE_EXITS)
+
+
+# --- ELEMENTARY'S HISTORY ALONE: the hourly lane's checks run after its build (decision 110) ------------------------
+
+CHECKS_AT = BUILD_2.replace(hour=7)
+
+
+def _hourly_build(tmp_path):
+    """A build that restored both parts from a started store, added its own rows and saved both, as
+    build_marts.py --lane hourly does: its warehouse, the store, and the build's save id."""
+    store, _ = _first_build(tmp_path)
+    warehouse = _next_build(tmp_path, store, "build.duckdb")
+    _elementary_build(warehouse, BUILD_2, "inv2")
+    save(str(store), warehouse, keep_days=21, now=BUILD_2)
+    return store, warehouse, _elementary_pointer(store)["save_id"]
+
+
+def test_the_checks_run_restores_elementarys_history_alone_and_saves_its_checks_over_the_builds(tmp_path):
+    store, warehouse, build_save = _hourly_build(tmp_path)
+    rows_pointer, snapshot_rows = (store / POINTER).read_text(), _rows(warehouse)
+
+    restored = row_history.restore_elementary(str(store), warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    saved = row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    after = _next_build(tmp_path, store, "next.duckdb")
+
+    assert f"restored save {build_save}" in restored and "Elementary's history: saved" in saved
+    assert (store / POINTER).read_text() == rows_pointer, "history.json and the snapshots' saves are the build's"
+    assert _rows(warehouse) == snapshot_rows, "the snapshot tables are left as the build left them"
+    pointer = _elementary_pointer(store)
+    assert pointer["previous_save_id"] == build_save and pointer["save_id"] != build_save
+    assert _elementary_rows(after, "dbt_invocations", "invocation_id") == [("inv1",), ("inv2",), ("inv3",)]
+
+
+# --- Two writers, no shared group (row_history.py's docstring, "TWO WRITERS, ONE POINTER") ------------------------
+#
+# check-conditions.yml no longer shares a concurrency group with publish-conditions.yml (#1513 — A queued publish is
+# silently cancelled when another one joins publish-data, and it looks like a green build), so a checks run's save of
+# Elementary's history and the next hourly build's can overlap. In either order the checks run's hour is the one left
+# out of the history, the build's save and its row dates never are, and neither run goes red for it.
+
+
+def _folders(store) -> list[str]:
+    return sorted(path.name for path in (store / row_history.ELEMENTARY_SAVES).iterdir())
+
+
+def test_the_checks_runs_save_is_skipped_and_said_when_a_build_saved_after_its_restore(tmp_path, capsys):
+    store, warehouse, _ = _hourly_build(tmp_path)
+    row_history.restore_elementary(str(store), warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    later = _next_build(tmp_path, store, "later.duckdb")
+    save(str(store), later, keep_days=21, now=CHECKS_AT)
+    builds, folders = _elementary_pointer(store), _folders(store)
+
+    message = row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    code = row_history.main(["save", "--url", str(store), "--warehouse", str(warehouse), "--elementary-only"])
+
+    assert "::warning title=Elementary's history not saved::" in message and "left out" in message
+    assert code == 0 and "::warning title=Elementary's history not saved::" in capsys.readouterr().out
+    assert _elementary_pointer(store) == builds, "elementary.json keeps naming the later build's save"
+    assert _folders(store) == folders, "a skipped save leaves no folder behind"
+
+
+def test_a_builds_save_lands_over_a_checks_save_made_after_its_restore_and_says_so(tmp_path):
+    """The other order: the next build restored the build's save, and then the checks run saved on top of it."""
+    store, warehouse, build_save = _hourly_build(tmp_path)
+    later = _next_build(tmp_path, store, "later.duckdb")
+    row_history.restore_elementary(str(store), warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    checks_save = _elementary_pointer(store)["save_id"]
+    _elementary_build(later, CHECKS_AT.replace(hour=8), "inv4")
+
+    message = save(str(store), later, keep_days=21, now=CHECKS_AT.replace(hour=8))
+
+    pointer = _elementary_pointer(store)
+    assert "::warning title=A checks run's history was saved over::" in message and checks_save in message
+    assert pointer["save_id"] == json.loads((store / POINTER).read_text())["save_id"], "one save id for both parts"
+    assert (pointer["previous_save_id"], pointer["saved_over"]) == (build_save, checks_save)
+    after = _next_build(tmp_path, store, "after.duckdb")
+    assert _elementary_rows(after, "dbt_invocations", "invocation_id") == [("inv1",), ("inv2",), ("inv4",)], (
+        "the build's own rows are kept, and only the checks run's hour, inv3, is left out"
+    )
+
+
+def test_a_checks_runs_pointer_says_it_saved_elementarys_history_alone_and_a_builds_says_it_did_not(tmp_path):
+    """What lets a build tell a checks run's save, which it may save over, from another build's, which it may not."""
+    store, warehouse, _ = _hourly_build(tmp_path)
+    assert _elementary_pointer(store)["elementary_only"] is False
+
+    row_history.restore_elementary(str(store), warehouse)
+    row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+
+    assert _elementary_pointer(store)["elementary_only"] is True
+
+
+def test_a_checks_run_that_meets_a_builds_save_while_uploading_writes_no_pointer_and_removes_its_folder(tmp_path, monkeypatch):
+    """The check before the upload passed, and a build saved while the checks run's files went up: the pointer is read
+    again just before it is written, which narrows the window to that one read and write."""
+    store, warehouse, _ = _hourly_build(tmp_path)
+    row_history.restore_elementary(str(store), warehouse)
+    later = _next_build(tmp_path, store, "later.duckdb")
+    real_put, landed = row_history.Store.put, []
+
+    def put_while_a_build_saves(self, local, relative):
+        real_put(self, local, relative)
+        if not landed:  # the build's own puts pass straight through once this is set
+            landed.append(relative)
+            save(str(store), later, keep_days=21, now=CHECKS_AT)
+
+    monkeypatch.setattr(row_history.Store, "put", put_while_a_build_saves)
+    message = row_history.save_elementary(str(store), warehouse, keep_days=21, now=CHECKS_AT)
+    builds = json.loads((store / POINTER).read_text())["save_id"]
+
+    assert landed and "::warning title=Elementary's history not saved::" in message
+    assert _elementary_pointer(store)["save_id"] == builds, "elementary.json names the build's save, not the checks'"
+    assert landed[0].split("/")[1] not in _folders(store), "the checks run's uploaded folder is removed"
+
+
+def test_under_degrade_a_checks_run_whose_restore_fails_checks_with_no_history_and_saves_none(tmp_path, capsys):
+    store, warehouse, build_save = _hourly_build(tmp_path)
+    entry = _elementary_pointer(store)["tables"]["elementary_test_results"]
+    (store / entry["file"]).write_bytes(b"torn")
+    args = ["--url", str(store), "--warehouse", str(warehouse), "--elementary-only", "--elementary-on-failure", "degrade"]
+
+    restored = row_history.main(["restore", *args])
+    _elementary_tables(warehouse)
+    _elementary_build(warehouse, CHECKS_AT, "inv3")
+    saved = row_history.main(["save", *args])
+
+    out = capsys.readouterr().out
+    assert (restored, saved) == (row_history.ELEMENTARY_DEGRADED_EXIT, 0)
+    assert "::error title=Elementary's history not restored::" in out and "none of it is saved" in out
+    assert _elementary_rows(warehouse, "dbt_invocations", "invocation_id") == [("inv3",)], "no earlier build, not part of one"
+    assert _elementary_pointer(store)["save_id"] == build_save
+
+
+def test_under_degrade_a_store_the_checks_run_cannot_reach_is_elementarys_failure_too(tmp_path):
+    """Its row history is the build's to have restored, so nothing else is at stake in this run."""
+    _, warehouse, _ = _hourly_build(tmp_path)
+    nowhere = str(tmp_path / "no" / "such" / "store")
+
+    with pytest.raises(row_history.ElementaryDegraded, match="does not exist"):
+        row_history.restore_elementary(nowhere, warehouse, elementary_on_failure="degrade")
+    with pytest.raises(Refused, match="does not exist"):
+        row_history.restore_elementary(nowhere, warehouse)

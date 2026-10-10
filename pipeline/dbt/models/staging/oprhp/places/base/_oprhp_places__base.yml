@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: base_oprhp__park_polygons
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('oprhp', 'raw_nysparks__oprhp_park_polygons')
+          config:
+            severity: warn
+    description: >
+      NYS OPRHP's park polygons, one row per parcel as the layer holds them,
+      keyed and deduped, every column as it landed. int_places__park_units
+      groups them into parks for places.json.
+    columns:
+      - name: park_polygon_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          oprhp_park_polygons, globalid, the registry key first and then the
+          column measured unique for this layer (858 of 858 live rows,
+          2026-10-02).
+        data_tests: [not_null, unique]
+      - name: source_row
+        description: >
+          The row's place in the raw table, the order the layer's pages served
+          it: the order export_places.py reads the same file in.
+        data_tests: [not_null]

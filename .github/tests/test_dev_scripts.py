@@ -14,9 +14,12 @@ what TESTING.md's small-synthetic-fixture rule keeps out of CI. Parse plus
 the scope contract is the part that can be held without that.
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = [
@@ -61,6 +64,37 @@ def test_suite_scopes_reads_every_suites_workflow():
     assert "backend/" in _scope("backend")
 
 
+def test_the_dbt_suite_reads_the_dbt_jobs_own_scope_not_the_pytest_jobs():
+    """pipeline-tests.yml carries two suites, and the scope reading used to
+    stop at the first changed-paths step it met - the pytest job's - so the
+    dbt job's list was never read and scripts/test.sh ran no dbt at all
+    (#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts,
+    a monthly refresh, published docs, and lighter phone downloads). The
+    dbt job's list names files inside pipeline/ one by one; the pytest
+    job's names pipeline/ whole."""
+    dbt = _scope("dbt").split()
+    pipeline = _scope("pipeline").split()
+
+    assert "pipeline/dbt/" in dbt
+    assert "pipeline/.sqlfluff" in dbt
+    assert "pipeline/" not in dbt, "this is the pytest job's scope, read for the dbt suite"
+    assert "pipeline/" in pipeline
+
+
+def test_test_sh_runs_every_suite_suite_scopes_knows():
+    """A suite added to suite_scopes.py and not to test.sh's suite_names is
+    read, matched, and then never run - the quiet half of the drift #660
+    was about."""
+    test_sh = (REPO_ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
+    names_line = next(line for line in test_sh.splitlines() if line.startswith("suite_names=("))
+    named = set(names_line.split("(", 1)[1].rstrip(")").split())
+
+    listed = subprocess.run([sys.executable, str(SUITE_SCOPES)], capture_output=True, text=True, check=True)
+    known = {line.split()[0] for line in listed.stdout.splitlines() if line.strip()}
+
+    assert known <= named, f"suites test.sh never runs: {sorted(known - named)}"
+
+
 def test_the_client_scope_carries_the_entries_whose_absence_was_the_drift():
     """threads.sh's hand copy was missing exactly these (#660), so the
     ledger reported `none (docs only)` for changes CI runs the client suite
@@ -69,6 +103,23 @@ def test_the_client_scope_carries_the_entries_whose_absence_was_the_drift():
     assert "site/" in scope
     assert "pipeline/reference/" in scope
     assert ".github/ISSUE_TEMPLATE/" in scope
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        # client/src/lib/dataRelease.pointer.test.ts and config.phoneFileKey.test.ts
+        "channels.json",
+        # client/src/lib/config.phoneFileKey.test.ts, which reads every *.yml there
+        "pipeline/dbt/models/publish/_publish__elevation.yml",
+    ],
+)
+def test_the_client_scope_covers_the_files_decision_44s_client_tests_read(path):
+    """client-tests.yml's own rule: a suite's scope includes every file its
+    tests read. Without these, the promotion pull request, which changes
+    channels.json and nothing else, ran no check of its entries against the
+    client's release-id rule. Matched as changed-paths matches, by prefix."""
+    assert any(path.startswith(prefix) for prefix in _scope("client").split()), path
 
 
 def test_no_script_invokes_a_bare_python_or_python3():
@@ -89,6 +140,38 @@ def test_no_script_invokes_a_bare_python_or_python3():
         assert offenders == [], (
             f"{script.name} must run Python through the shared selection, not bare `python`/`python3`: {offenders}"
         )
+
+
+def _test_sh_parity_families(test_sh: str) -> set[str]:
+    """The parity families test.sh's dbt suite runs: its `for family in ...` lists and its direct parity.py lines."""
+    runs = {item.split(":")[0] for loop in re.findall(r"for family in ([a-z0-9_: ]+); do", test_sh) for item in loop.split()}
+    return runs | set(re.findall(r"parity\.py ([a-z0-9_]+) --new", test_sh))
+
+
+def test_test_sh_list_names_every_ci_dbt_parity_family_and_step_its_dbt_suite_leaves_out():
+    """WF8 of the PR #1805 review: test.sh's dbt suite ran 6 of the 47 parity families pipeline-tests.yml's dbt job
+    runs, and not its contract-versions step, while its comment said it followed that job "step for step". A change
+    that broke one of the other 41 passed test.sh and failed CI. `--list` now names every one it leaves out, from
+    CI's own step (scripts/dbt_ci_parity.py), and the array test.sh compares with is the families it runs."""
+    from test_build_reference import _ci_families
+
+    test_sh = (REPO_ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
+    runs = _test_sh_parity_families(test_sh)
+    (declared,) = re.findall(r"^dbt_local_parity=\(([a-z0-9_ ]+)\)$", test_sh, re.M)
+    assert set(declared.split()) == runs, "dbt_local_parity is not the families test.sh's parity lines run"
+
+    script = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "dbt_ci_parity.py")], capture_output=True, text=True, check=True
+    )
+    assert script.stdout.split() == list(_ci_families()), "scripts/dbt_ci_parity.py does not read CI's step"
+
+    listed = subprocess.run(
+        ["bash", str(REPO_ROOT / "scripts" / "test.sh"), "--all", "--list"], capture_output=True, text=True, check=True
+    )
+    (line,) = [line for line in listed.stdout.splitlines() if "parity families" in line]
+    named = set(line.split(" not run here: ", 1)[1].split(";", 1)[0].split())
+    assert named == set(_ci_families()) - runs and named, line
+    assert "check_contract_versions.py" in line, line
 
 
 def test_an_unknown_suite_is_an_error_not_an_empty_answer():

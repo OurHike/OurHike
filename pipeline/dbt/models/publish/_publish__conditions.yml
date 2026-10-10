@@ -1,0 +1,984 @@
+version: 2
+
+# The closures and warnings family's phone files (pipeline/ELT.md, "Publish
+# (reverse ETL)"): nine writers, and an exposure for each of the eleven
+# files they and export_conditions.py's notes and disputes write. Each writer
+# but pub_conditions_notices names its int_closures__gate row in `meta.gate`
+# and selects no row while that source is held, so its last copy stays on the
+# phone while the others are written, and publish.py fails the run
+# afterwards. pub_conditions_notices spans every club, so a held club keeps
+# its last good rows inside the file instead (decision 53, phase D), and it
+# names no gate row; nor does pub_conditions_hazard_areas (decision 84),
+# which keeps that writer's hazard rows as it wrote them. Only those two and
+# pub_conditions_notice_states (decision 76's state shapes, a monthly node
+# that reads no notice source, so no gate row) are new data with no
+# exporter. None of them uploads
+# anything: publish-conditions.yml and publish-weather.yml still upload the
+# Python exporters' files until stage 4 of #1793 — Rebuild the data platform
+# as dlt → dbt: seven contracted marts, a monthly refresh, published docs,
+# and lighter phone downloads.
+
+models:
+  - name: pub_conditions_atc_updates
+    description: >
+      Writes conditions/atc_updates.json, ATC's reviewed Trail Updates and the
+      ones ATC posted since the review that publish without a person, from
+      the closures and warnings marts: one row, `generated_at`, the file's
+      `reviewed_at` and `atc_updates`, which phone_file copies to
+      processed_dir/conditions_atc_updates.json. Writes nothing while
+      int_closures__gate holds ATC back, for a bad row, an unreviewed file or
+      int_sources__publication.
+      parity.py compares it with export_atc_updates.py's build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_atc_updates.py's _stamp_utc() stamps.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: reviewed_at
+        description: The reviewed file's `reviewed_at`, as written.
+        data_type: varchar
+      - name: atc_updates
+        description: >
+          Every reviewed row in the file's order, each as lib/atc_updates.py's
+          published_rows() writes it, then every automatic row in slug order,
+          each as auto_row() writes it, with obstructs_trail false and
+          review_state `unreviewed` (CL07-CL10, int_closures__atc_automatic).
+        data_type: json[]
+
+  - name: pub_conditions_weather_alerts
+    description: >
+      Writes conditions/weather_alerts.json, every relayed NWS alert that
+      reaches a trail square, from the warnings mart's NWS rows placed by
+      int_warnings__nws_placed (WN03): one document, written verbatim by
+      phone_file's json_document format to
+      processed_dir/conditions_weather_alerts.json. Writes nothing while
+      int_closures__gate holds NWS back (int_sources__publication, or no
+      alert landed to say when NWS was asked), and fails without exactly one
+      weather squares document. parity.py compares it with
+      export_weather_alerts.py's bake().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: document
+        description: >
+          The file: payload, schema, source and credit, fetched_at,
+          nws_updated, generated_at, the squares' release and zone_files,
+          `alerts` in id order (NWS's words under bake()'s names, placed_by,
+          squares) and unknown_zones.
+        data_type: json
+        data_tests: [not_null, unique]
+
+  - name: pub_conditions_nynjtc_alerts
+    description: >
+      Writes conditions/nynjtc_alerts.json, NYNJTC's Trail Alerts, from the
+      warnings mart (and the closures mart, which holds none of them today):
+      one row, `generated_at` and `nynjtc_alerts`. Writes nothing while
+      int_closures__gate holds NYNJTC back.
+      parity.py compares it with export_nynjtc_alerts.py's build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_nynjtc_alerts.py's _stamp_utc() stamps.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: nynjtc_alerts
+        description: Every alert by slug, each as lib/nynjtc_alerts.py's published_rows() writes it.
+        data_type: json[]
+
+  - name: pub_conditions_notices
+    description: >
+      Writes conditions/notices.json (decision 53, phase D), every club's
+      notices in one file: one OrgNotice (features/ORG_NOTICES.md section 2)
+      per row of a notice source (seeds/notice_readers.csv) in the closures
+      and warnings marts, facts and a link only (decision 55), each with its
+      place (ATC's A.T. miles, the source's own geometry shaped for a phone
+      by decision 77, an area grown 100 m and simplified at 100 m and a line
+      or point simplified at 10 m, NYNJTC's trail and park terms, or
+      unplaced), decision
+      67's `hazard` where it is a hunting area, shooting site or burned area,
+      the club's own `updated_at` and OurHike's `checked_at` (the run log's
+      latest read that loaded the source or found it unchanged), and the
+      marts' row dates. A source int_closures__gate holds keeps its last good
+      rows, which the marts carry with `carried_since`; in a build without
+      the row history, while one is held, it writes nothing and the phone
+      keeps its last file. No parity line: no exporter writes this file.
+      conditions/atc_updates.json and conditions/nynjtc_alerts.json are
+      written as before, by their own writers.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as every conditions writer stamps it.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: notices
+        description: >
+          Every club notice, by source_key and then notice_id, each an object
+          of exactly these keys: notice_id, source_key, club, provider,
+          steward_kind, title, category, locality, place, hazard,
+          obstructs_trail, starts_on, ends_on, updated_at, checked_at,
+          first_seen_at, changed_at, carried_since, source_url and
+          review_state, and `states` on the rows of a source
+          seeds/notice_states.csv names (decision 76). No other field of a
+          source, its person fields or its prose among them, can reach it.
+        data_type: json
+
+  - name: pub_conditions_hazard_areas
+    description: >
+      Writes conditions/hazard_areas.json (decision 84): the notices of
+      pub_conditions_notices that carry decision 67's `hazard`, each exactly
+      as that writer wrote it, in its order, under its `generated_at`.
+      Decision 77 has a phone download notices.json only once a hike is
+      planned; the phone reads this file at launch whatever is planned, and
+      draws hunting areas, shooting sites and burned areas from it. Writes
+      nothing while that writer writes nothing (a build without the row
+      history while a notice source is held), so the phone keeps its last
+      copy; an empty list when no notice carries a hazard. No parity line:
+      no exporter writes this file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: pub_conditions_notices' own `generated_at`, so the two files of one build carry one stamp.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: notices
+        description: >
+          Every notice of conditions/notices.json whose `hazard` is not null,
+          by source_key and then notice_id, each the same object of the same
+          keys that file carries.
+        data_type: json
+
+  - name: pub_conditions_notice_states
+    description: >
+      Writes conditions/notice_states.json (decision 76): the shape of every
+      state a state-wide agency notice names, from
+      int_closures__notice_state_shapes, each with its code, its name and
+      the margin the phone holds a route to. The phone reads it beside
+      conditions/notices.json and shows a state-wide notice to a hike
+      planned inside one of its states that walks the agency's trails. A
+      file of its own so its bytes hold between builds; `generated_at` is
+      when the extract landed TIGER's file. Writes nothing while no shape is
+      built, and the phone keeps its last file. No map draws a shape.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the extract landed the Census Bureau's file, stamped as every conditions writer stamps a time.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: states
+        description: >
+          One object per state, by code, of exactly these keys: state, name,
+          edge_margin_m and geometry (GeoJSON, 4 decimal places).
+        data_type: json
+
+  - name: pub_conditions_closures
+    description: >
+      Writes conditions/closures.json, OurHike's moderator-verified closures,
+      from the closures and warnings marts: one row, `generated_at` and
+      `closures`. Writes nothing while int_closures__gate holds OurHike's
+      closures back, for a row, a number that is not finite or
+      int_sources__publication. parity.py compares it with
+      export_conditions.py's read_closures() and build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_conditions.py's _stamp_utc() stamps, and the same for conditions/reports.json.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: closures
+        description: Every verified closure, by start_mile_marker then id, each as PUBLIC_CLOSURES_SQL selects it.
+        data_type: json[]
+
+  - name: pub_conditions_reports
+    description: >
+      Writes conditions/reports.json, every verified or resolved public
+      report whatever its severity, from base_ourhike__reports: one row,
+      `generated_at` and `reports`. Writes nothing while int_closures__gate
+      holds OurHike's reports back, for int_sources__publication or a number
+      that is not finite. parity.py compares it with
+      export_conditions.py's read_reports() and build_document().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_conditions.py's _stamp_utc() stamps, and the same for conditions/closures.json.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: reports
+        description: Every public report, by "timestamp" then id, each as PUBLIC_REPORTS_SQL selects it.
+        data_type: json[]
+
+  - name: pub_conditions_work_projects
+    description: >
+      Writes conditions/work_projects.json, the club workdays a hiker can see
+      and join (#760), from int_closures__work_projects_checked: one row,
+      `generated_at`, the file's `reviewed_at` and `work_projects`, which
+      phone_file copies to processed_dir/conditions_work_projects.json.
+      Writes nothing while int_closures__gate holds the file back:
+      int_sources__publication does not let it publish, nobody reviewed it,
+      or lib/work_projects.py's file_problems() would find a problem. No mart
+      owns work projects. parity.py compares it with
+      export_work_projects.py's main().
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: When the run started, stamped as export_work_projects.py's _stamp_utc() stamps.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: reviewed_at
+        description: The reviewed file's `reviewed_at`, as written.
+        data_type: varchar
+      - name: work_projects
+        description: Every row of the file in its order, each as published_rows() writes it (CL17).
+        data_type: json[]
+
+unit_tests:
+  - name: pub_conditions_notices_writes_one_orgnotice_per_club_notice
+    model: pub_conditions_notices
+    description: >
+      Decision 53's phase D, with decisions 55 and 67: one OrgNotice per club
+      notice in either mart, by source_key then notice_id, of exactly the
+      documented keys. ATC's row is placed by its A.T. miles and named by its
+      states; NYNJTC's carries its trail tags as `org_terms`; a burned area
+      carries its own geometry and `hazard`, and never obstructs the trail,
+      whatever its row says; OurHike's own closure and an NWS alert are not
+      club notices. A source seeds/notice_states.csv names (decision 76)
+      carries its states as `states`, last, and no other row carries the key. `checked_at` is the oldest of a source's tables' latest
+      loaded or unchanged reads (ATC's two), null where a table has none
+      (BAER), and on a carried row the latest such read before carrying
+      began (a page notice, whose 09:00 read came after it). A refused read
+      never counts.
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-04T12:00:00Z'"
+        # A build with its row history, whatever the environment running the
+        # test says: the history-off case writes no file while a club is
+        # held, and tests/test_dbt_notice_tables_absent_builds.py holds it.
+        when_row_history_is_off: ""
+    given:
+      - input: ref('closures', v=1)
+        format: sql
+        rows: |
+          select
+              closure_id, club, source_key,
+              cast(obstructs_trail as boolean) as obstructs_trail,
+              review_state, title, category,
+              cast(states as json) as states,
+              locality,
+              cast(closure_reason as varchar) as closure_reason,
+              cast(closure_place as varchar) as closure_place,
+              cast(mile_start as double) as mile_start,
+              cast(mile_end as double) as mile_end,
+              cast(starts_on as date) as starts_on,
+              cast(ends_on as date) as ends_on,
+              updated_at, source_url,
+              cast(geom_geojson as varchar) as geom_geojson,
+              cast(_first_seen_at as timestamptz) as _first_seen_at,
+              cast(_changed_at as timestamptz) as _changed_at,
+              cast(carried_since as timestamptz) as carried_since
+          from (values
+              ('atc_trail_updates:bridge', 'atc', 'atc_trail_updates', true, 'reviewed', 'Fixture footbridge out', 'Closure', '["VT"]', null, null, null, 1650.5, 1650.5, null, null, '2026-09-30T12:00:00Z', 'https://appalachiantrail.org/fixture', null, '2026-10-01 00:00:00+00', '2026-10-02 00:00:00+00', null),
+              ('ourhike_closures:c1', 'ourhike', 'ourhike_closures', true, 'moderator_verified', null, null, null, null, null, null, 10.0, 11.0, null, null, null, null, null, '2026-10-01 00:00:00+00', '2026-10-01 00:00:00+00', null)
+          ) as closures (closure_id, club, source_key, obstructs_trail, review_state, title, category, states, locality, closure_reason, closure_place, mile_start, mile_end, starts_on, ends_on, updated_at, source_url, geom_geojson, _first_seen_at, _changed_at, carried_since)
+      - input: ref('warnings', v=1)
+        format: sql
+        rows: |
+          select
+              warning_id, warning_kind, club, source_key,
+              cast(obstructs_trail as boolean) as obstructs_trail,
+              review_state, title, category,
+              cast(states as json) as states,
+              locality,
+              cast(mile_start as double) as mile_start,
+              cast(mile_end as double) as mile_end,
+              cast(starts_on as date) as starts_on,
+              cast(ends_on as date) as ends_on,
+              updated_at, source_url,
+              cast(geom_geojson as varchar) as geom_geojson,
+              cast(_first_seen_at as timestamptz) as _first_seen_at,
+              cast(_changed_at as timestamptz) as _changed_at,
+              cast(carried_since as timestamptz) as carried_since
+          from (values
+              ('nynjtc_trail_alerts:detour', 'org_notice', 'nynjtc', 'nynjtc_trail_alerts', null, 'not_reviewed', 'Fixture detour', null, null, 'Harriman-Bear Mountain', null, null, null, null, '2026-09-29T12:00:00Z', 'https://www.nynjtc.org/fixture', null, '2026-09-29 13:00:00+00', '2026-09-29 13:00:00+00', null),
+              ('usfs_baer_assessments:1', 'org_notice', 'usfs', 'usfs_baer_assessments', true, 'not_reviewed', 'FIXTURE FIRE', null, null, 'Fixture National Forest', null, null, '2026-08-26', null, null, null, '{"type":"Point","coordinates":[-74.1,41.2]}', '2026-10-03 00:00:00+00', '2026-10-03 00:00:00+00', null),
+              ('club_page:1', 'org_notice', 'a', 'club_page', null, 'not_reviewed', 'Fixture trail work', null, null, null, null, null, null, '2026-11-01', null, 'https://example.org/fixture', null, '2026-10-02 00:00:00+00', '2026-10-04 08:00:00+00', '2026-10-04 08:00:00+00'),
+              ('nws_alerts:x', 'nws_alert', 'nws', 'nws_alerts', false, 'relayed', null, null, null, null, null, null, null, null, null, null, null, '2026-10-04 00:00:00+00', '2026-10-04 00:00:00+00', null)
+          ) as warnings (warning_id, warning_kind, club, source_key, obstructs_trail, review_state, title, category, states, locality, mile_start, mile_end, starts_on, ends_on, updated_at, source_url, geom_geojson, _first_seen_at, _changed_at, carried_since)
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand, steward_kind: club}
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: atc_trail_update_pages, listing: full, raw_table: raw_atc__atc_trail_updates_pages, staged_by: hand, steward_kind: club}
+          - {source_key: nynjtc_trail_alerts, club: nynjtc, notice_type: closures, reader: wordpress_posts, listing: full, raw_table: raw_nynjtc__nynjtc_trail_alerts, staged_by: hand, steward_kind: club}
+          - {source_key: usfs_baer_assessments, club: usfs, notice_type: warnings, reader: arcgis_layer, listing: full, raw_table: raw_usfs__usfs_baer_assessments, staged_by: stg_usfs__usfs_baer_assessments, steward_kind: agency}
+          - {source_key: club_page, club: a, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_a__club_page, staged_by: stg_a__club_page, steward_kind: club}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: atc_trail_updates, provider: ATC, title: 'ATC Trail Updates'}
+          - {source_key: nynjtc_trail_alerts, provider: NYNJTC, title: 'NYNJTC Trail Alerts'}
+          - {source_key: usfs_baer_assessments, provider: USFS, title: 'USFS BAER assessments'}
+          - {source_key: club_page, provider: 'Fixture Club', title: 'Fixture Club trail conditions'}
+      - input: ref('notice_hazard_areas')
+        rows:
+          - {source_key: usfs_baer_assessments, hazard: burned_area, category_value: '', why: 'Fixture'}
+      - input: ref('notice_states')
+        rows:
+          - {source_key: usfs_baer_assessments, states: 'ID MT', evidence: 'Fixture'}
+      - input: ref('int_closures__nynjtc_checked')
+        rows:
+          - {notice_id: 'nynjtc_trail_alerts:detour', place_terms: '["trail:appalachian-trail"]'}
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: atc_trail_updates, passed: true, may_publish: true}
+          - {source_key: nynjtc_trail_alerts, passed: true, may_publish: true}
+          - {source_key: usfs_baer_assessments, passed: true, may_publish: true}
+          - {source_key: club_page, passed: false, may_publish: true}
+      - input: ref('base_extract__runs')
+        rows:
+          - {table_name: raw_atc__atc_trail_updates, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
+          - {table_name: raw_atc__atc_trail_updates_pages, outcome: skipped, checked_at: '2026-10-04 11:00:00+00'}
+          - {table_name: raw_atc__atc_trail_updates_pages, outcome: refused, checked_at: '2026-10-04 11:30:00+00'}
+          - {table_name: raw_nynjtc__nynjtc_trail_alerts, outcome: loaded, checked_at: '2026-10-04 10:30:00+00'}
+          - {table_name: raw_usfs__usfs_baer_assessments, outcome: refused, checked_at: '2026-10-04 10:00:00+00'}
+          - {table_name: raw_a__club_page, outcome: loaded, checked_at: '2026-10-04 06:00:00+00'}
+          - {table_name: raw_a__club_page, outcome: skipped, checked_at: '2026-10-04 09:00:00+00'}
+    expect:
+      rows:
+        - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","states":["ID","MT"]}]'}
+
+  - name: pub_conditions_notices_simplifies_an_area_for_a_phone
+    model: pub_conditions_notices
+    description: >
+      The geometry a phone needs (decision 77, the writer's header): a
+      hunting parcel about 4 km by 1.1 km, with a vertex 3 m off its edge and
+      two that lie on it, is grown 100 m outward and simplified at 100 m to
+      four corners at 5 decimal places, the corners' curves cut by the
+      simplifier, so a layer's survey detail does not ride to every phone.
+      Every corner of the parcel is inside it
+      (assert_a_notice_area_covers_every_vertex_of_its_source holds that for
+      this parcel and the shapes that bite). The shell is wound
+      counterclockwise, as RFC 7946 asks of a writer.
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-04T12:00:00Z'"
+        # A build with its row history, whatever the environment running the
+        # test says: the history-off case writes no file while a club is
+        # held, and tests/test_dbt_notice_tables_absent_builds.py holds it.
+        when_row_history_is_off: ""
+    given:
+      - input: ref('closures', v=1)
+        rows: []
+      - input: ref('warnings', v=1)
+        format: sql
+        rows: |
+          select
+              'iata_lands_hunting_regs:1' as warning_id,
+              'org_notice' as warning_kind,
+              'iata' as club,
+              'iata_lands_hunting_regs' as source_key,
+              cast(null as boolean) as obstructs_trail,
+              'not_reviewed' as review_state,
+              'Fixture Hunting Parcel' as title,
+              'Open for public hunting' as category,
+              cast(null as json) as states,
+              'Fixture' as locality,
+              cast(null as double) as mile_start,
+              cast(null as double) as mile_end,
+              cast(null as date) as starts_on,
+              cast(null as date) as ends_on,
+              cast(null as varchar) as updated_at,
+              cast(null as varchar) as source_url,
+              '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.4875,44.5],[-89.475,44.500027],[-89.4625,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.51],[-89.5,44.5]]]}' as geom_geojson,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _first_seen_at,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _changed_at,
+              cast(null as timestamptz) as carried_since
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: iata_lands_hunting_regs, club: iata, notice_type: warnings, reader: arcgis_layer, listing: full, raw_table: raw_iata__iata_lands_hunting_regs, staged_by: stg_iata__iata_lands_hunting_regs, steward_kind: club}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: iata_lands_hunting_regs, provider: IATA, title: 'Ice Age Trail Alliance lands hunting regulations'}
+      - input: ref('notice_hazard_areas')
+        rows:
+          - {source_key: iata_lands_hunting_regs, hazard: hunting, category_value: 'Open for public hunting', why: 'Fixture'}
+      - input: ref('notice_states')
+        rows: []
+      - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: iata_lands_hunting_regs, passed: true, may_publish: true}
+      - input: ref('base_extract__runs')
+        rows:
+          - {table_name: raw_iata__iata_lands_hunting_regs, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
+    expect:
+      rows:
+        - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.50126,44.5],[-89.44975,44.49911],[-89.44876,44.51018],[-89.50025,44.51089],[-89.50126,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+
+  - name: pub_conditions_hazard_areas_keeps_only_the_hazard_rows_of_the_notices_file_as_written
+    model: pub_conditions_hazard_areas
+    description: >
+      Decision 84's file: of a notices file holding a club's unplaced
+      notice, a hunting area, a shooting site and a burned area (the first
+      two hazards out of order), the three hazard rows, each object exactly
+      as notices.json carries it, by source_key then notice_id, under that
+      file's own `generated_at`.
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              '2026-10-05T00:23:54Z' as generated_at,
+              cast('[{"notice_id":"club_page:1","source_key":"club_page","hazard":null,"place":{"kind":"unplaced"}},{"notice_id":"oprhp_hunting_areas:2","source_key":"oprhp_hunting_areas","hazard":"hunting","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-74.09,41.24],[-74.08,41.24],[-74.08,41.25],[-74.09,41.24]]]}},"first_seen_at":"2026-10-04T22:01:56Z"},{"notice_id":"blm_shooting_points:1","source_key":"blm_shooting_points","hazard":"shooting","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-112.0,40.5]}}},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","hazard":"burned_area","states":["ID","MT"]}]' as json) as notices
+    expect:
+      rows:
+        - {generated_at: '2026-10-05T00:23:54Z', notices: '[{"notice_id":"blm_shooting_points:1","source_key":"blm_shooting_points","hazard":"shooting","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-112.0,40.5]}}},{"notice_id":"oprhp_hunting_areas:2","source_key":"oprhp_hunting_areas","hazard":"hunting","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-74.09,41.24],[-74.08,41.24],[-74.08,41.25],[-74.09,41.24]]]}},"first_seen_at":"2026-10-04T22:01:56Z"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","hazard":"burned_area","states":["ID","MT"]}]'}
+
+  - name: pub_conditions_hazard_areas_writes_an_empty_list_when_no_notice_carries_a_hazard
+    model: pub_conditions_hazard_areas
+    description: >
+      A notices file with no hazard row gives a file with an empty list:
+      the file arrived and no source publishes a hazard area, which the
+      phone may draw as none.
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              '2026-10-05T00:23:54Z' as generated_at,
+              cast('[{"notice_id":"club_page:1","source_key":"club_page","hazard":null}]' as json) as notices
+    expect:
+      rows:
+        - {generated_at: '2026-10-05T00:23:54Z', notices: '[]'}
+
+  - name: pub_conditions_hazard_areas_writes_nothing_while_the_notices_writer_writes_nothing
+    model: pub_conditions_hazard_areas
+    description: >
+      A build without the row history while a notice source is held, where
+      pub_conditions_notices selects no row: this selects none either, so
+      the phone keeps its last copy rather than reading an empty list as no
+      hazard area anywhere.
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as generated_at,
+              cast(null as json) as notices
+          where false
+    expect:
+      rows: []
+
+  - name: pub_conditions_notices_keeps_its_last_file_while_a_source_held_with_notices_has_none_to_carry
+    model: pub_conditions_notices
+    description: >
+      Review finding DBT-10, with decision 81's holds: a source the gate holds
+      although this build read 2 rows of it, and of which the marts hold no
+      row to carry (a cold start, or no build of this history ever passed it),
+      would read as a club with no notices. So the writer selects no row and
+      the phone keeps its last file whole, with the row history on.
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-04T12:00:00Z'"
+        when_row_history_is_off: ""
+    given:
+      - input: ref('closures', v=1)
+        rows: []
+      - input: ref('warnings', v=1)
+        format: sql
+        rows: |
+          select
+              'club_ok:1' as warning_id,
+              'org_notice' as warning_kind,
+              'a' as club,
+              'club_ok' as source_key,
+              cast(null as boolean) as obstructs_trail,
+              'not_reviewed' as review_state,
+              'Fixture bridge out' as title,
+              cast(null as varchar) as category,
+              cast(null as json) as states,
+              cast(null as varchar) as locality,
+              cast(null as double) as mile_start,
+              cast(null as double) as mile_end,
+              cast(null as date) as starts_on,
+              cast(null as date) as ends_on,
+              cast(null as varchar) as updated_at,
+              cast(null as varchar) as source_url,
+              cast(null as varchar) as geom_geojson,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _first_seen_at,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _changed_at,
+              cast(null as timestamptz) as carried_since
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: club_ok, club: a, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_a__club_ok, staged_by: stg_a__club_ok, steward_kind: club}
+          - {source_key: club_held, club: b, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_b__club_held, staged_by: stg_b__club_held, steward_kind: club}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: club_ok, provider: 'Fixture Club A', title: 'Fixture A notices'}
+          - {source_key: club_held, provider: 'Fixture Club B', title: 'Fixture B closures'}
+      - input: ref('notice_hazard_areas')
+        rows: []
+      - input: ref('notice_states')
+        rows: []
+      - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: club_ok, passed: true, may_publish: true, rows_total: 1}
+          - {source_key: club_held, passed: false, may_publish: true, rows_total: 2}
+      - input: ref('base_extract__runs')
+        rows:
+          - {table_name: raw_a__club_ok, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
+    expect:
+      rows: []
+
+  - name: pub_conditions_notices_writes_while_a_held_source_this_build_read_no_rows_of_has_none_to_carry
+    model: pub_conditions_notices
+    description: >
+      The other half of DBT-10's rule: a held source this build read no rows
+      of (its table absent, never loaded, or an empty read nothing proves),
+      with nothing to carry, does not stop the file. With the history on, no
+      file this history wrote carried a row of it either, and holding the
+      file for it would stop every club's notices for as long as one source
+      is never read (the writer's header).
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-04T12:00:00Z'"
+        when_row_history_is_off: ""
+    given:
+      - input: ref('closures', v=1)
+        rows: []
+      - input: ref('warnings', v=1)
+        format: sql
+        rows: |
+          select
+              'club_ok:1' as warning_id,
+              'org_notice' as warning_kind,
+              'a' as club,
+              'club_ok' as source_key,
+              cast(null as boolean) as obstructs_trail,
+              'not_reviewed' as review_state,
+              'Fixture bridge out' as title,
+              cast(null as varchar) as category,
+              cast(null as json) as states,
+              cast(null as varchar) as locality,
+              cast(null as double) as mile_start,
+              cast(null as double) as mile_end,
+              cast(null as date) as starts_on,
+              cast(null as date) as ends_on,
+              cast(null as varchar) as updated_at,
+              cast(null as varchar) as source_url,
+              cast(null as varchar) as geom_geojson,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _first_seen_at,
+              cast('2026-10-03 00:00:00+00' as timestamptz) as _changed_at,
+              cast(null as timestamptz) as carried_since
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: club_ok, club: a, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_a__club_ok, staged_by: stg_a__club_ok, steward_kind: club}
+          - {source_key: club_held, club: b, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_b__club_held, staged_by: stg_b__club_held, steward_kind: club}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: club_ok, provider: 'Fixture Club A', title: 'Fixture A notices'}
+          - {source_key: club_held, provider: 'Fixture Club B', title: 'Fixture B closures'}
+      - input: ref('notice_hazard_areas')
+        rows: []
+      - input: ref('notice_states')
+        rows: []
+      - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: club_ok, passed: true, may_publish: true, rows_total: 1}
+          - {source_key: club_held, passed: false, may_publish: true, rows_total: 0}
+      - input: ref('base_extract__runs')
+        rows:
+          - {table_name: raw_a__club_ok, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
+    expect:
+      rows:
+        - {notices: '[{"notice_id":"club_ok:1","source_key":"club_ok","club":"a","provider":"Fixture Club A","steward_kind":"club","title":"Fixture bridge out","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+
+  - name: pub_conditions_notice_states_writes_each_shape_with_its_margin_and_the_files_own_date
+    model: pub_conditions_notice_states
+    description: >
+      Decision 76's file: one object per state, by code, with its name, the
+      margin the phone holds a route to and its shape, and `generated_at`
+      the latest landing of TIGER's file, never the build's clock, so a
+      build that changes nothing writes the same bytes.
+    given:
+      - input: ref('int_closures__notice_state_shapes')
+        format: sql
+        rows: |
+          select
+              state,
+              state_name,
+              cast(phone_geometry as json) as phone_geometry,
+              cast(500.0 as double) as edge_margin_m,
+              cast(_loaded_at as timestamptz) as _loaded_at
+          from (values
+              ('UT', 'Utah', '{"type":"Polygon","coordinates":[[[-114.05,37.0],[-109.05,37.0],[-109.05,42.0],[-114.05,42.0],[-114.05,37.0]]]}', '2026-10-01 06:00:00+00'),
+              ('CT', 'Connecticut', '{"type":"Polygon","coordinates":[[[-73.7,41.0],[-71.8,41.0],[-71.8,42.05],[-73.7,42.05],[-73.7,41.0]]]}', '2026-10-01 06:00:00+00')
+          ) as shapes (state, state_name, phone_geometry, _loaded_at)
+    expect:
+      rows:
+        - {generated_at: '2026-10-01T06:00:00Z', states: '[{"state":"CT","name":"Connecticut","edge_margin_m":500.0,"geometry":{"type":"Polygon","coordinates":[[[-73.7,41.0],[-71.8,41.0],[-71.8,42.05],[-73.7,42.05],[-73.7,41.0]]]}},{"state":"UT","name":"Utah","edge_margin_m":500.0,"geometry":{"type":"Polygon","coordinates":[[[-114.05,37.0],[-109.05,37.0],[-109.05,42.0],[-114.05,42.0],[-114.05,37.0]]]}}]'}
+
+  - name: pub_conditions_notice_states_writes_nothing_while_no_shape_is_built
+    model: pub_conditions_notice_states
+    description: >
+      A warehouse without TIGER's table (the fixture build, or a month the
+      extract refused it) builds no shape, and the writer selects no row, so
+      the phone keeps its last file rather than an empty list that would hide
+      every state-wide notice.
+    given:
+      - input: ref('int_closures__notice_state_shapes')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as state,
+              cast(null as varchar) as state_name,
+              cast(null as json) as phone_geometry,
+              cast(null as double) as edge_margin_m,
+              cast(null as timestamptz) as _loaded_at
+          where false
+    expect:
+      rows: []
+
+  - name: pub_conditions_reports_writes_only_the_verified_public_reports
+    model: pub_conditions_reports
+    description: >
+      The writer's own filter, the second after the extract's
+      PUBLIC_REPORTS_SQL: a report the extract should never have landed is
+      left out rather than published. Of a verified public report, a
+      verified report for safety moderators (internal_only), a verified one
+      for its club (club_only) and a public one still awaiting review
+      (submitted), only the first is written. The fixtures hold public
+      reports only (make_dbt_fixtures.py), so neither the build nor parity
+      reaches this filter; the review of PR #1805 (dlt → dbt re-platform as
+      one go/no-go change) found it untested on 2026-10-09.
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-09T12:00:00Z'"
+    given:
+      - input: ref('base_ourhike__reports')
+        format: sql
+        rows: |
+          select
+              ourhike_report_key, report_uuid, report_type, poi_id,
+              cast(lat as double) as lat,
+              cast(lon as double) as lon,
+              cast(mile as double) as mile,
+              reporter_type,
+              cast(reported_at as timestamptz) as reported_at,
+              note,
+              cast(follow_up as json) as follow_up,
+              report_status, visibility, report_severity,
+              cast(verified_at as timestamptz) as verified_at,
+              cast(_loaded_at as timestamptz) as _loaded_at,
+              _dlt_id
+          from (values
+              ('k1', 'r-public', 'water', null, 41.5, -74.25, null, 'hiker', '2026-10-08 15:00:00+00', 'Fixture spring flowing', null, 'verified', 'public', 'info', '2026-10-08 16:00:00+00', '2026-10-09 00:00:00+00', 'd1'),
+              ('k2', 'r-moderators', 'safety', null, 41.6, -74.2, null, 'hiker', '2026-10-08 15:10:00+00', 'Fixture note for safety moderators', null, 'verified', 'internal_only', 'serious', '2026-10-08 16:10:00+00', '2026-10-09 00:00:00+00', 'd2'),
+              ('k3', 'r-club', 'trail', null, 41.7, -74.15, null, 'hiker', '2026-10-08 15:20:00+00', 'Fixture note for the club', null, 'verified', 'club_only', 'info', '2026-10-08 16:20:00+00', '2026-10-09 00:00:00+00', 'd3'),
+              ('k4', 'r-pending', 'water', null, 41.8, -74.1, null, 'hiker', '2026-10-08 15:30:00+00', 'Fixture report awaiting review', null, 'submitted', 'public', 'info', null, '2026-10-09 00:00:00+00', 'd4')
+          ) as reports (ourhike_report_key, report_uuid, report_type, poi_id, lat, lon, mile, reporter_type, reported_at, note, follow_up, report_status, visibility, report_severity, verified_at, _loaded_at, _dlt_id)
+      - input: ref('int_closures__gate')
+        format: sql
+        rows: |
+          select 'ourhike_reports' as source_key, true as passed, true as may_publish
+    expect:
+      format: sql
+      rows: |
+        select
+            '2026-10-09T12:00:00Z' as generated_at,
+            [cast('{"id":"r-public","type":"water","poi_id":null,"lat":41.5,"lon":-74.25,"mile":null,"reporter_type":"hiker","timestamp":"2026-10-08T15:00:00Z","note":"Fixture spring flowing","follow_up":null,"status":"verified","visibility":"public","severity":"info","verified_at":"2026-10-08T16:00:00Z"}' as json)] as reports
+
+exposures:
+  - name: conditions_atc_updates_json
+    label: conditions/atc_updates.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      ATC's own Trail Updates (#460 — Publish the ATC's own Trail Updates as
+      a static artifact), read by client/src/lib/atcUpdates.ts through
+      publishedConditions.ts's PUBLISHED_ATC_UPDATES_KEY: the reviewed rows,
+      and the rows ATC posted since the review that its gate publishes
+      unreviewed (#963 — Publish the mechanically unambiguous ATC updates
+      hourly, without waiting for a person), which never obstruct the trail.
+      Rewritten in place under conditions/, outside every release folder.
+      Uploaded by publish-conditions.yml from export_atc_updates.py's file
+      until stage 4 of #1793 moves the upload to this writer's.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_atc_updates')
+    config:
+      meta:
+        r2_keys: [conditions/atc_updates.json]
+        format: json
+        # publish-conditions.yml's cron, "40 * * * *", which fires about
+        # five times a day (#1346).
+        cadence: hourly
+
+  - name: conditions_weather_alerts_json
+    label: conditions/weather_alerts.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every active NWS alert that reaches a trail square (#1056), the offline
+      fallback for a phone that cannot ask NWS itself for its square's zones,
+      read by client/src/lib/weatherForecast.ts as WEATHER_ALERTS_KEY, which
+      refuses a document whose `payload` is not weather_alerts or whose
+      `schema` is not 1. Rewritten in place under
+      conditions/, outside every release folder. Uploaded by
+      publish-weather.yml from export_weather_alerts.py's file until stage 4
+      of #1793 moves it to the conditions job (decision 28a) and the upload to
+      this writer's.
+    depends_on:
+      - ref('warnings', v=1)
+      - ref('pub_conditions_weather_alerts')
+    config:
+      meta:
+        r2_keys: [conditions/weather_alerts.json]
+        format: json
+        # publish-weather.yml's cron, "55 * * * *", until decision 28a moves
+        # the alerts to the conditions job's hourly lane.
+        cadence: hourly
+
+  - name: conditions_nynjtc_alerts_json
+    label: conditions/nynjtc_alerts.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      NYNJTC's Trail Alerts, unplaced and unreviewed, read through
+      publishedConditions.ts's PUBLISHED_NYNJTC_ALERTS_KEY. Uploaded by
+      publish-conditions.yml from export_nynjtc_alerts.py's file until stage
+      4 of #1793.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_nynjtc_alerts')
+    config:
+      meta:
+        r2_keys: [conditions/nynjtc_alerts.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_notices_json
+    label: conditions/notices.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every club's notices in one file (decision 53, phase D: one OrgNotice
+      per club notice, decision 51's single notices file), read by
+      client/src/lib/publishedConditions.ts as PUBLISHED_NOTICES_KEY and
+      chosen for a hiker by client/src/lib/plannedNotices.ts, which shows
+      the ones that touch a hike planned to start in the next 7 days
+      (decision 66). Decision 67's hazard areas carry their geometry and draw
+      where a downloaded trail crosses one. Rewritten in place under
+      conditions/, outside every release folder. Published by the dbt path
+      of publish-conditions.yml (publish.py with OURHIKE_PHONE_FILES=dbt);
+      the exporters' path has no writer for it, so it is uploaded only where
+      the dbt path runs.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_notices')
+    config:
+      meta:
+        r2_keys: [conditions/notices.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_hazard_areas_json
+    label: conditions/hazard_areas.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Decision 67's hunting areas, shooting sites and burned areas (decision
+      84): the hazard rows of conditions/notices.json in a file of their own,
+      read by client/src/lib/publishedNotices.ts as
+      PUBLISHED_HAZARD_AREAS_KEY at launch, whatever the hiker has planned,
+      because decision 77 downloads notices.json only once a hike is
+      planned. The map draws an area where a downloaded trail crosses one,
+      and a tapped stretch inside it carries the area's advisory. Rewritten
+      in place under conditions/, outside every release folder. Published by
+      the dbt path of publish-conditions.yml (publish.py with
+      OURHIKE_PHONE_FILES=dbt); the exporters' path has no writer for it,
+      and a phone without it draws the areas from notices.json where that
+      file has reached it, as before this file existed.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_hazard_areas')
+    config:
+      meta:
+        r2_keys: [conditions/hazard_areas.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_notice_states_json
+    label: conditions/notice_states.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The shape of every state a state-wide agency notice names (decision
+      76), read by client/src/lib/publishedNotices.ts as
+      PUBLISHED_NOTICE_STATES_KEY beside conditions/notices.json, for
+      client/src/lib/plannedNotices.ts's one question of it: is a planned
+      route inside this state? Never drawn. Its bytes hold between builds,
+      so its ETag does too. A monthly node (its upstream is the Census
+      Bureau's TIGER/Line file), so the monthly lane's dbt build
+      (build-reference.yml) writes it; the exporters' path has no writer for
+      it, and a phone without it shows no state-wide notice, as decision 68
+      left them.
+    depends_on:
+      - ref('pub_conditions_notice_states')
+    config:
+      meta:
+        r2_keys: [conditions/notice_states.json]
+        format: json
+        cadence: monthly
+
+  - name: conditions_closures_json
+    label: conditions/closures.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      OurHike's moderator-verified closures, the offline baseline of the live
+      closures endpoint, read through publishedConditions.ts's
+      PUBLISHED_CLOSURES_KEY. Uploaded by publish-conditions.yml from
+      export_conditions.py's file until stage 4 of #1793.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_closures')
+    config:
+      meta:
+        r2_keys: [conditions/closures.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_reports_json
+    label: conditions/reports.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every verified or resolved public report, the offline baseline of the
+      live reports endpoint, read through publishedConditions.ts's
+      PUBLISHED_REPORTS_KEY. The serious ones are also in the warnings mart.
+      Uploaded by publish-conditions.yml from export_conditions.py's file
+      until stage 4 of #1793.
+    depends_on:
+      - ref('pub_conditions_reports')
+    config:
+      meta:
+        r2_keys: [conditions/reports.json]
+        format: json
+        cadence: hourly
+
+  # The two files below have no writer here, so each exposure names what
+  # it reads and the Python that still writes it.
+  - name: conditions_notes_json
+    label: conditions/notes.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Each POI's most recent visible field notes (WN11), read by
+      client/src/lib/fieldNotes.ts. Baked by export_conditions.py as today;
+      no mart owns field notes ("The eleven marts", what reaches a phone from
+      no mart), so this reads the staging model of the query's own rows.
+    depends_on:
+      - ref('base_ourhike__notes')
+    config:
+      meta:
+        r2_keys: [conditions/notes.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_disputes_json
+    label: conditions/disputes.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The corroborated disputes, two or more accounts saying a POI is not
+      there (WN11), read through publishedConditions.ts's
+      PUBLISHED_DISPUTES_KEY. Baked by export_conditions.py as today, from
+      no mart.
+    depends_on:
+      - ref('base_ourhike__disputes')
+    config:
+      meta:
+        r2_keys: [conditions/disputes.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_work_projects_json
+    label: conditions/work_projects.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The club workdays a hiker can see and join (#760), read through
+      publishedConditions.ts's PUBLISHED_WORK_PROJECTS_KEY; workProjects.ts
+      gives way to an out-of-date notice after 48 h. The first data in the
+      app that expires, so rewritten in place under conditions/, outside
+      every release folder, and never in an offline package: a cancelled
+      workday clears with the next build (CL18). Uploaded by
+      publish-conditions.yml from export_work_projects.py's file until stage
+      4 of #1793 moves the upload to this writer's.
+    depends_on:
+      - ref('pub_conditions_work_projects')
+    config:
+      meta:
+        r2_keys: [conditions/work_projects.json]
+        format: json
+        cadence: hourly
+
+  # conditions/drought.json (WN12) has no exposure: its fetch is on hold
+  # under #1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a
+  # path the Drought Monitor's robots.txt disallows for every user agent.

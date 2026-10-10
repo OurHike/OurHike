@@ -1,0 +1,6 @@
+licence_basis,applies_to,admitted_by
+stated_by_org,any,"Who may publish, rule 1: the organization published terms of its own and they permit this"
+maintainer_authorisation,any,"Who may publish, rule 1: the maintainer's recorded authorisation, which is not a licence from the organization"
+maintainer_clearinghouse,nys_clearinghouse,"Who may publish, rule 4 (decisions 20 and 22): a NYS DEC or OPRHP dataset the NYS GIS Clearinghouse lists"
+public_gis,gis,"Who may publish, rule 3 (decision 21a): a GIS layer the organization publishes itself, anonymously, on a public endpoint"
+public_domain,federal,"Only a federal work is public domain by statute (17 U.S.C. 105), so a non-federal row is refused"

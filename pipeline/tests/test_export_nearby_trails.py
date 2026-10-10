@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 from pmtiles.reader import MmapSource, Reader
+from shapely import wkt as shapely_wkt
 from shapely.geometry import shape
 
 import export_nearby_trails as ex
@@ -191,9 +192,11 @@ def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None, centerli
 def test_publishes_the_six_properties_the_client_draws_from(tmp_path, monkeypatch):
     """`length_miles` is the sixth, added by #1516 so a phone can tell a whole
     trail from part of one. It is asserted separately from the exact-equality
-    check below because its value is EPSG:5070's rather than this writer's, and
-    pinning the literal would turn a test of what gets published into a test of
-    the projection."""
+    check below because its value is the WGS84 ellipsoid's rather than this
+    writer's (decision 97), and pinning the literal would turn a test of what
+    gets published into a test of the geodesic.
+    test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length pins
+    the measure."""
     _, body = _run(
         tmp_path,
         monkeypatch,
@@ -1802,8 +1805,8 @@ def test_every_feature_carries_its_own_length_so_a_phone_can_tell_partial_from_w
     from a steward's stated mileage, which is both why it is the right number
     for a coverage check - it describes the same clipped line the phone holds
     edges of - and why nothing may present it as the steward's claim."""
-    # A degenerate one-point line alongside a real one: `_miles` returns 0.0
-    # for it, and 0 is the value lineClimb treats as "nothing to compare
+    # A degenerate one-point line alongside a real one: it measures 0.0,
+    # and 0 is the value lineClimb treats as "nothing to compare
     # against" rather than as a zero-length trail.
     geojson = ex.records_to_geojson(
         [
@@ -1833,14 +1836,46 @@ def test_every_feature_carries_its_own_length_so_a_phone_can_tell_partial_from_w
     assert "length_miles" in degenerate
 
     # 0.1 degree of latitude is about 6.9 miles. Asserted as a range rather
-    # than a literal because the exact figure is EPSG:5070's, and pinning it
-    # would make this a test of the projection rather than of the writer.
+    # than a literal because the exact figure is the WGS84 geodesic's, which
+    # test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length
+    # pins, and pinning it here would make this a test of the measure rather
+    # than of the writer.
     assert 6.5 < real["length_miles"] < 7.5
     assert degenerate["length_miles"] == 0.0
 
     # Two decimals, matching what the client reads and never more precision
     # than the clipped geometry earns.
     assert real["length_miles"] == round(real["length_miles"], 2)
+
+
+# Five miles due north on the WGS84 ellipsoid, each end placed with pyproj's
+# Geod(ellps="WGS84").fwd at azimuth 0, which leaves the longitude unchanged.
+# EPSG:5070 reads the Anchorage line 4.44 miles and the Harriman one 5.04
+# (measured 2026-10-06 with pyproj). The two-part line is the Anchorage one in
+# two halves of 2.5 miles, the second moved a degree east: the jump between
+# the parts is no part of the trail.
+FIVE_MILES_NORTH = {
+    "at Anchorage, Alaska": ("LINESTRING (-149.9 61.2, -149.9 61.27221126419307)", 4.44),
+    "at Harriman, New York": ("LINESTRING (-74.1 41.25, -74.1 41.32245417114151)", 5.04),
+    "in two parts at Anchorage, Alaska": (
+        "MULTILINESTRING ((-149.9 61.2, -149.9 61.23610572896938), (-148.9 61.23610572896938, -148.9 61.27221126419307))",
+        4.44,
+    ),
+}
+
+
+@pytest.mark.parametrize(("wkt", "conus_albers_miles"), FIVE_MILES_NORTH.values(), ids=FIVE_MILES_NORTH.keys())
+def test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length(wkt, conus_albers_miles):
+    """Decision 97 (the maintainer, 2026-10-06): `length_miles` is measured on the WGS84 ellipsoid, as decision 90
+    measures the graph's edges. EPSG:5070 is equal-area for the lower 48 only and its metre is not the ground's, so
+    `length_miles` read `conus_albers_miles` here before. The line sheet prints it, and lineClimb compares it with
+    the graph edges' geodesic metres to tell a whole trail from part of one."""
+    geojson = ex.records_to_geojson(
+        [{"id": "north", "source": "oprhp_trails", "name": "Five miles north", "blaze_color": "Red", "wkt": wkt}]
+    )
+
+    (feature,) = geojson["features"]
+    assert feature["properties"]["length_miles"] == 5.0, f"EPSG:5070 reads {conus_albers_miles}"
 
 
 # --- The boundary a reviewed list is about (#1533) -------------------------
@@ -2180,6 +2215,113 @@ def test_the_sketch_is_cut_for_its_own_top_zoom_and_not_the_ats(monkeypatch, tmp
     assert entry["min_feature_m"] == ex.OVERVIEW_MIN_FEATURE_M
 
 
+# --- what the three-decimal cut leaves behind -------------------------------------
+#
+# CDTC publishes the Continental Divide as eight lines, one a state, and five
+# of them are MultiLineStrings carrying closed rings a few metres round as
+# parts of their own (UA's release 2026-10-03-2, read back 2026-10-05: 27
+# rings 0.2 to 21.3 m long, of 3 to 6 vertices, in cdtc_centerline:2, 3, 5, 7
+# and 8). The fixture is that shape at one screen's size: a dense 5 km line,
+# 5 m between vertices with a 2 m wiggle, and a ring about 2 m across, every
+# vertex of the ring inside one 0.001-degree grid cell.
+
+
+def _dense_line_with_a_ring() -> dict:
+    dense = ", ".join(f"{-106.5004 + (i % 2) * 0.00002:.5f} {39.00005 + i * 0.000045:.6f}" for i in range(1000))
+    ring = "-106.4504 39.0204, -106.45038 39.0204, -106.45038 39.02042, -106.4504 39.02042, -106.4504 39.0204"
+    return {
+        "id": "cdt-shaped",
+        "source": "cdtc_centerline",
+        "name": None,
+        "blaze_color": "Unknown",
+        "trail_status": "open",
+        "wkt": f"MULTILINESTRING (({dense}), ({ring}))",
+    }
+
+
+def _sketch_lines(records: list[dict]) -> list[list[list[float]]]:
+    ex.write_overview(records)
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    return [line for feature in body["features"] for line in feature["geometry"]["coordinates"]]
+
+
+def test_no_sketch_line_repeats_the_vertex_before_it_once_cut_to_three_decimals(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    repeats = [(n, i) for n, line in enumerate(lines) for i in range(1, len(line)) if line[i] == line[i - 1]]
+    assert repeats == [], f"{len(repeats)} vertices repeat the one before them"
+
+
+def test_a_sketch_line_the_three_decimal_cut_leaves_as_one_point_is_not_written(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    assert all(len({tuple(vertex) for vertex in line}) >= 2 for line in lines)
+    # The dense line is still drawn, from one end to the other; the ring, at
+    # -106.450, is not.
+    (line,) = lines
+    assert (line[0], line[-1]) == ([-106.5, 39.0], [-106.5, 39.045])
+
+
+def test_a_sketch_group_whose_every_line_cuts_to_one_point_writes_no_feature(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    # A closed ring a few metres round on a through route, which the floor
+    # never drops, closed where the rest of the trail is open: its own group,
+    # and every vertex of it on the grid point (-74.000, 41.000).
+    run = _chained_run("nynjtc_long_path", "Long Path", -74.0, 41.0, int(ex.NAMED_TRAIL_THRESHOLD_MILES) + 1, "lp")
+    ring = {
+        **_one_named_row("closed-ring", "nynjtc_long_path", "Long Path", -74.0, 41.0, 0),
+        "trail_status": "closed",
+        "wkt": "LINESTRING (-74 41, -73.99998 41, -73.99998 41.00002, -74 41.00002, -74 41)",
+    }
+
+    ex.write_overview(run + [ring])
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    assert [f["properties"]["trail_status"] for f in body["features"]] == ["open"]
+    assert body["features"][0]["properties"]["name"] == "Long Path"
+
+
+def test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch(monkeypatch, tmp_path):
+    # Douglas-Peucker hands a closed ring shorter than its tolerance back as
+    # its two equal endpoints, and simplify_records keeps the WHOLE line it
+    # was given when any part comes back like that. One ring per state was
+    # enough to ship 1,244,673 of the CDT's coordinates at their 1 m density.
+    # The 5 km dense line here is straight to within 2 m, so at the sketch's
+    # tolerance it is its two ends.
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    assert lines == [[[-106.5, 39.0], [-106.5, 39.045]]]
+
+
+def test_each_part_of_a_multilinestring_keeps_its_own_vertices_only_where_simplifying_would_collapse_it():
+    record = _dense_line_with_a_ring()
+    dense, ring = shapely_wkt.loads(record["wkt"]).geoms
+
+    (out,) = ex._simplified_part_by_part([record], ex.OVERVIEW_SEAM_TOLERANCE_M)
+
+    simplified_dense, kept_ring = shapely_wkt.loads(out["wkt"]).geoms
+    assert len(simplified_dense.coords) == 2 < len(dense.coords)
+    assert list(kept_ring.coords) == list(ring.coords)
+    assert {k: v for k, v in out.items() if k != "wkt"} == {k: v for k, v in record.items() if k != "wkt"}
+
+
+def test_a_multilinestring_with_no_collapsing_part_simplifies_exactly_as_simplify_records_does():
+    record = {
+        **_dense_line_with_a_ring(),
+        "wkt": "MULTILINESTRING ((-106.5 39, -106.50001 39.01, -106.5 39.045), (-106.4 39, -106.43 39.02, -106.4 39.045))",
+    }
+    line = {**record, "id": "line", "wkt": "LINESTRING (-106.3 39, -106.30001 39.01, -106.3 39.045)"}
+
+    for tolerance in (ex.OVERVIEW_SIMPLIFY_TOLERANCE_M, ex.OVERVIEW_SEAM_TOLERANCE_M):
+        assert ex._simplified_part_by_part([record, line], tolerance) == ex.simplify_records([record, line], tolerance)
+
+
 # --- a trail whose name is the layer (#1778) --------------------------------------
 #
 # Some stewards publish one trail as a layer with no name column: PCTA's
@@ -2321,3 +2463,79 @@ def test_every_alias_spelling_belongs_to_a_source_the_network_exports():
             assert spellings, f"{entry['trail']} lists {source} with no spelling"
             for spelling in spellings:
                 assert index[(source, spelling)] == entry["trail"]
+
+
+def _tile_input_rows(lines_sql, most):
+    import duckdb
+
+    con = duckdb.connect()
+    con.execute("LOAD spatial")
+    return con.sql(f"SELECT id, name, ST_AsText(geom) FROM ({ex.tile_input_sql(lines_sql, most)})").fetchall()
+
+
+def test_the_tiler_reads_a_long_line_as_runs_that_share_their_ends_and_nothing_else_changes():
+    """#1796: a line over TILES_CHUNK_VERTICES reaches GDAL as consecutive runs, never altered or reordered.
+
+    A 2,501-vertex line between two short ones, cut at 1,000: three runs whose
+    vertices, joined at their shared ends, are the line's own, each with the
+    line's properties; the short lines pass through as they were; and every
+    row keeps its place, so the draw order inside a tile does not move.
+    """
+    coords = [(i, i % 7) for i in range(2501)]
+    long_wkt = "LINESTRING (" + ", ".join(f"{x} {y}" for x, y in coords) + ")"
+    lines_sql = f"""SELECT * FROM (VALUES
+        (1, 'before', ST_GeomFromText('LINESTRING (0 0, 1 1)')),
+        (2, 'Continental Divide Trail', ST_GeomFromText('{long_wkt}')),
+        (3, 'after', ST_GeomFromText('LINESTRING (9 9, 8 8)'))
+    ) AS t(id, name, geom)"""
+
+    rows = _tile_input_rows(lines_sql, 1000)
+
+    assert [(row[0], row[1]) for row in rows] == [(1, "before"), *[(2, "Continental Divide Trail")] * 3, (3, "after")]
+    assert rows[0][2] == "LINESTRING (0 0, 1 1)" and rows[-1][2] == "LINESTRING (9 9, 8 8)"
+    runs = [[tuple(map(float, point.split())) for point in wkt[len("LINESTRING (") : -1].split(", ")] for _, _, wkt in rows[1:4]]
+    assert [len(run) for run in runs] == [1000, 1000, 503]
+    assert all(previous[-1] == following[0] for previous, following in zip(runs, runs[1:]))
+    joined = runs[0] + [point for run in runs[1:] for point in run[1:]]
+    assert joined == [(float(x), float(y)) for x, y in coords]
+
+
+def test_a_line_at_the_tile_cap_reaches_the_tiler_whole():
+    coords = ", ".join(f"{i} 0" for i in range(1000))
+    rows = _tile_input_rows(f"SELECT 1 AS id, 'x' AS name, ST_GeomFromText('LINESTRING ({coords})') AS geom", 1000)
+    assert len(rows) == 1 and rows[0][2].count(",") == 999
+
+
+def test_a_long_line_still_cuts_a_tile_archive_the_client_can_read(tmp_path, monkeypatch):
+    """The cut runs go through GDAL's PMTiles driver as the whole lines did: one layer, the client's zooms."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(ex, "TILES_CHUNK_VERTICES", 100)
+    coordinates = [[-74.0 + i * 0.0005, 41.2 + (i % 5) * 0.0001] for i in range(2501)]
+    path = tmp_path / "lines.geojson"
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "id": "cdtc:1",
+                            "source": "cdtc_centerline",
+                            "name": "Continental Divide Trail",
+                            "blaze_color": "Unknown",
+                            "trail_status": "open",
+                        },
+                        "geometry": {"type": "LineString", "coordinates": coordinates},
+                    }
+                ],
+            }
+        )
+    )
+
+    tiles = ex.write_tiles(path)
+
+    assert tiles["tile_count"] > 0
+    with Path(tiles["path"]).open("rb") as f:
+        header = Reader(MmapSource(f)).header()
+    assert (header["min_zoom"], header["max_zoom"]) == (ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM)

@@ -195,6 +195,43 @@ describe('PoiCard', () => {
     ).toBeInTheDocument()
   })
 
+  // Decision 65 (the maintainer's poll of 2026-10-04): a plumbed tap whose
+  // publisher records no shutoff season is shown as unconfirmed water with a
+  // season caution, in a line of its own beside the unverified one.
+  const TAP: PoiDetail = {
+    ...SHELTER,
+    id: 'nps_points_of_interest:fixture-tap',
+    name: 'Spigot at the visitor center',
+    type: 'water',
+    confidence: 'low',
+    waterCaution: 'no_shutoff_season',
+  }
+  const SEASON_CAUTION =
+    'Tap water. Its listing doesn’t say when it’s turned off for the season, and taps like this are often off out of season. Carry enough to reach the next water.'
+
+  it('says on the peek that a plumbed tap may be shut off, apart from the unverified line', () => {
+    renderPeek(TAP)
+
+    const notes = screen.getAllByRole('note').map((note) => note.textContent)
+    expect(notes).toContain(SEASON_CAUTION)
+    expect(notes).toContain('Unverified — nobody has confirmed this one is really there.')
+  })
+
+  it('says it in the opened card too', () => {
+    renderCard(TAP)
+
+    expect(screen.getByText(SEASON_CAUTION)).toBeInTheDocument()
+  })
+
+  it('never cautions about a season on water nobody marked plumbed, or on a waypoint that is not water', () => {
+    renderCard({ ...TAP, waterCaution: undefined })
+    expect(screen.queryByText(/turned off for the season/)).not.toBeInTheDocument()
+    cleanup()
+
+    renderCard({ ...TAP, type: 'shelter' })
+    expect(screen.queryByText(/turned off for the season/)).not.toBeInTheDocument()
+  })
+
   it('never says it of a waypoint that is not a trailhead, whatever it carries', () => {
     renderCard({ ...SHELTER, trailsClosedWithinM: 100 })
 

@@ -1,0 +1,58 @@
+version: 2
+
+sources:
+  - name: njgin
+    description: >
+      NJDEP's registered layers, landed by the extract's njgin/ folder
+      (pipeline/extract/njgin/) as raw_njgin__<key>, and staged once each by a
+      base model here. Descriptions transcribed from sources.json's titles.
+    schema: raw
+    config:
+      loaded_at_field: _loaded_at
+      freshness:
+        # The extract's cadence, not the steward's. @unvalidated, the same
+        # threshold and open question as _atc__sources.yml.
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_njgin__nj_statewide_trails
+        data_tests:
+          # Rows sharing base_njgin__nj_statewide_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nj_statewide_trails'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          Statewide Trails in New Jersey (NJ Geospatial Forum Trails Task
+          Force, hosted by NJDEP) (sources.json `nj_statewide_trails`). Key:
+          GLOBALID unique on 13,296 live rows.
+      - name: raw_njgin__njdep_park_trails
+        data_tests:
+          # Rows sharing base_njgin__njdep_park_trails's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'njdep_park_trails'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          NJ State Park Service Trails (NJDEP Bureau of GIS, Features/Land
+          layer 63) (sources.json `njdep_park_trails`). Key: GLOBALID unique
+          on 3,305 live rows.

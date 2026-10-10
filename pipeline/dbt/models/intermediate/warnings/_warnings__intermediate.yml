@@ -1,0 +1,641 @@
+version: 2
+
+models:
+  - name: int_warnings__nws_relayed
+    description: >
+      The NWS alerts OurHike relays: every `Actual` message that is not a
+      cancellation (WN01), NWS's words and times exactly as written and null
+      where NWS sent null (WN02). int_warnings__nws_placed places them on the
+      trail's weather squares (WN03).
+    columns:
+      - name: notice_id
+        description: "`nws_alerts:` and NWS's message id; the warnings mart's key."
+        data_tests: [not_null, unique]
+      - name: alert_id
+        description: NWS's message id, published as `id`.
+        data_tests: [not_null]
+      - name: message_type
+        description: Alert or Update; never Cancel.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Alert, Update]
+              config:
+                severity: warn
+
+  - name: int_warnings__weather_squares
+    description: >
+      The NBM weather squares under a trail or a waypoint, one row per square
+      however many trail cells list it, from build_weather_squares.py's
+      document (stg_derived__weather_squares): the set an NWS alert's polygon
+      is tested against, export_weather_alerts.py's `trail` (WN03).
+    columns:
+      - name: weather_square_key
+        description: The release and the square.
+        data_tests: [not_null, unique]
+      - name: squares_release
+        description: The data release the squares were chosen for.
+      - name: square_row
+        description: The square's row on NOAA's NBM CONUS grid, from the north edge.
+        data_tests: [not_null]
+      - name: square_col
+        description: The square's column, from the west edge.
+        data_tests: [not_null]
+
+  - name: int_warnings__weather_zones
+    description: >
+      Every NWS zone the weather squares know, one row each: the trail
+      squares its outline overlaps (`zones`, [] for none) and whether the
+      zone files build_weather_squares.py pinned hold it (`known_zones`), as
+      export_weather_alerts.py's bake() reads them (WN03).
+    columns:
+      - name: weather_zone_key
+        description: The release and the zone.
+        data_tests: [not_null, unique]
+      - name: squares_release
+        description: The data release the squares were chosen for.
+      - name: zone_key
+        description: "`<kind>/<id>`, as an alert's affectedZones URL names it: forecast, fire or county, then NWS's id."
+        data_tests: [not_null]
+      - name: zone_kind
+        description: forecast, fire or county.
+      - name: zone_id
+        description: NWS's id, its first two letters the state.
+      - name: squares
+        description: The trail squares the zone overlaps, [[row, col], ...], as JSON.
+        data_tests: [not_null]
+      - name: is_known
+        description: Whether the pinned zone files hold the zone.
+        data_tests: [not_null]
+
+  - name: int_warnings__nws_alert_shapes
+    description: >
+      Each relayed NWS alert's area, for int_warnings__nws_placed: the polygon
+      NWS drew, in NOAA's NBM grid units as WKT text (macro nbm_grid_units(),
+      lib/nbm_grid.py's transform, vertex for vertex), and the zones it names.
+    columns:
+      - name: notice_id
+        description: "`nws_alerts:` and NWS's message id."
+        data_tests: [not_null, unique]
+      - name: alert_id
+        description: NWS's message id.
+      - name: is_drawn
+        description: Whether NWS drew a polygon, which is then the alert's whole placement.
+        data_tests: [not_null]
+      - name: grid_shape_wkt
+        description: >
+          The polygon in grid units, x a column and y a row, as WKT; null
+          where NWS drew none, or drew something other than a polygon or a
+          multipolygon, which then reaches no square.
+      - name: affected_zones
+        description: The zone URLs NWS lists, as JSON, read where it drew no polygon.
+
+  - name: int_warnings__nws_placed
+    description: >
+      Where each relayed NWS alert lands on the weather squares (WN03): by its
+      polygon when NWS drew one, else by its zones, as
+      export_weather_alerts.py's bake() places it, with the trail squares it
+      reaches and the zones it names that the pinned files do not know.
+      pub_conditions_weather_alerts writes the alerts that reach a square.
+    data_tests:
+      # Reaching a square and having squares are one fact, said twice.
+      - dbt_utils.expression_is_true:
+          name: an_nws_alert_reaches_the_trail_exactly_when_it_has_squares
+          arguments:
+            expression: "reaches_trail = (square_count > 0) and reaches_trail = (squares != '[]')"
+    columns:
+      - name: notice_id
+        description: "`nws_alerts:` and NWS's message id."
+        data_tests: [not_null, unique]
+      - name: alert_id
+        description: NWS's message id.
+      - name: placed_by
+        description: polygon, where NWS drew one, else zones.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [polygon, zones]
+      - name: square_count
+        description: How many trail squares the alert reaches.
+        data_tests: [not_null]
+      - name: reaches_trail
+        description: Whether it reaches any; the file leaves out one that does not.
+        data_tests: [not_null]
+      - name: squares
+        description: The squares it reaches, [[row, col], ...] in (row, col) order, JSON text.
+        data_tests: [not_null]
+      - name: unknown_zones
+        description: >
+          The zones it names that the pinned files do not know, in a state
+          they cover, as JSON text; [] for an alert placed by its polygon,
+          whose zones are not read.
+        data_tests: [not_null]
+
+  - name: int_warnings__serious_reports
+    description: >
+      OurHike's serious public reports, verified or resolved (WN10), for the
+      warnings mart. conditions/reports.json carries every public report and
+      is written from base_ourhike__reports instead.
+    columns:
+      - name: notice_id
+        description: "`ourhike_reports:` and the report's UUID; the warnings mart's key."
+        data_tests: [not_null, unique]
+
+  - name: int_warnings__unioned
+    description: >
+      The warnings that are not notices a club files under closures, one row
+      each, by name: NWS's relayed alerts, OurHike's serious reports, and
+      every club's warnings.py notice (int_closures__club_notices). No hazard
+      POI branch: ELT.md's warnings ledger, "No hazard POI exists to port".
+    columns:
+      - name: notice_id
+        description: Unique across both branches.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: >
+          nws_alerts or ourhike_reports, the keys int_sources__publication
+          reads them under, or a club notice source's key
+          (seeds/notice_readers.csv).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [nws_alerts, ourhike_reports]
+              config:
+                where: "not starts_with(notice_kind, 'club_')"
+          - relationships:
+              arguments:
+                to: ref('notice_readers')
+                field: source_key
+              config:
+                where: "starts_with(notice_kind, 'club_')"
+  - name: int_warnings__wording_leaks
+    description: >
+      No prose is published (decision 55): one row per text value of a club
+      notice the finals could publish (int_closures__unioned's and
+      int_warnings__unioned's club rows, before the gate) that contains a
+      whole value of that source's own wording
+      (int_warnings__notice_wording_unioned). int_closures__gate holds each
+      source with a row here, so none of its rows reaches a mart and it
+      carries its last good rows (decision 81).
+    data_tests:
+      # Warn, not error (decision 81): the gate holds the source, so its
+      # paragraphs never reach a mart, and every other source and file still
+      # publishes. `holds_a_source` makes build_marts.py print the rows and
+      # turn the run red after the publish (its PARTIAL_EXIT). At error, one
+      # club's title stopped every hourly file (soak run 530).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "false"
+          config:
+            severity: warn
+            meta:
+              holds_a_source: true
+    columns:
+      - name: leak_key
+        description: The mart, the row, the column and the wording.
+        data_tests: [not_null, unique]
+  - name: int_warnings__final
+    description: >
+      The warnings mart's rows before their row dates (decision 57):
+      what models/marts/warnings/warnings.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_warnings__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: warning_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
+
+unit_tests:
+  # base_nws__alerts' inputs are SQL, not rows: dbt 2.0.6 fetches a given
+  # model's schema to type dict rows, and that fetch fails on its GEOMETRY
+  # column ("Remote database error while fetching schema for unit test
+  # upstream relation", measured 2026-10-02), so each input names every column
+  # int_warnings__nws_relayed reads and types its own nulls.
+  - name: int_warnings__nws_relayed_test_messages_and_cancellations_are_not_relayed
+    description: >
+      test_export_weather_alerts.py's case of that name, with every other
+      `status` NWS's CAP profile defines, and the exactness of relayed()'s
+      two comparisons: `status` must be `Actual` as written, and
+      `messageType` anything but `Cancel` as written, so an alert with no
+      messageType is relayed (Python's `None != "Cancel"`).
+    model: int_warnings__nws_relayed
+    given:
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select
+              alert_id as nws_alert_key,
+              alert_id,
+              alert_status,
+              message_type,
+              alert_event,
+              cast(null as varchar) as headline,
+              cast(null as varchar) as alert_description,
+              cast(null as varchar) as instruction,
+              cast(null as varchar) as alert_severity,
+              cast(null as varchar) as urgency,
+              cast(null as varchar) as certainty,
+              cast(null as varchar) as alert_response,
+              cast(null as varchar) as sent_at,
+              cast(null as varchar) as effective_at,
+              cast(null as varchar) as onset_at,
+              cast(null as varchar) as expires_at,
+              cast(null as varchar) as ends_at,
+              cast(null as varchar) as sender_name,
+              cast(null as varchar) as area_desc,
+              cast(null as json) as affected_zones,
+              cast(null as varchar) as collection_updated,
+              cast(null as geometry) as geom,
+              cast(null as timestamp) as _loaded_at
+          from (
+              values
+                  ('urn:oid:test.1', 'Test', 'Alert', 'Test Message'),
+                  ('urn:oid:test.2', 'Actual', 'Cancel', 'Wind Advisory'),
+                  ('urn:oid:test.3', 'Actual', 'Update', 'Wind Advisory'),
+                  ('urn:oid:test.4', 'Exercise', 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.5', 'System', 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.6', 'Draft', 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.7', null, 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.8', 'actual', 'Alert', 'Wind Advisory'),
+                  ('urn:oid:test.9', 'Actual', null, 'Wind Advisory'),
+                  ('urn:oid:test.10', 'Actual', 'Alert', 'Wind Advisory')
+          ) as given_alerts (alert_id, alert_status, message_type, alert_event)
+    expect:
+      rows:
+        - {notice_id: 'nws_alerts:urn:oid:test.3', message_type: Update}
+        - {notice_id: 'nws_alerts:urn:oid:test.9', message_type: null}
+        - {notice_id: 'nws_alerts:urn:oid:test.10', message_type: Alert}
+
+  - name: int_warnings__nws_relayed_every_kind_of_alert_is_relayed_including_beach_and_marine_kinds
+    description: >
+      test_export_weather_alerts.py's case of that name: "relay all", the
+      maintainer, 2026-09-26. OurHike does not pick which NWS alerts matter,
+      so no event or severity is filtered.
+    model: int_warnings__nws_relayed
+    given:
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select
+              alert_id as nws_alert_key,
+              alert_id,
+              'Actual' as alert_status,
+              'Alert' as message_type,
+              alert_event,
+              cast(null as varchar) as headline,
+              cast(null as varchar) as alert_description,
+              cast(null as varchar) as instruction,
+              alert_severity,
+              cast(null as varchar) as urgency,
+              cast(null as varchar) as certainty,
+              cast(null as varchar) as alert_response,
+              cast(null as varchar) as sent_at,
+              cast(null as varchar) as effective_at,
+              cast(null as varchar) as onset_at,
+              cast(null as varchar) as expires_at,
+              cast(null as varchar) as ends_at,
+              cast(null as varchar) as sender_name,
+              cast(null as varchar) as area_desc,
+              cast(null as json) as affected_zones,
+              cast(null as varchar) as collection_updated,
+              cast(null as geometry) as geom,
+              cast(null as timestamp) as _loaded_at
+          from (
+              values
+                  ('urn:oid:test.0', 'Rip Current Statement', 'Moderate'),
+                  ('urn:oid:test.1', 'High Surf Advisory', 'Minor'),
+                  ('urn:oid:test.2', 'Air Quality Alert', 'Unknown'),
+                  ('urn:oid:test.3', 'Hydrologic Outlook', null)
+          ) as given_alerts (alert_id, alert_event, alert_severity)
+    expect:
+      rows:
+        - {alert_event: Rip Current Statement, alert_severity: Moderate, review_state: relayed, obstructs_trail: false}
+        - {alert_event: High Surf Advisory, alert_severity: Minor, review_state: relayed, obstructs_trail: false}
+        - {alert_event: Air Quality Alert, alert_severity: Unknown, review_state: relayed, obstructs_trail: false}
+        - {alert_event: Hydrologic Outlook, alert_severity: null, review_state: relayed, obstructs_trail: false}
+
+  - name: int_warnings__nws_relayed_nws_text_is_relayed_verbatim_and_a_missing_field_stays_null
+    description: >
+      test_export_weather_alerts.py's case of that name (WN02): the
+      description's line breaks, a headline's trailing space and every time's
+      offset come through as NWS wrote them, and a field NWS sent as null
+      stays null rather than becoming "" or now. The drawn polygon comes out
+      as GeoJSON text whose coordinates read back to the same doubles, the
+      text the closures and warnings marts carry in place of a geometry.
+    model: int_warnings__nws_relayed
+    given:
+      - input: ref('base_nws__alerts')
+        format: sql
+        rows: |
+          select
+              'k1' as nws_alert_key,
+              'urn:oid:test.1' as alert_id,
+              'Actual' as alert_status,
+              'Alert' as message_type,
+              'Wind Advisory' as alert_event,
+              'Wind Advisory issued September 26 at 9:00AM EDT by NWS Gray ME ' as headline,
+              '* WHAT...Northeast winds 15 to 25 mph with gusts up to 45 mph.' || chr(10) || chr(10) || '* WHERE...Southern Coos.' as alert_description,
+              cast(null as varchar) as instruction,
+              'Moderate' as alert_severity,
+              'Expected' as urgency,
+              'Likely' as certainty,
+              'Execute' as alert_response,
+              '2026-09-26T09:00:00-04:00' as sent_at,
+              '2026-09-26T09:00:00-04:00' as effective_at,
+              '2026-09-26T09:00:00-04:00' as onset_at,
+              '2026-09-26T17:00:00-04:00' as expires_at,
+              cast(null as varchar) as ends_at,
+              'NWS Gray ME' as sender_name,
+              'Southern Coos' as area_desc,
+              cast('["https://api.weather.gov/zones/forecast/NHZ002"]' as json) as affected_zones,
+              '2026-09-26T13:38:37+00:00' as collection_updated,
+              st_geomfromtext('POLYGON ((-71.33 44.25, -71.2 44.25, -71.2 44.3125, -71.33 44.25))') as geom,
+              timestamp '2026-09-26 13:39:33' as _loaded_at
+    expect:
+      rows:
+        - notice_id: 'nws_alerts:urn:oid:test.1'
+          headline: 'Wind Advisory issued September 26 at 9:00AM EDT by NWS Gray ME '
+          alert_description: "* WHAT...Northeast winds 15 to 25 mph with gusts up to 45 mph.\n\n* WHERE...Southern Coos."
+          instruction: null
+          sent_at: '2026-09-26T09:00:00-04:00'
+          onset_at: '2026-09-26T09:00:00-04:00'
+          expires_at: '2026-09-26T17:00:00-04:00'
+          ends_at: null
+          sender_name: NWS Gray ME
+          area_desc: Southern Coos
+          geom_geojson: '{"type":"Polygon","coordinates":[[[-71.33,44.25],[-71.2,44.25],[-71.2,44.3125],[-71.33,44.25]]]}'
+
+  - name: int_warnings__serious_reports_keeps_the_public_moderated_reports_a_moderator_called_serious
+    description: >
+      WN10's new rule: the warnings mart takes the reports
+      test_moderated_public_reports_are_exported_and_submitted_ones_are_not
+      lets out of the database (verified or resolved, and public), and of
+      those only the ones a moderator escalated to `serious`. A resolved one
+      stays, and reads as fixed. A report the query should never have landed,
+      submitted, rejected or private, is left out rather than published as
+      moderator-verified.
+    model: int_warnings__serious_reports
+    given:
+      - input: ref('base_ourhike__reports')
+        rows:
+          - {report_uuid: r1, report_severity: serious, report_status: verified, visibility: public}
+          - {report_uuid: r2, report_severity: serious, report_status: resolved, visibility: public}
+          - {report_uuid: r3, report_severity: normal, report_status: verified, visibility: public}
+          - {report_uuid: r4, report_severity: serious, report_status: submitted, visibility: public}
+          - {report_uuid: r5, report_severity: serious, report_status: verified, visibility: private}
+          - {report_uuid: r6, report_severity: null, report_status: verified, visibility: public}
+          - {report_uuid: r7, report_severity: serious, report_status: rejected, visibility: public}
+    expect:
+      rows:
+        - {notice_id: 'ourhike_reports:r1', report_status: verified, review_state: moderator_verified, obstructs_trail: false}
+        - {notice_id: 'ourhike_reports:r2', report_status: resolved, review_state: moderator_verified, obstructs_trail: false}
+
+  - name: int_warnings__weather_squares_lists_each_trail_square_once
+    description: >
+      export_weather_alerts.py's `trail`, the set of every square any trail
+      cell lists: tests/test_export_weather_alerts.py's four squares (three in
+      the White Mountains and Springer Mountain), with Pinkham Notch's square
+      listed by two cells, as a square straddling two cells is
+      (build_weather_squares.py's squares_by_cell()).
+    model: int_warnings__weather_squares
+    given:
+      - input: ref('stg_derived__weather_squares')
+        rows:
+          - {weather_squares_key: w1, release: '2026-09-25', squares_document: '{"release": "2026-09-25", "cells": {"n44w072": [[562, 2074], [563, 2076], [563, 2073]], "n44w071": [[563, 2076]], "n34w085": [[1053, 1683]]}, "zones": {}, "known_zones": {}}'}
+    expect:
+      rows:
+        - {square_row: 562, square_col: 2074}
+        - {square_row: 563, square_col: 2073}
+        - {square_row: 563, square_col: 2076}
+        - {square_row: 1053, square_col: 1683}
+
+  - name: int_warnings__weather_zones_reads_zones_and_known_zones_as_bake_does
+    description: >
+      tests/test_export_weather_alerts.py's SQUARES: each zone that overlaps a
+      trail square with its squares, and every zone the pinned files hold,
+      [] where it reaches no trail. Fire NHZ022 and forecast NHZ022 are two
+      zones under one id (the test of a red flag warning on fire zone NHZ022).
+    model: int_warnings__weather_zones
+    given:
+      - input: ref('stg_derived__weather_squares')
+        rows:
+          - {weather_squares_key: w1, release: '2026-09-25', squares_document: '{"release": "2026-09-25", "cells": {}, "zones": {"forecast/NHZ002": [[562, 2074], [563, 2076], [563, 2073]], "county/NHC007": [[562, 2074], [563, 2076], [563, 2073]], "fire/NHZ021": [[562, 2074], [563, 2073]], "fire/NHZ022": [[563, 2076]], "forecast/GAZ006": [[1053, 1683]]}, "known_zones": {"forecast": ["GAZ006", "NHZ002", "NHZ004", "NHZ021", "NHZ022"], "fire": ["NHZ021", "NHZ022"], "county": ["NHC007", "MDC031"]}}'}
+    expect:
+      rows:
+        - {zone_key: forecast/NHZ002, zone_kind: forecast, zone_id: NHZ002, squares: '[[562,2074],[563,2076],[563,2073]]', is_known: true}
+        - {zone_key: county/NHC007, zone_kind: county, zone_id: NHC007, squares: '[[562,2074],[563,2076],[563,2073]]', is_known: true}
+        - {zone_key: fire/NHZ021, zone_kind: fire, zone_id: NHZ021, squares: '[[562,2074],[563,2073]]', is_known: true}
+        - {zone_key: fire/NHZ022, zone_kind: fire, zone_id: NHZ022, squares: '[[563,2076]]', is_known: true}
+        - {zone_key: forecast/GAZ006, zone_kind: forecast, zone_id: GAZ006, squares: '[[1053,1683]]', is_known: true}
+        - {zone_key: forecast/NHZ004, zone_kind: forecast, zone_id: NHZ004, squares: '[]', is_known: true}
+        - {zone_key: forecast/NHZ021, zone_kind: forecast, zone_id: NHZ021, squares: '[]', is_known: true}
+        - {zone_key: forecast/NHZ022, zone_kind: forecast, zone_id: NHZ022, squares: '[]', is_known: true}
+        - {zone_key: county/MDC031, zone_kind: county, zone_id: MDC031, squares: '[]', is_known: true}
+
+  - name: int_warnings__nws_alert_shapes_puts_a_drawn_alert_in_nbm_grid_units
+    description: >
+      The projection half of lib/nbm_grid.py's overlapping(), on the polygons
+      the Python tests draw: Pinkham Notch's storm cell
+      (test_a_drawn_warning_uses_its_polygon_and_not_the_counties_it_lists),
+      one far from every trail square (test_an_alert_reaching_no_trail_square_is_left_out),
+      and a ~200 m outline around Mount Washington's summit
+      (test_a_small_outline_around_a_summit_reaches_the_summits_square, a
+      square where that test buffers the point). Every vertex of each
+      expected WKT is lib/nbm_grid.py's _to_grid_units, bit for bit, which
+      tests/test_dbt_conditions_parity.py checks. An alert NWS drew nothing
+      for has a row with no shape.
+    model: int_warnings__nws_alert_shapes
+    given:
+      - input: ref('int_warnings__nws_relayed')
+        rows:
+          - {notice_id: 'nws_alerts:pinkham', alert_id: pinkham, geom_geojson: '{"type": "Polygon", "coordinates": [[[-71.2602, 44.2376], [-71.2254, 44.2376], [-71.2254, 44.2625], [-71.2602, 44.2625], [-71.2602, 44.2376]]]}'}
+          - {notice_id: 'nws_alerts:far', alert_id: far, geom_geojson: '{"type": "Polygon", "coordinates": [[[-77.5, 39.0], [-77.0, 39.0], [-77.0, 39.3], [-77.5, 39.3], [-77.5, 39.0]]]}'}
+          - {notice_id: 'nws_alerts:summit', alert_id: summit, geom_geojson: '{"type": "Polygon", "coordinates": [[[-71.3043, 44.2696], [-71.3023, 44.2696], [-71.3023, 44.2716], [-71.3043, 44.2716], [-71.3043, 44.2696]]]}'}
+          - {notice_id: 'nws_alerts:zones', alert_id: zones, geom_geojson: null}
+    expect:
+      rows:
+        - {notice_id: 'nws_alerts:pinkham', is_drawn: true, grid_shape_wkt: 'POLYGON ((2076.029890853755 564.1731999395251, 2077.1724677404654 563.9709055760516, 2076.970274254127 562.829751622331, 2075.827990294132 563.0319941228411, 2076.029890853755 564.1731999395251))'}
+        - {notice_id: 'nws_alerts:far', is_drawn: true, grid_shape_wkt: 'POLYGON ((1901.2837842338117 833.6643387249693, 1918.6901790186644 831.3722877699049, 1916.8945486513553 817.9274246120347, 1899.537751159946 820.2129446613479, 1901.2837842338117 833.6643387249693))'}
+        - {notice_id: 'nws_alerts:summit', is_drawn: true, grid_shape_wkt: 'POLYGON ((2074.322895925573 562.9624052558838, 2074.388544808322 562.9508122684747, 2074.3723541292015 562.8591314809071, 2074.3067065989453 562.8707242294789, 2074.322895925573 562.9624052558838))'}
+        - {notice_id: 'nws_alerts:zones', is_drawn: false, grid_shape_wkt: null}
+
+  - name: int_warnings__nws_placed_places_each_alert_as_export_weather_alerts_bake_does
+    description: >
+      One alert per test of bake() in tests/test_export_weather_alerts.py, on
+      its SQUARES: z1 (test_a_zone_alert_reaches_exactly_the_squares_its_zones_overlap),
+      z2 and z3 (test_a_red_flag_warning_on_fire_zone_nhz022_does_not_land_on_forecast_zone_nhz022),
+      p1 (test_a_drawn_warning_uses_its_polygon_and_not_the_counties_it_lists:
+      drawn around Pinkham Notch, listing all of Coos County), z4 and p2
+      (test_an_alert_reaching_no_trail_square_is_left_out), z5
+      (test_every_kind_of_alert_is_relayed_including_beach_and_marine_kinds),
+      z6 (test_a_zone_the_pinned_outlines_have_never_heard_of_is_reported),
+      z7 (test_a_marine_zone_is_not_reported_as_unknown), and p3, the summit's
+      outline (test_a_small_outline_around_a_summit_reaches_the_summits_square).
+      The polygons are int_warnings__nws_alert_shapes' unit test's, in
+      grid units.
+    model: int_warnings__nws_placed
+    given:
+      - input: ref('int_warnings__nws_alert_shapes')
+        rows:
+          - {notice_id: 'nws_alerts:z1', alert_id: z1, is_drawn: false, grid_shape_wkt: null, affected_zones: '["https://api.weather.gov/zones/forecast/NHZ002"]'}
+          - {notice_id: 'nws_alerts:z2', alert_id: z2, is_drawn: false, grid_shape_wkt: null, affected_zones: '["https://api.weather.gov/zones/fire/NHZ022"]'}
+          - {notice_id: 'nws_alerts:z3', alert_id: z3, is_drawn: false, grid_shape_wkt: null, affected_zones: '["https://api.weather.gov/zones/forecast/NHZ022"]'}
+          - {notice_id: 'nws_alerts:p1', alert_id: p1, is_drawn: true, grid_shape_wkt: 'POLYGON ((2076.029890853755 564.1731999395251, 2077.1724677404654 563.9709055760516, 2076.970274254127 562.829751622331, 2075.827990294132 563.0319941228411, 2076.029890853755 564.1731999395251))', affected_zones: '["https://api.weather.gov/zones/county/NHC007"]'}
+          - {notice_id: 'nws_alerts:z4', alert_id: z4, is_drawn: false, grid_shape_wkt: null, affected_zones: '["https://api.weather.gov/zones/county/MDC031"]'}
+          - {notice_id: 'nws_alerts:p2', alert_id: p2, is_drawn: true, grid_shape_wkt: 'POLYGON ((1901.2837842338117 833.6643387249693, 1918.6901790186644 831.3722877699049, 1916.8945486513553 817.9274246120347, 1899.537751159946 820.2129446613479, 1901.2837842338117 833.6643387249693))', affected_zones: '[]'}
+          - {notice_id: 'nws_alerts:z5', alert_id: z5, is_drawn: false, grid_shape_wkt: null, affected_zones: '["https://api.weather.gov/zones/forecast/GAZ006"]'}
+          - {notice_id: 'nws_alerts:z6', alert_id: z6, is_drawn: false, grid_shape_wkt: null, affected_zones: '["https://api.weather.gov/zones/forecast/NHZ099", "https://api.weather.gov/zones/forecast/NHZ002"]'}
+          - {notice_id: 'nws_alerts:z7', alert_id: z7, is_drawn: false, grid_shape_wkt: null, affected_zones: '["https://api.weather.gov/zones/forecast/ANZ335"]'}
+          - {notice_id: 'nws_alerts:p3', alert_id: p3, is_drawn: true, grid_shape_wkt: 'POLYGON ((2074.322895925573 562.9624052558838, 2074.388544808322 562.9508122684747, 2074.3723541292015 562.8591314809071, 2074.3067065989453 562.8707242294789, 2074.322895925573 562.9624052558838))', affected_zones: '["https://api.weather.gov/zones/forecast/GAZ006"]'}
+      - input: ref('int_warnings__weather_squares')
+        rows:
+          - {weather_square_key: s1, square_row: 562, square_col: 2074}
+          - {weather_square_key: s2, square_row: 563, square_col: 2076}
+          - {weather_square_key: s3, square_row: 563, square_col: 2073}
+          - {weather_square_key: s4, square_row: 1053, square_col: 1683}
+      - input: ref('int_warnings__weather_zones')
+        rows:
+          - {weather_zone_key: k1, zone_key: forecast/NHZ002, zone_id: NHZ002, squares: '[[562, 2074], [563, 2076], [563, 2073]]', is_known: true}
+          - {weather_zone_key: k2, zone_key: county/NHC007, zone_id: NHC007, squares: '[[562, 2074], [563, 2076], [563, 2073]]', is_known: true}
+          - {weather_zone_key: k3, zone_key: fire/NHZ021, zone_id: NHZ021, squares: '[[562, 2074], [563, 2073]]', is_known: true}
+          - {weather_zone_key: k4, zone_key: fire/NHZ022, zone_id: NHZ022, squares: '[[563, 2076]]', is_known: true}
+          - {weather_zone_key: k5, zone_key: forecast/GAZ006, zone_id: GAZ006, squares: '[[1053, 1683]]', is_known: true}
+          - {weather_zone_key: k6, zone_key: forecast/NHZ004, zone_id: NHZ004, squares: '[]', is_known: true}
+          - {weather_zone_key: k7, zone_key: forecast/NHZ021, zone_id: NHZ021, squares: '[]', is_known: true}
+          - {weather_zone_key: k8, zone_key: forecast/NHZ022, zone_id: NHZ022, squares: '[]', is_known: true}
+          - {weather_zone_key: k9, zone_key: county/MDC031, zone_id: MDC031, squares: '[]', is_known: true}
+    expect:
+      rows:
+        - {notice_id: 'nws_alerts:z1', placed_by: zones, reaches_trail: true, squares: '[[562,2074],[563,2073],[563,2076]]', unknown_zones: '[]'}
+        - {notice_id: 'nws_alerts:z2', placed_by: zones, reaches_trail: true, squares: '[[563,2076]]', unknown_zones: '[]'}
+        - {notice_id: 'nws_alerts:z3', placed_by: zones, reaches_trail: false, squares: '[]', unknown_zones: '[]'}
+        - {notice_id: 'nws_alerts:p1', placed_by: polygon, reaches_trail: true, squares: '[[563,2076]]', unknown_zones: '[]'}
+        - {notice_id: 'nws_alerts:z4', placed_by: zones, reaches_trail: false, squares: '[]', unknown_zones: '[]'}
+        - {notice_id: 'nws_alerts:p2', placed_by: polygon, reaches_trail: false, squares: '[]', unknown_zones: '[]'}
+        - {notice_id: 'nws_alerts:z5', placed_by: zones, reaches_trail: true, squares: '[[1053,1683]]', unknown_zones: '[]'}
+        - {notice_id: 'nws_alerts:z6', placed_by: zones, reaches_trail: true, squares: '[[562,2074],[563,2073],[563,2076]]', unknown_zones: '["forecast/NHZ099"]'}
+        - {notice_id: 'nws_alerts:z7', placed_by: zones, reaches_trail: false, squares: '[]', unknown_zones: '[]'}
+        - {notice_id: 'nws_alerts:p3', placed_by: polygon, reaches_trail: true, squares: '[[562,2074]]', unknown_zones: '[]'}
+
+  - name: int_warnings__nws_placed_a_shape_reaching_any_part_of_a_square_reaches_it
+    description: >
+      tests/test_lib_nbm_grid.py's test of the same name, in grid units as
+      that test draws it: a shape covering the first square and a hundredth
+      of the second's width reaches both and not the third.
+    model: int_warnings__nws_placed
+    given:
+      - input: ref('int_warnings__nws_alert_shapes')
+        rows:
+          - {notice_id: 'nws_alerts:sliver', alert_id: sliver, is_drawn: true, grid_shape_wkt: 'POLYGON ((9.5 9.5, 11.01 9.5, 11.01 10.5, 9.5 10.5, 9.5 9.5))', affected_zones: '[]'}
+      - input: ref('int_warnings__weather_squares')
+        rows:
+          - {weather_square_key: s1, square_row: 10, square_col: 10}
+          - {weather_square_key: s2, square_row: 10, square_col: 11}
+          - {weather_square_key: s3, square_row: 10, square_col: 12}
+      - input: ref('int_warnings__weather_zones')
+        rows: []
+    expect:
+      rows:
+        - {notice_id: 'nws_alerts:sliver', placed_by: polygon, squares: '[[10,10],[10,11]]'}
+
+  - name: int_warnings__nws_placed_a_shape_that_only_touches_an_edge_or_corner_does_not_reach
+    description: >
+      tests/test_lib_nbm_grid.py's test of the same name: a box sharing
+      square (10, 11)'s east edge, and one sharing square (10, 10)'s
+      north-west corner, reach neither, since no ground is shared.
+    model: int_warnings__nws_placed
+    given:
+      - input: ref('int_warnings__nws_alert_shapes')
+        rows:
+          - {notice_id: 'nws_alerts:edge', alert_id: edge, is_drawn: true, grid_shape_wkt: 'POLYGON ((12 10, 13 10, 13 11, 12 11, 12 10))', affected_zones: '[]'}
+          - {notice_id: 'nws_alerts:corner', alert_id: corner, is_drawn: true, grid_shape_wkt: 'POLYGON ((9 9, 10 9, 10 10, 9 10, 9 9))', affected_zones: '[]'}
+      - input: ref('int_warnings__weather_squares')
+        rows:
+          - {weather_square_key: s1, square_row: 10, square_col: 10}
+          - {weather_square_key: s2, square_row: 10, square_col: 11}
+      - input: ref('int_warnings__weather_zones')
+        rows: []
+    expect:
+      rows:
+        - {notice_id: 'nws_alerts:edge', reaches_trail: false, squares: '[]'}
+        - {notice_id: 'nws_alerts:corner', reaches_trail: false, squares: '[]'}
+
+  - name: int_warnings__nws_placed_each_shape_gets_its_own_answer
+    description: >
+      tests/test_lib_nbm_grid.py's test_each_shape_gets_its_own_answer_in_order:
+      a shape inside square (5, 5) reaches it, and one far away reaches none.
+    model: int_warnings__nws_placed
+    given:
+      - input: ref('int_warnings__nws_alert_shapes')
+        rows:
+          - {notice_id: 'nws_alerts:inside', alert_id: inside, is_drawn: true, grid_shape_wkt: 'POLYGON ((5.2 5.2, 5.8 5.2, 5.8 5.8, 5.2 5.8, 5.2 5.2))', affected_zones: '[]'}
+          - {notice_id: 'nws_alerts:away', alert_id: away, is_drawn: true, grid_shape_wkt: 'POLYGON ((40 40, 41 40, 41 41, 40 41, 40 40))', affected_zones: '[]'}
+      - input: ref('int_warnings__weather_squares')
+        rows:
+          - {weather_square_key: s1, square_row: 0, square_col: 0}
+          - {weather_square_key: s2, square_row: 5, square_col: 5}
+      - input: ref('int_warnings__weather_zones')
+        rows: []
+    expect:
+      rows:
+        - {notice_id: 'nws_alerts:inside', squares: '[[5,5]]'}
+        - {notice_id: 'nws_alerts:away', squares: '[]'}
+
+  - name: int_warnings__wording_leaks_finds_a_sources_paragraph_in_a_published_column
+    description: >
+      A closures-type club notice whose category holds its source's own
+      paragraph leaks, in the closures mart where it obstructs the trail and
+      in warnings where it does not, and so does a warnings-type one whose
+      title holds another source's paragraph inside HTML, read as words; the
+      same source's clean row does not, a paragraph of one source in another
+      source's row is not read as that source's, a row no club notice source
+      feeds (ATC's) is not read at all, and nor is a club notice held as not
+      current (`notice_held_because`), which is never published. All of it
+      before int_closures__gate, which reads this (decision 81).
+    model: int_warnings__wording_leaks
+    given:
+      - input: ref('int_warnings__notice_wording_unioned')
+        rows:
+          - {wording_key: w1, source_key: src_a, notice_key: k1, column_name: notes, wording: 'Closed until further notice due to the August flash flood damage'}
+          - {wording_key: w2, source_key: src_b, notice_key: k2, column_name: description, wording: 'Another source paragraph about a washed out bridge crossing'}
+      - input: ref('int_closures__unioned')
+        rows:
+          - {notice_id: 'src_a:1', source_key: src_a, notice_kind: club_arcgis_layer, obstructs_trail: true, title: 'River Trail'}
+          - {notice_id: 'src_a:2', source_key: src_a, notice_kind: club_arcgis_layer, obstructs_trail: true, title: 'River Trail', category: 'Closed until further notice due to the August flash flood damage'}
+          - {notice_id: 'src_a:5', source_key: src_a, notice_kind: club_arcgis_layer, title: 'Ridge Trail', category: 'Closed until further notice due to the August flash flood damage'}
+          - {notice_id: 'src_a:6', source_key: src_a, notice_kind: club_arcgis_layer, title: 'Closed until further notice due to the August flash flood damage', notice_held_because: 'its own end date 2001-01-01 has passed'}
+          - {notice_id: 'atc_trail_updates:x', source_key: src_a, notice_kind: atc_trail_update, title: 'Closed until further notice due to the August flash flood damage today'}
+      - input: ref('int_warnings__unioned')
+        rows:
+          - {notice_id: 'src_b:3', source_key: src_b, notice_kind: club_page_notice, title: 'Fixture <b>Another source paragraph about a washed out bridge crossing</b> now'}
+          - {notice_id: 'src_a:4', source_key: src_a, notice_kind: club_page_notice, title: 'Another source paragraph about a washed out bridge crossing'}
+    expect:
+      rows:
+        - {mart: closures, row_id: 'src_a:2', column_name: category, source_key: src_a}
+        - {mart: warnings, row_id: 'src_a:5', column_name: category, source_key: src_a}
+        - {mart: warnings, row_id: 'src_b:3', column_name: title, source_key: src_b}
+
+  - name: int_warnings__wording_leaks_never_searches_a_geometry_for_wording
+    description: >
+      `geom_geojson` is a coordinate string, which no wording can be, and it
+      was most of the text the scan searched: on UA run 538's notices.json,
+      22,073,095 of 24,101,736 characters (the review of PR #1805 — dlt →
+      dbt re-platform as one go/no-go change, 2026-10-05). So it is not
+      read: an invented geometry carrying a source's paragraph is no leak,
+      while the same paragraph in the row's category still is one.
+    model: int_warnings__wording_leaks
+    given:
+      - input: ref('int_warnings__notice_wording_unioned')
+        rows:
+          - {wording_key: w1, source_key: src_a, notice_key: k1, column_name: notes, wording: 'Closed until further notice due to the August flash flood damage'}
+      - input: ref('int_closures__unioned')
+        rows:
+          - {notice_id: 'src_a:1', source_key: src_a, notice_kind: club_arcgis_layer, obstructs_trail: true, title: 'River Trail', geom_geojson: '{"type":"Point","coordinates":[-76.5,42.4],"note":"Closed until further notice due to the August flash flood damage"}'}
+          - {notice_id: 'src_a:2', source_key: src_a, notice_kind: club_arcgis_layer, obstructs_trail: true, title: 'River Trail', category: 'Closed until further notice due to the August flash flood damage'}
+      - input: ref('int_warnings__unioned')
+        rows: []
+    expect:
+      rows:
+        - {mart: closures, row_id: 'src_a:2', column_name: category, source_key: src_a}

@@ -1,0 +1,284 @@
+version: 2
+
+models:
+  - name: challenges
+    description: >
+      The challenges clubs put on their own trails (#1780 — Let a club
+      publish a challenge — places on its own trails that hikers opt into and
+      tag at camp — starting with the ATC's A.T. Summer Bucket List): one row
+      per challenge that resolved against the published POIs and the A.T.
+      centerline and whose source may publish, keyed by its id, with its
+      sections and items as the JSON challenges.json carries. Each item's
+      places carry the published POI's own mile, coordinate and name.
+      challenges.json is written from it by pub_challenges.
+    config:
+      access: public
+      contract:
+        enforced: true
+    # Decision 44: a phone file's shape is a version of the mart it is
+    # written from. v1 is challenges.json's shape today, at today's key, and
+    # pub_challenges pins it, ref('challenges', v=1), so a later latest
+    # version cannot move the published file. A removed, renamed or retyped
+    # column ships as a v2 beside v1 until v1's deprecation_date;
+    # check_contract_versions.py holds that against the base's manifest.
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: challenges
+    data_tests:
+      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
+      # where each goes"), each at warn and run by build_marts.py after the
+      # writers: the rows at each build; the rows per club and source, so one
+      # club's challenges vanishing cannot hide inside the total; each
+      # column's null rate, the long text (a challenge's summary, its sections
+      # and items) left out; and the columns challenges.json reads, its
+      # exposure's referenced_columns, which Elementary 0.26.0 can check on
+      # dbt 2.0.6 because one phone file reads this mart (points_of_interest's
+      # comment says why more could not be).
+      - elementary.volume_anomalies:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.dimension_anomalies:
+          arguments:
+            dimensions: [club, source_key]
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.all_columns_anomalies:
+          arguments:
+            column_anomalies: [null_percent]
+            exclude_regexp: "^(challenge_summary|sections|items)$"
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      - elementary.exposure_schema_validity:
+          config:
+            severity: warn
+            tags: [elementary_check]
+            enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+      # CH11: both ends inclusive days, so a one-day window is a window.
+      - dbt_utils.expression_is_true:
+          name: challenges_windows_close_on_or_after_they_open
+          arguments:
+            expression: "window_closes >= window_opens"
+          config:
+            where: "window_opens is not null and window_closes is not null"
+      # CH08: a finish line the resolved items can reach, or none.
+      - dbt_utils.expression_is_true:
+          name: challenges_finish_lines_are_reachable
+          arguments:
+            expression: "finish_count >= 1 and finish_count <= item_count"
+          config:
+            where: "finish_count is not null"
+      # CH09: a reward is claimed at a finish line.
+      - dbt_utils.expression_is_true:
+          name: challenges_rewards_have_a_finish_line
+          arguments:
+            expression: "finish_count is not null"
+          config:
+            where: "reward_kind is not null"
+      # CH09: entries only for a published challenge with a reward.
+      - dbt_utils.expression_is_true:
+          name: challenges_take_entries_only_when_published_with_a_reward
+          arguments:
+            expression: "status = 'published' and reward_kind is not null"
+          config:
+            where: "takes_entries"
+      # CH09: everything a phone would load is https, or absent.
+      - dbt_utils.expression_is_true:
+          name: challenges_links_are_https
+          arguments:
+            expression: >
+              coalesce(starts_with(photo, 'https://'), true)
+              and coalesce(starts_with(reward_art, 'https://'), true)
+              and coalesce(starts_with(reward_rules_url, 'https://'), true)
+      # CH10: the backend's id rule (ID_MAX_CHARS), so no tag of it is refused there.
+      - dbt_utils.expression_is_true:
+          name: challenges_ids_are_lowercase_words_joined_by_hyphens
+          arguments:
+            expression: >
+              length(challenge_id) <= {{ var('challenges_id_max_chars') }}
+              and regexp_full_match(challenge_id, '{{ var("challenges_id_pattern") }}')
+      # CH11: `reviewed` is the day somebody last stood behind the list.
+      - dbt_utils.expression_is_true:
+          name: challenges_reviewed_is_a_date
+          arguments:
+            expression: "try_strptime(reviewed, '%Y-%m-%d') is not null"
+      # The items the file lists are the items counted.
+      - dbt_utils.expression_is_true:
+          name: challenges_item_count_is_the_items_listed
+          arguments:
+            expression: "json_array_length(items) = item_count"
+    columns:
+      - name: challenge_id
+        description: >
+          The challenge's id, lowercase words joined by hyphens, at most 120
+          characters, and its file's name (CH10). Tags are keyed by it, on the
+          phone and on the backend.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: club
+        description: The extract folder that landed the challenge's file (atc).
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: source_key
+        description: >
+          The claim its club's folder was landed under,
+          reference/challenges/<club>, as int_sources__publication keys it.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          # Its source may publish, not only exist: a plain relationships test
+          # passes a row whose source is registered but held back.
+          - dbt_utils.relationships_where:
+              arguments:
+                to: ref('int_sources__publication')
+                field: source_key
+                to_condition: may_publish
+      - name: _loaded_at
+        description: When the extract landed the file.
+        data_type: timestamptz
+        constraints:
+          - type: not_null
+      - name: org
+        description: The publishing organization's slug, which publishers.json scopes (CH02).
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: org_name
+        description: The organization's name, from sources.json's org:<org>. What the phone prints beside the challenge.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: org_short
+        description: The organization's provider, its short name, from sources.json ("ATC · until Sep 1").
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: org_domain
+        description: >
+          The organization's web domain from publishers.json, lower-cased. An
+          entry carries it back to the backend, which gives it only to a club
+          that proved that domain.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: trail
+        description: The trail the challenge is on, one its organization publishes (CH03). Published as `trail`.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: name
+        description: The challenge's name, stripped.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: status
+        description: >
+          `draft` or `published` (CH12). A draft publishes, labelled on every
+          surface that names it (the maintainer's poll, 2026-09-30), and takes
+          no entries.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [draft, published]
+      - name: challenge_summary
+        description: The challenge's summary, stripped; null where it gives none.
+        data_type: varchar
+      - name: window_opens
+        description: The first day it may be done, YYYY-MM-DD as written; null for open.
+        data_type: varchar
+      - name: window_closes
+        description: The last day it may be done, YYYY-MM-DD as written; null for open.
+        data_type: varchar
+      - name: finish_count
+        description: How many items finish it; null where it has no finish line.
+        data_type: integer
+      - name: finish_label
+        description: What finishing earns, as the club words it ("for the drawing"); null where it gives none.
+        data_type: varchar
+      - name: reward_kind
+        description: What the club offers at the finish; null for nothing, which is the common case.
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [patch, postcard, sticker, drawing]
+      - name: reward_rules_url
+        description: The reward's rules, an https link; null where there are none.
+        data_type: varchar
+      - name: reward_art
+        description: The reward's picture, an https link; null where there is none.
+        data_type: varchar
+      - name: takes_entries
+        description: >
+          Whether the club collects entries through OurHike, which the phone
+          must know before it asks a hiker for a name and an address: true
+          only for a published challenge with a reward (CH09).
+        data_type: boolean
+        constraints:
+          - type: not_null
+      - name: photo
+        description: The challenge's photo, an https link; null where there is none.
+        data_type: varchar
+      - name: reviewed
+        description: The day somebody last stood behind the list, YYYY-MM-DD as written.
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: sections
+        description: The challenge's sections in order, each its id, title and short name, as JSON.
+        data_type: json
+        constraints:
+          - type: not_null
+      - name: items
+        description: >
+          The items that resolved, in the file's order, each as
+          challenges.json carries it, as JSON: a mystery item's title sealed
+          as base64 through its reveal_on (CH07), and each place a published
+          POI's own id, name, type, mile, lat and lon (CH01).
+        data_type: json
+        constraints:
+          - type: not_null
+      - name: item_count
+        description: How many items resolved and are listed.
+        data_type: bigint
+        constraints:
+          - type: not_null
+      - name: sealed_item_count
+        description: How many of them ship their title sealed.
+        data_type: bigint
+        constraints:
+          - type: not_null
+      - name: list_position
+        description: The file's place in today's path order, which is the published order.
+        data_type: bigint
+        constraints:
+          - type: not_null
+      - name: _first_seen_at
+        description: "{{ doc('row_first_seen_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                # warn only on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already.
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+      - name: _changed_at
+        description: "{{ doc('row_changed_at') }}"
+        data_type: timestamptz
+        data_tests:
+          - not_null:
+              config:
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"

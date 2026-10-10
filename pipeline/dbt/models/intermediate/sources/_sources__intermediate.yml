@@ -1,0 +1,617 @@
+version: 2
+
+models:
+  - name: int_sources__paper_maps
+    description: >
+      Each landed paper-map table (#1574), its products in the shape a store
+      record publishes, and the first problem export_sources.py's
+      `_paper_maps` would refuse it for.
+    columns:
+      - name: file_path
+        description: The table's path under pipeline/, which a store block's `paper_maps` names.
+        data_tests: [not_null, unique]
+      - name: products
+        description: Each product, in the file's order, with its store URL before any referral.
+      - name: problem
+        description: >
+          The first problem, in `_paper_maps`'s order, with values rendered
+          as JSON. Null if the table publishes. It fails the build only
+          through int_sources__stewards, for a table a shipping steward's
+          store names.
+  - name: int_sources__stewards
+    description: >
+      One record per steward whose data reaches a hiker (#927, SR01-SR06):
+      the name, trust tier, licence, attribution and terms stewards.json
+      prints, and the donate line and paper-map store where the organization
+      has asked for one.
+    data_tests:
+      # SR04, SR05: a malformed support or store block stops the build, as
+      # export_sources.py's SystemExit stops the publish, because a block
+      # missing its surfaces is not a block with none. To see which, from
+      # pipeline/dbt:
+      #   dbt show --profiles-dir . --inline "select provider, problem
+      #     from intermediate.int_sources__stewards where problem is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "problem is null"
+          config:
+            severity: error
+    columns:
+      - name: provider
+        description: The registry `provider`, one per steward.
+        data_tests: [not_null, unique]
+      - name: steward_name
+        description: >
+          The steward's own name where every shipping source gives the same
+          one, else its licence block's author, else the provider key.
+      - name: steward_trust
+        description: The tier, only where every shipping source declares the same one (SR06).
+      - name: licence
+        description: The licence block's short `license` terms (SR03). Null where no block joins.
+      - name: attribution
+        description: The credit line every source gives, else the licence block's (SR02).
+      - name: support_record
+        description: The donate line (#932), or null where the organization has not asked for one.
+      - name: store_record
+        description: The paper-map store (#1574), or null where none is recorded.
+      - name: problem
+        description: Why the record cannot publish, in export_sources.py's words. Null if it can.
+  - name: int_sources__registered
+    description: >
+      Every registered source, shipping or not, with what registry.json says
+      of it (#929, SR07): copied fields, the steward the row reports, whether
+      that steward has asked for support, and where its mark ask stands.
+    columns:
+      - name: source_key
+        description: The registry key.
+        data_tests: [not_null, unique]
+      - name: steward
+        description: The source's own steward, else its organization's name.
+      - name: supports_donation
+        description: Whether a support block names the steward this row reports.
+
+  - name: int_sources__publication
+    description: >
+      Whether each registered source may reach a hiker's phone, and the
+      rule that decided it (pipeline/ELT.md, "Who may publish"). Every mart
+      but `sources` keeps only the rows whose source has `may_publish`.
+    columns:
+      - name: source_key
+        description: The registry key.
+        data_tests: [not_null, unique]
+      - name: may_publish
+        description: >
+          True only where a rule makes it true: rule 1 (the registry ships
+          it, on a basis publishable_licence_bases lists) with none of the
+          guards refusing it, or a row of unregistered_publishing_sources.
+          Never null.
+        data_tests: [not_null]
+      - name: publication_rule
+        description: The first rule that decided the row, or `registered_and_publishable`.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - registered_and_publishable
+                  - held_back_by_the_registry
+                  - basis_not_publishable
+                  - public_domain_needs_a_federal_organization
+                  - clearinghouse_basis_outside_new_york
+                  - public_gis_needs_a_gis_endpoint
+                  - restrictive_terms_no_decision_answers
+                  - publishing_before_registration
+      - name: licence_basis
+        description: The registry's `licence_basis`, copied.
+      - name: terms_restrictions
+        description: >
+          Rule 5's reading of the words the row quotes (`terms` and
+          `terms_verbatim`): each restriction class licence_restriction_phrases
+          finds in them, comma-separated and sorted, `unclassified` for a
+          restriction-shaped word no phrase explains. Null where the row
+          quotes no words or they restrict nothing.
+      - name: unanswered_restrictions
+        description: >
+          The classes of terms_restrictions that no row of
+          licence_restriction_answers answers on this row's basis with a
+          decision its `licence` names. Set whatever `publication_rule`
+          says, so a row the registry holds back still shows what rule 5
+          would hold it for once `reaches_hikers` flips. Null where every
+          restriction is answered.
+  - name: int_sources__final
+    description: >
+      The sources mart's rows before their row dates (decision 57):
+      what models/marts/sources/sources.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_sources__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: source_key
+        description: The mart's key.
+        data_tests: [not_null, unique]
+
+unit_tests:
+  - name: int_sources__paper_maps_refuses_what_paper_maps_refuses
+    description: >
+      One table per branch of export_sources.py's `_paper_maps`, and two
+      where this model is deliberately stricter (rows 16 and 17: a sheet or
+      handle with a trailing newline, which re.match's `$` lets through).
+      tests/test_dbt_sources_parity.py runs `_paper_maps` over the same
+      tables and fails where the two disagree anywhere else.
+    model: int_sources__paper_maps
+    given:
+      - input: ref('base_registry__nynjtc_paper_maps')
+        rows:
+          - {file_path: 'reference/maps_00.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "north-map", "title": "North-Map Map", "sheets": ["100", "101"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"], "101": ["A Park"]}}, {"handle": "south-map", "title": "South-Map Map", "sheets": ["102"], "sheet_covers": {"102": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_01.json', document_json: '{"store": {"base": "https://store.example.org"}}'}
+          - {file_path: 'reference/maps_02.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": []}'}
+          - {file_path: 'reference/maps_03.json', document_json: '{"store": {"base": "http://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_04.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "Bad Handle", "title": "Bad Handle Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_05.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": null, "title": "X Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_06.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "  ", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_07.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": [], "covers": ["A Park"], "sheet_covers": {}}]}'}
+          - {file_path: 'reference/maps_08.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["12"], "covers": ["A Park"], "sheet_covers": {"12": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_09.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": [118], "covers": ["A Park"], "sheet_covers": {"118": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_10.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}, {"handle": "b-map", "title": "B-Map Map", "sheets": ["101", "100"], "covers": ["A Park"], "sheet_covers": {"101": ["A Park"], "100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_11.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100", "100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_12.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100", "101"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_13.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100", "101"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"], "101": ["", "B Park"]}}]}'}
+          - {file_path: 'reference/maps_14.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100"], "covers": null, "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_15.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100"], "covers": ["A Park", 5], "sheet_covers": {"100": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_16.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map", "title": "A-Map Map", "sheets": ["100\n"], "covers": ["A Park"], "sheet_covers": {"100\n": ["A Park"]}}]}'}
+          - {file_path: 'reference/maps_17.json', document_json: '{"store": {"base": "https://store.example.org"}, "maps": [{"handle": "a-map\n", "title": "A-Map\n Map", "sheets": ["100"], "covers": ["A Park"], "sheet_covers": {"100": ["A Park"]}}]}'}
+    expect:
+      rows:
+        - {file_path: 'reference/maps_00.json', problem: null}
+        - {file_path: 'reference/maps_01.json', problem: 'reference/maps_01.json carries no `maps` - the paper-map table needs at least one product'}
+        - {file_path: 'reference/maps_02.json', problem: 'reference/maps_02.json carries no `maps` - the paper-map table needs at least one product'}
+        - {file_path: 'reference/maps_03.json', problem: 'reference/maps_03.json needs `store.base` - the https origin every product handle is a path under'}
+        - {file_path: 'reference/maps_04.json', problem: 'reference/maps_04.json: product handle "Bad Handle" is not a Shopify handle (lowercase words joined by ''-'')'}
+        - {file_path: 'reference/maps_05.json', problem: 'reference/maps_05.json: product handle null is not a Shopify handle (lowercase words joined by ''-'')'}
+        - {file_path: 'reference/maps_06.json', problem: 'reference/maps_06.json: product a-map has no title - the phone prints the title verbatim, so it cannot be blank'}
+        - {file_path: 'reference/maps_07.json', problem: 'reference/maps_07.json: product a-map lists no sheets'}
+        - {file_path: 'reference/maps_08.json', problem: 'reference/maps_08.json: product a-map lists sheet "12", which is not a sheet number like 118 or 106A'}
+        - {file_path: 'reference/maps_09.json', problem: 'reference/maps_09.json: product a-map lists sheet 118, which is not a sheet number like 118 or 106A'}
+        - {file_path: 'reference/maps_10.json', problem: 'reference/maps_10.json: sheet 100 is listed by both a-map and b-map; a sheet belongs to one product'}
+        - {file_path: 'reference/maps_11.json', problem: 'reference/maps_11.json: sheet 100 is listed by both a-map and a-map; a sheet belongs to one product'}
+        - {file_path: 'reference/maps_12.json', problem: 'reference/maps_12.json: product a-map needs a `sheet_covers` entry for every sheet it lists and no other'}
+        - {file_path: 'reference/maps_13.json', problem: 'reference/maps_13.json: product a-map, sheet 101: `sheet_covers` must be a list of place names'}
+        - {file_path: 'reference/maps_14.json', problem: 'reference/maps_14.json: product a-map: `covers` must be a list of place names'}
+        - {file_path: 'reference/maps_15.json', problem: 'reference/maps_15.json: product a-map: `covers` must be a list of place names'}
+        - {file_path: 'reference/maps_16.json', problem: 'reference/maps_16.json: product a-map lists sheet "100\n", which is not a sheet number like 118 or 106A'}
+        - {file_path: 'reference/maps_17.json', problem: 'reference/maps_17.json: product handle "a-map\n" is not a Shopify handle (lowercase words joined by ''-'')'}
+  - name: int_sources__stewards_refuses_what_export_sources_refuses
+    description: >
+      One steward per branch of export_sources.py's `_support_record` and
+      `_store_record`, and the joins around them: a block found through
+      `also_covers` (N), the first of two blocks winning (P), a steward
+      named by its licence block when its sources disagree (L) or by the
+      provider key when nothing names it (K), and a provider that ships
+      nothing, which has no record at all (O). tests/test_dbt_sources_
+      parity.py runs build_output() over the same registry and fails where
+      the two disagree, except H, which both refuse in different words:
+      SQL sees the warehouse, not the checkout.
+    model: int_sources__stewards
+    given:
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: a_01, provider: A, steward: 'Org A', reaches_hikers: true}
+          - {source_key: b_02, provider: B, steward: 'Org B', reaches_hikers: true}
+          - {source_key: c_03, provider: C, steward: 'Org C', reaches_hikers: true}
+          - {source_key: d_04, provider: D, steward: 'Org D', reaches_hikers: true}
+          - {source_key: e_05, provider: E, steward: 'Org E', reaches_hikers: true}
+          - {source_key: f_06, provider: F, steward: 'Org F', reaches_hikers: true}
+          - {source_key: g_07, provider: G, steward: 'Org G', reaches_hikers: true}
+          - {source_key: h_08, provider: H, steward: 'Org H', reaches_hikers: true}
+          - {source_key: i_09, provider: I, steward: 'Org I', reaches_hikers: true}
+          - {source_key: j_10, provider: J, steward: 'Org J', reaches_hikers: true}
+          - {source_key: k_11, provider: K, steward: null, reaches_hikers: true}
+          - {source_key: k_12, provider: K, steward: null, reaches_hikers: true}
+          - {source_key: l_13, provider: L, steward: 'Org L', reaches_hikers: true}
+          - {source_key: l_14, provider: L, steward: 'Org L Two', reaches_hikers: true}
+          - {source_key: n_15, provider: N, steward: 'Org N', reaches_hikers: true}
+          - {source_key: o_16, provider: O, steward: 'Org O', reaches_hikers: false}
+          - {source_key: p_17, provider: P, steward: 'Org P', reaches_hikers: true}
+          - {source_key: q_18, provider: Q, steward: 'Org Q', reaches_hikers: true}
+      - input: ref('stg_registry__top_level')
+        format: sql
+        rows: |
+          select 'a_licence' as entry_name, 1 as entry_position, 'licence' as block_kind, cast('Org A' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org A", "license": "Org A terms", "attribution": "\u00a9 Org A"}' as json) as entry_value
+          union all
+          select 'a_support' as entry_name, 2 as entry_position, 'support' as block_kind, cast('Org A' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org A", "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'a_store' as entry_name, 3 as entry_position, 'store' as block_kind, cast('Org A' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org A", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["sources_screen"], "referral": "utm_source=ourhike", "paper_maps": "reference/maps_00.json"}' as json) as entry_value
+          union all
+          select 'b_support' as entry_name, 4 as entry_position, 'support' as block_kind, cast('Org B' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org B", "donate_url": "https://example.org/give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'c_support' as entry_name, 5 as entry_position, 'support' as block_kind, cast('Org C' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org C", "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": "sources_screen"}' as json) as entry_value
+          union all
+          select 'd_support' as entry_name, 6 as entry_position, 'support' as block_kind, cast('Org D' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org D", "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "map"]}' as json) as entry_value
+          union all
+          select 'e_store' as entry_name, 7 as entry_position, 'store' as block_kind, cast('Org E' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org E", "store_url": "https://example.org/maps", "store_cta": "", "store_surfaces": ["sources_screen"], "referral": "utm_source=ourhike"}' as json) as entry_value
+          union all
+          select 'f_store' as entry_name, 8 as entry_position, 'store' as block_kind, cast('Org F' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org F", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": {"a": 1}, "referral": "utm_source=ourhike", "paper_maps": "reference/maps_00.json"}' as json) as entry_value
+          union all
+          select 'g_store' as entry_name, 9 as entry_position, 'store' as block_kind, cast('Org G' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org G", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["map"], "referral": "utm_source=ourhike", "paper_maps": "reference/maps_00.json"}' as json) as entry_value
+          union all
+          select 'h_store' as entry_name, 10 as entry_position, 'store' as block_kind, cast('Org H' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org H", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["sources_screen"], "referral": "utm_source=ourhike", "paper_maps": "reference/none.json"}' as json) as entry_value
+          union all
+          select 'i_store' as entry_name, 11 as entry_position, 'store' as block_kind, cast('Org I' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org I", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["sources_screen"], "referral": 5, "paper_maps": "reference/maps_00.json"}' as json) as entry_value
+          union all
+          select 'j_store' as entry_name, 12 as entry_position, 'store' as block_kind, cast('Org J' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org J", "store_url": "https://example.org/maps", "store_cta": "Maps", "store_surfaces": ["sources_screen"], "referral": "utm_source=ourhike", "paper_maps": "reference/maps_04.json"}' as json) as entry_value
+          union all
+          select 'l_licence' as entry_name, 13 as entry_position, 'licence' as block_kind, cast('Org L Two' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org L Two", "license": "Org L Two terms", "attribution": "\u00a9 Org L Two"}' as json) as entry_value
+          union all
+          select 'n_support' as entry_name, 14 as entry_position, 'support' as block_kind, cast('City N' as varchar) as author, cast(['Org N'] as varchar[]) as also_covers, cast('{"author": "City N", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"], "also_covers": ["Org N"]}' as json) as entry_value
+          union all
+          select 'o_support' as entry_name, 15 as entry_position, 'support' as block_kind, cast('Org O' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org O", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'p_support' as entry_name, 16 as entry_position, 'support' as block_kind, cast('Org P' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org P", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'p2_support' as entry_name, 17 as entry_position, 'support' as block_kind, cast('Org P' as varchar) as author, cast([] as varchar[]) as also_covers, cast('{"author": "Org P", "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"]}' as json) as entry_value
+          union all
+          select 'q_support' as entry_name, 18 as entry_position, 'support' as block_kind, cast(null as varchar) as author, cast(['Org Q'] as varchar[]) as also_covers, cast('{"author": null, "donate_url": "https://example.org/give", "donate_cta": "Give", "donate_surfaces": ["sources_screen", "trail_card"], "also_covers": ["Org Q"]}' as json) as entry_value
+      - input: ref('stg_registry__organizations')
+        rows: []
+      - input: ref('int_sources__paper_maps')
+        format: sql
+        rows: |
+          select 'reference/maps_00.json' as file_path, cast([] as json[]) as products, cast(null as varchar) as problem
+          union all
+          select 'reference/maps_04.json' as file_path, cast([] as json[]) as products, cast('reference/maps_04.json: product handle "Bad Handle" is not a Shopify handle (lowercase words joined by ''-'')' as varchar) as problem
+      - input: ref('registry_surfaces')
+        rows:
+          - {block_kind: support, surface: day_hike_summary}
+          - {block_kind: support, surface: sources_screen}
+          - {block_kind: support, surface: trail_card}
+          - {block_kind: store, surface: hike_detail}
+          - {block_kind: store, surface: sources_screen}
+          - {block_kind: store, surface: trail_sheet}
+    expect:
+      rows:
+        - {provider: A, steward_name: 'Org A', problem: null}
+        - {provider: B, steward_name: 'Org B', problem: 'support block for Org B is missing: donate_cta'}
+        - {provider: C, steward_name: 'Org C', problem: 'donate_surfaces for Org C must be a list, got str'}
+        - {provider: D, steward_name: 'Org D', problem: 'donate_surfaces for Org D names surfaces that do not exist: map'}
+        - {provider: E, steward_name: 'Org E', problem: 'store block for Org E is missing: store_cta, paper_maps'}
+        - {provider: F, steward_name: 'Org F', problem: 'store_surfaces for Org F must be a list, got dict'}
+        - {provider: G, steward_name: 'Org G', problem: 'store_surfaces for Org G names surfaces that do not exist: map'}
+        - {provider: H, steward_name: 'Org H', problem: 'store block for Org H names reference/none.json, and no resource in extract/_shared/registry/ lands it'}
+        - {provider: I, steward_name: 'Org I', problem: 'referral for Org I must be a query string, got int'}
+        - {provider: J, steward_name: 'Org J', problem: 'reference/maps_04.json: product handle "Bad Handle" is not a Shopify handle (lowercase words joined by ''-'')'}
+        - {provider: K, steward_name: 'K', problem: null}
+        - {provider: L, steward_name: 'Org L Two', problem: null}
+        - {provider: N, steward_name: 'Org N', problem: 'support block for City N is missing: donate_url'}
+        - {provider: P, steward_name: 'Org P', problem: 'support block for Org P is missing: donate_url'}
+        - {provider: Q, steward_name: 'Org Q', problem: 'support block for (no author) is missing: author'}
+  - name: int_sources__publication_publishes_only_what_a_rule_makes_true
+    description: >
+      One row per branch of "Who may publish" this model decides: rule 1
+      both ways, a verdict nobody recorded (null reaches_hikers), a basis
+      nobody settled, and each guard refusing a row that rule 1 alone would
+      publish. Decision 69 admits `public_gis` on a club's own page,
+      PDF or map route of points (`page_points`, `pdf_points`,
+      `json_features`), and rule 6 still refuses it on a hike list or a
+      club's document, which carry prose.
+    model: int_sources__publication
+    given:
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: ships_stated, provider: 'A', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: stated_by_org}
+          - {source_key: ships_authorised, provider: 'B', kind: null, reaches_hikers: true, licence_basis: maintainer_authorisation}
+          - {source_key: held_back, provider: 'C', kind: club_pdf, reaches_hikers: false, licence_basis: stated_by_org}
+          - {source_key: verdict_missing, provider: 'A', kind: external_arcgis_layer, reaches_hikers: null, licence_basis: stated_by_org}
+          - {source_key: unresolved_basis, provider: 'A', kind: podcast_feed, reaches_hikers: true, licence_basis: unresolved}
+          - {source_key: no_basis, provider: 'A', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: null}
+          - {source_key: state_public_domain, provider: 'D', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: public_domain}
+          - {source_key: dec_clearinghouse, provider: 'D', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: maintainer_clearinghouse}
+          - {source_key: oprhp_clearinghouse, provider: 'E', kind: null, reaches_hikers: true, licence_basis: maintainer_clearinghouse}
+          - {source_key: other_clearinghouse, provider: 'A', kind: external_arcgis_layer, reaches_hikers: true, licence_basis: maintainer_clearinghouse}
+          - {source_key: gis_socrata, provider: 'F', kind: socrata_geojson_layer, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_no_kind, provider: 'G', kind: null, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_on_a_podcast, provider: 'A', kind: podcast_feed, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_file_on_a_club_site, provider: 'F', kind: gis_file, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_on_a_club_map_route, provider: 'A', kind: json_features, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_on_a_club_page, provider: 'A', kind: page_points, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_on_a_club_pdf, provider: 'A', kind: pdf_points, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_on_a_hike_list, provider: 'A', kind: published_hikes, reaches_hikers: true, licence_basis: public_gis}
+          - {source_key: gis_on_a_club_document, provider: 'A', kind: club_pdf, reaches_hikers: true, licence_basis: public_gis}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {provider: 'A', steward_id: 'org:atc'}
+          - {provider: 'B', steward_id: 'org:nynjtc'}
+          - {provider: 'C', steward_id: 'org:gatc'}
+          - {provider: 'D', steward_id: 'org:nysdec'}
+          - {provider: 'E', steward_id: 'org:nysoprhp'}
+          - {provider: 'F', steward_id: 'org:nycparks'}
+          - {provider: 'G', steward_id: 'org:usfs'}
+      - input: ref('unregistered_publishing_sources')
+        rows:
+          - {source_key: opentrail_at}
+      - input: ref('publishable_licence_bases')
+        rows:
+          - {licence_basis: stated_by_org, applies_to: any}
+          - {licence_basis: maintainer_authorisation, applies_to: any}
+          - {licence_basis: maintainer_clearinghouse, applies_to: nys_clearinghouse}
+          - {licence_basis: public_gis, applies_to: gis}
+          - {licence_basis: public_domain, applies_to: federal}
+      - input: ref('licence_restriction_phrases')
+        rows:
+          - {restriction: 'not_a_restriction', pattern: '\b(none stated|copyrighttext|accessinformation|licenseinfo)\b', written_for: 'dec_lands', why: 'The registry''s own labels for where each quoted text was read'}
+          - {restriction: 'not_a_restriction', pattern: '\b(provided|provides these geographic data) ("as is"|''as is''|as is)( and "as available"| and as available)?', written_for: 'mohonk_preserve_boundary', why: 'A warranty disclaimer: says what the data is not promised to be, restricts nothing'}
+          - {restriction: 'not_a_restriction', pattern: '\b(without|with no|no|any) (any )?(representation or )?(warranty|warranties|guarantees?)\b', written_for: 'nps_park_boundaries', why: 'A warranty disclaimer'}
+          - {restriction: 'not_a_restriction', pattern: '\b(makes|make|gives|give|provide|provides) no (claims|warranty|warranties)\b', written_for: 'trta_special_management_areas', why: 'A warranty disclaimer'}
+          - {restriction: 'not_a_restriction', pattern: '\b(shall|will|is|are) not (be )?(held )?(liable|responsible)\b|\bdisclaims\b|\b(hold|save) (\w+ ){0,6}harmless\b|\bindemnif(y|ies|ication)\b|\bassumes? (no|the entire) (responsibility|risk)\b|\b(used and )?relied upon only at the user''s sole risk\b|\b(you are|user is) (solely )?responsible\b|\bsole remedy\b', written_for: 'nps_park_boundaries', why: 'A liability disclaimer: who answers for a misuse, not what use is allowed. Decision 71 (the maintainer''s poll, 2026-10-04, card Q7) reads a hold-harmless, save-harmless or indemnity clause so: UGRC''s "hold the State of Utah harmless", CPW''s "indemnify and hold harmless", and the "save the Commonwealth harmless" half of Explore PA''s words, not their "purposes only" half'}
+          - {restriction: 'not_a_restriction', pattern: '\b(are|is) (neither|not) (legal documents|of survey quality|engineering quality drawings)( nor land surveys)?\b|\bnot (intended )?(to be used )?(for|as) (legal|engineering|survey(ing)?)( or (legal|engineering|survey(ing)?))? (purposes|documents)?\b|\bin no way intended for engineering or legal purposes\b|\bmay not have been prepared for or be suitable for\b|\b(are )?not intended to be used as such\b|\bmust not be used as such\b|\bnot to be used for describing actual or true property ownership\b|\bmay not have the necessary accuracy or completeness required\b|\brepresents only the approximate relative location\b', written_for: 'grsm_park_boundary_lines', why: 'An accuracy or fitness disclaimer: the data is not a survey, an engineering drawing or a legal document'}
+          - {restriction: 'not_a_restriction', pattern: '\bfor (general )?(information(al)?|reference|geographic reference|display) purposes( only)?\b|\bfor the information and convenience of the public\b|\bas a public service\b', written_for: 'ugrc_municipal_boundaries', why: 'Says the data informs rather than certifies; restricts nothing about rendering it'}
+          - {restriction: 'not_a_restriction', pattern: '\b(will|shall|should) (be )?(credit|cite|cited)\b|\bcredit/disclaimer\b|\bshould be cited as the data source\b', written_for: 'blm_public_lands_access_lines', why: 'A credit requirement: every source row carries its `attribution`, and the sources mart prints it'}
+          - {restriction: 'not_a_restriction', pattern: '\blicensed under a Creative Commons Attribution( \d(\.\d)?)?( International)?( License)?\b|\bCC0\b|\bCC BY( \d(\.\d)?)?([ .,;|)]|$)', written_for: 'ugrc_municipal_boundaries', why: 'An open licence (CC0, CC BY): attribution only, which the row''s `attribution` carries. Never CC BY-SA, -ND or -NC, which the pattern stops short of so that their own rows below read them'}
+          - {restriction: 'not_a_restriction', pattern: '\bdistribution map\b|\bprovided for distribution\b|\bData Distribution Agreement\b|\bdistributed subject to the following conditions( and restrictions)?\b|\bfree of Copyright or Trademark claims or other restrictions or limitations\b|\bsubject to the copyright of trademark laws\b|\bnot state-authorized or endorsed\b|\breference to any specific commercial products\b|\bnor shall the act of distribution constitute\b', written_for: 'nj_high_elevation_points', why: 'A title, a species map''s name, or a note on third-party rights or endorsement: not a bar on this use'}
+          - {restriction: 'not_a_restriction', pattern: '\bnone( of [^:]*)? (found|read)\b[^"]*', written_for: 'usfs_r08_alabama_alerts', why: 'The inventory''s own account of finding no terms ("None found: only a privacy policy is linked", "None read for these pages beyond the federal public-domain reading in `licence`"): our words up to the next quotation, restricting nothing'}
+          - {restriction: 'not_a_restriction', pattern: '\bno clause on\b[^"]*', written_for: 'amc_facility_conditions', why: 'The inventory''s account of a terms page it read and found no access clause in ("no clause on automated access, scraping, crawling or reproduction"): our words, up to the next quotation'}
+          - {restriction: 'not_a_restriction', pattern: '\bunedited placeholder \([^)]*\)', written_for: 'mratc_trail_alerts', why: 'A web host''s placeholder text quoted as such ("Wix''s unedited placeholder (...)"): no terms of the club''s own'}
+          - {restriction: 'not_a_restriction', pattern: '\b(grants?|granted) permission to\b[^,.]*|\bpermission is granted to\b[^,.]*', written_for: 'nc_parks_mount_mitchell_alerts', why: 'A grant ("grants permission to copy and distribute", TPWD''s "Permission is granted to republish"): what the terms allow, not a bar'}
+          - {restriction: 'not_a_restriction', pattern: '\bat (your|the user''s|their) own risk\b|\bmay be (out of date|outdated)\b|\bwill be updated only when\b[^.]*', written_for: 'fmst_primary_trailheads', why: 'FMST''s sheet: it "will be updated only when we update the interactive map. Mileages and descriptions may be out of date, so use the spreadsheet at your own risk": an accuracy line and a liability line, which decision 72 reads as restricting no use (the maintainer''s poll, 2026-10-04, card 8b). What the sheet''s age means for a hiker is its low confidence, not its terms'}
+          - {restriction: 'commercial', pattern: 'non-?commercial use', written_for: 'wi_dnr_fire_danger', why: '"The material is for the noncommercial use of the general public": a bar on commercial use, which decision 36 answers'}
+          - {restriction: 'commercial', pattern: '\bsale of\b([^.]*\bprohibited\b)?', written_for: 'king_county_parks_alerts_points', why: '"Any sale of this map or information on this map is prohibited": a bar on selling, which decision 36 answers'}
+          - {restriction: 'commercial', pattern: '\bmay not be sold\b', written_for: '', why: 'California State Parks'' "may not be sold or altered" (pipeline/ELT.md, "Who may publish", rule 5): decision 36'}
+          - {restriction: 'commercial', pattern: '\b(for profit|commercial (use|purposes?)|resale|resell\w*)\b', written_for: '', why: 'Profit, sale or commercial use barred: decision 36''s own words for the batch it answered'}
+          - {restriction: 'no_reuse', pattern: '\bnot intended for re-?use\b', written_for: 'wi_dnr_park_closures', why: '"It is not intended for reuse": a refusal of reuse in the layer''s own words, which decision 37 answers on a public GIS endpoint'}
+          - {restriction: 'no_reuse', pattern: '\bnot for (re)?distribution\b', written_for: '', why: 'Decision 37''s own words ("not for distribution"), and DEC''s clearinghouse items'' (decisions 20 and 22)'}
+          - {restriction: 'no_reuse', pattern: '\b(do not|may not|must not|shall not) (be )?(re)?distribut\w*', written_for: '', why: 'OPRHP''s "Do not redistribute" (decisions 20 and 22)'}
+          - {restriction: 'no_reuse', pattern: '\bsecondary distribution\b([^.]*\bnot allowed\b)?', written_for: '', why: 'DEC''s clearinghouse licenseInfo, "Secondary Distribution of the data is not allowed" (decisions 20 and 22)'}
+          - {restriction: 'no_reuse', pattern: '\binternal (use|informational purposes)\b', written_for: '', why: 'Decision 37''s "internal use", and WTA''s "used solely for internal informational purposes" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\ball rights reserved\b', written_for: '', why: 'Decision 37''s "all rights reserved"'}
+          - {restriction: 'no_reuse', pattern: '\b(a )?(product and )?property of\b', written_for: 'cpw_bear_conflict_areas', why: '"a product and property of Colorado Parks and Wildlife": an ownership claim, which cpw_bear_conflict_areas'' row answers with decision 37'}
+          - {restriction: 'no_reuse', pattern: '\bmay not be (reproduced|copied|redistributed)( or (reproduced|copied|redistributed))?', written_for: 'njdep_park_status', why: 'NJDEP''s "may not be reproduced or redistributed without all the metadata provided": decision 55 for a notice, njdep_licence''s reading for its GIS layers'}
+          - {restriction: 'no_reuse', pattern: '\bfair use (guidelines )?(of )?(the )?(U\.S\. )?(copyright statutes? )?(apply|applies)?', written_for: 'wi_dnr_fire_danger', why: '"The fair use guidelines of the U.S. copyright statutes apply": copying past fair use is not granted, which decision 55 answers for a notice'}
+          - {restriction: 'no_reuse', pattern: '\bcopyright\b', written_for: 'msta_section_1', why: 'A copyright claim ("Copyright 2012 - Mid State Trail Association", Duluth''s "we retain copyright"): copying the work is not granted, which decision 55 answers for a notice''s facts and link'}
+          - {restriction: 'no_reuse', pattern: '\breproduction is prohibited\b', written_for: 'ota_victory_conditions', why: 'OTA''s "Reproduction is prohibited other than in accordance with the copyright notice" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\bno part of\b[^.]*\bmay be (copied|reproduced)\b[^.]*', written_for: 'tpwd_davis_mountains_alerts', why: 'TPWD''s, IN.gov''s and WTA''s "No part of ... may be copied" or "reproduced" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\b(you )?agree not to\b[^.]*', written_for: 'ebrpd_alerts_closures', why: 'EBRPD''s "You agree not to modify, copy, distribute ... or commercially exploit": the whole clause a copying bar, which decision 55 answers'}
+          - {restriction: 'no_reuse', pattern: '\bforbids any copying\b', written_for: 'ma_dcr_blue_hills_alerts', why: 'Mass.gov''s "the Commonwealth forbids any copying or use other than fair use" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\b(reproduction|modification|distribution|transmission|republication)\b[^.]*\bis prohibited\b', written_for: 'nysdec_adk_backcountry', why: 'DEC''s "Any other use, including the reproduction, modification, distribution ... is prohibited" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\bmay not:\s*distribute\b|\bmirror\b[^;]*\bwithout our permission\b|\bmodify or re-?use\b', written_for: 'duluth_parks_news', why: 'Duluth''s "you may not: distribute the text", "mirror this information ... without our permission" and "modify or re-use the text" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\bnot for resale or redistribution\b', written_for: 'in_dnr_knobstone_conditions', why: 'IN.gov''s "(not for resale or redistribution)" (decision 55)'}
+          - {restriction: 'permission', pattern: '\b(written|prior|express) permission\b', written_for: 'king_county_parks_alerts_points', why: '"except by written permission of King County", and AZT''s "requires written permission" (decision 55)'}
+          - {restriction: 'permission', pattern: '\bwithout (the )?(prior )?(written )?permission\b', written_for: '', why: 'Copying conditional on asking first, which decision 55 answers for a notice''s facts and link'}
+          - {restriction: 'permission', pattern: '\b(prior|express|explicit) written (permission|consent)\b', written_for: 'tpwd_davis_mountains_alerts', why: 'TPWD''s "without the prior written consent", Duluth''s "express written permission", DEC''s "explicit written permission": copying conditional on asking first (decision 55)'}
+          - {restriction: 'purpose_limited', pattern: '\bfor (demonstration|education|educational|planning|monitoring|administrative|internal|non-?profit)\b[^.]*\bpurposes only\b', written_for: 'nps_park_boundaries', why: 'NPS''s "should be used for administrative purposes only": a use limited to named purposes. PA DCNR''s Explore PA Trails sentence, "intended for demonstration, education, planning, and monitoring purposes only", was this phrase''s other example until decision 106; its own not_a_restriction row below cuts those words out first, so another publisher''s list of purposes is still read here as a limit'}
+          - {restriction: 'purpose_limited', pattern: '\bfor (\w+ ){0,6}purposes only\b', written_for: 'grsm_park_boundary_lines', why: 'A use limited to named purposes ("for display and general GIS analysis purposes only"), read as a restriction rather than guessed to include ours'}
+          - {restriction: 'purpose_limited', pattern: '\bintended for use in (\w+ ){0,8}only\b', written_for: 'wi_dnr_park_closures', why: '"intended for use in Wisconsin DNR applications displaying property notices and closures only"'}
+          - {restriction: 'purpose_limited', pattern: '\b(for the sole purpose of|solely for)\b', written_for: 'ttc_management_areas', why: '"for the sole purpose of geographic reference": read as limiting the use to a purpose, which no decision names for this layer'}
+          - {restriction: 'condition', pattern: '\bshare-?alike\b|\bCC BY-SA\b', written_for: '', why: 'Vermont ANR''s CC BY-SA (decision 38): a share-alike notice travels with derived files'}
+          - {restriction: 'condition', pattern: '\b(any reproduction or manipulation of the above data must ensure that the )?coordinate reference system remains intact\b', written_for: 'nj_high_elevation_points', why: 'The NJDEP Data Distribution Agreement''s first condition, which njdep_licence''s reading carries'}
+          - {restriction: 'condition', pattern: '\bwithout all the metadata( provided)?\b', written_for: 'njdep_park_status', why: 'The NJDEP Data Distribution Agreement''s second condition, which njdep_licence''s reading carries and decision 55 answers for a notice'}
+          - {restriction: 'condition', pattern: '\bshould describe the types of modifications\b|\bshould not misrepresent the data\b', written_for: 'blm_public_lands_access_lines', why: 'BLM''s "Any Users wishing to modify the data should describe the types of modifications they have performed. The User should not misrepresent the data": conditions on a derived product, which decision 38 or a public-domain reading answers'}
+          - {restriction: 'condition', pattern: '\bdisclaimer is shown\b|\bnot (be )?credited below\b|\bzooms? (at or )?coarser\b', written_for: '', why: 'Decision 38''s named conditions: RIDEM''s disclaimer, SanGIS''s credit scale, the NHT zoom limit'}
+          - {restriction: 'condition', pattern: '\bprovided they are copied and distributed without alteration\b', written_for: 'nc_parks_mount_mitchell_alerts', why: 'NC.gov''s "provided they are copied and distributed without alteration and appropriately cite to the source": a condition on copying, which a notice''s facts and link never reach (decision 55)'}
+          - {restriction: 'conduct', pattern: '\b(prohibited behavior\W+)?(you are )?prohibited from using\b[^.]*\bdisruptive activities\b[^.]*\b(viruses|worms|trojan horses)\b', written_for: 'in_dnr_knobstone_conditions', why: 'IN.gov''s Prohibited Behavior clause: "You are prohibited from using the Portal in any way to ... engage in disruptive activities online, including excessive use of scripts ... or use viruses, bots, worms, or trojan horses". A bar on disruptive or malicious use of a site, which decision 75 answers for one request an hour under a named agent (the maintainer''s poll, 2026-10-04, card Q6). Only that list''s shape matches: a bar on automated access in other words ("you may not use bots") is not this phrase, and the backstop holds it'}
+          - {restriction: 'cannot_be_met', pattern: '\bnot intended for (trip )?planning\b|\bnot (to be used|intended) for navigation\b', written_for: '', why: 'The Pacific Northwest Trail line''s "not intended for trip planning": decision 38 rules that a condition a hiker''s planning tool cannot meet holds its layer, so no answer row exists for it'}
+          - {restriction: 'cannot_be_met', pattern: '\bno derivatives?\b|\bCC BY-ND\b|\bNoDerivatives\b', written_for: '', why: 'A bar on derived works: tiling and simplifying are derived works, and no decision names it'}
+          - {restriction: 'cannot_be_met', pattern: '\bCC BY-NC\b|\bAttribution-NonCommercial\b', written_for: '', why: 'A Creative Commons non-commercial licence: decision 36 answered layers that bar profit in their own words, not this licence''s terms, which a person reads before anything publishes under it'}
+          - {restriction: 'unclassified', pattern: '\b(may not|must not|shall not|should not|not to be used|prohibit\w*|permission|restrict\w*|not intended|rights reserved|distribut\w*|reproduc\w*|commercial|sale|sold|licen[cs]\w*|internal|solely|sole|only|copyright|trademark|must|required|requires)\b', written_for: '', why: 'The backstop, read on what is left once every phrase above is cut out: a restriction-shaped word nobody has classified holds the row until a person adds the phrase that explains it, so a wording this seed has not met is never published by default'}
+          - {restriction: 'not_a_restriction', pattern: '\backnowledgement must be given to the U\.S\. Census Bureau as the source\b|\bThe boundary information in the TIGER/Line Shapefiles are for statistical data collection and tabulation purposes only; their depiction and designation for statistical purposes does not constitute a determination of jurisdictional authority or rights of ownership or entitlement and they are not legal land descriptions\b', written_for: 'census_tiger_states', why: 'The Census Bureau''s TIGER/Line metadata (read 2026-10-04): a credit line, which the row''s `attribution` carries, and a disclaimer of what a boundary means ("does not constitute a determination of jurisdictional authority"), not a limit on use, in a file whose own words are "free to use in a product or publication". The lead''s reading for decision 76, 2026-10-04, which decision 80 (the maintainer''s poll, 2026-10-05, card B1) confirmed. Scoped to these words alone, so another row''s "purposes only" is still read as a limit unless a decision names its words too, as decision 106 does Explore PA''s in the row below'}
+          - {restriction: 'not_a_restriction', pattern: '\bintended for demonstration, education, planning, and monitoring purposes only\b', written_for: 'pasda_explore_pa_trail_access', why: 'PA DCNR''s Explore PA Trails terms, its ArcGIS Online item''s licenseInfo (read 2026-10-08): "This data is intended for demonstration, education, planning, and monitoring purposes only". Decision 106 (the maintainer''s poll, 2026-10-08) reads it as a note on what the data is for, not a limit on rendering it, the way decision 80 read TIGER/Line''s "statistical data collection and tabulation purposes only"; decision 71 already reads the same terms'' "save the Commonwealth harmless" as a liability line, through the liability phrase written for nps_park_boundaries. Scoped to these words alone, so another publisher''s "purposes only" is still read as a limit'}
+      - input: ref('licence_restriction_answers')
+        rows:
+          - {restriction: 'commercial', licence_basis: 'public_gis', answered_by: 'decision 36', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*36\b', why: 'Profit, sale or commercial use barred: publish with the publisher''s attribution, because OurHike is non-commercial in these terms'' sense (the maintainer, 2026-10-01)'}
+          - {restriction: 'commercial', licence_basis: 'maintainer_authorisation', answered_by: 'decision 36', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*36\b', why: 'As above, on the maintainer''s authorisation'}
+          - {restriction: 'commercial', licence_basis: 'stated_by_org', answered_by: 'decision 36', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*36\b', why: 'As above, on the organization''s own terms'}
+          - {restriction: 'commercial', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A club''s notices whose terms restrict copying publish as facts and a link, copying no wording (poll, 2026-10-03)'}
+          - {restriction: 'no_reuse', licence_basis: 'public_gis', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: '"Internal use", "not for distribution" or "all rights reserved" on an anonymous public GIS endpoint: publish under the GIS presumption, against the items'' own words (the maintainer, 2026-10-01)'}
+          - {restriction: 'no_reuse', licence_basis: 'public_gis', answered_by: 'decision 69', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*69\b', why: 'A copyright footer on a club''s own page, PDF or map route of points: its facts publish (name, kind, the fix, mile), credited and linked, and none of its prose (the maintainer''s poll, 2026-10-04, card Q1, option A, chosen over holding the five pages with a copyright footer)'}
+          - {restriction: 'no_reuse', licence_basis: 'maintainer_authorisation', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'As above, where the row ships on the maintainer''s authorisation and its licence names decision 37 (Wisconsin DNR''s park closures view)'}
+          - {restriction: 'no_reuse', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A club''s notices whose terms restrict copying publish as facts and a link, copying no wording'}
+          - {restriction: 'no_reuse', licence_basis: 'maintainer_clearinghouse', answered_by: 'decisions 20 and 22', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*(20|22)\b', why: 'A DEC or OPRHP dataset the NYS GIS Clearinghouse lists publishes, its own "Secondary Distribution of the data is not allowed" or "Do not redistribute" quoted beside it (the maintainer, 2026-10-01)'}
+          - {restriction: 'no_reuse', licence_basis: 'stated_by_org', answered_by: 'njdep_licence', named_by: '\bnjdep_licence\b', why: 'The NJDEP Data Distribution Agreement read in full: it regulates reproduction rather than forbidding it, and its conditions travel with the layer (sources.json''s njdep_licence, under decision 38)'}
+          - {restriction: 'permission', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'Terms that ask permission to copy, not to read: a notice publishes as facts and a link'}
+          - {restriction: 'purpose_limited', licence_basis: 'public_gis', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'An internal-use limit on an anonymous public GIS endpoint (decision 37''s "internal use")'}
+          - {restriction: 'purpose_limited', licence_basis: 'maintainer_authorisation', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'As above, on the maintainer''s authorisation'}
+          - {restriction: 'purpose_limited', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A notice''s purpose-limited terms (WTA''s "used solely for internal informational purposes"): facts and a link'}
+          - {restriction: 'condition', licence_basis: 'any', answered_by: 'decision 38', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*38\b', why: 'Conditions rather than refusals: publish, honouring each, the condition travelling with its layer in the sources mart (the maintainer, 2026-10-01)'}
+          - {restriction: 'condition', licence_basis: 'stated_by_org', answered_by: 'njdep_licence', named_by: '\bnjdep_licence\b', why: 'The NJDEP Data Distribution Agreement''s three conditions, which njdep_licence records and decision 38 carries with each layer'}
+          - {restriction: 'condition', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A notice publishes as facts and a link, so the data''s own conditions on reproducing it are not reached'}
+          - {restriction: 'conduct', licence_basis: 'any', answered_by: 'decision 75', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*75\b', why: 'A site''s bar on disruptive or malicious use (viruses, worms, excessive scripts) does not refuse one request an hour under a named agent: publish, keeping to that rate (the maintainer''s poll, 2026-10-04, card Q6, on IN.gov''s clause naming bots)'}
+          - {restriction: 'commercial', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'A federal work is public domain by statute: words on it bind nothing (sources.json''s usfs_licence, the maintainer''s adoption for usfs_trails, 2026-09-02)'}
+          - {restriction: 'no_reuse', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'As above'}
+          - {restriction: 'permission', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'As above'}
+          - {restriction: 'purpose_limited', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'As above: NPS''s "for administrative purposes only" on a public-domain layer'}
+          - {restriction: 'condition', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'As above: a condition on a public-domain work is honoured as courtesy, never a bar'}
+    expect:
+      rows:
+        - {source_key: ships_stated, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: ships_authorised, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: held_back, may_publish: false, publication_rule: held_back_by_the_registry}
+        - {source_key: verdict_missing, may_publish: false, publication_rule: held_back_by_the_registry}
+        - {source_key: unresolved_basis, may_publish: false, publication_rule: basis_not_publishable}
+        - {source_key: no_basis, may_publish: false, publication_rule: basis_not_publishable}
+        - {source_key: state_public_domain, may_publish: false, publication_rule: public_domain_needs_a_federal_organization}
+        - {source_key: dec_clearinghouse, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: oprhp_clearinghouse, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: other_clearinghouse, may_publish: false, publication_rule: clearinghouse_basis_outside_new_york}
+        - {source_key: gis_socrata, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: gis_no_kind, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: gis_on_a_podcast, may_publish: false, publication_rule: public_gis_needs_a_gis_endpoint}
+        - {source_key: gis_file_on_a_club_site, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: gis_on_a_club_map_route, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: gis_on_a_club_page, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: gis_on_a_club_pdf, may_publish: true, publication_rule: registered_and_publishable}
+        - {source_key: gis_on_a_hike_list, may_publish: false, publication_rule: public_gis_needs_a_gis_endpoint}
+        - {source_key: gis_on_a_club_document, may_publish: false, publication_rule: public_gis_needs_a_gis_endpoint}
+        - {source_key: opentrail_at, may_publish: true, publication_rule: publishing_before_registration}
+  - name: int_sources__publication_holds_words_no_decision_answers
+    description: >
+      Rule 5 (pipeline/ELT.md, "Who may publish"), one row per branch, each
+      shipping by its own registry row so that rule 5 is what decides it:
+      words that restrict nothing, disclaimers cut out before they are
+      read, a restriction answered by a decision the row's licence names
+      and the same words where it names none, an answer on the wrong
+      basis, a condition no decision can answer, words no phrase
+      explains (the backstop), a row the registry holds back, which
+      still carries rule 5's verdict, the inventory's own narration of a
+      terms read (never the source's words), and a club's copyright line
+      that decision 55's facts and a link answer. Then the 2026-10-04
+      answers: a hold-harmless clause beside an open licence (decision
+      71); a sheet's accuracy and liability lines (decision 72);
+      a site's bar on disruptive use, answered where the licence names
+      decision 75 and held where it does not, beside a plain bar on bots,
+      which no phrase explains; and a copyright footer on a club's own
+      page of points, answered by decision 69. Then the 2026-10-08 answer:
+      Explore PA Trails' purposes-only sentence beside its save-harmless
+      clause publishes, the sentence read as a scope note by decision 106
+      and the clause as a liability line by decision 71, whatever the
+      row's licence names; another publisher's purposes-only sentence is
+      still held. The seeds are mocked as the seed
+      files are (tests/test_dbt_publication_rule_five.py).
+    model: int_sources__publication
+    given:
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: 'no_words', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"licence": "decision 21a"}'}
+          - {source_key: 'none_stated', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "None stated: the item''s licenseInfo and accessInformation and the service''s copyrightText are all empty (read 2026-10-03).", "licence": "PUBLIC GIS (decision 21a)"}'}
+          - {source_key: 'disclaimer_only', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'stated_by_org', entry: '{"terms": "The Fixture Service shall not be held liable for improper or incorrect use of the data. The Fixture Service gives no warranty, expressed or implied, as to the accuracy of these data. These data are not legal documents and are not intended to be used as such.", "licence": "Stated by the organization."}'}
+          - {source_key: 'property_answered', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "This wildlife distribution map is a product and property of Fixture Parks and Wildlife.", "licence": "PUBLIC GIS (decision 21a). Decision 37 extends the presumption over the item''s property statement."}'}
+          - {source_key: 'property_unanswered', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "This map is a product and property of Fixture Parks and Wildlife.", "licence": "Presumed reusable under decision 21(a)."}'}
+          - {source_key: 'sale_on_a_notice', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'maintainer_authorisation', entry: '{"terms": "Any sale of this map or information on this map is prohibited except by written permission of Fixture County.", "licence": "MAINTAINER AUTHORISATION on decision 55 (facts and a link)."}'}
+          - {source_key: 'sale_on_the_wrong_basis', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'stated_by_org', entry: '{"terms": "Any sale of this map or information on this map is prohibited except by written permission of Fixture County.", "licence": "Facts and a link under decision 55."}'}
+          - {source_key: 'condition_cannot_be_met', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "This line is not intended for trip planning.", "licence": "decisions 21a and 38"}'}
+          - {source_key: 'condition_honoured', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "Shared under CC BY-SA 4.0.", "licence": "PUBLIC GIS (decision 21a); the share-alike notice travels with derived files under decision 38."}'}
+          - {source_key: 'words_no_phrase_explains', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "For use by club members only.", "licence": "decision 21a"}'}
+          - {source_key: 'public_domain_purposes', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'stated_by_org', entry: '{"terms": "These data should be used for administrative purposes only.", "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105."}'}
+          - {source_key: 'clearinghouse_redistribution', provider: 'D', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'maintainer_clearinghouse', entry: '{"terms": "Secondary Distribution of the data is not allowed.", "licence": "Listed in the NYS GIS Clearinghouse, so decisions 20 and 22 publish it."}'}
+          - {source_key: 'verbatim_words', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms_verbatim": "Copyright Fixture Trust. All rights reserved.", "licence": "decision 21a"}'}
+          - {source_key: 'narration_only', provider: 'A', kind: 'published_notices', reaches_hikers: true, licence_basis: 'maintainer_authorisation', entry: '{"terms": "None found: no terms page is linked from the post (footer scanned for terms, privacy, legal and copyright links: only Facebook).", "licence": "Facts and a link only, on decision 55"}'}
+          - {source_key: 'copyright_on_a_notice', provider: 'A', kind: 'published_notices', reaches_hikers: true, licence_basis: 'maintainer_authorisation', entry: '{"terms": "The site footer: \"Copyright 2012 - Fixture Trail Association. All rights reserved.\" No terms page.", "licence": "MAINTAINER AUTHORISATION on decision 55 (facts and a link)"}'}
+          - {source_key: 'held_and_unanswered', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: false, licence_basis: 'public_gis', entry: '{"terms": "All rights reserved.", "licence": "decision 21a"}'}
+          - {source_key: 'hold_harmless_on_an_open_licence', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'stated_by_org', entry: '{"terms_verbatim": "You agree to hold the State of Fixture harmless for any claims, liability, costs, and damages relating to your use of the data. You agree that your sole remedy for any dissatisfaction or claims is to discontinue use of the data. This work is licensed under a Creative Commons Attribution 4.0 International License.", "licence": "CC BY 4.0, stated by the organization; its hold-harmless clause is decision 71''s liability line."}'}
+          - {source_key: 'explore_pa_scope_note_beside_save_harmless', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "Intended for demonstration, education, planning, and monitoring purposes only. The user agrees to save the Commonwealth of Fixture harmless.", "licence": "decision 21a"}'}
+          - {source_key: 'purposes_only_in_other_words', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "Intended for planning and monitoring purposes only.", "licence": "decision 21a"}'}
+          - {source_key: 'own_risk_and_out_of_date', provider: 'A', kind: 'gis_file', reaches_hikers: true, licence_basis: 'stated_by_org', entry: '{"terms": "This fixture sheet can be used or adapted as you like. It is provided for your convenience and will be updated only when we update the map. Mileages may be out of date, so use the spreadsheet at your own risk.", "licence": "Stated by the organization in the sheet''s first line; decision 72."}'}
+          - {source_key: 'conduct_answered', provider: 'A', kind: 'published_notices', reaches_hikers: true, licence_basis: 'maintainer_authorisation', entry: '{"terms": "Under Prohibited Behavior: \"You are prohibited from using the Portal in any way to do any of the following: engage in disruptive activities online, including excessive use of scripts, or use viruses, bots, worms, or trojan horses\"", "licence": "Facts and a link on decision 55; decision 75 answers the clause naming bots."}'}
+          - {source_key: 'conduct_unanswered', provider: 'A', kind: 'published_notices', reaches_hikers: true, licence_basis: 'maintainer_authorisation', entry: '{"terms": "Under Prohibited Behavior: \"You are prohibited from using the Portal in any way to do any of the following: engage in disruptive activities online, including excessive use of scripts, or use viruses, bots, worms, or trojan horses\"", "licence": "Facts and a link on decision 55."}'}
+          - {source_key: 'bots_barred_outright', provider: 'A', kind: 'published_notices', reaches_hikers: true, licence_basis: 'maintainer_authorisation', entry: '{"terms": "You may not use bots, spiders or scrapers to access this site.", "licence": "Facts and a link on decisions 55 and 75."}'}
+          - {source_key: 'copyright_on_a_club_page_answered', provider: 'A', kind: 'page_points', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "The footer: \"Copyright 2026 Fixture Trail Association\"; no terms page.", "licence": "PUBLIC GIS PRESUMPTION (decision 21a), extended to a club''s own page of points by decision 69."}'}
+          - {source_key: 'copyright_on_a_club_page_unanswered', provider: 'A', kind: 'page_points', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "The footer: \"Copyright 2026 Fixture Trail Association\"; no terms page.", "licence": "decision 21a"}'}
+      - input: ref('stg_registry__organizations')
+        rows:
+          - {provider: 'A', steward_id: 'org:fixture'}
+          - {provider: 'D', steward_id: 'org:nysdec'}
+      - input: ref('unregistered_publishing_sources')
+        rows: []
+      - input: ref('publishable_licence_bases')
+        rows:
+          - {licence_basis: stated_by_org, applies_to: any}
+          - {licence_basis: maintainer_authorisation, applies_to: any}
+          - {licence_basis: maintainer_clearinghouse, applies_to: nys_clearinghouse}
+          - {licence_basis: public_gis, applies_to: gis}
+          - {licence_basis: public_domain, applies_to: federal}
+      - input: ref('licence_restriction_phrases')
+        rows:
+          - {restriction: 'not_a_restriction', pattern: '\b(none stated|copyrighttext|accessinformation|licenseinfo)\b', written_for: 'dec_lands', why: 'The registry''s own labels for where each quoted text was read'}
+          - {restriction: 'not_a_restriction', pattern: '\b(provided|provides these geographic data) ("as is"|''as is''|as is)( and "as available"| and as available)?', written_for: 'mohonk_preserve_boundary', why: 'A warranty disclaimer: says what the data is not promised to be, restricts nothing'}
+          - {restriction: 'not_a_restriction', pattern: '\b(without|with no|no|any) (any )?(representation or )?(warranty|warranties|guarantees?)\b', written_for: 'nps_park_boundaries', why: 'A warranty disclaimer'}
+          - {restriction: 'not_a_restriction', pattern: '\b(makes|make|gives|give|provide|provides) no (claims|warranty|warranties)\b', written_for: 'trta_special_management_areas', why: 'A warranty disclaimer'}
+          - {restriction: 'not_a_restriction', pattern: '\b(shall|will|is|are) not (be )?(held )?(liable|responsible)\b|\bdisclaims\b|\b(hold|save) (\w+ ){0,6}harmless\b|\bindemnif(y|ies|ication)\b|\bassumes? (no|the entire) (responsibility|risk)\b|\b(used and )?relied upon only at the user''s sole risk\b|\b(you are|user is) (solely )?responsible\b|\bsole remedy\b', written_for: 'nps_park_boundaries', why: 'A liability disclaimer: who answers for a misuse, not what use is allowed. Decision 71 (the maintainer''s poll, 2026-10-04, card Q7) reads a hold-harmless, save-harmless or indemnity clause so: UGRC''s "hold the State of Utah harmless", CPW''s "indemnify and hold harmless", and the "save the Commonwealth harmless" half of Explore PA''s words, not their "purposes only" half'}
+          - {restriction: 'not_a_restriction', pattern: '\b(are|is) (neither|not) (legal documents|of survey quality|engineering quality drawings)( nor land surveys)?\b|\bnot (intended )?(to be used )?(for|as) (legal|engineering|survey(ing)?)( or (legal|engineering|survey(ing)?))? (purposes|documents)?\b|\bin no way intended for engineering or legal purposes\b|\bmay not have been prepared for or be suitable for\b|\b(are )?not intended to be used as such\b|\bmust not be used as such\b|\bnot to be used for describing actual or true property ownership\b|\bmay not have the necessary accuracy or completeness required\b|\brepresents only the approximate relative location\b', written_for: 'grsm_park_boundary_lines', why: 'An accuracy or fitness disclaimer: the data is not a survey, an engineering drawing or a legal document'}
+          - {restriction: 'not_a_restriction', pattern: '\bfor (general )?(information(al)?|reference|geographic reference|display) purposes( only)?\b|\bfor the information and convenience of the public\b|\bas a public service\b', written_for: 'ugrc_municipal_boundaries', why: 'Says the data informs rather than certifies; restricts nothing about rendering it'}
+          - {restriction: 'not_a_restriction', pattern: '\b(will|shall|should) (be )?(credit|cite|cited)\b|\bcredit/disclaimer\b|\bshould be cited as the data source\b', written_for: 'blm_public_lands_access_lines', why: 'A credit requirement: every source row carries its `attribution`, and the sources mart prints it'}
+          - {restriction: 'not_a_restriction', pattern: '\blicensed under a Creative Commons Attribution( \d(\.\d)?)?( International)?( License)?\b|\bCC0\b|\bCC BY( \d(\.\d)?)?([ .,;|)]|$)', written_for: 'ugrc_municipal_boundaries', why: 'An open licence (CC0, CC BY): attribution only, which the row''s `attribution` carries. Never CC BY-SA, -ND or -NC, which the pattern stops short of so that their own rows below read them'}
+          - {restriction: 'not_a_restriction', pattern: '\bdistribution map\b|\bprovided for distribution\b|\bData Distribution Agreement\b|\bdistributed subject to the following conditions( and restrictions)?\b|\bfree of Copyright or Trademark claims or other restrictions or limitations\b|\bsubject to the copyright of trademark laws\b|\bnot state-authorized or endorsed\b|\breference to any specific commercial products\b|\bnor shall the act of distribution constitute\b', written_for: 'nj_high_elevation_points', why: 'A title, a species map''s name, or a note on third-party rights or endorsement: not a bar on this use'}
+          - {restriction: 'not_a_restriction', pattern: '\bnone( of [^:]*)? (found|read)\b[^"]*', written_for: 'usfs_r08_alabama_alerts', why: 'The inventory''s own account of finding no terms ("None found: only a privacy policy is linked", "None read for these pages beyond the federal public-domain reading in `licence`"): our words up to the next quotation, restricting nothing'}
+          - {restriction: 'not_a_restriction', pattern: '\bno clause on\b[^"]*', written_for: 'amc_facility_conditions', why: 'The inventory''s account of a terms page it read and found no access clause in ("no clause on automated access, scraping, crawling or reproduction"): our words, up to the next quotation'}
+          - {restriction: 'not_a_restriction', pattern: '\bunedited placeholder \([^)]*\)', written_for: 'mratc_trail_alerts', why: 'A web host''s placeholder text quoted as such ("Wix''s unedited placeholder (...)"): no terms of the club''s own'}
+          - {restriction: 'not_a_restriction', pattern: '\b(grants?|granted) permission to\b[^,.]*|\bpermission is granted to\b[^,.]*', written_for: 'nc_parks_mount_mitchell_alerts', why: 'A grant ("grants permission to copy and distribute", TPWD''s "Permission is granted to republish"): what the terms allow, not a bar'}
+          - {restriction: 'not_a_restriction', pattern: '\bat (your|the user''s|their) own risk\b|\bmay be (out of date|outdated)\b|\bwill be updated only when\b[^.]*', written_for: 'fmst_primary_trailheads', why: 'FMST''s sheet: it "will be updated only when we update the interactive map. Mileages and descriptions may be out of date, so use the spreadsheet at your own risk": an accuracy line and a liability line, which decision 72 reads as restricting no use (the maintainer''s poll, 2026-10-04, card 8b). What the sheet''s age means for a hiker is its low confidence, not its terms'}
+          - {restriction: 'commercial', pattern: 'non-?commercial use', written_for: 'wi_dnr_fire_danger', why: '"The material is for the noncommercial use of the general public": a bar on commercial use, which decision 36 answers'}
+          - {restriction: 'commercial', pattern: '\bsale of\b([^.]*\bprohibited\b)?', written_for: 'king_county_parks_alerts_points', why: '"Any sale of this map or information on this map is prohibited": a bar on selling, which decision 36 answers'}
+          - {restriction: 'commercial', pattern: '\bmay not be sold\b', written_for: '', why: 'California State Parks'' "may not be sold or altered" (pipeline/ELT.md, "Who may publish", rule 5): decision 36'}
+          - {restriction: 'commercial', pattern: '\b(for profit|commercial (use|purposes?)|resale|resell\w*)\b', written_for: '', why: 'Profit, sale or commercial use barred: decision 36''s own words for the batch it answered'}
+          - {restriction: 'no_reuse', pattern: '\bnot intended for re-?use\b', written_for: 'wi_dnr_park_closures', why: '"It is not intended for reuse": a refusal of reuse in the layer''s own words, which decision 37 answers on a public GIS endpoint'}
+          - {restriction: 'no_reuse', pattern: '\bnot for (re)?distribution\b', written_for: '', why: 'Decision 37''s own words ("not for distribution"), and DEC''s clearinghouse items'' (decisions 20 and 22)'}
+          - {restriction: 'no_reuse', pattern: '\b(do not|may not|must not|shall not) (be )?(re)?distribut\w*', written_for: '', why: 'OPRHP''s "Do not redistribute" (decisions 20 and 22)'}
+          - {restriction: 'no_reuse', pattern: '\bsecondary distribution\b([^.]*\bnot allowed\b)?', written_for: '', why: 'DEC''s clearinghouse licenseInfo, "Secondary Distribution of the data is not allowed" (decisions 20 and 22)'}
+          - {restriction: 'no_reuse', pattern: '\binternal (use|informational purposes)\b', written_for: '', why: 'Decision 37''s "internal use", and WTA''s "used solely for internal informational purposes" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\ball rights reserved\b', written_for: '', why: 'Decision 37''s "all rights reserved"'}
+          - {restriction: 'no_reuse', pattern: '\b(a )?(product and )?property of\b', written_for: 'cpw_bear_conflict_areas', why: '"a product and property of Colorado Parks and Wildlife": an ownership claim, which cpw_bear_conflict_areas'' row answers with decision 37'}
+          - {restriction: 'no_reuse', pattern: '\bmay not be (reproduced|copied|redistributed)( or (reproduced|copied|redistributed))?', written_for: 'njdep_park_status', why: 'NJDEP''s "may not be reproduced or redistributed without all the metadata provided": decision 55 for a notice, njdep_licence''s reading for its GIS layers'}
+          - {restriction: 'no_reuse', pattern: '\bfair use (guidelines )?(of )?(the )?(U\.S\. )?(copyright statutes? )?(apply|applies)?', written_for: 'wi_dnr_fire_danger', why: '"The fair use guidelines of the U.S. copyright statutes apply": copying past fair use is not granted, which decision 55 answers for a notice'}
+          - {restriction: 'no_reuse', pattern: '\bcopyright\b', written_for: 'msta_section_1', why: 'A copyright claim ("Copyright 2012 - Mid State Trail Association", Duluth''s "we retain copyright"): copying the work is not granted, which decision 55 answers for a notice''s facts and link'}
+          - {restriction: 'no_reuse', pattern: '\breproduction is prohibited\b', written_for: 'ota_victory_conditions', why: 'OTA''s "Reproduction is prohibited other than in accordance with the copyright notice" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\bno part of\b[^.]*\bmay be (copied|reproduced)\b[^.]*', written_for: 'tpwd_davis_mountains_alerts', why: 'TPWD''s, IN.gov''s and WTA''s "No part of ... may be copied" or "reproduced" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\b(you )?agree not to\b[^.]*', written_for: 'ebrpd_alerts_closures', why: 'EBRPD''s "You agree not to modify, copy, distribute ... or commercially exploit": the whole clause a copying bar, which decision 55 answers'}
+          - {restriction: 'no_reuse', pattern: '\bforbids any copying\b', written_for: 'ma_dcr_blue_hills_alerts', why: 'Mass.gov''s "the Commonwealth forbids any copying or use other than fair use" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\b(reproduction|modification|distribution|transmission|republication)\b[^.]*\bis prohibited\b', written_for: 'nysdec_adk_backcountry', why: 'DEC''s "Any other use, including the reproduction, modification, distribution ... is prohibited" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\bmay not:\s*distribute\b|\bmirror\b[^;]*\bwithout our permission\b|\bmodify or re-?use\b', written_for: 'duluth_parks_news', why: 'Duluth''s "you may not: distribute the text", "mirror this information ... without our permission" and "modify or re-use the text" (decision 55)'}
+          - {restriction: 'no_reuse', pattern: '\bnot for resale or redistribution\b', written_for: 'in_dnr_knobstone_conditions', why: 'IN.gov''s "(not for resale or redistribution)" (decision 55)'}
+          - {restriction: 'permission', pattern: '\b(written|prior|express) permission\b', written_for: 'king_county_parks_alerts_points', why: '"except by written permission of King County", and AZT''s "requires written permission" (decision 55)'}
+          - {restriction: 'permission', pattern: '\bwithout (the )?(prior )?(written )?permission\b', written_for: '', why: 'Copying conditional on asking first, which decision 55 answers for a notice''s facts and link'}
+          - {restriction: 'permission', pattern: '\b(prior|express|explicit) written (permission|consent)\b', written_for: 'tpwd_davis_mountains_alerts', why: 'TPWD''s "without the prior written consent", Duluth''s "express written permission", DEC''s "explicit written permission": copying conditional on asking first (decision 55)'}
+          - {restriction: 'purpose_limited', pattern: '\bfor (demonstration|education|educational|planning|monitoring|administrative|internal|non-?profit)\b[^.]*\bpurposes only\b', written_for: 'nps_park_boundaries', why: 'NPS''s "should be used for administrative purposes only": a use limited to named purposes. PA DCNR''s Explore PA Trails sentence, "intended for demonstration, education, planning, and monitoring purposes only", was this phrase''s other example until decision 106; its own not_a_restriction row below cuts those words out first, so another publisher''s list of purposes is still read here as a limit'}
+          - {restriction: 'purpose_limited', pattern: '\bfor (\w+ ){0,6}purposes only\b', written_for: 'grsm_park_boundary_lines', why: 'A use limited to named purposes ("for display and general GIS analysis purposes only"), read as a restriction rather than guessed to include ours'}
+          - {restriction: 'purpose_limited', pattern: '\bintended for use in (\w+ ){0,8}only\b', written_for: 'wi_dnr_park_closures', why: '"intended for use in Wisconsin DNR applications displaying property notices and closures only"'}
+          - {restriction: 'purpose_limited', pattern: '\b(for the sole purpose of|solely for)\b', written_for: 'ttc_management_areas', why: '"for the sole purpose of geographic reference": read as limiting the use to a purpose, which no decision names for this layer'}
+          - {restriction: 'condition', pattern: '\bshare-?alike\b|\bCC BY-SA\b', written_for: '', why: 'Vermont ANR''s CC BY-SA (decision 38): a share-alike notice travels with derived files'}
+          - {restriction: 'condition', pattern: '\b(any reproduction or manipulation of the above data must ensure that the )?coordinate reference system remains intact\b', written_for: 'nj_high_elevation_points', why: 'The NJDEP Data Distribution Agreement''s first condition, which njdep_licence''s reading carries'}
+          - {restriction: 'condition', pattern: '\bwithout all the metadata( provided)?\b', written_for: 'njdep_park_status', why: 'The NJDEP Data Distribution Agreement''s second condition, which njdep_licence''s reading carries and decision 55 answers for a notice'}
+          - {restriction: 'condition', pattern: '\bshould describe the types of modifications\b|\bshould not misrepresent the data\b', written_for: 'blm_public_lands_access_lines', why: 'BLM''s "Any Users wishing to modify the data should describe the types of modifications they have performed. The User should not misrepresent the data": conditions on a derived product, which decision 38 or a public-domain reading answers'}
+          - {restriction: 'condition', pattern: '\bdisclaimer is shown\b|\bnot (be )?credited below\b|\bzooms? (at or )?coarser\b', written_for: '', why: 'Decision 38''s named conditions: RIDEM''s disclaimer, SanGIS''s credit scale, the NHT zoom limit'}
+          - {restriction: 'condition', pattern: '\bprovided they are copied and distributed without alteration\b', written_for: 'nc_parks_mount_mitchell_alerts', why: 'NC.gov''s "provided they are copied and distributed without alteration and appropriately cite to the source": a condition on copying, which a notice''s facts and link never reach (decision 55)'}
+          - {restriction: 'conduct', pattern: '\b(prohibited behavior\W+)?(you are )?prohibited from using\b[^.]*\bdisruptive activities\b[^.]*\b(viruses|worms|trojan horses)\b', written_for: 'in_dnr_knobstone_conditions', why: 'IN.gov''s Prohibited Behavior clause: "You are prohibited from using the Portal in any way to ... engage in disruptive activities online, including excessive use of scripts ... or use viruses, bots, worms, or trojan horses". A bar on disruptive or malicious use of a site, which decision 75 answers for one request an hour under a named agent (the maintainer''s poll, 2026-10-04, card Q6). Only that list''s shape matches: a bar on automated access in other words ("you may not use bots") is not this phrase, and the backstop holds it'}
+          - {restriction: 'cannot_be_met', pattern: '\bnot intended for (trip )?planning\b|\bnot (to be used|intended) for navigation\b', written_for: '', why: 'The Pacific Northwest Trail line''s "not intended for trip planning": decision 38 rules that a condition a hiker''s planning tool cannot meet holds its layer, so no answer row exists for it'}
+          - {restriction: 'cannot_be_met', pattern: '\bno derivatives?\b|\bCC BY-ND\b|\bNoDerivatives\b', written_for: '', why: 'A bar on derived works: tiling and simplifying are derived works, and no decision names it'}
+          - {restriction: 'cannot_be_met', pattern: '\bCC BY-NC\b|\bAttribution-NonCommercial\b', written_for: '', why: 'A Creative Commons non-commercial licence: decision 36 answered layers that bar profit in their own words, not this licence''s terms, which a person reads before anything publishes under it'}
+          - {restriction: 'unclassified', pattern: '\b(may not|must not|shall not|should not|not to be used|prohibit\w*|permission|restrict\w*|not intended|rights reserved|distribut\w*|reproduc\w*|commercial|sale|sold|licen[cs]\w*|internal|solely|sole|only|copyright|trademark|must|required|requires)\b', written_for: '', why: 'The backstop, read on what is left once every phrase above is cut out: a restriction-shaped word nobody has classified holds the row until a person adds the phrase that explains it, so a wording this seed has not met is never published by default'}
+          - {restriction: 'not_a_restriction', pattern: '\backnowledgement must be given to the U\.S\. Census Bureau as the source\b|\bThe boundary information in the TIGER/Line Shapefiles are for statistical data collection and tabulation purposes only; their depiction and designation for statistical purposes does not constitute a determination of jurisdictional authority or rights of ownership or entitlement and they are not legal land descriptions\b', written_for: 'census_tiger_states', why: 'The Census Bureau''s TIGER/Line metadata (read 2026-10-04): a credit line, which the row''s `attribution` carries, and a disclaimer of what a boundary means ("does not constitute a determination of jurisdictional authority"), not a limit on use, in a file whose own words are "free to use in a product or publication". The lead''s reading for decision 76, 2026-10-04, which decision 80 (the maintainer''s poll, 2026-10-05, card B1) confirmed. Scoped to these words alone, so another row''s "purposes only" is still read as a limit unless a decision names its words too, as decision 106 does Explore PA''s in the row below'}
+          - {restriction: 'not_a_restriction', pattern: '\bintended for demonstration, education, planning, and monitoring purposes only\b', written_for: 'pasda_explore_pa_trail_access', why: 'PA DCNR''s Explore PA Trails terms, its ArcGIS Online item''s licenseInfo (read 2026-10-08): "This data is intended for demonstration, education, planning, and monitoring purposes only". Decision 106 (the maintainer''s poll, 2026-10-08) reads it as a note on what the data is for, not a limit on rendering it, the way decision 80 read TIGER/Line''s "statistical data collection and tabulation purposes only"; decision 71 already reads the same terms'' "save the Commonwealth harmless" as a liability line, through the liability phrase written for nps_park_boundaries. Scoped to these words alone, so another publisher''s "purposes only" is still read as a limit'}
+      - input: ref('licence_restriction_answers')
+        rows:
+          - {restriction: 'commercial', licence_basis: 'public_gis', answered_by: 'decision 36', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*36\b', why: 'Profit, sale or commercial use barred: publish with the publisher''s attribution, because OurHike is non-commercial in these terms'' sense (the maintainer, 2026-10-01)'}
+          - {restriction: 'commercial', licence_basis: 'maintainer_authorisation', answered_by: 'decision 36', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*36\b', why: 'As above, on the maintainer''s authorisation'}
+          - {restriction: 'commercial', licence_basis: 'stated_by_org', answered_by: 'decision 36', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*36\b', why: 'As above, on the organization''s own terms'}
+          - {restriction: 'commercial', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A club''s notices whose terms restrict copying publish as facts and a link, copying no wording (poll, 2026-10-03)'}
+          - {restriction: 'no_reuse', licence_basis: 'public_gis', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: '"Internal use", "not for distribution" or "all rights reserved" on an anonymous public GIS endpoint: publish under the GIS presumption, against the items'' own words (the maintainer, 2026-10-01)'}
+          - {restriction: 'no_reuse', licence_basis: 'public_gis', answered_by: 'decision 69', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*69\b', why: 'A copyright footer on a club''s own page, PDF or map route of points: its facts publish (name, kind, the fix, mile), credited and linked, and none of its prose (the maintainer''s poll, 2026-10-04, card Q1, option A, chosen over holding the five pages with a copyright footer)'}
+          - {restriction: 'no_reuse', licence_basis: 'maintainer_authorisation', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'As above, where the row ships on the maintainer''s authorisation and its licence names decision 37 (Wisconsin DNR''s park closures view)'}
+          - {restriction: 'no_reuse', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A club''s notices whose terms restrict copying publish as facts and a link, copying no wording'}
+          - {restriction: 'no_reuse', licence_basis: 'maintainer_clearinghouse', answered_by: 'decisions 20 and 22', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*(20|22)\b', why: 'A DEC or OPRHP dataset the NYS GIS Clearinghouse lists publishes, its own "Secondary Distribution of the data is not allowed" or "Do not redistribute" quoted beside it (the maintainer, 2026-10-01)'}
+          - {restriction: 'no_reuse', licence_basis: 'stated_by_org', answered_by: 'njdep_licence', named_by: '\bnjdep_licence\b', why: 'The NJDEP Data Distribution Agreement read in full: it regulates reproduction rather than forbidding it, and its conditions travel with the layer (sources.json''s njdep_licence, under decision 38)'}
+          - {restriction: 'permission', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'Terms that ask permission to copy, not to read: a notice publishes as facts and a link'}
+          - {restriction: 'purpose_limited', licence_basis: 'public_gis', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'An internal-use limit on an anonymous public GIS endpoint (decision 37''s "internal use")'}
+          - {restriction: 'purpose_limited', licence_basis: 'maintainer_authorisation', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'As above, on the maintainer''s authorisation'}
+          - {restriction: 'purpose_limited', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A notice''s purpose-limited terms (WTA''s "used solely for internal informational purposes"): facts and a link'}
+          - {restriction: 'condition', licence_basis: 'any', answered_by: 'decision 38', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*38\b', why: 'Conditions rather than refusals: publish, honouring each, the condition travelling with its layer in the sources mart (the maintainer, 2026-10-01)'}
+          - {restriction: 'condition', licence_basis: 'stated_by_org', answered_by: 'njdep_licence', named_by: '\bnjdep_licence\b', why: 'The NJDEP Data Distribution Agreement''s three conditions, which njdep_licence records and decision 38 carries with each layer'}
+          - {restriction: 'condition', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A notice publishes as facts and a link, so the data''s own conditions on reproducing it are not reached'}
+          - {restriction: 'conduct', licence_basis: 'any', answered_by: 'decision 75', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*75\b', why: 'A site''s bar on disruptive or malicious use (viruses, worms, excessive scripts) does not refuse one request an hour under a named agent: publish, keeping to that rate (the maintainer''s poll, 2026-10-04, card Q6, on IN.gov''s clause naming bots)'}
+          - {restriction: 'commercial', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'A federal work is public domain by statute: words on it bind nothing (sources.json''s usfs_licence, the maintainer''s adoption for usfs_trails, 2026-09-02)'}
+          - {restriction: 'no_reuse', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'As above'}
+          - {restriction: 'permission', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'As above'}
+          - {restriction: 'purpose_limited', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'As above: NPS''s "for administrative purposes only" on a public-domain layer'}
+          - {restriction: 'condition', licence_basis: 'stated_by_org', answered_by: '17 U.S.C. 105', named_by: '\b17 U\.S\.C\. 105\b', why: 'As above: a condition on a public-domain work is honoured as courtesy, never a bar'}
+    expect:
+      rows:
+        - {source_key: 'no_words', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: null, unanswered_restrictions: null}
+        - {source_key: 'none_stated', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: null, unanswered_restrictions: null}
+        - {source_key: 'disclaimer_only', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: null, unanswered_restrictions: null}
+        - {source_key: 'property_answered', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'no_reuse', unanswered_restrictions: null}
+        - {source_key: 'property_unanswered', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'no_reuse', unanswered_restrictions: 'no_reuse'}
+        - {source_key: 'sale_on_a_notice', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'commercial, permission', unanswered_restrictions: null}
+        - {source_key: 'sale_on_the_wrong_basis', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'commercial, permission', unanswered_restrictions: 'commercial, permission'}
+        - {source_key: 'condition_cannot_be_met', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'cannot_be_met', unanswered_restrictions: 'cannot_be_met'}
+        - {source_key: 'condition_honoured', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'condition', unanswered_restrictions: null}
+        - {source_key: 'words_no_phrase_explains', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'unclassified', unanswered_restrictions: 'unclassified'}
+        - {source_key: 'public_domain_purposes', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'purpose_limited', unanswered_restrictions: null}
+        - {source_key: 'clearinghouse_redistribution', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'no_reuse', unanswered_restrictions: null}
+        - {source_key: 'verbatim_words', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'no_reuse', unanswered_restrictions: 'no_reuse'}
+        - {source_key: 'narration_only', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: null, unanswered_restrictions: null}
+        - {source_key: 'copyright_on_a_notice', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'no_reuse', unanswered_restrictions: null}
+        - {source_key: 'held_and_unanswered', may_publish: false, publication_rule: 'held_back_by_the_registry', terms_restrictions: 'no_reuse', unanswered_restrictions: 'no_reuse'}
+        - {source_key: 'hold_harmless_on_an_open_licence', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: null, unanswered_restrictions: null}
+        - {source_key: 'explore_pa_scope_note_beside_save_harmless', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: null, unanswered_restrictions: null}
+        - {source_key: 'purposes_only_in_other_words', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'purpose_limited', unanswered_restrictions: 'purpose_limited'}
+        - {source_key: 'own_risk_and_out_of_date', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: null, unanswered_restrictions: null}
+        - {source_key: 'conduct_answered', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'conduct', unanswered_restrictions: null}
+        - {source_key: 'conduct_unanswered', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'conduct', unanswered_restrictions: 'conduct'}
+        - {source_key: 'bots_barred_outright', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'unclassified', unanswered_restrictions: 'unclassified'}
+        - {source_key: 'copyright_on_a_club_page_answered', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'no_reuse', unanswered_restrictions: null}
+        - {source_key: 'copyright_on_a_club_page_unanswered', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'no_reuse', unanswered_restrictions: 'no_reuse'}

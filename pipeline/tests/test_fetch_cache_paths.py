@@ -188,6 +188,30 @@ def test_the_save_runs_even_when_an_earlier_step_failed(cached_paths):
     assert "always()" in str(save.get("if", ""))
 
 
+#: The monthly lane's two workflows: refresh-reference.yml's pin job saves the answers its water scans got, and
+#: build-reference.yml's build and parity jobs restore them (the maintainer's choice B, 2026-10-08).
+MONTHLY_WORKFLOWS = [REPO_ROOT / ".github" / "workflows" / name for name in ("refresh-reference.yml", "build-reference.yml")]
+
+
+@pytest.mark.parametrize("monthly_workflow", MONTHLY_WORKFLOWS, ids=lambda path: path.name)
+def test_the_monthly_build_caches_the_epqs_answers_and_the_dem_samples_where_the_code_reads_them(monthly_workflow):
+    """build-reference.yml's build job carries the two answer caches between attempts (ARC-3 of PR #1805's second
+    review), refresh-reference.yml's pin job hands it what fetch_trail_water.py --derive was answered, and the parity
+    job reads them, each through its workflow env's list. A path that drifted from the constant would restore beside
+    the file the step reads, and every attempt would ask EPQS again with every cache step green."""
+    import export_elevation
+
+    workflow = yaml.safe_load(monthly_workflow.read_text(encoding="utf-8"))
+    raw = workflow["env"]["ELEVATION_ANSWERS"]
+    cached = {line.strip() for line in raw.splitlines() if line.strip()}
+
+    expected = {
+        fetch_trail_water.ELEVATION_CACHE_PATH.relative_to(REPO_ROOT).as_posix(),
+        export_elevation.SAMPLE_CACHE_PATH.relative_to(REPO_ROOT).as_posix(),
+    }
+    assert cached == expected
+
+
 # --- The derived files also have a home in the bucket (#812) ------------------
 #
 # The cache list above answers "does this survive between runs?"; these answer

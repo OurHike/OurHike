@@ -1,17 +1,24 @@
 # Publishes the NBM forecast for every trail square to UA's bucket, one file
-# per 1-degree cell, and every active NWS alert that reaches a trail square
-# (#1056, features/WEATHER.md build step 1). The card is NBM only: HRRR's
-# first-two-days temperature was scored in build step 2 and dropped by the
-# maintainer on 2026-09-30, so only HRRR's land mask is still read, once per
-# data release, by the squares step.
+# per 1-degree cell (#1056, features/WEATHER.md build step 1). The card is NBM
+# only: HRRR's first-two-days temperature was scored in build step 2 and
+# dropped by the maintainer on 2026-09-30, so only HRRR's land mask is still
+# read, once per data release, by the squares step.
 #
-# TWO HALVES, AND EITHER PUBLISHES WITHOUT THE OTHER. NBM stalling must not
-# hold back the warnings, and NWS not answering must not hold back the
-# forecast. Each half writes its own manifest only when it has succeeded
-# (`weather_manifest.json`, `weather_alerts_manifest.json`), so the publish
-# job uploads whichever halves came back, and publish.py carries the other's
-# last good copy forward, stamped with its own age. The job still goes red
-# when either half failed, so a failure is not hidden by the half that worked.
+# NWS'S ALERTS LEFT THIS WORKFLOW FOR publish-conditions.yml (decision 28a,
+# pipeline/ELT.md, "One job owns `warnings`"), under #1793 — Rebuild the data
+# platform as dlt → dbt: seven contracted marts, a monthly refresh, published
+# docs, and lighter phone downloads. That job builds the warnings mart, so it
+# is the one job that reads NWS; its UA leg now runs export_weather_alerts.py
+# on the squares this job saves. This job used to have two halves that never
+# held each other back, NBM and NWS; the reason this stayed a workflow of its
+# own (below) was always NBM's ~240 MB, and NWS is 160 KB and 0.49 s
+# (Measured, 2026-10-01, ELT.md), so that reason never covered the alerts.
+#
+# THE SQUARES ARE STILL BUILT HERE, AND publish-conditions.yml READS THEM.
+# build_weather_squares.py and its `weather-squares-` cache stay in this job,
+# because NBM's bake needs them first; the conditions job restores the newest
+# entry and never saves one. A change to the four cached paths below has to
+# change that job's restore too, or it stops finding the entry.
 #
 # WHY ITS OWN WORKFLOW, AND NOT A LEG OF publish-conditions.yml. That job's
 # ten minutes are already spent, deliberately: its header sizes four step
@@ -59,11 +66,11 @@ env:
 
 jobs:
   build:
-    name: Build the forecast and warnings files
+    name: Build the forecast files
     runs-on: ubuntu-latest
     # Measured on runners 2026-09-25/29: squares 46-52 s when the release
-    # changed (skipped otherwise), alerts under 1 s, fetch 14-30 s, bake 15 s.
-    # Fifteen minutes is room for a slow NOAA day, not a target.
+    # changed (skipped otherwise), fetch 14-30 s, bake 15 s. Fifteen minutes
+    # is room for a slow NOAA day, not a target.
     timeout-minutes: 15
     outputs:
       uploaded: ${{ steps.upload.outcome }}
@@ -116,12 +123,6 @@ jobs:
             pipeline/data/raw/weather/hrrr_land.grb2
           key: weather-squares-${{ hashFiles('pipeline/data/raw/weather/squares.json', 'pipeline/data/raw/weather/urma_terrain.grb2', 'pipeline/data/raw/weather/hrrr_height.grb2', 'pipeline/data/raw/weather/hrrr_land.grb2') }}
 
-      # First, because it is one request and a second of work: a slow NBM
-      # day that runs into the fetch step's ceiling cannot delay it.
-      - name: Fetch NWS's active alerts and place them on trail squares
-        timeout-minutes: 3
-        run: python export_weather_alerts.py
-
       - name: Fetch the newest complete NBM cycle
         id: fetch
         if: ${{ !cancelled() && steps.squares.outcome == 'success' }}
@@ -132,8 +133,8 @@ jobs:
         if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
         run: python export_weather.py
 
-      # Whatever came back. Each export writes its manifest last, after its
-      # files, and not at all when it fails, so a manifest here is a half
+      # Whatever came back. export_weather.py writes its manifest last, after
+      # its files, and not at all when it fails, so a manifest here is a bake
       # that worked.
       - name: Upload data for the publish job
         id: upload
@@ -147,8 +148,8 @@ jobs:
   publish:
     name: Publish (ua)
     needs: build
-    # Runs when the build uploaded anything, including when one half failed;
-    # skipped only when neither half produced a file.
+    # Runs when the build uploaded the forecast; skipped when it produced
+    # nothing.
     if: ${{ !cancelled() && needs.build.outputs.uploaded == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

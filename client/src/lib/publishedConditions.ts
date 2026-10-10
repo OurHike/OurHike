@@ -34,6 +34,7 @@ import type { NoteSummary } from './fieldNotes'
 import type { WorkProjectSummary } from './workProjects'
 import { DATA_CONFIGURED, dataUrl } from './config'
 import { recallPublished, rememberPublished } from './conditionsCache'
+import type { NoticeGeometryValue } from './noticeGeometry'
 
 /** The keys `pipeline/publish.py` uploads them under. Must match exactly: a
  *  key in that bucket is a URL deployed clients already request, and cannot be
@@ -46,6 +47,12 @@ export const PUBLISHED_NOTES_KEY = 'conditions/notes.json'
 export const PUBLISHED_DISPUTES_KEY = 'conditions/disputes.json'
 export const PUBLISHED_WORK_PROJECTS_KEY = 'conditions/work_projects.json'
 export const PUBLISHED_NYNJTC_ALERTS_KEY = 'conditions/nynjtc_alerts.json'
+/** Every club's notices in one file (#1805, decision 53 phase D): written by
+ *  pipeline/dbt's pub_conditions_notices on the dbt path only, so a bucket
+ *  the exporters still publish serves a 404 here and the app reads the two
+ *  files above instead (lib/useConditions.ts). Read by lib/publishedNotices.ts,
+ *  which the conditions hook imports only when it asks. */
+export const PUBLISHED_NOTICES_KEY = 'conditions/notices.json'
 
 export interface PublishedConditions<T> {
   /** When the bake ran. Rendered to the hiker; see lib/conditionState.ts. */
@@ -115,31 +122,69 @@ export interface PublishedReadOptions {
  * validating it by name means a reports document served where closures were
  * expected reads as "no usable baseline" rather than as an empty trail.
  */
-async function fetchPublished<T>(
+export async function fetchPublished<T>(
   key: string,
-  field:
-    | 'closures'
-    | 'reports'
-    | 'atc_updates'
-    | 'drought'
-    | 'notes'
-    | 'work_projects'
-    | 'disputes'
-    | 'nynjtc_alerts',
+  field: PublishedField,
   signal?: AbortSignal,
   options: PublishedReadOptions = {},
 ): Promise<PublishedConditions<T> | null> {
-  if (!DATA_CONFIGURED) return null
+  return (await readPublished<T>(key, field, signal, options)).published
+}
+
+/** The payload a published document holds, named as the document names it. */
+type PublishedField =
+  | 'closures'
+  | 'reports'
+  | 'atc_updates'
+  | 'drought'
+  | 'notes'
+  | 'work_projects'
+  | 'disputes'
+  | 'nynjtc_alerts'
+  | 'notices'
+  | 'states'
+
+/** `fetchPublished`'s answer, and whether no answer means there is no file. */
+export interface PublishedRead<T> {
+  published: PublishedConditions<T> | null
+  /**
+   * True when `published` is null because there is no file to get: no bucket
+   * was configured at build time, or the bucket answered 404 and this phone
+   * kept no copy. False whenever a copy came back, and when none did because
+   * the request was not made (no signal), failed, timed out, answered any
+   * other error, or brought bytes this build cannot read: on those a later
+   * connection may bring the file. lib/publishedNotices.ts's
+   * `readPublishedNotices` is the reader that needs the difference.
+   */
+  notServed: boolean
+}
+
+/**
+ * `fetchPublished` with the reason a read came back empty: one path, so
+ * that the two can never disagree about what a 404 or a dead spot returns.
+ */
+export async function readPublished<T>(
+  key: string,
+  field: PublishedField,
+  signal?: AbortSignal,
+  options: PublishedReadOptions = {},
+): Promise<PublishedRead<T>> {
+  if (!DATA_CONFIGURED) return { published: null, notServed: true }
 
   // Offline, nothing is asked for: vite.config.ts precaches the app shell and
   // the glyph ranges and nothing else, so the request cannot be served from
   // anywhere and App.trailData.test.tsx asserts it is not fired. What CAN be
   // served is the copy this phone kept last time it had signal (#447).
-  if (options.online === false) return recalled<T>(key, field)
+  if (options.online === false) {
+    return { published: await recalled<T>(key, field), notServed: false }
+  }
 
   try {
     const response = await fetch(dataUrl(key), { signal })
-    if (!response.ok) return recalled<T>(key, field)
+    if (!response.ok) {
+      const kept = await recalled<T>(key, field)
+      return { published: kept, notServed: kept === null && response.status === 404 }
+    }
 
     const document = (await response.json()) as Record<string, unknown>
     const parsed = parsePublished<T>(document, field)
@@ -147,13 +192,13 @@ async function fetchPublished<T>(
     // give the next offline session a copy that fails the same way, with the
     // previous good one overwritten to do it.
     if (parsed !== null) void rememberPublished(key, document)
-    return parsed ?? (await recalled<T>(key, field))
+    return { published: parsed ?? (await recalled<T>(key, field)), notServed: false }
   } catch {
     // Includes the abort case, which is not an error worth distinguishing:
     // a cancelled read has no baseline to offer either. It does not exclude
     // the kept copy, though - a dead spot mid-fetch is exactly the state
     // this whole path exists for.
-    return recalled<T>(key, field)
+    return { published: await recalled<T>(key, field), notServed: false }
   }
 }
 
@@ -163,15 +208,7 @@ async function fetchPublished<T>(
  *  shape this one refuses, and the refusal has to be the same refusal. */
 async function recalled<T>(
   key: string,
-  field:
-    | 'closures'
-    | 'reports'
-    | 'atc_updates'
-    | 'drought'
-    | 'notes'
-    | 'work_projects'
-    | 'disputes'
-    | 'nynjtc_alerts',
+  field: PublishedField,
 ): Promise<PublishedConditions<T> | null> {
   const cached = await recallPublished(key)
   if (cached === null) return null
@@ -186,15 +223,7 @@ async function recalled<T>(
  */
 function parsePublished<T>(
   document: Record<string, unknown>,
-  field:
-    | 'closures'
-    | 'reports'
-    | 'atc_updates'
-    | 'drought'
-    | 'notes'
-    | 'work_projects'
-    | 'disputes'
-    | 'nynjtc_alerts',
+  field: PublishedField,
 ): PublishedConditions<T> | null {
   if (typeof document?.generated_at !== 'string') return null
   const items = document[field]
@@ -344,7 +373,30 @@ export async function fetchPublishedAtcUpdates(
 export type NoticePlace =
   | { kind: 'at_miles'; start: number; end: number }
   | { kind: 'org_terms'; terms: string[] }
+  /** The source's own geometry, GeoJSON in lon/lat, simplified at 10 m for
+   *  a phone by pub_conditions_notices (#1805). Only conditions/notices.json
+   *  carries it. */
+  | { kind: 'geometry'; geometry: NoticeGeometryValue }
   | { kind: 'unplaced' }
+
+/** Decision 67's hazard areas: an area a hiker walks into, drawn where a
+ *  downloaded trail crosses it, and never a closure. */
+export type NoticeHazard = 'hunting' | 'shooting' | 'burned_area'
+
+/** One state of conditions/notice_states.json (decision 76), as
+ *  pipeline/dbt's pub_conditions_notice_states writes it: the shape of a
+ *  state a state-wide notice names, simplified for a phone, and how far
+ *  inside it a route has to be before it counts as in the state. Never
+ *  drawn. */
+export interface NoticeStateArea {
+  /** The two-letter USPS code a notice's `states` names it by. */
+  state: string
+  /** The state's name, as the Census Bureau spells it ("Utah"). */
+  name: string
+  /** A route vertex nearer the shape's edge than this counts for no state. */
+  edge_margin_m: number
+  geometry: NoticeGeometryValue
+}
 
 /**
  * One notice from an organization that is not the ATC, exactly as
@@ -373,10 +425,50 @@ export interface OrgNotice {
   locality: string
   place: NoticePlace
   obstructs_trail: boolean
-  /** The ORG's own last-updated stamp, and the age a hiker cares about. */
-  updated_at: string
-  source_url: string
+  /** The ORG's own last-updated stamp, and the age a hiker cares about.
+   *  Null in conditions/notices.json where the club gives none, which
+   *  renders as no date - never as the day OurHike read it. */
+  updated_at: string | null
+  source_url: string | null
   review_state: 'reviewed' | 'unreviewed'
+
+  // ---- conditions/notices.json only (#1805, decision 53 phase D). Absent on
+  // the two older files' rows, and every reader treats absent as unknown.
+
+  /** The extract folder that landed it, `trail_orgs.json`'s slug. */
+  club?: string
+  /** The registry's provider for its source, the key stewards.json groups
+   *  by - how lib/plannedNotices.ts finds the club that posted it. */
+  provider?: string | null
+  /** Whether a club or an agency posted it (pipeline/dbt/seeds/notice_readers.csv,
+   *  from trail_orgs.json's type). lib/plannedNotices.ts shows an agency's
+   *  notice to a planned hike only where it is placed; null or absent keeps
+   *  the older rule, which matches it by provider. */
+  steward_kind?: 'club' | 'agency' | null
+  /** Decision 76: the two-letter codes of the states an agency's state-wide
+   *  notice speaks for (pipeline/dbt/seeds/notice_states.csv), absent on
+   *  every other row. */
+  states?: string[]
+  /** Those states' shapes, attached on the phone by lib/publishedNotices.ts
+   *  from conditions/notice_states.json - never a field of notices.json. A
+   *  state with no shape this phone holds is left out, so its notice shows
+   *  to no hike there (lib/plannedNotices.ts). */
+  state_areas?: NoticeStateArea[]
+  /** Decision 67's kind of area, or null for an ordinary notice. */
+  hazard?: NoticeHazard | null
+  /** The notice's own start and end days, ISO, where the club states them. */
+  starts_on?: string | null
+  ends_on?: string | null
+  /** When OurHike last read the source and found this, ISO UTC: the run
+   *  log's latest read that loaded it or found it unchanged. */
+  checked_at?: string | null
+  /** When OurHike first saw the row, and when it last changed (decisions 52
+   *  and 57); null in a build without its row history. */
+  first_seen_at?: string | null
+  changed_at?: string | null
+  /** Set when OurHike could not use the source's latest read and kept its
+   *  last good rows instead: when that began. */
+  carried_since?: string | null
 }
 
 /**

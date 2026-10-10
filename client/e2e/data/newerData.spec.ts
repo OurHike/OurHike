@@ -98,13 +98,21 @@ test.describe('when the bucket has moved on', () => {
     await expect(page.getByRole('button', { name: 'Update' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Not now' })).toBeVisible()
 
-    // AND THE COST IS NAMED BEFORE THE BUTTON. `warnsAboutData` treats an
-    // unknown size and an unknown connection as large, "the only direction
-    // that cannot quietly spend somebody's allowance" — and this browser is
-    // exactly that case, so the caution is deterministic here rather than
-    // incidental: Chromium exposes `navigator.connection` with no `type`, which
-    // `connectionKind()` reads as 'unknown'.
-    await expect(page.getByText(/may use mobile data/)).toBeVisible()
+    // AND THE COST IS NAMED BEFORE THE BUTTON, in one of its two forms.
+    // `warnsAboutData` adds "may use mobile data" off wifi only when the size is
+    // unknown or at least LARGE_UPDATE_BYTES (1 MB); otherwise the row says
+    // "About <size>." alone. Which one shows is the release's, not the app's:
+    // Chromium's `navigator.connection` has no `type`, so the connection reads
+    // 'unknown' here, and the size decides. This used to assert the warning
+    // alone and passed on 2026-09-24-2, so that release's size for the changed
+    // file was unknown or over 1 MB (Reasoned; its manifest was not re-read).
+    // On 2026-10-03 the one changed file, poi_shelter.geojson, is 85,620
+    // transfer bytes, and the warning goes (flow-data, run 37112698327).
+    await expect(
+      page
+        .locator('.trail-data-update__cost')
+        .filter({ hasText: /^(About .+\.|.*may use mobile data\.)/ }),
+    ).toBeVisible()
   })
 
   test('states: leaving the ask alone leaves the phone exactly as it was', async ({

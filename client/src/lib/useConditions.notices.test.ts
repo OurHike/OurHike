@@ -1,0 +1,367 @@
+// conditions/notices.json only once a hike is planned (#1805, decision 77).
+//
+// The file was 24,966,662 bytes, 6,203,870 gzipped, on soak run 536, and
+// every phone fetched it on every conditions refresh. These hold the hook to
+// the maintainer's rule at the request it makes: no planned hike, no
+// download, only a HEAD asking whether the bucket serves it; a hike planned,
+// the download at once rather than at the next hourly read; and a list the
+// phone holds is never taken away.
+//
+// A file of its own because the bucket has to be configured for any request
+// to leave lib/publishedConditions.ts, and lib/useConditions.test.ts's cases
+// rely on it not being.
+
+import { renderHook, waitFor } from '@testing-library/react'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from 'vitest'
+
+vi.mock('./config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./config')>()),
+  DATA_BASE_URL: 'https://data.example',
+  DATA_CONFIGURED: true,
+  dataUrl: (key: string) => `https://data.example/${key}`,
+}))
+
+import { useConditions } from './useConditions'
+import * as notices from './publishedNotices'
+
+const NOTICES_URL = 'https://data.example/conditions/notices.json'
+
+const A_NOTICES_DOCUMENT = {
+  generated_at: '2026-10-05T01:22:48Z',
+  notices: [
+    {
+      notice_id: 'club_page:1',
+      source_key: 'club_page',
+      title: 'Fixture trail work',
+      place: { kind: 'unplaced' },
+    },
+  ],
+}
+
+/** A bucket that serves conditions/notices.json (or does not), answering a
+ *  HEAD with no body, and 404 for every other key. */
+function bucket({ serves }: { serves: boolean }): MockInstance<typeof fetch> {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input) !== NOTICES_URL || !serves) return new Response('', { status: 404 })
+    return init?.method === 'HEAD'
+      ? new Response(null, { status: 200 })
+      : new Response(JSON.stringify(A_NOTICES_DOCUMENT), { status: 200 })
+  })
+}
+
+/** Each request this phone made for conditions/notices.json, by method. */
+function noticeRequests(spy: MockInstance<typeof fetch>): string[] {
+  return spy.mock.calls
+    .filter(([input]) => String(input) === NOTICES_URL)
+    .map(([, init]) => init?.method ?? 'GET')
+}
+
+describe('conditions/notices.json and a planned hike (decision 77)', () => {
+  let spy: MockInstance<typeof fetch>
+  afterEach(() => vi.restoreAllMocks())
+
+  describe('on a bucket that serves it', () => {
+    beforeEach(() => {
+      spy = bucket({ serves: true })
+    })
+
+    it('downloads no byte of it with no hike planned, and asks only whether the bucket serves it', async () => {
+      const { result } = renderHook(() => useConditions(true, true, false))
+      await waitFor(() => expect(result.current.clubNoticesListed).toBe(true))
+      expect(noticeRequests(spy)).toEqual(['HEAD'])
+      expect(result.current.clubNotices).toBeNull()
+    })
+
+    it('downloads it the moment a hike is planned, without waiting for the hourly read', async () => {
+      const { result, rerender } = renderHook(
+        ({ planned }) => useConditions(true, true, planned),
+        { initialProps: { planned: false } },
+      )
+      await waitFor(() => expect(result.current.clubNoticesListed).toBe(true))
+      expect(noticeRequests(spy)).toEqual(['HEAD'])
+
+      rerender({ planned: true })
+      await waitFor(() => expect(result.current.clubNotices).toHaveLength(1))
+      expect(noticeRequests(spy)).toEqual(['HEAD', 'GET'])
+      expect(result.current.clubNoticesGeneratedAt?.toISOString()).toBe(
+        '2026-10-05T01:22:48.000Z',
+      )
+    })
+
+    it('keeps the list it holds when the hike stops being planned, and downloads it no more', async () => {
+      const { result, rerender } = renderHook(
+        ({ planned }) => useConditions(true, true, planned),
+        { initialProps: { planned: true } },
+      )
+      await waitFor(() => expect(result.current.clubNotices).toHaveLength(1))
+      expect(noticeRequests(spy)).toEqual(['GET'])
+
+      rerender({ planned: false })
+      await waitFor(() => expect(noticeRequests(spy)).toEqual(['GET', 'HEAD']))
+      expect(result.current.clubNotices).toHaveLength(1)
+    })
+
+    it('asks the radio for nothing offline with no hike planned', async () => {
+      const read = vi.spyOn(notices, 'readPublishedNotices')
+      const { result } = renderHook(() => useConditions(false, true, false))
+      // Waits on the read itself settling, since offline it changes no state.
+      await waitFor(() => expect(read).toHaveBeenCalledWith(false, { online: false }))
+      await read.mock.results[0].value
+      expect(noticeRequests(spy)).toEqual([])
+      expect(result.current.clubNoticesListed).toBe(false)
+    })
+  })
+
+  it('leaves the panel where it was when the bucket answers 404, as the exporters’ bucket does', async () => {
+    spy = bucket({ serves: false })
+    const { result } = renderHook(() => useConditions(true, true, false))
+    await waitFor(() => expect(noticeRequests(spy)).toEqual(['HEAD']))
+    expect(result.current.clubNoticesListed).toBe(false)
+    expect(result.current.clubNotices).toBeNull()
+  })
+})
+
+// `clubNoticesMissing` is what chrome/noticesPanel.tsx turns into the legend
+// row "Notices for your planned hikes: not on this phone yet" and the warning
+// at the top of the list (option A of the maintainer's poll of 2026-10-09).
+// It is set only when a read SETTLES: while a planned hike's first download
+// is in flight the panel stays today's, with no wording of its own.
+describe('clubNoticesMissing, for a planned hike with no copy of notices.json on this phone', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  /** A bucket whose notices.json download fails, as in a dead spot. */
+  function deadSpot(): MockInstance<typeof fetch> {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input) === NOTICES_URL) throw new TypeError('Failed to fetch')
+      return new Response('', { status: 404 })
+    })
+  }
+
+  it('is true once a planned hike’s download fails with nothing kept', async () => {
+    deadSpot()
+    const { result } = renderHook(() => useConditions(true, true, true))
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+    expect(result.current.clubNotices).toBeNull()
+  })
+
+  it('is true offline with a hike planned and nothing kept, and asks the radio for nothing', async () => {
+    const spy = bucket({ serves: true })
+    const { result } = renderHook(() => useConditions(false, true, true))
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+    expect(noticeRequests(spy)).toEqual([])
+  })
+
+  it('stays false while a planned hike’s first download is in flight', async () => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) =>
+        String(input) === NOTICES_URL
+          ? new Promise<Response>(() => undefined)
+          : new Response('', { status: 404 }),
+      )
+    const { result } = renderHook(() => useConditions(true, true, true))
+    await waitFor(() => expect(noticeRequests(spy)).toEqual(['GET']))
+    expect(result.current.clubNoticesMissing).toBe(false)
+  })
+
+  it('goes back to false when the file arrives', async () => {
+    const spy = bucket({ serves: true })
+    const { result, rerender } = renderHook(
+      ({ online }) => useConditions(online, true, true),
+      { initialProps: { online: false } },
+    )
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+
+    rerender({ online: true })
+    await waitFor(() => expect(result.current.clubNotices).toHaveLength(1))
+    expect(result.current.clubNoticesMissing).toBe(false)
+    expect(noticeRequests(spy)).toEqual(['GET'])
+  })
+
+  it('stays true while a retry is in flight after a read that failed, so the warning does not flicker', async () => {
+    // Offline with nothing kept, then signal on a link that never answers:
+    // the phone still holds no notices, which is what the warning says.
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) =>
+        String(input) === NOTICES_URL
+          ? new Promise<Response>(() => undefined)
+          : new Response('', { status: 404 }),
+      )
+    const { result, rerender } = renderHook(
+      ({ online }) => useConditions(online, true, true),
+      { initialProps: { online: false } },
+    )
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+
+    rerender({ online: true })
+    await waitFor(() => expect(noticeRequests(spy)).toEqual(['GET']))
+    expect(result.current.clubNoticesMissing).toBe(true)
+  })
+
+  it('goes back to false when the bucket answers 404, as the exporters’ bucket does', async () => {
+    // Offline the phone cannot tell a bucket without the file from one it
+    // cannot reach. Once it can ask, a 404 says there is no file to bring.
+    bucket({ serves: false })
+    const { result, rerender } = renderHook(
+      ({ online }) => useConditions(online, true, true),
+      { initialProps: { online: false } },
+    )
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+
+    rerender({ online: true })
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(false))
+    expect(result.current.clubNotices).toBeNull()
+  })
+
+  it('goes back to false when no hike is planned any more', async () => {
+    bucket({ serves: true })
+    const { result, rerender } = renderHook(
+      ({ planned }) => useConditions(false, true, planned),
+      { initialProps: { planned: true } },
+    )
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(true))
+
+    rerender({ planned: false })
+    await waitFor(() => expect(result.current.clubNoticesMissing).toBe(false))
+  })
+})
+
+describe('conditions/hazard_areas.json, read at launch whatever is planned (decision 84)', () => {
+  const HAZARD_URL = 'https://data.example/conditions/hazard_areas.json'
+
+  /** An invented hunting area and a row with no hazard, which the reader
+   *  leaves out: the file holds hazard rows only, and a row that is not one
+   *  is no area to draw. */
+  const A_HAZARD_DOCUMENT = {
+    generated_at: '2026-10-05T01:22:48Z',
+    notices: [
+      {
+        notice_id: 'oprhp_hunting_areas:1',
+        source_key: 'oprhp_hunting_areas',
+        title: 'Fixture hunting area',
+        hazard: 'hunting',
+        place: {
+          kind: 'geometry',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [-74.09, 41.24],
+                [-74.08, 41.24],
+                [-74.08, 41.25],
+                [-74.09, 41.24],
+              ],
+            ],
+          },
+        },
+      },
+      {
+        notice_id: 'club_page:1',
+        source_key: 'club_page',
+        title: 'Fixture trail work',
+        hazard: null,
+        place: { kind: 'unplaced' },
+      },
+    ],
+  }
+
+  /** A bucket serving both files, or neither (404, as production's does). */
+  function bucketWithHazards({
+    serves,
+  }: {
+    serves: boolean
+  }): MockInstance<typeof fetch> {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (!serves) return new Response('', { status: 404 })
+      if (String(input) === HAZARD_URL) {
+        return new Response(JSON.stringify(A_HAZARD_DOCUMENT), { status: 200 })
+      }
+      if (String(input) !== NOTICES_URL) return new Response('', { status: 404 })
+      return init?.method === 'HEAD'
+        ? new Response(null, { status: 200 })
+        : new Response(JSON.stringify(A_NOTICES_DOCUMENT), { status: 200 })
+    })
+  }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('downloads the hazard areas with no hike planned, and still no byte of notices.json', async () => {
+    const spy = bucketWithHazards({ serves: true })
+    const { result } = renderHook(() => useConditions(true, true, false))
+    await waitFor(() => expect(result.current.hazardFile?.items).toHaveLength(1))
+    expect(result.current.hazardFile?.items[0].notice_id).toBe('oprhp_hunting_areas:1')
+    expect(result.current.hazardFile?.generatedAt.toISOString()).toBe(
+      '2026-10-05T01:22:48.000Z',
+    )
+    expect(noticeRequests(spy)).toEqual(['HEAD'])
+    expect(result.current.clubNotices).toBeNull()
+  })
+
+  it('keeps the hazard areas it holds when a later read finds no file, never reading that as no area', async () => {
+    bucketWithHazards({ serves: true })
+    const read = vi.spyOn(notices, 'fetchPublishedHazardAreas')
+    const { result, rerender } = renderHook(
+      ({ planned }) => useConditions(true, true, planned),
+      { initialProps: { planned: false } },
+    )
+    await waitFor(() => expect(result.current.hazardFile?.items).toHaveLength(1))
+
+    // The next read answers nothing for the file: a 404 with no kept copy,
+    // or a dead spot. Planning a hike is what runs the read again here.
+    read.mockResolvedValue(null)
+    rerender({ planned: true })
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2))
+    await read.mock.results[1].value
+    expect(result.current.hazardFile?.items).toHaveLength(1)
+  })
+
+  /** The bucket at a weak-signal trailhead: the hazard file answers at once,
+   *  and the request for conditions/notices.json made with `method` (the
+   *  planned hike's download, or the HEAD asked with nothing planned) has not
+   *  answered and does not. */
+  function trailheadWith(method: 'GET' | 'HEAD'): MockInstance<typeof fetch> {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input) === HAZARD_URL) {
+        return new Response(JSON.stringify(A_HAZARD_DOCUMENT), { status: 200 })
+      }
+      if (String(input) === NOTICES_URL && (init?.method ?? 'GET') === method) {
+        return new Promise<Response>(() => undefined)
+      }
+      return new Response('', { status: 404 })
+    })
+  }
+
+  it('draws the hazard areas while a planned hike’s notices.json is still downloading', async () => {
+    // UA's file was 11,811,546 bytes on 2026-10-09, about 2 MB on the wire:
+    // the areas must not wait for it.
+    trailheadWith('GET')
+    const { result } = renderHook(() => useConditions(true, true, true))
+    await waitFor(() => expect(result.current.hazardFile?.items).toHaveLength(1))
+    expect(result.current.clubNotices).toBeNull()
+  })
+
+  it('draws the hazard areas while the HEAD about notices.json has not answered', async () => {
+    trailheadWith('HEAD')
+    const { result } = renderHook(() => useConditions(true, true, false))
+    await waitFor(() => expect(result.current.hazardFile?.items).toHaveLength(1))
+    expect(result.current.clubNoticesListed).toBe(false)
+  })
+
+  it('holds no hazard file on a bucket that serves none, as production’s does today', async () => {
+    const spy = bucketWithHazards({ serves: false })
+    const { result } = renderHook(() => useConditions(true, true, false))
+    await waitFor(() =>
+      expect(spy.mock.calls.map(([input]) => String(input))).toContain(HAZARD_URL),
+    )
+    expect(result.current.hazardFile).toBeNull()
+  })
+})

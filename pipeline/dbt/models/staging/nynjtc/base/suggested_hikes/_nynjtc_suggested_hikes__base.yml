@@ -1,0 +1,63 @@
+version: 2
+
+models:
+  - name: base_nynjtc__nynjtc_hike_finder
+    data_tests:
+      # Says how many rows the dedupe dropped. Each is an exact copy
+      # (duplicates_are_exact on the raw table), so this only reports.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_hike_finder')
+          config:
+            severity: warn
+    description: >
+      NYNJTC's Hike Finder export, one row per hike as lib/hikefinder.py
+      parses its page, keyed, with every field the page carries. Read by
+      int_suggested_hikes__hike_finder.
+    columns:
+      - name: hike_finder_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          `nynjtc_hike_finder` and the export's own hike id.
+        data_tests: [not_null, unique]
+      - name: hike_number
+        description: The export's own hike id, `hike.php?id=<id>`; ids run 1-450 with gaps, so it is not a count.
+      - name: stated_miles
+        description: >
+          The page's `Length`, the first number in it. Null where the page
+          prints none (`N/A`): nothing independent to grade a route against.
+      - name: start_json
+        description: >
+          The page's one coordinate, {lat, lon, label}, the label the
+          export's own word for what it is ("Parking location"). Null where
+          the page carries none or one outside the NYNJTC box (SH01).
+      - name: gpx
+        description: >
+          The published GPX track as served, on a page that links one whose
+          file holds a point; null otherwise. Parsed by step_form_route.py
+          with lib/hikefinder.py's parse_gpx(), never here.
+      - name: parse_problems_json
+        description: >
+          hike_problems()'s list as the extract stamped it at parse time,
+          kept so int_suggested_hikes__hike_finder's own answer can be read
+          beside it.
+  - name: base_nynjtc__nynjtc_hike_photos
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_hike_photos')
+          config:
+            severity: warn
+    description: >
+      reference/nynjtc_hike_photos.json, one row per row of the file, each
+      the JSON its reviewer wrote. Read by int_suggested_hikes__photos.
+    columns:
+      - name: photo_row_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the file's path and the row's place in it.
+        data_tests: [not_null, unique]
+      - name: file_row
+        description: The row's place in the file, from 0. The first confirmed row for a hike wins.
+      - name: photo
+        description: The row as its reviewer wrote it.

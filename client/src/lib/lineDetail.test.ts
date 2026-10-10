@@ -222,6 +222,24 @@ const SOURCES: TrailSourceTable = {
   },
 }
 
+describe('a club’s own line (decision 64)', () => {
+  it('marks a club line so the sheet can say it is drawn and not routed', () => {
+    expect(buildLineDetail({ ...NEARBY_LINE, lineKind: 'club' }, {}, []).isClubLine).toBe(
+      true,
+    )
+  })
+
+  it('marks no network line, and no line of a release that predates the mark', () => {
+    expect(buildLineDetail(NEARBY_LINE, {}, []).isClubLine).toBe(false)
+    expect(buildLineDetail({ ...NEARBY_LINE, lineKind: null }, {}, []).isClubLine).toBe(
+      false,
+    )
+    expect(
+      buildLineDetail({ ...NEARBY_LINE, lineKind: 'network' }, {}, []).isClubLine,
+    ).toBe(false)
+  })
+})
+
 describe('a nearby trail’s sheet', () => {
   it('names its length and its park on one line', () => {
     const detail = buildLineDetail(NEARBY_LINE, {}, [], 'imperial', 'Appalachian Trail')

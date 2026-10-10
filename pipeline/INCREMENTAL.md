@@ -35,7 +35,7 @@ design the weekly candidate build: that is DATA_RELEASES.md §2, still unbuilt, 
 belongs to that document under the one-home rule. It also does not re-argue the fetch
 framework question — **[#1294 — Evaluated and declined: dlt for the fetch layer, and a
 weekly cadence for non-alert data](https://github.com/OurHike/OurHike/issues/1294)** is
-the evaluation this design rests on.
+the evaluation this design rests on. **On 2026-10-01 the maintainer adopted dlt**, reversing that evaluation (*"Trust me, it will make things easier"*): [ELT.md](ELT.md) keeps this document's tiers and clocks and uses dlt as the mechanism for them, and its Overview lists what that changes here.
 
 ## What already exists
 
@@ -137,12 +137,17 @@ content-addressed caching at each stage's own unit of work** — which is exactl
 `publish.py` already applies per artifact, pushed down one level.
 
 **The first built instance is #1311's DEM sample cache**, and it is the model for the
-rest. `export_elevation.py` writes `samples.json` beside the tile index, keyed per point
-at six decimal places, and all three elevation exporters read it — the A.T. profile, the
+rest. `export_elevation.py` writes `samples.json` beside the tile index, keyed on each
+point's exact coordinates since decision 115 of `pipeline/ELT.md` (six decimal places
+before it, which let one point's answer serve its neighbour across a DEM pixel edge), and
+all three elevation exporters read it — the A.T. profile, the
 per-edge climb, the per-edge profile — so the second one to run pays nothing for a point
-the first already sampled, and a re-run pays nothing for either. Three properties are
+the first already sampled, and a re-run pays nothing for either. Four properties are
 what make it a cache a safety path may use:
 
+- **A key is one point** (decision 115). A lookup answers only the coordinates that were
+  asked, so no point is ever given its neighbour's pixel; a file written under the old
+  six-decimal keys is discarded whole rather than read.
 - **It is discarded whole when the tile-edition marker moves**, never merged. A merge
   would go on serving one re-flown cell's old elevations from whichever entries happened
   to survive, which is the single failure this cache could cause that a hiker would
@@ -154,9 +159,9 @@ what make it a cache a safety path may use:
 
 Its size is the honest gap, and `export_elevation.py`'s own header carries the arithmetic:
 run #88 sampled 138,695 points for the A.T. profile (measured 2026-09-08), which at a
-~35-byte entry is about 5 MB — and **the junction-graph half is `@unvalidated`, because
-nobody has computed it.** The first real run after #1311 settles it, and the file is there
-to measure.
+~60-byte entry since the keys became exact is about 8 MB — and **the junction-graph half
+is `@unvalidated`, because nobody has computed it.** The first real run after #1311
+settles it, and the file is there to measure.
 
 **The row-level view stays available and stays where it is.** `lib/data_change.classify()`
 already answers "which features were added, removed, moved or edited between these two

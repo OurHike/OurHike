@@ -1,0 +1,70 @@
+version: 2
+
+sources:
+  - name: nws
+    description: >
+      The National Weather Service's active alerts, landed by the extract's
+      _shared/nws/ folder (pipeline/extract/_shared/nws/alerts.py) from
+      lib/nws_alerts.py's ALERTS_URL, every alert in the US, read whole every
+      run. A federal work, public domain (17 U.S.C. 105), credited "National
+      Weather Service" (export_weather_alerts.py's CREDIT).
+    schema: raw
+    config:
+      # How long since the extract last read the alerts, from its run log
+      # (macros/last_read_or_confirmed_at.sql), not `_loaded_at`: a run whose
+      # read NWS refused moves neither, and an answer with no alerts lands no
+      # row to carry a `_loaded_at`. A refusal is a warning on the hourly run
+      # (decision 101, the maintainer's poll of 2026-10-07: "Both, NWS red
+      # after 2 h"), and red here once NWS has gone unread for 2 hours, where
+      # every other source this leg reads waits 24: a severe thunderstorm
+      # warning mostly lasts under 4 hours (Reasoned), so a day-old copy of
+      # these is no copy. With the runs an hour apart, one refused read
+      # warns and two in a row are red. The thresholds are
+      # generate_notice_models.py's NWS_FRESHNESS_HOURS, the warning half
+      # the error as for the notices; tests/test_notice_source_freshness.py
+      # holds these to it. publish-conditions.yml's freshness step selects
+      # `conditions_job`.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      tags: [conditions_job]
+      meta:
+        cadence: hourly
+      freshness:
+        warn_after: {count: 1, period: hour}
+        error_after: {count: 2, period: hour}
+    tables:
+      - name: raw_nws__alerts
+        data_tests:
+          # Rows sharing base_nws__alerts's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'nws_alerts'", "id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.freshness_anomalies:
+              arguments:
+                timestamp_column: _loaded_at
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          Every active NWS alert, one row per message as /alerts/active
+          serves it, Test messages and cancellations included: the relay in
+          int_warnings__nws_relayed drops those (WN01). Its 30 properties are
+          hinted (extract/_kinds.py's NWS_TEXT_PROPERTIES and
+          NWS_JSON_PROPERTIES), so each column exists when null, and the
+          times stay text with NWS's own offsets. Key: `id`, NWS's message id;
+          an update is a new message (pipeline/ELT.md, "Stable upstream keys").
+        columns:
+          - name: id
+            description: NWS's own message id, `urn:oid:...`.
+            data_tests: [not_null]

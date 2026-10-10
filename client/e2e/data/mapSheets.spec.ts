@@ -204,18 +204,33 @@ async function openLegend(page: Page): Promise<Locator> {
  * trip. The coarse grid below is that measurement turned into a budget — it
  * reaches that point in about fifteen taps — and the fine pass behind it is
  * what catches a release that moves the line between two coarse rows.
+ *
+ * ONLY A SHEET THAT OFFERS "Take this trail" ENDS THE SWEEP. Release
+ * 2026-10-03 draws the National Park Service's trails at this camera, and
+ * the sweep's first hit there was Sugarland Mountain Trail, whose sheet says
+ * "Not the trail you chose" and offers no Take (flow-data, run 37112698327).
+ * Every test below is about a trail a hiker can take, so a sheet for any
+ * other line is closed and the sweep carries on, as it does past a pin.
  */
 async function tapTheTrail(page: Page): Promise<Locator> {
   const box = await frameOf(page)
   const sheet = page.getByRole('dialog', { name: 'Trail line' })
   const card = page.getByRole('dialog', { name: 'Waypoint' })
+  let untakeable = 0
 
   const tap = async (across: number, down: number): Promise<boolean> => {
     await page.mouse.click(
       box.x + (box.width * across) / 20,
       box.y + (box.height * down) / 20,
     )
-    if ((await sheet.count()) > 0) return true
+    if ((await sheet.count()) > 0) {
+      if ((await sheet.getByRole('button', { name: /Take this trail/ }).count()) > 0)
+        return true
+      untakeable += 1
+      await sheet.getByRole('button', { name: 'Close' }).click()
+      await expect(sheet).toHaveCount(0)
+      return false
+    }
     // A tap that lands on a PIN opens a waypoint instead, and the card then
     // covers the canvas, so every remaining tap would hit the card and the
     // sweep would run out having tested nothing. Closing it and carrying on is
@@ -236,8 +251,11 @@ async function tapTheTrail(page: Page): Promise<Locator> {
     }
   }
   throw new Error(
-    'nothing on the map opened a trail line — either the release drew no ' +
-      'trail at the seeded camera, or a tap on one no longer opens its sheet',
+    untakeable > 0
+      ? `${untakeable} tap(s) opened a trail line, and none offered "Take this trail" — ` +
+          'either the chosen trail is not drawn at the seeded camera, or its sheet lost the button'
+      : 'nothing on the map opened a trail line — either the release drew no ' +
+          'trail at the seeded camera, or a tap on one no longer opens its sheet',
   )
 }
 
@@ -357,10 +375,11 @@ test.describe('a trail line’s sheet', () => {
     // pinned here — what is pinned is that the sheet HAS a heading and a
     // source sentence, because a line that says "Trail" and nothing about
     // where the geometry came from is the failure this sheet exists to fix
-    // (#134). The sentence's shape is the app's; the org's name is the
-    // release's.
+    // (#134). The sentence's shape is the app's, `From ${source}.` in
+    // lib/lineDetail.ts; the org's name is the release's, and only some names
+    // begin with "the" ("From National Park Service." does not).
     await expect(sheet.getByRole('heading')).toBeVisible()
-    await expect(sheet).toContainText(/From the .+\./)
+    await expect(sheet).toContainText(/From .+\./)
     await expect(sheet.getByRole('button', { name: /Take this trail/ })).toBeVisible()
   })
 
@@ -501,6 +520,23 @@ test.describe('the plate a long press raises', () => {
 })
 
 test.describe('every trail notice the app holds', () => {
+  // TODAY'S LIST, which a phone shows while conditions/notices.json has not
+  // reached it: production's state until the cutover (#1805). UA has served
+  // that file since soak run 529 (publish-conditions.yml 37232255266,
+  // 2026-10-04), and a phone on a bucket that serves it shows decision 66's
+  // planned-hike panel in this list's place, so these two tests went red the
+  // first time they met it. They reach the list by answering the file 404,
+  // its GET and the HEAD a phone with nothing planned sends instead
+  // (decision 77) alike, exactly as a bucket the exporters publish does; the
+  // panel has its own test below.
+  test.beforeEach(async ({ page }) => {
+    await page
+      .context()
+      .route('**/conditions/notices.json', (route) =>
+        route.fulfill({ status: 404, body: '' }),
+      )
+  })
+
   test('entrance and states: the list carries a link out for every notice, and never the notice itself', async ({
     page,
   }) => {
@@ -570,6 +606,48 @@ test.describe('every trail notice the app holds', () => {
     // wrong reason.
     await expect(fresh.getByRole('button', { name: /^Legend/ })).toHaveText('Legend')
     await fresh.close()
+  })
+})
+
+test.describe('the notices for planned hikes', () => {
+  test('entrance: a phone with nothing planned downloads none of notices.json, and still opens the planned-hike panel, saying so', async ({
+    page,
+  }) => {
+    // Decision 66 (#1805): with conditions/notices.json a phone shows the
+    // notices that touch a hike planned in the next 7 days, never every
+    // club's list. Decision 77: the file is downloaded only once a hike is
+    // planned, and this phone plans nothing, so it only asks the bucket
+    // with a HEAD whether the file is served (lib/publishedNotices.ts's
+    // noticesListed). That HEAD is the response waited on here; it used to
+    // be the file's own GET, and the "Gathered by OurHike on" line that
+    // proved the file parsed is gone with it, as nothing was downloaded to
+    // date. What proves the bucket's answer was read is the panel itself:
+    // without it the phone shows the list the tests above hold.
+    const methods: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/conditions/notices.json'))
+        methods.push(request.method())
+    })
+    const listed = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith('/conditions/notices.json') &&
+        response.request().method() === 'HEAD',
+    )
+    await openMap(page)
+    const response = await listed
+    test.skip(
+      response.status() === 404,
+      'This environment serves no conditions/notices.json, so a phone shows the list the tests above hold.',
+    )
+    expect(response.status()).toBe(200)
+
+    const legend = await openLegend(page)
+    await legend.getByRole('button', { name: /^Notices for your planned hikes/ }).click()
+    const panel = page.getByRole('dialog', { name: 'Notices for your planned hikes' })
+    await expect(panel).toBeVisible()
+    await expect(panel).toContainText('You have no hike planned')
+    await expect(panel).not.toContainText('Gathered by OurHike')
+    expect(methods).not.toContain('GET')
   })
 })
 

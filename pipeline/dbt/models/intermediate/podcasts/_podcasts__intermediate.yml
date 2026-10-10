@@ -1,0 +1,178 @@
+version: 2
+
+models:
+  - name: int_podcasts__checked
+    description: >
+      Every row of reference/podcast_episodes.json, read field by field and
+      checked against lib/podcasts.py's rules in validate()'s order, with the
+      first rule it breaks (`rule_id`, pipeline/ELT.md's PC numbers) and why
+      (`problem`). Null in both means the row publishes.
+    data_tests:
+      # PC07, the gate: any row with a problem fails the build, so the
+      # writers, which run only after every test has passed, write nothing.
+      # export_podcasts.py's "a list that dropped a row is not uploaded".
+      # dbt 2.0.6 reports only how many rows failed (it has no option to
+      # print them, 2026-10-01), where export_podcasts.py printed each row
+      # and why. To see them, from pipeline/dbt:
+      #   dbt show --profiles-dir . --inline "select row_label, rule_id, problem
+      #     from intermediate.int_podcasts__checked where problem is not null"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "problem is null"
+          config:
+            severity: error
+    columns:
+      - name: episode_row_key
+        description: base_podcasts__podcast_episodes's key, the file and the row's place in it.
+        data_tests: [not_null, unique]
+      - name: file_row
+        description: The row's place in the file, from 0.
+      - name: _loaded_at
+        description: When the extract loaded reference/podcast_episodes.json.
+      - name: row_label
+        description: The row as validate() names it in a message, "row N (spotify_id)".
+      - name: spotify_id
+        description: The row's spotify_id where it is a string, as written.
+      - name: show_name
+        description: The row's `show`, stripped, where it is a string. A DuckDB keyword, so renamed.
+      - name: rule_id
+        description: The first rule the row breaks, as numbered in pipeline/ELT.md's podcasts rule table. Null if it breaks none.
+      - name: problem
+        description: >
+          Why, in validate()'s words, with any value rendered as JSON rather
+          than as Python's repr. Null if the row publishes.
+  - name: int_podcasts__final
+    description: >
+      The podcasts mart's rows before their row dates (decision 57):
+      what models/marts/podcasts/podcasts.sql held until then, every
+      contracted column but _first_seen_at and _changed_at.
+      int_podcasts__history snapshots it, and the mart reads that snapshot.
+    columns:
+      - name: spotify_id
+        description: The mart's key.
+        data_tests: [not_null, unique]
+
+unit_tests:
+  - name: int_podcasts__checked_finds_what_validate_finds
+    description: >
+      One row per branch of lib/podcasts.py's validate(), and the three
+      places this model is deliberately stricter (rows 36, 37 and 39; row 33
+      is an oddly spelt link host both accept). Each row's expected
+      rule and problem are what validate() reports for it, with values
+      rendered as JSON; tests/test_dbt_podcasts_parity.py runs validate()
+      over these same rows and fails if the two disagree anywhere it does
+      not list as deliberate. Rows 34 and 35 share an id: validate()
+      remembers an id only once its row passes, so the second row is kept,
+      not refused as a repeat.
+    model: int_podcasts__checked
+    given:
+      - input: ref('base_podcasts__podcast_episodes')
+        rows:
+          - {episode_row_key: k00, file_row: 0, episode: '{"spotify_id": "Ep00xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "minutes": 34, "links": {"apple_podcasts": "https://podcasts.apple.com/us/podcast/x/id1?i=2"}}'}
+          - {episode_row_key: k01, file_row: 1, episode: '[1, 2]'}
+          - {episode_row_key: k02, file_row: 2, episode: '{"spotify_id": "Ep02xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "At_Miles": [[1, 2]]}'}
+          - {episode_row_key: k03, file_row: 3, episode: '{"spotify_id": "Ep03xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "title2": null, "Zeta": 1}'}
+          - {episode_row_key: k04, file_row: 4, episode: '{"spotify_id": "xxxxxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k05, file_row: 5, episode: '{"spotify_id": 5, "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k06, file_row: 6, episode: '{"spotify_id": "Ep00xxxxxxxxxxxxxxxxxx", "title": "Again", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k07, file_row: 7, episode: '{"spotify_id": "Ep07xxxxxxxxxxxxxxxxxx", "title": 5, "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k08, file_row: 8, episode: '{"spotify_id": "Ep08xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": " \t\u3000", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k09, file_row: 9, episode: '{"spotify_id": "Ep09xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "minutes": "34"}'}
+          - {episode_row_key: k10, file_row: 10, episode: '{"spotify_id": "Ep10xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "minutes": true}'}
+          - {episode_row_key: k11, file_row: 11, episode: '{"spotify_id": "Ep11xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "minutes": 0}'}
+          - {episode_row_key: k12, file_row: 12, episode: '{"spotify_id": "Ep12xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "minutes": 34.0}'}
+          - {episode_row_key: k13, file_row: 13, episode: '{"spotify_id": "Ep13xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "hikes": "h1"}'}
+          - {episode_row_key: k14, file_row: 14, episode: '{"spotify_id": "Ep14xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "hikes": ["h1", " "]}'}
+          - {episode_row_key: k15, file_row: 15, episode: '{"spotify_id": "Ep15xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "at_miles": [[3, 1]]}'}
+          - {episode_row_key: k16, file_row: 16, episode: '{"spotify_id": "Ep16xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "at_miles": [[1, 2], [1, 2, 3]]}'}
+          - {episode_row_key: k17, file_row: 17, episode: '{"spotify_id": "Ep17xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "at_miles": [[1, true]]}'}
+          - {episode_row_key: k18, file_row: 18, episode: '{"spotify_id": "Ep18xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "at_miles": [[0, 2301]]}'}
+          - {episode_row_key: k19, file_row: 19, episode: '{"spotify_id": "Ep19xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "at_miles": "1-2"}'}
+          - {episode_row_key: k20, file_row: 20, episode: '{"spotify_id": "Ep20xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:nope"], "places": ["Nowhere"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k21, file_row: 21, episode: '{"spotify_id": "Ep21xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:gone"], "places": ["Old Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k22, file_row: 22, episode: '{"spotify_id": "Ep22xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live  Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k23, file_row: 23, episode: '{"spotify_id": "Ep23xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live", "atc_springs:live"], "places": ["Live Spring", "Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k24, file_row: 24, episode: '{"spotify_id": "Ep24xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": [], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k25, file_row: 25, episode: '{"spotify_id": "Ep25xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "places": ["Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k26, file_row: 26, episode: '{"spotify_id": "Ep26xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "links": {"spotify": "https://open.spotify.com/episode/x"}}'}
+          - {episode_row_key: k27, file_row: 27, episode: '{"spotify_id": "Ep27xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "links": {"overcast": "http://overcast.fm/+x"}}'}
+          - {episode_row_key: k28, file_row: 28, episode: '{"spotify_id": "Ep28xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "links": {"pocket_casts": "https://overcast.fm/+x"}}'}
+          - {episode_row_key: k29, file_row: 29, episode: '{"spotify_id": "Ep29xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "links": "x"}'}
+          - {episode_row_key: k30, file_row: 30, episode: '{"spotify_id": "Ep30xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": 20260929}'}
+          - {episode_row_key: k31, file_row: 31, episode: '{"spotify_id": "Ep31xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-02-30"}'}
+          - {episode_row_key: k32, file_row: 32, episode: '{"spotify_id": "Ep32xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k33, file_row: 33, episode: '{"spotify_id": "Ep33xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "reviewed": "2026-09-29", "hikes": [" h1 "], "at_miles": [[1.5, 3]], "links": {"pocket_casts": "HTTPS://User@Play.PocketCasts.com:443/x", "apple_podcasts": "https://podcasts.apple.com/a"}}'}
+          - {episode_row_key: k34, file_row: 34, episode: '{"spotify_id": "Ep34xxxxxxxxxxxxxxxxxx", "title": null, "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k35, file_row: 35, episode: '{"spotify_id": "Ep34xxxxxxxxxxxxxxxxxx", "title": "\u3000Second Try\u00a0", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k36, file_row: 36, episode: '{"spotify_id": "Ep36xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "20260929"}'}
+          - {episode_row_key: k37, file_row: 37, episode: '{"spotify_id": "Ep37xxxxxxxxxxxxxxxxxx\n", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29"}'}
+          - {episode_row_key: k38, file_row: 38, episode: '{"spotify_id": "Ep38xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "links": {"zz": 1, "apple_podcasts": 7}}'}
+          - {episode_row_key: k39, file_row: 39, episode: '{"spotify_id": "Ep39xxxxxxxxxxxxxxxxxx", "title": "Walking Talk", "show": "Trail Show", "pois": ["atc_springs:live"], "places": ["Live Spring"], "reviewed": "2026-09-29", "links": {"overcast": " https://overcast.fm/+x"}}'}
+      - input: ref('base_ourhike__poi_identity')
+        rows:
+          - {poi_id: atc_springs:live, name: Live Spring, retired: null, superseded_by: null}
+          - {poi_id: atc_springs:gone, name: Old Spring, retired: '2026-08-19', superseded_by: atc_springs:live}
+      # The two seeds, row for row; the parity test holds these to the files.
+      - input: ref('podcast_row_fields')
+        rows:
+          - {field_name: at_miles}
+          - {field_name: hikes}
+          - {field_name: links}
+          - {field_name: minutes}
+          - {field_name: note}
+          - {field_name: places}
+          - {field_name: pois}
+          - {field_name: reviewed}
+          - {field_name: show}
+          - {field_name: spotify_id}
+          - {field_name: title}
+      - input: ref('podcast_app_link_hosts')
+        rows:
+          - {app: apple_podcasts, hostname: podcasts.apple.com}
+          - {app: overcast, hostname: overcast.fm}
+          - {app: pocket_casts, hostname: pca.st}
+          - {app: pocket_casts, hostname: play.pocketcasts.com}
+          - {app: pocket_casts, hostname: pocketcasts.com}
+          - {app: youtube_music, hostname: music.youtube.com}
+    expect:
+      rows:
+        - {file_row: 0, rule_id: null, problem: null}
+        - {file_row: 1, rule_id: PC08, problem: 'not an object'}
+        - {file_row: 2, rule_id: PC03, problem: 'unknown field(s) At_Miles'}
+        - {file_row: 3, rule_id: PC03, problem: 'unknown field(s) Zeta, title2'}
+        - {file_row: 4, rule_id: PC01, problem: 'spotify_id must be the 22 characters after /episode/ in its link'}
+        - {file_row: 5, rule_id: PC01, problem: 'spotify_id must be the 22 characters after /episode/ in its link'}
+        - {file_row: 6, rule_id: PC06, problem: 'the same episode is listed twice; merge the two rows'}
+        - {file_row: 7, rule_id: PC08, problem: 'title and show are both required'}
+        - {file_row: 8, rule_id: PC08, problem: 'title and show are both required'}
+        - {file_row: 9, rule_id: PC09, problem: 'minutes must be a positive whole number or absent, not "34"'}
+        - {file_row: 10, rule_id: PC09, problem: 'minutes must be a positive whole number or absent, not true'}
+        - {file_row: 11, rule_id: PC09, problem: 'minutes must be a positive whole number or absent, not 0'}
+        - {file_row: 12, rule_id: PC09, problem: 'minutes must be a positive whole number or absent, not 34.0'}
+        - {file_row: 13, rule_id: PC10, problem: 'hikes must be a list of hike ids, not "h1"'}
+        - {file_row: 14, rule_id: PC10, problem: 'hikes must be a list of hike ids, not ["h1"," "]'}
+        - {file_row: 15, rule_id: PC02, problem: 'at_miles [3,1] must run forward, inside 0 to 2300'}
+        - {file_row: 16, rule_id: PC02, problem: 'each at_miles entry must be [start, end], not [1,2,3]'}
+        - {file_row: 17, rule_id: PC02, problem: 'each at_miles entry must be [start, end], not [1,true]'}
+        - {file_row: 18, rule_id: PC02, problem: 'at_miles [0,2301] must run forward, inside 0 to 2300'}
+        - {file_row: 19, rule_id: PC02, problem: 'at_miles must be a list of [start, end] pairs, not "1-2"'}
+        - {file_row: 20, rule_id: PC05, problem: 'atc_springs:nope has never been a published POI'}
+        - {file_row: 21, rule_id: PC05, problem: 'atc_springs:gone (Old Spring) was retired on 2026-08-19; it was superseded by atc_springs:live'}
+        - {file_row: 22, rule_id: PC05, problem: 'atc_springs:live is "Live Spring" in the POI ledger, not "Live  Spring"'}
+        - {file_row: 23, rule_id: PC05, problem: 'the same POI is listed twice in pois'}
+        - {file_row: 24, rule_id: PC05, problem: 'places must name each of pois, in the same order, so a diff can be read'}
+        - {file_row: 25, rule_id: PC05, problem: 'pois must be a list of published POI ids, not null'}
+        - {file_row: 26, rule_id: PC04, problem: 'links has an unknown app "spotify"; known: apple_podcasts, overcast, pocket_casts, youtube_music'}
+        - {file_row: 27, rule_id: PC04, problem: 'links.overcast must be an https link on overcast.fm, not "http://overcast.fm/+x"'}
+        - {file_row: 28, rule_id: PC04, problem: 'links.pocket_casts must be an https link on pca.st or play.pocketcasts.com or pocketcasts.com, not "https://overcast.fm/+x"'}
+        - {file_row: 29, rule_id: PC04, problem: 'links must be an object of app -> link, not "x"'}
+        - {file_row: 30, rule_id: PC11, problem: 'reviewed must be a date, YYYY-MM-DD'}
+        - {file_row: 31, rule_id: PC11, problem: 'reviewed "2026-02-30" is not a YYYY-MM-DD date'}
+        - {file_row: 32, rule_id: PC12, problem: 'needs at least one of hikes, at_miles or pois, or it shows nowhere'}
+        - {file_row: 33, rule_id: null, problem: null}
+        - {file_row: 34, rule_id: PC08, problem: 'title and show are both required'}
+        - {file_row: 35, rule_id: null, problem: null}
+        - {file_row: 36, rule_id: PC11, problem: 'reviewed "20260929" is not a YYYY-MM-DD date'}
+        - {file_row: 37, rule_id: PC01, problem: 'spotify_id must be the 22 characters after /episode/ in its link'}
+        - {file_row: 38, rule_id: PC04, problem: 'links.apple_podcasts must be an https link on podcasts.apple.com, not 7'}
+        - {file_row: 39, rule_id: PC04, problem: 'links.overcast must be an https link on overcast.fm, not " https://overcast.fm/+x"'}

@@ -1,0 +1,42 @@
+version: 2
+
+# OurHike's curated highlights, in their own file beside _ourhike__sources.yml,
+# which declares OurHike's other reviewed files under the same source name
+# (dbt merges one source's tables across files, as _nynjtc_alerts__sources.yml
+# found on dbt 2.0.6). Read by the suggested_hikes family (SH12-SH14).
+sources:
+  - name: ourhike
+    description: >
+      OurHike's own data. This file holds reference/highlights.json, landed by
+      the extract's _shared/ourhike/highlights.py.
+    schema: raw
+    config:
+      meta:
+        cadence: monthly
+      # No freshness, as for OurHike's other reviewed files: a reviewed file's
+      # `_loaded_at` moves only when its bytes do.
+    tables:
+      - name: raw_ourhike__highlights
+        data_tests:
+          # Rows sharing base_ourhike__highlights's key must be exact copies (decision 40).
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/highlights.json'", "_row"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          - elementary.volume_anomalies:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: warn
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          reference/highlights.json, the curated list of stretches somebody
+          says are worth going to (features/CORRIDOR_VIEW.md; #595 — The
+          corridor view has nothing to explore, because "popular" has no
+          source behind it yet): 10 rows on 2026-10-02, each the JSON its
+          reviewer wrote, in `row_json`. A row names its legs by two
+          published POI ids each and holds no mile.

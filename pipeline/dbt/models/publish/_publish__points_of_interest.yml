@@ -1,0 +1,547 @@
+version: 2
+
+# The points_of_interest family's ten phone files (pipeline/ELT.md, "Publish
+# (reverse ETL)"): each a pub_ writer over the points_of_interest mart and an
+# exposure naming its R2 key. parity.py compares each with today's exporter
+# in the dbt job: poi_<type> with export_poi.py, nearby_poi with
+# export_nearby_poi.py's own functions, retired_poi with
+# export_retired_poi.py's build().
+#
+# Beside them, stage 6's nine v2 writers (decision 44; stage 6 of #1793):
+# pub_poi_<type>_v2 and pub_nearby_poi_v2 over v2 of the mart, each with an
+# exposure of its own at v2/<file>, which parity.py's <file>_v2 families hold
+# to the v1 file the same build wrote. retired_poi has no v2.
+#
+# NOT WRITTEN HERE: the eight poi_<type>.fgb files export_poi.py writes
+# beside each poi_<type>.geojson, which publish.py uploads as
+# poi_<type>.fgb. phone_file writes format json only, and FlatGeobuf is a
+# GDAL format; the client reads either (client/src/lib/trailData.ts), so
+# stage 4 decides whether the .fgb keeps a writer.
+models:
+  - name: pub_poi_shelter
+    description: >
+      Writes poi_shelter.geojson, the A.T. family's shelters, from the
+      points_of_interest mart, in export_poi.py's shape:
+      macros/poi_feature_collection.sql says what each value is.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: &poi_by_type_columns
+      - name: type
+        description: "`FeatureCollection`."
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: name
+        description: The poi_type, which GDAL writes as the collection's name.
+        data_type: varchar
+      - name: features
+        description: The type's POIs as GeoJSON features, every one of POI_COLUMNS on each, in record order.
+        data_type: json[]
+  - name: pub_poi_campsite
+    description: Writes poi_campsite.geojson, the A.T. family's campsites, as pub_poi_shelter writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_columns
+  - name: pub_poi_water
+    description: >
+      Writes poi_water.geojson, opentrail's water points and the synthesized
+      CSI water points, as pub_poi_shelter writes its file. A synthesized
+      point carries ATC's distance and its source, never one without the
+      other.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_columns
+  - name: pub_poi_resupply
+    description: Writes poi_resupply.geojson, ATC's Communities (low confidence, a proxy for resupply), as pub_poi_shelter writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_columns
+  - name: pub_poi_viewpoint
+    description: Writes poi_viewpoint.geojson, ATC's vistas, as pub_poi_shelter writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_columns
+  - name: pub_poi_parking
+    description: Writes poi_parking.geojson, ATC's parking areas, as pub_poi_shelter writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_columns
+  - name: pub_poi_privy
+    description: Writes poi_privy.geojson, ATC's privies, as pub_poi_shelter writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_columns
+  - name: pub_poi_trailhead
+    description: >
+      Writes poi_trailhead.geojson, which no A.T.-family source fills today:
+      an empty FeatureCollection, as export_poi.py writes it, because
+      lib/poi_schema.py's ALLOWED_EMPTY_POI_TYPES lets trailhead be empty.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_columns
+  - name: pub_nearby_poi
+    description: >
+      Writes nearby_poi.geojson, the other organizations' POIs, from the
+      points_of_interest mart, in export_nearby_poi.py's shape: null
+      properties left out, `source_feature_id` in the type the layer wrote.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: type
+        description: "`FeatureCollection`."
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: features
+        description: The POIs as GeoJSON features, in the order the Python reads its layers and rows.
+        data_type: json[]
+  - name: pub_retired_poi
+    description: >
+      Writes retired_poi.geojson, the tombstones, from the points_of_interest
+      mart, in export_retired_poi.py's shape, sorted by id.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: type
+        description: "`FeatureCollection`."
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: features
+        description: One feature per retired id, name and successor only where there is one.
+        data_type: json[]
+  - name: pub_poi_shelter_v2
+    description: >
+      Writes v2/poi_shelter.geojson (stage 6 of #1793), from v2 of the
+      points_of_interest mart, to processed_dir/poi_shelter_v2.geojson:
+      v1's poi_shelter.geojson with each position once, as the point at 6
+      decimals, and no lat and lon properties
+      (macros/poi_feature_collection.sql, version 2).
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: &poi_by_type_v2_columns
+      - name: type
+        description: "`FeatureCollection`."
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: name
+        description: The poi_type, the collection's name, as v1's.
+        data_type: varchar
+      - name: features
+        description: >
+          The type's POIs as GeoJSON features, in record order, each with
+          every v1 property but lat and lon and its point at 6 decimals.
+        data_type: json[]
+  - name: pub_poi_campsite_v2
+    description: Writes v2/poi_campsite.geojson, as pub_poi_shelter_v2 writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_v2_columns
+  - name: pub_poi_water_v2
+    description: Writes v2/poi_water.geojson, as pub_poi_shelter_v2 writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_v2_columns
+  - name: pub_poi_resupply_v2
+    description: Writes v2/poi_resupply.geojson, as pub_poi_shelter_v2 writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_v2_columns
+  - name: pub_poi_viewpoint_v2
+    description: Writes v2/poi_viewpoint.geojson, as pub_poi_shelter_v2 writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_v2_columns
+  - name: pub_poi_parking_v2
+    description: Writes v2/poi_parking.geojson, as pub_poi_shelter_v2 writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_v2_columns
+  - name: pub_poi_privy_v2
+    description: Writes v2/poi_privy.geojson, as pub_poi_shelter_v2 writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_v2_columns
+  - name: pub_poi_trailhead_v2
+    description: Writes v2/poi_trailhead.geojson, as pub_poi_shelter_v2 writes its file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns: *poi_by_type_v2_columns
+  - name: pub_nearby_poi_v2
+    description: >
+      Writes v2/nearby_poi.geojson (stage 6 of #1793), from v2 of the
+      points_of_interest mart, to processed_dir/nearby_poi_v2.geojson: v1's
+      nearby_poi.geojson with each position once, as the point at 6
+      decimals, and no lat and lon properties. The same POIs as v1: moving
+      other organizations' non-water, non-shelter POIs to 1° cells is not
+      decided (pipeline/ELT.md's open question).
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: type
+        description: "`FeatureCollection`."
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: features
+        description: The POIs as GeoJSON features, in v1's order, null properties left out as v1 leaves them.
+        data_type: json[]
+
+exposures:
+  - name: poi_by_type_geojson
+    label: poi_<type>.geojson
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The A.T. family's POIs, one file per type (lib/poi_schema.py's
+      POI_TYPES), read by client/src/lib/trailData.ts's readPois: shelters
+      with their capacity and water distance, the synthesized water points,
+      vistas, parking, privies and resupply, each with its mile on the
+      calibrated axis and its site. Safety core: a hiker plans water and the
+      night's stop from them. Published in the release folder by
+      publish-vector-data.yml from export_poi.py's files until stage 4 of
+      #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts,
+      a monthly refresh, published docs, and lighter phone downloads moves
+      the upload to these writers'.
+    depends_on:
+      - ref('points_of_interest', v=1)
+      - ref('pub_poi_shelter')
+      - ref('pub_poi_campsite')
+      - ref('pub_poi_water')
+      - ref('pub_poi_resupply')
+      - ref('pub_poi_viewpoint')
+      - ref('pub_poi_parking')
+      - ref('pub_poi_privy')
+      - ref('pub_poi_trailhead')
+    config:
+      meta:
+        r2_keys:
+          - poi_shelter.geojson
+          - poi_campsite.geojson
+          - poi_water.geojson
+          - poi_resupply.geojson
+          - poi_viewpoint.geojson
+          - poi_parking.geojson
+          - poi_privy.geojson
+          - poi_trailhead.geojson
+        format: geojson
+        offline_tier: safety_core
+        cadence: monthly
+  - name: nearby_poi_geojson
+    label: nearby_poi.geojson
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The other organizations' POIs beside the A.T. family's: NYS DEC, NYS
+      Parks, USFS and NYC Parks, mixed types in one file, read by
+      client/src/lib/trailData.ts. Published in the release folder by
+      publish-vector-data.yml from export_nearby_poi.py's file until stage 4
+      of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
+      marts, a monthly refresh, published docs, and lighter phone downloads.
+    depends_on:
+      - ref('points_of_interest', v=1)
+      - ref('pub_nearby_poi')
+    config:
+      meta:
+        r2_keys: [nearby_poi.geojson]
+        format: geojson
+        cadence: monthly
+  - name: retired_poi_geojson
+    label: retired_poi.geojson
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every POI id ever retired, with where it was and what took its place
+      (#673 — Tombstones and superseded_by: an upstream removal never deletes
+      a hiker's content), so an id a phone holds always resolves to
+      something. Published in the release folder by publish-vector-data.yml
+      from export_retired_poi.py's file, and fetched by the client's
+      fetchRetiredPois() (client/src/lib/trailData.ts), which reads a release
+      without it as one with no tombstones.
+    depends_on:
+      - ref('points_of_interest', v=1)
+      - ref('pub_retired_poi')
+    config:
+      meta:
+        r2_keys: [retired_poi.geojson]
+        format: geojson
+        cadence: monthly
+  - name: poi_shelter_geojson_v2
+    label: v2/poi_shelter.geojson
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of poi_shelter.geojson (decision 44), published beside v1 at
+      v2/poi_shelter.geojson under the release folder (stage 6 of #1793;
+      pipeline/ELT.md, "Making the download smaller"): the same POIs and
+      properties, each position once, at 6 decimals. Its own exposure, not a
+      ninth writer under poi_by_type_geojson, because publish.py pairs an
+      exposure's writers with its keys by file name, and v1's writer already
+      writes poi_shelter.geojson into processed_dir. A phone reads it only
+      once its build reads schema version v2 and channels.json names a v2
+      release; every other phone keeps reading v1's file, which is still
+      written. Safety core, tier (a).
+    depends_on:
+      - ref('points_of_interest', v=2)
+      - ref('pub_poi_shelter_v2')
+    config:
+      meta:
+        r2_keys: [v2/poi_shelter.geojson]
+        format: geojson
+        coordinate_decimals: 6
+        offline_tier: safety_core
+        cadence: monthly
+  - name: poi_campsite_geojson_v2
+    label: v2/poi_campsite.geojson
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of poi_campsite.geojson (decision 44), published beside v1 at
+      v2/poi_campsite.geojson under the release folder (stage 6 of #1793;
+      pipeline/ELT.md, "Making the download smaller"): the same POIs and
+      properties, each position once, at 6 decimals. Its own exposure, not a
+      ninth writer under poi_by_type_geojson, because publish.py pairs an
+      exposure's writers with its keys by file name, and v1's writer already
+      writes poi_campsite.geojson into processed_dir. A phone reads it only
+      once its build reads schema version v2 and channels.json names a v2
+      release; every other phone keeps reading v1's file, which is still
+      written. Safety core, tier (a).
+    depends_on:
+      - ref('points_of_interest', v=2)
+      - ref('pub_poi_campsite_v2')
+    config:
+      meta:
+        r2_keys: [v2/poi_campsite.geojson]
+        format: geojson
+        coordinate_decimals: 6
+        offline_tier: safety_core
+        cadence: monthly
+  - name: poi_water_geojson_v2
+    label: v2/poi_water.geojson
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of poi_water.geojson (decision 44), published beside v1 at
+      v2/poi_water.geojson under the release folder (stage 6 of #1793;
+      pipeline/ELT.md, "Making the download smaller"): the same POIs and
+      properties, each position once, at 6 decimals. Its own exposure, not a
+      ninth writer under poi_by_type_geojson, because publish.py pairs an
+      exposure's writers with its keys by file name, and v1's writer already
+      writes poi_water.geojson into processed_dir. A phone reads it only
+      once its build reads schema version v2 and channels.json names a v2
+      release; every other phone keeps reading v1's file, which is still
+      written. Safety core, tier (a).
+    depends_on:
+      - ref('points_of_interest', v=2)
+      - ref('pub_poi_water_v2')
+    config:
+      meta:
+        r2_keys: [v2/poi_water.geojson]
+        format: geojson
+        coordinate_decimals: 6
+        offline_tier: safety_core
+        cadence: monthly
+  - name: poi_resupply_geojson_v2
+    label: v2/poi_resupply.geojson
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of poi_resupply.geojson (decision 44), published beside v1 at
+      v2/poi_resupply.geojson under the release folder (stage 6 of #1793;
+      pipeline/ELT.md, "Making the download smaller"): the same POIs and
+      properties, each position once, at 6 decimals. Its own exposure, not a
+      ninth writer under poi_by_type_geojson, because publish.py pairs an
+      exposure's writers with its keys by file name, and v1's writer already
+      writes poi_resupply.geojson into processed_dir. A phone reads it only
+      once its build reads schema version v2 and channels.json names a v2
+      release; every other phone keeps reading v1's file, which is still
+      written. Safety core, tier (a).
+    depends_on:
+      - ref('points_of_interest', v=2)
+      - ref('pub_poi_resupply_v2')
+    config:
+      meta:
+        r2_keys: [v2/poi_resupply.geojson]
+        format: geojson
+        coordinate_decimals: 6
+        offline_tier: safety_core
+        cadence: monthly
+  - name: poi_viewpoint_geojson_v2
+    label: v2/poi_viewpoint.geojson
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of poi_viewpoint.geojson (decision 44), published beside v1 at
+      v2/poi_viewpoint.geojson under the release folder (stage 6 of #1793;
+      pipeline/ELT.md, "Making the download smaller"): the same POIs and
+      properties, each position once, at 6 decimals. Its own exposure, not a
+      ninth writer under poi_by_type_geojson, because publish.py pairs an
+      exposure's writers with its keys by file name, and v1's writer already
+      writes poi_viewpoint.geojson into processed_dir. A phone reads it only
+      once its build reads schema version v2 and channels.json names a v2
+      release; every other phone keeps reading v1's file, which is still
+      written. Safety core, tier (a).
+    depends_on:
+      - ref('points_of_interest', v=2)
+      - ref('pub_poi_viewpoint_v2')
+    config:
+      meta:
+        r2_keys: [v2/poi_viewpoint.geojson]
+        format: geojson
+        coordinate_decimals: 6
+        offline_tier: safety_core
+        cadence: monthly
+  - name: poi_parking_geojson_v2
+    label: v2/poi_parking.geojson
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of poi_parking.geojson (decision 44), published beside v1 at
+      v2/poi_parking.geojson under the release folder (stage 6 of #1793;
+      pipeline/ELT.md, "Making the download smaller"): the same POIs and
+      properties, each position once, at 6 decimals. Its own exposure, not a
+      ninth writer under poi_by_type_geojson, because publish.py pairs an
+      exposure's writers with its keys by file name, and v1's writer already
+      writes poi_parking.geojson into processed_dir. A phone reads it only
+      once its build reads schema version v2 and channels.json names a v2
+      release; every other phone keeps reading v1's file, which is still
+      written. Safety core, tier (a).
+    depends_on:
+      - ref('points_of_interest', v=2)
+      - ref('pub_poi_parking_v2')
+    config:
+      meta:
+        r2_keys: [v2/poi_parking.geojson]
+        format: geojson
+        coordinate_decimals: 6
+        offline_tier: safety_core
+        cadence: monthly
+  - name: poi_privy_geojson_v2
+    label: v2/poi_privy.geojson
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of poi_privy.geojson (decision 44), published beside v1 at
+      v2/poi_privy.geojson under the release folder (stage 6 of #1793;
+      pipeline/ELT.md, "Making the download smaller"): the same POIs and
+      properties, each position once, at 6 decimals. Its own exposure, not a
+      ninth writer under poi_by_type_geojson, because publish.py pairs an
+      exposure's writers with its keys by file name, and v1's writer already
+      writes poi_privy.geojson into processed_dir. A phone reads it only
+      once its build reads schema version v2 and channels.json names a v2
+      release; every other phone keeps reading v1's file, which is still
+      written. Safety core, tier (a).
+    depends_on:
+      - ref('points_of_interest', v=2)
+      - ref('pub_poi_privy_v2')
+    config:
+      meta:
+        r2_keys: [v2/poi_privy.geojson]
+        format: geojson
+        coordinate_decimals: 6
+        offline_tier: safety_core
+        cadence: monthly
+  - name: poi_trailhead_geojson_v2
+    label: v2/poi_trailhead.geojson
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of poi_trailhead.geojson (decision 44), published beside v1 at
+      v2/poi_trailhead.geojson under the release folder (stage 6 of #1793;
+      pipeline/ELT.md, "Making the download smaller"): the same POIs and
+      properties, each position once, at 6 decimals. Its own exposure, not a
+      ninth writer under poi_by_type_geojson, because publish.py pairs an
+      exposure's writers with its keys by file name, and v1's writer already
+      writes poi_trailhead.geojson into processed_dir. A phone reads it only
+      once its build reads schema version v2 and channels.json names a v2
+      release; every other phone keeps reading v1's file, which is still
+      written. Safety core, tier (a).
+    depends_on:
+      - ref('points_of_interest', v=2)
+      - ref('pub_poi_trailhead_v2')
+    config:
+      meta:
+        r2_keys: [v2/poi_trailhead.geojson]
+        format: geojson
+        coordinate_decimals: 6
+        offline_tier: safety_core
+        cadence: monthly
+  - name: nearby_poi_geojson_v2
+    label: v2/nearby_poi.geojson
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of nearby_poi.geojson (decision 44), published beside v1 at
+      v2/nearby_poi.geojson under the release folder (stage 6 of #1793;
+      pipeline/ELT.md, "Making the download smaller"): the same POIs and
+      properties, each position once, at 6 decimals. A phone reads it only
+      once its build reads schema version v2 and channels.json names a v2
+      release; every other phone keeps reading v1's file, which is still
+      written.
+    depends_on:
+      - ref('points_of_interest', v=2)
+      - ref('pub_nearby_poi_v2')
+    config:
+      meta:
+        r2_keys: [v2/nearby_poi.geojson]
+        format: geojson
+        coordinate_decimals: 6
+        cadence: monthly

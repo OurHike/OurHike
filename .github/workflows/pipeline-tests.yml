@@ -298,6 +298,7 @@ jobs:
             pipeline/generate_dbt.py
             pipeline/make_dbt_staging.py
             pipeline/generate_notice_models.py
+            pipeline/check_dbt_packages.py
             pipeline/sources.json
             pipeline/requirements-dbt.in
             pipeline/requirements-dbt.txt
@@ -449,6 +450,16 @@ jobs:
         with:
           path: pipeline/dbt/dbt_packages
           key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
+
+      # THE PACKAGES' OWN FILES, HASH-PINNED (decision 144): packages.yml and
+      # package-lock.yml pin versions, and nothing checked what a version's
+      # tarball holds. Restored from the cache or written by deps just now,
+      # every file under dbt_packages/ must match dbt/packages.sha256 before
+      # dbt reads one (check_dbt_packages.py says how the list was made).
+      - name: Check dbt's packages against their pinned hashes
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline
+        run: python3 check_dbt_packages.py
 
       # The v2 YAML check: dbt-oss 2.0.5 refused this project's v1-shaped
       # YAML with 64 errors until it moved to v2's shape, which 2.0.6 parses

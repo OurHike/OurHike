@@ -413,6 +413,52 @@ def test_each_nps_list_is_conformed_by_its_endpoint_and_a_photo_by_its_own_licen
         make_dbt_staging._conformed(_content("photos", "NpsContent", {"key": "z", "url": "https://x/api/v1/alerts"}))
 
 
+def test_an_arcgis_photo_layer_is_conformed_by_the_fields_its_row_names_and_null_where_it_names_none():
+    """Section K's hand-back (2026-10-10): ATA's sign inventory keeps its photograph in `Link`, RCO's camping inventory
+    in `PhotoWeb`, so each row's `photo_columns` says which field is which, and a column no layer states (a credit, a
+    licence, a photo's own page) is null rather than guessed."""
+    signs = _content(
+        "photos",
+        "ArcgisLayer",
+        {"key": "signs", "key_fields": ["GlobalID"], "photo_columns": {"title": "name", "image_url": "Link"}},
+    )
+
+    conformed = make_dbt_staging._conformed(signs)
+
+    assert conformed == [
+        "cast(name as varchar) as title",
+        "cast(link as varchar) as image_url",
+        "cast(null as varchar) as credit",
+        "cast(null as varchar) as licence",
+        "cast(null as varchar) as link",
+    ]
+    assert signs.raw_columns() == ["globalid", "name", "link"]
+    for refused in ({"title": "name"}, {"image_url": "Link", "caption": "notes"}):
+        with pytest.raises(ValueError, match="must name the image_url field"):
+            make_dbt_staging._conformed(_content("photos", "ArcgisLayer", {"key": "z", "photo_columns": refused}))
+
+
+def test_the_seven_registered_photo_layers_are_staged_and_a_share_naming_no_photo_columns_is_not():
+    """BLM's photos row SHARES its recreation sites layer, whose `PHOTO_LINK` no row has mapped: it stays unstaged as
+    photos, as it was before ArcGIS photo layers were staged at all, until its row names `photo_columns`."""
+    staged = {(table.folder, table.type, table.key) for table in make_dbt_staging.tables()}
+
+    assert {(folder, "photos", key) for folder, key in REGISTERED_PHOTO_LAYERS} <= staged
+    assert ("blm", "photos", "blm_recreation_sites") not in staged
+
+
+#: The ArcGIS photo layers section K handed back, as ata/photos.py and wa_rco/photos.py claim them (2026-10-10).
+REGISTERED_PHOTO_LAYERS = (
+    ("ata", "ata_sign_photos"),
+    ("ata", "ata_gate_photos"),
+    ("ata", "ata_road_crossing_photos"),
+    ("ata", "ata_other_inventory_photos"),
+    ("ata", "ata_storymap_photos"),
+    ("ata", "ata_storymap_running_photos"),
+    ("wa_rco", "wa_rco_camping_photos"),
+)
+
+
 def test_every_content_union_is_a_club_union_beside_the_marts_own_path():
     for type_ in ("podcasts", "suggested_hikes", "challenges", "photos"):
         shape = make_dbt_staging.SHAPES[type_]

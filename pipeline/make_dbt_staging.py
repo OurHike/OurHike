@@ -401,6 +401,11 @@ CONTENT_COLUMNS = {
     # columns the ones the points row names for the type in `shared_page_rows` (page_rows_columns()), as NPS's are
     # its endpoint's. The Palmetto Trail's passages: the lead's ruling of 2026-10-04, one reader of its 33 pages.
     ("suggested_hikes", "PagePoints"): {},
+    # An ArcGIS layer whose rows each link one photograph (section K's hand-back: ATA's Scenic Resources and StoryMap
+    # layers, RCO's camping inventory). Each layer names its photo field its own way (`Link`, `pic_url`, `PhotoWeb`),
+    # so its sources.json row's `photo_columns` names the fields, as a points row names its `name_field`
+    # (photo_columns()). The row's position stays in `properties`, as the GeoJSON text dlt landed.
+    ("photos", "ArcgisLayer"): {},
 }
 #: NPS's lists, one reader for five endpoints, conformed by (type, the endpoint's path under /api/v1/), each field
 #: one extract/_content.py's NPS_CONTENT_COLUMNS hints so the column exists on every run.
@@ -680,6 +685,11 @@ def tables() -> list[Table]:
                 continue
             elif reader == "PagePoints" and club_file.type not in (resource.entry.get("shared_page_rows") or {}):
                 continue  # a page's points feed a content type only through the fields their row names for it
+            elif reader == "ArcgisLayer" and not resource.entry.get("photo_columns"):
+                # An ArcGIS layer feeds photos only through the fields its row's `photo_columns` names, so a photos
+                # row that SHARES a points layer carrying a photo field (BLM's `PHOTO_LINK`) stays unstaged, as it
+                # was, until its row names them.
+                continue
             # A keyed API's table is withdrawn whenever its key is unset (extract/_ogc.py's JsonFeatures). It is staged
             # all the same: its base model reads an absent table as no rows (macros/raw_or_empty.sql).
             entry = registry_entry(resource.key)
@@ -970,7 +980,23 @@ def content_columns(table: Table) -> dict[str, str | None]:
     if table.page_rows:
         fields = page_rows_fields(table)
         return {name: fields.get(name) for name, _ in table.shape.columns}
+    if table.reader == "ArcgisLayer":
+        return photo_columns(table)
     return CONTENT_COLUMNS[(table.type, table.reader)]
+
+
+def photo_columns(table: Table) -> dict[str, str | None]:
+    """An ArcGIS photo layer's conformed columns, as its sources.json row's `photo_columns` names the layer's fields.
+
+    The row must name the field holding the image's URL, and may name a field for each other column; a column it
+    names no field for is null, never guessed (CLAUDE.md: absent means unknown). None of the layers registered so far
+    states a credit or a licence for its photographs, so their rows name neither."""
+    fields = table.entry.get("photo_columns") or {}
+    names = [name for name, _ in table.shape.columns]
+    unknown = sorted(set(fields) - set(names))
+    if not fields.get("image_url") or unknown:
+        raise ValueError(f"{table.key}: `photo_columns` must name the image_url field, and only columns of {names}")
+    return {name: fields.get(name) for name in names}
 
 
 def page_rows_fields(table: Table) -> dict[str, str]:

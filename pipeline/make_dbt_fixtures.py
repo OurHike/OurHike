@@ -8539,6 +8539,98 @@ CLUB_POINT_FIXTURES = {
             "Editor": ("fixture person", "fixture person"),
         },
     ),
+    # Section K's hand-back (2026-10-10): the photo layers ata/photos.py and wa_rco/photos.py read, one photograph's
+    # URL a row. Field names are each live layer's own, read off its metadata that day; the values are invented and
+    # the URLs point nowhere (`.invalid`). Each field the row lists in `person_fields`, and editor tracking's, carries
+    # an invented value, so CI's fixture build shows it never lands.
+    **{
+        f"external/{key}.geojson": (
+            (
+                "OBJECTID",
+                "name",
+                "latitude",
+                "longitude",
+                "direction",
+                "notes",
+                "Link",
+                *subject,
+                "Updates",
+                "GlobalID",
+                "CreationDate",
+                "Creator",
+                "EditDate",
+                "Editor",
+            ),
+            {
+                "OBJECTID": (1, 2),
+                "GlobalID": (f"{{fixture-{key}-0}}", f"{{fixture-{key}-1}}"),
+                "name": (f"Fixture {key} 1", f"Fixture {key} 2"),
+                "Link": (f"https://fixture.invalid/{key}/1.jpg", f"https://fixture.invalid/{key}/2.jpg"),
+                "notes": ("fixture person", None),
+                "Updates": ("fixture person", None),
+                "Creator": ("fixture person", "fixture person"),
+                "Editor": ("fixture person", "fixture person"),
+            },
+        )
+        for key, subject in (
+            ("ata_sign_photos", ("Sign_Subject", "Sign_Material", "Sign_ID", "Date")),
+            ("ata_gate_photos", ("gateType", "Gate_ID")),
+            ("ata_road_crossing_photos", ("roadType", "roadLevel", "roadMotorized", "roadSafetyConsiderations", "t", "RC_ID")),
+            ("ata_other_inventory_photos", ("Other_Subject", "Other_Material", "Other_ID", "Date")),
+        )
+    },
+    **{
+        f"external/{key}.geojson": (
+            (
+                "FID",
+                "name",
+                "descriptio",
+                "pic_url",
+                "thumb_url",
+                "website",
+                "shortlist_",
+                "number",
+                "tab_id",
+                "locationSe",
+                "SymbolID",
+                "TypePhoto",
+            ),
+            {
+                "FID": (1, 2),
+                "name": (f"Fixture {key} 1", f"Fixture {key} 2"),
+                "descriptio": ("fixture person", None),
+                "pic_url": (f"https://fixture.invalid/{key}/1.jpg", f"https://fixture.invalid/{key}/2.jpg"),
+            },
+        )
+        for key in ("ata_storymap_photos", "ata_storymap_running_photos")
+    },
+    "external/wa_rco_camping_photos.geojson": (
+        tuple(
+            "FID LocLink LineType TrailType Direction loclink2 oldlink PhotoWeb ThumbnailU Name Web Article audio "
+            "Location Phone Email Hours Season Type Subtype Category Details Directions Boating Owner Management Fee "
+            "Pass Amenities Features Facilities Surface Campground Launch Moreinfo Trail Sports Summer Winter "
+            "Favorite Difficulty NMTrail Reserve PhoneRes WebRes Notes Class2 Class3 Source SourceWeb Status Latitude "
+            "Longitude LocLink_1 MapCat TrailT Weather Accessible BoatDetail DataSet Transit WinterSurf TrailSyste "
+            "Separate AppLabel Rules CampType Filter MotoTrail Filter2 Rule2 Trailhead CampEquip DogRules PassStore "
+            "County BO BI CA DO HI KI MW NW OH SU WB HO InArea subpt CM Basic Offer Commentlin Rulesweb Icon Font "
+            "LengthMi LatEnd LongEnd LatEnd1 LongEnd1 Hiking WaterTrail MtnBike MTSG Motorized Snowmobile Xctry "
+            "LocLink_12 KayakNotes RulesSnowm Grooming Avalanche WebAvalanc kidweb campweb boatingweb dogweb foodweb "
+            "horseweb area1 areaweb1 area2 areaweb2 fishingreg fishregweb accesstxt birdweb eventstart eventend "
+            "eventday emergency e_web SCORPGroup County_SCORP".split()
+        ),
+        {
+            "FID": (1, 2),
+            "LocLink": (1000352, 1000354),
+            "PhotoWeb": ("https://fixture.invalid/wa_rco/1.jpg", "https://fixture.invalid/wa_rco/2.jpg"),
+            "Name": ("Fixture campground 1", "Fixture campground 2"),
+            "Phone": ("fixture person", None),
+            "Email": ("fixture person", None),
+            "Owner": ("fixture person", None),
+            "Management": ("fixture person", None),
+            "PhoneRes": ("fixture person", None),
+            "Notes": ("fixture person", None),
+        },
+    ),
 }
 
 

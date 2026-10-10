@@ -17140,6 +17140,35 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_mst_pa__msta_section_c reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "msta_sections",
+      "title": "Mid State Trail sections (hike-mst.org/index.php/the-trail/section-updates)",
+      "provider": "Mid State Trail Association",
+      "kind": "published_hikes",
+      "url": "https://hike-mst.org/index.php/the-trail/section-updates",
+      "steward": "Mid State Trail Association",
+      "attribution": "Mid State Trail Association",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Mid State Trail Association; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "The site footer: \"Copyright 2012 - Mid State Trail Association. All rights reserved.\" No terms page (as msta_section_1 quotes it, decision 53 inventory, 2026-10-03; the same footer on 2026-10-10).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `msta_sections`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads the links whose text is 'Section <n> - <span>' and nothing else, so no person's name, e-mail address or telephone number can land. The region pages name a regional manager with a telephone number; they are not read.",
+      "key_fields": [
+        "section"
+      ],
+      "key_comment": "`section`, 'Section 1' to 'Section 20' and 'Section A' to 'Section C': unique on all 23 rows read 2026-10-10.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://hike-mst.org/index.php/the-trail/section-updates",
+        "notes": "No validator trusted: every run reads the page and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). The 2026-10-10 read's Last-Modified was the request time and it sent no ETag."
+      },
+      "discovered_via": "not_available.toml's [mst_pa.suggested_hikes] note (section K, 2026-10-04: 'the regions' facts are inside paragraphs'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first: the region pages still state no hike's facts, and the Section Updates page lists every section with its span.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10T19:54:28Z: robots.txt (304 bytes) disallows Joomla's system folders only and asks no Crawl-delay; the page answered HTTP 200, 33,773 bytes. Its 'More Articles...' list links 23 sections: 'Section 1 - MD to PA 326 @ Rainsburg Gap' through 'Section 20 - PA 287 Middlebury/Tioga to NY Border', and three spurs, 'Section A - Greenwood Spur, Detweiler Junction to Greenwood Furnace SP', 'Section B - Ironstone Trail thru Stone Valley Recreation Area' and 'Section C - Reeds Gap Spur and White Mountain Trails'. Each lands its name, section, span and link. No page read states a section's length: the four region pages (Everett read 2026-10-10, HTTP 200, 37,896 bytes) describe the sections in paragraphs and name the regional manager with a telephone number, a person's, never read. The linked articles are the sections' alerts, which msta_section_1 to msta_section_c read as notices; this row reads only the list.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a section with no length stated is a span between two roads, which a mart would show as that and a link. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "audible_mount_diablo_podcast",
       "title": "Audible Mount Diablo (podcast feed)",
       "provider": "Save Mount Diablo",

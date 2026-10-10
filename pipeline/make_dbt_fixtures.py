@@ -10042,6 +10042,19 @@ def _tuscarora_pages() -> list[tuple[str, str, str]]:
     return [(home_url, HTML, home), (page_url, HTML, _k_page("Section 1-3", sections))]
 
 
+def _msta_sections_page() -> str:
+    """The Joomla Section Updates page: its description, then the 'More Articles...' list, one link a section, named
+    'Section <n> - <span>', beside a region page's 'See Section 3 updates' link, which names no span."""
+    base = "/index.php/the-trail/section-updates"
+    return _k_page(
+        "Section Updates",
+        '<h1 class="rt-pagetitle">Section Updates</h1><div class="rt-description">Fixture prose.</div>'
+        f'<h3 class="title">More Articles...</h3><ul><li><a href="{base}/1-section-1">Section 1 - Fixture Line to PA '
+        f'000 @ Fixture Gap</a></li><li><a href="{base}/2-section-a">Section A - Fixture Spur, Fixture Junction to '
+        f'Fixture SP</a></li></ul><div class="boxed"><a href="{base}/3-section-3">See Section 3 updates</a></div>',
+    )
+
+
 def _kta_page() -> str:
     hike = (
         '<span style="font-weight:700">Fixture Trail {n}</span><br /><span>Fixture County</span><br />'
@@ -10538,6 +10551,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "foothills_sections": _foothills_pages(),
         "cohos_day_hikes": [("https://www.cohostrail.org/day-hike/", HTML, _cohos_page())],
         "patc_tuscarora_sections": _tuscarora_pages(),
+        "msta_sections": [("https://hike-mst.org/index.php/the-trail/section-updates", HTML, _msta_sections_page())],
         "kta_favorite_hikes": [("https://www.kta-hike.org/favorite-hikes-in-pennsylvania.html", HTML, _kta_page())],
         "amc_itineraries": [("https://www.outdoors.org/resources/itineraries/", HTML, _amc_page())],
         "ata_passages": _ata_pages(),
@@ -10588,6 +10602,7 @@ K_PAGES_ROWS = {
     "foothills_sections": 1,
     "cohos_day_hikes": 2,
     "patc_tuscarora_sections": 2,
+    "msta_sections": 2,
     "kta_favorite_hikes": 2,
     "amc_itineraries": 2,
     "ata_passages": 1,

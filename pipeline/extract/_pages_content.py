@@ -1007,6 +1007,38 @@ def _tuscarora_sections(page: Page, fetch) -> list[dict]:
     return rows
 
 
+_MSTA_SECTION = re.compile(r"(?P<section>Section (?:\d+|[A-Z])) - (?P<span>.+)")
+
+
+def _msta_sections(page: Page, fetch) -> list[dict]:
+    """The Mid State Trail Association's sections (hike-mst.org/index.php/the-trail/section-updates), read 2026-10-10.
+
+    The Section Updates page lists the trail's sections as links, one a section, each its number or letter and the
+    span it covers: 'Section 1 - MD to PA 326 @ Rainsburg Gap' to 'Section 20 - PA 287 Middlebury/Tioga to NY
+    Border', then the spurs, 'Section A - Greenwood Spur, Detweiler Junction to Greenwood Furnace SP' to 'Section C',
+    23 on 2026-10-10. Each section's name, its span and its link are read. The linked pages are each section's
+    alerts, which the msta_section_<n> notice rows read; they are not fetched here. No page states a section's
+    length (the region pages describe the sections in prose and their facts are the printed guide's), so no distance
+    lands. A list that names no section raises.
+    """
+    rows = []
+    for anchor in page.root.find_all("a"):
+        match = _MSTA_SECTION.fullmatch(fact(anchor.text()) or "")
+        href = page.link(anchor.get("href"))
+        if match is None or not href or "/section-updates/" not in urlparse(href).path:
+            continue
+        rows.append(
+            {
+                "name": fact(anchor.text()),
+                "section": match["section"],
+                "place": fact(match["span"]),
+                "link": href,
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
 def _kta_favorite_hikes(page: Page, fetch) -> list[dict]:
     """The Keystone Trails Association's 'Favorite Hikes in Pennsylvania' (kta-hike.org), read 2026-10-04.
 
@@ -2292,6 +2324,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
     "patc_tuscarora_sections": SiteParser(
         _tuscarora_sections, columns={"map": "text", "max_elevation_ft": "double", "min_elevation_ft": "double"}
     ),
+    "msta_sections": SiteParser(_msta_sections),
     "kta_favorite_hikes": SiteParser(_kta_favorite_hikes),
     "amc_itineraries": SiteParser(_amc_itineraries, columns={"duration": "text"}),
     "ata_passages": SiteParser(

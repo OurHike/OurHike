@@ -386,6 +386,24 @@ def test_a_park_table_with_a_column_nobody_has_read_refuses(registry, requests_m
         list(nc_parks(registry, monkeypatch).rows({}))
 
 
+def test_a_mid_state_trail_section_lands_its_span_and_a_link_that_names_no_span_is_not_a_section():
+    base = "https://hike-mst.org/index.php/the-trail/section-updates"
+    page = Page(
+        base,
+        parse_html(
+            f'<ul><li><a href="{base}/1-section-1">Section 1 - Fixture Line to PA 000 @ Fixture Gap</a></li></ul>'
+            f'<div><a href="{base}/3-section-3">See Section 3 updates</a></div>'
+            '<a href="https://hike-mst.org/index.php/the-trail/everett-region">Section 2 - Fixture Region page</a>'
+        ),
+    )
+    (row,) = SITE_PARSERS["msta_sections"].read(page, None)
+    assert (row["section"], row["place"], row["link"]) == (
+        "Section 1",
+        "Fixture Line to PA 000 @ Fixture Gap",
+        f"{base}/1-section-1",
+    )
+
+
 def test_a_foothills_paragraph_continues_a_label_only_in_that_labels_shape():
     found = blocks(
         parse_html(

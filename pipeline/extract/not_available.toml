@@ -8403,20 +8403,6 @@ where = ["https://hike-mst.org/robots.txt", "https://hike-mst.org/images/pdfs/20
 terms = "hike-mst.org/robots.txt (read 2026-10-04): `User-agent: *` / `Disallow: /images/`"
 reason = "refused: robots.txt disallows /images/, where the trailhead spreadsheet sits; held until the association permits"
 
-[mst_pa.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Its region pages in prose, and not landed (decision 54 wave 5, section K, 2026-10-04).
-
-The four region pages (Everett, State College, Woolrich, Tioga) describe their sections in paragraphs ('MST
-Sections 1 through 6 pass Buchanan State Forest ...') and name the regional manager with a telephone number, a
-person's, never read; the section facts are the printed guide's. The region updates are notices, decision 53's."""
-checked = [
-    "https://hike-mst.org/index.php/the-trail/everett-region (HTTP 200, 37,896 bytes, 2026-10-04): 'Highlights:' and paragraphs",
-]
-where = ["https://hike-mst.org/index.php/the-trail/everett-region"]
-reason = "needs a per-site reader, not built in this pull request: the regions' facts are inside paragraphs"
-
 [mst_pa.trail_lines]
 confirmed = 2026-10-01
 summary = """

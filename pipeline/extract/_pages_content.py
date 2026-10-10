@@ -1576,6 +1576,44 @@ def _onda_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+ODATC_HEADING = "Circuit Hikes Near Our Section of the AT"
+
+
+def _odatc_circuit_hikes(page: Page, fetch) -> list[dict]:
+    """The Old Dominion A.T. Club's 'Circuit Hikes Near Our Section of the AT' (odatc.org/page-1503143), a Wild Apricot
+    page: two hikes on 2026-10-10.
+
+    Under the heading (a bold line, ODATC_HEADING) and the sentence 'There are two circuit hikes near our maintained
+    section of the AT:', one list holds a hike an item: its name on the first line ('Humpback Rocks Trail', 'Albright
+    Trail (AKA Dobie Mountain Trail)'), then a 'Description' link and a 'Printable map' link. The name, both links
+    and the shape the page names, a circuit, which lands as 'loop', are read. Both descriptions and one map are
+    hikingupward.com's pages, linked and never fetched; the Albright map is ODATC's own PDF. The page states no
+    distance. A page without the heading, or an item without its 'Description' link, raises.
+    """
+    heading = next((block for block in blocks(page.root) if block.text == ODATC_HEADING), None)
+    listing = next((node for node in heading.node.following() if node.tag == "ul"), None) if heading else None
+    if listing is None:
+        raise LayoutChanged(f"odatc: the page has no {ODATC_HEADING!r} heading with a list after it")
+    rows = []
+    for item in listing.children:
+        if not isinstance(item, Node) or item.tag != "li":
+            continue
+        lines = item.lines()
+        links = {fact(anchor.text()): page.link(anchor.get("href")) for anchor in item.find_all("a")}
+        if not lines or not links.get("Description"):
+            raise LayoutChanged(f"odatc: a circuit hike {lines[:1]} has no 'Description' link")
+        rows.append(
+            {
+                "name": fact(lines[0]),
+                "route_type": "loop",
+                "map_link": links.get("Printable map"),
+                "link": links["Description"],
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
 _OTA_FACTS = {"Miles of Trail": "miles", "Difficulty": "difficulty", "N to S ascent": "north_to_south", "S to N ascent": "south_to_north"}  # fmt: skip
 
 
@@ -2075,6 +2113,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
     "smd_diablo_range_hikes": SiteParser(_smd_diablo_range_hikes),
     "mohonk_suggested_hikes": SiteParser(_mohonk_suggested_hikes),
     "onda_hikes": SiteParser(_onda_hikes, columns={"seasons": "text", "drive_time": "text"}),
+    "odatc_circuit_hikes": SiteParser(_odatc_circuit_hikes, columns={"map_link": "text"}),
     "ota_sections": SiteParser(
         _ota_sections,
         columns={"ascent_north_to_south_ft": "double", "ascent_south_to_north_ft": "double", "ascent_text": "text"},

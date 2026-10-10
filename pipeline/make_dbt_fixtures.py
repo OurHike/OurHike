@@ -10225,6 +10225,24 @@ def _onda_pages() -> list[tuple[str, str, str]]:
     return [(sitemap_url, XML, _k_sitemap(["https://onda.org/hike/", hike_url])), (hike_url, HTML, hike)]
 
 
+def _odatc_page() -> str:
+    """The Wild Apricot content gadget: a bold heading line, a sentence, then one list item a hike, its name on the first
+    line and its 'Description' and 'Printable map' links after it, one map on the club's own host."""
+    hikes = (
+        '<li><font size="2">Fixture Rocks Trail<br><a href="https://hikes.example.org/fixture-rocks/" target="_blank">'
+        'Description</a><br><a href="https://hikes.example.org/fixture-rocks/map.pdf" target="_blank">Printable map</a>'
+        '<br><br></font></li><li><font size="2">Fixture Trail (AKA Fixture Mountain Trail)<br>'
+        '<a href="https://hikes.example.org/fixture-mountain/" target="_blank">Description</a><br>'
+        '<a href="/resources/Documents/Fixture%20Loop%20Map.pdf" target="_blank">Printable map</a></font></li>'
+    )
+    return _k_page(
+        "AT Circuit Hikes - Old Dominion Appalachian Trail Club",
+        '<div class="gadgetStyleBody gadgetContentEditableArea"><div><strong style="font-size: 10pt;"><font size="4">'
+        'Circuit Hikes Near Our Section of the AT</font></strong><br></div><div><font size="2">Fixture prose: there '
+        f"are two circuit hikes near our section.</font></div><div><ul>{hikes}</ul></div></div>",
+    )
+
+
 def _ota_pages() -> list[tuple[str, str, str]]:
     directory_url, section_url = "https://ozarktrail.com/trail-directory/", "https://ozarktrail.com/?page_id=9001"
     directory = _k_page(
@@ -10435,6 +10453,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         ],
         "mohonk_suggested_hikes": [("https://www.mohonkpreserve.org/visit/activities/suggested-hikes/", HTML, _mohonk_page())],
         "onda_hikes": _onda_pages(),
+        "odatc_circuit_hikes": [("https://www.odatc.org/page-1503143", HTML, _odatc_page())],
         "ota_sections": _ota_pages(),
         "wi_dnr_hiking": _wi_dnr_pages(),
         "mdhta_trails": _mdhta_pages(),
@@ -10475,6 +10494,7 @@ K_PAGES_ROWS = {
     "smd_diablo_range_hikes": 2,
     "mohonk_suggested_hikes": 2,
     "onda_hikes": 1,
+    "odatc_circuit_hikes": 2,
     "ota_sections": 1,
     "wi_dnr_hiking": 2,
     "mdhta_trails": 2,

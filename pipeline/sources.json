@@ -12942,6 +12942,35 @@
       "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested. Rule 7 holds it after that, until the club's permission is recorded."
     },
     {
+      "key": "odatc_circuit_hikes",
+      "title": "ODATC Circuit Hikes Near Our Section of the AT (odatc.org/page-1503143)",
+      "provider": "ODATC",
+      "kind": "published_hikes",
+      "url": "https://www.odatc.org/page-1503143",
+      "steward": "Old Dominion Appalachian Trail Club",
+      "attribution": "Old Dominion Appalachian Trail Club",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Old Dominion Appalachian Trail Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: the page links no terms page (read 2026-10-10); its footer reads \"Old Dominion Appalachian Trail Club (c).\"",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `odatc_circuit_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads each list item's first line and its two links and nothing else, so no person's name, e-mail address or telephone number can land. The footer's 'Member Contact Email President Email Webmaster' links are an officer's addresses and are not read.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the hike's name as the list item's first line writes it ('Humpback Rocks Trail'): unique on both rows read 2026-10-10.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.odatc.org/page-1503143",
+        "notes": "No validator trusted: every run reads the page and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). The 2026-10-10 read answered with neither an ETag nor a Last-Modified."
+      },
+      "discovered_via": "not_available.toml's [odatc.suggested_hikes] note (section K, 2026-10-04: 'two hikes whose facts are inside paragraphs'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10T18:35:16Z: robots.txt (707 bytes) disallows nothing the reader asks and asks `Crawl-delay: 10`; the page answered HTTP 200, 30,143 bytes. On this read the hikes are a two-item list, not the paragraphs the 2026-10-04 note described: Humpback Rocks Trail, and Albright Trail (AKA Dobie Mountain Trail), each a 'Description' link to hikingupward.com and a 'Printable map' (hikingupward.com's for Humpback Rocks, ODATC's own /resources/Documents/Albright%20Loop%20Map.pdf for Albright). The page calls both circuit hikes, which lands as 'loop'; it states no distance or climb, so none lands. hikingupward.com's pages are linked and never fetched.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "ridgetrail_official_route",
       "title": "Bay Area Ridge Trail official route, public (Bay Area Ridge Trail Council)",
       "provider": "Bay Area Ridge Trail Council",
@@ -19844,6 +19873,10 @@
         "state": "not_asked",
         "note": "Not asked. Registered for its notices under decision 53, phase B, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       },
+      "ODATC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its circuit hikes page under section K's per-site readers (2026-10-10) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
       "MSGTC": {
         "state": "not_asked",
         "note": "Not asked. Registered for its notices under decision 53, phase B, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
@@ -20908,6 +20941,11 @@
         "provider": "MRATC",
         "name": "Mount Rogers Appalachian Trail Club",
         "note": "Maintains the A.T. in southwest Virginia's Mount Rogers area; registered for its home page's trail alerts and its weekly blog feed."
+      },
+      "org:odatc": {
+        "provider": "ODATC",
+        "name": "Old Dominion Appalachian Trail Club",
+        "note": "Maintains the A.T. in central Virginia between Reids Gap and Rockfish Gap (its own page's words); registered for its circuit hikes page (section K's per-site readers, 2026-10-10), at reaches_hikers: false."
       },
       "org:msgtc": {
         "provider": "MSGTC",
@@ -26065,6 +26103,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its notice pages and feeds under decision 53's phase B (2026-10-03). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's waves, which read every club's points of interest, are what would settle it."
+          }
+        }
+      },
+      "ODATC": {
+        "probed_date": "2026-10-10",
+        "types": {
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its circuit hikes page under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [odatc.points_of_interest] row (decision 88)."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its circuit hikes page under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [odatc.points_of_interest] row (decision 88)."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its circuit hikes page under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [odatc.points_of_interest] row (decision 88)."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its circuit hikes page under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [odatc.points_of_interest] row (decision 88)."
+          },
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its circuit hikes page under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [odatc.points_of_interest] row (decision 88)."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its circuit hikes page under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [odatc.points_of_interest] row (decision 88)."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its circuit hikes page under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [odatc.points_of_interest] row (decision 88)."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its circuit hikes page under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [odatc.points_of_interest] row (decision 88)."
           }
         }
       },

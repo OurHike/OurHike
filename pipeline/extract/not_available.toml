@@ -11077,20 +11077,6 @@ checked = [
 where = ["https://odatc.org/resources/Documents/ODATC%20Water%20Board%202018-4.xlsx", "https://odatc.net/"]
 reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
 
-[odatc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Two circuit hikes on one page, and not landed (decision 54 wave 4, section K, 2026-10-04).
-
-odatc.org/page-1503143 (a Wild Apricot page) describes two circuit hikes in prose: Humpback Rocks, whose
-description and map are hikingupward.com's, and the Albright Loop, with ODATC's own PDF map. Two hikes in
-paragraphs are a page a person reads; odatc.org's robots.txt asks `Crawl-delay: 10`."""
-checked = [
-    "https://www.odatc.org/page-1503143 (HTTP 200, 30,143 bytes, 2026-10-04T17:39:16Z): no headings; two PDFs, /resources/Documents/Albright%20Loop%20Map.pdf and hikingupward.com's map",
-]
-where = ["https://www.odatc.org/page-1503143"]
-reason = "needs a per-site reader, not built in this pull request: two hikes whose facts are inside paragraphs"
-
 [odatc.trail_lines]
 confirmed = 2026-10-01
 summary = """

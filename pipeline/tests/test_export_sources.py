@@ -912,7 +912,9 @@ class TestTheRegistryTheConsoleReads:
         # candidate stewards (Illinois DNR, NETT, the Eastern Trail Alliance, Maine Huts & Trails, RCTC, the
         # Peninsula Trails Coalition and Maricopa County Parks). 143 since decision 126 (the maintainer's
         # poll, 2026-10-09) registered the Trust for Public Land (org:tpl) for ParkServe's parks, held.
-        assert len(orgs) == 143
+        # 144 since section K's per-site readers (2026-10-10) registered the Old Dominion Appalachian Trail Club
+        # (org:odatc), for its circuit hikes page.
+        assert len(orgs) == 144
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -989,6 +991,7 @@ class TestTheRegistryTheConsoleReads:
             "org:nysoprhp",
             "org:octa",
             "org:ocvt",
+            "org:odatc",
             "org:odfw",
             "org:ohta",
             "org:onda",

@@ -557,6 +557,36 @@ def test_an_ozark_ascent_written_with_a_prime_is_read_and_n_a_lands_as_text():
     assert _pages_content._ota_feet("N/A") == (None, "N/A")
 
 
+ODATC = "https://www.odatc.org/page-1503143"
+ODATC_HEADING = "<div><strong><font>Circuit Hikes Near Our Section of the AT</font></strong><br></div>"
+
+
+def test_an_odatc_circuit_hike_lands_as_a_loop_with_its_description_and_its_map_resolved_on_the_clubs_host():
+    page = Page(
+        ODATC,
+        parse_html(
+            f'{ODATC_HEADING}<div><ul><li><font>Fixture Trail<br><a href="https://hikes.example.org/f/">Description</a>'
+            '<br><a href="/resources/Documents/Fixture.pdf">Printable map</a></font></li></ul></div>'
+            "<ul><li>Fixture footer item</li></ul>"
+        ),
+    )
+    (row,) = SITE_PARSERS["odatc_circuit_hikes"].read(page, None)
+    assert (row["name"], row["route_type"], row["link"], row["map_link"]) == (
+        "Fixture Trail",
+        "loop",
+        "https://hikes.example.org/f/",
+        "https://www.odatc.org/resources/Documents/Fixture.pdf",
+    ), "only the list after the heading is read, and a relative map link resolves on the club's host"
+
+
+def test_an_odatc_page_whose_hike_has_no_description_link_or_whose_heading_is_gone_refuses():
+    item = '<ul><li><font>Fixture Trail<br><a href="/m.pdf">Printable map</a></font></li></ul>'
+    with pytest.raises(LayoutChanged, match="no 'Description' link"):
+        SITE_PARSERS["odatc_circuit_hikes"].read(Page(ODATC, parse_html(ODATC_HEADING + item)), None)
+    with pytest.raises(LayoutChanged, match="no 'Circuit Hikes Near Our Section of the AT' heading"):
+        SITE_PARSERS["odatc_circuit_hikes"].read(Page(ODATC, parse_html("<h2>Hikes</h2>" + item)), None)
+
+
 def test_a_buckeye_section_reads_its_miles_and_counties_and_never_its_supervisor():
     section = Page(
         "https://buckeyetrail.org/sections/fixture",

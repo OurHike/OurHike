@@ -1492,6 +1492,63 @@ def _smd_diablo_range_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+SATC_DIRECTORY = "South Central Pennsylvania Trails and Hikes"
+_SATC_AT_SECTION = re.compile(r"Appalachian Trail: .+ to .+")
+# A distance an entry's own sentence gives itself ('on this 6.3-mile segment'), the only shape read from its prose.
+_SATC_OWN_LENGTH = re.compile(r"\bthis (\d+(?:\.\d+)?)-mile\b", re.IGNORECASE)
+_SATC_FIGURE = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def _satc_central_pa_hikes(page: Page, fetch) -> list[dict]:
+    """The Susquehanna A.T. Club's 'Hiking In Central Pennsylvania' (satc-hike.org), a Weebly page: 28 places, 2026-10-10.
+
+    One paragraph holds the directory, its first line ending 'South Central Pennsylvania Trails and Hikes'
+    (SATC_DIRECTORY), then each place's name on a line of its own and a line or two of SATC's prose under it. Three names are SATC's
+    own A.T. sections, underlined and unlinked ('Appalachian Trail: PA-225 to PA-325'); the other 25 are other
+    organisations' parks and trails, each name a link to its owner's site, linked and never fetched. A line is a
+    name where it is an A.T. section's or where the whole line is a link's text; the 'map' and 'here' links inside
+    the prose are not names. The prose is not read, with one exception: where an entry's prose states exactly one
+    figure and gives it as the entry's own length ('on this 6.3-mile segment', 'This 9.7-mile SATC maintained
+    section'), that distance lands with the words it was read from. On 2026-10-10 that is the three A.T. sections
+    and the Conewago Recreation Trail ('This 5-mile trail'); a figure in any other shape ('a 3.1-mile loop hike', 'the
+    13-mile trail', 'This 20+mile necklace') is the club's sentence and is not read. A page with no such paragraph,
+    or one whose first entry is not a name, raises.
+    """
+    directory = next(
+        (block.node for block in blocks(page.root) if (block.node.lines() or [""])[0].endswith(SATC_DIRECTORY)), None
+    )
+    if directory is None:
+        raise LayoutChanged(f"satc: no paragraph's first line ends {SATC_DIRECTORY!r}")
+    anchors: dict[str, str | None] = {}
+    for anchor in directory.find_all("a"):
+        anchors.setdefault(fact(anchor.text()) or "", page.link(anchor.get("href")))
+    entries: list[tuple[str, str | None, list[str]]] = []
+    for line in directory.lines()[1:]:
+        if _SATC_AT_SECTION.fullmatch(line):
+            entries.append((line, page.url, []))
+        elif anchors.get(line) and line.lower() not in ("map", "here"):
+            entries.append((line, anchors[line], []))
+        elif entries:
+            entries[-1][2].append(line)
+        else:
+            raise LayoutChanged(f"satc: the directory's first entry {line!r} is not a name")
+    rows = []
+    for name, link, prose in entries:
+        text = " ".join(prose)
+        own = _SATC_OWN_LENGTH.search(text) if len(_SATC_FIGURE.findall(text)) == 1 else None
+        distance, distance_text = miles(own.group(0)) if own else (None, None)
+        rows.append(
+            {
+                "name": fact(name),
+                "distance_mi": distance,
+                "distance_text": distance_text,
+                "link": link,
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
 def _mohonk_suggested_hikes(page: Page, fetch) -> list[dict]:
     """Mohonk Preserve's Suggested Hikes (mohonkpreserve.org/visit/activities/suggested-hikes/), by trailhead.
 
@@ -2111,6 +2168,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
     "fta_day_hikes": SiteParser(_fta_day_hikes),
     "buckeye_sections": SiteParser(_buckeye_sections, columns={"off_road_mi": "double"}),
     "smd_diablo_range_hikes": SiteParser(_smd_diablo_range_hikes),
+    "satc_central_pa_hikes": SiteParser(_satc_central_pa_hikes),
     "mohonk_suggested_hikes": SiteParser(_mohonk_suggested_hikes),
     "onda_hikes": SiteParser(_onda_hikes, columns={"seasons": "text", "drive_time": "text"}),
     "odatc_circuit_hikes": SiteParser(_odatc_circuit_hikes, columns={"map_link": "text"}),

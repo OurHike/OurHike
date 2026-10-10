@@ -17054,6 +17054,35 @@
       "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
+      "key": "satc_central_pa_hikes",
+      "title": "SATC Hiking In Central Pennsylvania (satc-hike.org/hiking-in-central-pennsylvania.html)",
+      "provider": "SATC",
+      "kind": "published_hikes",
+      "url": "https://www.satc-hike.org/hiking-in-central-pennsylvania.html",
+      "steward": "Susquehanna Appalachian Trail Club",
+      "attribution": "Susquehanna Appalachian Trail Club",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Susquehanna Appalachian Trail Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: the page states no terms or copyright and links no terms page (read 2026-10-10).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `satc_central_pa_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads each place's name line, its link and, where the entry states one, its own length, and nothing else, so no person's name, e-mail address or telephone number can land. The page's introduction links an e-mail address (Cloudflare-protected), which is not read.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the place's name as its line writes it ('Appalachian Trail: PA-225 to PA-325', 'Capital Area Greenbelt'): unique on all 28 rows read 2026-10-10.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.satc-hike.org/hiking-in-central-pennsylvania.html",
+        "notes": "No validator trusted: every run reads the page and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). The 2026-10-10 read's Last-Modified was the request time and it sent no ETag, as decision 53's inventory found HTML validators do."
+      },
+      "discovered_via": "not_available.toml's [satc.suggested_hikes] note (section K, 2026-10-04: 'the facts are inside paragraphs of prose'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10T18:35:09Z: robots.txt (166 bytes) disallows only /ajax/ and /apps/ and asks no Crawl-delay; the page answered HTTP 200, 119,975 bytes. One Weebly paragraph holds 28 places: SATC's three A.T. sections (Susquehanna River/Clarks Ferry Bridge to PA-225, PA-225 to PA-325, PA-325 to PA-443) and 25 parks and trails other organisations run, each name linking its owner's site. Four distances land, each the entry's own length in its only figure: 6.3, 9.7 and 15.8 miles for the A.T. sections and 5 miles for the Conewago Recreation Trail. Every other figure in the prose (Wildwood Park's '3.1-mile loop hike', the Horse-Shoe Trail's '140-mile' with '35 miles' and a '10 mile' loop, the Capital Area Greenbelt's '20+mile') stays the club's sentence and is not read. Many of the outside links are old (http:// pages on dcnr.state.pa.us and trails.com, 2010s URLs); they are landed as the page states them and not checked.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. 25 of its 28 places are other organisations' land, which a mart would credit to them, not to SATC. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "nmvfo_hike_new_mexico",
       "title": "Hike New Mexico trail guide (child pages of nmvfo.org/trails/)",
       "provider": "NMVFO",
@@ -19853,6 +19882,10 @@
         "state": "not_asked",
         "note": "Not asked. Registered for its notices under decision 53, phase B, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       },
+      "SATC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its 'Hiking In Central Pennsylvania' directory under section K's per-site readers (2026-10-10) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
       "Foothills Trail Conservancy": {
         "state": "not_asked",
         "note": "Not asked. Registered for its notices under decision 53, phase B, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
@@ -20916,6 +20949,11 @@
         "provider": "CVATC",
         "name": "Cumberland Valley Appalachian Trail Club",
         "note": "Maintains the A.T. across Pennsylvania's Cumberland Valley; registered for its news feed, where its rare notices are posted."
+      },
+      "org:satc": {
+        "provider": "SATC",
+        "name": "Susquehanna Appalachian Trail Club",
+        "note": "Maintains A.T. sections in central Pennsylvania (its directory names three: Clarks Ferry Bridge to PA-225, PA-225 to PA-325, PA-325 to PA-443); registered for its 'Hiking In Central Pennsylvania' directory (section K's per-site readers, 2026-10-10), at reaches_hikers: false."
       },
       "org:foothills": {
         "provider": "Foothills Trail Conservancy",
@@ -25918,6 +25956,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its notice pages and feeds under decision 53's phase B (2026-10-03). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; decision 54's waves, which read every club's points of interest, are what would settle it."
+          }
+        }
+      },
+      "SATC": {
+        "probed_date": "2026-10-10",
+        "types": {
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its 'Hiking In Central Pennsylvania' directory under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [satc.points_of_interest] row (decision 88)."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its 'Hiking In Central Pennsylvania' directory under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [satc.points_of_interest] row (decision 88)."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its 'Hiking In Central Pennsylvania' directory under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [satc.points_of_interest] row (decision 88)."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its 'Hiking In Central Pennsylvania' directory under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [satc.points_of_interest] row (decision 88)."
+          },
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its 'Hiking In Central Pennsylvania' directory under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [satc.points_of_interest] row (decision 88)."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its 'Hiking In Central Pennsylvania' directory under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [satc.points_of_interest] row (decision 88)."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its 'Hiking In Central Pennsylvania' directory under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [satc.points_of_interest] row (decision 88)."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its 'Hiking In Central Pennsylvania' directory under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [satc.points_of_interest] row (decision 88)."
           }
         }
       },

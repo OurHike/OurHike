@@ -528,6 +528,36 @@ def test_a_florida_shape_lands_only_where_the_line_names_one():
         assert _pages_content._fta_route(text) is None, text
 
 
+def satc_directory(entries: str) -> Page:
+    return Page(
+        "https://www.satc-hike.org/hiking-in-central-pennsylvania.html",
+        parse_html(f'<div class="paragraph">Information South Central Pennsylvania Trails and Hikes<br />{entries}</div>'),
+    )
+
+
+def test_a_satc_place_lands_a_distance_only_where_its_own_sentence_gives_its_length_in_one_figure():
+    page = satc_directory(
+        "<u>Appalachian Trail: Fixture Gap to PA-000</u><br />Fixture prose on this 6.3-mile segment.<br />"
+        '<a href="https://a.example.org/">Fixture Loop Park</a><br />Combine two trails for a 3.1-mile loop hike.<br />'
+        '<a href="https://b.example.org/">Fixture Greenbelt</a><br />This 20+mile necklace rings the city.<br />'
+        '<a href="https://c.example.org/">Fixture Long Trail</a><br />This 140-mile trail has 35 miles in the county, '
+        'and a <a href="https://c.example.org/m.jpg">map</a><br />here.<br />'
+    )
+    rows = SITE_PARSERS["satc_central_pa_hikes"].read(page, None)
+    assert [(row["name"], row["distance_mi"], row["distance_text"]) for row in rows] == [
+        ("Appalachian Trail: Fixture Gap to PA-000", 6.3, "6.3-mile"),
+        ("Fixture Loop Park", None, None),
+        ("Fixture Greenbelt", None, None),
+        ("Fixture Long Trail", None, None),
+    ], "'a 3.1-mile loop', '20+mile' and a sentence with two figures are the club's prose; a 'map' link is no name"
+    assert rows[0]["link"] == page.url and rows[1]["link"] == "https://a.example.org/"
+
+
+def test_a_satc_directory_whose_first_entry_is_not_a_name_refuses():
+    with pytest.raises(LayoutChanged, match="is not a name"):
+        SITE_PARSERS["satc_central_pa_hikes"].read(satc_directory("Fixture prose before any name.<br />"), None)
+
+
 def test_a_wisconsin_trail_heading_with_no_length_lands_no_row():
     found = parse_html(
         "<h1>Hiking</h1><h2>Fixture State Park</h2><h3>Fixture trail (Pink trail, 2 to 4 miles)</h3>"

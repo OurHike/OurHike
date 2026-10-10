@@ -913,8 +913,9 @@ class TestTheRegistryTheConsoleReads:
         # Peninsula Trails Coalition and Maricopa County Parks). 143 since decision 126 (the maintainer's
         # poll, 2026-10-09) registered the Trust for Public Land (org:tpl) for ParkServe's parks, held.
         # 144 since section K's per-site readers (2026-10-10) registered the Old Dominion Appalachian Trail Club
-        # (org:odatc), for its circuit hikes page.
-        assert len(orgs) == 144
+        # (org:odatc), for its circuit hikes page. 145 since the same readers registered the Susquehanna Appalachian
+        # Trail Club (org:satc), for its 'Hiking In Central Pennsylvania' directory.
+        assert len(orgs) == 145
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -1010,6 +1011,7 @@ class TestTheRegistryTheConsoleReads:
             "org:ridgetrail",
             "org:rmc",
             "org:rmfi",
+            "org:satc",
             "org:sbts",
             "org:sccparks",
             "org:shta",

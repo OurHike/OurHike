@@ -13602,21 +13602,6 @@ where = [
 ]
 reason = "drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
-[satc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Published as a directory of paragraphs, and not landed (decision 54 wave 5, section K, 2026-10-04).
-
-satc-hike.org/hiking-in-central-pennsylvania.html lists about 30 places to hike, most of them other
-organisations' parks and trails, each a linked name and a paragraph of SATC's prose. Three are SATC's own A.T.
-sections, and their distances (6.3, 9.7 and 15.8 miles) sit inside those sentences. Needs a per-site reader that
-reads facts out of prose, not built in this pull request."""
-checked = [
-    "https://www.satc-hike.org/hiking-in-central-pennsylvania.html (HTTP 200, 116,903 bytes, 2026-10-04): about 30 entries, each a name (most linking another organisation's site) and a paragraph",
-]
-where = ["https://www.satc-hike.org/hiking-in-central-pennsylvania.html"]
-reason = "needs a per-site reader, not built in this pull request: the facts are inside paragraphs of prose"
-
 [satc.trail_lines]
 confirmed = 2026-10-01
 summary = """

@@ -10187,6 +10187,22 @@ def _smd_page() -> str:
     )
 
 
+def _satc_page() -> str:
+    """The Weebly directory paragraph: its first line ending in the list's title, then each place's name on a line of
+    its own, an underlined A.T. section or a bold link, and the club's prose on the next; one entry gives its own
+    length in its only figure, and another states two figures, so neither of the second's is read."""
+    return _k_page(
+        "Hiking In Central Pennsylvania - Susquehanna Appalachian Trail Club",
+        '<h2 class="wsite-content-title">Hiking In Central Pennsylvania</h2><div class="paragraph">Fixture prose.</div>'
+        '<div class="paragraph"><strong><font size="5">Information&nbsp; &nbsp; </font></strong><u><strong>'
+        "<font>South Central Pennsylvania Trails and Hikes</font></strong></u><br /><br /><u><strong><font>Appalachian "
+        "Trail: Fixture Bridge to PA-000&nbsp;</font></strong></u><br /><strong><font>Fixture prose on this 6.3-mile "
+        'segment.</font></strong><br /><br /><strong><a href="https://parks.example.org/fixture/">Fixture Park&nbsp;</a>'
+        '</strong><br /><strong>Fixture prose: a 3.1-mile loop and a 2-mile spur, with a <a href="https://parks.example.'
+        'org/fixture/map.pdf">map</a>.</strong><br /></div>',
+    )
+
+
 def _mohonk_page() -> str:
     base = "https://www.mohonkpreserve.org/wp-content/uploads/2021/07"
     return _k_page(
@@ -10451,6 +10467,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "smd_diablo_range_hikes": [
             ("https://savemountdiablo.org/experience/field-guides/hikes-in-the-diablo-range/", HTML, _smd_page())
         ],
+        "satc_central_pa_hikes": [("https://www.satc-hike.org/hiking-in-central-pennsylvania.html", HTML, _satc_page())],
         "mohonk_suggested_hikes": [("https://www.mohonkpreserve.org/visit/activities/suggested-hikes/", HTML, _mohonk_page())],
         "onda_hikes": _onda_pages(),
         "odatc_circuit_hikes": [("https://www.odatc.org/page-1503143", HTML, _odatc_page())],
@@ -10492,6 +10509,7 @@ K_PAGES_ROWS = {
     "fta_day_hikes": 2,
     "buckeye_sections": 1,
     "smd_diablo_range_hikes": 2,
+    "satc_central_pa_hikes": 2,
     "mohonk_suggested_hikes": 2,
     "onda_hikes": 1,
     "odatc_circuit_hikes": 2,

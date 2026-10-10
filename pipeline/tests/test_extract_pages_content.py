@@ -481,6 +481,23 @@ def test_an_amc_card_that_links_off_the_itineraries_is_not_a_trip():
     assert (row["name"], row["difficulty"], row["duration"]) == ("Fixture Trip", "Easy", "1 Day")
 
 
+def msgtc_faq(answer: str) -> Page:
+    return Page("https://www.msgtc.org/faq/", parse_html(f"<h1>FAQ</h1><h3>Best Route up Fixture Mountain</h3><p>{answer}</p>"))
+
+
+def test_an_msgtc_route_keeps_an_abbreviated_name_whole_and_leaves_the_rest_of_its_answer_unread():
+    (row,) = SITE_PARSERS["msgtc_best_routes"].read(
+        msgtc_faq("We recommend taking the Fixture Trail to Mt. Fixture (3.4 miles). Fixture directions."), None
+    )
+    assert (row["route"], row["distance_mi"], row["distance_text"]) == ("Fixture Trail to Mt. Fixture", 3.4, "3.4 miles")
+    assert "directions" not in json.dumps(row)
+
+
+def test_an_msgtc_best_route_whose_answer_no_longer_names_a_route_refuses():
+    with pytest.raises(LayoutChanged, match="We recommend taking the"):
+        SITE_PARSERS["msgtc_best_routes"].read(msgtc_faq("Try the Fixture Trail, 3.4 miles."), None)
+
+
 def test_a_distance_with_two_figures_lands_as_its_words_and_no_number():
     single = _pages_content.single_miles
     assert single("1.8 miles, one way") == (1.8, "1.8 miles, one way")

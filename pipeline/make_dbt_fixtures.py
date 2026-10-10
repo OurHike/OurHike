@@ -10116,6 +10116,22 @@ def _mratc_page() -> str:
     )
 
 
+def _msgtc_faq_page() -> str:
+    """The FAQ's markup: an h1.entry-title, then one h3 a question and its answer's paragraphs, two opening 'Best
+    Route', the first answer stating a distance in brackets and the second none."""
+    return _k_page(
+        "FAQ – Monadnock-Sunapee Greenway Trail Club",
+        '<h1 class="entry-title">FAQ</h1><div class="entry-content"><h3>48.7</h3>'
+        "<p>Fixture prose: the Fixture Greenway is 48.7 miles summit to summit.</p>"
+        "<h3>Best Route up or down Fixture Mountain</h3>"
+        "<p>We recommend taking the Fixture Summit Trail (also the Fixture Trail) (2.1 miles). Fixture directions from "
+        "the lot.</p><p>(Note- Fixture note about an overgrown trail)</p>"
+        "<h3>Best Route to Fixture Lookout from Fixture State Park</h3>"
+        "<p>We recommend taking the Fixture Pond Trail to the Greenway Trail north to Mt. Fixture.</p>"
+        "<h3>Water sources on the Greenway?</h3><p>Fixture water prose.</p></div>",
+    )
+
+
 def _fta_page() -> str:
     def tip(lines: str, step: str) -> str:
         return (
@@ -10411,6 +10427,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "ata_passages": _ata_pages(),
         "cfpa_trails": [("https://ctwoodlands.org/trails/", HTML, _cfpa_page())],
         "mratc_suggested_hikes": [("https://www.mratc.org/suggested-hikes", HTML, _mratc_page())],
+        "msgtc_best_routes": [("https://www.msgtc.org/faq/", HTML, _msgtc_faq_page())],
         "fta_day_hikes": [("https://floridatrail.org/day-hike/", HTML, _fta_page())],
         "buckeye_sections": _buckeye_pages(),
         "smd_diablo_range_hikes": [
@@ -10452,6 +10469,7 @@ K_PAGES_ROWS = {
     "ata_passages": 1,
     "cfpa_trails": 2,
     "mratc_suggested_hikes": 2,
+    "msgtc_best_routes": 2,
     "fta_day_hikes": 2,
     "buckeye_sections": 1,
     "smd_diablo_range_hikes": 2,

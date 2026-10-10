@@ -16385,6 +16385,35 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_msgtc__msgtc_trail_conditions reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "msgtc_best_routes",
+      "title": "MSGTC FAQ: its two recommended routes (msgtc.org/faq/)",
+      "provider": "MSGTC",
+      "kind": "published_hikes",
+      "url": "https://www.msgtc.org/faq/",
+      "steward": "Monadnock-Sunapee Greenway Trail Club",
+      "attribution": "Monadnock-Sunapee Greenway Trail Club",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Monadnock-Sunapee Greenway Trail Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: no terms page is linked from msgtc.org (decision 53 inventory, batch 1, 2026-10-03, as msgtc_trail_conditions quotes it), and the FAQ itself states none (2026-10-10).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `msgtc_best_routes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads named facts (the columns in extract/_pages_content.py's TYPE_COLUMNS and its own `route`) and nothing else, so no person's name, e-mail address or telephone number can land; the live read of 2026-10-10 found none beside either route (the FAQ's one telephone number, the ski area's, sits under a parking question the parser does not read).",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the question as the FAQ writes it ('Best Route up or down Mount Sunapee'): unique on both rows read 2026-10-10.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.msgtc.org/faq/",
+        "notes": "No validator trusted: every run reads the page and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). The 2026-10-10 read answered with neither an ETag nor a Last-Modified."
+      },
+      "discovered_via": "not_available.toml's [msgtc.suggested_hikes] note (section K, 2026-10-04: 'two routes inside FAQ prose'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10T18:35:20Z: robots.txt (185 bytes) disallows nothing the reader asks and asks `Crawl-delay: 10`; the FAQ answered HTTP 200, 33,299 bytes, no ETag or Last-Modified. Two h3s open 'Best Route', each answered 'We recommend taking the ...': the Summit Trail (also the SRK Trail), 2.1 miles, for Mount Sunapee, and the Bear Pond Trail to the Greenway Trail north to Lucia's Lookout, with no distance. Whether 2.1 miles is one way the page does not say, so no shape lands. Each answer's notes (the Goshen and Five Summers trails are overgrown) are the club's wording and are not read; a mart that showed these routes would not carry them either.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "msta_section_1",
       "title": "Mid State Trail Section 1 updates",
       "provider": "Mid State Trail Association",

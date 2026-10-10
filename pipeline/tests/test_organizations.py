@@ -446,7 +446,9 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Trail's GeoJSON) and 2 `stated_by_org` (the NorthEast Texas Trail Coalition's two layers, whose items state
     # terms). Decision 126's ParkServe parks, held the same way (the maintainer's poll, 2026-10-09: "Load it,
     # held"), add 1 `stated_by_org`: the Trust for Public Land's item states its terms.
-    assert counts == {"maintainer_authorisation": 249, "public_gis": 272, "stated_by_org": 208, "unresolved": 28}
+    # Section K's per-site readers (2026-10-10) add MSGTC's two FAQ routes (msgtc_best_routes): 1
+    # `maintainer_authorisation`, decision 70's facts and a link for a club's hike list.
+    assert counts == {"maintainer_authorisation": 250, "public_gis": 272, "stated_by_org": 208, "unresolved": 28}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

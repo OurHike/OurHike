@@ -1279,6 +1279,48 @@ def _mratc_suggested_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+# The route clause runs to its first full stop that does not close an abbreviation ('Mt. Sunapee' is one name).
+_MSGTC_ROUTE = re.compile(
+    r"We recommend taking the (?P<route>.+?)(?:\s*\((?P<distance>[^()]*\d[^()]*)\))?"
+    + "".join(rf"(?<!\b{abbreviation})" for abbreviation in ("Mt", "Mtn", "St", "Rd", "Rte", "Ft"))
+    + r"\.(?:\s.*)?"
+)
+
+
+def _msgtc_best_routes(page: Page, fetch) -> list[dict]:
+    """The Monadnock-Sunapee Greenway Trail Club's two recommended routes, in its FAQ (msgtc.org/faq/), read 2026-10-10.
+
+    The FAQ is one h3 a question and its answer in paragraphs under it. Two questions open 'Best Route' ('Best
+    Route up or down Mount Sunapee', 'Best Route to Lucia’s Lookout from Pillsbury State Park'), and each answer's
+    first paragraph names the route in one clause, 'We recommend taking the Summit Trail (also the SRK Trail)
+    (2.1 miles).', the distance in brackets on one of the two. The question as the page writes it, the route's name
+    and the distance with its words are read; the rest of the answer (the trailhead, a note that another trail is
+    overgrown) is the club's and lands nowhere. The page does not say whether 2.1 miles is one way, so no shape is
+    read. The FAQ's other questions (the Greenway's 48.7 miles summit to summit, where to buy the guide, parking,
+    water, campfires) are not hikes, and are not read. A 'Best Route' answer that does not open 'We recommend
+    taking the' raises.
+    """
+    rows = []
+    for heading, body in sections(blocks(page.root), 3):
+        if not heading.text.startswith("Best Route"):
+            continue
+        answer = _MSGTC_ROUTE.fullmatch(body[0].text) if body else None
+        if answer is None:
+            raise LayoutChanged(f"msgtc: {heading.text!r} is not answered 'We recommend taking the ...'")
+        distance, distance_text = single_miles(answer["distance"]) if answer["distance"] else (None, None)
+        rows.append(
+            {
+                "name": fact(heading.text),
+                "route": fact(answer["route"]),
+                "distance_mi": distance,
+                "distance_text": distance_text,
+                "link": page.url,
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
 _FTA_LENGTH = re.compile(r"(?:Length|Round trip distance of hike)\s*:\s*(?P<value>.*)", re.IGNORECASE)
 
 
@@ -2027,6 +2069,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
     ),
     "cfpa_trails": SiteParser(_cfpa_trails),
     "mratc_suggested_hikes": SiteParser(_mratc_suggested_hikes),
+    "msgtc_best_routes": SiteParser(_msgtc_best_routes, columns={"route": "text"}),
     "fta_day_hikes": SiteParser(_fta_day_hikes),
     "buckeye_sections": SiteParser(_buckeye_sections, columns={"off_road_mi": "double"}),
     "smd_diablo_range_hikes": SiteParser(_smd_diablo_range_hikes),

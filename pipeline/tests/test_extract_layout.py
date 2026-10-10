@@ -346,10 +346,51 @@ def test_a_claiming_file_has_a_resource_for_each_claim_and_no_other():
         if club_file.unregistered:
             assert not club_file.claims, f"{club_file.path}: an unregistered input claims nothing"
             continue
-        # A key may feed two resources (NYNJTC's alerts: posts and terms), so the sets must match.
-        assert sorted(set(club_file.claims)) == sorted({r.key for r in club_file.resources}), (
-            f"{club_file.club}/{club_file.type}.py: CLAIMS and the RESOURCES' keys must match"
+        # A key may feed two resources (NYNJTC's alerts: posts and terms), so the sets must match. A key the file no
+        # longer reads is KEPT instead (extract/_contract.py's Kept), and never both.
+        read = {r.key for r in club_file.resources}
+        kept = {k.key for k in club_file.kept}
+        assert not read & kept, f"{club_file.club}/{club_file.type}.py: {sorted(read & kept)} both read and KEPT"
+        assert sorted(set(club_file.claims)) == sorted(read | kept), (
+            f"{club_file.club}/{club_file.type}.py: CLAIMS must match the RESOURCES' keys and the KEPT keys"
         )
+
+
+#: Every claimed key no lane reads any more, with the file that keeps it (extract/_contract.py's Kept).
+KEPT = [(club_file, kept) for club_file in EVERY_FILE for kept in club_file.kept]
+
+
+def test_census_tiger_states_is_kept_because_its_robots_txt_refuses_every_agent():
+    """The maintainer's poll of 2026-10-10 on ELT.md's open question 16, "Keep the last copy": www2.census.gov's
+    robots.txt puts `*` in RavenCrawler's `Disallow: /` group, so the key is kept, not read. Also the line that says
+    the parametrized checks below have something to check."""
+    assert {kept.key for _, kept in KEPT} >= {"census_tiger_states"}
+
+
+@pytest.mark.parametrize(("club_file", "kept"), KEPT, ids=[kept.key for _, kept in KEPT])
+def test_a_kept_key_is_read_by_no_lane_and_its_note_says_why_and_when_to_look_again(club_file, kept):
+    from extract._contract import Kept
+
+    assert isinstance(kept, Kept) and isinstance(kept.note, NotAvailable)
+    assert kept.key in club_file.claims, f"{club_file.path}: a KEPT key is still claimed by the file that read it"
+    assert kept.key in _registry(REGISTRY_PATH), f"{kept.key}: kept, so its sources.json row stays"
+    resources = all_resources(EVERY_FILE)
+    assert kept.key not in {resource.key for resource in resources}, f"{kept.key} is kept, so no resource may read it"
+    assert raw_table(club_file.club, kept.key) not in {resource.table for resource in resources}
+    assert kept.note.problems(TODAY) == []
+    assert kept.note.terms and kept.note.terms.strip(), f"{kept.key}: `terms` quotes what refused it, verbatim"
+    assert kept.note.reason and kept.note.reason.strip(), f"{kept.key}: `reason` says why the last copy may stand in"
+
+
+def test_the_kept_census_note_quotes_a_robots_txt_that_refuses_our_agent_the_tiger_file():
+    """The quoted lines are the refusal itself: read by extract/_robots.py's own parser, they disallow the file for
+    USER_AGENT's product token, so a quote edited into something that would let us in fails here."""
+    from extract import _robots
+
+    (kept,) = [kept for _, kept in KEPT if kept.key == "census_tiger_states"]
+    rules, _ = _robots.parse(kept.note.terms)
+    url = _registry(REGISTRY_PATH)["census_tiger_states"]["url"]
+    assert not _robots.Robots(rules).allows(url)
 
 
 def test_every_registry_key_is_claimed_or_still_listed_as_not_yet_extracted():
@@ -549,10 +590,12 @@ def test_a_kind_whose_own_code_sets_a_rows_geometry_is_one_that_yields_it(kind):
 
 
 def test_a_club_file_never_names_a_url_to_fetch():
-    """Builders take keys. A URL in a club file is either a note's `where`, a SAME_AS copy, its docstring or a mistake.
+    """Builders take keys. A URL in a club file is either a note's `where`, a SAME_AS copy, a KEPT key's note, its
+    docstring or a mistake.
 
     A club's notes are rows of not_available.toml, which no builder reads; _shared/'s three notes.py are the
-    files left holding a note."""
+    files left holding a note. A KEPT key's note (extract/_contract.py's Kept) is read by no builder either: its
+    `checked` and `where` say what a person read, and no lane reads the key."""
     for club_file in PY_FILES:
         if club_file.note is not None:
             continue
@@ -562,7 +605,8 @@ def test_a_club_file_never_names_a_url_to_fetch():
         # names a URL (a step-2 list of sources still to wire) never matched itself and read as a fetched URL.
         docstring = ast.get_docstring(tree, clean=False) or ""
         copies = {url for note in club_file.same_as for url in note.copy}
-        urls = [s for s in strings if s != docstring and s not in copies and re.search(r"https?://", s)]
+        kept = {text for kept in club_file.kept for text in (*kept.note.checked, *kept.note.where)}
+        urls = [s for s in strings if s != docstring and s not in copies | kept and re.search(r"https?://", s)]
         assert not urls, f"{club_file.club}/{club_file.type}.py holds a URL outside its docstring: {urls}"
 
 

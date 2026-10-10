@@ -438,6 +438,33 @@ def test_a_monthly_run_that_left_one_layer_out_is_pinned_with_that_layers_last_m
     assert manifest["tables"]["raw_otherclub__closures_layer"]["load_id"] != partial.load_id
 
 
+def test_a_kept_table_that_no_later_month_names_is_pinned_and_built_from_its_last_committed_load(
+    registry, store, steps, requests_mock
+):
+    """census_tiger_states' case (extract/_contract.py's Kept): its file stopped declaring a resource after a month
+    that loaded it, so no later month names its table, not even as refused. committed_tables() still answers that
+    load, so a later month's pin copies its rows and the build from the pin reads them as the live store does."""
+    trails = FakeLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    FakeLayer(requests_mock, CLOSURES_URL, [feature(10), feature(11), feature(12)])
+    first = month(store, monthly_lines(), monthly_points())
+    trails.features, trails.etag = [feature(1), feature(2), feature(3)], "v2"
+    second = month(store, monthly_lines())
+    third = month(store, monthly_lines())
+    kept = "raw_otherclub__closures_layer"
+    monthly = make_pipeline("monthly", store["bucket_url"], store["pipelines_dir"])
+    assert {row["table_name"] for row in _run.run_log_rows(monthly) if row["run_id"] > first.run_id} == {
+        "raw_testclub__trails"
+    }, "no later month names the kept table"
+
+    manifest, wrote = pin_raw_inputs(monthly, store["bucket_url"], steps, third.run_id)
+
+    assert wrote and second.run_id < third.run_id
+    assert manifest["tables"][kept]["load_id"] == first.load_id
+    expected = {"raw_testclub__trails": 3, kept: 3}
+    assert load_pinned(duckdb.connect(), monthly, steps, third.run_id) == expected
+    assert load_warehouse(duckdb.connect(), monthly) == expected
+
+
 def test_a_proven_zero_is_pinned_without_a_file_and_loads_as_its_hinted_empty_table(registry, store, steps, requests_mock):
     FakeLayer(requests_mock, CLOSURES_URL, [])
     report = run(store, closures())

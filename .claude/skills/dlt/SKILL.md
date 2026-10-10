@@ -154,7 +154,11 @@ belongs to the type. Each answer is exactly one of:
 - **A resource file, `CLAIMS` + `RESOURCES`**: the `sources.json` keys it owns,
   and a `Resource` for each. It may carry `SAME_AS` notes for the copies it
   does not extract, or be `SAME_AS` alone, when a republished copy of another
-  resource's dataset is all the org publishes for this type.
+  resource's dataset is all the org publishes for this type. A claimed key it
+  read once and may not read again is `KEPT` instead, never both: a `Kept` in
+  `_contract.py` holding a dated note that quotes the refusal in `terms`. No
+  lane reads it, and builds and pins go on reading its last committed table,
+  so only the maintainer may rule a key kept (TIGER's states, open question 16).
 - **A share row, `shares = "<type>"`**: a sibling type's resource file also
   feeds this type. One upstream is one resource and one raw table even when it
   feeds two types, so `[atc.warnings]` holds `shares = "closures"` and claims

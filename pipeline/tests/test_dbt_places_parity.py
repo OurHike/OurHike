@@ -692,6 +692,57 @@ def test_a_long_trail_whose_copied_line_today_measures_twice_is_explained_by_dec
     assert parity._places_reasons(today, {"places": [place(once, lat=61.25)]}) == {}
 
 
+def test_a_parking_lot_whose_disc_holds_a_copied_line_is_explained_by_decision_40_and_nothing_else(tmp_path, monkeypatch):
+    """Monthly run 31's three Long Path parking lots: today's network file draws a Bruckner Boulevard segment once per
+    row NYC DOT lists it on, and a parking lot's 5-mile disc counts every copy. Only a place with no bbox that differs
+    in trailMiles alone, today's figure the disc's miles over every line and the dbt writer's the miles over each
+    network line once, is explained; an A.T. line in the disc counts in both figures."""
+    import parity
+
+    copied, other = [[-73.90, 40.81], [-73.89, 40.81]], [[-73.95, 40.85], [-73.95, 40.86]]
+    at_line = [[-73.93, 40.80], [-73.93, 40.81]]
+
+    def line(source: str, name: str, coordinates: list) -> dict:
+        return {
+            "type": "Feature",
+            "properties": {"source": source, "name": name},
+            "geometry": {"type": "LineString", "coordinates": coordinates},
+        }
+
+    def collection(path: Path, features: list[dict]) -> Path:
+        path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+        return path
+
+    bruckner = line("nyc_dot_greenways", "Bruckner Boulevard", copied)
+    network = collection(
+        tmp_path / "nearby_trails.geojson", [bruckner, bruckner, bruckner, line("nyc_dot_greenways", "Other", other)]
+    )
+    trails = collection(tmp_path / "trails.geojson", [line("centerline", "Appalachian Trail", at_line)])
+    monkeypatch.setattr(parity, "_published_network", lambda: network)
+    monkeypatch.setattr(parity, "_cut_trails", lambda: trails)
+    geod = Geod(ellps="WGS84")
+    copied_miles, other_miles, at_miles = (
+        geod.line_length(*zip(*coordinates)) / 1609.344 for coordinates in (copied, other, at_line)
+    )
+    every, once = round(3 * copied_miles + other_miles + at_miles, 1), round(copied_miles + other_miles + at_miles, 1)
+    assert every != once
+
+    def place(trail_miles: float, **changed) -> dict:
+        record = {"id": "nynjtc_long_path_guide:s1-parking-1.50-parking-0", "name": "Fort Lee Historic Park"}
+        return {**record, "kind": "parking", "lon": -73.92, "lat": 40.83, "trailMiles": trail_miles, **changed}
+
+    today = {"places": [place(every)]}
+
+    assert parity._places_reasons(today, {"places": [place(once)]}) == {
+        "id nynjtc_long_path_guide:s1-parking-1.50-parking-0": parity.PLACES_DISC_COPY_REASON
+    }
+    # A figure the copy does not account for, another field changed beside it, or a park, is still a difference.
+    assert parity._places_reasons(today, {"places": [place(round(once - 0.5, 1))]}) == {}
+    assert parity._places_reasons(today, {"places": [place(once, name="Fort Lee")]}) == {}
+    park = {"bbox": [-73.95, 40.80, -73.89, 40.86]}
+    assert parity._places_reasons({"places": [place(every, **park)]}, {"places": [place(once, **park)]}) == {}
+
+
 # --- the measure both sides use (decision 97) ---------------------------------
 
 

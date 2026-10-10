@@ -24,3 +24,4 @@ conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 50
 # [started] may be listed here. List one after its first run has saved, never
 # before.
 [elementary_started]
+monthly = "2026-10-10, build-reference.yml run 38014567450 (monthly run 31), which saved Elementary's history: 5 tables, 859,804 bytes"

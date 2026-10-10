@@ -703,7 +703,7 @@ def _places_reasons(old: dict, new: dict) -> dict[str, str]:
     kept = [record["id"] for record in new.get("places") or [] if f"id {record['id']}" not in reasons]
     if reasons and kept == old_ids:
         reasons["order"] = PLACES_REASONS["new_source"]
-    return {**reasons, **_copied_trail_miles_reasons(old, new)}
+    return {**reasons, **_copied_trail_miles_reasons(old, new), **_copied_disc_miles_reasons(old, new)}
 
 
 #: Why a long trail's `trailMiles` can be shorter in the dbt writer's places.json than in today's.
@@ -772,6 +772,94 @@ def _trail_miles_counting_copies(keys: set[tuple[str, str]]) -> dict[tuple[str, 
     """).fetchall()
     con.close()
     return {(source, name): (every / METERS_PER_MILE, once / METERS_PER_MILE) for source, name, every, once in rows}
+
+
+#: Why a trailhead's, parking lot's or town's `trailMiles` can be smaller in the dbt writer's places.json than in
+#: today's. tests/test_dbt_places_parity.py holds it to a network file with a copy inside a point's disc.
+PLACES_DISC_COPY_REASON = (
+    "expected by decision 40: staging keeps one of a layer's exact copies, where today's network file draws every "
+    "copy, and export_places.measure() sums every line inside a point place's PLACE_TRAIL_RADIUS_MILES disc. "
+    "Explained only for a place in both files with no bbox and no `trail:` id that differs in `trailMiles` alone, where "
+    "export_places.measure() run again on today's two line files gives today's miles with every line counted and the "
+    "dbt writer's with each network line of one source, name and geometry counted once, both to the tenth. Monthly "
+    "run 31's three, measured 2026-10-10 on the dbt writer's places.json in UA's 2026-10-10 release and on NYC DOT's "
+    "live layer under the registry's where: nynjtc_long_path_guide:s1-parking-1.50-parking-0, s1-parking-1.55-parking-0 "
+    "and s1-parking-2.95-parking-0, whose 5-mile discs each hold all 10 Bruckner Boulevard segments that "
+    "nyc_dot_greenways lists on 54 rows (base_nycdot__nyc_dot_greenways keeps one of each), 2.676 miles of copies "
+    "inside each disc; the same guide's parking at 4.85, 8.05, 9.80 and 12.60 hold none and match (today's own "
+    "figures are withheld by --keys-only)"
+)
+
+
+def _copied_disc_miles_reasons(old: dict, new: dict) -> dict[str, str]:
+    """PLACES_DISC_COPY_REASON for each point place both files hold whose `trailMiles` alone differs, where
+    _disc_miles_counting_copies() gives today's figure counting every line and the dbt writer's counting each network
+    copy once. A point place is a record with no `bbox` (export_places._record() writes one for a park and a long
+    trail only) and no `trail:` id."""
+    old_by_id = {record["id"]: record for record in old.get("places") or []}
+    changed: dict[str, tuple[object, object]] = {}
+    points: dict[str, tuple[float, float]] = {}
+    for record in new.get("places") or []:
+        before = old_by_id.get(record["id"])
+        if before is None or str(record["id"]).startswith("trail:") or "bbox" in before or "bbox" in record:
+            continue
+        if {name for name in before.keys() | record.keys() if before.get(name) != record.get(name)} != {"trailMiles"}:
+            continue
+        if record.get("lon") is None or record.get("lat") is None:
+            continue
+        changed[record["id"]] = (before.get("trailMiles"), record.get("trailMiles"))
+        points[record["id"]] = (record["lon"], record["lat"])
+    if not changed:
+        return {}
+    miles = _disc_miles_counting_copies(points)
+    reasons: dict[str, str] = {}
+    for place_id, (was, now) in changed.items():
+        every, once = miles[place_id]
+        if every != once and round(every, 1) == was and round(once, 1) == now:
+            reasons[f"id {place_id}"] = PLACES_DISC_COPY_REASON
+    return reasons
+
+
+def _disc_miles_counting_copies(points: dict[str, tuple[float, float]]) -> dict[str, tuple[float, float]]:
+    """{place id: (miles over every line, miles over each network line of one source, name and geometry once)} inside
+    each point's PLACE_TRAIL_RADIUS_MILES disc, by export_places.measure() itself, run twice over the two line files
+    _places_old() hands build_output(): today's network file (_published_network()) and the cut trails.geojson
+    (_cut_trails()), each loaded by export_places.load_lines().
+
+    Only the network file's copies are counted once, because they are what this explains: decision 40's dedupe is
+    within one layer, and the A.T. file's lines are counted as both writers count them."""
+    import duckdb
+
+    import export_places
+    from lib.corridor import METERS_PER_MILE
+    from lib.source_registry import load_registry
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    shipped = export_places.shipped_line_source_keys(load_registry(export_places.SOURCES_PATH))
+    export_places.load_lines(con, [_cut_trails()], shipped)
+    con.execute("CREATE TABLE trails_lines AS SELECT source, name, geom, g FROM lines")
+    export_places.load_lines(con, [_published_network()], shipped)
+    # One table of both files, so the whole network is held once: measure() reads `lines`' g alone, and a network
+    # line's `copy` is 1 for the first of its source, name and geometry. The R-tree load_lines() built goes with the
+    # table it indexed; measure() joins the same without it.
+    con.execute("DROP INDEX IF EXISTS lines_rtree")
+    con.execute("""
+        CREATE OR REPLACE TABLE lines AS
+        SELECT source, name, geom, g, row_number() OVER (PARTITION BY source, name, ST_AsWKB(geom)) AS copy FROM lines
+        UNION ALL SELECT source, name, geom, g, 1 AS copy FROM trails_lines
+    """)
+    # measure() reads park_part for its parks; there are none to measure here.
+    con.execute("CREATE TABLE park_part (part BIGINT, geom GEOMETRY)")
+    ids = sorted(points)
+    measured: list[list[float]] = []
+    for _counting in ("every line", "each network copy once"):
+        records = [{"lon": points[place_id][0], "lat": points[place_id][1]} for place_id in ids]
+        export_places.measure(con, [], records, export_places.PLACE_TRAIL_RADIUS_MILES, True)
+        measured.append([record["_metres"] / METERS_PER_MILE for record in records])
+        con.execute("DELETE FROM lines WHERE copy > 1")
+    con.close()
+    return {place_id: (every, once) for place_id, every, once in zip(ids, *measured, strict=True)}
 
 
 def _places_old() -> dict:

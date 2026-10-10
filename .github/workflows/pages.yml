@@ -504,6 +504,23 @@ jobs:
               exit 1 ;;
           esac
 
+      # Decision 145 (pipeline/ELT.md): DATA_RELEASE and channels.json's
+      # entry for this build's environment must name one release. A first
+      # launch reads DATA_RELEASE and later launches the pointer
+      # (lib/dataRelease.ts's SESSION_RELEASE), so a pair that disagrees
+      # ships a phone that changes release on its second launch. The two
+      # steps above check that each value resolves and never compared them.
+      # This reads only the commit, so it refuses whatever the bucket holds.
+      #
+      # No `if:`, so a draft_only run checks it too. A draft refused here
+      # costs a dispatch; a tag refused here cannot be redeployed as it
+      # stands, because the fix is a new commit and therefore a new version
+      # (RELEASING.md §4, §10).
+      - name: Confirm DATA_RELEASE and channels.json name the same release
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: python3 .github/scripts/check_pin_matches_channels.py
+
       # Same proof for the same reason, one step later. Setting a variable and
       # having it reach the bundle are different claims, and the gap between
       # them is invisible from outside: the app builds, the map works, and the
@@ -886,6 +903,7 @@ jobs:
               'The step log names the gate that refused it. The usual remedies, in RELEASING.md\'s terms:',
               '- **No release notes** → dispatch **Draft release notes** for this version (§7a), merge the notes, then re-dispatch **Deploy Pages** against the tag.',
               '- **Tag disagrees with `client/package.json`** → the version bump was never merged; see §4.',
+              '- **`DATA_RELEASE` and `channels.json` name two releases** → the tagged commit itself disagrees, so re-dispatching this tag fails the same way. Move both in one commit and release that commit under the next version (§4, §10).',
               '- Anything else → the run log, then RELEASING.md §11.',
               '',
               `Until a re-run succeeds, production is still the previous release - everything merged since is on UA and nowhere else. Close this issue when \`${version}\` actually ships (or the tag is abandoned).`,

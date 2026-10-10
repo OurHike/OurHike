@@ -15860,21 +15860,27 @@ terms = "ridb.recreation.gov/robots.txt (read 2026-10-04): `User-agent: *` / `Di
 reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and the Tulsa points are ArcGIS layers: both routed by the lead"
 
 [usace.suggested_hikes]
-confirmed = 2026-10-04
+confirmed = 2026-10-10
 summary = """
-Published district by district and lake by lake, and not landed (decision 54 wave 4, section K,
-2026-10-04).
+Published district by district and lake by lake, and not landed: one lake's page reads, and no page read lists the
+others (section K's per-site readers, 2026-10-10).
 
-Each district runs its own site and each lake its own pages: Fort Worth District's Canyon Lake trails page (two
-trails, Old Hancock Trail and Guadalupe Trail, their miles in a sentence), Lake Georgetown's Goodwater Loop map
-PDF, Rock Island and St. Louis districts' pages in their own layouts (the coverage audit). A reader for each is a
-per-site reader for dozens of sites, not built here."""
+Fort Worth District's Canyon Lake trails page names two trails under h2s, each a paragraph: the Old Hancock Trail
+('The trail navigate for 4 miles, one way') and the Guadalupe Trail ('just under a mile, one way', and 'This trail
+closes during high water releases from the dam'). Its footer forbids dissemination without the district's written
+consent (quoted in `terms`), which no decision names. The lake menu on the page holds only Canyon Lake's own pages,
+and the district site's home page links no list of its lakes, so a reader for this page would land one lake's two
+trails as the Corps' whole answer, which is why none is registered. The coverage audit's other pages (Lake
+Georgetown's Goodwater Loop map PDF, Rock Island and St. Louis districts' trails pages) each have their own
+layout."""
 checked = [
-    "https://www.swf-wc.usace.army.mil/canyon/Recreation/Trails/ (HTTP 200, 65,274 bytes, 2026-10-04T17:39:32Z): headings 'Old Hancock Trail' and 'Guadalupe Trail', their lengths in prose",
+    "https://www.swf-wc.usace.army.mil/canyon/Recreation/Trails/ (HTTP 200, 65,274 bytes, 2026-10-10T18:35:09Z): h2s 'Old Hancock Trail' and 'Guadalupe Trail', their lengths in prose; robots.txt (412 bytes) asks no Crawl-delay and disallows neither",
+    "the same page's lake menu (44 options, every one under /canyon/) and https://www.swf-wc.usace.army.mil/ (HTTP 200, 50,748 bytes, 2026-10-10T19:51:12Z): no list of the district's other lakes in either's markup",
     "(the coverage audit, 2026-10-01) Lake Georgetown's Hiking Trail Map.pdf (446,682 bytes); Rock Island and St. Louis districts' trails pages",
 ]
 where = ["https://www.swf-wc.usace.army.mil/canyon/Recreation/Trails/", "https://usace.army.mil/"]
-reason = "needs a per-site reader, not built in this pull request: one per district and lake, each laid out its own way"
+terms = "Fort Worth District's lake pages, footer 'NOTICE', read 2026-10-10: \"All information presented herein is the property of the government of the United States of America and may be revised or deleted at any time without prior notice. Dissemination of this information without the expressed written consent of the Public Affairs Office, Fort Worth District U.S. Army Corps of Engineers is strictly prohibited. These data are gathered electronically and, as presented, have NOT undergone any form of quality control. These data are NOT guaranteed to be valid or correct.\""
+reason = "needs a reader per district site and a list of each district's lakes, which no page read gives; and the Fort Worth District's notice forbids dissemination without consent, which no decision names, for the maintainer"
 
 [usfs.challenges]
 confirmed = 2026-10-04

@@ -1,6 +1,8 @@
 """FastAPI application entrypoint."""
 
 import math
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -8,7 +10,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.config import settings
 from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
+from app.db.session import check_database, database_host
 from app.routers import (
     app_failures,
     assist,
@@ -34,7 +38,31 @@ from app.routers import (
     work_projects,
 )
 
-app = FastAPI(title="OurHike backend")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Refuse to start when the database cannot be reached (#1756).
+
+    `/health` touches nothing, so a container with DATABASE_URL missing or
+    pointed at the wrong pooler string would otherwise pass the host's health
+    check and answer 500 on every route that reaches the database. Exiting
+    here fails the deploy instead. The message names the host and port and
+    never the credentials.
+
+    Not run by `TestClient(app)` used without a `with` block, which is how
+    tests/conftest.py builds its client, so the suite does not depend on it.
+    """
+    try:
+        check_database()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Cannot reach the database at {database_host(settings.database_url)} "
+            f"({type(exc).__name__}). Check DATABASE_URL, including the pooler host and port."
+        ) from None
+    yield
+
+
+app = FastAPI(title="OurHike backend", lifespan=_lifespan)
 
 # Added BEFORE the CORS middleware below, which matters: `add_middleware`
 # puts each new middleware outermost, so this one ends up inside CORS and a
@@ -88,6 +116,20 @@ async def _validation_error_survives_its_own_payload(request: Request, exc: Requ
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> JSONResponse:
+    """200 when a database query succeeds, 503 when it does not.
+
+    Separate from `/health` on purpose: a health check that needs the database
+    makes a database outage restart-loop the container, which cannot fix it.
+    """
+    try:
+        check_database()
+    except Exception:
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"status": "database unavailable"})
+    return JSONResponse(content={"status": "ok"})
 
 
 app.include_router(profiles.router)

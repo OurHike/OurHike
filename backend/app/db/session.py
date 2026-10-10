@@ -13,7 +13,7 @@ Postgres does to the assumptions a direct connection lets you make.
 from collections.abc import Generator
 from typing import Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -78,3 +78,26 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def database_host(database_url: str) -> str:
+    """The host:port of `database_url`, and nothing else.
+
+    What a startup failure may print. `URL.render_as_string(hide_password=True)`
+    would also print the username, and a Supabase pooler username embeds the
+    project ref, so only the part an operator needs to tell "wrong pooler string"
+    from "right string, database down" is kept.
+    """
+    url = make_url(database_url)
+    host = url.host or "(no host)"
+    return f"{host}:{url.port}" if url.port else host
+
+
+def check_database() -> None:
+    """Run `SELECT 1` on a pooled connection; raises whatever the driver raises.
+
+    One definition for the two callers that need the same answer: the startup
+    check in app/main.py's lifespan (#1756) and the `/ready` endpoint.
+    """
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))

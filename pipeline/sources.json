@@ -16364,6 +16364,35 @@
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_matc__matc_kennebec_ferry reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
     {
+      "key": "matc_grafton_loop_trail",
+      "title": "MATC Grafton Loop Trail page (matc.org/grafton-loop-trail/)",
+      "provider": "MATC",
+      "kind": "published_hikes",
+      "url": "https://www.matc.org/grafton-loop-trail/",
+      "steward": "Maine Appalachian Trail Club",
+      "attribution": "Maine Appalachian Trail Club",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Maine Appalachian Trail Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: a WordPress page search for 'terms' returned 'Announcements' and the maintainer newsletter (decision 53 inventory, batch 5, 2026-10-03, as matc_hazard_posts quotes it); the trail's page states none (2026-10-10).",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `matc_grafton_loop_trail`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads the page's <title> and checks that its two trailhead headings exist, and nothing else, so no person's name, e-mail address or telephone number can land; the 2026-10-10 read found none on the trail's content.",
+      "key_fields": [
+        "name"
+      ],
+      "key_comment": "`name`, the trail's name as the page's <title> gives it: one row, read 2026-10-10.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.matc.org/grafton-loop-trail/",
+        "notes": "No validator trusted: every run reads the page and is FRESH only when the row that would land hashes as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). The 2026-10-10 read answered with neither an ETag nor a Last-Modified."
+      },
+      "discovered_via": "not_available.toml's [matc.suggested_hikes] note (section K, 2026-10-04: 'one route whose facts are inside driving directions'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10T18:35:12Z: robots.txt (1,659 bytes) holds no rule for our agent's group and asks no Crawl-delay; the page answered HTTP 200, 112,752 bytes. The page is one trail's: 'MATC maintains the trail east of Route 26, including four designated campsites. The Appalachian Mountain Club maintains the trail west of Route 26', then 'Southern Trail Head' and 'Northern Trail Head', each driving directions. Its miles (4.7 and 12.0 along Route 26, and 'It is 7.3 miles north of the southern trailhead') are road distances to the trailheads, so none is read as the trail's; its length and its loop's shape are on AMC's Grafton Loop page, which is linked and not read. One row: the name and the link.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. This row states no length at all, so a mart would show it as a link to the club's page and nothing more. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
       "key": "mcomd_club_news_feed",
       "title": "Mountain Club of Maryland: Club News & Announcements",
       "provider": "MCOMD",

@@ -10241,6 +10241,19 @@ def _mohonk_page() -> str:
     )
 
 
+def _matc_page() -> str:
+    """One trail's WordPress page: its <title> naming it, a cover title, the maintenance paragraphs, and two h4
+    trailheads each followed by driving directions whose miles are a drive's."""
+    return _k_page(
+        "Fixture Loop Trail &#8211; Maine Appalachian Trail Club",
+        '<p class="has-text-align-center"><strong>Fixture Loop Trail</strong></p><p>Fixture prose: the club maintains '
+        'the trail east of Route 00.</p><h4 class="wp-block-heading">Southern Trail Head</h4><p>Fixture directions: '
+        'travel 4.7 miles and turn right.</p><h4 class="wp-block-heading">Northern Trail Head</h4><p>Fixture '
+        'directions: it is 7.3 miles north of the southern trailhead.</p><h4 class="wp-block-heading">Fixture History'
+        "</h4><p>Fixture paragraph.</p>",
+    )
+
+
 def _onda_pages() -> list[tuple[str, str, str]]:
     sitemap_url, hike_url = "https://onda.org/hike-sitemap.xml", "https://onda.org/hike/fixture-gorge/"
     items = "".join(
@@ -10519,6 +10532,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         ],
         "satc_central_pa_hikes": [("https://www.satc-hike.org/hiking-in-central-pennsylvania.html", HTML, _satc_page())],
         "mohonk_suggested_hikes": [("https://www.mohonkpreserve.org/visit/activities/suggested-hikes/", HTML, _mohonk_page())],
+        "matc_grafton_loop_trail": [("https://www.matc.org/grafton-loop-trail/", HTML, _matc_page())],
         "onda_hikes": _onda_pages(),
         "odatc_circuit_hikes": [("https://www.odatc.org/page-1503143", HTML, _odatc_page())],
         "ota_sections": _ota_pages(),
@@ -10563,6 +10577,7 @@ K_PAGES_ROWS = {
     "smd_diablo_range_hikes": 2,
     "satc_central_pa_hikes": 2,
     "mohonk_suggested_hikes": 2,
+    "matc_grafton_loop_trail": 1,
     "onda_hikes": 1,
     "odatc_circuit_hikes": 2,
     "ota_sections": 1,

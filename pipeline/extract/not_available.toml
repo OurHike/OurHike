@@ -7433,19 +7433,6 @@ checked = [
 where = ["https://www.matc.org/grafton-loop-trail/"]
 reason = "drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
-[matc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-One trail's page, and not landed (decision 54 wave 5, section K, 2026-10-04).
-
-/grafton-loop-trail/ describes one trail, its two trailheads by driving directions; its only distance ('It is 7.3
-miles north of the southern trailhead') is inside those directions. One route in paragraphs is not a list to read."""
-checked = [
-    "https://www.matc.org/grafton-loop-trail/ (HTTP 200, 112,422 bytes, 2026-10-04): 'Southern Trail Head' and 'Northern Trail Head' paragraphs of directions",
-]
-where = ["https://www.matc.org/grafton-loop-trail/"]
-reason = "needs a per-site reader, not built in this pull request: one route whose facts are inside driving directions"
-
 [matc.trail_lines]
 confirmed = 2026-10-01
 summary = """

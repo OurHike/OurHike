@@ -1630,6 +1630,27 @@ def _mohonk_suggested_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+MATC_TRAILHEADS = ("Southern Trail Head", "Northern Trail Head")
+
+
+def _matc_grafton_loop_trail(page: Page, fetch) -> list[dict]:
+    """The Maine A.T. Club's page for the Grafton Loop Trail (matc.org/grafton-loop-trail/), one trail, read 2026-10-10.
+
+    The page is the trail's own: its <title> names it ('Grafton Loop Trail – Maine Appalachian Trail Club'), then two
+    paragraphs say who maintains which half (MATC east of Route 26, the AMC west of it), and two h4s, 'Southern
+    Trail Head' and 'Northern Trail Head' (MATC_TRAILHEADS), are each followed by driving directions. The trail's name
+    and the link are read. Every distance on the page is a drive ('travel North on Route 26 ... 4.7 miles'; 'It is 7.3
+    miles north of the southern trailhead' by road), not the trail's, so no distance is read, and the page states no
+    climb. A page whose <title> does not name it, or which lacks either trailhead heading, raises.
+    """
+    title = page.root.find("title")
+    name = fact(re.sub(r"\s*[–-]\s*Maine Appalachian Trail Club\s*$", "", title.text())) if title is not None else None
+    headings = {fact(node.text()) for node in page.root.find_all("h4")}
+    if not name or "Maine Appalachian Trail Club" in name or not set(MATC_TRAILHEADS) <= headings:
+        raise LayoutChanged(f"matc: the page's title or its {' and '.join(MATC_TRAILHEADS)} headings have moved")
+    return [{"name": name, "link": page.url, "source_url": page.url}]
+
+
 def _onda_hikes(page: Page, fetch) -> list[dict]:
     """The Oregon Natural Desert Association's hikes: hike-sitemap.xml lists 24 /hike/ pages, 2026-10-04.
 
@@ -2269,6 +2290,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
     "smd_diablo_range_hikes": SiteParser(_smd_diablo_range_hikes),
     "satc_central_pa_hikes": SiteParser(_satc_central_pa_hikes),
     "mohonk_suggested_hikes": SiteParser(_mohonk_suggested_hikes),
+    "matc_grafton_loop_trail": SiteParser(_matc_grafton_loop_trail),
     "onda_hikes": SiteParser(_onda_hikes, columns={"seasons": "text", "drive_time": "text"}),
     "odatc_circuit_hikes": SiteParser(_odatc_circuit_hikes, columns={"map_link": "text"}),
     "ota_sections": SiteParser(

@@ -453,8 +453,9 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # They add CFI's 22 recommended fourteener routes (cfi_recommended_routes): 1 `maintainer_authorisation`, decision 70.
     # They add the Forest Society's Forest Reservation Challenge (spnhf_forest_reservation_challenge): 1 `unresolved`,
     # because a club's challenge list publishes on no decision yet. They add AMC Connecticut's East of the River Hiker
-    # Badge form (amc_ct_eor_hiker_badge): 1 `unresolved`, the same reason.
-    assert counts == {"maintainer_authorisation": 253, "public_gis": 272, "stated_by_org": 208, "unresolved": 30}
+    # Badge form (amc_ct_eor_hiker_badge): 1 `unresolved`, the same reason. They add MATC's Grafton Loop Trail page
+    # (matc_grafton_loop_trail): 1 `maintainer_authorisation`, decision 70.
+    assert counts == {"maintainer_authorisation": 254, "public_gis": 272, "stated_by_org": 208, "unresolved": 30}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

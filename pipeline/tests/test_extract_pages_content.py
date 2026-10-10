@@ -450,6 +450,18 @@ def test_a_tuscarora_section_with_no_elevation_line_refuses():
         SITE_PARSERS["patc_tuscarora_sections"].read(home, pages.get)
 
 
+def test_the_matc_trail_page_lands_its_name_and_no_distance_and_refuses_once_a_trailhead_heading_is_gone():
+    head = "<title>Fixture Loop Trail – Maine Appalachian Trail Club</title>"
+    trailheads = "<h4>Southern Trail Head</h4><p>Drive 4.7 miles.</p><h4>Northern Trail Head</h4><p>Drive 7.3 miles.</p>"
+    page = Page("https://www.matc.org/grafton-loop-trail/", parse_html(head + trailheads))
+    assert SITE_PARSERS["matc_grafton_loop_trail"].read(page, None) == [
+        {"name": "Fixture Loop Trail", "link": page.url, "source_url": page.url}
+    ], "the page's miles are a drive's, so no distance lands"
+    moved = Page(page.url, parse_html(head + "<h4>Southern Trail Head</h4><p>Drive 4.7 miles.</p>"))
+    with pytest.raises(LayoutChanged, match="headings have moved"):
+        SITE_PARSERS["matc_grafton_loop_trail"].read(moved, None)
+
+
 def test_a_bold_line_with_no_county_after_it_is_not_a_kta_hike():
     page = Page(
         "https://www.kta-hike.org/favorite-hikes-in-pennsylvania.html",

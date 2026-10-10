@@ -914,8 +914,9 @@ class TestTheRegistryTheConsoleReads:
         # poll, 2026-10-09) registered the Trust for Public Land (org:tpl) for ParkServe's parks, held.
         # 144 since section K's per-site readers (2026-10-10) registered the Old Dominion Appalachian Trail Club
         # (org:odatc), for its circuit hikes page. 145 since the same readers registered the Susquehanna Appalachian
-        # Trail Club (org:satc), for its 'Hiking In Central Pennsylvania' directory.
-        assert len(orgs) == 145
+        # Trail Club (org:satc), for its 'Hiking In Central Pennsylvania' directory. 146 since they registered the
+        # Colorado Fourteeners Initiative (org:cfi), for its peak pages' recommended routes.
+        assert len(orgs) == 146
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -934,6 +935,7 @@ class TestTheRegistryTheConsoleReads:
             "org:cdpr",
             "org:census",
             "org:cdtc",
+            "org:cfi",
             "org:cfpa",
             "org:chesapeakeconservancy",
             "org:cmc",

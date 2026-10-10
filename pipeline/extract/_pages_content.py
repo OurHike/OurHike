@@ -1235,6 +1235,46 @@ def _cfpa_trails(page: Page, fetch) -> list[dict]:
     return rows
 
 
+# 'Keyhole Route—use of this route will help ...', with an em dash, a spaced en dash or a hyphen before ' use'.
+_CFI_ROUTE = re.compile(r"(?P<route>.+?)\s*(?:—|–|-(?=\s))\s*use of this route\b.*", re.IGNORECASE | re.DOTALL)
+
+
+def _cfi_recommended_routes(page: Page, fetch) -> list[dict]:
+    """The Colorado Fourteeners Initiative's recommended routes: one per peak page (14ers.org/peaks/<range>/<peak>/).
+
+    The registry row's URL is the site's page sitemap (wp-sitemap-posts-page-1.xml), the one place every peak page is
+    listed: 53 on 2026-10-10, beside 6 range pages and /peaks/, which have no peak and are not read. A peak page
+    names its peak in its h1. 23 of the 53, written 2012 to 2017, carry a 'Recommended Route' heading whose next
+    paragraph opens with the route's name before a dash, 'Keyhole Route—use of this route will help to reduce
+    impacts to this Fourteener's fragile alpine environment' (an em dash on most, ' – ' or '- ' on two); the peak's
+    name, the route's name and the link are read, and the rest of the paragraph is CFI's. The other 30 pages carry
+    no such heading, and one of the 23, Wilson Peak's, opens its paragraph with a 2011 update rather than a route,
+    so those 31 peaks land no row: a gap this reader states rather than fills from their prose. No page states a
+    class, a difficulty, a distance or a climb for its route in a form read here, so none lands; the six Front Range
+    pages' 'Elevation:' is the summit's and is not read. A peak page with a 'Recommended Route' heading and no h1
+    raises.
+    """
+    peaks = [loc for loc in sitemap_locations(page) if re.fullmatch(r"/peaks/[a-z0-9-]+/[a-z0-9-]+/?", urlparse(loc).path)]
+    if not peaks:
+        raise LayoutChanged("cfi: the page sitemap lists no /peaks/<range>/<peak>/ page")
+    rows = []
+    for href in peaks:
+        peak = fetch(href)
+        found = blocks(peak.root)
+        at = next((i for i, block in enumerate(found) if block.level and block.text.lower() == "recommended route"), None)
+        if at is None:
+            continue
+        name = next((block.text for block in found if block.level == 1), None)
+        if name is None:
+            raise LayoutChanged(f"cfi: {href} has a 'Recommended Route' heading and no h1")
+        after = found[at + 1] if at + 1 < len(found) and found[at + 1].level is None else None
+        route = _CFI_ROUTE.fullmatch(after.text) if after is not None else None
+        if route is None:
+            continue  # Wilson Peak's update, 2026-10-10: no route named before a dash
+        rows.append({"name": fact(name), "route": fact(route["route"]), "link": peak.url, "source_url": peak.url})
+    return rows
+
+
 _MRATC_HIKE = re.compile(r"\d+\s*/\s*(?P<name>.+)")
 
 
@@ -2163,6 +2203,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
         },
     ),
     "cfpa_trails": SiteParser(_cfpa_trails),
+    "cfi_recommended_routes": SiteParser(_cfi_recommended_routes, columns={"route": "text"}),
     "mratc_suggested_hikes": SiteParser(_mratc_suggested_hikes),
     "msgtc_best_routes": SiteParser(_msgtc_best_routes, columns={"route": "text"}),
     "fta_day_hikes": SiteParser(_fta_day_hikes),

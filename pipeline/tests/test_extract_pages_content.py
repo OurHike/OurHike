@@ -463,6 +463,36 @@ def test_a_bold_line_with_no_county_after_it_is_not_a_kta_hike():
     assert (row["name"], row["place"], row["section"]) == ("Fixture Trail", "Fixture County", "Favorite Fixture Hikes")
 
 
+CFI = "https://www.14ers.org/peaks/fixture-range"
+
+
+def cfi_rows(pages: dict[str, str]) -> list[dict]:
+    """cfi_recommended_routes over a sitemap listing `pages` (url: body) and a range page, each fetched from the dict."""
+    locs = "".join(f"<url><loc>{url}</loc></url>" for url in [f"{CFI}/", *pages])
+    sitemap = Page("https://www.14ers.org/wp-sitemap-posts-page-1.xml", parse_html(f"<urlset>{locs}</urlset>"))
+    return SITE_PARSERS["cfi_recommended_routes"].read(sitemap, lambda url: Page(url, parse_html(pages[url])))
+
+
+def test_a_cfi_peak_lands_its_route_only_where_the_recommended_route_paragraph_names_one_before_a_dash():
+    rows = cfi_rows(
+        {
+            f"{CFI}/a/": "<h1>Fixture Peak</h1><h2>Recommended Route</h2><p>Fixture Gulch Route—use of this route helps.</p>",
+            f"{CFI}/b/": "<h1>Fixture Needle</h1><h2>Recommended Route</h2><p>Fixture Basin Route – use of this route.</p>",
+            f"{CFI}/c/": "<h1>Fixture Dome</h1><h2>Recommended Route</h2><p>Update: As of 2011, Fixture Basin is open!</p>",
+            f"{CFI}/d/": "<h1>Fixture Hill</h1><h2>Route Information</h2><p>Fixture Trail—use of this route helps.</p>",
+        }
+    )
+    assert [(row["name"], row["route"], row["link"]) for row in rows] == [
+        ("Fixture Peak", "Fixture Gulch Route", f"{CFI}/a/"),
+        ("Fixture Needle", "Fixture Basin Route", f"{CFI}/b/"),
+    ], "an update in the route's place, or a page with no 'Recommended Route' heading, lands no row"
+
+
+def test_a_cfi_peak_page_with_a_recommended_route_and_no_h1_refuses():
+    with pytest.raises(LayoutChanged, match="no h1"):
+        cfi_rows({f"{CFI}/a/": "<h2>Recommended Route</h2><p>Fixture Gulch Route—use of this route helps.</p>"})
+
+
 def test_a_passage_end_lands_the_coordinates_the_page_states_signed_by_hemisphere():
     assert _pages_content._coordinates("GPS Coordinates: 31.33367° N, 110.28276° W") == (31.33367, -110.28276)
     assert _pages_content._coordinates("no coordinates") == (None, None)

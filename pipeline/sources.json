@@ -15861,6 +15861,35 @@
       "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
+      "key": "cfi_recommended_routes",
+      "title": "CFI peak pages: each Fourteener's recommended route (14ers.org/peaks/)",
+      "provider": "CFI",
+      "kind": "published_hikes",
+      "url": "https://www.14ers.org/wp-sitemap-posts-page-1.xml",
+      "steward": "Colorado Fourteeners Initiative",
+      "attribution": "Colorado Fourteeners Initiative",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Colorado Fourteeners Initiative; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "None found: the page sitemap (130 URLs) lists no terms or privacy page, and the peak pages link none (read 2026-10-10); their footer reads \"©Colorado Fourteeners Initiative | 2026\".",
+      "reader": "ContentPages (extract/_pages_content.py), site parser `cfi_recommended_routes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads each peak page's h1 and the route name before the dash in its 'Recommended Route' paragraph, and nothing else, so no person's name, e-mail address or telephone number can land. The pages' 'Contact:' line (a land manager's office number) and the footer's office address are not read.",
+      "key_fields": [
+        "link"
+      ],
+      "key_comment": "`link`, the peak page's URL: unique on all 22 rows read 2026-10-10. Route names repeat (South Colony Lake Route and Como Lake route each serve three peaks, Silver Creek Route and Stevens Gulch Route two each), so the route is no key; the peak's name is unique too, and the link is the page's own identity.",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.14ers.org/wp-sitemap-posts-page-1.xml",
+        "notes": "No validator trusted: every run reads the sitemap and the 53 peak pages it lists, and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). The 2026-10-10 read's answers carried neither an ETag nor a Last-Modified."
+      },
+      "discovered_via": "not_available.toml's [cfi.suggested_hikes] note (section K, 2026-10-04: 'three page layouts across the 53 peaks'), re-read live on 2026-10-10 for the per-site readers section K handed back, under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10 18:35:08Z to 18:39:32Z: robots.txt (114 bytes) disallows only /wp-admin/ and asks no Crawl-delay; the sitemap answered HTTP 200, 15,755 bytes, listing 53 /peaks/<range>/<peak>/ pages beside 6 range pages and /peaks/; the 53 pages answered HTTP 200, 11,369,902 bytes in all, in 2 min 17 s at a 2 s gap. Measured on those pages: 23 carry a 'Recommended Route' heading, and 22 of them open its paragraph with the route's name before a dash ('Keyhole Route—use of this route will help ...'); Wilson Peak's opens 'Update: As of August 2011, Silver Pick Basin is now open!' and lands no row. 30 pages carry no such heading (the Sawatch Range's 15 among them, and Quandary Peak's, which has no h1), and land none. No page states a class, a difficulty, an exposure, a distance or a climb for its route in a form this reader reads. Mount Evans lands under that name, as its page writes it.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link. A SAFETY RULE A MART WILL NEED: these are fourteener summit routes, recommended by CFI to protect alpine ground, and none of the 22 pages states a route's class or difficulty, so no mart may show one in a suggested hike's voice until a source that states its difficulty sits beside it. Decision 63 turns it true once a mart reads it under rules like that, tested."
+    },
+    {
       "key": "cohos_trail_changes",
       "title": "Cohos Trail: Trail Changes and Updates",
       "provider": "Cohos Trail Association",
@@ -19558,6 +19587,10 @@
         "state": "not_asked",
         "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent. Its point-of-interest layers, registered under decision 54 (2026-10-03) at reaches_hikers: false, are covered by the same answer."
       },
+      "CFI": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its peak pages' recommended routes under section K's per-site readers (2026-10-10) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
       "Washington RCO": {
         "state": "not_asked",
         "note": "Not asked. Registered for its trail lines under #1778, at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. The ask belongs with the nominate outreach features/ORG_ONBOARDING.md describes, and nothing has been sent."
@@ -20544,6 +20577,11 @@
         "provider": "Colorado Parks & Wildlife",
         "name": "Colorado Parks & Wildlife",
         "note": "Publishes COTREX, which aggregates 236 Colorado land managers into one statewide layer. At 96,897 features it is the largest single source in the registry after USFS. Also registered for its points of interest under decision 54 (2026-10-03), at reaches_hikers: false."
+      },
+      "org:cfi": {
+        "provider": "CFI",
+        "name": "Colorado Fourteeners Initiative",
+        "note": "Builds and maintains sustainable summit trails on Colorado's fourteeners; registered for its peak pages' recommended routes (section K's per-site readers, 2026-10-10), at reaches_hikers: false."
       },
       "org:ugrc": {
         "provider": "Utah UGRC",
@@ -22341,6 +22379,43 @@
               }
             },
             "note": "COTREX's type; manager names 223 agencies and ranger districts."
+          }
+        }
+      },
+      "CFI": {
+        "probed_date": "2026-10-10",
+        "types": {
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its peak pages' recommended routes under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [cfi.points_of_interest] row (decision 88)."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its peak pages' recommended routes under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [cfi.points_of_interest] row (decision 88)."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its peak pages' recommended routes under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [cfi.points_of_interest] row (decision 88)."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its peak pages' recommended routes under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [cfi.points_of_interest] row (decision 88)."
+          },
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its peak pages' recommended routes under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [cfi.points_of_interest] row (decision 88)."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its peak pages' recommended routes under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [cfi.points_of_interest] row (decision 88)."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its peak pages' recommended routes under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [cfi.points_of_interest] row (decision 88)."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its peak pages' recommended routes under section K's per-site readers (2026-10-10). This block's survey (spike_org_poi_coverage.py) has not been run for this organization, so `unprobed` is the literal state here, not a finding that it publishes none; the club's points-of-interest answer in the extract is not_available.toml's [cfi.points_of_interest] row (decision 88)."
           }
         }
       },

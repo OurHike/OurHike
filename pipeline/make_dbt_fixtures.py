@@ -10104,6 +10104,28 @@ def _cfpa_page() -> str:
     )
 
 
+def _cfi_pages() -> list[tuple[str, str, str]]:
+    """The page sitemap (peak pages beside a range page), two Divi peak pages whose 'Recommended Route' paragraph opens
+    with the route's name before an em dash and before '- ', and one with no such heading, which lands no row."""
+    base = "https://www.14ers.org/peaks/fixture-range"
+    peaks = {
+        f"{base}/fixture-peak/": ("Fixture Peak", "Fixture Gulch Route—use of this route will help to reduce impacts."),
+        f"{base}/fixture-needle/": ("Fixture Needle", "Fixture Basin to Fixture Ridge- use of this route will help."),
+        f"{base}/fixture-dome/": ("Fixture Dome", None),
+    }
+    pages = []
+    for url, (name, route) in peaks.items():
+        recommended = f"<h2>Recommended Route</h2><p>{route} Fixture prose.</p>" if route else ""
+        body = (
+            f'<h1>{name}</h1><h4 class="et_pb_module_header">Info</h4><p>Elevation:</p><p>14,000 (Fixture)</p>'
+            f"<p>Contact:</p><p>Fixture Ranger District: 555.0100</p>{recommended}"
+            "<h2>Peak Specific Environmental and Safety Concerns</h2><p>Fixture prose.</p>"
+        )
+        pages.append((url, HTML, _k_page(f"{name} - Colorado Fourteeners Initiative", body)))
+    sitemap = ("https://www.14ers.org/wp-sitemap-posts-page-1.xml", XML, _k_sitemap([f"{base}/", *peaks]))
+    return [sitemap, *pages]
+
+
 def _mratc_page() -> str:
     hikes = "".join(
         f"<h5>{n} / Fixture Gap {n} to Fixture Road</h5><p>{n + 5} miles | One way | Moderate<br/>*Cars at both ends*</p>"
@@ -10460,6 +10482,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "amc_itineraries": [("https://www.outdoors.org/resources/itineraries/", HTML, _amc_page())],
         "ata_passages": _ata_pages(),
         "cfpa_trails": [("https://ctwoodlands.org/trails/", HTML, _cfpa_page())],
+        "cfi_recommended_routes": _cfi_pages(),
         "mratc_suggested_hikes": [("https://www.mratc.org/suggested-hikes", HTML, _mratc_page())],
         "msgtc_best_routes": [("https://www.msgtc.org/faq/", HTML, _msgtc_faq_page())],
         "fta_day_hikes": [("https://floridatrail.org/day-hike/", HTML, _fta_page())],
@@ -10504,6 +10527,7 @@ K_PAGES_ROWS = {
     "amc_itineraries": 2,
     "ata_passages": 1,
     "cfpa_trails": 2,
+    "cfi_recommended_routes": 2,
     "mratc_suggested_hikes": 2,
     "msgtc_best_routes": 2,
     "fta_day_hikes": 2,

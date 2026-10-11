@@ -14,7 +14,30 @@ interface Props {
   description: string
 }
 const { title, description } = Astro.props
-const canonical = new URL(Astro.url.pathname, Astro.site)
+
+// TWO HOSTS SINCE DECISION 144 (pipeline/ELT.md). The pages under /data/
+// belong to the data docs' own host, docs.ourhike.org, which serves them
+// under /data/ exactly as this site did. This site keeps its own copy at
+// /data/ only until pages.yml finds that host serving them, and every
+// preview serves its own. So each link is written for every host its page
+// can be on:
+// - From a /data/ page, the site's other pages are named by the site's full
+//   address (`site`, astro.config.mjs's `site`). On docs.ourhike.org a bare
+//   `/about/` would name a page that host does not have.
+// - From every other page, the two data pages are named through `docs`:
+//   PUBLIC_DOCS_ORIGIN when pages.yml found docs.ourhike.org serving the
+//   docs and built the site with it, and nothing otherwise, so the link
+//   stays on the host that served the page, which then holds the docs at
+//   /data/ itself. A /data/ page needs no prefix for them: /data/ is beside
+//   it on every host that serves it.
+const dataPage = Astro.url.pathname.startsWith('/data/')
+const docsOrigin = import.meta.env.PUBLIC_DOCS_ORIGIN ?? ''
+const site = dataPage ? Astro.site.origin : ''
+const docs = dataPage ? '' : docsOrigin
+const canonical = new URL(
+  Astro.url.pathname,
+  dataPage && docsOrigin ? docsOrigin : Astro.site,
+)
 ---
 
 <!doctype html>
@@ -72,10 +95,10 @@ const canonical = new URL(Astro.url.pathname, Astro.site)
          tabs. */
     }
     <a class="skip" href="#main">Skip to content</a>
-    <NavBar />
+    <NavBar site={site} />
     <main id="main">
       <slot />
     </main>
-    <Footer />
+    <Footer site={site} docs={docs} />
   </body>
 </html>

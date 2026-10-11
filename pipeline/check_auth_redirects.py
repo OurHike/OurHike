@@ -57,10 +57,14 @@ precisely the thing you do not want - anyone who can get a victim to click a
 link can have the auth code delivered to a host they control. So this also
 asserts that several URLs are REFUSED: an unrelated host; a lookalike built by
 suffixing the real one, which catches an allow-list matching on prefix rather
-than on origin; and (#659) one sibling per declared origin's parent domain,
+than on origin; (#659) one sibling per declared origin's parent domain,
 which catches a glob widened one token too far - `https://*.pages.dev/**`
 accepts every Pages site anyone can register, and the first two probes would
-both stay green against it.
+both stay green against it; and the root of every declared origin that signs
+nobody in (`supabase: []`, the data docs' host since pipeline/ELT.md decision
+144), which a host-wide entry for it or a `*.ourhike.org` glob would accept,
+and which runs dbt's page, the code that decision moved off the app's origin.
+An entry naming only a path under that host would not be seen by it.
 
     python check_auth_redirects.py --project production
     python check_auth_redirects.py --print-redirects
@@ -112,6 +116,15 @@ def app_url(origin: dict) -> str:
 def project_origins(manifest: dict, project: str) -> list[dict]:
     """The origins this project's allow-list has to accept."""
     return [origin for origin in manifest["origins"] if project in (origin.get("supabase") or [])]
+
+
+def signs_nobody_in(manifest: dict) -> list[dict]:
+    """The origins every project's allow-list has to REFUSE: those declaring `supabase: []`.
+
+    An empty list rather than no key, so that leaving the key off an entry
+    stays a gap a reviewer can see rather than a refusal nobody chose.
+    """
+    return [origin for origin in manifest["origins"] if origin.get("supabase") == []]
 
 
 def site_url(manifest: dict, project: str) -> str:
@@ -342,6 +355,15 @@ def check_project(manifest: dict, project: str, base: str, api_key: str, session
         seen_siblings.add(sibling)
         reports.append(
             check_refused(base, api_key, sibling, project, f"a sibling under {origin['pattern']}'s parent domain", session)
+        )
+    # The hosts nothing signs in on (decision 144's docs host): a sign-in
+    # handed back to one would put an auth code in front of whatever runs
+    # there, which is the exposure moving the docs off the app's origin ended.
+    for origin in signs_nobody_in(manifest):
+        reports.append(
+            check_refused(
+                base, api_key, f"{origin['probe'].rstrip('/')}/", project, f"{origin['pattern']}, which signs nobody in", session
+            )
         )
     return reports
 

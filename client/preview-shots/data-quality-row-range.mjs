@@ -1,4 +1,4 @@
-// ourhike.org/data/quality/'s "Needs a look" rows on a laptop, drawn from the
+// docs.ourhike.org/data/quality/'s "Needs a look" rows on a laptop, drawn from the
 // INVENTED light files in site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md
 // decision 102) that fixtures/dataQuality.mjs serves by default.
 //
@@ -38,7 +38,7 @@ import {
 import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 
 export const caption =
-  "ourhike.org/data/quality/'s Needs a look on a laptop, from INVENTED example files (no release carries the file yet): the row on preview_fixture__trails quotes the usual 5,199 to 5,322 rows, the range the chart draws at that build, and the two rows whose files carry no history say they have no earlier range. Nothing in this frame was measured."
+  "docs.ourhike.org/data/quality/'s Needs a look on a laptop, from INVENTED example files (no release carries the file yet): the row on preview_fixture__trails quotes the usual 5,199 to 5,322 rows, the range the chart draws at that build, and the two rows whose files carry no history say they have no earlier range. Nothing in this frame was measured."
 export const alt =
   'The data quality page at desktop width, scrolled to a dashed amber pill saying the figures are invented, above the serif heading "Needs a look" and a bold line "Warnings · 4, by kind". Four open white folds follow, each headed by an amber triangle, a kind and "1 warning", and each holding one row: an amber stripe on its left, the kind and a table in code type, a sentence, and on the right an amber "Warned" pill over its lane and since when. Freshness, on preview_fixture__alerts: "26 hours between updates in this build, flagged as high. No earlier range to compare it with." Volume, on preview_fixture__trails, with a dark green "Chart" button: "4,118 rows in this build, below the usual 5,199 to 5,322." Schema, on preview_fixture__trails and trail_class: "Its columns changed since the last build." Anomalies, on trail_lines and surface, at the bottom edge: "Null rate: 4.2% in this build, flagged as high. No earlier range to compare it with."'
 

@@ -47,10 +47,14 @@
 #   taking it from anywhere else "breaks deep links in exactly one environment
 #   - the one nobody tests". This was that environment.
 #
-# The dbt docs land at `/data/` here as they do in production, built by the
-# same action (.github/actions/dbt-docs-site) in a job of its own that holds
-# no secret, so a pull request that changes the dbt project shows its docs
-# page before a tag publishes it.
+# The dbt docs land at `/data/` here, built by the same action as production's
+# (.github/actions/dbt-docs-site) in a job of its own that holds no secret, so
+# a pull request that changes the dbt project shows its docs page before a tag
+# publishes it. Production serves them from docs.ourhike.org, a host of their
+# own (pipeline/ELT.md decision 144; pages.yml's docs-host job), under the
+# same /data/ path; a preview keeps them on its own hostname, beside its app,
+# so the site it builds is given no PUBLIC_DOCS_ORIGIN and its data links
+# stay on the preview.
 #
 # WHAT THIS DELIBERATELY DOES NOT COPY FROM pages.yml: `site/CNAME` and
 # `.nojekyll`. Both are GitHub Pages mechanisms - a custom domain, and
@@ -940,7 +944,7 @@ jobs:
 
             **[Open the data docs](${{ steps.links.outputs.docs }})** - the dbt project's
             documentation, built from the code against an empty warehouse, as
-            `ourhike.org/data/` serves it from the next release.
+            `docs.ourhike.org/data/` serves it from the next release.
 
             Built from ${{ github.event.pull_request.head.sha || github.sha }}. All three
             links stay the same as you push - they always serve the latest build of this

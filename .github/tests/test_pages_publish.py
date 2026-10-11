@@ -844,11 +844,12 @@ class TestTheDataDocs:
 
     Stage 7 of **#1793 — Rebuild the data platform as dlt → dbt: seven
     contracted marts, a monthly refresh, published docs, and lighter phone
-    downloads**. Production and every preview serve the page beside the app,
-    built by `.github/actions/dbt-docs-site` and checked by
-    `pipeline/check_docs_site.py` as copied; UA has no site and gets none. The
-    first three tests are the three assertions ELT.md names; the fourth is
-    its "the docs step needs no secret".
+    downloads**. Every preview serves the page beside the app, and so does
+    production until docs.ourhike.org serves it (decision 144,
+    `TestTheDocsHost` below), each copy built by `.github/actions/dbt-docs-site`
+    and checked by `pipeline/check_docs_site.py` as copied; UA has no site and
+    gets none. The first three tests are the three assertions ELT.md names;
+    the fourth is its "the docs step needs no secret".
     """
 
     ACTION = REPO_ROOT / ".github" / "actions" / "dbt-docs-site"
@@ -1111,6 +1112,224 @@ class TestTheDataDocsLoadNoCodeFromAnotherOrigin:
         pins = (self.DUCKDB / "extensions.sha256").read_text(encoding="utf-8").splitlines()
         pin = re.compile(r"[0-9a-f]{64}  v\d+\.\d+\.\d+/wasm_(eh|mvp)/\w+\.duckdb_extension\.wasm")
         assert pins and all(pin.fullmatch(line) for line in pins), pins
+
+
+class TestTheDocsHost:
+    """Decision 144's second half (pipeline/ELT.md): pages.yml also deploys /data/ to docs.ourhike.org.
+
+    Three promises, each held below. The docs deploy never breaks the app's:
+    it is a job nothing waits for, after the job that publishes gh-pages.
+    It is never quietly green when it fails: no step may continue past an
+    error, and `.github/scripts/docs_host.py` (its own tests are
+    test_docs_host.py) says what is missing. And ourhike.org never sends a
+    visitor to a host with nothing on it: the site's links and /data/'s
+    contents follow one answer, asked before the site is built, and the tail
+    of "Assemble the site" is run here for both answers.
+
+    Measured rather than asserted: run against the PR head's pages.yml from
+    before this change (5c078277, 2026-10-10), eleven of these twelve fail.
+    The twelfth, that previews and UA stay off the docs host, passes against
+    both and is here to stay that way.
+    """
+
+    ORIGINS = REPO_ROOT / ".github" / "expected-origins.yml"
+    PROBE = "Ask whether docs.ourhike.org serves the data docs"
+    BUILD = "5c0782771234567890abcdef1234567890abcdef"
+
+    @staticmethod
+    def _parsed(workflow: str = "pages.yml") -> dict:
+        return yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
+
+    @classmethod
+    def _steps(cls, job: str, workflow: str = "pages.yml") -> list[dict]:
+        return cls._parsed(workflow)["jobs"][job]["steps"]
+
+    @classmethod
+    def _step(cls, job: str, name: str, workflow: str = "pages.yml") -> dict:
+        return next(step for step in cls._steps(job, workflow) if step.get("name") == name)
+
+    @staticmethod
+    def _needs(job: dict) -> list[str]:
+        needs = job.get("needs") or []
+        return [needs] if isinstance(needs, str) else list(needs)
+
+    def test_the_project_and_its_host_are_named_once_for_the_whole_workflow(self):
+        parsed = self._parsed()
+        assert parsed["env"] == {"DOCS_PAGES_PROJECT": "ourhike-docs", "DOCS_ORIGIN": "https://docs.ourhike.org"}
+
+        # What acts, not what labels or explains it: a step's name, or a comment in its script, may say where it deploys.
+        def acting_part(step: dict) -> dict:
+            part = {key: step[key] for key in ("with", "env") if key in step}
+            if "run" in step:
+                part["run"] = [line for line in step["run"].splitlines() if not line.strip().startswith("#")]
+            return part
+
+        acting = yaml.safe_dump([acting_part(step) for job in parsed["jobs"].values() for step in job["steps"]])
+        assert "ourhike-docs" not in acting and "docs.ourhike.org" not in acting, "every step reads the two from env"
+        for other in WORKFLOW_DIR.glob("*.yml"):
+            if other.name != "pages.yml":
+                assert "ourhike-docs" not in yaml.safe_dump(yaml.safe_load(other.read_text(encoding="utf-8"))), other.name
+
+    def test_the_docs_origin_is_declared_for_the_buckets_cors_and_for_no_sign_in(self):
+        """The quality page reads the bucket from the visitor's browser; the docs sign nobody in."""
+        origin = self._parsed()["env"]["DOCS_ORIGIN"]
+        (entry,) = [o for o in yaml.safe_load(self.ORIGINS.read_text(encoding="utf-8"))["origins"] if o["pattern"] == origin]
+        assert entry["probe"] == origin
+        assert entry.get("cors", True) is True
+        assert entry["supabase"] == []
+        assert entry.get("hiker_facing") is False
+
+    def test_the_docs_deploy_is_a_job_nothing_waits_for(self):
+        """So a docs failure cannot hold the app back: gh-pages is published by `build`, which it needs."""
+        jobs = self._parsed()["jobs"]
+        assert self._needs(jobs["docs-host"]) == ["build"]
+        assert not [name for name, job in jobs.items() if "docs-host" in self._needs(job)]
+        (publisher,) = [
+            name for name, job in jobs.items() if any(s.get("uses") == "./.github/actions/publish-to-pages" for s in job["steps"])
+        ]
+        assert publisher == "build"
+
+    def test_a_failed_docs_deploy_is_a_red_job_and_never_a_green_skip(self):
+        job = self._parsed()["jobs"]["docs-host"]
+        assert "continue-on-error" not in job
+        assert not [step.get("name") for step in job["steps"] if "continue-on-error" in step]
+        assert not [step.get("name") for step in job["steps"] if "|| true" in step.get("run", "") or step.get("if")]
+        # Skipped for a draft, which deploys nothing (RELEASING.md §12), and only then.
+        assert job["if"] == "${{ !inputs.draft_only }}"
+
+    def test_the_job_holding_the_token_installs_and_builds_nothing(self):
+        """The same token previews use, so the same rule SEC-8 of PR #1805's second review set for jobs holding one."""
+        job = self._parsed()["jobs"]["docs-host"]
+        assert job["permissions"] == {"contents": "read"}
+        steps = job["steps"]
+        assert [s["uses"].split("@")[0] for s in steps if "uses" in s] == [
+            "actions/checkout",
+            "actions/download-artifact",
+            "cloudflare/wrangler-action",
+        ]
+        assert next(s for s in steps if "checkout" in s.get("uses", ""))["with"]["persist-credentials"] is False
+        runs = [s["run"] for s in steps if "run" in s]
+        assert runs and all(run.startswith("python3 .github/scripts/docs_host.py ") for run in runs)
+        holding = [s.get("id") or s["uses"].split("@")[0] for s in steps if "secrets." in yaml.safe_dump(s)]
+        assert holding == ["target", "cloudflare/wrangler-action"]
+
+    def test_it_uploads_through_the_pinned_action_and_the_token_the_previews_use(self):
+        def wranglers(workflow: str) -> list[dict]:
+            jobs = self._parsed(workflow)["jobs"].values()
+            return [s for job in jobs for s in job["steps"] if "wrangler-action" in s.get("uses", "")]
+
+        (deploy,) = wranglers("pages.yml")
+        assert {s["uses"] for s in [deploy, *wranglers("pr-preview.yml"), *wranglers("ua.yml")]} == {deploy["uses"]}
+        assert deploy["with"]["apiToken"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+        assert deploy["with"]["accountId"] == "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+        command = " ".join(deploy["with"]["command"].split())
+        assert command.startswith("pages deploy ${{ runner.temp }}/docs-host ")
+        assert " --project-name=${{ env.DOCS_PAGES_PROJECT }} " in command
+        # The project's production branch, read from Cloudflare, so the upload is what the domain serves.
+        assert " --branch=${{ steps.target.outputs.branch }} " in command
+
+    def test_it_uploads_what_the_build_job_assembled_and_checks_it_first(self):
+        assemble = self._step("build", "Assemble the site")
+        upload = next(s for s in self._steps("build") if s.get("with", {}).get("name") == "docs-host")
+        assert upload["with"]["path"] == assemble["env"]["DOCS_HOST_DIR"] == "${{ runner.temp }}/docs-host"
+        assert upload["if"] == "${{ !inputs.draft_only }}"
+        # The app is the deploy: a failed hand-off is the docs job's red download, not a red app deploy.
+        assert upload["continue-on-error"] is True
+        build_names = [s.get("name") for s in self._steps("build")]
+        assert build_names.index("Assemble the site") < build_names.index(upload["name"])
+
+        steps = self._steps("docs-host")
+        download = next(s for s in steps if "download-artifact" in s.get("uses", ""))
+        assert download["with"] == {"name": "docs-host", "path": upload["with"]["path"]}
+        order = [s.get("id") or s.get("name") for s in steps]
+        check = next(s for s in steps if " check " in s.get("run", ""))
+        assert check["run"] == 'python3 .github/scripts/docs_host.py check "$RUNNER_TEMP/docs-host"'
+        wait = next(s for s in steps if " confirm " in s.get("run", ""))
+        upload_step = next(s for s in steps if "wrangler-action" in s.get("uses", ""))
+        assert order.index(check["name"]) < order.index("target") < order.index(upload_step["name"]) < order.index(wait["name"])
+        assert wait["env"]["DOMAIN"] == "${{ steps.target.outputs.domain }}"
+
+    def test_the_site_and_data_follow_one_answer_asked_before_the_site_is_built(self):
+        probe = self._step("build", self.PROBE)
+        assert probe["id"] == "docs_host"
+        assert probe["run"] == 'python3 .github/scripts/docs_host.py live "$DOCS_ORIGIN"'
+        answer = "${{ steps.docs_host.outputs.origin }}"
+        assert self._step("build", "Build the site")["env"]["PUBLIC_DOCS_ORIGIN"] == answer
+        assert self._step("build", "Assemble the site")["env"]["DOCS_LIVE_ORIGIN"] == answer
+        assert self._parsed()["jobs"]["build"]["outputs"]["docs_origin"] == answer
+        names = [s.get("name") for s in self._steps("build")]
+        assert names.index(self.PROBE) < names.index("Build the site") < names.index("Assemble the site")
+        wait = next(s for s in self._steps("docs-host") if " confirm " in s.get("run", ""))
+        assert wait["env"]["SITE_SENDS"] == "${{ needs.build.outputs.docs_origin }}"
+
+    def test_a_preview_keeps_its_links_and_its_docs_on_its_own_host(self):
+        """Previews serve /data/ under their own hostname (pr-preview.yml), so their footer must not send a reviewer to production's docs."""
+        assert "PUBLIC_DOCS_ORIGIN" not in yaml.safe_dump(self._parsed("pr-preview.yml")["jobs"])
+        assert "docs_host.py" not in (WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8")
+        assert "docs_host.py" not in (WORKFLOW_DIR / "ua.yml").read_text(encoding="utf-8")
+
+    # --- the tail of "Assemble the site", run ---------------------------------
+
+    def _assemble_tail(self, tmp_path: Path, live_origin: str, *, docs_host_exists: bool = False):
+        """From the docs host's bundle to the end of the step, after the assembly above it has made `_site`."""
+        lines = self._step("build", "Assemble the site")["run"].splitlines()
+        start = next(
+            i for i, line in enumerate(lines) if line.strip().startswith("if python3 .github/scripts/docs_host.py bundle")
+        )
+        files = {
+            "_site/index.html": "home",
+            "_site/favicon.svg": "<svg/>",
+            "_site/_astro/site.css": "body{}",
+            "_site/data/index.html": "the docs",
+            "_site/data/assets/index.js": "docs()",
+            "_site/data/quality/index.html": "the quality page",
+        }
+        for relative, text in files.items():
+            (tmp_path / relative).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / relative).write_text(text, encoding="utf-8")
+        (tmp_path / ".github").mkdir()
+        (tmp_path / ".github" / "scripts").symlink_to(REPO_ROOT / ".github" / "scripts")
+        if docs_host_exists:
+            (tmp_path / "docs-host").mkdir()
+        return subprocess.run(
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", "\n".join(lines[start:])],
+            cwd=tmp_path,
+            env={
+                **os.environ,
+                "DOCS_LIVE_ORIGIN": live_origin,
+                "DOCS_HOST_DIR": str(tmp_path / "docs-host"),
+                "GITHUB_SHA": self.BUILD,
+            },
+            capture_output=True,
+            text=True,
+        )
+
+    def test_until_the_docs_host_serves_them_ourhike_org_keeps_the_docs(self, tmp_path: Path):
+        done = self._assemble_tail(tmp_path, "")
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert (tmp_path / "_site" / "data" / "index.html").read_text() == "the docs"
+        assert (tmp_path / "_site" / "data" / "assets" / "index.js").is_file()
+        assert (tmp_path / "docs-host" / "data" / "quality" / "index.html").read_text() == "the quality page"
+        assert self.BUILD in (tmp_path / "docs-host" / "index.html").read_text()
+
+    def test_once_it_does_ourhike_org_data_sends_visitors_to_the_same_page_there(self, tmp_path: Path):
+        done = self._assemble_tail(tmp_path, "https://docs.ourhike.org")
+        assert done.returncode == 0, done.stdout + done.stderr
+        old = tmp_path / "_site" / "data"
+        assert sorted(p.relative_to(old).as_posix() for p in old.rglob("*") if p.is_file()) == [
+            "index.html",
+            "quality/index.html",
+        ]
+        assert 'url=https://docs.ourhike.org/data/"' in (old / "index.html").read_text()
+        assert 'url=https://docs.ourhike.org/data/quality/"' in (old / "quality" / "index.html").read_text()
+        assert (tmp_path / "docs-host" / "data" / "index.html").read_text() == "the docs"
+        assert (tmp_path / "_site" / "index.html").read_text() == "home", "only /data/ changes"
+
+    def test_a_docs_host_that_cannot_be_assembled_leaves_ourhike_org_as_it_was(self, tmp_path: Path):
+        done = self._assemble_tail(tmp_path, "https://docs.ourhike.org", docs_host_exists=True)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "::warning::The docs host's files could not be assembled" in done.stdout
+        assert (tmp_path / "_site" / "data" / "index.html").read_text() == "the docs"
 
 
 class TestTheUploadedPointer:

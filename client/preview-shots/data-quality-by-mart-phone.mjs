@@ -1,4 +1,4 @@
-// ourhike.org/data/quality/'s "By finished table" on a phone (headed "By
+// docs.ourhike.org/data/quality/'s "By finished table" on a phone (headed "By
 // mart" until the word-choice review of #1805, 2026-10-09: "mart" is the
 // pipeline's word, not a visitor's), drawn from the INVENTED
 // many-problems files in site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md
@@ -29,7 +29,7 @@ import {
 import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 
 export const caption =
-  'ourhike.org/data/quality/ on a phone, from INVENTED example files (no release carries the file yet): By finished table in two columns, each table name on one line with its schedule and check count under it. Nothing in this frame was measured.'
+  'docs.ourhike.org/data/quality/ on a phone, from INVENTED example files (no release carries the file yet): By finished table in two columns, each table name on one line with its schedule and check count under it. Nothing in this frame was measured.'
 export const alt =
   'The data quality page at phone width, scrolled to the serif heading "By finished table". Under it a white card holds a two-column table headed "Table" and "Result". Each row names a mart in code type on one line - trail_lines, points_of_interest, trail_network, elevation, places, suggested_hikes - with a grey line under it such as "Monthly · 412 checks" and an outlined "Chart" button below that. On the right of each row are its pills: a red "2 failed" and an amber "2 warnings" for trail_lines, a red "1 failed" and an amber "2 warnings" for points_of_interest, one amber warning for most of the rest, and a red "1 could not run" under an amber warning for elevation. A dashed amber pill above the heading says the figures are invented.'
 

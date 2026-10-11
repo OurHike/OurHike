@@ -12,6 +12,13 @@
 // ONLY THIS PAGE CARRIES THEM. /data/ itself is dbt's own docs app, built by
 // .github/actions/dbt-docs-site, and nothing of the site's is drawn on it, so
 // the way back from the docs is the browser's.
+//
+// ROOT-RELATIVE ON PURPOSE, unlike the site's links on this page (Base.astro).
+// Both tabs are pages of the docs bundle, and every host that serves the
+// bundle serves it at /data/: docs.ourhike.org since decision 144
+// (pipeline/ELT.md), a preview, and ourhike.org until the move. So `/data/`
+// is the docs host's own page on the docs host and a preview's own on a
+// preview, which a full address could not be.
 const here = Astro.url.pathname
 
 const tabs = [

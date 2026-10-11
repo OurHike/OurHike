@@ -1,4 +1,4 @@
-// ourhike.org/data/quality/'s chart on a laptop, drawn from the INVENTED light
+// docs.ourhike.org/data/quality/'s chart on a laptop, drawn from the INVENTED light
 // files in site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md decision
 // 102) that fixtures/dataQuality.mjs serves by default, so the chart is the
 // rows of preview_fixture__trails, the series the maintainer's poll on the
@@ -40,7 +40,7 @@ import {
 import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 
 export const caption =
-  "ourhike.org/data/quality/'s chart on a laptop, from INVENTED example files (no release carries the file yet): each point drawn against the band from the builds before it, so the band stays level where the rows fall to 4,118, and a triangle on the point Elementary flagged. Nothing in this frame was measured."
+  "docs.ourhike.org/data/quality/'s chart on a laptop, from INVENTED example files (no release carries the file yet): each point drawn against the band from the builds before it, so the band stays level where the rows fall to 4,118, and a triangle on the point Elementary flagged. Nothing in this frame was measured."
 export const alt =
   'The data quality page at desktop width, scrolled to a white card. A dashed amber pill says the figures are invented. Under it the serif title "Rows in preview_fixture__trails, one point per monthly build", a grey line "Charted from Needs a look · preview_fixture__trails · Back to the row", and a key: a dark line "Rows at each point", a pale green swatch "Usual range" and an amber triangle "Flagged by Elementary". The chart\'s axis runs from 4,000 to 5,500. A dark line holds level near 5,250 from Nov 2025 to Sep 2026 inside a thin pale green band that starts at Jan 2026, then drops steeply to an amber triangle at Oct 2026 labelled "4,118 rows, flagged as low", while the band carries on level above it to the right edge. Under the chart a grey paragraph begins "12 monthly builds, from 5,231 on 7 Nov 2025 to 4,118 on 7 Oct 2026. Elementary flagged 1 of them in its latest checks. The shaded band is the usual range, from the monthly builds before each point", and a closed "The numbers behind the chart" sits below it.'
 

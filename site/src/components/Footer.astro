@@ -6,7 +6,20 @@
 //
 // The ODbL credit is a licence condition (LAUNCH_CHECKLIST.md §7), not a
 // courtesy, and it names OpenStreetMap on every page this footer reaches.
+//
+// TWO PREFIXES, BECAUSE THIS FOOTER IS ON TWO HOSTS (pipeline/ELT.md
+// decision 144; Base.astro works both out). `site` goes before every link
+// to one of the site's pages, and is the site's own address on the pages
+// docs.ourhike.org serves. `docs` goes before the two data links, and is
+// docs.ourhike.org's address once pages.yml has found that host serving the
+// docs. Both are empty otherwise, which is the footer as it always was.
 import Mark from './Mark.astro'
+
+interface Props {
+  site?: string
+  docs?: string
+}
+const { site = '', docs = '' } = Astro.props
 ---
 
 <footer class="footer">
@@ -26,11 +39,11 @@ import Mark from './Mark.astro'
       </div>
       <div class="footer__col">
         <span class="footer__heading">THE SITE</span>
-        <a href="/get-the-app/">Get the app</a>
-        <a href="/support/">Support the trail</a>
-        <a href="/about/">About &amp; values</a>
-        <a href="/status/">Status — is it me or us?</a>
-        <a href="/Privacy/">Privacy policy</a>
+        <a href={`${site}/get-the-app/`}>Get the app</a>
+        <a href={`${site}/support/`}>Support the trail</a>
+        <a href={`${site}/about/`}>About &amp; values</a>
+        <a href={`${site}/status/`}>Status — is it me or us?</a>
+        <a href={`${site}/Privacy/`}>Privacy policy</a>
       </div>
       {
         /* FOR ORGS (features/ORG_ONBOARDING.md, #116 Phase 6). A footer column
@@ -41,9 +54,9 @@ import Mark from './Mark.astro'
       }
       <div class="footer__col">
         <span class="footer__heading">FOR ORGS</span>
-        <a href="/for-orgs/">Add your trail data</a>
-        <a href="/for-orgs/claim/">Claim your org</a>
-        <a href="/for-orgs/demo/">See a published club</a>
+        <a href={`${site}/for-orgs/`}>Add your trail data</a>
+        <a href={`${site}/for-orgs/claim/`}>Claim your org</a>
+        <a href={`${site}/for-orgs/demo/`}>See a published club</a>
       </div>
       {
         /* THE DATA, LAST: the dbt docs at /data/ and the data-quality page at
@@ -51,15 +64,17 @@ import Mark from './Mark.astro'
            maintainer chose on 2026-10-08 as how a visitor finds them. /data/
            is not in site/dist - pages.yml and pr-preview.yml copy the docs
            there when they assemble the site - so it answers wherever the site
-           is deployed, and not where a bare site build is served. */
+           is deployed, and not where a bare site build is served. In
+           production it is docs.ourhike.org's /data/ once that host serves
+           the docs (decision 144), and `docs` carries the link there. */
       }
       <div class="footer__col">
         <span class="footer__heading">THE PROJECT</span>
         <a href="https://github.com/OurHike/OurHike">Source on GitHub — AGPL-3.0</a>
         <a href="https://github.com/OurHike/OurHike/issues">Tell us what broke</a>
-        <a href="/app/">Open the app</a>
-        <a href="/data/">How the data is built</a>
-        <a href="/data/quality/">Data quality</a>
+        <a href={`${site}/app/`}>Open the app</a>
+        <a href={`${docs}/data/`}>How the data is built</a>
+        <a href={`${docs}/data/quality/`}>Data quality</a>
       </div>
     </div>
     <p class="footer__credits">

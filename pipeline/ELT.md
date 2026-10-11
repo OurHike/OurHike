@@ -41,7 +41,7 @@ A number in brackets is a row of [Decisions](#decisions).
 | "A staging for each org… Union… in the intermediate… heavy transformation… on that unified model" | `base_` → `stg_<club>__<mart>` → `int_<mart>__unioned` → heavy intermediates → mart | [The dbt project](#the-dbt-project), [Club by club](#club-by-club) |
 | "dbt state to only run models that have changed" | what state buys on a PR, and on a monthly reload | [The dbt project](#the-dbt-project) |
 | "Hold off on… the background map… create the plan" | plan only | [Background map: the plan, not the change](#background-map-the-plan-not-the-change) |
-| "dbt docs… publish the docs on OurHike" | `https://ourhike.org/data/`, now (10, 19) | [The dbt project](#the-dbt-project), [Running it](#running-it) |
+| "dbt docs… publish the docs on OurHike" | `https://docs.ourhike.org/data/`, now, and at `https://ourhike.org/data/` until that host serves them (10, 19, 144) | [The dbt project](#the-dbt-project), [Running it](#running-it) |
 | "dbt Charts for any outputs" | YAML boards now, rendered when dbt Charts supports v2 (19) | [The dbt project](#the-dbt-project) |
 | "Not… download the entire duckdb… blazing fast" | no phone downloads a DuckDB file; the whole data set shrinks (9) | [Making the download smaller](#making-the-download-smaller) |
 | "Simplify any geometries… a few feet off" | navigation line stays 1 m; bytes from encoding and per-zoom tiles (8) | [Making the download smaller](#making-the-download-smaller) |
@@ -279,7 +279,7 @@ flowchart TD
   UA[("public bucket, environments/ua/")]
   PROD[("public bucket root, production")]
   PHONE["phone"]
-  DOCS["ourhike.org/data/<br/>dbt docs now, dbt Charts boards<br/>once dbt Charts supports v2"]
+  DOCS["docs.ourhike.org/data/<br/>dbt docs now, dbt Charts boards<br/>once dbt Charts supports v2"]
 
   CLUB --> RAWS
   SH --> RAWS
@@ -1549,7 +1549,7 @@ The measured configuration was `templater = jinja`, `apply_dbt_builtins = True`,
 
 ### Docs and charts
 
-**dbt docs publish now at `https://ourhike.org/data/`**, never under `/app/` (decision 10, T4); [Running it](#running-it) owns the wiring. Under one version, v2's shape is the one published. **This reverses half of the session's docs call:** as first written, T4 built the page with `dbt docs generate --static --empty-catalog`, and neither 2.0.5's nor 2.0.6's `dbt docs generate --help` offers either flag (read 2026-10-01). T4's location stands.
+**dbt docs publish now at `https://ourhike.org/data/`**, never under `/app/` (decision 10, T4), **and move to `https://docs.ourhike.org/data/`**, a host of their own, as soon as it serves them (decision 144's second half); [Running it](#running-it) owns the wiring. Under one version, v2's shape is the one published. **This reverses half of the session's docs call:** as first written, T4 built the page with `dbt docs generate --static --empty-catalog`, and neither 2.0.5's nor 2.0.6's `dbt docs generate --help` offers either flag (read 2026-10-01). T4's location stands.
 
 | | v1 `--static` (measured on 1.12.2; not used under decision 19) | v2 (measured on 2.0.5; stage 1's CI on 2.0.6) |
 |---|---|---|
@@ -3534,7 +3534,9 @@ The hourly extract steps hold `R2_RAW_*` beside the database URLs they already r
 | | Production | Previews | UA |
 |---|---|---|---|
 | Built in | `pages.yml`'s build job at a `v*` tag (`:61-62`), copied in "Assemble the site" (`:404`); the docs step needs no secret | `pr-preview.yml` "Assemble the preview" (`:573`) | **none**: `ua.yml:266` deploys `client/dist` only |
-| Served at | `_site/data/` → `ourhike.org/data/` | `pr-<n>.ourhike-preview.pages.dev/data/` | — |
+| Served at | `docs.ourhike.org/data/`, by `pages.yml`'s `docs-host` job (decision 144); `_site/data/` → `ourhike.org/data/` until that host serves them | `pr-<n>.ourhike-preview.pages.dev/data/` | — |
+
+**On a host of their own since decision 144.** The same `_site/data/` is uploaded to the Cloudflare Pages project `ourhike-docs`, whose custom domain is `docs.ourhike.org`, so dbt's page and DuckDB-WASM no longer run on the origin where `/app/` keeps a signed-in hiker's session. It is served there under `/data/`, not at the root, because the bundle names its own paths from the root (DuckDB-WASM's base `/data/duckdb/duckdb.js?`, the tabs `/data/` and `/data/quality/`), so one bundle serves every host unchanged. `ourhike.org/data/` becomes a page at each old address sending a visitor to the same address there, and the site's data links point there, from the first deploy that finds `docs.ourhike.org` already serving the docs; until then it serves them itself, so nothing sends a visitor to a host with nothing on it. `.github/scripts/docs_host.py` holds the why; LAUNCH_CHECKLIST.md 3c the maintainer's two dashboard steps and the CORS re-paste. Previews keep the docs beside their app on one origin.
 
 **This reverses part of the session's own docs-location call** (T4 in [Decisions](#decisions), which the decisions log first wrote as built in `pages.yml`, `ua.yml` and `pr-preview.yml`), so `ua.yml` is no longer a third build: UA has no site, and giving it one is a separate decision.
 

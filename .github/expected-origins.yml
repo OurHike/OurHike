@@ -248,6 +248,33 @@ origins:
     serves: The release candidate, on the previews' Pages project.
     hiker_facing: false
 
+  - pattern: https://docs.ourhike.org
+    probe: https://docs.ourhike.org
+    # The data docs and the data-quality page (pipeline/ELT.md decisions 10
+    # and 102), on a host of their own since decision 144 moved them off
+    # ourhike.org/data/, where any script of theirs could read the session a
+    # signed-in hiker keeps on the app's origin. pages.yml's env names this
+    # origin and the Cloudflare Pages project serving it, and
+    # .github/tests/test_pages_publish.py holds the two to each other.
+    #
+    # ON THE BUCKET'S LIST because the quality page reads two
+    # data_quality.json files from it in the visitor's browser.
+    #
+    # ON NO SUPABASE LIST, and an empty one rather than none: the docs sign
+    # nobody in, and the point of the move is that nothing running here can
+    # hold a session. So check_auth_redirects.py demands this host on no
+    # project's allow-list, and asks every project to REFUSE a sign-in
+    # redirect to it, which is what it means for an allow-list never to hand
+    # an auth code to a page running dbt's code.
+    #
+    # No app_path: there is no app here.
+    supabase: []
+    serves: The data docs and the data-quality page, on the Cloudflare Pages project ourhike-docs.
+    # A hiker reads nothing here on the trail, so a refused CORS check on
+    # this origin costs a visitor the quality page's figures, not anybody
+    # their map.
+    hiker_facing: false
+
   - pattern: http://localhost:5173
     probe: http://localhost:5173
     app_path: /

@@ -46,14 +46,9 @@
       'YYYY-MM-DD', NPS's '2026-10-02 00:00:00.0'). Without an offset the
       session's zone applies, which build_marts.py sets to UTC;
     - RFC 822, an RSS pubDate, with 'GMT' read as '+0000';
-    - month/day/year, the Ouachita condition report's and IDPR's, with a
-      year of four digits or of two. A two-digit year is read as DuckDB's
-      '%y' reads it, 00 to 68 as 2000 to 2068 and 69 to 99 as 1969 to 1999,
-      so IDPR's '8/13/26' is 2026-08-13 (Upper Mesa Falls Area & Road
-      Closure's DateStart, 1 of the 51 rows read 2026-10-09). Before
-      2026-10-11 '%Y' read it as the year 26, which the phone would have
-      printed as "from August 13, 26". A year of one or three digits is no
-      date anyone states, and is null.
+    - a day, alone or followed by words, which notice_stated_day() below
+      reads: month/day/year, ISO, or a month's name on either side of the
+      day.
     Never filled in: a date the source states in words ('Until further
     notice') is null here, and stays in the source's own fields.
     tests/singular/assert_notice_instant_reads_each_shape_a_source_states_a_date_in.sql
@@ -68,13 +63,184 @@
         try_strptime(
             replace({{ text }}, ' GMT', ' +0000'), '%a, %d %b %Y %H:%M:%S %z'
         ),
-        case
-            when regexp_full_match({{ text }}, '[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}')
-                then cast(try_strptime({{ text }}, '%m/%d/%Y') as timestamptz)
-            when regexp_full_match({{ text }}, '[0-9]{1,2}/[0-9]{1,2}/[0-9]{2}')
-                then cast(try_strptime({{ text }}, '%m/%d/%y') as timestamptz)
-        end
+        cast({{ notice_stated_day(text) }} as timestamptz)
     )
+{%- endmacro %}
+
+{#- The day a source's text value starts with, as TIMESTAMP at midnight, or
+    null: notice_instant()'s last reading. The maintainer, on wave 6's page
+    02 (P13, poll of 2026-10-11): "Fix the dates! the reader should be able
+    to handle different format".
+
+    THE DAY COMES FIRST, in one of four shapes, case and space aside:
+    - month/day/year, with a year of four digits or of two, the Ouachita
+      condition report's and IDPR's. A two-digit year is read as DuckDB's
+      '%y' reads it, 00 to 68 as 2000 to 2068 and 69 to 99 as 1969 to 1999,
+      so IDPR's '8/13/26' is 2026-08-13 (Upper Mesa Falls Area & Road
+      Closure's DateStart, 1 of the 51 rows read 2026-10-09). Before
+      2026-10-11 '%Y' read it as the year 26, which the phone would have
+      printed as "from August 13, 26". A year of one or three digits is no
+      date anyone states, and is null; so is a first part over 12, which
+      would be day first, a guess no source here has asked for;
+    - ISO, 'YYYY-MM-DD', where words follow it (a bare one is the cast
+      above);
+    - a month's name, full or cut short, before the day or after it, with a
+      four-digit year: 'March 26, 2027', 'Sept. 30 2026', 'August 24th,
+      2026', '26 March 2027', as extract/_notices.py's page reader reads
+      them. A word no month's name starts with is no month.
+    A day that does not exist ('9/31/2026', 'February 29, 2027') is null,
+    never moved to the nearest one.
+
+    THEN NOTHING, OR WORDS: the end of the value (a full stop or a comma
+    allowed), a parenthesis, or a space and a letter, so a stated end
+    followed by its caveat reads as that end. IDPR's area restrictions state
+    Grimes Cr-Clear Cr Area Closure's Date_Order_Expires as '3/26/2027
+    (annual renewal expected)' (1 of the 20 rows in wave 6's saved read of
+    2026-10-09), which read as no date until 2026-10-11, so the notice
+    greyed 90 days after its EditDate (2026-03-30), on 2026-06-28, though
+    its order states that it runs to 2027-03-26. Measured on that read's
+    staged start and end fields, the old reading and this one differ on
+    that value alone: 0 of 16, 1 of 11, 0 of 35 and 0 of 26 distinct
+    values. The two layers' Date_End and DateEnd, which
+    seeds/notice_source_fields.csv does not stage, write most ends that way
+    ('12/31/2026 unless rescinded'): 32 of their 43 distinct values read as
+    a day now and as none before.
+    NEVER A DATE OUT OF THE MIDDLE OF PROSE, and never a day whose words
+    name another: a value that does not start with the day ('Closed until
+    3/26/2027'), a range ('6/1/2026 - 9/30/2026', whose second day is not
+    words) and a day followed by words holding a numeric date or a
+    four-digit year ('4/1/2026 extended to 6/30/2026', which day ends it is
+    the words' to say) are null. Words with no day ('Indefinite', 'Unknown',
+    'Year-round', 'None stated') are null too. A null end is unknown: the
+    notice greys by its own edit date instead (macros/notice_current_until.sql),
+    never shown as current on a date nobody stated. -#}
+{% macro notice_stated_day(text) -%}
+    {#- Each pattern is a set block, so its backslashes reach RE2 as written
+        and no Jinja string escaping stands between them. Group 4 of each is
+        the words after the day. -#}
+    {%- set words_after -%}
+        ([.,;:]?\s*|[,;:]?\s*\(.*|[,;:]?\s+[a-z].*)$
+    {%- endset -%}
+    {%- set numeric -%}
+        (?is)^\s*([0-9]{1,2})/([0-9]{1,2})/([0-9]{4}|[0-9]{2}){{ words_after }}
+    {%- endset -%}
+    {%- set iso -%}
+        (?is)^\s*([0-9]{4})-([0-9]{2})-([0-9]{2}){{ words_after }}
+    {%- endset -%}
+    {%- set month_first -%}
+        (?is)^\s*([a-z]{3,9})\.?\s+([0-9]{1,2})(?:st|nd|rd|th)?(?:\s*,\s*|\s+)([0-9]{4}){{ words_after }}
+    {%- endset -%}
+    {%- set day_first -%}
+        (?is)^\s*([0-9]{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\.?(?:\s*,\s*|\s+)([0-9]{4}){{ words_after }}
+    {%- endset -%}
+    {%- set another_date -%}
+        [0-9]\s*[/-]\s*[0-9]|[0-9]{4}
+    {%- endset -%}
+    {%- set months -%}
+        ['january', 'february', 'march', 'april', 'may', 'june', 'july',
+        'august', 'september', 'october', 'november', 'december']
+    {%- endset -%}
+    {#- strptime takes its format as a constant, so a four-digit year and a
+        two-digit one are two branches. -#}
+    case
+        when
+            regexp_full_match({{ text }}, '{{ numeric }}')
+            and not regexp_matches(
+                regexp_extract({{ text }}, '{{ numeric }}', 4),
+                '{{ another_date }}'
+            )
+            and length(regexp_extract({{ text }}, '{{ numeric }}', 3)) = 4
+            then try_strptime(
+                regexp_extract({{ text }}, '{{ numeric }}', 1)
+                || '/'
+                || regexp_extract({{ text }}, '{{ numeric }}', 2)
+                || '/'
+                || regexp_extract({{ text }}, '{{ numeric }}', 3),
+                '%m/%d/%Y'
+            )
+        when
+            regexp_full_match({{ text }}, '{{ numeric }}')
+            and not regexp_matches(
+                regexp_extract({{ text }}, '{{ numeric }}', 4),
+                '{{ another_date }}'
+            )
+            then try_strptime(
+                regexp_extract({{ text }}, '{{ numeric }}', 1)
+                || '/'
+                || regexp_extract({{ text }}, '{{ numeric }}', 2)
+                || '/'
+                || regexp_extract({{ text }}, '{{ numeric }}', 3),
+                '%m/%d/%y'
+            )
+        when
+            regexp_full_match({{ text }}, '{{ iso }}')
+            and not regexp_matches(
+                regexp_extract({{ text }}, '{{ iso }}', 4),
+                '{{ another_date }}'
+            )
+            then try_strptime(
+                regexp_extract({{ text }}, '{{ iso }}', 1)
+                || '-'
+                || regexp_extract({{ text }}, '{{ iso }}', 2)
+                || '-'
+                || regexp_extract({{ text }}, '{{ iso }}', 3),
+                '%Y-%m-%d'
+            )
+        when
+            regexp_full_match({{ text }}, '{{ month_first }}')
+            and not regexp_matches(
+                regexp_extract({{ text }}, '{{ month_first }}', 4),
+                '{{ another_date }}'
+            )
+            then try_strptime(
+                regexp_extract({{ text }}, '{{ month_first }}', 3)
+                || '-'
+                || list_position(
+                    list_transform(
+                        {{ months }},
+                        lambda month: starts_with(
+                            month,
+                            lower(
+                                regexp_extract(
+                                    {{ text }}, '{{ month_first }}', 1
+                                )
+                            )
+                        )
+                    ),
+                    true
+                )
+                || '-'
+                || regexp_extract({{ text }}, '{{ month_first }}', 2),
+                '%Y-%m-%d'
+            )
+        when
+            regexp_full_match({{ text }}, '{{ day_first }}')
+            and not regexp_matches(
+                regexp_extract({{ text }}, '{{ day_first }}', 4),
+                '{{ another_date }}'
+            )
+            then try_strptime(
+                regexp_extract({{ text }}, '{{ day_first }}', 3)
+                || '-'
+                || list_position(
+                    list_transform(
+                        {{ months }},
+                        lambda month: starts_with(
+                            month,
+                            lower(
+                                regexp_extract(
+                                    {{ text }}, '{{ day_first }}', 2
+                                )
+                            )
+                        )
+                    ),
+                    true
+                )
+                || '-'
+                || regexp_extract({{ text }}, '{{ day_first }}', 1),
+                '%Y-%m-%d'
+            )
+    end
 {%- endmacro %}
 
 {#- A source's text as words: a WordPress-shaped JSON value's `rendered`

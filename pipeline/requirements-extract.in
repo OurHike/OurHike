@@ -54,3 +54,29 @@ psycopg[binary]
 # this file is its own pins, so the build jobs' lockfiles do not move. Pure
 # Python, about 2 MB, with no dependencies of its own on Python 3.12.
 pypdf
+
+# extract/_sheet_content.py's two workbook readers, for the content a club
+# publishes as a spreadsheet (section K's hand-back of decision 54): xlrd reads
+# the old binary .xls (SMHC's 900 Miler list) and openpyxl the .xlsx (WMC's hike
+# ratings). Chosen on PyPI's own records, read 2026-10-10: xlrd 2.0.2
+# (2025-06-14, BSD, a 96,555-byte pure-Python wheel with no dependencies) and
+# openpyxl 3.1.5 (2024-06-28, MIT, a 250,910-byte pure-Python wheel whose one
+# dependency, et-xmlfile 2.0.0, is 18,059 bytes), the reference reader of each
+# format. python-calamine 0.8.3 reads both in one package, but as a compiled
+# extension (wheels of 0.5 to 1.2 MB) in a job that holds the raw store's write
+# keys, and its newest release was a day old; pandas would bring both of these
+# and much more besides. Nothing here reads a workbook's document properties,
+# which name people.
+xlrd
+openpyxl
+
+# defusedxml, for openpyxl's sake. openpyxl's documentation says it does not
+# guard against quadratic-blowup or billion-laughs XML by default, and that
+# with defusedxml installed it parses through defusedxml instead
+# (openpyxl/xml/__init__.py's DEFUSEDXML). This job parses .xlsx files fetched
+# from club websites while it holds the raw store's write keys. 0.7.1
+# (2021-03-08, PSF licence, a 25,604-byte pure-Python wheel with no
+# dependencies) is the newest release on PyPI's own record, read 2026-10-10;
+# 0.8.0 exists only as release candidates (2023-09), which the compile leaves
+# out. tests/test_extract_sheet_content.py fails if openpyxl does not use it.
+defusedxml

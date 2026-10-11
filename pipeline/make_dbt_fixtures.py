@@ -3423,6 +3423,9 @@ WP_CATEGORY_POSTS = {
     "tko_oct_trail_conditions": ("https://trailkeepersoforegon.org", 10, "trail-conditions"),
     # Decision 122 (2026-10-09): the River to River Trail Society's 'Trail Conditions', category 4, held in _shared/r2r.
     "r2r_trail_conditions": ("https://rivertorivertrail.net", 4, "trail-conditions"),
+    # Decision 53's drafted rows for RATC, registered 2026-10-10 once its robots.txt answered 200.
+    "ratc_closures_posts": ("https://www.ratc.org", 78, "closures"),
+    "ratc_news_posts": ("https://www.ratc.org", 13, "ratc-news"),
 }
 
 
@@ -3432,10 +3435,15 @@ def _notice_fixtures_n_to_z() -> dict[str, str]:
         f"conditions/notices/{key}.json": json.dumps({"answers": {url: {"content_type": content_type, "body": body}}, "rows": 1})
         for key, (url, content_type, body) in _notice_pages_n_to_z().items()
     }
+    keys_per_site: dict[str, int] = {}
     for key, (site, category, slug) in WP_CATEGORY_POSTS.items():
+        # WordPress numbers posts per site, and fixture mode answers one site from every file that names it
+        # (extract/_fixtures.py's joined_wordpress()), so a second category of one site (RATC's) takes ids of its own.
+        first = 9100 + 10 * keys_per_site.get(site, 0)
+        keys_per_site[site] = keys_per_site.get(site, 0) + 1
         posts = [
             _wp_category_post(
-                site, 9100 + n, category, f"Fixture notice {n} &#8211; trail closed", f"2026-09-{20 + n:02d}T14:13:20"
+                site, first + n, category, f"Fixture notice {n} &#8211; trail closed", f"2026-09-{20 + n:02d}T14:13:20"
             )
             for n in (1, 2)
         ]
@@ -3479,6 +3487,7 @@ NOTICE_FIXTURES = {
     "mratc_trail_alerts": ("html", "https://www.mratc.org/"),
     "mratc_blog_feed": ("feed", "https://www.mratc.org/blog-feed.xml"),
     "msgtc_trail_conditions": ("wp", "https://www.msgtc.org/wp-json/wp/v2/pages/24"),
+    "ratc_mcafee_page": ("wp", "https://www.ratc.org/wp-json/wp/v2/pages/2821"),
 }
 NOTICE_FIXTURES.update(
     {
@@ -8539,6 +8548,98 @@ CLUB_POINT_FIXTURES = {
             "Editor": ("fixture person", "fixture person"),
         },
     ),
+    # Section K's hand-back (2026-10-10): the photo layers ata/photos.py and wa_rco/photos.py read, one photograph's
+    # URL a row. Field names are each live layer's own, read off its metadata that day; the values are invented and
+    # the URLs point nowhere (`.invalid`). Each field the row lists in `person_fields`, and editor tracking's, carries
+    # an invented value, so CI's fixture build shows it never lands.
+    **{
+        f"external/{key}.geojson": (
+            (
+                "OBJECTID",
+                "name",
+                "latitude",
+                "longitude",
+                "direction",
+                "notes",
+                "Link",
+                *subject,
+                "Updates",
+                "GlobalID",
+                "CreationDate",
+                "Creator",
+                "EditDate",
+                "Editor",
+            ),
+            {
+                "OBJECTID": (1, 2),
+                "GlobalID": (f"{{fixture-{key}-0}}", f"{{fixture-{key}-1}}"),
+                "name": (f"Fixture {key} 1", f"Fixture {key} 2"),
+                "Link": (f"https://fixture.invalid/{key}/1.jpg", f"https://fixture.invalid/{key}/2.jpg"),
+                "notes": ("fixture person", None),
+                "Updates": ("fixture person", None),
+                "Creator": ("fixture person", "fixture person"),
+                "Editor": ("fixture person", "fixture person"),
+            },
+        )
+        for key, subject in (
+            ("ata_sign_photos", ("Sign_Subject", "Sign_Material", "Sign_ID", "Date")),
+            ("ata_gate_photos", ("gateType", "Gate_ID")),
+            ("ata_road_crossing_photos", ("roadType", "roadLevel", "roadMotorized", "roadSafetyConsiderations", "t", "RC_ID")),
+            ("ata_other_inventory_photos", ("Other_Subject", "Other_Material", "Other_ID", "Date")),
+        )
+    },
+    **{
+        f"external/{key}.geojson": (
+            (
+                "FID",
+                "name",
+                "descriptio",
+                "pic_url",
+                "thumb_url",
+                "website",
+                "shortlist_",
+                "number",
+                "tab_id",
+                "locationSe",
+                "SymbolID",
+                "TypePhoto",
+            ),
+            {
+                "FID": (1, 2),
+                "name": (f"Fixture {key} 1", f"Fixture {key} 2"),
+                "descriptio": ("fixture person", None),
+                "pic_url": (f"https://fixture.invalid/{key}/1.jpg", f"https://fixture.invalid/{key}/2.jpg"),
+            },
+        )
+        for key in ("ata_storymap_photos", "ata_storymap_running_photos")
+    },
+    "external/wa_rco_camping_photos.geojson": (
+        tuple(
+            "FID LocLink LineType TrailType Direction loclink2 oldlink PhotoWeb ThumbnailU Name Web Article audio "
+            "Location Phone Email Hours Season Type Subtype Category Details Directions Boating Owner Management Fee "
+            "Pass Amenities Features Facilities Surface Campground Launch Moreinfo Trail Sports Summer Winter "
+            "Favorite Difficulty NMTrail Reserve PhoneRes WebRes Notes Class2 Class3 Source SourceWeb Status Latitude "
+            "Longitude LocLink_1 MapCat TrailT Weather Accessible BoatDetail DataSet Transit WinterSurf TrailSyste "
+            "Separate AppLabel Rules CampType Filter MotoTrail Filter2 Rule2 Trailhead CampEquip DogRules PassStore "
+            "County BO BI CA DO HI KI MW NW OH SU WB HO InArea subpt CM Basic Offer Commentlin Rulesweb Icon Font "
+            "LengthMi LatEnd LongEnd LatEnd1 LongEnd1 Hiking WaterTrail MtnBike MTSG Motorized Snowmobile Xctry "
+            "LocLink_12 KayakNotes RulesSnowm Grooming Avalanche WebAvalanc kidweb campweb boatingweb dogweb foodweb "
+            "horseweb area1 areaweb1 area2 areaweb2 fishingreg fishregweb accesstxt birdweb eventstart eventend "
+            "eventday emergency e_web SCORPGroup County_SCORP".split()
+        ),
+        {
+            "FID": (1, 2),
+            "LocLink": (1000352, 1000354),
+            "PhotoWeb": ("https://fixture.invalid/wa_rco/1.jpg", "https://fixture.invalid/wa_rco/2.jpg"),
+            "Name": ("Fixture campground 1", "Fixture campground 2"),
+            "Phone": ("fixture person", None),
+            "Email": ("fixture person", None),
+            "Owner": ("fixture person", None),
+            "Management": ("fixture person", None),
+            "PhoneRes": ("fixture person", None),
+            "Notes": ("fixture person", None),
+        },
+    ),
 }
 
 
@@ -10056,6 +10157,25 @@ def _kta_page() -> str:
     return _k_page("Favorite Hikes", body)
 
 
+def _ratc_page() -> str:
+    """RATC's hikes table as measured 2026-10-10: a th header whose first cell is two lines, then a row a hike whose
+    first cell links to the hike's own section below; then the hikes' prose and their Google links, which never land."""
+    rows = "".join(
+        f'<tr><td><a href="#hike{n}">Hike {n}</a>: Fixture Gap {n} to Fixture Knob {n}</td><td>{miles}</td>'
+        f"<td>{difficulty}</td></tr>"
+        for n, miles, difficulty in ((1, "6.9", "Moderate"), (2, "13", "Strenuous"))
+    )
+    body = (
+        "<h1>RATC's 14 AT Hikes</h1><p>Fixture prose.</p><table><tbody><tr>"
+        '<th width="75%"><strong>Hike</strong><br /><span>Northern Point to Southern Point</span></th>'
+        "<th><strong>Length (miles)</strong></th><th><strong>Difficulty</strong></th></tr>"
+        f"{rows}</tbody></table>"
+        "<h3>Hike 1: Fixture Gap 1 to Fixture Knob 1</h3><p>Fixture description.</p>"
+        '<p><a href="https://www.google.com/maps?daddr=36.72036,-80.0">Fixture directions</a></p>'
+    )
+    return _k_page("RATC's 14 AT Hikes", body)
+
+
 def _amc_page() -> str:
     trip = (
         "<h5>Fixture Traverse {n}</h5><p><strong>Strenuous | 3-4 Days</strong></p>"
@@ -10407,6 +10527,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "cohos_day_hikes": [("https://www.cohostrail.org/day-hike/", HTML, _cohos_page())],
         "patc_tuscarora_sections": _tuscarora_pages(),
         "kta_favorite_hikes": [("https://www.kta-hike.org/favorite-hikes-in-pennsylvania.html", HTML, _kta_page())],
+        "ratc_at_hikes": [("https://www.ratc.org/at-hiking/ratcs-14-at-hikes/", HTML, _ratc_page())],
         "amc_itineraries": [("https://www.outdoors.org/resources/itineraries/", HTML, _amc_page())],
         "ata_passages": _ata_pages(),
         "cfpa_trails": [("https://ctwoodlands.org/trails/", HTML, _cfpa_page())],
@@ -10448,6 +10569,7 @@ K_PAGES_ROWS = {
     "cohos_day_hikes": 2,
     "patc_tuscarora_sections": 2,
     "kta_favorite_hikes": 2,
+    "ratc_at_hikes": 2,
     "amc_itineraries": 2,
     "ata_passages": 1,
     "cfpa_trails": 2,

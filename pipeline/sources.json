@@ -5816,6 +5816,30 @@
       "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04): 99 of its 202 trailheads carry no status (2026-10-03), and a row with none would publish as a warning that says nothing. Settled by a rule that leaves a status-less trailhead out."
     },
     {
+      "key": "wa_rco_camping_photos",
+      "title": "Campground photographs in RCO's recreation inventory (Camping_scorp_view, 'RCO Web Points')",
+      "provider": "Washington RCO",
+      "kind": "club_arcgis_layer",
+      "url": "https://services2.arcgis.com/TGEC20q86HQAeMS6/arcgis/rest/services/Camping_scorp_view/FeatureServer/0",
+      "where": "PhotoWeb LIKE 'http%'",
+      "steward": "Washington Recreation and Conservation Office",
+      "licence": "NOTHING STATED, for the layer or for its photographs: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10). The layer's rows (a name, a position, a link) are presumed reusable as public GIS under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3), because RCO publishes them on its own ArcGIS Online organization, anonymously. The photographs sit on mapswa.com, which is not RCO's domain, so who holds their rights is @unvalidated, and the presumption is no licence for them. NOT A LICENCE FROM RCO, and never to be rendered as one.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10).",
+      "attribution": "Washington State Recreation and Conservation Office",
+      "person_fields": ["Phone", "Email", "PhoneRes", "Owner", "Management", "Notes"],
+      "person_fields_comment": "Not read, and listed as a precaution: a campground's contact and ownership fields (`Phone`, `Email`, `PhoneRes`, `Owner`, `Management`) can, for a private campground, be its owner's own name, number or address, and `Notes` is free text that can name anyone. A photo manifest needs none of them, so none is asked for.",
+      "photo_columns": {"title": "Name", "image_url": "PhotoWeb"},
+      "photo_columns_comment": "`Name` is the campground's name and `PhotoWeb` its photograph's URL (`ThumbnailU` a smaller copy); the layer states no credit, licence or page for a photograph, so those columns are null.",
+      "key_fields": ["LocLink"],
+      "key_comment": "`LocLink` is unique and non-null on all 974 rows (measured 2026-10-10 over every row, under `1=1`); `Name` is not (933 distinct), and `PhotoWeb` is unique on the 152 rows that hold a URL.",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's wa_rco photos row (coverage audit 2026-10-01, batch b7_long_trails_states, its skeptic's count of 152), handed back by decision 54's section K as an ArcGIS photo field, then read live on 2026-10-10 under lib/user_agent.py's USER_AGENT: services2.arcgis.com answers /robots.txt with 403, which RFC 9309 reads as no rules; two seconds or more between requests to one host. Every row's key fields were read to measure the key; no other value was printed.",
+      "discovered_date": "2026-10-10",
+      "notes": "974 points (returnCountOnly), 152 with an http `PhotoWeb` (the `where`; most of the rest hold a single space), maxRecordCount 2,000, layer lastEditDate 2026-01-13, item modified 2024-08-28, all read 2026-10-10. A camping inventory from Washington's outdoor recreation plan (the item: Camping_scorp_view; the layer: RCO Web Points), its photographs on mapswa.com (https://mapswa.com/photos/1000352.jpg is the first). Its campgrounds as points of interest are another cell's (not_available.toml [wa_rco.points_of_interest]); a reader of them would share this layer's one read rather than read it twice (decision 34), and this row's `where` would have to go. A photo manifest row, never the pixels: no image is fetched.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held: no mart reads int_photos__club_unioned yet, and nothing states a licence for these photographs, which belong to whoever took them. Whether a photograph with no stated licence may show is the maintainer's question (the not_available.toml notes this row replaces left it so); decision 63 keeps the row false until a mart reads it under tested rules."
+    },
+    {
       "key": "wa_public_lands_inventory",
       "title": "WA Public Lands Inventory 2019",
       "provider": "Washington RCO",
@@ -12007,6 +12031,150 @@
       "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, with int_trail_lines__club_published reading the table: the Arizona Trail as a mountain bike rides it, by the layer's own name, and where it leaves the hiking passages it is a detour for bikes: ata_arizona_trail carries the hiking passages."
     },
     {
+      "key": "ata_sign_photos",
+      "title": "Arizona Trail sign inventory photographs (ATA's Scenic Resources view, layer 0)",
+      "provider": "ATA",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Scenic_Resources_AGOL_view/FeatureServer/0",
+      "where": "Link LIKE 'http%'",
+      "steward": "Arizona Trail Association",
+      "licence": "NOTHING STATED, for the layer or for its photographs: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10). The layer's rows (a name, a position, a link) are presumed reusable as public GIS under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3), because the Arizona Trail Association publishes them itself, anonymously, on a public endpoint. The photographs each row links sit on another host, www.giseifert.com, and that presumption is no licence for them: their rights are unstated. NOT A LICENCE FROM THE ARIZONA TRAIL ASSOCIATION, and never to be rendered as one.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10).",
+      "attribution": "Arizona Trail Association",
+      "person_fields": ["notes", "Updates"],
+      "person_fields_comment": "Editor tracking's `Creator` and `Editor` are PERSON_FIELDS, never asked for. `notes` and `Updates` are free text typed per feature and were not read: a photo manifest needs the name, the link and the id, and a typed note can name the volunteer who logged it (Reasoned), so both are listed here, unread, as a precaution and never asked for.",
+      "photo_columns": {"title": "name", "image_url": "Link"},
+      "photo_columns_comment": "`name` is the feature's own name and `Link` its one photograph's URL; the layer states no credit, licence or page for a photograph, so those columns are null.",
+      "key_fields": ["GlobalID"],
+      "key_comment": "`GlobalID` is unique and non-null on all 2,117 rows (measured 2026-10-10 over every row, under `1=1`). `Link` is not unique (2,103 distinct of 2,115 non-null: one photograph can show two signs), nor is `Sign_ID` (2,105 of 2,117).",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's azgeo photos row (coverage audit 2026-10-01, batch b7_long_trails_states, its skeptic's counts), handed back by decision 54's section K as an ArcGIS photo field, then read live on 2026-10-10 under lib/user_agent.py's USER_AGENT: services3.arcgis.com answers /robots.txt with 403, which RFC 9309 reads as no rules; two seconds or more between requests to one host. Every row's key fields were read to measure the key; no other value was printed.",
+      "discovered_date": "2026-10-10",
+      "notes": "2,117 points (returnCountOnly), 2,115 with an http `Link` (the `where`), maxRecordCount 1,000, editor tracking on, layer lastEditDate 2026-09-04, item modified 2026-05-15, all read 2026-10-10. Fields: OBJECTID, name, latitude, longitude, direction, notes, Link, Sign_Subject, Sign_Material, Sign_ID, Updates, Date, GlobalID, CreationDate, Creator, EditDate, Editor. Each row's `Link` is one JPEG on www.giseifert.com (https://www.giseifert.com/images/ATA_Scenic_Resources/IMG_001.jpg is the first). The layer is ATA's: its organization, IKBBLZOXy58PXgpl, is 'Arizona Trail Association', which AZGeo's hub lists. A photo manifest row, never the pixels: no image is fetched.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held: no mart reads int_photos__club_unioned yet, and nothing states a licence for these photographs, which belong to whoever took them. Whether a photograph with no stated licence may show is the maintainer's question (the not_available.toml notes this row replaces left it so); decision 63 keeps the row false until a mart reads it under tested rules."
+    },
+    {
+      "key": "ata_gate_photos",
+      "title": "Arizona Trail gate inventory photographs (ATA's Scenic Resources view, layer 1)",
+      "provider": "ATA",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Scenic_Resources_AGOL_view/FeatureServer/1",
+      "where": "Link LIKE 'http%'",
+      "steward": "Arizona Trail Association",
+      "licence": "NOTHING STATED, for the layer or for its photographs: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10). The layer's rows (a name, a position, a link) are presumed reusable as public GIS under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3), because the Arizona Trail Association publishes them itself, anonymously, on a public endpoint. The photographs each row links sit on another host, www.giseifert.com, and that presumption is no licence for them: their rights are unstated. NOT A LICENCE FROM THE ARIZONA TRAIL ASSOCIATION, and never to be rendered as one.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10).",
+      "attribution": "Arizona Trail Association",
+      "person_fields": ["notes", "Updates"],
+      "person_fields_comment": "Editor tracking's `Creator` and `Editor` are PERSON_FIELDS, never asked for. `notes` and `Updates` are free text typed per feature and were not read: a photo manifest needs the name, the link and the id, and a typed note can name the volunteer who logged it (Reasoned), so both are listed here, unread, as a precaution and never asked for.",
+      "photo_columns": {"title": "name", "image_url": "Link"},
+      "photo_columns_comment": "`name` is the feature's own name and `Link` its one photograph's URL; the layer states no credit, licence or page for a photograph, so those columns are null.",
+      "key_fields": ["GlobalID"],
+      "key_comment": "`GlobalID` is unique and non-null on all 305 rows (measured 2026-10-10 over every row, under `1=1`). `Gate_ID` is unique too (305 of 305); `Link` is not (300 distinct of 303 non-null).",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's azgeo photos row (coverage audit 2026-10-01, batch b7_long_trails_states, its skeptic's counts), handed back by decision 54's section K as an ArcGIS photo field, then read live on 2026-10-10 under lib/user_agent.py's USER_AGENT: services3.arcgis.com answers /robots.txt with 403, which RFC 9309 reads as no rules; two seconds or more between requests to one host. Every row's key fields were read to measure the key; no other value was printed.",
+      "discovered_date": "2026-10-10",
+      "notes": "305 points (returnCountOnly), 303 with an http `Link` (the `where`), maxRecordCount 1,000, editor tracking on, layer lastEditDate 2026-09-04, item modified 2026-05-15, all read 2026-10-10. Fields: OBJECTID, name, latitude, longitude, direction, gateType, notes, Link, Gate_ID, Updates, GlobalID, CreationDate, Creator, EditDate, Editor. Each row's `Link` is one JPEG on www.giseifert.com (https://www.giseifert.com/images/ATA_Scenic_Resources/IMG_001.jpg is the first). The layer is ATA's: its organization, IKBBLZOXy58PXgpl, is 'Arizona Trail Association', which AZGeo's hub lists. A photo manifest row, never the pixels: no image is fetched.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held: no mart reads int_photos__club_unioned yet, and nothing states a licence for these photographs, which belong to whoever took them. Whether a photograph with no stated licence may show is the maintainer's question (the not_available.toml notes this row replaces left it so); decision 63 keeps the row false until a mart reads it under tested rules."
+    },
+    {
+      "key": "ata_road_crossing_photos",
+      "title": "Arizona Trail road crossing inventory photographs (ATA's Scenic Resources view, layer 2)",
+      "provider": "ATA",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Scenic_Resources_AGOL_view/FeatureServer/2",
+      "where": "Link LIKE 'http%'",
+      "steward": "Arizona Trail Association",
+      "licence": "NOTHING STATED, for the layer or for its photographs: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10). The layer's rows (a name, a position, a link) are presumed reusable as public GIS under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3), because the Arizona Trail Association publishes them itself, anonymously, on a public endpoint. The photographs each row links sit on another host, www.giseifert.com, and that presumption is no licence for them: their rights are unstated. NOT A LICENCE FROM THE ARIZONA TRAIL ASSOCIATION, and never to be rendered as one.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10).",
+      "attribution": "Arizona Trail Association",
+      "person_fields": ["notes", "Updates"],
+      "person_fields_comment": "Editor tracking's `Creator` and `Editor` are PERSON_FIELDS, never asked for. `notes` and `Updates` are free text typed per feature and were not read: a photo manifest needs the name, the link and the id, and a typed note can name the volunteer who logged it (Reasoned), so both are listed here, unread, as a precaution and never asked for.",
+      "photo_columns": {"title": "name", "image_url": "Link"},
+      "photo_columns_comment": "`name` is the feature's own name and `Link` its one photograph's URL; the layer states no credit, licence or page for a photograph, so those columns are null.",
+      "key_fields": ["GlobalID"],
+      "key_comment": "`GlobalID` is unique and non-null on all 230 rows (measured 2026-10-10 over every row, under `1=1`). `RC_ID` is unique too (230 of 230), and so is `Link` on the 197 rows that hold one.",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's azgeo photos row (coverage audit 2026-10-01, batch b7_long_trails_states, its skeptic's counts), handed back by decision 54's section K as an ArcGIS photo field, then read live on 2026-10-10 under lib/user_agent.py's USER_AGENT: services3.arcgis.com answers /robots.txt with 403, which RFC 9309 reads as no rules; two seconds or more between requests to one host. Every row's key fields were read to measure the key; no other value was printed.",
+      "discovered_date": "2026-10-10",
+      "notes": "230 points (returnCountOnly), 197 with an http `Link` (the `where`), maxRecordCount 1,000, editor tracking on, layer lastEditDate 2026-09-04, item modified 2026-05-15, all read 2026-10-10. Fields: OBJECTID, latitude, longitude, direction, notes, Link, name, roadType, roadLevel, roadMotorized, roadSafetyConsiderations, t, RC_ID, Updates, GlobalID, CreationDate, Creator, EditDate, Editor. Each row's `Link` is one JPEG on www.giseifert.com (https://www.giseifert.com/images/ATA_Scenic_Resources/IMG_001.jpg is the first). The layer is ATA's: its organization, IKBBLZOXy58PXgpl, is 'Arizona Trail Association', which AZGeo's hub lists. A photo manifest row, never the pixels: no image is fetched.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held: no mart reads int_photos__club_unioned yet, and nothing states a licence for these photographs, which belong to whoever took them. Whether a photograph with no stated licence may show is the maintainer's question (the not_available.toml notes this row replaces left it so); decision 63 keeps the row false until a mart reads it under tested rules."
+    },
+    {
+      "key": "ata_other_inventory_photos",
+      "title": "Arizona Trail other-feature inventory photographs (ATA's Scenic Resources view, layer 8)",
+      "provider": "ATA",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Scenic_Resources_AGOL_view/FeatureServer/8",
+      "where": "Link LIKE 'http%'",
+      "steward": "Arizona Trail Association",
+      "licence": "NOTHING STATED, for the layer or for its photographs: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10). The layer's rows (a name, a position, a link) are presumed reusable as public GIS under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3), because the Arizona Trail Association publishes them itself, anonymously, on a public endpoint. The photographs each row links sit on another host, www.giseifert.com, and that presumption is no licence for them: their rights are unstated. NOT A LICENCE FROM THE ARIZONA TRAIL ASSOCIATION, and never to be rendered as one.",
+      "licence_basis": "public_gis",
+      "terms": "None stated: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10).",
+      "attribution": "Arizona Trail Association",
+      "person_fields": ["notes", "Updates"],
+      "person_fields_comment": "Editor tracking's `Creator` and `Editor` are PERSON_FIELDS, never asked for. `notes` and `Updates` are free text typed per feature and were not read: a photo manifest needs the name, the link and the id, and a typed note can name the volunteer who logged it (Reasoned), so both are listed here, unread, as a precaution and never asked for.",
+      "photo_columns": {"title": "name", "image_url": "Link"},
+      "photo_columns_comment": "`name` is the feature's own name and `Link` its one photograph's URL; the layer states no credit, licence or page for a photograph, so those columns are null.",
+      "key_fields": ["GlobalID"],
+      "key_comment": "`GlobalID` is unique and non-null on all 26 rows (measured 2026-10-10 over every row, under `1=1`). `Link` and `Other_ID` are unique on the 9 rows that hold one.",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's azgeo photos row (coverage audit 2026-10-01, batch b7_long_trails_states, its skeptic's counts), handed back by decision 54's section K as an ArcGIS photo field, then read live on 2026-10-10 under lib/user_agent.py's USER_AGENT: services3.arcgis.com answers /robots.txt with 403, which RFC 9309 reads as no rules; two seconds or more between requests to one host. Every row's key fields were read to measure the key; no other value was printed.",
+      "discovered_date": "2026-10-10",
+      "notes": "26 points (returnCountOnly), 9 with an http `Link` (the `where`), maxRecordCount 1,000, editor tracking on, layer lastEditDate 2026-09-04, item modified 2026-05-15, all read 2026-10-10. Fields: OBJECTID, name, latitude, longitude, direction, notes, Link, Other_Subject, Other_Material, Other_ID, Updates, Date, GlobalID, CreationDate, Creator, EditDate, Editor. Each row's `Link` is one JPEG on www.giseifert.com (https://www.giseifert.com/images/ATA_Scenic_Resources/IMG_001.jpg is the first). The layer is ATA's: its organization, IKBBLZOXy58PXgpl, is 'Arizona Trail Association', which AZGeo's hub lists. A photo manifest row, never the pixels: no image is fetched.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held: no mart reads int_photos__club_unioned yet, and nothing states a licence for these photographs, which belong to whoever took them. Whether a photograph with no stated licence may show is the maintainer's question (the not_available.toml notes this row replaces left it so); decision 63 keeps the row false until a mart reads it under tested rules."
+    },
+    {
+      "key": "ata_storymap_photos",
+      "title": "Arizona Trail StoryMap photo points (ATA_StoryMap_PhotoPoints view)",
+      "provider": "ATA",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/ATA_StoryMap_PhotoPoints_view/FeatureServer/0",
+      "where": "pic_url LIKE 'http%'",
+      "steward": "Arizona Trail Association",
+      "licence": "NOTHING STATED on the layer: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10). The layer's rows (a name, a position, a link) are presumed reusable as public GIS under decision 21(a) (`public_gis`), because the Arizona Trail Association publishes them itself, anonymously, on a public endpoint. The photographs are Flickr's, and the coverage audit read the account's first 25 as All rights reserved (`terms`), so a photograph here is read as all rights reserved unless its own Flickr page says otherwise. NOT A LICENCE FROM THE ARIZONA TRAIL ASSOCIATION, and never to be rendered as one.",
+      "licence_basis": "public_gis",
+      "terms": "None stated on the layer: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10). The photographs: the coverage audit (2026-10-01, batch c10_nst_rest) read the first 25 photos of the Arizona Trail Association's Flickr account (`79177693@N02`) as `license: 0`, All rights reserved, and found these points link those same images. Not re-read: Flickr states a photo's licence through its API, which needs a key.",
+      "attribution": "Arizona Trail Association",
+      "person_fields": ["descriptio"],
+      "person_fields_comment": "`descriptio` is each point's caption, prose a person wrote, not read: a caption can name the photographer, and a photo manifest needs the name, the link and the position, so it is listed here, unread, as a precaution and never asked for. The layer has no editor tracking.",
+      "photo_columns": {"title": "name", "image_url": "pic_url"},
+      "photo_columns_comment": "`name` is the point's own name and `pic_url` its photograph on Flickr (`thumb_url` is the same photograph small); the layer states no credit, licence or page for it, so those columns are null.",
+      "key_fields": ["pic_url"],
+      "key_comment": "`pic_url` is unique and non-null on all 174 rows (measured 2026-10-10 over every row); `name` is too, and the URL is the photograph itself.",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's ata and azgeo photos rows (coverage audit 2026-10-01, batches c10_nst_rest and b7_long_trails_states), handed back by decision 54's section K as an ArcGIS photo field, then read live on 2026-10-10 under lib/user_agent.py's USER_AGENT: services3.arcgis.com answers /robots.txt with 403, which RFC 9309 reads as no rules; two seconds or more between requests to one host. Every row's key fields were read to measure the key; no other value was printed.",
+      "discovered_date": "2026-10-10",
+      "notes": "174 points (returnCountOnly), every one with an http `pic_url`, 12 fields (FID, name, descriptio, pic_url, thumb_url, website, shortlist_, number, tab_id, locationSe, SymbolID, TypePhoto), maxRecordCount 2,000, layer lastEditDate 2025-11-02, all read 2026-10-10. A public view of a hosted layer, ATA_StoryMap_PhotoPoints, that answers 'Token Required' to an anonymous request. Its sibling view ATA_StoryMap_PhotoPoints_Trail_Running_view holds 14 other points and is its own row (ata_storymap_running_photos): none of its 14 photograph URLs is among these 174 (compared 2026-10-10), so the coverage audit's 'a subset' does not hold and neither is a copy of the other. A photo manifest row, never the pixels: no image is fetched.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held: no mart reads int_photos__club_unioned yet, and nothing states a licence for these photographs, which belong to whoever took them. Whether a photograph with no stated licence may show is the maintainer's question (the not_available.toml notes this row replaces left it so); decision 63 keeps the row false until a mart reads it under tested rules."
+    },
+    {
+      "key": "ata_storymap_running_photos",
+      "title": "Arizona Trail StoryMap trail-running photo points (ATA_StoryMap_PhotoPoints Trail Running view)",
+      "provider": "ATA",
+      "kind": "club_arcgis_layer",
+      "url": "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/ATA_StoryMap_PhotoPoints_Trail_Running_view/FeatureServer/0",
+      "where": "pic_url LIKE 'http%'",
+      "steward": "Arizona Trail Association",
+      "licence": "NOTHING STATED on the layer: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10). The layer's rows (a name, a position, a link) are presumed reusable as public GIS under decision 21(a) (`public_gis`), because the Arizona Trail Association publishes them itself, anonymously, on a public endpoint. The photographs are Flickr's, and the coverage audit read the account's first 25 as All rights reserved (`terms`), so a photograph here is read as all rights reserved unless its own Flickr page says otherwise. NOT A LICENCE FROM THE ARIZONA TRAIL ASSOCIATION, and never to be rendered as one.",
+      "licence_basis": "public_gis",
+      "terms": "None stated on the layer: the item's licenseInfo is null and the layer's copyrightText is empty (read 2026-10-10). The photographs: the coverage audit (2026-10-01, batch c10_nst_rest) read the first 25 photos of the Arizona Trail Association's Flickr account (`79177693@N02`) as `license: 0`, All rights reserved, and found these points link those same images. Not re-read: Flickr states a photo's licence through its API, which needs a key.",
+      "attribution": "Arizona Trail Association",
+      "person_fields": ["descriptio"],
+      "person_fields_comment": "`descriptio` is each point's caption, prose a person wrote, not read: a caption can name the photographer, and a photo manifest needs the name, the link and the position, so it is listed here, unread, as a precaution and never asked for. The layer has no editor tracking.",
+      "photo_columns": {"title": "name", "image_url": "pic_url"},
+      "photo_columns_comment": "`name` is the point's own name and `pic_url` its photograph on Flickr (`thumb_url` is the same photograph small); the layer states no credit, licence or page for it, so those columns are null.",
+      "key_fields": ["pic_url"],
+      "key_comment": "`pic_url` is unique and non-null on all 14 rows (measured 2026-10-10 over every row); `name` is too, and the URL is the photograph itself.",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's ata and azgeo photos rows (coverage audit 2026-10-01, batches c10_nst_rest and b7_long_trails_states), handed back by decision 54's section K as an ArcGIS photo field, then read live on 2026-10-10 under lib/user_agent.py's USER_AGENT: services3.arcgis.com answers /robots.txt with 403, which RFC 9309 reads as no rules; two seconds or more between requests to one host. Every row's key fields were read to measure the key; no other value was printed.",
+      "discovered_date": "2026-10-10",
+      "notes": "14 points (returnCountOnly), every one with an http `pic_url`, 12 fields (FID, name, descriptio, pic_url, thumb_url, website, shortlist_, number, tab_id, locationSe, SymbolID, TypePhoto), maxRecordCount 2,000, layer lastEditDate 2025-11-02, all read 2026-10-10. A public view of a hosted layer, ATA_StoryMap_PhotoPoints, that answers 'Token Required' to an anonymous request. Its sibling view ATA_StoryMap_PhotoPoints_view holds 174 other points (ata_storymap_photos): none of these 14 photograph URLs is among them (compared 2026-10-10), and both views share the hosted layer's lastEditDate. A photo manifest row, never the pixels: no image is fetched.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held: no mart reads int_photos__club_unioned yet, and nothing states a licence for these photographs, which belong to whoever took them. Whether a photograph with no stated licence may show is the maintainer's question (the not_available.toml notes this row replaces left it so); decision 63 keeps the row false until a mart reads it under tested rules."
+    },
+    {
       "key": "ata_water_cache_boxes",
       "title": "Arizona Trail Bear Box/Water Cache Locations (ATA's PDF)",
       "provider": "ATA",
@@ -17517,6 +17685,111 @@
       "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
     },
     {
+      "key": "ratc_at_hikes",
+      "title": "Roanoke Appalachian Trail Club's 14 AT Hikes (its page)",
+      "provider": "RATC",
+      "kind": "published_hikes",
+      "url": "https://www.ratc.org/at-hiking/ratcs-14-at-hikes/",
+      "steward": "Roanoke Appalachian Trail Club",
+      "attribution": "Roanoke Appalachian Trail Club",
+      "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its difficulty, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from the Roanoke Appalachian Trail Club; the terms as found stay quoted in `terms`.",
+      "licence_basis": "maintainer_authorisation",
+      "terms": "The page's footer: \"Copyright © 2026\" (read 2026-10-10). No terms page was found on it.",
+      "reader": "ContentPages (extract/_pages_content.py), site `ratc_at_hikes`",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser reads the hikes table's three columns and nothing else. The page's hike descriptions and its Google Maps links are not read.",
+      "key_fields": ["name"],
+      "key_comment": "The hike's two ends (`name`, 'Black Horse Gap (BRP) to Curry Gap (BRP)'): unique on all 14 rows read 2026-10-10. Its number (`section`, 'Hike 1' to 'Hike 14') is unique too, and would change if the club renumbered.",
+      "freshness": {"kind": "read_and_hash", "url": "https://www.ratc.org/at-hiking/ratcs-14-at-hikes/", "notes": "No validator trusted: every run reads the page and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check, which ContentPages inherits). Decision 53's inventory measured HTML validators as the request time or a render-time ETag."},
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's suggested_hikes row for this club (coverage audit 2026-10-01); section K (2026-10-04) could not read it, www.ratc.org's robots.txt answering 502; read live on 2026-10-10 under lib/user_agent.py's USER_AGENT, robots.txt first (200, disallowing only /wp-admin/).",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10: HTTP 200, text/html, 185,423 bytes. One table, 14 hikes north to south along RATC's section, from Black Horse Gap on the Blue Ridge Parkway to VA 611, 5.5 to 13.2 miles, each Moderate or Strenuous. Below it each hike's description and Google Maps driving links, neither read. The routes are in a CalTopo map whose API caltopo.com's robots.txt disallows (not_available.toml's former [ratc.suggested_hikes] note, kept in ratc/suggested_hikes.py's docstring), and the 113-mile hike list page (2023) gives the same hikes with their climbs and 11 map PDFs, which are not read.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "False on 2026-10-10 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and difficulty each beside the text it was read from, and the link."
+    },
+    {
+      "key": "ratc_closures_posts",
+      "title": "RATC closures posts",
+      "provider": "RATC",
+      "kind": "published_notices",
+      "url": "https://www.ratc.org/category/closures/",
+      "trust": "authoritative",
+      "steward": "Roanoke Appalachian Trail Club",
+      "licence": "MAINTAINER AUTHORISATION on decisions 53, 55 and 107 (facts and a link, 2026-10-03 and 2026-10-08): a club's notices and closure posts publish as their title, dates, category and a link to the club's own page, copying none of their wording (features/ORG_NOTICES.md section 7), and a copyright footer restricts copying, not reading. The terms are quoted verbatim in `terms`. NOT A LICENCE FROM the Roanoke Appalachian Trail Club.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Roanoke Appalachian Trail Club",
+      "terms": "The site footer: \"Copyright © 2026\" (read 2026-10-10 on the McAfee Knob page and on the 14 AT Hikes page). No terms page: neither page links one.",
+      "reader": "WordpressPosts",
+      "person_fields": [
+        "content",
+        "excerpt"
+      ],
+      "person_fields_comment": "Decision 59 leaves a free-text field that carries personal data out whole: on 2026-10-10 the category's 3 posts carried 3 telephone-number-shaped strings in their bodies and 1 in an excerpt (counted, not read). WordpressPosts drops the row's person_fields before dlt sees the post, so the body never reaches the raw store; the title, dates, categories and link are what a notice publishes anyway (decisions 55 and 107).",
+      "freshness": {
+        "kind": "wp_total_and_modified",
+        "url": "https://www.ratc.org/wp-json/wp/v2/posts",
+        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4; decision 53's inventory read the category feed's ETag and Last-Modified as the site's)."
+      },
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03: its drafted row, registered on 2026-10-10 once www.ratc.org's robots.txt answered 200 (it answered 502 to phase B on 2026-10-03, which RFC 9309 reads as a full disallow).",
+      "discovered_date": "2026-10-03",
+      "notes": "One row per post (extract/_kinds.py's WordpressPosts), keyed by `id`, the WordPress post id. WordPress category 78 `closures`, read through the REST API with X-WP-Total as the count. Dormant: 3 posts, 'Catawba Mountain Fire Road Temporarily Closed' (2022-01-11, post 9351), 'Dragon’s Tooth visitors asked to protect sensitive ecosystem' (2023-08-21) and 'MVP Construction in Peters Mountain Area' (2023-10-25), newest modified 2025-04-26. Closure posts since go untagged to RATC News (ratc_news_posts), which carries post 9351 too, so that post lands in both tables. Read live at 2026-10-10T22:34:02Z under lib/user_agent.py's agent, robots.txt (https://www.ratc.org/robots.txt, 200, 113 bytes, read 2026-10-10T22:33:58Z) allows the path for our agent, no Crawl-delay: the category lookup (category 78 `closures`) and one page of posts (per_page=100): HTTP 200, 15,196 bytes, no ETag or Last-Modified, X-WP-Total 3, 3 posts read, `id` distinct on 3 of 3: the key, with X-WP-Total as the proof.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04), as every WordPress category that keeps every post it ever filed (tehcc_at_posts, matc_hazard_posts, ata_closures_reroutes): no rule expires a post (a post states no end date the reader stages), so its 3 posts of 2022 and 2023 would stand as current warnings. Settled by an expiry rule for posts (@unvalidated, as those rows say: expiry is a dbt rule)."
+    },
+    {
+      "key": "ratc_news_posts",
+      "title": "RATC news posts",
+      "provider": "RATC",
+      "kind": "published_notices",
+      "url": "https://www.ratc.org/category/ratc-news/",
+      "trust": "authoritative",
+      "steward": "Roanoke Appalachian Trail Club",
+      "licence": "MAINTAINER AUTHORISATION on decisions 53, 55 and 107 (facts and a link, 2026-10-03 and 2026-10-08): a club's notices and closure posts publish as their title, dates, category and a link to the club's own page, copying none of their wording (features/ORG_NOTICES.md section 7), and a copyright footer restricts copying, not reading. The terms are quoted verbatim in `terms`. NOT A LICENCE FROM the Roanoke Appalachian Trail Club.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Roanoke Appalachian Trail Club",
+      "terms": "The site footer: \"Copyright © 2026\" (read 2026-10-10 on the McAfee Knob page and on the 14 AT Hikes page). No terms page: neither page links one.",
+      "reader": "WordpressPosts",
+      "person_fields": [
+        "content",
+        "excerpt"
+      ],
+      "person_fields_comment": "Decision 59 leaves a free-text field that carries personal data out whole: on 2026-10-10 the category's 25 posts carried 8 e-mail-address-shaped and 5 telephone-number-shaped strings in their bodies and 1 telephone-number-shaped string in an excerpt (counted, not read). WordpressPosts drops the row's person_fields before dlt sees the post, so the body never reaches the raw store; the title, dates, categories and link are what a notice publishes anyway (decisions 55 and 107).",
+      "freshness": {
+        "kind": "wp_total_and_modified",
+        "url": "https://www.ratc.org/wp-json/wp/v2/posts",
+        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4; decision 53's inventory read the category feed's ETag and Last-Modified as the site's)."
+      },
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03: its drafted row, registered on 2026-10-10 once www.ratc.org's robots.txt answered 200 (it answered 502 to phase B on 2026-10-03, which RFC 9309 reads as a full disallow).",
+      "discovered_date": "2026-10-03",
+      "notes": "One row per post (extract/_kinds.py's WordpressPosts), keyed by `id`, the WordPress post id. WordPress category 13 `ratc-news`, read through the REST API with X-WP-Total as the count: 25 posts, 2015-08-04 to 2025-11-26, the club's news beside its notices. Where closure posts have gone since the Closures category went quiet: the Catawba Mountain Fire Road's closure (2022-01-11, post 9351, in both categories), its reopening (2022-02-25), its second phase of work (2025-11-03, 'Nov 10-20') and its completion (2025-11-26). Which posts are notices is decision 7's classifier and a person's review in dbt, never a filter here. Read live at 2026-10-10T22:34:08Z under lib/user_agent.py's agent, robots.txt (https://www.ratc.org/robots.txt, 200, 113 bytes, read 2026-10-10T22:33:58Z) allows the path for our agent, no Crawl-delay: the category lookup (category 13 `ratc-news`) and one page of posts (per_page=100): HTTP 200, 240,961 bytes, no ETag or Last-Modified, X-WP-Total 25, 25 posts read, `id` distinct on 25 of 25: the key, with X-WP-Total as the proof.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decision 63's hold (2026-10-04), as every WordPress category that keeps every post it ever filed (tehcc_at_posts, matc_hazard_posts, ata_closures_reroutes): no rule expires a post (a post states no end date the reader stages), so its 25 posts back to 2015, club news among them, would stand as current warnings. Settled by an expiry rule for posts (@unvalidated, as those rows say: expiry is a dbt rule), and decision 7's classifier or a reviewed list of which posts are notices, as gatc_news_feed's hold says of a stream that mixes notices with a club's news."
+    },
+    {
+      "key": "ratc_mcafee_page",
+      "title": "RATC McAfee Knob and Triple Crown rules page",
+      "provider": "RATC",
+      "kind": "published_notices",
+      "url": "https://www.ratc.org/at-hiking/mcafee-knob-and-the-triple-crown/",
+      "trust": "authoritative",
+      "steward": "Roanoke Appalachian Trail Club",
+      "licence": "MAINTAINER AUTHORISATION on decisions 53, 55 and 107 (facts and a link, 2026-10-03 and 2026-10-08): a club's notices and closure posts publish as their title, dates, category and a link to the club's own page, copying none of their wording (features/ORG_NOTICES.md section 7), and a copyright footer restricts copying, not reading. The terms are quoted verbatim in `terms`. NOT A LICENCE FROM the Roanoke Appalachian Trail Club.",
+      "licence_basis": "maintainer_authorisation",
+      "attribution": "Roanoke Appalachian Trail Club",
+      "terms": "The site footer: \"Copyright © 2026\" (read 2026-10-10 on the McAfee Knob page and on the 14 AT Hikes page). No terms page: neither page links one.",
+      "reader": "PageNotice",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://www.ratc.org/wp-json/wp/v2/pages/2821",
+        "notes": "No validator trusted: every run reads the source (one request) and is FRESH only when the rows that would land hash as the last committed load did (extract/_notices.py's change check). The REST answer carries no ETag or Last-Modified (measured 2026-10-10)."
+      },
+      "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03: its drafted row, registered on 2026-10-10 once www.ratc.org's robots.txt answered 200 (it answered 502 to phase B on 2026-10-03, which RFC 9309 reads as a full disallow).",
+      "discovered_date": "2026-10-03",
+      "notes": "'McAfee Knob and Virginia’s Triple Crown', the club's standing rules for the A.T. from VA 624 to US 220 (camping, fires, group sizes) and a water line for the Dragons Tooth area, read through WordPress page 2821. As every page notice, the page is one notice: its title, its own date and its link, and none of its sentences, the water line among them (decisions 55 and 107). Read live at 2026-10-10T22:34:12Z under lib/user_agent.py's agent, robots.txt (https://www.ratc.org/robots.txt, 200, 113 bytes, read 2026-10-10T22:33:58Z) allows the path for our agent, no Crawl-delay: HTTP 200, 30,888 bytes, no ETag or Last-Modified. Through PageNotice that answer lands one row: title 'McAfee Knob and Virginia’s Triple Crown', its date 2026-02-25 (wp_modified, stated as '2026-02-25T02:18:48'), region `wp:content` of 14,304 characters. The key is `url`: one row a page, 1 distinct of 1.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True by decision 63, as for every page notice (cohos_trouble_spots, mratc_trail_alerts): stg_ratc__ratc_mcafee_page reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
+    },
+    {
       "key": "blue_hills_hikes",
       "title": "Friends of the Blue Hills Suggested Hikes (friendsofthebluehills.org/hiking-near-boston/)",
       "provider": "Friends of the Blue Hills",
@@ -17547,33 +17820,58 @@
     },
     {
       "key": "wmc_hike_ratings",
-      "title": "Wasatch Mountain Club Hiking Trail Database (WMCHikesCopyToWeb.pdf)",
+      "title": "Wasatch Mountain Club Hiking Trail Database (WMCHikesCopyToWeb.xlsx)",
       "provider": "WMC",
       "kind": "published_hikes",
-      "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf",
+      "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.xlsx",
       "steward": "Wasatch Mountain Club",
       "attribution": "Wasatch Mountain Club",
       "licence": "Facts and a link only (decision 70, ELT.md's decisions table: the maintainer's poll of 2026-10-04, card Q2, 'as decision 55 does for notices'): the hike's name, its distance and its climb, each beside the text it was read from, and the link, never the club's description. It is the maintainer's decision, NOT a grant from Wasatch Mountain Club; the terms as found stay quoted in `terms`.",
       "licence_basis": "maintainer_authorisation",
-      "terms": "None found: the hike ratings page (/dan-smiths-hike-ratings-table) and the PDF state no terms or licence (read 2026-10-04); the coverage audit found the club's trip reports 'written by members' with no licence.",
-      "reader": "ContentPdf (extract/_pdf_content.py), family `wmc_hike_ratings`",
+      "terms": "None found: the hike ratings page (/dan-smiths-hike-ratings-table) and the PDF state no terms or licence (read 2026-10-04), and nor does the workbook's Hikes sheet (read 2026-10-10); the coverage audit found the club's trip reports 'written by members' with no licence.",
+      "reader": "ContentSheet (extract/_sheet_content.py), family `wmc_hike_ratings`",
       "person_fields": [],
-      "person_fields_comment": "None: the family reads the table's rows (the columns in extract/_pdf_content.py's TYPE_COLUMNS, its own and DOCUMENT_COLUMNS) and nothing else. The document's first page names the members who compiled the table, and its /Author metadata a member's first name; neither is read, and no metadata field lands but the two dates.",
+      "person_fields_comment": "None: the family reads the workbook's Hikes sheet (the columns in extract/_pages_content.py's TYPE_COLUMNS, its own and extract/_sheet_content.py's SHEET_DOCUMENT_COLUMNS) and nothing else. The workbook's CoverSheet names the members who compiled the table and its properties name its author and last editor; none of them is read.",
       "key_fields": [
         "name",
         "elevation_gain_text"
       ],
-      "key_comment": "The hike's name and its total ascent (`name`, `elevation_gain_text`): unique on all 157 rows read 2026-10-04. The name alone is not: 'SNAKE CREEK PASS FROM BRIGHTON LAKES TH.' is two rows, 1,344 and 1,312 feet of ascent, and the table carries no id.",
+      "key_comment": "The hike's name and its total ascent (`name`, `elevation_gain_text`): unique on all 157 rows of the PDF read 2026-10-04 and of the workbook read 2026-10-10. The name alone is not: 'SNAKE CREEK PASS FROM BRIGHTON LAKES TH.' is two rows in both, 1,344 and 1,312 feet of ascent, and the table carries no id.",
       "freshness": {
         "kind": "file_validator",
-        "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.pdf",
-        "notes": "ContentPdf's per-file check (extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither."
+        "url": "https://www.wasatchmountainclub.org/hike/WMCHikesCopyToWeb.xlsx",
+        "notes": "ContentSheet's per-file check, ContentPdf's (extract/_sheet_content.py, extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither. The workbook came with Last-Modified and Content-Length and no ETag on 2026-10-10."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
-      "notes": "Read 2026-10-04T17:34:11Z at the host's `Crawl-delay: 10`: HTTP 200, application/pdf, 252,399 bytes, Last-Modified 2012-09-17, no ETag; 5 pages, the metadata's dates 2012-09-17 and its title 'WMCHikesCopyToWeb.xlsx'. The text layer reads cleanly: 157 rows on pages 2 to 5 under a repeated header, 155 with all four leading figures and 2 (Perkins Peak, Twin Lakes) with three, whose rating and miles land as unknown. 42 rows carry other-factor codes. The table's two hour estimates (the document's pace model, 'Estimated Only!') are not read. The ratings page says the PDF is 'The HIKES tab from the spreadsheet'; the spreadsheet (Last-Modified 2023-06-15, 66,121 bytes) is not read, as the extract venv has no spreadsheet reader, and whether its HIKES tab differs from the 2012 PDF is unchecked.",
+      "notes": "Read from the workbook since 2026-10-10 (section K's hand-back), at the host's `Crawl-delay: 10`: HTTP 200, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, 66,121 bytes, Last-Modified 2023-06-15, no ETag; three sheets, CoverSheet, Hikes (157 rows under its header) and DownloadFiles, of which Hikes alone is read. Until then the extract read the table's 2012 PDF (2026-10-04T17:34:11Z: 252,399 bytes, Last-Modified 2012-09-17, 157 rows, of which Perkins Peak and Twin Lakes stated no readable miles). Compared on 2026-10-10, the two hold the same 157 hikes, alike on name and ascent, way, trailhead and highest elevations, location and other-factor codes (42 rows carry codes), all 155 ratings both state agreeing to the PDF's one decimal; the workbook states the two missing miles, 8.3 and 3.8. The PDF is a SAME_AS copy in extract/wmc/suggested_hikes.py. The table's two hour estimates (its pace model, 'Estimated Only!' in the PDF) and the rating's four parts are not read.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "False on 2026-10-04 under decision 63: decision 70 answers its licence, and the rules it needs are not in dbt. No mart reads int_suggested_hikes__club_unioned, so nothing tested keeps a published row to the hike's name, its distance and climb each beside the text it was read from, and the link; and a club's list has no route a hiker can follow until a step forms one, as step_form_route.py does for NYNJTC's Hike Finder. Decision 63 turns it true once a mart reads it under those rules, tested."
+    },
+    {
+      "key": "smhc_900_miler_trails",
+      "title": "Smoky Mountains Hiking Club 900 Miler Club trail list (its .xls workbook)",
+      "provider": "SMHC",
+      "kind": "published_notices",
+      "url": "https://smhclub.org/resources/Documents/900%20Mile%20Spreadsheet%20for%20Website%20Final%20Version%20Revision%20with%20Primary%20Source%20Data%20in%20Feet%2009212024.xls",
+      "redirect_hosts": ["cdn.wildapricot.com"],
+      "redirect_hosts_comment": "smhclub.org answers the workbook's link with one 307 to a signed URL on cdn.wildapricot.com, the CDN of the club's site platform, whose robots.txt answered 403, no rules (read 2026-10-10). Named so the extract session's cross-host refusal lets that one redirect through; a redirect anywhere else refuses the read.",
+      "steward": "Smoky Mountains Hiking Club",
+      "attribution": "Smoky Mountains Hiking Club",
+      "licence": "No decision covers a club's challenge list from its website: decision 55's facts and a link is for notices, and decision 70 for suggested-hike lists. So this row is `unresolved` until the maintainer decides whether a club's list publishes as its facts (each trail's name and length, and the link) and never the club's prose. The trails are Great Smoky Mountains National Park's.",
+      "licence_basis": "unresolved",
+      "terms": "None found: the 900 Miler Club page (https://smhclub.org/900-Miler-Club) states no terms, licence or copyright (read 2026-10-10), and the workbook's one read sheet states none.",
+      "reader": "ContentSheet (extract/_sheet_content.py), family `smhc_900_miler_trails`",
+      "person_fields": [],
+      "person_fields_comment": "None land: the family reads the trail list's name and length columns only. Columns F ('Date Completed') and G (notes) are a member's own checklist and are never read; the workbook's properties name its author and the person who last saved it and are never read; and the page's roster of members who finished the list is never read as data.",
+      "key_fields": ["name"],
+      "key_comment": "The trail's name (`name`): unique on all 157 trails read 2026-10-10.",
+      "freshness": {"kind": "file_validator", "url": "https://smhclub.org/resources/Documents/900%20Mile%20Spreadsheet%20for%20Website%20Final%20Version%20Revision%20with%20Primary%20Source%20Data%20in%20Feet%2009212024.xls", "notes": "ContentSheet's per-file check, ContentPdf's (extract/_sheet_content.py, extract/_pdf_content.py): a conditional GET with the file's own validator, a 304 FRESH; on a 200 its ETag, else its Last-Modified with its Content-Length, and UNKNOWN where the host sends neither. Followed through the one redirect, the workbook came with Last-Modified 2024-09-21 and Content-Length and no ETag on 2026-10-10."},
+      "discovered_via": "Decision 54's section K (2026-10-04) left it unread, the extract venv having no spreadsheet reader (not_available.toml [smhc.challenges], from the coverage audit's reading of 2026-10-01); read live on 2026-10-10 under lib/user_agent.py's USER_AGENT, smhclub.org's robots.txt first (it disallows nothing read here and asks `Crawl-delay: 10`), then the page and the workbook, ten seconds or more apart.",
+      "discovered_date": "2026-10-10",
+      "notes": "Read 2026-10-10: the page links one workbook, which smhclub.org answers with a 307 to cdn.wildapricot.com; HTTP 200, application/vnd.ms-excel, 83,968 bytes, Last-Modified 2024-09-21. Two sheets, '900 Mile Club Spreadsheet' (401 rows by 7 columns) and an empty 'Sheet3'. 157 trails and 238 sections, summing to 796.73 miles, the sheet's own total, which the family checks every read. Lengths are the club's 'Primary source data (feet)', with each trail's miles beside them as the sheet states them.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Registered and extracted, staged through its generated base model, and read by no mart: the challenges mart takes a club's reviewed challenge files (reference/challenges/<club>/, int_challenges__unioned), and this list's trails are names joined to no published trail. It stays false until a person reviews it into a challenge file or the maintainer decides otherwise. Its licence waits too (`unresolved`)."
     },
     {
       "key": "cmc_lookout_towers",
@@ -17655,9 +17953,9 @@
       "freshness": {
         "kind": "per_file_validator",
         "url": "https://www2.census.gov/geo/tiger/TIGER2025/STATE/tl_2025_us_state.zip",
-        "notes": "9,956,072 bytes, application/zip, `Last-Modified: Tue, 23 Sep 2025 02:15:56 GMT` with a Content-Length and no ETag (HEAD at 2026-10-04T22:04:38Z), so extract/_gis_files.py's per-file change check answers FRESH while both hold, and a monthly run reads the file only when Census republishes it. Each year's vintage is a new URL (TIGER2025/), which no change check sees: moving to the next vintage is an edit to this row."
+        "notes": "9,956,072 bytes, application/zip, `Last-Modified: Tue, 23 Sep 2025 02:15:56 GMT` with a Content-Length and no ETag (HEAD at 2026-10-04T22:04:38Z), so extract/_gis_files.py's per-file change check answers FRESH while both hold, and a monthly run reads the file only when Census republishes it. Since 2026-10-10 no run asks: the key is kept, not read (extract/_shared/census/states.py's KEPT, the maintainer's poll on pipeline/ELT.md's open question 16), because www2.census.gov's robots.txt refuses every agent. Each year's vintage is a new URL (TIGER2025/), which no change check sees: moving to the next vintage is an edit to this row."
       },
-      "discovered_via": "Decision 76 (pipeline/ELT.md, 2026-10-04): a state-wide agency notice shows to a hike planned in its state, and nothing the phone held could tell whether a route is in a state (section B's design, approved by the lead the same day). Read live under lib/user_agent.py's USER_AGENT: www2.census.gov's robots.txt first (its `User-agent: *` group is empty, and no Crawl-delay is asked of us), then HEADs and one GET of the file, two seconds or more apart.",
+      "discovered_via": "Decision 76 (pipeline/ELT.md, 2026-10-04): a state-wide agency notice shows to a hike planned in its state, and nothing the phone held could tell whether a route is in a state (section B's design, approved by the lead the same day). Read live under lib/user_agent.py's USER_AGENT: www2.census.gov's robots.txt first (read then as an empty `User-agent: *` group, and no Crawl-delay is asked of us; RFC 9309, which extract/_robots.py follows, reads the blank line after it as no separator, so `*` shares RavenCrawler's `Disallow: /` and the file is refused to us, read again 2026-10-10), then HEADs and one GET of the file, two seconds or more apart.",
       "discovered_date": "2026-10-04",
       "notes": "56 records (50 states, DC and 5 territories), 45 Polygon and 11 MultiPolygon, 970,709 vertices, read 2026-10-04 with extract/_gis_files.py's shapefile reader in 1.1 s; NAD83 geographic (.prj GCS_North_American_1983), which the reader accepts. About 24 MB of GeoJSON text once landed. Each state runs out over its coastal water (AWATER), which is why this file and not the cartographic boundary file (cb_2025_us_state_500k), which stops at the shoreline: a beach trail sits well inside its state here. Simplified at 250 m for the phone, the 14 states the seed named on 2026-10-04 came to 184,420 bytes, the worst original vertex 341 m (Colorado) from its simplified edge (int_closures__notice_state_shapes says how that was measured). No fixture: fixture mode serves an answer as text and a .shp is binary, so CI's warehouse holds no table and the base model reads it as no rows (dbt/macros/raw_or_empty.sql), as a PDF table's does.",
       "reaches_hikers": true,
@@ -19875,6 +20173,14 @@
         "state": "not_asked",
         "note": "Not asked. Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       },
+      "RATC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its 14 AT Hikes page and its closures and warnings under section K's hand-back (2026-10-10). Its McAfee Knob page reaches hikers as a notice, facts and a link credited to the club by name, with no mark beside it. Nothing has been sent."
+      },
+      "SMHC": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
       "WMC": {
         "state": "not_asked",
         "note": "Not asked. Registered for its Hiking Trail Database PDF under decision 54's waves 4 and 5 (section K, 2026-10-04) at reaches_hikers: false - nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
@@ -20945,6 +21251,11 @@
         "name": "Randolph Mountain Club",
         "note": "Maintains trails and camps on the northern slopes of the Presidential Range from Randolph, New Hampshire; registered for its Recommended Hikes PDF (decision 54, wave 4, section K, 2026-10-04), at reaches_hikers: false."
       },
+      "org:ratc": {
+        "provider": "RATC",
+        "name": "Roanoke Appalachian Trail Club",
+        "note": "An A.T. maintaining club (trail_orgs.json: at_club) whose section runs from Black Horse Gap to VA 611; registered for its 14 AT Hikes page (section K's hand-back, 2026-10-10), at reaches_hikers: false, and for its closures and warnings (decision 53's drafted rows, 2026-10-10), whose McAfee Knob page reaches hikers as a notice."
+      },
       "org:kta": {
         "provider": "KTA",
         "name": "Keystone Trails Association",
@@ -20955,10 +21266,15 @@
         "name": "Friends of the Blue Hills",
         "note": "A nonprofit friends group for the DCR's Blue Hills Reservation south of Boston; registered for its Suggested Hikes page (decision 54, wave 5, section K, 2026-10-04), at reaches_hikers: false."
       },
+      "org:smhc": {
+        "provider": "SMHC",
+        "name": "Smoky Mountains Hiking Club",
+        "note": "An A.T. maintaining club (trail_orgs.json: at_club) that keeps the 900 Miler Club's list of Great Smoky Mountains National Park's trails; registered for that list, a workbook (section K's hand-back, 2026-10-10), at reaches_hikers: false."
+      },
       "org:wmc": {
         "provider": "WMC",
         "name": "Wasatch Mountain Club",
-        "note": "A Salt Lake City outdoor club; registered for its Hiking Trail Database PDF, the hike ratings table of its spreadsheet (decision 54, wave 4, section K, 2026-10-04), at reaches_hikers: false."
+        "note": "A Salt Lake City outdoor club; registered for its Hiking Trail Database, the hike ratings table of its spreadsheet (decision 54, wave 4, section K, 2026-10-04; read from the workbook itself since 2026-10-10), at reaches_hikers: false."
       },
       "org:cmc": {
         "provider": "Carolina Mountain Club",
@@ -26613,6 +26929,80 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its Suggested Hikes page under decision 54's waves 4 and 5 (section K, 2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "RATC": {
+        "probed_date": "2026-10-10",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its 14 AT Hikes page under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          }
+        }
+      },
+      "SMHC": {
+        "probed_date": "2026-10-10",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its 900 Miler Club trail list, a workbook, under section K's hand-back (2026-10-10). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; a points-of-interest wave that reads this organization is what would settle it."
           }
         }
       },

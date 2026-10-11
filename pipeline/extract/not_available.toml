@@ -1452,17 +1452,6 @@ where = [
 ]
 reason = "carried on a layer another type's file registers: becomes SHARES once that sibling resource exists"
 
-[ata.photos]
-confirmed = 2026-10-01
-summary = """
-Nothing published (coverage audit 2026-10-01, batch c10_nst_rest).
-
-No open licence."""
-checked = [
-    'Flickr "Arizona Trail Association" (`79177693@N02`): the first 25 photos are all `license: 0` (All rights reserved). The ArcGIS `ATA_StoryMap_PhotoPoints` (174) points at those same Flickr images.',
-]
-where = ["https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services", "https://aztrail.org/"]
-
 [ata.places]
 confirmed = 2026-10-03
 summary = "Drawn from azgeo/'s resources (decision 54, wave 1, read 2026-10-03)."
@@ -1627,22 +1616,23 @@ where = [
 reason = "carried on a layer another type's file registers: becomes SHARES once that sibling resource exists"
 
 [azgeo.photos]
-confirmed = 2026-10-01
+confirmed = 2026-10-10
 summary = """
-Published, and not landed (coverage audit 2026-10-01, batch b7_long_trails_states).
+Drawn from ata/'s resources (decision 54, section K's hand-back, read 2026-10-10).
 
-2,678 photos of gates, signs and road crossings along the AZT are exactly the "what does this
-junction look like" picture a hiker uses. Licence unstated, and the images sit on a contractor's
-host, so `may_publish` stays false until the ATA (batch c10) answers. This goes in `ata/photos.py`."""
+The photo layers AZGeo's hub lists are the Arizona Trail Association's own, on its ArcGIS Online
+organization, so they are extracted once, in ata/photos.py (decision 34): the Scenic Resources view's
+sign, gate, road crossing and other inventories and the two StoryMap photo point views. The coverage
+audit's reading that the Trail Running view's 14 points are a subset of the 174 did not hold on
+2026-10-10: none of its photograph URLs is among them, so each view is its own row."""
 checked = [
-    "`ATA_StoryMap_PhotoPoints_Trail_Running_view/0`: 14 points with `pic_url` (2025-11-02). No licence.",
-    "Skeptic adds (Measured): `Scenic_Resources_AGOL_view/FeatureServer` (owner `AZTrail`, last edit 2026-09-04) is a geotagged photo inventory: `/0` Sign Inventory 2,117, `/1` Gate Inventory 305, `/2` Road Crossing Inventory 230, `/8` Other 26. Each row's `Link` is a JPEG, e.g. `https://www.giseifert.com/images/ATA_Scenic_Resources/IMG_001.jpg` (subject \"Mexico Border\"). `ATA_StoryMap_PhotoPoints_view/0` holds 174 more (the Trail Running view's 14 are a subset).",
+    "via ata `ata_sign_photos`, `ata_gate_photos`, `ata_road_crossing_photos` and `ata_other_inventory_photos` (Scenic_Resources_AGOL_view/FeatureServer/0, 1, 2 and 8: 2,117, 305, 230 and 26 points, 2,624 of them with an http `Link`), and `ata_storymap_photos` and `ata_storymap_running_photos` (the StoryMap photo point views, 174 and 14, all with an http `pic_url`), registered 2026-10-10. The organization, IKBBLZOXy58PXgpl, is 'Arizona Trail Association' (the coverage audit, 2026-10-03).",
 ]
 where = [
-    "https://www.giseifert.com/images/ATA_Scenic_Resources/IMG_001.jpg",
     "https://services3.arcgis.com/IKBBLZOXy58PXgpl/arcgis/rest/services/Scenic_Resources_AGOL_view/FeatureServer",
+    "https://azgeo-open-data-agic.hub.arcgis.com/",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "drawn from ata/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in"
 
 [azgeo.podcasts]
 confirmed = 2026-10-01
@@ -9200,14 +9190,20 @@ where = [
 reason = "raster, not landed: decision 35 lands no raster as data, and 3DEP (_shared/usgs/) is the elevation source"
 
 [nc_mst.photos]
-confirmed = 2026-10-01
+confirmed = 2026-10-10
 summary = """
-Published, and not landed (coverage audit 2026-10-01, batch b7_long_trails_states).
+No ArcGIS photo field holds a photograph (decision 54, section K's hand-back, read 2026-10-10).
 
-Published, but not openly licensed: the statement grants nothing. `may_publish` false. Some items
-may be public domain by age, which is @unvalidated per item. The Flickr "NC State Parks Pool"
-(`flickr.com/groups/ncfsp/`) is the Friends group's member photos, not DPR's."""
+Section K handed this cell back as an ArcGIS photo field. On 2026-10-10 the organization's 126
+services held none: `Photos_let`, the coverage audit's 8 tobacco-museum points, answers "Invalid
+URL" now, and the one service with photo fields, "MST Start and Ending Locations" (`IMAGE_URL`,
+`IMAGE_LINK_URL`), holds 0 rows. Outside ArcGIS, the audit's reading stands, not re-read: DPR's
+photographs are the North Carolina State Parks digital collection, per item and not openly
+licensed (`may_publish` would stay false; some items may be public domain by age, @unvalidated per
+item), and the Flickr "NC State Parks Pool" (`flickr.com/groups/ncfsp/`) is the Friends group's
+member photos, not DPR's."""
 checked = [
+    "2026-10-10, under lib/user_agent.py's agent (services7.arcgis.com answers /robots.txt with 403, no rules): the organization's services list (126 services; the photo-named and MST-named ones are Mountains_to_Sea_Trail, MST_18Segments, MST_Start_and_Ending_Locations and NC_Mountain_to_Sea_Trial). `Photos_let/FeatureServer/0`: 'Invalid URL'. `MST_Start_and_Ending_Locations/FeatureServer/0` ('Recreation Labels'): `IMAGE_URL` and `IMAGE_LINK_URL` on 0 rows. `MST_18Segments/0`'s `URL` is each segment's page (19), and `Mountains_to_Sea_Trail/0`'s and `NC_Mountain_to_Sea_Trial/0`'s `WEBLINK` are web pages (215 of 328 each), not photographs.",
     "`Photos_let/0` MAP_TOUR: 8 points with `pic_url` (2020). No licence.",
     "Skeptic correction (Measured): `Photos_let` is the item \"Photos Tobacco Museums_let\", owner a personal ArcGIS account, licence \"For Educational Purposes Only\". It belongs to DNCR's historic-preservation side and says nothing about parks. DPR's photo collection is the North Carolina State Parks digital collection, `digital.ncdcr.gov/collections/north-carolina-state-parks` (format page; photographs, drawings and postcards from 1916 on, held jointly by the State Archives, State Library and DPR; per-item download). Its rights …",
 ]
@@ -9216,7 +9212,7 @@ where = [
     "https://flickr.com/groups/ncfsp/",
     "https://services7.arcgis.com/SEKZuPu27jfvDQ5b/arcgis/rest/services",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "nothing in ArcGIS to land (2026-10-10); DPR's digital collection is per item and not openly licensed, so it waits on a licence, not a reader"
 
 [nc_mst.places]
 confirmed = 2026-10-03
@@ -12960,53 +12956,20 @@ where = [
 reason = "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
 [ratc.challenges]
-confirmed = 2026-10-04
+confirmed = 2026-10-10
 summary = """
-Not read: the host's robots.txt could not be read (decision 54 wave 4, section K, 2026-10-04).
+Not read: a members' completion award, and a PDF no family reads (section K's hand-back, 2026-10-10).
 
-www.ratc.org/robots.txt answered HTTP 502 on 2026-10-04, which RFC 9309 reads as a full disallow, so the 113-Mile
-Club's checklist PDF was not fetched. The 113-Mile Club (complete RATC's ~120 miles, members only) is a completion
-award in any case."""
-checked = ["https://www.ratc.org/robots.txt: HTTP 502, 2026-10-04 (RFC 9309: a server error is a full disallow)"]
-where = ["https://www.ratc.org/awards/113-mile-club/"]
-reason = "not read: robots.txt answered HTTP 502, a full disallow under RFC 9309"
-
-[ratc.closures]
-confirmed = 2026-10-03
-summary = """
-Held: www.ratc.org's robots.txt answered 502 to our agent on both reads of 2026-10-03, which RFC
-9309 reads as disallow.
-
-Decision 53's inventory (batch 2) read the club's WordPress REST routes earlier the same day, with a 200
-robots.txt that disallowed only /wp-admin/: the Closures category (id 78, 3 posts, newest 'MVP
-Construction in Peters Mountain Area', 2023-10-25) is dormant, and closure posts now go untagged to RATC
-News (id 13, X-WP-Total 25, newest 2025-11-26 'Catawba Mountain Fire Road Project Complete'). The club
-points hikers to Facebook for 'the latest news and alerts', a social channel with no reader here.
-
-In phase B, robots.txt was read again before the first request to the host this session, as every
-registration's rule asks, and answered HTTP 502 with an empty body at 22:06 and 22:15 UTC. A host whose
-robots.txt fails with a server error is read as refusing (RFC 9309, section 2.3.1.4), so nothing was
-fetched and no row was registered. Whether the 502 is RATC's server or the sandbox's proxy failing to
-reach it is unknown; one 200 robots.txt read, from a runner or a later session, settles it, and the
-two WordpressPosts rows the inventory drafted (`ratc_closures_posts`, `ratc_news_posts`) and the McAfee
-Knob page (`ratc_mcafee_page`, WordPress page 2821) can then be registered as drafted. ATC's resources
-carry the current A.T. items on RATC's section meanwhile (decision 34).
-
-Before this, the file was the coverage audit's note (confirmed 2026-10-01, batch c3_at_clubs_south),
-whose `checked` is kept below."""
+www.ratc.org's robots.txt answered 200 on 2026-10-10, so the 502 that held this cell is gone. The
+113-Mile Club (complete RATC's ~120 miles, members only) is a completion award over the same miles
+the club's 14 A.T. hikes cover, which ratc/suggested_hikes.py reads, and its checklist is a PDF that
+no extract/_pdf_content.py family is written for. Not requested today."""
 checked = [
-    "https://www.ratc.org/robots.txt, read under our agent at 2026-10-03 22:06 and 22:15 UTC (decision 53 phase B): HTTP 502, empty body, both times. Read as disallow (RFC 9309); nothing else was asked.",
-    "(decision 53 inventory, batch 2, earlier on 2026-10-03, robots.txt 200 disallowing /wp-admin/ only) /wp-json/wp/v2/posts?categories=78: X-WP-Total 3, newest 2023-10-25 (modified 2025-04-26); categories=13 (RATC News): X-WP-Total 25, newest 2025-11-26.",
-    '(coverage audit, 2026-10-01) WP category Closures (id 78, 3 posts: 2022-01-11, 2023-08-21, 2023-10-25), RSS `https://www.ratc.org/category/closures/feed/`. `/andy-layne-trail/` (page, modified 2026-08-20): "The new Andy Lane Trail parking lot and permanent reroute is now open", with the Feb 2026 closure history. The Triple Crown page says "For the latest news and alerts … please check our Facebook page" (`facebook.com/RoanokeATC`; not fetched).',
+    "https://www.ratc.org/robots.txt and https://ratc.org/robots.txt, read 2026-10-10T18:51Z under lib/user_agent.py's agent: 200, 113 bytes each, `User-agent: *` / `Disallow: /wp-admin/` / `Allow: /wp-admin/admin-ajax.php`, no Crawl-delay. The 502 of 2026-10-03 and 2026-10-04 no longer holds.",
+    "https://www.ratc.org/robots.txt: HTTP 502, 2026-10-04 (RFC 9309: a server error is a full disallow)",
 ]
-where = [
-    "https://www.ratc.org/robots.txt",
-    "https://www.ratc.org/wp-json/wp/v2/posts?categories=78",
-    "https://www.ratc.org/wp-json/wp/v2/posts?categories=13",
-    "https://www.ratc.org/category/closures/feed/",
-    "https://facebook.com/RoanokeATC",
-]
-reason = "held: the host's robots.txt answered 502 on both of this session's reads, which RFC 9309 reads as disallow; register the inventory's drafted rows after a 200 read"
+where = ["https://www.ratc.org/awards/113-mile-club/", "https://www.ratc.org/robots.txt"]
+reason = "not read: no PDF family reads the checklist, and the award's miles are the 14 hikes ratc/suggested_hikes.py reads"
 
 [ratc.elevation]
 confirmed = 2026-10-01
@@ -13036,7 +12999,7 @@ where = [
 reason = "drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
 [ratc.places]
-confirmed = 2026-10-04
+confirmed = 2026-10-10
 summary = """
 Not read: ratc.org's robots.txt answered 502 (decision 54, wave 5, 2026-10-04), which RFC 9309 reads
 as a full disallow, so the club's trailhead directory with its overnight- parking rules (Trout Creek
@@ -13045,11 +13008,12 @@ PARK ALONG 311 ... ticketed and towed', the coverage audit 2026-10-01) was not r
 are Google Maps links, Google's places rather than the club's, so a reader would need the club's own
 fixes in any case. ATC's `parking` (22) and `communities` are loaded."""
 checked = [
+    "https://www.ratc.org/robots.txt and https://ratc.org/robots.txt, read 2026-10-10T18:51Z under lib/user_agent.py's agent: 200, 113 bytes each, `User-agent: *` / `Disallow: /wp-admin/` / `Allow: /wp-admin/admin-ajax.php`, no Crawl-delay. The 502 of 2026-10-03 and 2026-10-04 no longer holds.",
     "ratc.org/robots.txt answered 502 at 2026-10-04T17:17:30Z under lib/user_agent.py's agent: unreachable, a full disallow by RFC 9309 §2.3.1.4, so no page was requested.",
     "the coverage audit (2026-10-01, batch c3_at_clubs_south): the Triple Crown page, a trailhead directory with overnight rules; Google Maps coordinates in the links.",
 ]
 where = ["https://ratc.org/robots.txt", "https://ratc.org/"]
-reason = "not read: robots.txt answered 502, a full disallow (RFC 9309); and the page's fixes are Google's links"
+reason = "not read: the page's fixes are Google's links, not the club's, and a place is never geocoded from its name; robots.txt allows the page since 2026-10-10"
 
 [ratc.podcasts]
 confirmed = 2026-10-01
@@ -13079,24 +13043,6 @@ checked = [
 where = ["https://www.ratc.org/at-hiking/shelter-listing/", "https://ratc.org/"]
 reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
 
-[ratc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Pages and PDFs (waves 4 and 5) and a CalTopo map refused by its host's robots.txt (decision 54 wave
-3, section C, 2026-10-04).
-
-The routes sit in a CalTopo map (`8AEHQUP`), whose data comes only from caltopo.com/api/, which
-caltopo.com's robots.txt disallows for every agent (`User-agent: *` / `Disallow: /api/`, decision
-53's inventory, 2026-10-03). The 14 A.T. hikes and the 113-mile list are pages, and the 11 map PDFs
-and the top-10 list PDFs, waves 4 and 5, named in section C's hand-back."""
-checked = [
-    "caltopo.com's robots.txt as decision 53's inventory quoted it (batch 3, 2026-10-03): `Disallow: /api/` under `User-agent: *`; nothing was asked today.",
-    "(the coverage audit, 2026-10-01) `/at-hiking/ratcs-14-at-hikes/` (page, modified 2026-06-11): 14 hikes covering the whole section, with length (5.5–13.2 mi) and difficulty. Trailhead coordinates are in Google Maps `daddr=` links, and routes are in the CalTopo `8AEHQUP` JSON (machine-readable). `/at-hiking/113-mile-hike-list/` (2023-03-29) gives the same hikes with gain/loss, directions and 11 per-hike map PDFs. Also `/wp-content/uploads/hikes/top-10-day-hikes-in-VA.pdf`.",
-]
-where = ["https://caltopo.com/robots.txt", "https://ratc.org/"]
-terms = "robots.txt: `Disallow: /api/` (caltopo.com, for every agent)"
-reason = "the routes are refused by CalTopo's robots.txt; the hike list is a page and PDFs, waves 4 and 5"
-
 [ratc.trail_lines]
 confirmed = 2026-10-01
 summary = """
@@ -13115,33 +13061,6 @@ where = [
     "https://ratc.org/",
 ]
 reason = "drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
-
-[ratc.warnings]
-confirmed = 2026-10-03
-summary = """
-Held for the same reason as closures.py: www.ratc.org's robots.txt answered 502 to our agent on both
-reads of 2026-10-03.
-
-The club's warnings are regulations and a water hazard on its McAfee Knob and Triple Crown page
-(WordPress page 2821, modified 2026-02-24: camping only in 7 designated areas, fire rings, group sizes,
-"There are no natural water sources along the A.T. in the Dragons Tooth area, so bring all your water"),
-and the mixed RATC News posts (category 13). Under decision 7 they are warnings. Nothing is fetched until
-a robots.txt read answers 200 (RFC 9309 reads a 5xx as disallow); closures.py says what settles it.
-ATC's resources carry the bear and high-water rows on the section meanwhile.
-
-Before this, the file was the coverage audit's note (confirmed 2026-10-01, batch c3_at_clubs_south),
-whose `checked` is kept below."""
-checked = [
-    "https://www.ratc.org/robots.txt, read under our agent at 2026-10-03 22:06 and 22:15 UTC (decision 53 phase B): HTTP 502, empty body, both times. Read as disallow (RFC 9309); nothing else was asked.",
-    "(decision 53 inventory, batch 2, earlier on 2026-10-03) /wp-json/wp/v2/pages?slug=mcafee-knob-and-the-triple-crown: page 2821, modified 2026-02-24T21:18:48; it links facebook.com/RoanokeATC for 'latest news and alerts'.",
-    '(coverage audit, 2026-10-01) `https://www.ratc.org/at-hiking/mcafee-knob-and-the-triple-crown/` (page, modified 2026-02-24). Standing federal rules for VA 624–US 220: "NO camping outside of 7 designated areas", no fires outside metal rings, group size 25 for day hikes and 10 overnight. Water: "There are no natural water sources along the A.T. in the Dragons Tooth area, so bring all your water". The Dragons Tooth Special Biological Area is closed to camping. A drone prohibition. The bears category (id 31) has 2 posts, both 2016.',
-]
-where = [
-    "https://www.ratc.org/robots.txt",
-    "https://www.ratc.org/at-hiking/mcafee-knob-and-the-triple-crown/",
-    "https://www.ratc.org/wp-json/wp/v2/posts?categories=13",
-]
-reason = "held: the host's robots.txt answered 502 on both of this session's reads, which RFC 9309 reads as disallow; register the inventory's drafted rows after a 200 read"
 
 [ridgetrail.challenges]
 confirmed = 2026-10-04
@@ -14421,22 +14340,6 @@ where = [
     "https://services2.arcgis.com/jeEP9c9zZoQQwtck/arcgis/rest/services/Fire_Warning_Extreme_Danger_Level_2/FeatureServer/6",
 ]
 reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
-
-[smhc.challenges]
-confirmed = 2026-10-04
-summary = """
-The 900 Miler Club's trail list as an Excel file, and not landed (decision 54 wave 5, section K,
-2026-10-04).
-
-The Great Smoky Mountains 900 Miler Club (every official park trail; '938 members as of 2026-09-08', a roster)
-publishes its trail list as an .xls workbook (83,968 bytes), which the extract venv cannot read: a spreadsheet
-reader is a dependency the maintainer decides. The trails are the park's (nps/). No request sent today."""
-checked = [
-    "(the coverage audit, 2026-10-01) /resources/Documents/900 Mile Spreadsheet ... 09212024.xls (83,968 bytes)",
-    "no request sent today: the coverage audit's reading, 2026-10-01",
-]
-where = ["https://smhclub.org/900-Miler-Club"]
-reason = "not read: the list is an Excel workbook, and the extract venv has no spreadsheet reader"
 
 [smhc.closures]
 confirmed = 2026-10-03
@@ -15938,27 +15841,32 @@ where = ["https://usace.army.mil/"]
 reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
 
 [usace.places]
-confirmed = 2026-10-04
+confirmed = 2026-10-10
 summary = """
 Published, and not landed (coverage audit 2026-10-01, batch c9_federal_state_rest; re-read for
-decision 54's wave 3 on 2026-10-04).
+decision 54's wave 3 on 2026-10-04; RIDB's bulk export's terms read on 2026-10-10).
 
 RIDB's `/recareas`, the Corps' recreation areas on Recreation.gov, is refused by
 ridb.recreation.gov's robots.txt for every agent, ours included, before any key would matter. RIDB's
-bulk export is allowed and answers, but it is Recreation.gov's national download for twelve agencies
-(pipeline/SOURCE_SURVEY.md), not a Corps publication, so it would be a provider row of its own and is
-the lead's to route; usace/points_of_interest.py records the same read."""
+bulk export is not refused by robots.txt and answers, but it is Recreation.gov's national download
+for twelve agencies (pipeline/SOURCE_SURVEY.md), not a Corps publication, and its download page says
+that downloading it is agreeing to the RIDB API Access Agreement, a contract with Recreation.gov's
+operator (`terms` quotes it). Entering a contract is the maintainer's act, not a build's, so it was
+not downloaded; [usace.points_of_interest] records the same read."""
 checked = [
     "ridb.recreation.gov/robots.txt, read 2026-10-04T11:41:47Z under lib/user_agent.py's agent: `User-agent: *` / `Disallow: /api` / `Disallow: /api/*` / `Crawl-delay: 10`; `/api/v1/recareas` falls under it, so it was not requested.",
     "https://ridb.recreation.gov/downloads/RIDBFullExport_V1_CSV.zip, one HEAD on 2026-10-04 (robots allows /downloads/): 200, application/zip, 247,747,658 bytes, Last-Modified Sat, 03 Oct 2026 18:47:00 GMT. Not downloaded, so the Corps' share of it is unmeasured.",
+    "https://ridb.recreation.gov/download, read 2026-10-10T18:55:48Z under lib/user_agent.py's agent, after robots.txt at 18:55:16Z and each request at least 10 s after the last (`Crawl-delay: 10`): the page is a script bundle, /ridb/index-BFk5JR4v.js (read 18:56:07Z), whose download page says \"By downloading this data, you are agreeing to the RIDB API Access Agreement.\" and whose /access-agreement-ridb page is that agreement, a contract that names its other party: \"“API Vendor” means Booz Allen Hamilton Inc., who is providing operation and maintenance of the recreation.gov site pursuant to a prime contract with the U.S. Department of Agriculture, Forest Service (the “Prime Contract”).\"",
+    "https://ridb.recreation.gov/downloads/RIDBFullExport_V1_CSV.zip, one HEAD on 2026-10-10: 200, application/zip, 247,803,017 bytes, ETag \"c017614dbf5d3fc1e224ba2c726a2c52\", Last-Modified Fri, 09 Oct 2026 18:47:46 GMT. Not downloaded: downloading it is accepting the agreement, which a build does not do on the maintainer's behalf.",
 ]
 where = [
     "https://ridb.recreation.gov/robots.txt",
+    "https://ridb.recreation.gov/download",
     "https://ridb.recreation.gov/downloads/RIDBFullExport_V1_CSV.zip",
     "https://usace.army.mil/",
 ]
-terms = "ridb.recreation.gov/robots.txt (read 2026-10-04): `User-agent: *` / `Disallow: /api`"
-reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and the lead routes it"
+terms = "ridb.recreation.gov/robots.txt (read 2026-10-04 and 2026-10-10): `User-agent: *` / `Disallow: /api` / `Disallow: /api/*` / `Crawl-delay: 10`. ridb.recreation.gov/download (read 2026-10-10): \"By downloading this data, you are agreeing to the RIDB API Access Agreement.\" That agreement (ridb.recreation.gov/access-agreement-ridb, read 2026-10-10): \"You agree not to use the API or the content or information delivered as part of the Responses: ... (iv) in connection with any activities where the use or failure of the APIs could lead to death, personal injury, or environmental damage; ... or (vii) in connection with any activity that we deem, in our sole discretion, may be associated with an unreasonable level of risk, may create liability for us or a third party, may cause us to lose the services of any of our third party service providers, may cause us to be in breach of a contract between us and a third party, or may not reflect positively on API Vendor.\" and \"You acknowledge that the content of Responses is provided by the United States Government and is not independently verified by API Vendor. ... You agree not to misrepresent the source of any Responses.\" and \"You are encouraged to provide a link to recreation.gov or otherwise identify the data source, ridb.recreation.gov, when incorporating the data into your own system.\" and \"Either party may terminate this Agreement at any time, for any reason or for no reason.\""
+reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and downloading it accepts the RIDB API Access Agreement, which is the maintainer's to enter or decline"
 
 [usace.podcasts]
 confirmed = 2026-10-04
@@ -15984,29 +15892,34 @@ where = [
 reason = "refused: the host's robots.txt answers 5xx, which RFC 9309 reads as disallow; recheck when it answers"
 
 [usace.points_of_interest]
-confirmed = 2026-10-04
+confirmed = 2026-10-10
 summary = """
 Published, and not landed (coverage audit 2026-10-01, batch c9_federal_state_rest; re-read for
-decision 54's wave 3 on 2026-10-04).
+decision 54's wave 3 on 2026-10-04; RIDB's bulk export's terms read on 2026-10-10).
 
 Two routes, neither wired here. RIDB's API, the Corps' share of Recreation.gov's facilities and
 campsites, is refused by ridb.recreation.gov's robots.txt for every agent, ours included, before any
-key would matter. RIDB's bulk export is allowed and answers, but it is Recreation.gov's national
-download for twelve agencies (pipeline/SOURCE_SURVEY.md), not a Corps publication, so it would be a provider row of its own and
-is the lead's to route. The Tulsa District points (trailheads, campgrounds, campsites, recreation
+key would matter. RIDB's bulk export is not refused by robots.txt and answers, but it is Recreation.gov's
+national download for twelve agencies (pipeline/SOURCE_SURVEY.md), not a Corps publication, and
+downloading it is agreeing to the RIDB API Access Agreement, which is the maintainer's to enter
+([usace.places] says what was read on 2026-10-10; `terms` quotes it). The Tulsa District points
+(trailheads, campgrounds, campsites, recreation
 features) are ArcGIS layers on the service usace_tulsa_trails already reads for lines: wave 1's kind."""
 checked = [
     "ridb.recreation.gov/robots.txt, read 2026-10-04T11:41:47Z under lib/user_agent.py's agent: `User-agent: *` / `Disallow: /api` / `Disallow: /api/*` / `Crawl-delay: 10`; `/api/v1/facilities` and `/api/v1/campsites` fall under it, so neither was requested.",
     "https://ridb.recreation.gov/downloads/RIDBFullExport_V1_CSV.zip, one HEAD on 2026-10-04 (robots allows /downloads/): 200, application/zip, 247,747,658 bytes, ETag \"a13b32915810006a08fe5da8f88716a8\", Last-Modified Sat, 03 Oct 2026 18:47:00 GMT. Not downloaded, so the Corps' share of it is unmeasured.",
+    "https://ridb.recreation.gov/download, read 2026-10-10T18:55:48Z under lib/user_agent.py's agent, after robots.txt at 18:55:16Z and each request at least 10 s after the last (`Crawl-delay: 10`): the page is a script bundle, /ridb/index-BFk5JR4v.js (read 18:56:07Z), whose download page says \"By downloading this data, you are agreeing to the RIDB API Access Agreement.\" and whose /access-agreement-ridb page is that agreement, a contract that names its other party: \"“API Vendor” means Booz Allen Hamilton Inc., who is providing operation and maintenance of the recreation.gov site pursuant to a prime contract with the U.S. Department of Agriculture, Forest Service (the “Prime Contract”).\"",
+    "https://ridb.recreation.gov/downloads/RIDBFullExport_V1_CSV.zip, one HEAD on 2026-10-10: 200, application/zip, 247,803,017 bytes, ETag \"c017614dbf5d3fc1e224ba2c726a2c52\", Last-Modified Fri, 09 Oct 2026 18:47:46 GMT. Not downloaded: downloading it is accepting the agreement, which a build does not do on the maintainer's behalf.",
     "Tulsa District recreation features (the coverage audit, 2026-10-01): Trailheads 100, Campgrounds 133, Campsites 6,013, Recreation Features 1,927, on services8.arcgis.com/GvI5dZtQIoT0Fznq's District_Recreation_Features_SWT FeatureServer, whose layer 13 usace_tulsa_trails registers.",
 ]
 where = [
     "https://ridb.recreation.gov/robots.txt",
+    "https://ridb.recreation.gov/download",
     "https://ridb.recreation.gov/downloads/RIDBFullExport_V1_CSV.zip",
     "https://usace.army.mil/",
 ]
-terms = "ridb.recreation.gov/robots.txt (read 2026-10-04): `User-agent: *` / `Disallow: /api`"
-reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and the Tulsa points are ArcGIS layers: both routed by the lead"
+terms = "ridb.recreation.gov/robots.txt (read 2026-10-04 and 2026-10-10): `User-agent: *` / `Disallow: /api` / `Disallow: /api/*` / `Crawl-delay: 10`. ridb.recreation.gov/download (read 2026-10-10): \"By downloading this data, you are agreeing to the RIDB API Access Agreement.\" That agreement (ridb.recreation.gov/access-agreement-ridb, read 2026-10-10): \"You agree not to use the API or the content or information delivered as part of the Responses: ... (iv) in connection with any activities where the use or failure of the APIs could lead to death, personal injury, or environmental damage; ... or (vii) in connection with any activity that we deem, in our sole discretion, may be associated with an unreasonable level of risk, may create liability for us or a third party, may cause us to lose the services of any of our third party service providers, may cause us to be in breach of a contract between us and a third party, or may not reflect positively on API Vendor.\" and \"You acknowledge that the content of Responses is provided by the United States Government and is not independently verified by API Vendor. ... You agree not to misrepresent the source of any Responses.\" and \"You are encouraged to provide a link to recreation.gov or otherwise identify the data source, ridb.recreation.gov, when incorporating the data into your own system.\" and \"Either party may terminate this Agreement at any time, for any reason or for no reason.\""
+reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and downloading it accepts the RIDB API Access Agreement, the maintainer's to enter or decline; the Tulsa points are ArcGIS layers the lead routes"
 
 [usace.suggested_hikes]
 confirmed = 2026-10-04
@@ -16859,21 +16772,6 @@ where = [
 ]
 terms = "User-agent: *\nDisallow: /arcgis/\nDisallow: /download\nDisallow: /query"
 reason = "raster, not landed: decision 35 lands no raster as data, and 3DEP (_shared/usgs/) is the elevation source"
-
-[wa_rco.photos]
-confirmed = 2026-10-01
-summary = """
-Published, and not landed (coverage audit 2026-10-01, batch b7_long_trails_states).
-
-Licence unstated, and the host `mapswa.com` is not RCO's domain, so who holds the rights is
-@unvalidated. `may_publish` stays false until the maintainer rules on unstated-licence photos. Low
-value either way: campground photos from a SCORP recreation inventory (the year was not checked)."""
-checked = [
-    "`Camping_scorp_view/0` has 152 `PhotoWeb` URLs on `mapswa.com`, with no licence stated.",
-    "Skeptic re-counted: 152 rows with `PhotoWeb LIKE 'http%'` (974 are non-null, but most hold a single space), e.g. `https://mapswa.com/photos/1000352.jpg`. The item's `licenseInfo` is blank.",
-]
-where = ["https://mapswa.com/photos/1000352.jpg"]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
 
 [wa_rco.podcasts]
 confirmed = 2026-10-01

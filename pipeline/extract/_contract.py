@@ -12,7 +12,8 @@ the ten FILE_TYPES exactly once, in one of two homes:
                          pipeline/reference/ path) and a Resource for each;
                          it may carry SAME_AS for copies it does not extract,
                          or be SAME_AS alone, when a copy is all the org
-                         publishes for the type
+                         publishes for the type, and KEPT for a claimed key
+                         it no longer reads, whose last load stands (Kept)
     a row of             extract/not_available.toml, [<folder>.<type>]: a
     not_available.toml   dated note (a NotAvailable: nothing this pipeline may
                          load for the type, as of the day a person looked), or
@@ -237,6 +238,37 @@ class SameAs:
         return problems
 
 
+@dataclass(frozen=True)
+class Kept:
+    """A claimed key that no lane reads any more, whose last committed table every build goes on reading.
+
+    For an upstream that loaded and then refused us in a way that is never
+    routed around, such as a robots.txt that came to disallow our agent,
+    where the maintainer has ruled that the last copy may stand in for it
+    (census_tiger_states: pipeline/ELT.md's open question 16, answered by
+    the maintainer's poll of 2026-10-10, "Keep the last copy"). The file that
+    read the key still claims it, so its sources.json row keeps the licence
+    and the terms, and the layout test still finds one home for it; the file
+    declares no resource for it, so no lane asks the host anything. What a
+    build reads is extract/_warehouse.py's committed_tables(): a table's
+    latest `loaded` run that committed, which a later run that never names
+    the table does not move. Every pin copies it like any other table, and
+    the purge reads it by its sources.json row (tests/test_extract_pin.py
+    and tests/test_purge_person_fields.py hold both).
+
+    Unlike Unavailable below, which withdraws a table nobody can read now,
+    this keeps one: the ruling is that the last rows are still true enough.
+
+    `note` says why reading stopped: what refused it, verbatim, in `terms`;
+    why the last copy may stand in, and what reading again waits on, in
+    `reason`; and when to look again, `confirmed` + `recheck_after_days`. It
+    ages like any note (pipeline/ELT.md, "The data checks", check 3).
+    """
+
+    key: str
+    note: NotAvailable
+
+
 class Unavailable(Exception):
     """A change check's answer that the upstream cannot be read here, and that its own rule leaves out of the lane.
 
@@ -437,6 +469,8 @@ class ClubFile:
     unregistered: str | None = None
     # A not_available.toml row's prose: the docstring its file carried before decision 88.
     summary: str | None = None
+    # Claimed keys this file no longer reads, each with the note saying why (Kept): their last committed tables stand.
+    kept: tuple[Kept, ...] = ()
 
     @property
     def form(self) -> str:
@@ -519,6 +553,7 @@ def read_club_file(path: Path, *, shared: bool = False) -> ClubFile:
         note=getattr(module, "NOT_AVAILABLE", None),
         same_as=tuple(getattr(module, "SAME_AS", ()) or ()),
         unregistered=getattr(module, "UNREGISTERED", None) if shared else None,
+        kept=tuple(getattr(module, "KEPT", ()) or ()),
     )
 
 

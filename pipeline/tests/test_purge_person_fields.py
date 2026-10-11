@@ -396,6 +396,33 @@ def test_a_table_a_leg_no_longer_reads_is_listed_alone_and_does_not_refuse(tmp_p
     assert frozen.startswith(f"raw/dlt/notices_ua/raw/{TRAILS}/{report.load_id}.")
 
 
+def test_a_kept_monthly_table_stays_current_and_a_delete_leaves_it_and_every_pin_of_it(tmp_path, registry, requests_mock):
+    """census_tiger_states' case (extract/_contract.py's Kept): once its file declares no resource for it, no month
+    names its table again, and every monthly build still reads its last committed load. So the purge reads that load as
+    a current table, by its sources.json row; holding no value in a listed field, none of it is deleted, nor any pin
+    that copied it, and the newest pin still builds with it. The leg case above differs because a leg's builds stop
+    reading a table its job no longer names, and the monthly lane's never do."""
+    FakeLayer(requests_mock, LINES_URL, [feature(1)])
+    FakeLayer(requests_mock, OWNED_URL, [feature(10), feature(11)])
+    store = Bucket(tmp_path)
+    first = store.month()
+    store.pin(first.run_id)
+    later = run_pipeline("monthly", store.lane_url, resources=[trails()], pipelines_dir=store.pipelines_dir, as_landed=True)
+    store.pin(later.run_id)
+    before = store.keys()
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    answer = purge.find(store.url, str(tmp_path / "purge-dlt"), scratch, resources=[trails()])
+    status = purge.main(["--bucket-url", store.url, "--pipelines-dir", str(tmp_path / "purge-dlt"), "--delete"], [trails()])
+
+    kept_files = [stored for stored in answer.store.objects if stored.lane == "monthly" and stored.table == OWNED]
+    assert any(stored.current and stored.load_id == first.load_id for stored in kept_files), "still what a build reads"
+    assert answer.complete and answer.clean_now and not answer.doomed
+    assert status == 0 and store.keys() == before, "a delete with nothing listed deletes nothing"
+    assert load_pinned(duckdb.connect(), store.pipeline(), store.steps_url, later.run_id) == {TRAILS: 1, OWNED: 2}
+
+
 #: Where publish-conditions.yml's UA leg hands its warehouse to check-conditions.yml (hand_off.py's FOLDER, under the
 #: leg's history store).
 HAND_OFF = f"history/conditions_ua/{hand_off.FOLDER}/"

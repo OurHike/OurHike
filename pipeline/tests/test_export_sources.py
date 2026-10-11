@@ -911,8 +911,11 @@ class TestTheRegistryTheConsoleReads:
         # Corporation (org:nyscanal), held like the rest. 142 since review page 02's held loads registered 7 more
         # candidate stewards (Illinois DNR, NETT, the Eastern Trail Alliance, Maine Huts & Trails, RCTC, the
         # Peninsula Trails Coalition and Maricopa County Parks). 143 since decision 126 (the maintainer's
-        # poll, 2026-10-09) registered the Trust for Public Land (org:tpl) for ParkServe's parks, held.
-        assert len(orgs) == 143
+        # poll, 2026-10-09) registered the Trust for Public Land (org:tpl) for ParkServe's parks, held. 144 since
+        # section K's hand-back (2026-10-10) registered the Smoky Mountains Hiking Club (org:smhc) for its 900
+        # Miler Club list, a workbook, and 145 since it registered the Roanoke Appalachian Trail Club (org:ratc)
+        # for its 14 AT Hikes page, once the club's robots.txt answered.
+        assert len(orgs) == 145
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -1004,6 +1007,7 @@ class TestTheRegistryTheConsoleReads:
             "org:pnta",
             "org:portlandparks",
             "org:ptny",
+            "org:ratc",
             "org:ridgetrail",
             "org:rmc",
             "org:rmfi",
@@ -1011,6 +1015,7 @@ class TestTheRegistryTheConsoleReads:
             "org:sccparks",
             "org:shta",
             "org:smd",
+            "org:smhc",
             "org:spnhf",
             "org:sstc",
             "org:sta",

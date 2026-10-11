@@ -397,10 +397,18 @@ CONTENT_COLUMNS = {
     # Section K's PDF reader (decision 54 wave 4, extract/_pdf_content.py): the same type columns as its page reader.
     ("suggested_hikes", "ContentPdf"): {"name": "name", "link": "link"},
     ("challenges", "ContentPdf"): {"name": "name", "link": "link"},
+    # Section K's hand-back, its workbook reader (extract/_sheet_content.py): the same type columns again.
+    ("suggested_hikes", "ContentSheet"): {"name": "name", "link": "link"},
+    ("challenges", "ContentSheet"): {"name": "name", "link": "link"},
     # A club page's points (extract/_pages_points.py's PagePoints) that a content file SHARES: one row per page, its
     # columns the ones the points row names for the type in `shared_page_rows` (page_rows_columns()), as NPS's are
     # its endpoint's. The Palmetto Trail's passages: the lead's ruling of 2026-10-04, one reader of its 33 pages.
     ("suggested_hikes", "PagePoints"): {},
+    # An ArcGIS layer whose rows each link one photograph (section K's hand-back: ATA's Scenic Resources and StoryMap
+    # layers, RCO's camping inventory). Each layer names its photo field its own way (`Link`, `pic_url`, `PhotoWeb`),
+    # so its sources.json row's `photo_columns` names the fields, as a points row names its `name_field`
+    # (photo_columns()). The row's position stays in `properties`, as the GeoJSON text dlt landed.
+    ("photos", "ArcgisLayer"): {},
 }
 #: NPS's lists, one reader for five endpoints, conformed by (type, the endpoint's path under /api/v1/), each field
 #: one extract/_content.py's NPS_CONTENT_COLUMNS hints so the column exists on every run.
@@ -456,6 +464,7 @@ CONTENT_PROSE = {
     # lands in the raw store, so none needs stopping here.
     "ContentPages": (),
     "ContentPdf": (),
+    "ContentSheet": (),
 }
 #: The readers whose tables are lookups beside a type's rows, staged in base only: a hike type's taxonomy terms.
 CONTENT_LOOKUPS = ("SiteTerms",)
@@ -542,14 +551,15 @@ class Table:
     @property
     def read_from_pdf(self) -> bool:
         """A table its reader takes off a PDF through pypdf: extract/_pdf_points.py's PdfPoints (a `pdf_points` row)
-        or extract/_pdf_content.py's ContentPdf. Fixture mode's Python need not have pypdf, so the fixture warehouse
-        never holds the table, and `dbt source freshness` would fail on it (CI's dbt job did, 2026-10-04, on
+        or extract/_pdf_content.py's ContentPdf; or a workbook, extract/_sheet_content.py's ContentSheet. Fixture mode's
+        Python need not have pypdf, and fixture mode serves no binary file, so the fixture warehouse never holds the
+        table, and `dbt source freshness` would fail on it (CI's dbt job did, 2026-10-04, on
         ata_water_cache_boxes, bmta_access_points and rmc_recommended_hikes). So its source table carries
         `freshness: null`. All seven such tables on 2026-10-09 were on the monthly lane, which no production job
         measures for freshness (generate_notice_models.py's MONTHLY_WARN_DAYS). A PDF notice is hourly and
         production measures it, so it keeps its freshness and is tagged generate_notice_models.py's PDF_NOTICE_TAG
         instead."""
-        return self.entry.get("kind") == PDF_POINTS_KIND or self.reader == "ContentPdf"
+        return self.entry.get("kind") == PDF_POINTS_KIND or self.reader in ("ContentPdf", "ContentSheet")
 
     def key_inputs(self) -> list[str]:
         """The key's inputs as generate_surrogate_key takes them: the registry key, then each measured field."""
@@ -680,6 +690,11 @@ def tables() -> list[Table]:
                 continue
             elif reader == "PagePoints" and club_file.type not in (resource.entry.get("shared_page_rows") or {}):
                 continue  # a page's points feed a content type only through the fields their row names for it
+            elif reader == "ArcgisLayer" and not resource.entry.get("photo_columns"):
+                # An ArcGIS layer feeds photos only through the fields its row's `photo_columns` names, so a photos
+                # row that SHARES a points layer carrying a photo field (BLM's `PHOTO_LINK`) stays unstaged, as it
+                # was, until its row names them.
+                continue
             # A keyed API's table is withdrawn whenever its key is unset (extract/_ogc.py's JsonFeatures). It is staged
             # all the same: its base model reads an absent table as no rows (macros/raw_or_empty.sql).
             entry = registry_entry(resource.key)
@@ -837,7 +852,7 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
             *(
                 [
                     "        config:",
-                    "          # Read off a PDF, which the fixture warehouse never holds (Table.read_from_pdf):",
+                    "          # Read off a PDF or a workbook, which the fixture warehouse never holds (Table.read_from_pdf):",
                     "          # its fct_sources_without_freshness row in dbt_project_evaluator_exceptions.csv says why.",
                     "          freshness: null",
                 ]
@@ -970,7 +985,23 @@ def content_columns(table: Table) -> dict[str, str | None]:
     if table.page_rows:
         fields = page_rows_fields(table)
         return {name: fields.get(name) for name, _ in table.shape.columns}
+    if table.reader == "ArcgisLayer":
+        return photo_columns(table)
     return CONTENT_COLUMNS[(table.type, table.reader)]
+
+
+def photo_columns(table: Table) -> dict[str, str | None]:
+    """An ArcGIS photo layer's conformed columns, as its sources.json row's `photo_columns` names the layer's fields.
+
+    The row must name the field holding the image's URL, and may name a field for each other column; a column it
+    names no field for is null, never guessed (CLAUDE.md: absent means unknown). None of the layers registered so far
+    states a credit or a licence for its photographs, so their rows name neither."""
+    fields = table.entry.get("photo_columns") or {}
+    names = [name for name, _ in table.shape.columns]
+    unknown = sorted(set(fields) - set(names))
+    if not fields.get("image_url") or unknown:
+        raise ValueError(f"{table.key}: `photo_columns` must name the image_url field, and only columns of {names}")
+    return {name: fields.get(name) for name in names}
 
 
 def page_rows_fields(table: Table) -> dict[str, str]:

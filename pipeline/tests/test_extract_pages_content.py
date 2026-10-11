@@ -610,3 +610,44 @@ def test_every_content_page_resource_rides_its_types_monthly_lane_with_a_parser_
         assert resource.cadence == "monthly", resource.key
         assert resource.type in TYPE_COLUMNS, resource.key
         assert (resource.site or resource.key) in _pages_content.SITE_PARSERS, resource.key
+
+
+# --- RATC's 14 AT Hikes ---------------------------------------------------------------------------------------------
+
+RATC = "https://www.ratc.org/at-hiking/ratcs-14-at-hikes/"
+#: The table's head as the live page writes it (2026-10-10): the first header cell two lines, a <br /> between.
+RATC_HEAD = (
+    "<table><tr><th><strong>Hike</strong><br /><span>Northern Point to Southern Point</span></th>"
+    "<th><strong>Length (miles)</strong></th><th><strong>Difficulty</strong></th></tr>"
+)
+
+
+def ratc_rows(table_body: str) -> list[dict]:
+    body = f"<h1>RATC's 14 AT Hikes</h1>{RATC_HEAD}{table_body}</table>"
+    return SITE_PARSERS["ratc_at_hikes"].read(Page(RATC, parse_html(body), body), None)
+
+
+def test_ratcs_hikes_land_their_number_ends_miles_and_difficulty_and_no_way_the_table_does_not_state():
+    rows = ratc_rows('<tr><td><a href="#hike1">Hike 1</a>: Fixture Gap to Fixture Knob</td><td>13</td><td>Moderate</td></tr>')
+
+    assert rows == [
+        {
+            "name": "Fixture Gap to Fixture Knob",
+            "section": "Hike 1",
+            "distance_mi": 13.0,
+            "distance_text": "13 Length (miles)",
+            "difficulty": "Moderate",
+            "link": RATC,
+            "source_url": RATC,
+        }
+    ]
+
+
+def test_ratcs_table_refuses_a_moved_header_a_skipped_number_and_a_length_that_is_not_a_plain_number():
+    with pytest.raises(LayoutChanged, match="not one"):
+        body = "<table><tr><th>Hike</th><th>Miles</th><th>Difficulty</th></tr></table>"
+        SITE_PARSERS["ratc_at_hikes"].read(Page(RATC, parse_html(body), body), None)
+    with pytest.raises(LayoutChanged, match="follows hike 0"):
+        ratc_rows("<tr><td>Hike 2: Fixture Gap to Fixture Knob</td><td>6.9</td><td>Moderate</td></tr>")
+    with pytest.raises(LayoutChanged, match="one word of difficulty"):
+        ratc_rows("<tr><td>Hike 1: Fixture Gap to Fixture Knob</td><td>about 7</td><td>Moderate</td></tr>")

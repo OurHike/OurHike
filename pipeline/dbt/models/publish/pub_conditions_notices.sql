@@ -96,8 +96,9 @@
 -- compares it with its own clock and shows the notice greyed after it, with
 -- one line saying why (the maintainer's frame A, poll of 2026-10-10), so a
 -- phone offline for days still greys a notice on its day. Every row carries
--- the key, null included: a row without it is a file from before this
--- field, which the phone reads as carrying no verdict at all. Measured on
+-- the key, null included, but one kind: a row without it reads on the phone
+-- as carrying no verdict at all, which is what a file from before this field
+-- says, and what decision 67's standing hazard areas say on purpose (below). Measured on
 -- UA's file of 2026-10-10 17:24 UTC (8,305 notices), the key adds 203,133
 -- bytes, 11,807,956 to 12,011,089, and 9,651 gzipped at level 6.
 --
@@ -106,6 +107,14 @@
 -- area is in the file while USFS's layer lists it: a full listing, so an area
 -- USFS drops leaves on the next read (only a held read carries it, as every
 -- notice is carried).
+-- A hazard area carries NO `current_until` key, so it never greys (decision
+-- 156, the maintainer's poll of 2026-10-11, "Stay current while served"). It
+-- is a standing designation the agency's live layer serves again on every
+-- read, not an event with an end, and none of the 341 on UA's file of
+-- 2026-10-10 had an edit date (Measured), so the date rules would have greyed
+-- every one, "It may no longer apply" beside "Wear blaze orange in season".
+-- While its layer is served it is current as of that read; once the layer
+-- stops answering, the carried row says so in its own line (`carried_since`).
 --
 -- NEVER A CLUB EMPTIED BY ONE FAILED READ. A held source's rows are its last
 -- good ones, from the marts. In a build without the row history
@@ -449,22 +458,38 @@ notice_rows as (
             and club_notices.carried_since = carried_checks.carried_since
 ),
 
--- Decision 76's `states` (seeds/notice_states.csv), on a state-wide source's
--- rows only, so no other row carries a null for it.
-stated_rows as (
+-- Decision 156: a standing hazard area carries no `current_until` (above).
+-- json_merge_patch is RFC 7386's merge patch, where a null in the patch
+-- removes the key, so only these rows lose it; every other row keeps its
+-- key, null included.
+dated_rows as (
     select
         notice_rows.source_key,
         notice_rows.notice_id,
         case
-            when named_states.states is null then notice_rows.notice
+            when json_extract_string(notice_rows.notice, '$.hazard') is null
+                then notice_rows.notice
+            else json_merge_patch(notice_rows.notice, '{"current_until": null}')
+        end as notice
+    from notice_rows
+),
+
+-- Decision 76's `states` (seeds/notice_states.csv), on a state-wide source's
+-- rows only, so no other row carries a null for it.
+stated_rows as (
+    select
+        dated_rows.source_key,
+        dated_rows.notice_id,
+        case
+            when named_states.states is null then dated_rows.notice
             else
                 json_merge_patch(
-                    notice_rows.notice,
+                    dated_rows.notice,
                     json_object('states', named_states.states)
                 )
         end as notice
-    from notice_rows
-    left join named_states on notice_rows.source_key = named_states.source_key
+    from dated_rows
+    left join named_states on dated_rows.source_key = named_states.source_key
 ),
 
 -- Whether a notice source that may publish is held this build: in a build

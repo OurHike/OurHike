@@ -132,7 +132,9 @@ models:
           and review_state, and `states` on the rows of a source
           seeds/notice_states.csv names (decision 76). `current_until` is the
           last day the notice reads as current, or null where it gives no
-          date that bounds it (macros/notice_current_until.sql). No other
+          date that bounds it (macros/notice_current_until.sql), and absent
+          on decision 67's standing hazard areas, which never grey while
+          their layer is served (decision 156). No other
           field of a source, its person fields or its prose among them, can
           reach it.
         data_type: json
@@ -268,8 +270,9 @@ unit_tests:
       notice in either mart, by source_key then notice_id, of exactly the
       documented keys. ATC's row is placed by its A.T. miles and named by its
       states; NYNJTC's carries its trail tags as `org_terms`; a burned area
-      carries its own geometry and `hazard`, and never obstructs the trail,
-      whatever its row says; OurHike's own closure and an NWS alert are not
+      carries its own geometry and `hazard`, never obstructs the trail,
+      whatever its row says, and carries no `current_until`, so it never
+      greys while its layer is served (decision 156); OurHike's own closure and an NWS alert are not
       club notices. A source seeds/notice_states.csv names (decision 76)
       carries its states as `states`, last, and no other row carries the key. `checked_at` is the oldest of a source's tables' latest
       loaded or unchanged reads (ATC's two), null where a table has none
@@ -371,7 +374,7 @@ unit_tests:
           - {table_name: raw_a__club_page, outcome: skipped, checked_at: '2026-10-04 09:00:00+00'}
     expect:
       rows:
-        - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","current_until":"2026-12-29","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"current_until":"2026-11-01","checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","current_until":"2026-12-28","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"current_until":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","states":["ID","MT"]}]'}
+        - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","current_until":"2026-12-29","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"current_until":"2026-11-01","checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","current_until":"2026-12-28","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","states":["ID","MT"]}]'}
 
   - name: pub_conditions_notices_simplifies_an_area_for_a_phone
     model: pub_conditions_notices
@@ -440,7 +443,7 @@ unit_tests:
           - {table_name: raw_iata__iata_lands_hunting_regs, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
     expect:
       rows:
-        - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.50126,44.5],[-89.44975,44.49911],[-89.44876,44.51018],[-89.50025,44.51089],[-89.50126,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"current_until":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+        - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.50126,44.5],[-89.44975,44.49911],[-89.44876,44.51018],[-89.50025,44.51089],[-89.50126,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
 
   - name: pub_conditions_hazard_areas_keeps_only_the_hazard_rows_of_the_notices_file_as_written
     model: pub_conditions_hazard_areas
@@ -837,9 +840,10 @@ unit_tests:
     description: >
       The order's last step: a notice that gives no date of any kind has
       no `current_until`, and the phone never reads it as current. A start
-      date alone bounds nothing, so a burned area dated only by its fire's
-      start has none either. The key is written null, never left out: a row
-      without it is a file from before the field.
+      date alone bounds nothing, so a notice dated only by a fire's start
+      has none either. The key is written null, never left out: a row
+      without it reads as carrying no verdict, which only a file from
+      before the field and decision 156's standing hazard areas say.
     overrides:
       macros:
         python_run_stamp: "'2026-10-10T12:00:00Z'"

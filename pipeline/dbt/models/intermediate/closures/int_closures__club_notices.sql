@@ -60,28 +60,43 @@
 -- 2. A STATUS ALONE IS NEVER READ AS CLOSED NOW WHEN ITS OWN END HAS PASSED.
 --    `obstructs_trail` is true only where the source's own status field
 --    holds a value seeds/notice_status_values.csv reads as `closes_trail`,
---    the source files the notice under closures (its club's closures.py),
---    rule 1 does not hold it, and its own end day is not more than one day
---    behind the build's UTC date (macros/notice_date_holds.sql's
---    notice_has_ended(): a day stated in a club's own zone has ended
---    everywhere in the United States, UTC-4 to UTC-10, by 10:00 UTC the day
---    after, so the margin reads a closure as closing a day too long, never a
---    day too short; Reasoned, not measured on any source). The USFS R06 fire
---    closures carried 'Active' beside an end date already past on 112 of 938
---    lines, and CDPR 'Full Closure' beside a passed StatusReopenDate is the
---    same shape (pipeline/ELT.md, "Status, water and expiry rules", rule 1).
---    Everything else is null, which decision 7 lands in warnings as not
---    reviewed: miss rather than cry wolf. So a notice past its end lands in
---    warnings, kept and not current, never in closures.
--- 3. A STATUS THE SOURCE USES FOR "NOT CURRENT" HOLDS THE ROW: an inactive
---    flag (CDTC's Active No, Wisconsin DNR's Active_Flag No), an unposted
---    one (IATA's posted no), or an open one, which tells a hiker nothing.
+--    or its own category field one seeds/notice_category_values.csv does
+--    (the Great Allegheny Passage's 'Fully Obstructed'), the source files the
+--    notice under closures (its club's closures.py), rule 1 does not hold
+--    it, and its own end day is not more than one day behind the build's UTC
+--    date (macros/notice_date_holds.sql's notice_has_ended(): a day stated in
+--    a club's own zone has ended everywhere in the United States, UTC-4 to
+--    UTC-10, by 10:00 UTC the day after, so the margin reads a closure as
+--    closing a day too long, never a day too short; Reasoned, not measured on
+--    any source). The USFS R06 fire closures carried 'Active' beside an end
+--    date already past on 112 of 938 lines, and CDPR 'Full Closure' beside a
+--    passed StatusReopenDate is the same shape (pipeline/ELT.md, "Status,
+--    water and expiry rules", rule 1). A LAYER THAT IS ITS OWN STATUS has no
+--    status field, and notice_status_values reads every one of its rows
+--    through an empty value: NETT's damaged bridges, each a bridge the
+--    coalition marks collapsed or burned (the maintainer's answer to page
+--    02's P11, poll of 2026-10-11, frame A: drawn closed with its date, the
+--    layer's EditDate as `updated_at`). Everything else is null, which
+--    decision 7 lands in warnings as not reviewed: miss rather than cry wolf.
+--    So a notice past its end lands in warnings, kept and not current, never
+--    in closures.
+-- 3. A STATUS OR A CATEGORY THE SOURCE USES FOR "NOT CURRENT" HOLDS THE ROW,
+--    whatever the other says: an inactive flag (CDTC's Active No, Wisconsin
+--    DNR's Active_Flag No, VTrans's isActive 0), an unposted or hidden one
+--    (IATA's posted no, the Great Allegheny Passage's visibility Hidden), an
+--    archived one (Missouri's Archived), a cleared one (the Great Allegheny
+--    Passage's Cleared, its category), a use a hiker is not (Michigan's '-1',
+--    a closure for ORV or snowmobile use, the maintainer's P4), or an open
+--    one, which tells a hiker nothing.
 -- 4. PLACE ONLY FROM THE SOURCE'S OWN GEOMETRY. `geom_geojson` is the
 --    staging model's own geometry, never a match of `locality` or a title
 --    against a place table: a notice with none is unplaced, and its
 --    locality is the source's own words for where (ORG_NOTICES.md section
 --    3). A reviewed term table, the other way phase C allows, does not
---    exist for any of these sources yet.
+--    exist for any of these sources yet. So Florida's closed parks (page
+--    01's P5, frame A: a closed park's trails close with it) are placed at
+--    the status layer's own points: it has no polygons and no park id (both
+--    read live 2026-10-11), and closes no trail line here.
 -- 5. FACTS AND A LINK (decision 55). The columns are the notice's title,
 --    category, dates, place and link; no prose column exists to carry, and
 --    int_warnings__wording_leaks fails the build if one reaches a mart.
@@ -112,6 +127,10 @@ status_values as (
     select * from {{ ref('notice_status_values') }}
 ),
 
+category_values as (
+    select * from {{ ref('notice_category_values') }}
+),
+
 -- Rule 6's seed: each hazard source once, with whether every row is the
 -- hazard, and its category values as compared.
 hazard_sources as (
@@ -131,10 +150,15 @@ hazard_values as (
     where coalesce(trim(category_value), '') != ''
 ),
 
+-- A status value is compared without case or surrounding space, and an
+-- empty one (null once the seed loads, '' in a unit test's rows) is the rows
+-- whose own status is empty: every row of a layer with no status field
+-- (rule 2's layer that is its own status).
 read_status as (
     select
         notices.*,
         status_values.reads_as as status_reads,
+        category_values.reads_as as category_reads,
         hazard_sources.hazard,
         coalesce(hazard_sources.every_row, false) as hazard_every_row,
         hazard_values.category_value is not null as hazard_category_listed,
@@ -146,7 +170,13 @@ read_status as (
     left join status_values
         on
             notices.source_key = status_values.source_key
-            and lower(trim(notices.status)) = lower(status_values.status_value)
+            and lower(coalesce(trim(notices.status), ''))
+            = lower(coalesce(trim(status_values.status_value), ''))
+    left join category_values
+        on
+            notices.source_key = category_values.source_key
+            and lower(trim(notices.category))
+            = lower(trim(category_values.category_value))
     left join hazard_sources
         on notices.source_key = hazard_sources.source_key
     left join hazard_values
@@ -163,7 +193,12 @@ judged as (
         case
             when status_reads = 'not_current'
                 then
-                    'its own status reads ' || status
+                    'its own status reads ' || coalesce(status, 'nothing')
+                    || ', which the source uses for a notice that is not '
+                    || 'current'
+            when category_reads = 'not_current'
+                then
+                    'its own category reads ' || category
                     || ', which the source uses for a notice that is not '
                     || 'current'
             when
@@ -176,7 +211,11 @@ judged as (
                     || hazard
             {{ notice_date_holds('build_date', 'rescinded_on') }}
         end as held_because,
-        {{ notice_has_ended('ends_on', 'build_date') }} as has_ended
+        {{ notice_has_ended('ends_on', 'build_date') }} as has_ended,
+        coalesce(
+            status_reads = 'closes_trail' or category_reads = 'closes_trail',
+            false
+        ) as reads_closed
     from read_status
 )
 
@@ -191,7 +230,7 @@ select
     case
         when
             notice_type = 'closures'
-            and status_reads = 'closes_trail'
+            and reads_closed
             and held_because is null
             and not has_ended
             then true
@@ -199,7 +238,7 @@ select
     case
         when
             notice_type = 'closures'
-            and status_reads = 'closes_trail'
+            and reads_closed
             and held_because is null
             and not has_ended
             then 'org_published'
@@ -209,6 +248,7 @@ select
     category,
     status,
     status_reads,
+    category_reads,
     locality,
     starts_at,
     starts_on,

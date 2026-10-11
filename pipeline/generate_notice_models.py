@@ -23,6 +23,18 @@ other reader's shape is its own, fixed in READERS below from the module that
 lands it. So a new FeedNotices, PageNotice or WordpressPosts source is staged
 by re-running this, with nothing to edit.
 
+ONE EXCEPTION TO A FIXED SHAPE: a source whose rows carry its status in
+fields of the site's own, beyond the reader's shape. The Great Allegheny
+Passage's trail alerts are WordPress posts whose status and visibility are
+Advanced Custom Fields, in the post's `acf` object (its sources.json notes,
+read 2026-10-09), and the maintainer's answer to wave 6's page 01, P6 (poll
+of 2026-10-11), reads them. Such a source has a notice_source_fields.csv row
+too, naming each of those fields as READERS names one (`acf.$.status`), and
+a role its row names replaces the reader's for that source alone (_roles());
+every role it leaves empty keeps the reader's.
+tests/test_generated_notice_models.py holds every field such a row names to
+the source's fixture rows, whose field names are the live ones.
+
 WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
 - models/staging/C/notices/base/base_C__K.sql: every column, keyed and
   deduped (decision 40), the geometry cast; nothing filtered or joined. The
@@ -448,9 +460,20 @@ def _uses_geometry_in_key(source: NoticeSource) -> bool:
 
 
 def _roles(source: NoticeSource, fields: dict[str, dict]) -> dict[str, str]:
-    if source.reader_class != "ArcgisLayer":
-        return dict(source.reader.roles)
+    """Each role's field: an ArcGIS layer's from its seed row; another reader's from READERS, with the roles a seed
+    row of the source's own names in their place (the module docstring's ONE EXCEPTION TO A FIXED SHAPE)."""
     row = fields.get(source.key)
+    if source.reader_class != "ArcgisLayer":
+        roles = dict(source.reader.roles)
+        named = {role: row[role] for role in ROLES if row.get(role)} if row is not None else {}
+        for role, spec in named.items():
+            if _literal(spec) is not None and role not in LITERAL_ROLES:
+                raise SystemExit(
+                    f"{source.key}: its {role} is words in single quotes, which only a "
+                    f"{' or a '.join(sorted(LITERAL_ROLES))} may be (LITERAL_ROLES): name the source's own field, "
+                    "or leave it empty"
+                )
+        return {**roles, **named}
     if row is None:
         raise SystemExit(f"{source.key}: an ArcGIS notice layer needs a row in {FIELDS_SEED.relative_to(PIPELINE_DIR)}")
     roles = {role: row[role] for role in ROLES if row.get(role)}
@@ -649,6 +672,13 @@ def render_stg(source: NoticeSource, fields: dict[str, dict]) -> str:
         lines += _wrap(
             "Its fields are the layer's own, named in seeds/notice_source_fields.csv from the field list the "
             "decision 53 inventory read (2026-10-03); a role the layer has no field for is null, never filled in."
+        )
+    elif source.key in fields:
+        own = [role for role in ROLES if fields[source.key].get(role)]
+        lines += _wrap(
+            f"Its {' and '.join(own)} {'is a field' if len(own) == 1 else 'are fields'} of the source's own beyond "
+            "the reader's shape, named in seeds/notice_source_fields.csv (the generator's ONE EXCEPTION TO A FIXED "
+            "SHAPE); every other role is the reader's."
         )
     worded = [role for role in ROLES if role in roles and _literal(roles[role]) is not None]
     if worded:

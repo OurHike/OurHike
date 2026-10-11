@@ -9,15 +9,15 @@
 -- and may publish (int_sources__publication).
 --
 -- A CLUB NOTICE ITS OWN STATUS OR DATES HOLD BACK IS LEFT OUT: one whose own
--- status says it is not current, or an order its source says was rescinded
--- (int_closures__club_notices' `held_because`, decision 53's phase C). One
--- whose own end date has passed is not held back (the maintainer's frame A,
--- 2026-10-10): it no longer closes the trail, so it lands in the warnings
--- mart, and conditions/notices.json's `current_until` lets the phone grey it.
--- Nor is one whose own start is still ahead (frame B for wave 6's page 01,
--- P3, 2026-10-11): it lands here today if its status closes the trail, with
--- its `starts_on`, and the phone closes the trail from the day before that
--- day.
+-- status or category says it is not current, or an order its source says was
+-- rescinded (int_closures__club_notices' `held_because`, decision 53's phase
+-- C). One whose own end date has passed is not held back (the maintainer's
+-- frame A, 2026-10-10): it no longer closes the trail, so it lands in the
+-- warnings mart, and conditions/notices.json's `current_until` lets the phone
+-- grey it. Nor is one whose own start is still ahead (frame B for wave 6's
+-- page 01, P3, 2026-10-11): it lands here today if its status closes the
+-- trail, with its `starts_on`, and the phone closes the trail from the day
+-- before that day.
 --
 -- DECISION 7'S SPLIT, CLOSURES' HALF: only rows whose `obstructs_trail` is
 -- true. A null (nobody has classified it, every NYNJTC alert today) and a

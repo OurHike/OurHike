@@ -257,8 +257,8 @@ models:
       Every generated club notice source's rows, read by decision 53's phase
       C rules (pipeline/ELT.md): one row per notice in the closures family's
       columns, with `obstructs_trail` true only where the source's own status
-      says closed and its own end has not passed, whether or not its own
-      start has come, and `held_because` set where the notice may not
+      or category says closed and its own end has not passed, whether or not
+      its own start has come, and `held_because` set where the notice may not
       publish as current. Nothing is dropped here; the finals leave out a
       held row. Place is the source's own geometry only.
     columns:
@@ -276,10 +276,12 @@ models:
         description: >
           True only where the source files the notice under closures, its own
           status field holds a value notice_status_values reads as
-          `closes_trail`, nothing holds it, and its own end date has not
-          passed. A start still ahead does not change it: the phone closes
-          the trail from the day before `starts_on`. Null otherwise, never
-          false: nobody here classified it.
+          `closes_trail` (an empty value there reads every row of a layer
+          with no status field) or its own category one notice_category_values
+          does, nothing holds it, and its own end date has not passed. A
+          start still ahead does not change it: the phone closes the trail
+          from the day before `starts_on`. Null otherwise, never false:
+          nobody here classified it.
         data_tests:
           - accepted_values:
               arguments:
@@ -287,9 +289,10 @@ models:
       - name: held_because
         description: >
           Why the notice may not publish as current, in words for the job log:
-          its own status says not current, its own category is not the hazard
-          its source is listed for, or its own order was rescinded. Never its
-          own end date or its own start: both publish. Null where it may.
+          its own status or category says not current, its own category is
+          not the hazard its source is listed for, or its own order was
+          rescinded. Never its own end date or its own start: both publish.
+          Null where it may.
       - name: key_versions
         description: >
           How many different raw rows share the notice's key, counted by its
@@ -1945,8 +1948,19 @@ unit_tests:
       whose own category says the hazard is not there (IATA's 'No hunting')
       is held with its category in the reason, one whose category is listed
       (compared without case or surrounding space) is not, and a hazard
-      source listed for every row (BAER) keeps every row (decision 67). The
-      status and hazard seeds are mocked as the seed files are
+      source listed for every row (BAER) keeps every row (decision 67).
+      Wave 6's statuses read as the maintainer answered on 2026-10-11:
+      Missouri's Archived alone is held (P1), its blank status shows and its
+      Closed closes, even before its start; a Missouri trailhead's Open is
+      held and its Closed is a warning; Michigan's '-1' is held on both
+      layers (P4) and its Temporarily Closed values close, compared without
+      case or surrounding space; Florida's closed park closes (P5, at its
+      own point), its open park is held and its closed campground is a
+      warning; the Great Allegheny Passage's Hidden is held whatever its
+      category says, as is its Cleared, and its Fully Obstructed closes (P6);
+      NETT's bridges, a layer with no status field, close through the seed's
+      empty value (P11); VTrans's isActive 0 is held. The status, category
+      and hazard seeds are mocked as the seed files are
       (tests/test_dbt_closures_club_notices.py).
     model: int_closures__club_notices
     given:
@@ -1968,6 +1982,26 @@ unit_tests:
           - {notice_key: 'k14', source_key: 'iata_lands_hunting_regs', club: 'iata', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'No hunting', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'h14', title: 'Fixture Preserve', status: null}
           - {notice_key: 'k15', source_key: 'iata_lands_hunting_regs', club: 'iata', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: ' open for public hunting ', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'h15', title: 'Fixture Hunting Parcel', status: null}
           - {notice_key: 'k16', source_key: 'usfs_baer_assessments', club: 'usfs', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2026-08-26 00:00:00+00', ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture National Forest', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'b16', title: 'FIXTURE FIRE', status: null}
+          - {notice_key: 'k17', source_key: 'mo_state_parks_trail_advisories', club: 'mo_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2001-01-18 00:00:00+00', ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'm17', title: 'Fixture Trail', status: 'Archived'}
+          - {notice_key: 'k18', source_key: 'mo_state_parks_trail_advisories', club: 'mo_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'm18', title: 'Fixture Trail', status: null}
+          - {notice_key: 'k19', source_key: 'mo_state_parks_trail_advisories', club: 'mo_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2999-10-11 00:00:00+00', ends_at: '2999-10-16 00:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'm19', title: 'Fixture Trail', status: 'Closed'}
+          - {notice_key: 'k20', source_key: 'mo_state_parks_trail_advisories', club: 'mo_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'm20', title: 'Fixture Trail', status: 'Caution'}
+          - {notice_key: 'k21', source_key: 'mo_state_parks_katy_trailheads', club: 'mo_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Trailhead', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture Section', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 't21', title: 'Fixture Trailhead', status: 'Open'}
+          - {notice_key: 'k22', source_key: 'mo_state_parks_katy_trailheads', club: 'mo_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Trailhead', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture Section', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 't22', title: 'Fixture Trailhead', status: 'Closed'}
+          - {notice_key: 'k23', source_key: 'mi_dnr_trail_temporary_closures', club: 'mi_dnr', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Motorized', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture County', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'd23', title: 'Fixture ORV Route', status: '-1'}
+          - {notice_key: 'k24', source_key: 'mi_dnr_trail_temporary_closures', club: 'mi_dnr', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Nonmotorized', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture County', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'd24', title: 'Fixture Pathway', status: ' temporarily closed due to timber harvest '}
+          - {notice_key: 'k25', source_key: 'mi_dnr_trail_temporary_reroutes', club: 'mi_dnr', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Motorized', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture County', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'd25', title: 'Fixture ORV Reroute', status: '-1'}
+          - {notice_key: 'k26', source_key: 'mi_dnr_trail_temporary_reroutes', club: 'mi_dnr', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Nonmotorized', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture County', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'd26', title: 'Fixture River Trail', status: 'Temporarily Open Reroute'}
+          - {notice_key: 'k27', source_key: 'fl_state_parks_day_use_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-82.5,28.1]}', _loaded_at: '2026-10-03 00:00:00+00', source_id: 'f27', title: 'Fixture State Park', status: 'Closed-Hurricane/Tropical Storm'}
+          - {notice_key: 'k28', source_key: 'fl_state_parks_day_use_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'f28', title: 'Fixture State Park', status: 'Open'}
+          - {notice_key: 'k29', source_key: 'fl_state_parks_campground_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'f29', title: 'Fixture State Park', status: 'Closed-Hurricane/Tropical Storm'}
+          - {notice_key: 'k30', source_key: 'gap_trail_alerts', club: 'gap', notice_type: 'closures', reader: 'wordpress_posts', listing: 'full', category: 'Fully Obstructed', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '30', title: 'Fixture Segment Closure', status: 'Visible'}
+          - {notice_key: 'k31', source_key: 'gap_trail_alerts', club: 'gap', notice_type: 'closures', reader: 'wordpress_posts', listing: 'full', category: 'Fully Obstructed', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '31', title: 'Fixture Segment Closure', status: 'Hidden'}
+          - {notice_key: 'k32', source_key: 'gap_trail_alerts', club: 'gap', notice_type: 'closures', reader: 'wordpress_posts', listing: 'full', category: 'Cleared', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '32', title: 'Fixture Tree Down', status: 'Visible'}
+          - {notice_key: 'k33', source_key: 'gap_trail_alerts', club: 'gap', notice_type: 'closures', reader: 'wordpress_posts', listing: 'full', category: 'Partially Obstructed', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '33', title: 'Fixture Detour', status: 'Visible'}
+          - {notice_key: 'k34', source_key: 'nett_damaged_bridges', club: 'nett', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: '2017-05-25 21:26:11+00', source_url: null, locality: null, geom_geojson: '{"type":"Point","coordinates":[-95.7,33.5]}', _loaded_at: '2026-10-03 00:00:00+00', source_id: 'n34', title: 'Fixture Bridge (collapsed)', status: null}
+          - {notice_key: 'k35', source_key: 'vtrans_rail_trail_closures', club: 'vtrans', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'v35', title: 'Fixture Rail Trail', status: '0'}
+          - {notice_key: 'k36', source_key: 'vtrans_rail_trail_closures', club: 'vtrans', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'v36', title: 'Fixture Rail Trail', status: '1'}
       - input: ref('notice_hazard_areas')
         rows:
           - {source_key: 'oprhp_hunting_areas', hazard: 'hunting', category_value: 'Hunting area', why: 'Hunting 1 ''Hunting area'' 135 of 224 (the row''s notes). Hunting 2 ''Restricted Area/Safety Zone'' 89 is where hunting is restricted, so it is not listed and its rows are held back. @unvalidated that Description carries ''Hunting area'' word for word: read from the notes and the fixture''s ''Restricted Area/Safety Zone'', not from a live value; a different spelling holds every NY Parks area back, a miss rather than a safety zone drawn as hunting'}
@@ -2022,6 +2056,36 @@ unit_tests:
           - {source_key: 'utah_ffsl_fire_restrictions', status_value: 'Superseded', reads_as: 'not_current', why: 'As above'}
           - {source_key: 'ptny_est_closures', status_value: 'Closed', reads_as: 'closes_trail', why: 'trail_stat ''Closed'' 9 of 9 (the row''s notes, read live 2026-10-08): a view that shows only the Empire State Trail''s closed sections'}
           - {source_key: 'ptny_est_closures', status_value: 'Open', reads_as: 'not_current', why: 'One of trail_stat''s four domain values (the row''s notes); the view serves none, and an open section tells a hiker nothing'}
+          - {source_key: 'mo_state_parks_trail_advisories', status_value: 'Closed', reads_as: 'closes_trail', why: 'STATUS ''Closed'' 1 of 4 on 2026-10-09 (the row''s notes): Rock Island Trail MM 262 to 261, 2026-10-11 to 2026-10-16, the trail closed between its own mile markers, read only before its own END_DATE passes. Page 01''s proposal, which the maintainer''s P1 answer (poll of 2026-10-11) left standing; ''Caution'' (1 of 4) is not listed, so it is a warning nobody reviewed'}
+          - {source_key: 'mo_state_parks_trail_advisories', status_value: 'Archived', reads_as: 'not_current', why: 'STATUS ''Archived'' 1 of 4 on 2026-10-09 (Rock Island Trail MM 59 to 216.8, since 2023-01-18, the row''s notes): the one value the maintainer''s P1 answer (poll of 2026-10-11) reads as not current. A blank or null STATUS (1 of 4) is not listed, so by the same answer it shows as current'}
+          - {source_key: 'mo_state_parks_katy_trailheads', status_value: 'Open', reads_as: 'not_current', why: 'STATUS ''Open'' 25 of 26 on 2026-10-09 (the row''s notes; Treloar Trailhead reads Open beside its lifted 2026-09-16 to 2026-09-19 dates): an open trailhead tells a hiker nothing. ''Closed'' and ''Caution'' are not listed: a closed trailhead is not a closed trail, so either is a warning about the trailhead, as page 01 proposed and the maintainer''s poll of 2026-10-11 left standing'}
+          - {source_key: 'mi_dnr_trail_temporary_closures', status_value: '-1', reads_as: 'not_current', why: 'OpenClosedStatusNonmotor ''-1'', the domain''s ''Unspecified'', 125 of 207 on 2026-10-09, every one TrailUseCategory Motorized with Hiking ''No'' (the read''s saved rows, counted 2026-10-11): such a row closes an ORV or snowmobile use and says nothing for foot travel, which the maintainer''s P4 answer (poll of 2026-10-11) reads as nothing for a hiker'}
+          - {source_key: 'mi_dnr_trail_temporary_closures', status_value: 'Temporarily Closed', reads_as: 'closes_trail', why: 'OpenClosedStatusNonmotor, the status a hiker reads: ''Temporarily Closed'' 16 of 207 on 2026-10-09 (the row''s notes), closed to foot travel. Page 01''s proposal for its six ''Temporarily Closed'' values, which the maintainer''s P4 answer (poll of 2026-10-11) left standing'}
+          - {source_key: 'mi_dnr_trail_temporary_closures', status_value: 'Temporarily Closed Due To Timber Harvest', reads_as: 'closes_trail', why: 'As ''Temporarily Closed'': 32 of 207 on 2026-10-09'}
+          - {source_key: 'mi_dnr_trail_temporary_closures', status_value: 'Temporarily Closed Due To Water On Trail', reads_as: 'closes_trail', why: 'As ''Temporarily Closed'': 13 of 207 on 2026-10-09'}
+          - {source_key: 'mi_dnr_trail_temporary_closures', status_value: 'Temporarily Closed Due To Trail Washout', reads_as: 'closes_trail', why: 'As ''Temporarily Closed'': 8 of 207 on 2026-10-09'}
+          - {source_key: 'mi_dnr_trail_temporary_closures', status_value: 'Temporarily Closed Due To Bridge Maintenance Or Repair', reads_as: 'closes_trail', why: 'As ''Temporarily Closed'': 7 of 207 on 2026-10-09'}
+          - {source_key: 'mi_dnr_trail_temporary_closures', status_value: 'Temporarily Closed Due To Trail Maintenance Or Repair', reads_as: 'closes_trail', why: 'As ''Temporarily Closed'': 6 of 207 on 2026-10-09'}
+          - {source_key: 'mi_dnr_trail_temporary_reroutes', status_value: '-1', reads_as: 'not_current', why: 'As mi_dnr_trail_temporary_closures'' ''-1'' (the maintainer''s P4 answer, poll of 2026-10-11): 8 of the 11 reroutes on 2026-10-09, every one Motorized with Hiking ''No'' (the read''s saved rows, counted 2026-10-11). ''Temporarily Open Reroute'' (2) and a null status (1) are not listed: a reroute is a detour to follow, a warning'}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Open', reads_as: 'not_current', why: 'PARK_STATUS ''Open'' 141 of 176 on 2026-10-09 (the row''s notes): an open park tells a hiker nothing'}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Hurricane/Tropical Storm', reads_as: 'closes_trail', why: 'PARK_STATUS ''Closed-Hurricane/Tropical Storm'' 35 of 176 on 2026-10-09 (the row''s notes): the park closed whole, by its own staff. The maintainer''s answer to page 01''s P5 (poll of 2026-10-11, frame A) closes a closed park''s trails until the park''s own status reopens it. The layer is points with no park id (read live 2026-10-11), so the closure is placed at the park''s own point and closes no trail line (int_closures__club_notices'' rule 4)'}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Construction/Repair', reads_as: 'closes_trail', why: 'As ''Closed-Hurricane/Tropical Storm'': one of the eight Closed values of PARK_STATUS''s domain (read live 2026-10-11), on no row on 2026-10-09'}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Fire/Smoke', reads_as: 'closes_trail', why: 'As ''Closed-Construction/Repair'''}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Flood', reads_as: 'closes_trail', why: 'As ''Closed-Construction/Repair'''}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Hazardous Materials', reads_as: 'closes_trail', why: 'As ''Closed-Construction/Repair'''}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Health', reads_as: 'closes_trail', why: 'As ''Closed-Construction/Repair'''}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Other', reads_as: 'closes_trail', why: 'As ''Closed-Construction/Repair'''}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Tornado', reads_as: 'closes_trail', why: 'As ''Closed-Construction/Repair'''}
+          - {source_key: 'fl_state_parks_campground_status', status_value: 'Open', reads_as: 'not_current', why: 'CAMPGROUND_STATUS ''Open'' 42 of 184 on 2026-10-09 (the row''s notes): an open campground tells a hiker nothing. Its Closed values are not listed: a closed campground is not a closed trail, so it is a warning about the campground (the maintainer''s P5 answer, poll of 2026-10-11, is about a park''s day-use status)'}
+          - {source_key: 'fl_state_parks_campground_status', status_value: 'No Campground', reads_as: 'not_current', why: 'CAMPGROUND_STATUS ''No Campground'' 120 of 184 on 2026-10-09 (the row''s notes): a park with no campground, a status about no site'}
+          - {source_key: 'vtrans_rail_trail_closures', status_value: '0', reads_as: 'not_current', why: 'isActive 0, the agency''s own flag for a closure that no longer stands (coded 0 No, 1 Yes, -1 Unknown): 19 of 20 on 2026-10-09 (the row''s notes), 12 of them with no endDate to grey them by (the read''s saved rows, counted 2026-10-11). The reading this row''s reaches_hikers_comment names as its settlement; 1 and -1 are not listed, so an active closure is a warning nobody reviewed'}
+          - {source_key: 'vtrans_rail_trail_warnings', status_value: '0', reads_as: 'not_current', why: 'As vtrans_rail_trail_closures: isActive 0 on 15 of 17 on 2026-10-09 (the row''s notes), 9 of them with no endDate (the read''s saved rows, counted 2026-10-11)'}
+          - {source_key: 'gap_trail_alerts', status_value: 'Hidden', reads_as: 'not_current', why: 'The ACF `visibility`, which seeds/notice_source_fields.csv stages as the status: ''Hidden'' 59 of 65 on 2026-10-09 (the row''s notes), an alert the conservancy no longer shows on its own site. The maintainer''s answer to page 01''s P6 (poll of 2026-10-11): Hidden and Cleared are both not current, Cleared by seeds/notice_category_values.csv'}
+          - {source_key: 'nett_damaged_bridges', status_value: '', reads_as: 'closes_trail', why: 'An empty value is every row of a layer with no status field, which is its own status: every row of the coalition''s damaged-bridges layer is a bridge it marks collapsed or burned (3 on 2026-10-09, the row''s notes). The maintainer''s answer to page 02''s P11 (poll of 2026-10-11, frame A): drawn closed, with its date'}
+      - input: ref('notice_category_values')
+        rows:
+          - {source_key: 'gap_trail_alerts', category_value: 'Cleared', reads_as: 'not_current', why: 'The ACF `status`, which seeds/notice_source_fields.csv stages as the category: ''Cleared'' 54 of 65 on 2026-10-09 (the row''s notes), every one of them Hidden as well (the read''s saved rows, counted 2026-10-11), an alert the conservancy has cleared. The maintainer''s answer to page 01''s P6 (poll of 2026-10-11): Hidden and Cleared are both not current'}
+          - {source_key: 'gap_trail_alerts', category_value: 'Fully Obstructed', reads_as: 'closes_trail', why: 'ACF `status` ''Fully Obstructed'' 2 of 65 on 2026-10-09 (the row''s notes), 1 Visible and 1 Hidden (the read''s saved rows, counted 2026-10-11): the trail is blocked. Page 01''s proposal, ''Fully Obstructed as closed'', which the maintainer''s P6 answer left standing; ''Partially Obstructed'' (9) is not listed, so it is a warning nobody reviewed'}
     expect:
       rows:
         - {notice_id: 'usfs_r06_fire_closure_lines:g01', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Fire Area Closure', locality: null, geom_geojson: null, updated_at: null}
@@ -2040,6 +2104,26 @@ unit_tests:
         - {notice_id: 'iata_lands_hunting_regs:h14', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own category, No hunting, is not one notice_hazard_areas reads as hunting', title: 'Fixture Preserve', locality: 'Fixture', geom_geojson: null, updated_at: null}
         - {notice_id: 'iata_lands_hunting_regs:h15', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Hunting Parcel', locality: 'Fixture', geom_geojson: null, updated_at: null}
         - {notice_id: 'usfs_baer_assessments:b16', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'FIXTURE FIRE', locality: 'Fixture National Forest', geom_geojson: null, updated_at: null}
+        - {notice_id: 'mo_state_parks_trail_advisories:m17', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads Archived, which the source uses for a notice that is not current', title: 'Fixture Trail', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'mo_state_parks_trail_advisories:m18', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Trail', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'mo_state_parks_trail_advisories:m19', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Trail', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'mo_state_parks_trail_advisories:m20', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Trail', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'mo_state_parks_katy_trailheads:t21', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads Open, which the source uses for a notice that is not current', title: 'Fixture Trailhead', locality: 'Fixture Section', geom_geojson: null, updated_at: null}
+        - {notice_id: 'mo_state_parks_katy_trailheads:t22', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Trailhead', locality: 'Fixture Section', geom_geojson: null, updated_at: null}
+        - {notice_id: 'mi_dnr_trail_temporary_closures:d23', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads -1, which the source uses for a notice that is not current', title: 'Fixture ORV Route', locality: 'Fixture County', geom_geojson: null, updated_at: null}
+        - {notice_id: 'mi_dnr_trail_temporary_closures:d24', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Pathway', locality: 'Fixture County', geom_geojson: null, updated_at: null}
+        - {notice_id: 'mi_dnr_trail_temporary_reroutes:d25', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads -1, which the source uses for a notice that is not current', title: 'Fixture ORV Reroute', locality: 'Fixture County', geom_geojson: null, updated_at: null}
+        - {notice_id: 'mi_dnr_trail_temporary_reroutes:d26', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture River Trail', locality: 'Fixture County', geom_geojson: null, updated_at: null}
+        - {notice_id: 'fl_state_parks_day_use_status:f27', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture State Park', locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-82.5,28.1]}', updated_at: null}
+        - {notice_id: 'fl_state_parks_day_use_status:f28', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads Open, which the source uses for a notice that is not current', title: 'Fixture State Park', locality: 'Fixture', geom_geojson: null, updated_at: null}
+        - {notice_id: 'fl_state_parks_campground_status:f29', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture State Park', locality: 'Fixture', geom_geojson: null, updated_at: null}
+        - {notice_id: 'gap_trail_alerts:30', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Segment Closure', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'gap_trail_alerts:31', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads Hidden, which the source uses for a notice that is not current', title: 'Fixture Segment Closure', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'gap_trail_alerts:32', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own category reads Cleared, which the source uses for a notice that is not current', title: 'Fixture Tree Down', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'gap_trail_alerts:33', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Detour', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'nett_damaged_bridges:n34', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Bridge (collapsed)', locality: null, geom_geojson: '{"type":"Point","coordinates":[-95.7,33.5]}', updated_at: '2017-05-25T21:26:11Z'}
+        - {notice_id: 'vtrans_rail_trail_closures:v35', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads 0, which the source uses for a notice that is not current', title: 'Fixture Rail Trail', locality: 'Fixture', geom_geojson: null, updated_at: null}
+        - {notice_id: 'vtrans_rail_trail_closures:v36', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Rail Trail', locality: 'Fixture', geom_geojson: null, updated_at: null}
 
   - name: int_closures__club_notices_keeps_a_notice_for_a_days_margin_either_side_of_its_own_dates
     description: >
@@ -2076,6 +2160,8 @@ unit_tests:
       - input: ref('notice_status_values')
         rows:
           - {source_key: 'usfs_r06_fire_closure_lines', status_value: 'Active', reads_as: 'closes_trail', why: 'Fixture'}
+      - input: ref('notice_category_values')
+        rows: []
       - input: ref('notice_hazard_areas')
         rows: []
     expect:

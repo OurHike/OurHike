@@ -24,11 +24,12 @@
 --                    int_closures__gate holds back a source with any.
 --   notice_held_because
 --                    why one club notice may not publish (its own status
---                    says not current, or its order was rescinded; never
---                    its end date, which only stops it closing the trail,
---                    nor its start still ahead), set only on the club
---                    notices' branch; the finals leave such a row out and
---                    the gate does not hold its source for it.
+--                    or category says not current, or its order was
+--                    rescinded; never its end date, which only stops it
+--                    closing the trail, nor its start still ahead), set
+--                    only on the club notices' branch; the finals leave
+--                    such a row out and the gate does not hold its source
+--                    for it.
 --
 -- `notice_id` is `<source key>:<the source's own id>` (features/ORG_NOTICES.md
 -- §2, the form nynjtc_alerts.json already publishes), and the marts' keys are
@@ -201,9 +202,9 @@ from ourhike
 union all by name
 
 -- Every generated club notice source's closures-type notices (decision 53,
--- phase C): `obstructs_trail` is true only where the source's own status
--- says closed and its own end has not passed, and null otherwise, so most
--- land in warnings as not reviewed (decision 7).
+-- phase C): `obstructs_trail` is true only where the source's own status or
+-- category says closed and its own end has not passed, and null otherwise,
+-- so most land in warnings as not reviewed (decision 7).
 select
     notice_id,
     source_row_key,

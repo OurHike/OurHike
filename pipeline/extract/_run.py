@@ -1088,7 +1088,8 @@ def as_landed_feature(resource: Resource, row: dict, object_id_field: str | None
 def named_object_id_field(resource: ArcgisLayer) -> str | None:
     """The field an ArcGIS layer's metadata names as its object id, or None where it names none or does not answer.
 
-    Its `objectIdField`, else the field typed esriFieldTypeOID: 9 of the 18
+    Its `objectIdField`, else the field typed esriFieldTypeOID
+    (extract/_kinds.py's metadata_object_id_field()): 9 of the 18
     layers read on 2026-10-09 leave `objectIdField` out, all 9 of them off
     ArcGIS Online (ArcgisLayer.platform 'onprem'), and pasda_dcnr_trails'
     field is OBJECTID_1. Not extract/_kinds.py's object_id_field(), whose
@@ -1105,10 +1106,7 @@ def named_object_id_field(resource: ArcgisLayer) -> str | None:
             f"::warning title={resource.key} as-landed copy::the layer's metadata did not answer ({error}); no feature carries an id"
         )
         return None
-    if metadata.get("objectIdField"):
-        return metadata["objectIdField"]
-    fields = [field for field in metadata.get("fields") or [] if isinstance(field, dict)]
-    return next((field["name"] for field in fields if field.get("type") == "esriFieldTypeOID" and field.get("name")), None)
+    return _kinds.metadata_object_id_field(metadata)
 
 
 class AsLanded:

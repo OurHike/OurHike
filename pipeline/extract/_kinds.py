@@ -99,7 +99,7 @@ from fetch_hikefinder import sign_in as hikefinder_sign_in
 from fetch_opentrail import API_URL as OPENTRAIL_API_URL
 from fetch_opentrail import strip_comments as strip_opentrail_comments
 from lib.arcgis import PAGE_SIZE as ARCGIS_PAGE_SIZE
-from lib.arcgis import feature_object_id, iter_layer_pages, layer_count
+from lib.arcgis import OffsetIgnored, feature_object_id, iter_layer_pages, layer_count
 from lib.atc_scrape import parse_update as parse_atc_update
 from lib.atc_scrape import update_url as atc_update_url
 from lib.club_pdfs import PARSERS as CLUB_PDF_PARSERS
@@ -555,6 +555,21 @@ def _file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def metadata_object_id_field(metadata: dict) -> str | None:
+    """The field a layer's metadata names as its object id: its `objectIdField`, else the field typed esriFieldTypeOID, else None.
+
+    Never a guess, so it is what a read that pages past the highest id
+    (`keyset` in lib/arcgis.py's iter_layer_pages) and an id written into the
+    as-landed copy (extract/_run.py's named_object_id_field()) both stand on.
+    """
+    if metadata.get("objectIdField"):
+        return metadata["objectIdField"]
+    for field in metadata.get("fields") or []:
+        if isinstance(field, dict) and field.get("type") == "esriFieldTypeOID" and field.get("name"):
+            return field["name"]
+    return None
+
+
 def object_id_field(metadata: dict) -> str:
     """A layer's object id field: its metadata's `objectIdField`, else the field typed esriFieldTypeOID, else OBJECTID.
 
@@ -566,12 +581,7 @@ def object_id_field(metadata: dict) -> str:
     operation", supportsStatistics false), so its check still answers
     UNKNOWN; a layer that does support them gets its fingerprint.
     """
-    if metadata.get("objectIdField"):
-        return metadata["objectIdField"]
-    for field in metadata.get("fields") or []:
-        if field.get("type") == "esriFieldTypeOID" and field.get("name"):
-            return field["name"]
-    return "OBJECTID"
+    return metadata_object_id_field(metadata) or "OBJECTID"
 
 
 # The names ArcGIS gives a layer's system length and area fields, lower-cased:
@@ -606,9 +616,11 @@ class ArcgisLayer(PersonRuled, Resource):
     Pages come from `lib.arcgis.iter_layer_pages`, the loop every fetcher
     already uses - stop on an empty page, advance by rows returned, halve a
     page the server refuses (#1790) - and the read is held to the server's own
-    `returnCountOnly` count afterwards (#1730). Not dlt's `rest_api` source,
-    which ELT.md's first draft named: its OffsetPaginator steps by `limit`,
-    and a second pager is what #1295 took out.
+    `returnCountOnly` count afterwards (#1730). A server that ignores
+    resultOffset is read again through the same loop past its highest object
+    id (`_read_into`). Not dlt's `rest_api` source, which ELT.md's first draft
+    named: its OffsetPaginator steps by `limit`, and a second pager is what
+    #1295 took out.
     """
 
     @property
@@ -820,7 +832,10 @@ class ArcgisLayer(PersonRuled, Resource):
         read (USGS's 176,566 populated places, Washington's 32,563 public-land
         polygons). That memory was the cause is Reasoned, not measured; the
         line each monthly layer now prints with its peak RSS settles it. A
-        read an edit may have shifted is read again, once (`_read_into`).
+        read an edit may have shifted is read again, once, a layer whose
+        server ignores resultOffset is read past its highest object id
+        instead, and a read that served a row twice while missing none the
+        server counts is refused (`_read_into`).
         """
         named = session()
         metadata = self.metadata(self.read_backoff)
@@ -891,46 +906,104 @@ class ArcgisLayer(PersonRuled, Resource):
         before; and a layer read by object id (`paginate` false) asks for ids,
         not offsets, so it cannot be shifted at all.
 
+        THE COUNT BEFORE THE PAGES ALSO BOUNDS THEM (`expected` in
+        lib/arcgis.py's iter_layer_pages), because a server can ignore
+        resultOffset while its metadata says it pages. Missouri State Parks'
+        advisories layer (`mo_state_parks_trail_advisories`) serves its 4 rows
+        in a rotating order whatever offset it is sent, and notices run 25
+        paged it 58 times before two pages happened to match (measured
+        2026-10-11). Now offset paging stops at the page that takes the rows
+        read past that count by more than lib/arcgis.py's
+        overrun_allowance(), or at a page that repeats the one before it,
+        either way with OffsetIgnored; the pages read are thrown away, and the
+        layer is read again past its highest object id (`keyset`), the field
+        its metadata names (metadata_object_id_field()). A layer whose
+        metadata names none is refused, its last committed table standing. A
+        layer whose offset paging works never reaches that read, so its
+        requests are exactly what they were (tests/test_extract_run.py pins
+        them).
+
+        A READ THAT SERVED A ROW TWICE AND STILL MISSES NONE THE SERVER
+        COUNTS IS REFUSED, not landed: before this, every row of such a read
+        landed, the repeats with them, and the count passed it: had
+        Missouri's 58 pages ended on an empty one, 232 rows would have landed
+        for its 4 (Reasoned, 58 times 4). A read that served a row twice and
+        misses a counted one is the shifted read above, read again.
+
         STILL OPEN: a row leaving the set and another joining it inside one
         read leaves the count where it was and repeats nothing, and that skip
-        is not seen. Keyset paging (`orderByFields` on the object id, `where`
-        past the last id read) would close it, and changes every page query
-        every layer is asked; it is not built (Reasoned, not measured: no
-        registered server has been tried with it).
+        is not seen. Keyset paging closes it, and is used here only once
+        offset paging has failed, so that every layer read today keeps its
+        requests. Asking it of every layer would change every page query
+        every layer is asked (Reasoned, not measured: no registered server but
+        Missouri's has been tried with it, and that one ignores
+        `orderByFields`, so keyset reads it whole only because one page holds
+        all 4 rows; lib/arcgis.py's iter_layer_pages says why).
         """
         query_url = self.url + "/query"
         before = layer_count(query_url, where=self.where, session=named, backoff=self.read_backoff) if paginate else None
-        pages = iter_layer_pages(
-            self.url,
-            where=self.where,
-            out_fields=out_fields,
-            session=named,
-            backoff=self.read_backoff,
-            return_z=self.return_z,
-            paginate=paginate,
-            page_size=None if paginate else min(ARCGIS_PAGE_SIZE, metadata.get("maxRecordCount") or ARCGIS_PAGE_SIZE),
-        )
-        read, pages_read, ids = 0, 0, set()
-        for page in pages:
-            pages_read += 1
-            for feature in page:
-                spool.write(json.dumps(feature, separators=(",", ":")))
-                spool.write("\n")
-                read += 1
-                if ids is not None:
-                    oid = feature_object_id(feature, oid_field)
-                    if oid is None:
-                        ids = None  # a feature with no id: the repeat check cannot be made, and is not guessed
-                    else:
-                        ids.add(oid)
+
+        def pages(keyset: str | None = None):
+            return iter_layer_pages(
+                self.url,
+                where=self.where,
+                out_fields=out_fields,
+                session=named,
+                backoff=self.read_backoff,
+                return_z=self.return_z,
+                paginate=paginate,
+                page_size=None if paginate else min(ARCGIS_PAGE_SIZE, metadata.get("maxRecordCount") or ARCGIS_PAGE_SIZE),
+                expected=before,
+                keyset=keyset,
+            )
+
+        try:
+            read, pages_read, ids = spool_pages(spool, pages(), oid_field)
+        except OffsetIgnored as failure:
+            keyset = metadata_object_id_field(metadata)
+            if keyset is None:
+                raise RuntimeError(
+                    f"{self.key}: {failure}, and its metadata names no object id field to read it by instead"
+                ) from failure
+            print(f"  {self.key}: {failure}; reading it again past its highest {keyset}")
+            spool.seek(0)
+            spool.truncate()
+            read, pages_read, ids = spool_pages(spool, pages(keyset), oid_field)
         count = layer_count(query_url, where=self.where, session=named, backoff=self.read_backoff)
         if not paginate or count is None:
             return read, count, None
         if ids is not None and len(ids) < count <= read:
             return read, count, f"{len(ids)} distinct object ids in {read} features read, and the server counts {count}"
+        if ids is not None and count <= len(ids) < read:
+            raise RuntimeError(
+                f"{self.key}: {read} features read hold {len(ids)} distinct object ids, all {count} the server counts and "
+                f"{read - len(ids)} served again; the server repeats rows, so the read is refused rather than landed with them"
+            )
         if pages_read > 1 and before is not None and before != count:
             return read, count, f"the server counted {before} features before the {pages_read} pages and {count} after"
         return read, count, None
+
+
+def spool_pages(spool, pages, oid_field: str) -> tuple[int, int, set | None]:
+    """Each page's features written to `spool`, one a line: (features written, pages, their distinct object ids).
+
+    The ids are None once a feature carries none: the repeat check cannot be
+    made then, and is not guessed.
+    """
+    read, pages_read, ids = 0, 0, set()
+    for page in pages:
+        pages_read += 1
+        for feature in page:
+            spool.write(json.dumps(feature, separators=(",", ":")))
+            spool.write("\n")
+            read += 1
+            if ids is not None:
+                oid = feature_object_id(feature, oid_field)
+                if oid is None:
+                    ids = None
+                else:
+                    ids.add(oid)
+    return read, pages_read, ids
 
 
 def arcgis_layer(key: str, **overrides) -> ArcgisLayer:

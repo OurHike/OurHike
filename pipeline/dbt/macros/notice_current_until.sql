@@ -32,6 +32,18 @@
     early, the side a hiker in front of a closed trail is safer on
     (Reasoned).
 
+    AN UPCOMING NOTICE IS NO EXCEPTION. Since the maintainer's frame B for
+    wave 6's page 01, P3 (poll of 2026-10-11), a notice whose own start is
+    still ahead publishes now (int_closures__club_notices' rule 1), and its
+    day is still the first of the four above: so one with no end, no stated
+    duration and no edit date carries null, and one edited more than 90 days
+    before its start carries a day before its start. Before its start, the
+    phone's "Starts <date>" tag says what it is; this day says how long it
+    reads as current once it has begun. Not floored at the start, because
+    the phone reads which step set the day off the row's own fields
+    (client/src/lib/noticeCurrency.ts's notCurrent()), and a start-only row
+    given its start as its day would read there as a duration that ran out.
+
     Example (pub_conditions_notices):
 
         strftime({{ notice_current_until('ends_on', 'starts_on', 'title', 'updated_at') }}, '%Y-%m-%d')

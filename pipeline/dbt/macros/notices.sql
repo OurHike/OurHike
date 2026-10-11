@@ -46,9 +46,18 @@
       'YYYY-MM-DD', NPS's '2026-10-02 00:00:00.0'). Without an offset the
       session's zone applies, which build_marts.py sets to UTC;
     - RFC 822, an RSS pubDate, with 'GMT' read as '+0000';
-    - month/day/year, the Ouachita condition report's.
+    - month/day/year, the Ouachita condition report's and IDPR's, with a
+      year of four digits or of two. A two-digit year is read as DuckDB's
+      '%y' reads it, 00 to 68 as 2000 to 2068 and 69 to 99 as 1969 to 1999,
+      so IDPR's '8/13/26' is 2026-08-13 (Upper Mesa Falls Area & Road
+      Closure's DateStart, 1 of the 51 rows read 2026-10-09). Before
+      2026-10-11 '%Y' read it as the year 26, which the phone would have
+      printed as "from August 13, 26". A year of one or three digits is no
+      date anyone states, and is null.
     Never filled in: a date the source states in words ('Until further
-    notice') is null here, and stays in the source's own fields. -#}
+    notice') is null here, and stays in the source's own fields.
+    tests/singular/assert_notice_instant_reads_each_shape_a_source_states_a_date_in.sql
+    holds each of these shapes. -#}
 {% macro notice_instant(text) -%}
     coalesce(
         case
@@ -59,7 +68,12 @@
         try_strptime(
             replace({{ text }}, ' GMT', ' +0000'), '%a, %d %b %Y %H:%M:%S %z'
         ),
-        cast(try_strptime({{ text }}, '%m/%d/%Y') as timestamptz)
+        case
+            when regexp_full_match({{ text }}, '[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}')
+                then cast(try_strptime({{ text }}, '%m/%d/%Y') as timestamptz)
+            when regexp_full_match({{ text }}, '[0-9]{1,2}/[0-9]{1,2}/[0-9]{2}')
+                then cast(try_strptime({{ text }}, '%m/%d/%y') as timestamptz)
+        end
     )
 {%- endmacro %}
 

@@ -1,8 +1,9 @@
 version: 2
 
-# Decision 53's phase C: the club notice sources' seeds. Four are reviewed by
-# hand row by row (notice_source_fields, notice_status_values, decision 67's
-# notice_hazard_areas and decision 76's notice_states), one is a
+# Decision 53's phase C: the club notice sources' seeds. Five are reviewed by
+# hand row by row (notice_source_fields, notice_status_values,
+# notice_category_values, decision 67's notice_hazard_areas and decision 76's
+# notice_states), one is a
 # person's mark on a notice (notice_marks), and one is written by
 # pipeline/generate_notice_models.py from the extract's own declarations
 # (notice_readers), which tests/test_generated_notice_models.py holds to what
@@ -21,7 +22,13 @@ seeds:
       staging model; tests/test_generated_notice_models.py fails a field the
       layer's measured list does not hold. Reasoned from the field names and
       the inventory notes quoted in `why`, and not read against live values,
-      except where `why` says so.
+      except where `why` says so. A source another reader lands has a row
+      only where its rows carry its status in fields of the site's own
+      beyond the reader's shape (the Great Allegheny Passage's ACF fields,
+      the maintainer's answer to wave 6's page 01, P6, poll of 2026-10-11):
+      each named as `column.$path`, replacing the reader's field for that
+      role alone (generate_notice_models.py's ONE EXCEPTION TO A FIXED
+      SHAPE), and held by that test to the source's fixture rows.
     config:
       column_types:
         source_key: varchar
@@ -73,8 +80,17 @@ seeds:
       passes) or `not_current` (an inactive, unposted or open row, held back
       as no notice). A value not listed reads as neither, and its notice
       lands in warnings as not reviewed (decision 7): miss rather than cry
-      wolf. A closed park, site, trailhead or access point is not listed as
-      `closes_trail`, because none of them says the trail is closed.
+      wolf. AN EMPTY VALUE is the rows whose own status is empty, and is
+      listed only for a layer with no status field at all, so it is every
+      row of a layer that is its own status (NETT's damaged bridges, the
+      maintainer's answer to wave 6's page 02, P11, poll of 2026-10-11);
+      tests/test_generated_notice_models.py refuses one for a source whose
+      status is staged. A closed site, trailhead or access point is not
+      listed as `closes_trail`, because none of them says the trail is
+      closed. A park closed whole is: California's Full Closure (decision
+      53's phase C) and Florida's day-use Closed values (the maintainer's
+      answer to page 01's P5 of the same poll, frame A: its trails close
+      with it).
       @unvalidated per row except where `why` quotes a measured count; what
       settles each is the source's own documentation of its values.
     config:
@@ -88,6 +104,45 @@ seeds:
         description: The source's sources.json key.
         data_tests: [not_null]
       - name: status_value
+        description: >
+          The value as the source writes it, compared without case or
+          surrounding space; empty (null once loaded) for every row of a layer
+          with no status field.
+      - name: reads_as
+        description: closes_trail or not_current.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [closes_trail, not_current]
+      - name: why
+        description: The evidence, quoted from the source's sources.json notes where they hold it.
+  - name: notice_category_values
+    description: >
+      What a value of a source's own category field means, for a source whose
+      category says what the notice says of the trail beside a status that
+      says something else: the Great Allegheny Passage's alerts, whose status
+      is the conservancy's `visibility` and whose category its own `status`,
+      and NGPC's Cowboy Trail sections, whose status is Road_Status and whose
+      category is Condition (seeds/notice_source_fields.csv). `closes_trail`
+      and `not_current` read as they do in notice_status_values, and
+      int_closures__club_notices holds a notice either seed reads as
+      `not_current`, whatever the other says, except where this seed's row
+      `outranks_status`. A value not listed reads as neither. @unvalidated per
+      row except where `why` quotes a measured count; what settles each is the
+      source's own documentation of its values.
+    config:
+      column_types:
+        source_key: varchar
+        category_value: varchar
+        reads_as: varchar
+        outranks_status: boolean
+        why: varchar
+    columns:
+      - name: source_key
+        description: The source's sources.json key.
+        data_tests: [not_null]
+      - name: category_value
         description: The value as the source writes it, compared without case or surrounding space.
         data_tests: [not_null]
       - name: reads_as
@@ -97,6 +152,23 @@ seeds:
           - accepted_values:
               arguments:
                 values: [closes_trail, not_current]
+      - name: outranks_status
+        description: >
+          True where this value's reading holds however the source's own
+          status reads, a status notice_status_values reads as `not_current`
+          included. For a category that says the trail cannot be passed beside
+          a status that says it is open: the source contradicting itself,
+          where reading it closed is the side a hiker is safer on, since it
+          never shows as open a section the source also calls impassable
+          (NGPC's Niobrara Bridge section, Road_Status 'Open' with Condition
+          'Not Passable', which its sources.json row says must never show as
+          open). False where the
+          status's `not_current` holds the notice whatever its category says:
+          the Great Allegheny Passage's Hidden, which the maintainer's answer
+          to wave 6's page 01, P6 (poll of 2026-10-11), reads as not current.
+          A rule for every source that lists one, never for one source
+          (decision 141).
+        data_tests: [not_null]
       - name: why
         description: The evidence, quoted from the source's sources.json notes where they hold it.
   - name: notice_hazard_areas

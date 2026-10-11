@@ -18,6 +18,7 @@ rather than stopping every club's build.
 """
 
 import csv
+import json
 import re
 from pathlib import Path
 
@@ -70,16 +71,73 @@ def _seed(name: str) -> list[dict]:
 
 def test_every_arcgis_field_the_seed_names_is_in_the_layers_measured_field_list():
     """make_dbt_fixtures.py's NOTICE_LAYERS rows carry each layer's field names as decision 53's inventory read them."""
-    arcgis = {
-        source.key for source in generator.notice_sources() if source.reader_class == "ArcgisLayer" and not source.hand_staged
-    }
+    generated = {source.key: source for source in generator.notice_sources() if not source.hand_staged}
+    arcgis = {key for key, source in generated.items() if source.reader_class == "ArcgisLayer"}
     rows = {row["source_key"]: row for row in _seed("notice_source_fields")}
-    assert set(rows) == arcgis, "one notice_source_fields row per generated ArcGIS notice layer, and no other"
+    assert arcgis <= set(rows), "one notice_source_fields row per generated ArcGIS notice layer"
+    assert set(rows) <= set(generated), "a notice_source_fields row for a source the generator does not stage"
     for key, row in rows.items():
+        if key not in arcgis:
+            continue
         measured = set(make_dbt_fixtures.NOTICE_LAYERS[key][1])
         for role in generator.ROLES:
             if row[role] and generator._literal(row[role]) is None:
                 assert row[role] in measured, f"{key}: {role} names {row[role]!r}, which the layer's field list does not hold"
+
+
+def _fixture_posts(key: str) -> list[dict]:
+    """A WordPress notice source's fixture posts, whose field names are the ones its live route served
+    (make_dbt_fixtures.py's _club_wordpress_fixtures())."""
+    document = json.loads(make_dbt_fixtures.closures_and_warnings_fixtures()[f"conditions/{key}.json"])
+    posts = list(document.get("posts") or [])
+    for typed in (document.get("types") or {}).values():
+        posts += typed
+    return posts
+
+
+def test_every_field_a_seed_row_names_beyond_a_readers_shape_is_on_every_fixture_post():
+    """The generator's ONE EXCEPTION TO A FIXED SHAPE: a source another reader lands names fields of the site's own
+    (the Great Allegheny Passage's ACF `status` and `visibility`), so each must be a field its rows carry. A name its
+    posts do not carry would stage as null on every row, and the maintainer's P6 answer would read nothing."""
+    readers = {source.key: source for source in generator.notice_sources() if not source.hand_staged}
+    others = [row for row in _seed("notice_source_fields") if readers[row["source_key"]].reader_class != "ArcgisLayer"]
+    assert [row["source_key"] for row in others] == ["gap_trail_alerts"]
+    for row in others:
+        posts = _fixture_posts(row["source_key"])
+        assert posts, row["source_key"]
+        for role in generator.ROLES:
+            if not row[role] or generator._literal(row[role]) is not None:
+                continue
+            column, path = generator._column(row[role])
+            assert path is not None and re.fullmatch(r"\$\.[a-z_]+", path), (role, row[role])
+            for post in posts:
+                assert path.removeprefix("$.") in (post.get(column) or {}), (row["source_key"], role, row[role], post["id"])
+
+
+def test_the_gap_alerts_stage_their_visibility_as_the_status_and_their_own_status_as_the_category(files):
+    """The maintainer's answer to page 01's P6 (poll of 2026-10-11): an alert marked Hidden and one marked Cleared are
+    both not current. The marks are ACF fields, read where the posts carry them and never out of a title."""
+    model = files[DBT / "models" / "staging" / "gap" / "notices" / "stg_gap__gap_trail_alerts.sql"]
+    assert "    {{ notice_field('acf', '$.visibility') }} as status,\n" in model
+    assert "    {{ notice_field('acf', '$.status') }} as category,\n" in model
+    assert "    {{ notice_field('title', '$.rendered') }} as title,\n" in model
+
+
+def test_a_seed_value_in_single_quotes_for_another_readers_status_stops_the_generator():
+    """A status OurHike supplied would be a claim in the source's voice, for a WordPress source as for a layer."""
+    source = generator.NoticeSource(
+        club="fixture",
+        type="closures",
+        key="fixture_posts",
+        table="raw_fixture__fixture_posts",
+        reader_class="WordpressPosts",
+        cadence="hourly",
+        hand_staged=False,
+        entry={"title": "Fixture posts"},
+    )
+    fields = {"fixture_posts": {"source_key": "fixture_posts", **{role: "" for role in generator.ROLES}, "status": "'Closed'"}}
+    with pytest.raises(SystemExit, match="status.*single quotes"):
+        generator.render_stg(source, fields)
 
 
 def _fixture_layer() -> "generator.NoticeSource":
@@ -138,12 +196,29 @@ def test_cpw_conflict_areas_are_titled_in_decision_95s_words_and_never_by_their_
 
 
 def test_every_status_value_belongs_to_a_source_whose_seed_row_names_a_status_field():
+    """And an empty value only to a source whose status is staged from no field at all: it reads every row of a layer
+    that is its own status (NETT's damaged bridges, the maintainer's answer to page 02's P11, poll of 2026-10-11). On a
+    layer with a status field it would read a row the source left blank as closed, a claim the source never made."""
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
     readers = {source.key: source.reader for source in generator.notice_sources() if not source.hand_staged}
     for row in _seed("notice_status_values"):
         key = row["source_key"]
         has_status = bool(fields.get(key, {}).get("status")) or "status" in readers[key].roles
-        assert has_status, f"{key}: a status value for a source whose status field is not staged"
+        if row["status_value"].strip():
+            assert has_status, f"{key}: a status value for a source whose status field is not staged"
+        else:
+            assert not has_status, f"{key}: an empty status value for a source whose status field is staged"
+
+
+def test_every_category_value_belongs_to_a_source_whose_category_is_staged_from_its_own_field():
+    fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
+    readers = {source.key: source.reader for source in generator.notice_sources() if not source.hand_staged}
+    for row in _seed("notice_category_values"):
+        key = row["source_key"]
+        spec = fields.get(key, {}).get("category") or readers[key].roles.get("category")
+        assert spec and generator._literal(spec) is None, (
+            f"{key}: a category value for a source whose category is no field of its own"
+        )
 
 
 def test_the_recreation_site_layer_stages_its_own_status_as_its_category(files):

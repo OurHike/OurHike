@@ -666,7 +666,7 @@ def test_a_word_that_is_no_months_name_is_not_read(text):
 
 def rctc_resource(key: str):
     """The conservancy's own resource, as extract/rctc/closures.py declares it."""
-    (resource,) = [resource for resource in all_resources(discover_shared()) if resource.key == key]
+    (resource,) = [resource for resource in all_resources(discover()) if resource.key == key]
     return resource
 
 

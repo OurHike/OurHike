@@ -9,7 +9,7 @@
   shelters (Upper Goose Pond Cabin 'closed when no caretaker is present'), dated 04-Jan-2025 in its
   own text.
 
-Also drawn from _shared/ma_dcr/'s `ma_dcr_park_alerts` (DCR's FACILITYCLOSURE_APPDATA layer),
+Also drawn from ma_dcr/'s `ma_dcr_park_alerts` (DCR's FACILITYCLOSURE_APPDATA layer),
 extracted once there (decision 34); which DCR PARK_SITE values lie on the Massachusetts A.T. is
 still unchecked.
 

@@ -9346,7 +9346,7 @@
       },
       "discovered_via": "pipeline/ELT.md decision 53's phase A inventory (batch 1), re-read live under our agent in phase B, 2026-10-03.",
       "discovered_date": "2026-10-03",
-      "notes": "One row: the page's notice (extract/_notices.py's PageNotice), keyed by `url`. Read 2026-10-03: the alerts fragment the Blue Hills Reservation's page loads (its data-alerts-path, node 14961): 3,254 bytes with no title of its own, so the row carries this entry's title (registry_title), dated 2026-09-24 from the item's own 'Updated Sep. 24, 2026, 12:22 pm', region `document` of 205 characters. One item on 2026-10-03, an event notice (the Blue Hills Fest moved to October 17). Each DCR park has its own node id, so another park is another row. Its ETag is Drupal's page cache and not trusted. Lands in _shared/ma_dcr/; drawn on by blue-hills.",
+      "notes": "One row: the page's notice (extract/_notices.py's PageNotice), keyed by `url`. Read 2026-10-03: the alerts fragment the Blue Hills Reservation's page loads (its data-alerts-path, node 14961): 3,254 bytes with no title of its own, so the row carries this entry's title (registry_title), dated 2026-09-24 from the item's own 'Updated Sep. 24, 2026, 12:22 pm', region `document` of 205 characters. One item on 2026-10-03, an event notice (the Blue Hills Fest moved to October 17). Each DCR park has its own node id, so another park is another row. Its ETag is Drupal's page cache and not trusted. Lands in ma_dcr/ (in _shared/ma_dcr/ until DCR's trail_orgs.json row, 2026-10-11); drawn on by blue-hills.",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_ma_dcr__ma_dcr_blue_hills_alerts reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
@@ -14223,7 +14223,7 @@
       },
       "discovered_via": "pipeline/ELT.md decision 53's phase A inventory (batch 2), re-read live under our agent in phase B, 2026-10-03.",
       "discovered_date": "2026-10-03",
-      "notes": "One row: the page's notice (extract/_notices.py's PageNotice), keyed by `url`. Read 2026-10-03: title 'Park Alerts', no stated date (each item's date is in its own heading), region <main> of 486 characters: 'Burn Ban Jan. 1, 2026 - No wood fires...' and 'Primitive Area Closures' for hunts (Oct. 2-10, Nov. 6-11, Feb. 19-24). Its weak ETag was identical on both parks' pages and TPWD's policy pages, a site stamp, never trusted. Lands in _shared/tpwd/, TPWD having no club folder; drawn on by tx-tamers.",
+      "notes": "One row: the page's notice (extract/_notices.py's PageNotice), keyed by `url`. Read 2026-10-03: title 'Park Alerts', no stated date (each item's date is in its own heading), region <main> of 486 characters: 'Burn Ban Jan. 1, 2026 - No wood fires...' and 'Primitive Area Closures' for hunts (Oct. 2-10, Nov. 6-11, Feb. 19-24). Its weak ETag was identical on both parks' pages and TPWD's policy pages, a site stamp, never trusted. Lands in tpwd/, TPWD's folder since its trail_orgs.json row (2026-10-11; in _shared/tpwd/ before); drawn on by tx-tamers.",
       "reaches_hikers": true,
       "reaches_hikers_comment": "True by decision 63 (2026-10-04): stg_tpwd__tpwd_davis_mountains_alerts reads it into int_closures__club_notices, whose phase C rules are unit-tested; a page notice is the club's own page as facts and a link (its title, its own stated date, its URL), so nothing in it closes a trail and it is a warning nobody reviewed (decision 7); it states no status to misread and no end; it has no place but its club, never a guessed one; its page's wording never reaches a mart (int_warnings__wording_leaks)."
     },
@@ -18324,7 +18324,7 @@
       "type_field": "PNT_TYPE",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's mo-state-parks points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: gis.dnr.mo.gov's robots.txt answered 404, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key, each person field left out of every request. Registered by hand.",
       "discovered_date": "2026-10-09",
-      "notes": "4,018 points (returnCountOnly), 13 fields, maxRecordCount 2,000, statewide across 88 parks (PARK_NAME). PNT_TYPE, 46 values, read 2026-10-09: technical_feature 705, parking 506, restroom 442, trailhead 382, natural_feature 239, cultural_feature 193, interpretive_panel 170, picnicking 146, picnic_shelter 111, trail_access 108, overlook 97, playground 95, lodging 95, camping 85, main_park_entrance 78, park_office 54, boat_ramp 53, emergency_response 40, backpack_camp 40, store 26, special_use_camping 23, water_fountain 21, group_camp 14, backpack_camping_shelter 3, and 22 more. WATER: water_fountain 21, a plumbed fountain by its name; whether any is seasonal is not on the layer, and the Katy Trail's own page says restrooms and water are unavailable at some trailheads from November through March (the coverage audit, 2026-10-01), so a fountain's season is unknown here. SHELTERS: backpack_camping_shelter 3; the 111 picnic_shelter points are day-use pavilions, not shelters a hiker sleeps in. DESCRIPT is free text (1,965 distinct, up to 105 characters; no e-mail- or phone-shaped strings). INTERNAL is 'N' on all 4,018. The service has no maintained date, so an on-prem change check answers UNKNOWN and the monthly lane reads it whole (about 1.8 MB as GeoJSON). Extent in EPSG:4326: lat 36.46 to 40.60, lon -95.38 to -88.92. Statistics fingerprint: count(Objectid) 4,018, max(Objectid) 62,861. Raw only: extract/_shared/'s points are not staged until the steward has a folder of its own (make_dbt_staging.py reads club folders).",
+      "notes": "4,018 points (returnCountOnly), 13 fields, maxRecordCount 2,000, statewide across 88 parks (PARK_NAME). PNT_TYPE, 46 values, read 2026-10-09: technical_feature 705, parking 506, restroom 442, trailhead 382, natural_feature 239, cultural_feature 193, interpretive_panel 170, picnicking 146, picnic_shelter 111, trail_access 108, overlook 97, playground 95, lodging 95, camping 85, main_park_entrance 78, park_office 54, boat_ramp 53, emergency_response 40, backpack_camp 40, store 26, special_use_camping 23, water_fountain 21, group_camp 14, backpack_camping_shelter 3, and 22 more. WATER: water_fountain 21, a plumbed fountain by its name; whether any is seasonal is not on the layer, and the Katy Trail's own page says restrooms and water are unavailable at some trailheads from November through March (the coverage audit, 2026-10-01), so a fountain's season is unknown here. SHELTERS: backpack_camping_shelter 3; the 111 picnic_shelter points are day-use pavilions, not shelters a hiker sleeps in. DESCRIPT is free text (1,965 distinct, up to 105 characters; no e-mail- or phone-shaped strings). INTERNAL is 'N' on all 4,018. The service has no maintained date, so an on-prem change check answers UNKNOWN and the monthly lane reads it whole (about 1.8 MB as GeoJSON). Extent in EPSG:4326: lat 36.46 to 40.60, lon -95.38 to -88.92. Statistics fingerprint: count(Objectid) 4,018, max(Objectid) 62,861. Staged by make_dbt_staging.py since its steward's trail_orgs.json row and folder (2026-10-11); no seeds/club_poi_types.csv row types its values yet, so none of its points publishes.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Missouri State Parks has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: neither the layer, its service nor its item states any terms, and decision 21a's presumption would publish it. Settled by the approved row, then this layer's own folder and seeds/club_poi_types.csv rows that type its values (water_fountain as water, with its season unknown; picnic_shelter typed as no shelter).",
       "meta": {
@@ -18621,7 +18621,7 @@
       "type_field": "AmenityType",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's ngpc points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: services5.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key, each person field left out of every request. Registered by hand.",
       "discovered_date": "2026-10-09",
-      "notes": "2,929 points (returnCountOnly), 14 fields, at the commission's parks and recreation areas (AreaName, 85 values: Lake McConaughy SRA 222, Branched Oak Lake SRA 199, Indian Cave SP 170, Fort Robinson SP 140, and more). AmenityType, 124 values, read 2026-10-09: Restroom 393, Drinking Water 382, Parking 309, Picnic Shelter 127, Trailhead 107, Campground 102, Boat Ramp 99, Trail Marker 91, Gate 86, Point of Interest 85, Basic Tent Camping 79, Shower 74, Playground 68, Shelter 59, Tent Camping 30, Scenic Viewpoint 27, Primitive Nonreservable Tent 27, Backpacking Camping 3, Spring 2, and more, some spelt twice with a trailing space ('Playground ' 8, 'Campground ' 1). WATER: 'Drinking Water' 382, by its name drinkable; whether each is seasonal is not on the layer. 'Spring' 2 and 'Water Tower ' 1 are not drinking water. SHELTERS: 'Shelter' 59, which may be day-use like the 127 'Picnic Shelter's (not read point by point). Latitude and Longitude are 0 on 9 rows and null on 183, beside a geometry on all 2,929; the geometry is what loads. DateCreated runs from 1899-12-30 (a placeholder) to 2021-12-29, DateModified to 2021-12-29: the attributes were last edited in 2021, and the layer's data on 2026-06-23 (editingInfo). BrochureDisplay: Yes 2,032, No 290. Extent in EPSG:4326: lat 40.01 to 42.87, lon -103.75 to -95.33. Statistics fingerprint: count(OBJECTID) 2,929, max(OBJECTID) 3,389. Raw only until the steward has a folder of its own.",
+      "notes": "2,929 points (returnCountOnly), 14 fields, at the commission's parks and recreation areas (AreaName, 85 values: Lake McConaughy SRA 222, Branched Oak Lake SRA 199, Indian Cave SP 170, Fort Robinson SP 140, and more). AmenityType, 124 values, read 2026-10-09: Restroom 393, Drinking Water 382, Parking 309, Picnic Shelter 127, Trailhead 107, Campground 102, Boat Ramp 99, Trail Marker 91, Gate 86, Point of Interest 85, Basic Tent Camping 79, Shower 74, Playground 68, Shelter 59, Tent Camping 30, Scenic Viewpoint 27, Primitive Nonreservable Tent 27, Backpacking Camping 3, Spring 2, and more, some spelt twice with a trailing space ('Playground ' 8, 'Campground ' 1). WATER: 'Drinking Water' 382, by its name drinkable; whether each is seasonal is not on the layer. 'Spring' 2 and 'Water Tower ' 1 are not drinking water. SHELTERS: 'Shelter' 59, which may be day-use like the 127 'Picnic Shelter's (not read point by point). Latitude and Longitude are 0 on 9 rows and null on 183, beside a geometry on all 2,929; the geometry is what loads. DateCreated runs from 1899-12-30 (a placeholder) to 2021-12-29, DateModified to 2021-12-29: the attributes were last edited in 2021, and the layer's data on 2026-06-23 (editingInfo). BrochureDisplay: Yes 2,032, No 290. Extent in EPSG:4326: lat 40.01 to 42.87, lon -103.75 to -95.33. Statistics fingerprint: count(OBJECTID) 2,929, max(OBJECTID) 3,389. Staged by make_dbt_staging.py since its steward's trail_orgs.json row and folder (2026-10-11); no seeds/club_poi_types.csv row types its values yet, so none of its points publishes.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): NGPC has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: the items state no terms, and decision 21a's presumption would publish them. Settled by the approved row, then seeds/club_poi_types.csv rows typing AmenityType (Drinking Water as water, its season unknown).",
       "meta": {
@@ -18656,7 +18656,7 @@
       "type_field": "FACILITY_TYPE",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's oprd points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: services.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key, each person field left out of every request. Registered by hand.",
       "discovered_date": "2026-10-09",
-      "notes": "826 points (returnCountOnly), 46 fields, at Oregon's state parks (REL_LOCAL_AREA_ID, 61 values). FACILITY_TYPE, 19 values, read 2026-10-09: Other 218, Parking 163, null 147, 'Restroom, Flush' 104, 'Restroom, Non-flush' 40, Shelter 31, Drinking Water 28, Interpretive Experience 27, Scenic Viewpoint 20, Community Center 12, Event Space 10, Playground 9, and 7 more. SYMBOL_TYPE says more: Drinking_water 28, Picnic_shelter 27 and Shelter 4 (so 27 of the 31 'Shelter' facilities are picnic shelters), Hiker_biker_camp 7, Walkin_camping 2, Horse_camp 4, Group_camp 1, Scenic_viewpoint 37, Restrooms 105, Vault_toilet 41, Horse_watering 3 (not drinking water). WATER: Drinking Water 28; seasonality is not on the layer (OPERATING_DATES is null on all 826). STATUS (domain Open, Reduced Services, Closed) and STATUS_CHG_DATE are null on every row, so the layer says nothing of closures. PUBLIC_DISPLAY is 'YES' on all 826. Data last edited 2026-10-08 05:03 UTC (editingInfo). Extent in EPSG:4326: lat 42.46 to 45.89, lon -124.78 to -117.70. Statistics fingerprint: count(OBJECTID) 826, max(OBJECTID) 5,972. Raw only until the steward has a folder of its own.",
+      "notes": "826 points (returnCountOnly), 46 fields, at Oregon's state parks (REL_LOCAL_AREA_ID, 61 values). FACILITY_TYPE, 19 values, read 2026-10-09: Other 218, Parking 163, null 147, 'Restroom, Flush' 104, 'Restroom, Non-flush' 40, Shelter 31, Drinking Water 28, Interpretive Experience 27, Scenic Viewpoint 20, Community Center 12, Event Space 10, Playground 9, and 7 more. SYMBOL_TYPE says more: Drinking_water 28, Picnic_shelter 27 and Shelter 4 (so 27 of the 31 'Shelter' facilities are picnic shelters), Hiker_biker_camp 7, Walkin_camping 2, Horse_camp 4, Group_camp 1, Scenic_viewpoint 37, Restrooms 105, Vault_toilet 41, Horse_watering 3 (not drinking water). WATER: Drinking Water 28; seasonality is not on the layer (OPERATING_DATES is null on all 826). STATUS (domain Open, Reduced Services, Closed) and STATUS_CHG_DATE are null on every row, so the layer says nothing of closures. PUBLIC_DISPLAY is 'YES' on all 826. Data last edited 2026-10-08 05:03 UTC (editingInfo). Extent in EPSG:4326: lat 42.46 to 45.89, lon -124.78 to -117.70. Statistics fingerprint: count(OBJECTID) 826, max(OBJECTID) 5,972. Staged by make_dbt_staging.py since its steward's trail_orgs.json row and folder (2026-10-11); no seeds/club_poi_types.csv row types its values yet, so none of its points publishes.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): OPRD has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: the item states no terms, and decision 21a's presumption would publish it. Settled by the approved row, then seeds/club_poi_types.csv rows typing FACILITY_TYPE, with SYMBOL_TYPE telling a picnic shelter from a shelter.",
       "meta": {
@@ -18689,7 +18689,7 @@
       "name_field": "Name",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's montour-trail points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: services9.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key, each person field left out of every request. Registered by hand.",
       "discovered_date": "2026-10-09",
-      "notes": "37 points (returnCountOnly), 28 fields: each access area on the Montour Trail with its amenities as coded columns (1 Yes, 2 No, -11 Data Not Available, -99 Data Not Researched), read 2026-10-09: Fountain Yes 9, No 26, -99 2; Toilet Yes 14, No 21, -99 2; Shelter Yes 5, -99 32; Camping Yes 1, -99 36; Parking Yes 35, No 1, -99 1 (NumParkingSpaces filled on 30); VendingMachines and Bikeracks Yes 1 each. Status 1 ('Existing') on all 37; Branch Mainline 31, Bethel Branch 5, Westland Trail 1; Milemarker on 18. WATER: Fountain 'Yes' at 9 access areas; whether each runs in winter is not on the layer. No type field: a point is an access area, and its amenities are its columns. CREATED_DATE and MODIFIED_DATE are one instant on all 37 (2022-08-29), and the layer's data last edited 2024-08-20 23:56 UTC (editingInfo). Extent in EPSG:4326: lat 40.27 to 40.51, lon -80.29 to -79.88. Statistics fingerprint: count(OBJECTID) 37, max(OBJECTID) 37. Raw only until the steward has a folder of its own.",
+      "notes": "37 points (returnCountOnly), 28 fields: each access area on the Montour Trail with its amenities as coded columns (1 Yes, 2 No, -11 Data Not Available, -99 Data Not Researched), read 2026-10-09: Fountain Yes 9, No 26, -99 2; Toilet Yes 14, No 21, -99 2; Shelter Yes 5, -99 32; Camping Yes 1, -99 36; Parking Yes 35, No 1, -99 1 (NumParkingSpaces filled on 30); VendingMachines and Bikeracks Yes 1 each. Status 1 ('Existing') on all 37; Branch Mainline 31, Bethel Branch 5, Westland Trail 1; Milemarker on 18. WATER: Fountain 'Yes' at 9 access areas; whether each runs in winter is not on the layer. No type field: a point is an access area, and its amenities are its columns. CREATED_DATE and MODIFIED_DATE are one instant on all 37 (2022-08-29), and the layer's data last edited 2024-08-20 23:56 UTC (editingInfo). Extent in EPSG:4326: lat 40.27 to 40.51, lon -80.29 to -79.88. Statistics fingerprint: count(OBJECTID) 37, max(OBJECTID) 37. Staged by make_dbt_staging.py since its steward's trail_orgs.json row and folder (2026-10-11); no seeds/club_poi_types.csv row types its values yet, so none of its points publishes.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The Montour Trail Council has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its terms are a copyright and trademark notice, which decision 37 and a phrase for the trademark line answer. Settled by the approved row, then a reading of each amenity column as a point type (Fountain 'Yes' as water, its season unknown).",
       "meta": {
@@ -18719,7 +18719,7 @@
       "name_field": "name",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's dlnhc points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: services2.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key, each person field left out of every request. Registered by hand.",
       "discovered_date": "2026-10-09",
-      "notes": "64 points (returnCountOnly), 48 fields, the trailheads along the D&L Trail with their amenities, read 2026-10-09: `water` ('Water_Potability', coded p Potable, np Not Potable, n No Water Available) p 5, np 4, n 25, null 30; `waterAvailability` (s Seasonal, a All-Year, u Unknown, n Not Available) s 5, a 3, u 2, n 21, null 33; `restrooms` (af/ap ADA, f fixed, p portable, n none) n 45, ap 7, af 6, f 4, p 2; `camping` p (Primitive) 1, n 63; parkingSpaces filled on 41 (40 above zero); `Status` Current 48, Future 11, Partial 4, 'existing w/ amenities' 1. WATER: 5 trailheads say potable water, 4 of them Current and 1 Partial; 4 say not potable, which must never read as water. FUTURE TRAILHEADS: 11 rows are planned, not built, and a hiker sent to one finds nothing. updateDate ('INSPECTED_DATE') runs 2017-03-17 to 2022-06-20 (null on 12), and the layer's data last edited 2022-06-20 (editingInfo), so every amenity here is at least three years old. Extent in EPSG:4326: lat 40.09 to 41.24, lon -75.90 to -74.78. Statistics fingerprint: count(OBJECTID) 64, max(OBJECTID) 83. Raw only until the steward has a folder of its own.",
+      "notes": "64 points (returnCountOnly), 48 fields, the trailheads along the D&L Trail with their amenities, read 2026-10-09: `water` ('Water_Potability', coded p Potable, np Not Potable, n No Water Available) p 5, np 4, n 25, null 30; `waterAvailability` (s Seasonal, a All-Year, u Unknown, n Not Available) s 5, a 3, u 2, n 21, null 33; `restrooms` (af/ap ADA, f fixed, p portable, n none) n 45, ap 7, af 6, f 4, p 2; `camping` p (Primitive) 1, n 63; parkingSpaces filled on 41 (40 above zero); `Status` Current 48, Future 11, Partial 4, 'existing w/ amenities' 1. WATER: 5 trailheads say potable water, 4 of them Current and 1 Partial; 4 say not potable, which must never read as water. FUTURE TRAILHEADS: 11 rows are planned, not built, and a hiker sent to one finds nothing. updateDate ('INSPECTED_DATE') runs 2017-03-17 to 2022-06-20 (null on 12), and the layer's data last edited 2022-06-20 (editingInfo), so every amenity here is at least three years old. Extent in EPSG:4326: lat 40.09 to 41.24, lon -75.90 to -74.78. Statistics fingerprint: count(OBJECTID) 64, max(OBJECTID) 83. Staged by make_dbt_staging.py since its steward's trail_orgs.json row and folder (2026-10-11); no seeds/club_poi_types.csv row types its values yet, so none of its points publishes.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): The Delaware & Lehigh National Heritage Corridor has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: the item states no terms, and decision 21a's presumption would publish it. Settled by the approved row, then a reading of `water` ('p' alone as water) and a rule that holds `Status` 'Future' back, since 11 of the 64 trailheads are not built.",
       "meta": {
@@ -19046,7 +19046,7 @@
       "type_field": "Type",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's nys-canal points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01), held from loading until the lead's call of 2026-10-09 that it loads held like every other candidate's, and read again live that day under lib/user_agent.py's USER_AGENT: services6.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key, each person field left out of every request. Registered by hand.",
       "discovered_date": "2026-10-09",
-      "notes": "2 points (returnCountOnly, 2026-10-09) on the Erie Canalway Trail (RID T-ER, at MEAS 247.6 and 273.1): Type 'Water Fountain - Most Dependable Fountains - 10145' on both, Condition 'Good', SafetyHazard 'No', Comments null, photopath (a photo's path), Distance. The item says the trail's amenities were collected in a 2022 field survey, and the layer was last edited 2022-03-14 (editingInfo). TWO FOUNTAINS ON 360 MILES IS A 2022 SURVEY'S COUNT, NOT A CENSUS OF WATER: a hiker must never read the rest of the trail as dry or as watered (the coverage audit's note, Reasoned). Extent in EPSG:4326: lat 43.10 to 43.19, lon -77.80 to -77.44, both near Rochester. Statistics fingerprint: count(OBJECTID) 2, max(OBJECTID) 2. Raw only until the steward has a folder of its own.",
+      "notes": "2 points (returnCountOnly, 2026-10-09) on the Erie Canalway Trail (RID T-ER, at MEAS 247.6 and 273.1): Type 'Water Fountain - Most Dependable Fountains - 10145' on both, Condition 'Good', SafetyHazard 'No', Comments null, photopath (a photo's path), Distance. The item says the trail's amenities were collected in a 2022 field survey, and the layer was last edited 2022-03-14 (editingInfo). TWO FOUNTAINS ON 360 MILES IS A 2022 SURVEY'S COUNT, NOT A CENSUS OF WATER: a hiker must never read the rest of the trail as dry or as watered (the coverage audit's note, Reasoned). Extent in EPSG:4326: lat 43.10 to 43.19, lon -77.80 to -77.44, both near Rochester. Statistics fingerprint: count(OBJECTID) 2, max(OBJECTID) 2. Staged by make_dbt_staging.py since its steward's trail_orgs.json row and folder (2026-10-11); no seeds/club_poi_types.csv row types its values yet, so none of its points publishes.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): NYS Canal Corporation has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: its terms are quoted and wait on that review, which decides whether the website's reproduction clause reaches its layers. Settled by the approved row, then a water rule that says how old the survey is.",
       "meta": {
@@ -19125,6 +19125,49 @@
       "notes": "One HTML page, 113,357 bytes on 2026-10-09. The extract's reader, run over the saved page, picks <main> (20,410 characters of text), its <h1> 'Current Closures of DNR Sites and Areas' and the newest date the page states, 'Last updated10/2/26' (2026-10-02, the date the row lands). The page states one 'Last updated' per region (the coverage audit read 9/28/26, 1/26/26, 9/25/2026 and 8/17/2026 on 2026-10-01). The region holds 8 phone-shaped strings, site offices' numbers, none of which lands: a page notice lands its title, date, link and a hash. The page also states water at the Hennepin Canal's locks ('The wells at Lock 22 are not working pending repairs and water tests', the audit), which reaches a hiker only as this page's link. The resource's expect_title 'Closures' refuses a page that turned into something else.",
       "reaches_hikers": false,
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Illinois DNR has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
+    },
+    {
+      "key": "idot_bike_inventory",
+      "title": "Illinois bicycle facility inventory (IDOT's Bicycle Facility Inventory System)",
+      "provider": "IDOT",
+      "kind": "club_arcgis_layer",
+      "url": "https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services/BFISProductionLayer_prod_view/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "Illinois Department of Transportation",
+      "steward_contact": "https://idot.illinois.gov/",
+      "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The item, 02cd6810406b4af1b350c4863109b721 ('Bicycle Facility Inventory System', public, on IDOT's own ArcGIS Online organisation), states a generalisation and accuracy disclaimer and no terms of use, quoted verbatim in `terms_verbatim` (its licenseInfo with the markup removed); the layer's copyrightText and the item's accessInformation are empty (read 2026-10-11). This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
+      "licence_basis": "public_gis",
+      "terms_verbatim": "In preparing these maps, constraints of scale, data, time, and personnel required the generalization and extrapolation of features and boundaries that have not been field checked.  The base data sets include data from other sources including the Department of Revenue, Illinois State Geological Survey, Illinois State Water Survey, and local and municipal agencies.  These maps may not be used to determine any boundary or the location of monuments, railroads, roads, or streets with any precision.  The boundaries and locations on these maps are only representations of APPROXIMATE locations and boundaries.  For more detailed information regarding the data included, please refer to the FGDC metadata included with each digital data layer. The Illinois Department of Transportation (IDOT) and the State of Illinois hereby give notice to all users that these maps and the data included on them lack the accuracy required for site-specific uses.  Since all boundaries and all data are based on information derived from multiple sources within and outside the Department, IDOT and the State of Illinois make no representation, guarantee, or warrant, either express or implied, regarding the accuracy of these maps or the data furnished thereon, including, without limitation, the condition of this product, this product's merchantability, or this product's fitness for any particular purpose or use.",
+      "attribution": "Illinois Department of Transportation",
+      "name_field": "NAME",
+      "key_fields": [
+        "GlobalID"
+      ],
+      "key_comment": "GlobalID, the layer's globalIdField (esriFieldTypeGlobalID): distinct on 12,655 of 12,655 rows, none null, measured 2026-10-11 over every row's GlobalID.",
+      "date_fields": [
+        "CreationDate",
+        "EditDate"
+      ],
+      "date_fields_comment": "The layer's esriFieldTypeDate fields, read off its metadata on 2026-10-11. They land as epoch milliseconds (extract/_kinds.py's ESRI_TYPES), and the base model casts each to a UTC timestamp.",
+      "person_fields": [
+        "DATAEDITOREMAIL",
+        "DATAOWNEREMAIL",
+        "Creator",
+        "Editor",
+        "OWNER",
+        "MAINTAINEDBY",
+        "COMMENT",
+        "ADMINCOMMENT"
+      ],
+      "person_fields_comment": "Read off the layer's live field list on 2026-10-11, no value of any read: DATAEDITOREMAIL and DATAOWNEREMAIL are e-mail fields, Creator and Editor editor tracking's account fields, COMMENT and ADMINCOMMENT free text an editor writes, and OWNER and MAINTAINEDBY name who owns and maintains each facility, which the standard adopted on 2026-10-11 keeps out because neither name marks an organisation. So the extract leaves each out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59). APPROVEREMAILSENT, a small-integer flag, holds no person; extract/_kinds.py's PERSON_SHAPED leaves it out by its 'email', and nothing reads it.",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's il-dnr trail_lines row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01, batch p02_persist), registered under IDOT's own trail_orgs.json row (the maintainer's poll, 2026-10-11, review page 02, P10) and read live on 2026-10-11 under lib/user_agent.py's USER_AGENT: services2.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the service's item, IDOT's services list, every row's GlobalID and OBJECTID, and the values of STATUS, APPROVALSTATUS and SYSTEMNAME on every row and of NAME and FACTYPE on the Grand Illinois Trail's, each person field left out of every request. Registered by hand.",
+      "discovered_date": "2026-10-11",
+      "notes": "12,655 polylines (returnCountOnly), 39 fields, served in EPSG:3857 (wkid 102100), maxRecordCount 2,000, hasZ false, the layer named 'BikeInventory', data last edited 2026-10-08 (editingInfo), all read 2026-10-11. A view, 'BFISProductionLayer_prod_view', on IDOT's ArcGIS Online organisation, whose services list (193 services) also names BFISProductionLayer_dev_view, BFISPublicEditingLayer_dev, BFISPublicEditingLayer_prod, Bicycle_Facilities_Public_Input, Bicycle_Facilities_Public_View and Bicycle_Facilities_View, none compared with this one. STATUS ('Bicycle Facility Status', coded): EXIST 10,981, PLAN 1,088, INACTIVE 510, PROG 71, CONST 5. APPROVALSTATUS 'APPROVED' on all 12,655; SYSTEMNAME null on all 12,655. FACTYPE is coded from 10 facility types (Bike Lane, Buffered Bike Lane, Separated Bike Lane, Shared Use Path, CounterFlow Bike Lane, Paved Shoulder, Shared Lane Markings, Off-Road Unpaved Trail, Named Trail on Roadway, Other). THE GRAND ILLINOIS TRAIL: NAME LIKE '%Grand Illinois%' on 13 rows ('Grand Illinois Trail' 8, 'Grand Illinois Trail-N. Branch' 3, 'Grand Illinois Trail-Equestrian' 2), FACTYPE 'BL' (Bike Lane) on 12 and 'SUP' (Shared Use Path) on 1, STATUS 'EXIST' on all 13; the coverage audit measured them at 136.1 mi (2026-10-01). Extent in EPSG:4326 (returnExtentOnly): lat 37.12 to 42.51, lon -91.45 to -87.52, outside the eastern box of dbt/macros/lands_outside_its_region.sql and inside its `national` box. KEY: GlobalID, distinct on 12,655 of 12,655, none null (2026-10-11).",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held for scope (IDOT's trail_orgs.json row, `load: hold`, 2026-10-11): the inventory is every bicycle facility IDOT records in Illinois, 1,088 of them planned and 510 decommissioned, and 12 of the Grand Illinois Trail's 13 lines are on-road bike lanes, so drawn whole it would show every bike lane in the state as trail. Settled by a seeds/layer_rules.csv rule that keeps only the trail's own lines, and a decision on whether an on-road bike lane draws as the trail at all. Rule 5 would hold it too: its disclaimer's 'may not be used to determine any boundary or the location of monuments, railroads, roads, or streets with any precision' and 'only representations of APPROXIMATE locations' are words no phrase reads yet.",
+      "meta": {
+        "cadence": "monthly"
+      }
     },
     {
       "key": "nett_damaged_bridges",
@@ -20573,6 +20616,10 @@
         "state": "not_asked",
         "note": "Not asked. Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
       },
+      "IDOT": {
+        "state": "not_asked",
+        "note": "Not asked. Registered for its Bicycle Facility Inventory System (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row, `idot` (`load: hold`, the maintainer's poll, review page 02, P10), at reaches_hikers: false. Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
+      },
       "NETT": {
         "state": "not_asked",
         "note": "Not asked. Registered for its trail's damaged bridges and points of interest (nett_damaged_bridges, nett_trail_pois) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Nothing of theirs reaches a hiker yet, so there is nothing an org mark would sit beside. Nothing has been sent."
@@ -21211,7 +21258,7 @@
       "org:madcr": {
         "provider": "MA DCR",
         "name": "Massachusetts Department of Conservation and Recreation",
-        "note": "Runs Massachusetts' state parks and reservations; registered for its statewide park alerts layer and the Blue Hills hunt areas. Also registered for its trail lines under decision 54 (2026-10-03), at reaches_hikers: false. Also registered for its points of interest under decision 54 (2026-10-03), at reaches_hikers: false."
+        "note": "Runs Massachusetts' state parks and reservations; registered for its statewide park alerts layer and the Blue Hills hunt areas. Also registered for its trail lines under decision 54 (2026-10-03), at reaches_hikers: false. Also registered for its points of interest under decision 54 (2026-10-03), at reaches_hikers: false. Its trail_orgs.json row, `ma-dcr` (`load: hold`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:wadnr": {
         "provider": "WA DNR",
@@ -21221,7 +21268,7 @@
       "org:wsprc": {
         "provider": "WA State Parks",
         "name": "Washington State Parks and Recreation Commission",
-        "note": "Runs Washington's state parks; registered for its winter recreation temporary-closure layer."
+        "note": "Runs Washington's state parks; registered for its winter recreation temporary-closure layer. Its trail_orgs.json row, `wa-parks` (`load: via`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:utahffsl": {
         "provider": "Utah FFSL",
@@ -21381,7 +21428,7 @@
       "org:tpwd": {
         "provider": "TPWD",
         "name": "Texas Parks and Wildlife Department",
-        "note": "Runs Texas's state parks and publishes their trails from its own ArcGIS Server, the trails Texas Trail Tamers crews work on. Also registered for two parks' alert pages under decision 53 (phase B, 2026-10-03), in _shared/tpwd/, at reaches_hikers: false."
+        "note": "Runs Texas's state parks and publishes their trails from its own ArcGIS Server, the trails Texas Trail Tamers crews work on. Also registered for two parks' alert pages under decision 53 (phase B, 2026-10-03), in _shared/tpwd/ and in tpwd/ since, at reaches_hikers: false. Its trail_orgs.json row, `tpwd` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:cfpa": {
         "provider": "CFPA",
@@ -21633,73 +21680,73 @@
         "provider": "Missouri State Parks",
         "state": "MO",
         "name": "Missouri State Parks",
-        "note": "The Missouri Department of Natural Resources' Division of State Parks, which runs the Katy Trail State Park and the Rock Island Trail State Park among 92 parks and historic sites (mostateparks.com). Registered for its trail advisories, the Katy Trail's trailhead status and its trail points of interest (mo_state_parks_trail_advisories, mo_state_parks_katy_trailheads, mo_state_parks_trail_pois) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The Missouri Department of Natural Resources' Division of State Parks, which runs the Katy Trail State Park and the Rock Island Trail State Park among 92 parks and historic sites (mostateparks.com). Registered for its trail advisories, the Katy Trail's trailhead status and its trail points of interest (mo_state_parks_trail_advisories, mo_state_parks_katy_trailheads, mo_state_parks_trail_pois) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `mo-state-parks` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:idpr": {
         "provider": "IDPR",
         "state": "ID",
         "name": "Idaho Department of Parks and Recreation",
-        "note": "Idaho's state parks agency, steward of the Idaho Centennial Trail, which gathers every land manager's trail closures for its Idaho Trails app (the Idaho Recreation Trails item, 2026-10-09). Registered for its emergency route closures and area restrictions (idpr_emergency_route_closures, idpr_area_restrictions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "Idaho's state parks agency, steward of the Idaho Centennial Trail, which gathers every land manager's trail closures for its Idaho Trails app (the Idaho Recreation Trails item, 2026-10-09). Registered for its emergency route closures and area restrictions (idpr_emergency_route_closures, idpr_area_restrictions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `idpr` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:midnr": {
         "provider": "Michigan DNR",
         "state": "MI",
         "name": "Michigan Department of Natural Resources",
-        "note": "Michigan's natural resources agency, steward of the Iron Belle Trail and the state's trail network (DNRTrailsOPENDATA, 2026-10-09). Registered for its trail temporary closures and reroutes and its burn permit status (mi_dnr_trail_temporary_closures, mi_dnr_trail_temporary_reroutes, mi_dnr_burn_permits) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "Michigan's natural resources agency, steward of the Iron Belle Trail and the state's trail network (DNRTrailsOPENDATA, 2026-10-09). Registered for its trail temporary closures and reroutes and its burn permit status (mi_dnr_trail_temporary_closures, mi_dnr_trail_temporary_reroutes, mi_dnr_burn_permits) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `mi-dnr` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:vtrans": {
         "provider": "VTrans",
         "state": "VT",
         "name": "Vermont Agency of Transportation",
-        "note": "Vermont's transportation agency, which owns the state's rail trails, the Lamoille Valley Rail Trail among them (railtrails.vermont.gov). Registered for its rail trail closure and warning views (vtrans_rail_trail_closures, vtrans_rail_trail_warnings) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "Vermont's transportation agency, which owns the state's rail trails, the Lamoille Valley Rail Trail among them (railtrails.vermont.gov). Registered for its rail trail closure and warning views (vtrans_rail_trail_closures, vtrans_rail_trail_warnings) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `vtrans` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:flstateparks": {
         "provider": "Florida State Parks",
         "state": "FL",
         "name": "Florida State Parks",
-        "note": "The Florida Department of Environmental Protection's Division of Recreation and Parks, which runs Florida's 175 state parks (its Operational Status item, 2026-10-09). Registered for its parks' and campgrounds' operational status (fl_state_parks_day_use_status, fl_state_parks_campground_status) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The Florida Department of Environmental Protection's Division of Recreation and Parks, which runs Florida's 175 state parks (its Operational Status item, 2026-10-09). Registered for its parks' and campgrounds' operational status (fl_state_parks_day_use_status, fl_state_parks_campground_status) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `fl-state-parks` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:gap": {
         "provider": "GAP Conservancy",
         "state": "PA",
         "name": "Great Allegheny Passage Conservancy",
-        "note": "The non-profit that maintains and promotes the Great Allegheny Passage, the rail trail from Pittsburgh to Cumberland (gaptrail.org). Registered for its trail alerts (gap_trail_alerts) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The non-profit that maintains and promotes the Great Allegheny Passage, the rail trail from Pittsburgh to Cumberland (gaptrail.org). Registered for its trail alerts (gap_trail_alerts) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `gap` (`load: via`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:ngpc": {
         "provider": "NGPC",
         "state": "NE",
         "name": "Nebraska Game and Parks Commission",
-        "note": "Nebraska's parks and wildlife agency, steward of the Cowboy Recreation and Nature Trail (its Cowboy Trail item, 2026-10-09). Registered for the Cowboy Trail's status and conditions, its parks' amenities and its five hunting-unit layers (ngpc_cowboy_trail_improvements, ngpc_amenities, ngpc_deer_management_units and four more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "Nebraska's parks and wildlife agency, steward of the Cowboy Recreation and Nature Trail (its Cowboy Trail item, 2026-10-09). Registered for the Cowboy Trail's status and conditions, its parks' amenities and its five hunting-unit layers (ngpc_cowboy_trail_improvements, ngpc_amenities, ngpc_deer_management_units and four more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `ngpc` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:r2r": {
         "provider": "River to River Trail Society",
         "state": "IL",
         "name": "River to River Trail Society",
-        "note": "The volunteer society that maintains the River to River Trail across southern Illinois, largely in the Shawnee National Forest (rivertorivertrail.net). Registered for its trail conditions posts (r2r_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The volunteer society that maintains the River to River Trail across southern Illinois, largely in the Shawnee National Forest (rivertorivertrail.net). Registered for its trail conditions posts (r2r_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `r2r` (`load: via`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:oprd": {
         "provider": "OPRD",
         "state": "OR",
         "name": "Oregon Parks and Recreation Department",
-        "note": "Oregon's state parks agency (stateparks.oregon.gov), whose recreation features layer marks drinking water, restrooms and shelters at its parks. Registered for its parks' recreation facilities and hunting areas (oprd_rec_facilities, oprd_hunting_areas) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "Oregon's state parks agency (stateparks.oregon.gov), whose recreation features layer marks drinking water, restrooms and shelters at its parks. Registered for its parks' recreation facilities and hunting areas (oprd_rec_facilities, oprd_hunting_areas) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `oprd` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:montourtrail": {
         "provider": "Montour Trail Council",
         "state": "PA",
         "name": "Montour Trail Council",
-        "note": "The volunteer non-profit that owns and maintains the Montour Trail, a rail trail west of Pittsburgh (montourtrail.org). Registered for its trail's access areas and their amenities and its alerts page (montour_trail_access_areas, montour_trail_alerts_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The volunteer non-profit that owns and maintains the Montour Trail, a rail trail west of Pittsburgh (montourtrail.org). Registered for its trail's access areas and their amenities and its alerts page (montour_trail_access_areas, montour_trail_alerts_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `montour-trail` (`load: via`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:dlnhc": {
         "provider": "D&L Corridor",
         "state": "PA",
         "name": "Delaware & Lehigh National Heritage Corridor",
-        "note": "The non-profit that manages the Delaware & Lehigh National Heritage Corridor and promotes the D&L Trail (delawareandlehigh.org). Registered for its trail's trailheads and their amenities (dlnhc_trailheads) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The non-profit that manages the Delaware & Lehigh National Heritage Corridor and promotes the D&L Trail (delawareandlehigh.org). Registered for its trail's trailheads and their amenities (dlnhc_trailheads) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `dlnhc` (`load: via`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:tahoepyramid": {
         "provider": "Tahoe-Pyramid Trail",
         "state": "NV",
         "name": "Tahoe-Pyramid Trail",
-        "note": "The non-profit building the Tahoe-Pyramid Trail from Lake Tahoe to Pyramid Lake along the Truckee River (tahoepyramidtrail.org). Registered for its trail alerts page (tahoe_pyramid_trail_alerts) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The non-profit building the Tahoe-Pyramid Trail from Lake Tahoe to Pyramid Lake along the Truckee River (tahoepyramidtrail.org). Registered for its trail alerts page (tahoe_pyramid_trail_alerts) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `tahoe-pyramid` (`load: hold`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:tpl": {
         "provider": "TPL",
@@ -21710,49 +21757,55 @@
         "provider": "NYS Canal Corporation",
         "state": "NY",
         "name": "New York State Canal Corporation",
-        "note": "The state authority that runs the New York State Canal System and the Canalway Trail along it (canals.ny.gov). Registered for the trail's water fountains, surface condition and alerts page (nys_canal_water_fountains, nys_canal_trail_condition, nys_canal_trail_alerts_page) on 2026-10-09, at reaches_hikers: false, held under decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The state authority that runs the New York State Canal System and the Canalway Trail along it (canals.ny.gov). Registered for the trail's water fountains, surface condition and alerts page (nys_canal_water_fountains, nys_canal_trail_condition, nys_canal_trail_alerts_page) on 2026-10-09, at reaches_hikers: false, held under decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `nys-canal` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:ildnr": {
         "provider": "Illinois DNR",
         "state": "IL",
         "name": "Illinois Department of Natural Resources",
-        "note": "Illinois's natural resources agency, which runs the state's parks and the Grand Illinois Trail's state segments (dnr.illinois.gov). Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "Illinois's natural resources agency, which runs the state's parks and the Grand Illinois Trail's state segments (dnr.illinois.gov). Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `il-dnr` (`load: via`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
+      },
+      "org:idot": {
+        "provider": "IDOT",
+        "state": "IL",
+        "name": "Illinois Department of Transportation",
+        "note": "Illinois's transportation department, whose Bicycle Facility Inventory System carries the Grand Illinois Trail's only published line (13 of its 12,655 lines, read 2026-10-11). Registered for that inventory (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row (the maintainer's poll, review page 02, P10), at reaches_hikers: false: the row is `load: hold`, for scope."
       },
       "org:nett": {
         "provider": "NETT",
         "state": "TX",
         "name": "NorthEast Texas Trail Coalition",
-        "note": "The non-profit that manages the Northeast Texas Trail, a rail trail from Farmersville to New Boston (netexastrail.org). Registered for its trail's damaged bridges and points of interest (nett_damaged_bridges, nett_trail_pois) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The non-profit that manages the Northeast Texas Trail, a rail trail from Farmersville to New Boston (netexastrail.org). Registered for its trail's damaged bridges and points of interest (nett_damaged_bridges, nett_trail_pois) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `nett` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:easterntrail": {
         "provider": "Eastern Trail Alliance",
         "state": "ME",
         "name": "Eastern Trail Alliance",
-        "note": "The non-profit that builds and maintains the Eastern Trail from Kittery to South Portland, Maine (easterntrail.org). Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The non-profit that builds and maintains the Eastern Trail from Kittery to South Portland, Maine (easterntrail.org). Registered for its trail conditions page (eastern_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `eastern-trail` (`load: hold`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:mainehuts": {
         "provider": "Maine Huts & Trails",
         "state": "ME",
         "name": "Maine Huts & Trails",
-        "note": "The non-profit that runs the Maine Hut Trail and its huts in Maine's western mountains (mainehuts.org). Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The non-profit that runs the Maine Hut Trail and its huts in Maine's western mountains (mainehuts.org). Registered for its trail conditions page (maine_huts_trail_conditions) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `maine-huts` (`load: hold`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:rctc": {
         "provider": "RCTC",
         "state": "PA",
         "name": "Rachel Carson Trails Conservancy",
-        "note": "The non-profit that maintains the Rachel Carson Trail, the Baker Trail and the Harmony Trail in western Pennsylvania (rachelcarsontrails.org). Registered for its three trail pages' alerts and the Baker Trail's GIS file (rctc_rachel_carson_trail_alerts, rctc_baker_trail_alerts, rctc_harmony_trail_alerts, rctc_baker_trail_geojson) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The non-profit that maintains the Rachel Carson Trail, the Baker Trail and the Harmony Trail in western Pennsylvania (rachelcarsontrails.org). Registered for its three trail pages' alerts and the Baker Trail's GIS file (rctc_rachel_carson_trail_alerts, rctc_baker_trail_alerts, rctc_harmony_trail_alerts, rctc_baker_trail_geojson) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `rctc` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:peninsulatrails": {
         "provider": "Peninsula Trails Coalition",
         "state": "WA",
         "name": "Peninsula Trails Coalition",
-        "note": "The volunteer coalition building the Olympic Discovery Trail from Port Townsend to La Push, Washington (olympicdiscoverytrail.org). Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "The volunteer coalition building the Olympic Discovery Trail from Port Townsend to La Push, Washington (olympicdiscoverytrail.org). Registered for its trail alerts feed (odt_trail_alerts_feed) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `peninsula-trails` (`load: via`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       },
       "org:maricopaparks": {
         "provider": "Maricopa County Parks",
         "state": "AZ",
         "name": "Maricopa County Parks and Recreation Department",
-        "note": "Maricopa County's parks department, steward of the Maricopa Trail around the Phoenix area and its regional parks (maricopacountyparks.net). Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121)."
+        "note": "Maricopa County's parks department, steward of the Maricopa Trail around the Phoenix area and its regional parks (maricopacountyparks.net). Registered for its 14 parks' news feeds (maricopa_maricopa_trail_news and 13 more) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false, held by decision 122 until its trail_orgs.json row is approved (decision 121). Its trail_orgs.json row, `maricopa-parks` (`load: ship`), was approved and written on 2026-10-11; which of its layers reach hikers is each sources.json row's own `reaches_hikers`."
       }
     }
   },
@@ -28543,6 +28596,43 @@
           "trailhead": {
             "status": "unprobed",
             "note": "Registered for its closures page (il_dnr_closures_page) under decision 54's wave 6 (2026-10-09), at reaches_hikers: false. That read opened its closures page and asked nothing more of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none; the coverage audit (2026-10-01) counted 345 IDNR site points (2019) on its ArcGIS Online organisation, which the rest of its layers' load reads."
+          }
+        }
+      },
+      "IDOT": {
+        "probed_date": "2026-10-11",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "Registered for its Bicycle Facility Inventory System (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row (`idot`, `load: hold`), at reaches_hikers: false. That read opened one line layer and asked nothing of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "Registered for its Bicycle Facility Inventory System (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row (`idot`, `load: hold`), at reaches_hikers: false. That read opened one line layer and asked nothing of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "Registered for its Bicycle Facility Inventory System (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row (`idot`, `load: hold`), at reaches_hikers: false. That read opened one line layer and asked nothing of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "Registered for its Bicycle Facility Inventory System (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row (`idot`, `load: hold`), at reaches_hikers: false. That read opened one line layer and asked nothing of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "Registered for its Bicycle Facility Inventory System (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row (`idot`, `load: hold`), at reaches_hikers: false. That read opened one line layer and asked nothing of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "Registered for its Bicycle Facility Inventory System (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row (`idot`, `load: hold`), at reaches_hikers: false. That read opened one line layer and asked nothing of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "Registered for its Bicycle Facility Inventory System (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row (`idot`, `load: hold`), at reaches_hikers: false. That read opened one line layer and asked nothing of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "Registered for its Bicycle Facility Inventory System (idot_bike_inventory) on 2026-10-11 under its own trail_orgs.json row (`idot`, `load: hold`), at reaches_hikers: false. That read opened one line layer and asked nothing of this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
           }
         }
       },

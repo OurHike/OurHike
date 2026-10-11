@@ -84,6 +84,25 @@
     Palmetto Trail's markers and lines (lon -83.125 to -79.561, lat 33.030
     to 35.215) sit inside the eastern box and have no entry.
 
+    WAVE 6'S STEWARDS (2026-10-11) follow ohta_major_trailheads: the point
+    layers make_dbt_staging.py stages once their stewards' trail_orgs.json
+    rows gave them club folders, each by every point read that day with
+    outSR 4326 and geometry only, and IDOT's bicycle inventory, a trail-line
+    row, by its returnExtentOnly as the other trail-line rows are. All four
+    point layers reach west of lon -90 and sit inside `national`:
+    mo_state_parks_trail_pois lat 36.52 to 40.59, lon -95.36 to -89.12;
+    ngpc_amenities lat 40.09 to 42.92, lon -103.68 to -95.52;
+    oprd_rec_facilities lat 42.46 to 45.92, lon -124.56 to -117.74; and
+    nett_trail_pois lat 30.27 to 34.06, lon -117.20 to -94.42, whose 8
+    points outside north-east Texas are the far west of that. The
+    inventory, idot_bike_inventory, is lat 37.12 to 42.51, lon -91.45 to
+    -87.52. The Montour Trail's, the D&L Corridor's and the NYS Canal
+    Corporation's points sit inside the eastern box by their layers'
+    returnExtentOnly (2026-10-09, on each sources.json row), and the Baker
+    Trail's in western Pennsylvania (Reasoned: its file's points were not
+    read for a box), so none has an entry; a vertex outside it fails the
+    swap test, which is the check.
+
     @unvalidated Every margin is picked, not measured. What would settle it
     is the per-club box from trail_orgs.json's `states` that pipeline/ELT.md
     plans. A source loading outside the eastern box without a row in
@@ -294,6 +313,11 @@ where
     'foot_trail_shelters': 'national',
     'ata_water_cache_boxes': 'national',
     'ohta_major_trailheads': 'national',
+    'mo_state_parks_trail_pois': 'national',
+    'ngpc_amenities': 'national',
+    'oprd_rec_facilities': 'national',
+    'nett_trail_pois': 'national',
+    'idot_bike_inventory': 'national',
 } -%}
 
 case

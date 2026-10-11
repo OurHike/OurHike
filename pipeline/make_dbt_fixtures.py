@@ -3133,7 +3133,7 @@ USFS_ALERT_UNITS = (
     "r09/whitemountain", "r09/gmfl", "r02/psicc", "r02/blackhills", "r04/uinta-wasatch-cache", "r10/chugach",
     "r01/dpg", "r05/lospadres",
 )  # fmt: skip
-#: Registry key -> the park its Maricopa County Parks news feed names (review page 02, held in _shared/maricopa_parks).
+#: Registry key -> the park its Maricopa County Parks news feed names (review page 02; maricopa_parks/ since its row, 2026-10-11).
 MARICOPA_NEWS_FEEDS = {
     "maricopa_adobe_dam_news": "Adobe Dam Regional Park",
     "maricopa_buckeye_hills_news": "Buckeye Hills Regional Park",
@@ -3319,7 +3319,7 @@ def _notice_pages_n_to_z() -> dict[str, tuple[str, str, str]]:
     rest.update({key: ("https://ozarktrail.com", page_id) for key, page_id in OTA_SECTION_PAGES.items()})
     for key, (origin, page_id) in rest.items():
         pages[key] = (f"{origin}/wp-json/wp/v2/pages/{page_id}", NOTICE_REST, _wp_rest_page(page_id, f"Fixture {key}"))
-    # Decision 122 (2026-10-09), held in _shared/tahoe_pyramid and _shared/montour_trail: each page's own title, which
+    # Decision 122 (2026-10-09), tahoe_pyramid/ and montour_trail/ since their rows (2026-10-11): each page's own title, which
     # its expect_title holds.
     pages["tahoe_pyramid_trail_alerts"] = (
         "https://tahoepyramidtrail.org/wp-json/wp/v2/pages/20392",
@@ -3331,7 +3331,7 @@ def _notice_pages_n_to_z() -> dict[str, tuple[str, str, str]]:
         NOTICE_REST,
         _wp_rest_page(6312, "Trail Alerts"),
     )
-    # The NYS Canal Corporation's alerts page, held in _shared/nys_canal (the lead's call, 2026-10-09).
+    # The NYS Canal Corporation's alerts page (the lead's call, 2026-10-09), nys_canal/ since its row (2026-10-11).
     pages["nys_canal_trail_alerts_page"] = (
         "https://www.canals.ny.gov/Trails/Canalway-Trail-Alerts",
         NOTICE_HTML,
@@ -3421,7 +3421,7 @@ WP_CATEGORY_POSTS = {
     "pnta_trail_conditions_posts": ("https://www.pnt.org", 188, "trail-conditions"),
     "tehcc_at_posts": ("https://tehcc.org", 3, "appalachian-trail"),
     "tko_oct_trail_conditions": ("https://trailkeepersoforegon.org", 10, "trail-conditions"),
-    # Decision 122 (2026-10-09): the River to River Trail Society's 'Trail Conditions', category 4, held in _shared/r2r.
+    # Decision 122 (2026-10-09): the River to River Trail Society's 'Trail Conditions', category 4, r2r/ since its row (2026-10-11).
     "r2r_trail_conditions": ("https://rivertorivertrail.net", 4, "trail-conditions"),
     # Decision 53's drafted rows for RATC, registered 2026-10-10 once its robots.txt answered 200.
     "ratc_closures_posts": ("https://www.ratc.org", 78, "closures"),
@@ -6497,6 +6497,14 @@ CLUB_TRAIL_LINE_FIELDS = {
         "BICYCLES:s DOGS:s DATAACCESS:s PUBLICDISPLAY:s SEASONAL:s SEASONALDESC:s NOTES:s CREATEUSER:s "
         "CREATEDATE:t EDITUSER:s EDITDATE:t GlobalID:g RelateGUID:g Shape__Length:d"
     ),
+    # Wave 6, 2026-10-11: IDOT's Bicycle Facility Inventory System, registered under IDOT's own trail_orgs.json row
+    # (review page 02, P10), its 39 fields read off the live layer's metadata that day.
+    "idot_bike_inventory": (
+        "OBJECTID:o BRID:s NAME:s FACTYPE:s APPROVALSTATUS:s COMMENT:s MATERIAL:s WIDTH:d BUFWIDTH:d SEPARATORTYPE:s "
+        "SHOULDERTYPE:s LENGTHMI:d INSTALLYR:i STATUS:s STREET:s ROUTEID:s USBRID:s SYSTEMNAME:s FROMREF:s TOREF:s MPO:s "
+        "CITY:s COUNTY:s FROMMEAS:d TOMEAS:d AADBT:d AADPT:d OWNER:s MAINTAINEDBY:s DATAEDITOREMAIL:s DATAOWNEREMAIL:s "
+        "Creator:s CreationDate:t Editor:s EditDate:t GlobalID:g ADMINCOMMENT:s APPROVEREMAILSENT:i Shape__Length:d"
+    ),
 }
 CLUB_TRAIL_LINES_WITH_Z = frozenset({"ata_arizona_trail"})
 
@@ -9400,7 +9408,7 @@ def _gis_file_documents() -> dict[str, dict]:
                 "application/geo+json",
             )
         ),
-        # Review page 02 (decision 122, 2026-10-09): the Baker Trail's file, held in _shared/rctc. The live file's
+        # Review page 02 (decision 122, 2026-10-09): the Baker Trail's file, rctc/ since its row (2026-10-11). The live file's
         # property names on a route line, a shelter and a parking point.
         "rctc_baker_trail_geojson": _files(
             (

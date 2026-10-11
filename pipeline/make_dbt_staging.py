@@ -769,7 +769,9 @@ def base_sql(table: Table) -> str:
     # Read through raw_or_empty() (macros/raw_or_empty.sql): a table that has never landed reads as no rows with the
     # columns these models name, rather than stopping every other club's layers.
     relation = f"source('{table.folder}', '{table.table}')"
-    if len(relation) + 8 > 80:
+    # 8 for the indent and 1 for the comma after it: raw_montour_trail__montour_trail_access_areas, the first relation
+    # exactly 72 long (2026-10-11), came to 81 under a check that counted the indent alone.
+    if len(relation) + 9 > 80:
         relation = f"source('{table.folder}',\n            '{table.table}')"
     names = ", ".join(f"'{name}'" for name in table.raw_columns())
     listed = (

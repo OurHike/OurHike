@@ -1,8 +1,8 @@
 """The trail-organization catalogue says what it means (#1543).
 
-`pipeline/reference/trail_orgs.json` is 173 organizations and the verdict on
-each: ship it, hold it, take it through another row, refuse it, or record that
-there is nothing to take. features/ORG_BULK_LOAD.md is the argument; this file
+`pipeline/reference/trail_orgs.json` is 198 organizations (2026-10-11) and the
+verdict on each: ship it, hold it, take it through another row, refuse it, or
+record that there is nothing to take. features/ORG_BULK_LOAD.md is the argument; this file
 is what stops the argument drifting away from the data.
 
 WHY THESE CHECKS AND NOT A SCHEMA. Every assertion here is one a reviewer would
@@ -32,6 +32,24 @@ LICENCE_BASES = {
     "maintainer_clearinghouse",
     "public_gis",
     "unstated",
+}
+#: The catalogue's `type`s. `county_agency` joined on 2026-10-11 for maricopa-parks, Maricopa County Parks and
+#: Recreation (the maintainer's poll, review page 02, P14). Pinned here so that a type cannot be introduced by
+#: editing the data alone: each is either a club (generate_notice_models.py's CLUB_TYPES), not a managing
+#: organisation at all (extract/_contract.py's NOT_CLUB_TYPES), or an agency, which is every other type here.
+ORG_TYPES = {
+    "federal",
+    "state_clearinghouse",
+    "state_agency",
+    "county_agency",
+    "national_umbrella",
+    "nst_org",
+    "nht_org",
+    "at_club",
+    "regional_nonprofit",
+    "land_trust",
+    "aggregator",
+    "route_only",
 }
 
 
@@ -124,6 +142,34 @@ def test_every_licence_basis_is_one_this_repository_defines(orgs):
     used = {o["licence_basis"] for o in orgs if o["licence_basis"] is not None}
     unknown = sorted(used - LICENCE_BASES)
     assert unknown == [], f"licence bases nothing defines: {unknown}"
+
+
+def test_every_org_type_is_one_this_repository_defines(orgs):
+    """A type outside ORG_TYPES is a type no reader knows, and both type sets the pipeline reads must name real ones.
+
+    generate_notice_models.py's CLUB_TYPES makes a notice's `steward_kind` a club's and every other type an
+    agency's (decision 66), and extract/_contract.py's NOT_CLUB_TYPES leaves a row out of the managing clubs that
+    answer every type (decision 18). A misspelt type in either set would silently turn a club into an agency, or a
+    managing organisation into one that answers nothing.
+    """
+    from extract._contract import NOT_CLUB_TYPES
+    from generate_notice_models import CLUB_TYPES
+
+    unknown = sorted({o["type"] for o in orgs} - ORG_TYPES)
+    assert unknown == [], f"types nothing defines: {unknown}"
+    assert set(CLUB_TYPES) <= ORG_TYPES and set(NOT_CLUB_TYPES) <= ORG_TYPES
+    assert not set(CLUB_TYPES) & set(NOT_CLUB_TYPES)
+
+
+def test_a_county_agency_is_an_agency_that_manages_trails(orgs):
+    """Maricopa County Parks publishes its own trails and notices, so it answers every type as a managing organisation,
+    and its notices reach a planned hike as an agency's do, only where they are placed on or near the route
+    (decision 66), not as a club's."""
+    from extract._contract import NOT_CLUB_TYPES
+    from generate_notice_models import CLUB_TYPES
+
+    assert "county_agency" not in CLUB_TYPES and "county_agency" not in NOT_CLUB_TYPES
+    assert sorted(o["slug"] for o in orgs if o["type"] == "county_agency") == ["maricopa-parks"]
 
 
 def test_a_refused_row_says_which_terms_refused_it(orgs):

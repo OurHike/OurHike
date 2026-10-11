@@ -919,8 +919,10 @@ class TestTheRegistryTheConsoleReads:
         # Trail Club (org:odatc) for its circuit hikes page, the Susquehanna Appalachian Trail Club (org:satc) for
         # its 'Hiking In Central Pennsylvania' directory, the Colorado Fourteeners Initiative (org:cfi) for its
         # peak pages' recommended routes, and the Iditarod Historic Trail Alliance (org:iditarod) for its Visitor
-        # Guide's passport stamp sites: 149.
-        assert len(orgs) == 149
+        # Guide's passport stamp sites: 149. 150 since wave 6's rows (2026-10-11, review page 02, P10)
+        # registered the Illinois Department of Transportation (org:idot) for its Bicycle Facility Inventory
+        # System, which carries the Grand Illinois Trail's only published line, held.
+        assert len(orgs) == 150
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -1074,6 +1076,8 @@ class TestTheRegistryTheConsoleReads:
             "org:maricopaparks",
             # Decision 126 (2026-10-09): the Trust for Public Land, for ParkServe's parks, held.
             "org:tpl",
+            # Wave 6's rows (2026-10-11, review page 02, P10): IDOT, for its Bicycle Facility Inventory System, held.
+            "org:idot",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

@@ -98,7 +98,8 @@ READERS_SEED = SEEDS_DIR / "notice_readers.csv"
 TRAIL_ORGS = PIPELINE_DIR / "reference" / "trail_orgs.json"
 #: trail_orgs.json's `type`s that are a club: an organization of hikers that
 #: maintains its trails. Every other type there (federal, state_agency,
-#: state_clearinghouse) is an agency, and so is a notice folder trail_orgs.json
+#: state_clearinghouse, and county_agency since 2026-10-11, for Maricopa County
+#: Parks) is an agency, and so is a notice folder trail_orgs.json
 #: has no row for: the folder contract makes a club folder of every
 #: trail_orgs.json row but its umbrellas, route-only trails and aggregators
 #: (the dlt skill, "The folder contract"), so a folder outside it is one of

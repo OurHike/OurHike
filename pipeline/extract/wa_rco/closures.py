@@ -9,8 +9,8 @@ loads. Change checks are _kinds.py's ArcgisLayer: a conditional GET of the layer
 Online, the statistics fingerprint on an on-prem server, and an allowed zero only beside the
 server's own returnCountOnly read in the same run.
 
-Also drawn from (decision 53 phase B, 2026-10-03, decision 34): _shared/wa_state_parks/
-`wsprc_winter_rec_closures`.
+Also drawn from (decision 53 phase B, 2026-10-03, decision 34): wa_parks/ `wsprc_winter_rec_closures`,
+in _shared/wa_state_parks/ until WA State Parks' trail_orgs.json row (2026-10-11).
 
 ArcGIS layers read and not wired as closures or warnings (decision 53 phase B, 2026-10-03):
 https://gis.dnr.wa.gov/site3/rest/services/Public_Wildfire/WADNR_PUBLIC_WD_WildfireDanger/MapServer/1,

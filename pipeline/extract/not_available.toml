@@ -958,7 +958,7 @@ too: one upstream is one resource and one raw table (decision 34), and dbt's dec
 splits each notice into closures or warnings.
 
 DCR's park alerts layer, the live channel for the Massachusetts A.T.'s state lands, is extracted
-once in _shared/ma_dcr/ as `ma_dcr_park_alerts` (decision 34), and its warnings are split from its
+once in ma_dcr/ as `ma_dcr_park_alerts` (decision 34), and its warnings are split from its
 closures in dbt."""
 
 [amc_ct.closures]
@@ -2242,7 +2242,7 @@ has no …
 DCR's notices for the reservation are mass.gov's per-park alerts fragment
 (https://www.mass.gov/alerts/page/14961, the node the park page
 https://www.mass.gov/locations/blue-hills-reservation loads; 1 item on 2026-10-03, an event notice
-'Updated Sep. 24, 2026'). It is DCR's, read once in _shared/ma_dcr/ as `ma_dcr_blue_hills_alerts`
+'Updated Sep. 24, 2026'). It is DCR's, read once in ma_dcr/ as `ma_dcr_blue_hills_alerts`
 (decision 34). mass.gov's terms ("the Commonwealth forbids any copying or use other than 'fair
 use'") restrict copying, not reading: decision 55's case. Friends of the Blue Hills' WordPress has
 13 categories and none for closures or alerts, so its feed (https://friendsofthebluehills.org/feed/)
@@ -2256,7 +2256,7 @@ where = [
     "https://friendsofthebluehills.org/",
     "https://www.mass.gov/alerts/page/14961",
 ]
-reason = "drawn from _shared/ma_dcr/'s `ma_dcr_blue_hills_alerts`, extracted once there (decision 34); the Friends' blog has no notice category"
+reason = "drawn from ma_dcr/'s `ma_dcr_blue_hills_alerts`, extracted once there (decision 34); the Friends' blog has no notice category"
 
 [blue_hills.elevation]
 confirmed = 2026-10-01
@@ -2334,26 +2334,26 @@ confirmed = 2026-10-03
 summary = """
 Drawn from another folder's resource (decision 53 phase B, 2026-10-03).
 
-This club's warnings arrive through _shared/ma_dcr/ `ma_dcr_blue_hills_hunt_areas`, each extracted
+This club's warnings arrive through ma_dcr/ `ma_dcr_blue_hills_hunt_areas`, each extracted
 once in its steward's folder (decision 34). Its portion is assigned in dbt.
 
 DCR's notices for the reservation are mass.gov's per-park alerts fragment
 (https://www.mass.gov/alerts/page/14961, the node the park page
 https://www.mass.gov/locations/blue-hills-reservation loads; 1 item on 2026-10-03, an event notice
-'Updated Sep. 24, 2026'). It is DCR's, read once in _shared/ma_dcr/ as `ma_dcr_blue_hills_alerts`
+'Updated Sep. 24, 2026'). It is DCR's, read once in ma_dcr/ as `ma_dcr_blue_hills_alerts`
 (decision 34). mass.gov's terms ("the Commonwealth forbids any copying or use other than 'fair
 use'") restrict copying, not reading: decision 55's case. Friends of the Blue Hills' WordPress has
 13 categories and none for closures or alerts, so its feed (https://friendsofthebluehills.org/feed/)
 is not read: choosing its 'TRAIL ALERT!!' posts out of the blog would be prose parsing."""
 checked = [
-    "via _shared/ma_dcr/ `ma_dcr_blue_hills_hunt_areas` (decision 53 phase B, 2026-10-03): `ma_dcr_blue_hills_hunt_areas` reads `HuntAreas_BH_PGC_FM/FeatureServer/18`",
+    "via ma_dcr/ `ma_dcr_blue_hills_hunt_areas` (decision 53 phase B, 2026-10-03): `ma_dcr_blue_hills_hunt_areas` reads `HuntAreas_BH_PGC_FM/FeatureServer/18`",
     "DCR's \"Blue Hills Hunt Areas\", `https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/HuntAreas_BH_PGC_FM/FeatureServer/18`: 13 polygons, YrHuntArea, lastEdit 2026-07-28. Plus \"Clipped Wildlife Management Zones\". FBH posts each year on \"White-Tailed Deer Management Program 2025\" and \"Traffic Advisory Related to Controlled Deer Hunt\".",
 ]
 where = [
     "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/HuntAreas_BH_PGC_FM/FeatureServer/18",
     "https://www.mass.gov/alerts/page/14961",
 ]
-reason = "drawn from _shared/ma_dcr/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; and from its mass.gov fragment, `ma_dcr_blue_hills_alerts`"
+reason = "drawn from ma_dcr/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; and from its mass.gov fragment, `ma_dcr_blue_hills_alerts`"
 
 [bmecc.challenges]
 confirmed = 2026-10-01
@@ -4703,6 +4703,126 @@ checked = [
 where = ["https://cvatclub.org/"]
 reason = "drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
+[dlnhc.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+A mileage program; the fit with #1780 is weak (R)."""
+checked = [
+    "`/programs/get-your-tail-on-the-trail/`: \"Get Your Tail on the Trail\", run with St. Luke's (165-Mile Challenge, Winter 30/30). Miles are logged at `tailonthetrail.org`. Format: page.",
+]
+where = [
+    "https://services2.arcgis.com/msvwBSym92cmf7k2/arcgis/rest/services",
+    "https://delawareandlehigh.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[dlnhc.closures]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+The key says `closed`, but the legend says "Obstruction within trail section, see description". The site
+notes "if there is an obstruction within a trail section the entire trail section will be noted as
+'obstructed'". So `closed` does not mean impassable. Route it through decision 7's …"""
+checked = [
+    "`mapdata.json` (68,560 bytes, Last-Modified 2026-10-01 01:38 GMT) gives each of the 44 sections a `status`: complete 34, `closed` 7, planned 2, unimproved 1. Each `urlpath` such as `/map/trail-section/kimmetts-lock-allentown/` carries the description (\"Status: Obstruction within trail section, see description\"). The quarterly blog \"Dirt on the Trail\" (Fall '26, 2026-09-23) has a \"Trail Update\". Format: JSON plus page.",
+]
+where = [
+    "https://services2.arcgis.com/msvwBSym92cmf7k2/arcgis/rest/services",
+    "https://delawareandlehigh.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[dlnhc.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+USGS 3DEP."""
+checked = ["Checked: nav, ArcGIS owners `delawareandlehigh` (82 items) and `dlnhcstaff` (25 items)."]
+where = [
+    "https://services2.arcgis.com/msvwBSym92cmf7k2/arcgis/rest/services",
+    "https://delawareandlehigh.org/",
+]
+
+[dlnhc.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = ["`/blog/image-gallery/` has no licence."]
+where = [
+    "https://services2.arcgis.com/msvwBSym92cmf7k2/arcgis/rest/services",
+    "https://delawareandlehigh.org/",
+]
+
+[dlnhc.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = [
+    '`mapdata.json` `town` has 30 entries. There is also the Trail Towns program and the ArcGIS "Trail Friendly Businesses - 2026" web map. Format: JSON.',
+]
+where = [
+    "https://services2.arcgis.com/msvwBSym92cmf7k2/arcgis/rest/services",
+    "https://delawareandlehigh.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[dlnhc.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = [
+    "The only podcast is a 2009 WXLV series linked from `/blog/dl-podcasts-available-from-wxlv/`, at a dead `web.me.com` URL. `/explore-the-corridor/dirt-on-the-trail-directors-cut/` is a yearly YouTube presentation.",
+]
+where = [
+    "https://services2.arcgis.com/msvwBSym92cmf7k2/arcgis/rest/services",
+    "https://delawareandlehigh.org/",
+]
+
+[dlnhc.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+The guidebook is paid."""
+checked = [
+    "`/explore-the-corridor/plan-your-trip/dl-trail-guidebook-segments/` and `/ride-guides/` hold Ride with GPS routes (a region embed; the count is not cheap to get). The 2026 Director's Cut has \"two new trip itineraries\". There are 3 regional PDF maps, and a Google My Map (`mid=1qQw1G6GT_cggFKwKKDOYiSG4QaKMClQ`).",
+]
+where = [
+    "https://services2.arcgis.com/msvwBSym92cmf7k2/arcgis/rest/services",
+    "https://delawareandlehigh.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[dlnhc.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Drawn from another folder's resource (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+PASDA's copy dates from 2016. The club's `mapdata.json` was Last-Modified 2026-10-01, so the club's own
+geometry is far fresher (M). Skeptic: a second read got Last-Modified 2026-09-08 from a cached copy (see
+closures). The conclusion holds either way; the exact date does not reproduce."""
+checked = [
+    "`D&L Trail` 145.93 mi plus the five named sections (`UPDATE_` 2016-08-26). The club also publishes its own: (1) ArcGIS `dlTrail20170412`, 179 polylines with fields `status`, `closed`, `surface`, `owner`, `section`, `bridge` (item modified 2022-05-18); (2) `/wp-content/themes/dl2014/data/mapdata.json`, with 44 trail sections as encoded polylines.",
+]
+where = [
+    "https://services2.arcgis.com/msvwBSym92cmf7k2/arcgis/rest/services",
+    "https://delawareandlehigh.org/",
+]
+reason = "drawn from pasda/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[dlnhc.warnings]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = [
+    'The section descriptions are the warnings. Example: "This section of trail should only be used by through-riders…". `/trail-etiquette-safety/` is rules only. Format: page.',
+]
+where = [
+    "https://services2.arcgis.com/msvwBSym92cmf7k2/arcgis/rest/services",
+    "https://delawareandlehigh.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
 [doc.challenges]
 confirmed = 2026-10-01
 summary = """
@@ -5074,6 +5194,91 @@ where = [
 ]
 reason = "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
+[eastern_trail.challenges]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = ['WordPress search for "challenge" returns 5 news posts and no program.']
+where = ["https://easterntrail.org/"]
+
+[eastern_trail.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+USGS 3DEP."""
+checked = ["Checked: WordPress REST pages (23), nav."]
+where = ["https://easterntrail.org/"]
+
+[eastern_trail.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = ["The ribbon-cutting picture page has no licence."]
+where = ["https://easterntrail.org/"]
+
+[eastern_trail.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch p07_persist).
+
+Licence: "The ownership lines do not represent legal boundaries nor are the ownership lines a survey.
+Conserved Lands is an inventory of approximate property boundaries. Access to these lands is not
+implied. Permissions should always be granted by the landowner." That is a disclaimer, so …"""
+checked = [
+    "Maine Conserved Lands (Maine DACF), `services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Conserved_Lands_All/FeatureServer/0`: 12,851 polygons, edited 2026-09-23.; Corridor: 154 Eastern Trail segments, taken from VHB's copy of MaineDOT's trails layer (`Eastern_Trail_Overview_Map/FeatureServer/0`, where `OTHER_NAME` or `RTNAME` is 'Eastern Trail'), split into 154 envelopes padded by about 150 m.; 185 parcels intersect those envelopes. By holder type: State 66, Municipal 64, Private 48, Other 7. Holders: municipalities 64, MDIFW 63, Great Works Regional Land Trust 34. The units …",
+]
+where = ["https://easterntrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[eastern_trail.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = ["Checked: nav and the 23 pages. It has a YouTube channel only."]
+where = ["https://easterntrail.org/"]
+
+[eastern_trail.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+The FAQ says water "is not guaranteed or maintained for public use"."""
+checked = [
+    'The `/parking/` Google My Map (`mid=1ToHwtVjzx8Xbj9DaWtQD1zUjRx3qu44`) exports as KML: 17 points, folder "Eastern Trail Public Parking".',
+]
+where = ["https://easterntrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[eastern_trail.suggested_hikes]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = [
+    "`/things-to-do/` (2026-08-10) describes ways to use each section. The club's routes are at `ridewithgps.com/clubs/15537-eastern-trail-alliance/routes`. The FAQ mentions \"printed trail guides\" for sale.",
+]
+where = ["https://easterntrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[eastern_trail.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+Getting the steward's geometry means going through Ride with GPS (terms, account)."""
+checked = [
+    "`/trail-maps/` embeds Ride with GPS collection 8861052. ArcGIS \"Eastern Trail Overview Map\" (owner `an email address`) is a consultant's feasibility-study layer, not the steward's. No loaded source covers Maine.",
+]
+where = ["https://easterntrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[eastern_trail.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c15_cand_northeast_1) reads: The same page. Also
+`/rules-guidelines/` (2026-08-26): "Hunting occurs on lands adjacent to the trail between August –
+December. Wear blaze orange.\""""
+
 [ecr_tejas.challenges]
 confirmed = 2026-10-04
 summary = """
@@ -5254,6 +5459,189 @@ where = [
     "https://elcaminorealdelostejas.org/",
 ]
 reason = "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[fl_state_parks.challenges]
+confirmed = 2026-10-01
+summary = """
+Could not be told (coverage audit 2026-10-01).
+
+fl-state-parks, batch c19_cand_southeast_1: could not be told.
+
+fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: could not be told."""
+checked = [
+    "fl-state-parks: `floridadep.gov/parks/ogt`: Trail Town Program, Designations, Community Trails Calendar — no completion programme. `floridastateparks.org` (where a park passport or challenge would live) unreadable.",
+    "fl-state-parks-fkoht: As above.",
+]
+where = [
+    "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services",
+    "https://floridastateparks.org/",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[fl_state_parks.elevation]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+fl-state-parks, batch c19_cand_southeast_1: published, and not landed. Derived from USGS quads, so 3DEP
+(`_shared/usgs`) is the better source. Not worth loading.
+
+fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: nothing published. 3DEP if
+anything."""
+checked = [
+    'fl-state-parks: `https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/LAND_SURFACE_ELEV/MapServer/0` "Elevation Contours and Depressions" (polyline), "land surface elevation at 1:24,000 scale for Florida … digitized from United States Geological survey 1:24,000 (7.5 minute) quadrangles", credited to USGS with FGS QA.',
+    "fl-state-parks-fkoht: As above; FDEP's contour layer covers the Keys but a causeway trail at sea level gains nothing from it.",
+]
+where = [
+    "https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/LAND_SURFACE_ELEV/MapServer/0",
+    "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services",
+    "https://floridastateparks.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[fl_state_parks.photos]
+confirmed = 2026-10-01
+summary = """
+Could not be told (coverage audit 2026-10-01).
+
+fl-state-parks, batch c19_cand_southeast_1: could not be told. A credited professional photographer
+suggests rights reserved (Unvalidated).
+
+fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: could not be told."""
+checked = [
+    'fl-state-parks: ArcGIS items by `an email address` include photographs ("Withlacoochee State Trail Trio of Bicyclists, a named individual", 2019) with no licence shown in search. `floridastateparks.org` unreadable.',
+    "fl-state-parks-fkoht: As above.",
+]
+where = [
+    "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services",
+    "https://floridastateparks.org/",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[fl_state_parks.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+fl-state-parks, batch c19_cand_southeast_1: published, and not landed. The Trail Towns layer is the
+clearest `places` find in the batch: an official, small, named list of trail towns with the trails each
+serves.
+
+fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: published, and not landed."""
+checked = [
+    "fl-state-parks: `…/PARKS_BOUNDARIES/MapServer/0` \"Florida State Park Boundaries\": 179 polygons. `…/OGT/MapServer/5` \"Florida Trail Towns\": 23 points (`NAME`, `TRAILS`, `URL`), including Inverness (on the Withlacoochee State Trail), Dunedin, Clermont, Palatka, Titusville, White Springs. `…/PARKS_FORI/MapServer/0` \"Florida's Outdoor Recreation Inventory\": 12,148 sites, all managers.",
+    "fl-state-parks-fkoht: The 9 state-park boundaries the web map lists (`PARKS_BOUNDARIES/MapServer/0`); the Connecting Keys' Communities StoryMap (`fee2411ba1cc4573b1067ab28ea2d433`, 2026-05-26). Also the OGT Trail Towns list has Marco Island and Everglades City but no Keys town.",
+]
+where = [
+    "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services",
+    "https://floridastateparks.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[fl_state_parks.podcasts]
+confirmed = 2026-10-01
+summary = """
+Could not be told (coverage audit 2026-10-01).
+
+fl-state-parks, batch c19_cand_southeast_1: could not be told. Probably none, but the agency's own site
+could not be checked, so not NOT_PUBLISHED.
+
+fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: could not be told."""
+checked = [
+    "fl-state-parks: iTunes search \"Florida State Parks\" returned 8 shows, none FDEP's. `floridadep.gov/parks/ogt` lists an \"Outdoor Florida Webinar Series\", not a podcast. `floridastateparks.org` unreadable.",
+    "fl-state-parks-fkoht: As above.",
+]
+where = [
+    "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services",
+    "https://floridastateparks.org/",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[fl_state_parks.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+fl-state-parks, batch c19_cand_southeast_1: published, and not landed. `WATER_SERVICE` on campsites is
+per-site utility water, which is a real water fact for a campsite but not a trail water source; label it
+that way.
+
+fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: published, and not landed.
+Water and restrooms along the trail would be in those parks' POIs, not under the trail's own name."""
+checked = [
+    'fl-state-parks: `…/PARKS_BOUNDARIES/MapServer/6` "Florida State Park Points of Interest" (`POI_NAME`, `POI_CLASSIFICATION`, `SITE_NAME`): 4,898 statewide — Parking 557, Picnic Pavilion 519, Restroom 328, Trailhead 185, Ranger Station 99, Camping (Primitive) 74, … Cross Florida Greenway 165 (Parking 24, Trailhead 20, Restroom 7, Camping (Full-Facility) 4, …); Withlacoochee State Trail 44 (Parking 11, Restroom 7, Trailhead 7, …). `…/MapServer/1` "Florida State Park Camping Sites" (`WATER_SERVICE`, `TYPE`, `RESERVABLE`): 4,146; Cross Florida 164. `…/MapServer/2` Entrances: 299.',
+    "fl-state-parks-fkoht: The same web map: \"Mile Markers\" 113 points (`MMARKER` values, from Monroe County GIS fields) and \"Street View Points\" 25. `…/PARKS_BOUNDARIES/MapServer/6` has 0 POIs under this site name. (Changed by skeptic: the newer \"Production - Florida State Parks Points of Interest\", `https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services/Florida_State_Parks_Points_of_Interest/FeatureServer/0` (owner `FLPARKSGIS`, data edited 2026-09-25, 5,150 POIs statewide), has 17 under `SITE_NAME = 'Florida Keys Overseas Heritage Trail'`: Parking 6, Fishing 5, Kiosk/Interpretive Exhibit 4, Boat Ramp 2. …",
+]
+where = [
+    "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services/Florida_State_Parks_Points_of_Interest/FeatureServer/0",
+    "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services",
+    "https://floridastateparks.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[fl_state_parks.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+fl-state-parks, batch c19_cand_southeast_1: published, and not landed.
+
+fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: published, and not landed.
+2019, so possibly stale."""
+checked = [
+    'fl-state-parks: OGT "Online Trail Guide" (`/parks/ogt/content/online-trail-guide`) links two ArcGIS web apps (`a92024713a5e44549476ff89aec69de0`, `0139f10a05f54927abe654cfe61aef4e`) and the PDF `Florida Bike Touring and State Trail Public Camping Options_3.pdf`. `DIFFICULTY` on layer 12 grades each trail. Park pages that would carry hike write-ups are on the blocked site.',
+    "fl-state-parks-fkoht: FDEP's MapJournal apps \"Upper Keys - FKOHT\", \"Middle Keys - FKOHT\", \"Lower Keys - FKOHT\" (2019-04-03, `fdep.maps.arcgis.com`), section-by-section narratives.",
+]
+where = [
+    "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services",
+    "https://floridastateparks.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[fl_state_parks.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+fl-state-parks, batch c19_cand_southeast_1: published, and not landed. Three overlapping FDEP layers.
+(1) is the park system's own, statewide, and the one to build on; (3) is the greenway's working layer
+with an FNST flag, useful for the FTA dedupe. The `WATER` field on (1) is mostly null (6,788 null, 857
+"None", 2 "Potable"), so it is not a water source.
+
+fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: published, and not landed.
+(2) is the only source separating path from road, which is the fact a walker needs on a highway
+causeway. It is a web-map collection rather than a service, so it would be fetched as item data."""
+checked = [
+    'fl-state-parks: (1) `https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/PARKS_BOUNDARIES/MapServer/12` "Florida State Park Trails and Walkways" (fields `SITE_NAME`, `NAME`, `USE`, `SURFACE`, `WATER`, `LENGTH_MI`, `DIFFICULTY`): 7,709 lines statewide; Cross Florida Greenway 316 lines / 262.56 mi; Withlacoochee State Trail 4 / 46.03 mi. Layer 8 "Florida State Park Trails" holds 1,387. (2) `…/OpenData/OGT/MapServer/3` "Existing Trails" (statewide, all managers, "compiled from local, state, and federal agencies"): 5,732 segments. (3) …',
+    "fl-state-parks-fkoht: (1) `…/OpenData/PARKS_BOUNDARIES/MapServer/12`, `SITE_NAME = 'Florida Keys Overseas Heritage Trail'`: 1 line, 61.9 mi, `USE` Hiking/Biking, `SURFACE` Paved. (2) \"FKOHT Web Map\" (`d2285a45c5e345d8887905359484fb20`, owner `an email address`, modified 2026-05-13): an embedded feature collection of 62 lines typed Path 31, Road 29, Spur 2. (3) OGT `Existing Trails` holds it only as \"Florida Circumnavigational Paddling Trail\" (61.9 mi), which is the paddling route sharing the site name.",
+]
+where = [
+    "https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/PARKS_BOUNDARIES/MapServer/12",
+    "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services",
+    "https://floridastateparks.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[fl_state_parks.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings rows (2026-10-01) read: fl-state-parks (batch c19_cand_southeast_1):
+Expected on `floridastateparks.org` park alert banners; unreachable (403). `floridadep.gov/parks/ogt`
+carries static safety material only (`Trail_Safety_Poster_v7`, `Trail Safety at Crossings` PDFs). The
+OGT "Public Notices" page lists Florida Administrative Register rule notices, not hazards. Skeptic,
+2026-10-01:
+`https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services/FL_State_Parks_Weather_Watches_and_Warnings/FeatureServer/289`
+"Parks_NWS_Zones_Dissolve" (item `0a03c6b5…`, owner `FLPARKSGIS`, data edited 2026-09-08). It is
+described as "an intersection of the park boundaries … fl-state-parks-fkoht (batch
+c19_cand_southeast_1): Site 403. Skeptic:
+`FL_State_Parks_Weather_Watches_and_Warnings/FeatureServer/289`. It has 0 FKOHT features today (13
+statewide, all rip-current statements in the north-east). The FKOHT boundary is in
+`PARKS_BOUNDARIES/MapServer/0` (1 polygon matching `UPPER(SITE_NAME) LIKE '%OVERSEAS%'`), and the
+layer's inputs are "State Parks and State Trails", so the unit is covered (Reasoned)."""
 
 [fltc.challenges]
 confirmed = 2026-10-04
@@ -5692,6 +6080,199 @@ summary = """
 Read with closures (decision 53 phase B, 2026-10-03). closures.py's notice sources feed this type
 too: one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier
 splits each notice into closures or warnings."""
+
+[fwrt.challenges]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1)."
+checked = [
+    '`/events` lists dated events (Weiser River 50K, a 25th-year Wagon Train, a June bike event), not challenges. Skeptic recheck: "October Trek", October 3–4, 2026, registers on `bikereg.com/october-trek`. It is a ride event, not a completion programme.',
+]
+where = ["https://weiserrivertrail.org/"]
+
+[fwrt.closures]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+The feed is real but sparse: no post since 2024-09-26. Facebook, behind a login wall, is still the live
+channel and stays UNKNOWN; do not route around it. A loader must carry each post's `pubDate` and treat
+it as "not reviewed" under decision 7. "Tree Debris" obstructed the trail in July 2024 and …"""
+checked = [
+    '`https://weiserrivertrail.org/f.rss` (also `/f.atom`, and `sitemap.blog.xml`): 15 items, 2022-12-08 → 2024-09-26. Trail-status posts: "May 2023 Trail Update" (2023-05-24): "Finally the entire trail is open BUT be advised there is damage at Goodrich Creek … We do not have an ETA for repairs". "Tree Debris" (2024-07-28): squall winds "upwards of 70 mph" left trees and branches "effectively blocking the trail". "Trail Hazards" (2024-09-26). Also "E-Bike Policy and Trail Conditions" (2023-04-29) and "Winter Grooming!" (2022-12-08). Format: RSS 2.0, GoDaddy blog. Separately …',
+]
+where = ["https://weiserrivertrail.org/f.rss", "https://weiserrivertrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[fwrt.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+USGS 3DEP."""
+checked = ["Nav (16 pages)."]
+where = ["https://weiserrivertrail.org/"]
+
+[fwrt.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1)."
+checked = ['`/photo-gallery` has no licence; the footer says "All Rights Reserved".']
+where = ["https://weiserrivertrail.org/"]
+
+[fwrt.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1)."
+checked = [
+    "The access-point page names trail towns (Weiser, Midvale, Cambridge, Council). `/shuttle-lodging-resources` lists shuttles and lodging (HTML).",
+]
+where = ["https://weiserrivertrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[fwrt.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1)."
+checked = ["Nav. Skeptic recheck: `sitemap.website.xml`, `sitemap.blog.xml`, RSS."]
+where = ["https://weiserrivertrail.org/"]
+
+[fwrt.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+The only published water points on an 84-mi trail."""
+checked = [
+    '(1) `/trail-map-%26-access`: 15 access points, each with mile, GPS, restroom, water and parking (HTML). Water values: Hydrant ×3, Pump ×3, "Spigots in the park and bathrooms" ×1, None ×5, "None (access to creek)" ×1. (2) The same Google My Maps KML: 26 points (trailheads, a coffee cabin, rodeo grounds). (3) `/wye-campground`: water, vault toilet, closes "no later than October 15, 2026".',
+]
+where = ["https://weiserrivertrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[fwrt.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+Paid; see flags."""
+checked = [
+    "Only the paid trail guide ($25). Skeptic recheck: none of the 15 pages in `sitemap.website.xml` and the 15 blog posts is an itinerary.",
+]
+where = ["https://weiserrivertrail.org/"]
+
+[fwrt.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+Prefer IDPR's line: it is attributed to the Friends, dated and maintained."""
+checked = [
+    "(1) IDPR `Idaho_Recreation_Trails/FeatureServer/128`, `NAME = 'Weiser River Trail'`: 2 segments, 35.90 + 46.29 = 82.19 mi, `JURISDICTION 'Friends of The Weiser River Trail'`. The licence is IDPR's (see `idpr`). (2) Valley County `Weiser_River_Trail/FeatureServer/1`: 1 polyline, `MILES` 85.49, last edit 2022-05-03, no licence. Own geometry: none. Its Google My Maps KML (`https://www.google.com/maps/d/kml?mid=1UoHhnZjbHgQd9k4fCf50c-cyqkY&forcekml=1`) has 9 LineStrings, but they are driving-access routes (\"Weiser to Presley\", \"Cambridge to Goodrich\"), not the trail.",
+]
+where = [
+    "https://www.google.com/maps/d/kml?mid=1UoHhnZjbHgQd9k4fCf50c-cyqkY&forcekml=1",
+    "https://weiserrivertrail.org/",
+]
+reason = "published and not landed: IDPR's Idaho Routes layer (Idaho_Recreation_Trails/FeatureServer/128), which carries the trail and which this row's `via` names, has no sources.json row, and a builder takes a registered key"
+
+[fwrt.warnings]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+The rules page holds undated standing hazards. The RSS posts are dated notices, two years old at the
+newest."""
+checked = [
+    'Same rules page, static text: "Watch for rattlesnakes and poison ivy", West Nile Virus, "Carry safe water. If you run out, water from side creeks and the river must be filtered", livestock on trail, and hunters using the trail to reach public land. Skeptic addition: the RSS feed (above) also carries dated notices. "No Fires" (2024-07-30): "Effective July 27, 2024, we implemented a no fires ban at the Wye Campground, not even in a fire ring. Due to the extremely high fire danger". "Trail Hazards" (2024-09-26): "yet another downed tree up north and a couple of badger holes down south". "A rocky …',
+]
+where = ["https://weiserrivertrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[gap.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+An end-to-end completion program; the fit with #1780 is weak (R)."""
+checked = [
+    '`/take-the-150-mile-gap-challenge/` (2026-03-02): "Joining the 150-Mile GAP Challenge is easy and free!", with registration and a completion form. `/challenge/` is the landing page.',
+]
+where = ["https://gaptrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[gap.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+USGS 3DEP."""
+checked = ["Checked: nav, WordPress REST, and the map bundle (Mapbox style only)."]
+where = ["https://gaptrail.org/"]
+
+[gap.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = ['The "2026 GAP Photo Contest" post states no licence.']
+where = ["https://gaptrail.org/"]
+
+[gap.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = ["Amenities of type `Town`/`Trailheads`: 21. The trail-town pages are under `/where-to-go/`."]
+where = ["https://gaptrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[gap.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c15_cand_northeast_1)."
+checked = ['WordPress search for "podcast" returns 0. Also checked: nav.']
+where = ["https://gaptrail.org/"]
+
+[gap.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+The map loads this same endpoint (`wp-json/wp/v2/amenities?acf_format=standard&_fields=acf`). There is
+no water type. Skeptic, 2026-10-01: confirmed. The subgroups are Dining 207, Lodging 204, Parking 46,
+Refreshments 42, Point of Interest 40, Campground 11+6, E-Bike Charging 5; none is water. …"""
+checked = [
+    "`https://gaptrail.org/wp-json/wp/v2/amenities`: X-WP-Total 821, with ACF fields `type`, `type_subgroup`, `latitude`, `longitude`, `trail_mile_marker`. Breakdown: Parking 46, Campground 17 (11 business, 6 landmark), Landmark/Point of Interest 40, Information 5, E-Bike Charging 5. 241 of the 821 rows are on the C&O Canal Towpath. Format: WordPress REST.",
+]
+where = ["https://gaptrail.org/wp-json/wp/v2/amenities", "https://gaptrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[gap.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+TrailGuide (paid) is excluded."""
+checked = [
+    '`/things-to-do/recommended-trips/day-trips/` and `/things-to-do/outdoor-recreation/hiking/`; WordPress search for "itinerary" returns 8 results (7 pages, 1 post). Format: page.',
+]
+where = ["https://gaptrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[gap.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Drawn from another folder's resource (coverage audit 2026-10-01, batch c15_cand_northeast_1).
+
+PASDA's GAP feature covers the full 150 mi, including the Maryland end. That matches the candidate row's
+"exact match"."""
+checked = [
+    "`Great Allegheny Passage` 149.98 mi (`UPDATE_` 2017-08-22) and `Steel Valley Trail - Great Allegheny Passage` 14.50 mi. The club's own line exists only as Mapbox tiles.",
+]
+where = ["https://gaptrail.org/"]
+reason = "drawn from pasda/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[gap.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c15_cand_northeast_1) reads: The same feed's
+Partially Obstructed rows, e.g. "Erosion Near Mile Marker 56", "Potential Rockfall Between Duquesne and
+Homestead", "Ice in Pinkerton Tunnel" (2025)."""
 
 [gatc.elevation]
 confirmed = 2026-10-04
@@ -6396,6 +6977,396 @@ where = [
     "https://avalanche.org",
 ]
 reason = "drawn from blm/'s `blm_press_alaska`, extracted once there (decision 34); and from usfs/'s `usfs_r10_chugach_alerts`; avalanche.org waits on its permission"
+
+[idot.challenges]
+confirmed = 2026-10-11
+summary = """
+Not surveyed (2026-10-11). IDOT's row was written for one dataset, the bicycle inventory that carries
+the Grand Illinois Trail's only line (the maintainer's poll, 2026-10-11, page 02 P10), which
+trail_lines.py extracts; no coverage audit row exists for IDOT."""
+checked = [
+    "IDOT's ArcGIS Online organisation's services list, 193 services, read 2026-10-11 by name alone: no service is named for this type. No service was read beyond its name, and IDOT's website, the state clearinghouse and data.gov were not searched (decision 21b's list is still to work)",
+]
+where = ["https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services"]
+reason = "not surveyed: IDOT's other publications wait on a survey by decision 21b's list, which no session has made"
+
+[idot.closures]
+confirmed = 2026-10-11
+summary = """
+Not surveyed (2026-10-11). IDOT's row was written for one dataset, the bicycle inventory that carries
+the Grand Illinois Trail's only line (the maintainer's poll, 2026-10-11, page 02 P10), which
+trail_lines.py extracts; no coverage audit row exists for IDOT."""
+checked = [
+    "IDOT's ArcGIS Online organisation's services list, 193 services, read 2026-10-11 by name alone: the names that bear on this type are ClosureIncidents, ClosureIncidentExtents, ClosedBridgesLocal_View and Illinois_Roadway_Incidents (road and bridge closures and incidents). No service was read beyond its name, and IDOT's website, the state clearinghouse and data.gov were not searched (decision 21b's list is still to work)",
+]
+where = ["https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services"]
+reason = "not surveyed: IDOT's other publications wait on a survey by decision 21b's list, which no session has made"
+
+[idot.elevation]
+confirmed = 2026-10-11
+summary = """
+Not surveyed (2026-10-11). IDOT's row was written for one dataset, the bicycle inventory that carries
+the Grand Illinois Trail's only line (the maintainer's poll, 2026-10-11, page 02 P10), which
+trail_lines.py extracts; no coverage audit row exists for IDOT."""
+checked = [
+    "IDOT's ArcGIS Online organisation's services list, 193 services, read 2026-10-11 by name alone: no service is named for this type. No service was read beyond its name, and IDOT's website, the state clearinghouse and data.gov were not searched (decision 21b's list is still to work)",
+]
+where = ["https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services"]
+reason = "not surveyed: IDOT's other publications wait on a survey by decision 21b's list, which no session has made"
+
+[idot.photos]
+confirmed = 2026-10-11
+summary = """
+Not surveyed (2026-10-11). IDOT's row was written for one dataset, the bicycle inventory that carries
+the Grand Illinois Trail's only line (the maintainer's poll, 2026-10-11, page 02 P10), which
+trail_lines.py extracts; no coverage audit row exists for IDOT."""
+checked = [
+    "IDOT's ArcGIS Online organisation's services list, 193 services, read 2026-10-11 by name alone: no service is named for this type. No service was read beyond its name, and IDOT's website, the state clearinghouse and data.gov were not searched (decision 21b's list is still to work)",
+]
+where = ["https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services"]
+reason = "not surveyed: IDOT's other publications wait on a survey by decision 21b's list, which no session has made"
+
+[idot.places]
+confirmed = 2026-10-11
+summary = """
+Not surveyed (2026-10-11). IDOT's row was written for one dataset, the bicycle inventory that carries
+the Grand Illinois Trail's only line (the maintainer's poll, 2026-10-11, page 02 P10), which
+trail_lines.py extracts; no coverage audit row exists for IDOT."""
+checked = [
+    "IDOT's ArcGIS Online organisation's services list, 193 services, read 2026-10-11 by name alone: the names that bear on this type are Counties, IL_Boundaries, IL_Urban_Areas and IL_Political_Townships (boundaries). No service was read beyond its name, and IDOT's website, the state clearinghouse and data.gov were not searched (decision 21b's list is still to work)",
+]
+where = ["https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services"]
+reason = "not surveyed: IDOT's other publications wait on a survey by decision 21b's list, which no session has made"
+
+[idot.podcasts]
+confirmed = 2026-10-11
+summary = """
+Not surveyed (2026-10-11). IDOT's row was written for one dataset, the bicycle inventory that carries
+the Grand Illinois Trail's only line (the maintainer's poll, 2026-10-11, page 02 P10), which
+trail_lines.py extracts; no coverage audit row exists for IDOT."""
+checked = [
+    "IDOT's ArcGIS Online organisation's services list, 193 services, read 2026-10-11 by name alone: no service is named for this type. No service was read beyond its name, and IDOT's website, the state clearinghouse and data.gov were not searched (decision 21b's list is still to work)",
+]
+where = ["https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services"]
+reason = "not surveyed: IDOT's other publications wait on a survey by decision 21b's list, which no session has made"
+
+[idot.points_of_interest]
+confirmed = 2026-10-11
+summary = """
+Not surveyed (2026-10-11). IDOT's row was written for one dataset, the bicycle inventory that carries
+the Grand Illinois Trail's only line (the maintainer's poll, 2026-10-11, page 02 P10), which
+trail_lines.py extracts; no coverage audit row exists for IDOT."""
+checked = [
+    "IDOT's ArcGIS Online organisation's services list, 193 services, read 2026-10-11 by name alone: the names that bear on this type are IL_Rest_Areas (highway rest areas). No service was read beyond its name, and IDOT's website, the state clearinghouse and data.gov were not searched (decision 21b's list is still to work)",
+]
+where = ["https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services"]
+reason = "not surveyed: IDOT's other publications wait on a survey by decision 21b's list, which no session has made"
+
+[idot.suggested_hikes]
+confirmed = 2026-10-11
+summary = """
+Not surveyed (2026-10-11). IDOT's row was written for one dataset, the bicycle inventory that carries
+the Grand Illinois Trail's only line (the maintainer's poll, 2026-10-11, page 02 P10), which
+trail_lines.py extracts; no coverage audit row exists for IDOT."""
+checked = [
+    "IDOT's ArcGIS Online organisation's services list, 193 services, read 2026-10-11 by name alone: no service is named for this type. No service was read beyond its name, and IDOT's website, the state clearinghouse and data.gov were not searched (decision 21b's list is still to work)",
+]
+where = ["https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services"]
+reason = "not surveyed: IDOT's other publications wait on a survey by decision 21b's list, which no session has made"
+
+[idot.warnings]
+confirmed = 2026-10-11
+summary = """
+Not surveyed (2026-10-11). IDOT's row was written for one dataset, the bicycle inventory that carries
+the Grand Illinois Trail's only line (the maintainer's poll, 2026-10-11, page 02 P10), which
+trail_lines.py extracts; no coverage audit row exists for IDOT."""
+checked = [
+    "IDOT's ArcGIS Online organisation's services list, 193 services, read 2026-10-11 by name alone: the names that bear on this type are IL_DOT_Winter_Road_Conditions_ and Winter_Trouble_Spots1 (winter road conditions). No service was read beyond its name, and IDOT's website, the state clearinghouse and data.gov were not searched (decision 21b's list is still to work)",
+]
+where = ["https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services"]
+reason = "not surveyed: IDOT's other publications wait on a survey by decision 21b's list, which no session has made"
+
+[idpr.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+idpr, batch c13_cand_midwest_rockies_1: published, and not landed. A 2026-only programme: the challenges
+mart needs an end date on it, or it lists an expired challenge in 2027 (Reasoned from "in 2026"). Only
+Park N' Ski is a "complete these trails" challenge, and it is a winter one. Nothing here is ICT- or
+Trail-of-the-Coeur-d'Alenes-specific. The ICT has no …
+
+idpr-coeur-dalenes (folded into this folder), batch c13_cand_midwest_rockies_1: published, and not
+landed. Same folder, same file. This row changes only because the folder-level answer changed."""
+checked = [
+    "idpr: Move250 Idaho, `https://america250.idaho.gov/move250/` (WordPress HTML). It is \"a collaborative initiative led by the Idaho Department of Parks and Recreation (IDPR)\" with ITD, ISHS and Commerce/Visit Idaho. Participants \"move 250 miles in 2026\" by walking, hiking, biking and other means, log the miles in a \"self-reporting portal\", and \"may receive recognition for reaching specific milestones … (e.g., 50, 100, 150, 200, and 250 miles; mileage within state parks …)\". There are also sponsored sub-challenges. \"Park N' Ski Trails Challenge\", \"Sponsored by the Idaho Department of Parks & …",
+    "idpr-coeur-dalenes: As for `idpr`. Nothing Trail-of-the-Coeur-d'Alenes-specific. The Friends' site lists events (\"Celebrate Trails Day\", \"Wallace Wild West Triathlon\"), not challenges.",
+]
+where = [
+    "https://america250.idaho.gov/move250/",
+    "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services",
+    "https://parksandrecreation.idaho.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[idpr.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01).
+
+idpr, batch c13_cand_midwest_rockies_1: nothing published. USGS 3DEP.
+
+idpr-coeur-dalenes (folded into this folder), batch c13_cand_midwest_rockies_1: nothing published. A
+gentle rail grade."""
+checked = [
+    "idpr: `/park-activity/hiking/` gives elevation ranges in prose only. ArcGIS items under `hbrookins_idpr` and `aernst_idpr`.",
+    "idpr-coeur-dalenes: `/state-park/trail-of-the-coeur-dalenes/`.",
+]
+where = [
+    "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services",
+    "https://parksandrecreation.idaho.gov/",
+]
+
+[idpr.photos]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01).
+
+idpr, batch c13_cand_midwest_rockies_1: nothing published.
+
+idpr-coeur-dalenes (folded into this folder), batch c13_cand_midwest_rockies_1: nothing published."""
+checked = [
+    'idpr: WP search "photo" returns yurt photo grids (Elementor templates) and nothing openly licensed.',
+    "idpr-coeur-dalenes: As for `idpr`.",
+]
+where = [
+    "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services",
+    "https://parksandrecreation.idaho.gov/",
+]
+
+[idpr.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+idpr, batch c13_cand_midwest_rockies_1: published, and not landed.
+
+idpr-coeur-dalenes (folded into this folder), batch c13_cand_midwest_rockies_1: published, and not
+landed."""
+checked = [
+    "idpr: WP REST `https://parksandrecreation.idaho.gov/wp-json/wp/v2/state-park` (`X-WP-Total: 28`). `Idaho_Recreation_Trails` boundary layers 124–132 (BLM field offices, national forests, wilderness, counties, regions).",
+    "idpr-coeur-dalenes: WP REST `state-park` record; trail towns Mullan…Plummer; 8 section maps (`/wp-content/uploads/parks/trail-cda/Trail-of-the-Coeur-dAlenes-…-Map-N-2-2009.pdf`, 2009).",
+]
+where = [
+    "https://parksandrecreation.idaho.gov/wp-json/wp/v2/state-park",
+    "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services",
+    "https://parksandrecreation.idaho.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[idpr.podcasts]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01).
+
+idpr, batch c13_cand_midwest_rockies_1: nothing published.
+
+idpr-coeur-dalenes (folded into this folder), batch c13_cand_midwest_rockies_1: nothing published."""
+checked = [
+    'idpr: WP REST `search?search=podcast` found no podcast page. Nav. Skeptic recheck: WP REST `types` lists no audio or podcast post type (`post`, `page`, `park-activity`, `state-park`, `tribe_events` …). An Apple Podcasts directory search for "Idaho Parks and Recreation" and "Idaho State Parks" found no IDPR show.',
+    "idpr-coeur-dalenes: As for `idpr`.",
+]
+where = [
+    "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services",
+    "https://parksandrecreation.idaho.gov/",
+]
+
+[idpr.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+idpr, batch c13_cand_midwest_rockies_1: published, and not landed. No water layer. The three
+private-land points matter for a hiker even so.
+
+idpr-coeur-dalenes (folded into this folder), batch c13_cand_midwest_rockies_1: published, and not
+landed. IDPR's 33 stops are the machine-readable source. The Friends' list is newer and only a
+cross-check."""
+checked = [
+    "idpr: `Idaho_Centennial_Trail_Resupply_Points_view/FeatureServer/0`: 42 points (e.g. \"Murphy Hot Springs Road\", \"Grandjean Lodge\", \"Dagger Falls\"), 2025-09-10. `…Points_of_Interest_view/FeatureServer/1`: 3 points, all `Category 'Private Property'` crossings (\"Access courtesy of landowner\"). `…Mile_Markers_view/FeatureServer/61`: 920 points, 2026-09-04. `Idaho_Recreation_Trails/FeatureServer/130`: 587 points (477 Trailhead, 97 Information, 13 OHV Area), 2026-09-21.",
+    "idpr-coeur-dalenes: MapTour item `8c311ea12bbe49489c8acc0479d6efa3` (owner `Idaho_Department_of_Parks_and_Recreation`, modified 2022-01-03): an inline feature collection of 33 named stops, Hn'Ya)pqi'nn → Mullan. The page states \"Twenty developed trailheads … twenty scenic waysides\". JSON in the web map. Skeptic addition: Friends of the Coeur d'Alene Trails' `maplocation-sitemap.xml` lists 31 `maplocation` entries (Mullan, Wallace restrooms, Kellogg, Cataldo, Harrison, Heyburn, Chatcolet, Plummer …), 30 of them modified 2026-03-24. No coordinates appear in the served HTML, and WP REST answers …",
+]
+where = [
+    "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services",
+    "https://parksandrecreation.idaho.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[idpr.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+idpr, batch c13_cand_midwest_rockies_1: published, and not landed.
+
+idpr-coeur-dalenes (folded into this folder), batch c13_cand_midwest_rockies_1: published, and not
+landed. 2009 maps. The Friends' GPS bundle is a paid product: flag it, and do not route around it (task
+rule on paid apps)."""
+checked = [
+    'idpr: `/wp-content/uploads/activities/hiking/Centennial-guide.pdf` ("signage, wildlife, access issues, re-supply points, history"), PDF. `/park-activity/` (WP REST `park-activity`, 32 items).',
+    "idpr-coeur-dalenes: The 8 section PDF maps plus the Story Map tour (`idaho.maps.arcgis.com/apps/MapTour/…appid=8c311ea12bbe49489c8acc0479d6efa3`). Skeptic addition: Friends of the Coeur d'Alene Trails publishes 6 `route` posts (`/route/…`: Wallace to Burke \"7 miles\", CCC Road – Wall Road Loop \"13 …\", Dobson Pass Loop, Lookout / Mullan Pass Loop, Bitterroot 300K Loop, Anderson & Thompson Lakes Loops), modified 2017-05-26 → 2022-05-05. HTML. Their GPS files are sold: \"Coeur d'Alene Trail Digital Map $5.00\" and \"Get all the Route GPS map files … $25.00\". These are Avenza maps plus \"ESRI Shapefiles, GPX, GeoJSON …",
+]
+where = [
+    "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services",
+    "https://parksandrecreation.idaho.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[idpr.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+idpr, batch c13_cand_midwest_rockies_1: published, and not landed. The candidate note is right: this is
+the only steward-owned backcountry long-trail line in the region. The `routes/128` licence is
+restricted; the ICT view is not.
+
+idpr-coeur-dalenes (folded into this folder), batch c13_cand_midwest_rockies_1: published, and not
+landed. 145 mi is twice the trail's stated "73.2 miles". The 72.53-mi row alone matches it, so the other
+three overlap it. Dedup in intermediates; never sum."""
+checked = [
+    "idpr: `services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services/Idaho_Centennial_Trail_(Official_Route)_view/FeatureServer/52`: 3 polylines (main 918.24 mi, Sawtooth Alternate 77.28, Central Wilderness Alternate 291.60), data last edit 2026-09-08. 918.24 + 77.28 = 995.52, against the 995.6 the IDPR page states. Also `Idaho_Recreation_Trails/FeatureServer/128` \"Idaho Routes\": 57,925 lines statewide, edited 2026-10-01 00:06 UTC. GPS zip: `/wp-content/uploads/activities/hiking/GPS-Downloads.zip` (979,259 B, 2020-07-17). Loaded today: `usfs_trails` `LIKE '%IDAHO CENTENNIAL%'` gives only 3 segments …",
+    "idpr-coeur-dalenes: `Idaho_Recreation_Trails/FeatureServer/128` `NAME LIKE 'Trail of The Coeur%'`: 4 rows, 72.53 + 27.30 + 29.47 (IDPR) + 15.75 (Tribe) = 145.05 mi. The MapTour web map `7c8799f07b0a498e83f686103cd1996d` also references `Trail/FeatureServer/0`.",
+]
+where = [
+    "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services",
+    "https://parksandrecreation.idaho.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[idpr.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings rows (2026-10-01) read: idpr (batch c13_cand_midwest_rockies_1): (1)
+`/123` non-closure restriction types: "Seasonal Area Restriction", "Foot only, no stock", "Off-Route
+Restriction", "Mechanized Exclusion". (2) `…Idaho_Centennial_Trail_Maintenance_view/FeatureServer/1`: 81
+lines, `Year` 2021–2026 (32 in 2026), with notes such as "Crew left the trail passable from brush but
+didn't have time to brush to the full 8' corridor" and "cut out 199 trees in just 1.5 miles". (3)
+`/park-activity/hiking/` prose on burned areas: "unstable trees … slippery ash, and flash flooding". (4)
+The Idaho Trails web map (`d75bd668ae6e4590b622901f5915aa31`) also layers IDL's … idpr-coeur-dalenes
+(batch c13_cand_midwest_rockies_1): Heavy metals. The page says the rail bed used "mine waste rock and
+tailings containing heavy metals". "Carry water for drinking and washing. Do not drink surface water
+even if filtered. Safe water sources can be found in most communities." Also "Wash hands and face before
+eating, eat at designated waysides". Moose are mentioned. Static HTML."""
+
+[il_dnr.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+It fits the challenges mart of #1780 — Let a club publish a challenge — places on its own trails that
+hikers opt into and tag at camp — starting with the ATC's A.T. Summer Bucket List. The checkpoints have
+names but no coordinates."""
+checked = [
+    'GIT Trail Blazer: `/recreation/greenwaysandtrails/gittrailblazer.html` and `/trailblazermap.html`. "Visit all seventeen designated check points … within one calendar year". The page lists the 17 checkpoints by name (Navy Pier–Chicago Lakefront Trail → City of Wheaton–Illinois Prairie Path) plus two optional (16a, 17a). Finishers get a certificate and are featured on the "Go Illinois Trails!" Facebook page. HTML; the map is an image (`s7d1.scene7.com/is/image/isp/gitchkpoint`).',
+]
+where = ["https://dnr.illinois.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[il_dnr.elevation]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1)."
+checked = ["Nav and ArcGIS."]
+where = ["https://dnr.illinois.gov/"]
+
+[il_dnr.photos]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+YouTube video is not an openly licensed photo collection."""
+checked = [
+    "The homepage's links to media are `/news.html`, `/oi/podcasts.html` and `youtube.com/user/TheIllinoisDNR`; none is a photo library. `/sitemap.xml` is 404, `/sitemap.html` is 404 and `robots.txt` names no sitemap. A web search (2026-10-01) for an IDNR Flickr account, photo library or media gallery found only private users' Flickr photos of IDNR patches, and Indiana DNR's gallery.",
+]
+where = ["https://dnr.illinois.gov/"]
+
+[il_dnr.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+Skeptic spot-check, 2026-10-01: `imperialis.inhs.illinois.edu` reset the connection 3 times out of 3, so
+it could not be confirmed today. `IDNR_Regions` is confirmed (owner `IDNR_Admin`)."""
+checked = [
+    '"IDNR Site Boundaries Official Master Version" (`imperialis.inhs.illinois.edu/arcgis/rest/services/Public/Owner_Parcel_Boundary/MapServer/0`); `IDNR_Regions/FeatureServer`.',
+]
+where = ["https://dnr.illinois.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[il_dnr.podcasts]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+Not trail content. Low value."""
+checked = [
+    "`/oi/podcastsprior.html`: 45 MP3 links, all 2012-era (e.g. `/content/dam/soi/en/web/dnr/podcasts/oibudgetmar2012.mp3`). The current `/oi/podcasts.html` lists none in its served HTML.",
+]
+where = ["https://dnr.illinois.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[il_dnr.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1).
+
+The well status is the one safety-relevant water fact. It belongs on the POI as a status, not in
+warnings (poll 2 keeps water conditions out of warnings)."""
+checked = [
+    "`services.arcgis.com/b9DHj1BjfdLLFv11/arcgis/rest/services/IDNRSiteLocationsPoints3_18/FeatureServer/0`: 345 site points, last edit 2019-12-03. The closures page also gives water status: \"Hennepin Canal … The wells at Lock 22 are not working pending repairs and water tests. Lock 24 has water available but is closed seasonally. Potable water is available year-round at the Visitor's Center.\"",
+]
+where = ["https://dnr.illinois.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[il_dnr.suggested_hikes]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c13_cand_midwest_rockies_1)."
+checked = [
+    "The GIT user's guide PDF (turn-by-turn cue sheets). Per-park \"Activity\" pages, e.g. Starved Rock's, which the closures page points to for \"updated trail suggestions\".",
+]
+where = ["https://dnr.illinois.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[il_dnr.trail_lines]
+confirmed = 2026-10-11
+summary = """
+Drawn from idot/'s `idot_bike_inventory`, IDOT's Bicycle Facility Inventory System, extracted once there
+(decision 34): the Grand Illinois Trail's only published line is IDOT's, so IDOT has a row of its own
+and IL DNR's points to it (the maintainer's poll, 2026-10-11, review page 02, P10). The inventory is
+held for scope (IDOT's row), so this line draws nothing yet."""
+checked = [
+    "idot/trail_lines.py `idot_bike_inventory`: 13 of its 12,655 lines are named for the trail ('Grand Illinois Trail' 8, 'Grand Illinois Trail-N. Branch' 3, 'Grand Illinois Trail-Equestrian' 2), 12 of them FACTYPE 'BL' (Bike Lane) and 1 'SUP' (Shared Use Path), every one STATUS 'EXIST', read live 2026-10-11",
+    "IDOT Bicycle Facility Inventory System (BFIS): `https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services/BFISProductionLayer_prod_view/FeatureServer/0` (item `02cd6810406b4af1b350c4863109b721`, owner `IDOTAdmin`). 12,648 polylines, last edit 2026-10-01. Name matches: \"Grand Illinois Trail\" 13 features / 136.1 mi (`OWNER='IDNR'`, mostly `FACTYPE='BL'`, i.e. on-road), Hennepin 79 / 86.8, I&M 5 / 24.4, Rock Island 5 / 31.6, Illinois Prairie Path 35 / 99.6, Jane Addams 1 / 5.9, Great River 9 / 52.4, Mississippi River Trail 16 / 55.3, Lakefront 9 / 20.6, Old Plank 4 / 42.1, Fox River 24 …",
+]
+where = [
+    "https://services2.arcgis.com/aIrBD8yn1TDTEXoz/arcgis/rest/services/BFISProductionLayer_prod_view/FeatureServer/0",
+]
+reason = "drawn from idot/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[il_dnr.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c13_cand_midwest_rockies_1) reads: Same page:
+"During hunting season, many sites are closed or partially closed to the public"; Kankakee River "users
+should STAY ON THE TRAIL"."""
 
 [kta.challenges]
 confirmed = 2026-10-04
@@ -7206,6 +8177,325 @@ checked = [
 where = ["https://s3.amazonaws.com/ClubExpressClubFiles/738078/documents/LSHT_All_Tracks_35787600.gpx"]
 reason = "drawn from usfs/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
+[ma_dcr.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+Statewide, not MCRT. Fetch is blocked (Akamai), so this is a maintainer decision. No stamp-box
+coordinates are published as data."""
+checked = [
+    "mass.gov 403. Search shows \"DCR First Day Hikes\" (an event). The Alliance's \"Want to ride the MCRT End to End?\" is routes, not a programme. Skeptic: the DCR 2026 Park Passport Challenge runs from June 20 to November 1 at 12 DCR properties (Holyoke Heritage SP, Mount Holyoke Range SP, Pittsfield SF, Otter River SF, Purgatory Chasm, Charles River Reservation, Wachusett Reservoir, Borderland SP, Pilgrim Memorial SP, Great Brook Farm SP, Harold Parker SF, Maudslay SP). Stamps come from locked yellow boxes. One stamp enters a prize draw, and all 12 enter a grand-prize raffle. Sources: the news …",
+]
+where = [
+    "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services",
+    "https://mass.gov/orgs/department-of-conservation-recreation",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[ma_dcr.elevation]
+confirmed = 2026-10-01
+summary = """
+Could not be told (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+USGS 3DEP covers it."""
+checked = ["mass.gov 403. MassGIS lidar belongs to the `massgis` row, not DCR."]
+where = [
+    "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services",
+    "https://mass.gov/orgs/department-of-conservation-recreation",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[ma_dcr.photos]
+confirmed = 2026-10-01
+summary = "Could not be told (coverage audit 2026-10-01, batch c16_cand_northeast_2)."
+checked = ["mass.gov 403. Skeptic: `flickr.com/photos/massdcr/` is 404."]
+where = [
+    "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services",
+    "https://mass.gov/orgs/department-of-conservation-recreation",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[ma_dcr.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+Open space is MassGIS's product, so it may belong in the `massgis` folder instead."""
+checked = [
+    "MassGIS `AGOL/openspace/FeatureServer` is listed. The Alliance's `/explore` names 27 communities.",
+]
+where = [
+    "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services",
+    "https://mass.gov/orgs/department-of-conservation-recreation",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[ma_dcr.podcasts]
+confirmed = 2026-10-01
+summary = """
+Could not be told (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+Still UNKNOWN, because DCR's own site could not be read. It leans NOT_PUBLISHED."""
+checked = [
+    "mass.gov 403. The Alliance has only a YouTube channel (`@MassCentralRailTrail`), which is video. Skeptic: a web search finds no DCR-produced podcast. DCR has YouTube `@MassDCR` (video), and a DCR staffer guested on Massachusetts 250's \"It's Revolutionary!\" (not DCR's). mass.gov still answers 403, now confirmed as an Akamai \"Not allowed | Mass Gov\" page with `x-reference-error`.",
+]
+where = [
+    "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services",
+    "https://mass.gov/orgs/department-of-conservation-recreation",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[ma_dcr.points_of_interest]
+confirmed = 2026-10-11
+summary = """
+Drawn from massgis/'s `ma_dcr_blue_hills_parking` and `ma_dcr_blue_hills_intersections`: DCR's own
+layers, extracted there before DCR had a folder. Decision 34 would extract them here, which renames
+their raw tables, so they stay where they land until somebody moves them on purpose. What else the
+coverage audit found (2026-10-01, batch c16_cand_northeast_2) is in checked, published and not landed."""
+checked = [
+    "the extract's folders, read 2026-10-11: massgis/'s `ma_dcr_blue_hills_parking` and `ma_dcr_blue_hills_intersections` are DCR's own layers, registered under decision 54 (2026-10-03) before DCR had a folder",
+    "`AGOL/DCR_Roads_and_Trails_Pts/MapServer/0`: 20,786 points, including Parking Area 742, Trailhead 563, Vista 240, Road Bridge 122 and Shelter 59.",
+]
+where = [
+    "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services",
+    "https://mass.gov/orgs/department-of-conservation-recreation",
+]
+reason = "drawn from massgis/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in"
+
+[ma_dcr.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+These are the Alliance's, not DCR's (see Folder). RWGPS terms were not read."""
+checked = [
+    "Alliance trip pages: `/norwottuck-trip` (8.3 mi), `/wayland-weston-trip` (4.7 mi one way), `/rutland-trip` (11 mi out and back), `/quinapoxet-trip` (11 mi loop), `/somerville-path-trip`. Plus the two RWGPS end-to-end routes.",
+]
+where = [
+    "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services",
+    "https://mass.gov/orgs/department-of-conservation-recreation",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[ma_dcr.trail_lines]
+confirmed = 2026-10-11
+summary = """
+Drawn from massgis/'s `dcr_roads_and_trails` and blue_hills/'s `dcr_blue_hills_trails`: DCR's own
+layers, extracted there before DCR had a folder. Decision 34 would extract them here, which renames
+their raw tables, so they stay where they land until somebody moves them on purpose. What else the
+coverage audit found (2026-10-01, batch c16_cand_northeast_2) is in checked, published and not landed."""
+checked = [
+    "the extract's folders, read 2026-10-11: massgis/'s `dcr_roads_and_trails` and blue_hills/'s `dcr_blue_hills_trails` are DCR's own layers, registered under decision 54 (2026-10-03) before DCR had a folder",
+    "Not in `massgis_long_distance_trails`: its 32 features carry 7 names, and none is the MCRT. MassGIS `arcgisserver.digital.mass.gov/arcgisserver/rest/services/AGOL/Bike_Trails/FeatureServer/0` (MassDOT; 8,277 features) has `LOCAL_NAME` 'Mass Central Rail Trail' (28 segments, 18.5 km), 'Mass Central Rail Trail -- Wayside' (17, 7.1 km) and 'Norwottuck Rail Trail' (29, 17.6 km). That totals about 43.2 km, or 26.8 mi, in EPSG:26986 metres. `AGOL/DCR_Roads_and_Trails_Arcs/MapServer/0` (36,859 arcs) has `NAME='Norwottuck Rail Trail'` on 39 arcs. The Alliance also publishes RideWithGPS routes …",
+]
+where = [
+    "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services",
+    "https://mass.gov/orgs/department-of-conservation-recreation",
+]
+reason = "drawn from massgis/'s and blue_hills/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in"
+
+[maine_huts.challenges]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+Confirmed by skeptic. Spot-check of closures: the conditions page JSON is still dated 2026-09-30 08:36.
+The 2026-07-09 post "Big News for Grand Falls!" reports a $17,500 grant to reopen Grand Falls Hut, but
+the hut is still closed."""
+checked = [
+    "The only hit is `/event/2025-trailblaze-challenge/`, the Make-A-Wish Maine fundraising hike (23.4 mi, 2025-09-20). That is a partner's event, not a standing programme. Skeptic: the same 224 URLs, grepped for challenge, patch, passport, award and traverse, return only that event and two \"George Lawrence Award for Volunteer Service\" posts (a volunteer award).",
+]
+where = ["https://mainehuts.org/"]
+
+[maine_huts.elevation]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+PDF."""
+checked = ["`mainehuts.org/wp-content/uploads/2024/10/Trail-Distance-and-Elevation.pdf` (288,337 B)."]
+where = ["https://mainehuts.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maine_huts.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c16_cand_northeast_2)."
+checked = ["No licence statement; Instagram only."]
+where = ["https://mainehuts.org/"]
+
+[maine_huts.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2)."
+checked = ["7 trailhead pages (`/trailhead/`) and `/getting-here/`."]
+where = ["https://mainehuts.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maine_huts.podcasts]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+Confirmed by skeptic."""
+checked = [
+    'Grepped 14 sub-sitemaps (page and post: 139 URLs). Skeptic recheck: 224 URLs across 10 content sub-sitemaps (post 95, page 44, event 38, trail 20, activity 11, trailhead 7, hut 5 and others). `wp/v2/categories` holds only `news` (94). `/feed/` carries its 10 newest posts (newest 2026-09-28, "Winter 2026/2027 Season Announcement"). None is audio.',
+]
+where = ["https://mainehuts.org/"]
+
+[maine_huts.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+The huts are staffed lodging, and they are the shelters on this trail."""
+checked = [
+    "The 4 huts in the nav: Stratton Brook, Poplar Stream, Flagstaff Lake, and Grand Falls (Closed). `hut-sitemap.xml` has 5 URLs, and `trailhead-sitemap.xml` has 7 trailheads. Pages only; the sampled trailhead page has no coordinates.",
+]
+where = ["https://mainehuts.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maine_huts.suggested_hikes]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2)."
+checked = [
+    '`/trails-to-the-huts/` (page JSON, modified 2026-06-18) gives hut-to-hut routes with distance and time, e.g. "Stratton Brook Hut to Poplar Stream Hut via Maine Hut Trail (7.6 miles, approx. 3-6 hours)". Also `/summertrips/` and 20 trail pages.',
+]
+where = ["https://mainehuts.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maine_huts.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+Not geometry."""
+checked = [
+    "PDF only: `mainehuts.org/wp-content/uploads/2024/12/MHTTrailMap_compressed.pdf` (13,683,660 B, modified 2025-08-08), plus per-section PDFs and PNGs on `/trails-to-the-huts/`. `trail-sitemap.xml` lists 20 trail pages. ArcGIS: 8 items by a personal ArcGIS account (2016–2017); their web maps expose no reachable operational layers.",
+]
+where = ["https://mainehuts.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maine_huts.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c16_cand_northeast_2) reads: The same page, under
+"Trail Alerts": "Mountain Trail: The trail has significant areas of erosion and is not recommended for
+mountain biking." Also the dog season (April 15 – November 30)."""
+
+[maricopa_parks.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c20_cand_west_1).
+
+Its places are the county parks plus the two regional trails, close to the shape of #1780 — Let a club
+publish a challenge — places on its own trails that hikers opt into and tag at camp — starting with the
+ATC's A.T. Summer Bucket List. The page says "The Challenge app will be available for use …"""
+checked = [
+    "\"100 Miles in 100 Days Challenge\" on the county's own page (found by skeptic), `https://www.maricopacountyparks.net/things-to-do/activity/100-miles-in-100-days-challenge/`: \"Welcome to the 2026 100 Miles in 100 Days Challenge! The program begins at 6 a.m. on November 1, 2025, and it closes at 4 p.m. on February 8, 2026.\" Hikers 100 mi, bikers and riders 200 mi; \"Participants must visit at least three Maricopa County parks OR two Maricopa County parks and the Maricopa Trail/Sun Circle Trail\"; miles are logged in a county app. The mctpf.org event page covers the 2023–24 edition.",
+]
+where = [
+    "https://www.maricopacountyparks.net/things-to-do/activity/100-miles-in-100-days-challenge/",
+    "https://maricopacountyparks.net/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maricopa_parks.elevation]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c20_cand_west_1).
+
+Attribute-level, not a DEM. Correction (skeptic): the field exists on every segment but is filled on
+only some. On layer 12 (Maricopa Trail), `ElevationChange_Feet` is NULL on 131 of 228 segments and
+positive on 97 (none 0 or negative), so absent must mean unknown, never flat. Layers 4 and 8 were …"""
+checked = [
+    '`ElevationChange_Feet` on every trail segment (layers 4, 8 and 12) and `Elevation_Feet` on trailheads. Also a web map, "Maricopa and Sun Circle Trails Elevation Graph Map" (5bc0418fb79b499b94008e9e8ea095ce, 2026-04-27), built on the same layers.',
+]
+where = ["https://maricopacountyparks.net/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maricopa_parks.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c20_cand_west_1)."
+checked = ["Per-park galleries with no licence."]
+where = ["https://maricopacountyparks.net/"]
+
+[maricopa_parks.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c20_cand_west_1).
+
+Same terms."""
+checked = ["MapServer layer 13, Park Boundary: 13 polygons. Also the `/park-locator/` pages."]
+where = ["https://maricopacountyparks.net/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maricopa_parks.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c20_cand_west_1)."
+checked = [
+    "`/site-map/`, the site nav, and mctpf.org's nav. Skeptic re-check: mctpf.org WP search \"podcast\" 0; a web search for a Maricopa County Parks podcast found none.",
+]
+where = ["https://maricopacountyparks.net/"]
+
+[maricopa_parks.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c20_cand_west_1).
+
+Same terms. Signalled-versus-unsignalled road crossings matter on a canal-and-street loop."""
+checked = [
+    "Same service. Layer 10: 34 Maricopa Trail trailheads (`Restroom`='Yes' on 10; also `Parking` and `Elevation_Feet`). Layer 6: 25 Sun Circle trailheads. Layer 2: 165 park trailheads. Layer 0, Park Amenity: 263 (Restroom 79, Outhouse 11, Campground 15, Staging Area 9, Horse Staging 2 …). Separately, `regional_trail_road_crossings`: 153 road crossings with a `Signal` field.",
+]
+where = ["https://maricopacountyparks.net/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maricopa_parks.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c20_cand_west_1).
+
+PDF, pages, and WP REST. mctpf.org is the foundation, a nonprofit partner rather than the county (R),
+and states no terms of its own."""
+checked = [
+    'Segment map PDFs, `https://www.maricopacountyparks.net/assets/1/6/regional-trail-.pdf` (e.g. `regional-trail-bronco-granite-11x17-newlogo.pdf`); about 20 segments are listed on `mctpf.org/the-trail/`. Each park has a trails page. The Maricopa Trail + Park Foundation blog has segment write-ups (`mctpf.org/blog/562/maricopa-trail-bronco-spur-cross/`). Skeptic: mctpf.org exposes them as a WP REST post type, `https://mctpf.org/wp-json/wp/v2/trails`: 19 segment pages, modified 2024-07-19 to 2025-08-12, no ACF fields, with distance, time and elevation gain in the text ("approximately 5 miles long… …',
+]
+where = [
+    "https://www.maricopacountyparks.net/assets/1/6/regional-trail-.pdf",
+    "https://mctpf.org/wp-json/wp/v2/trails",
+    "https://maricopacountyparks.net/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maricopa_parks.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c20_cand_west_1).
+
+Not loaded: `azgeo_arizona_trail` is the Arizona Trail only. Licence: see the terms section."""
+checked = [
+    '`https://gis.maricopa.gov/arcgis/rest/services/PNR/ParkAndTrail/MapServer`, an ArcGIS map service. Layer 12, "Maricopa Trail › Trail (By Segment)": 228 segments, `Length_Mile` 338.2 (Regional Trail 207, Spur 20, Bike 1). Layer 8, "Sun Circle › Trail (By Segment)": 44 segments, 122.4 mi. Layer 4, park trails: 590 segments, 299.0 mi. Also `regional_trail_surface` FeatureServer: 340 features, edited 2021-11-04.',
+]
+where = [
+    "https://gis.maricopa.gov/arcgis/rest/services/PNR/ParkAndTrail/MapServer",
+    "https://maricopacountyparks.net/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[maricopa_parks.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c20_cand_west_1) reads: The same feeds carry
+"SYSTEMWIDE - No Burn Day" (2026-04-06) and the annual "fire ban - May 1 - Sept 30". `/park-updates/` is
+a page of hours and Lake Pleasant capacity closures."""
+
 [massgis.challenges]
 confirmed = 2026-10-01
 summary = "Nothing published (coverage audit 2026-10-01, batch b5_nyc_nj_ct_ma_pa)."
@@ -7754,6 +9044,287 @@ where = [
 ]
 reason = "drawn from usfs/'s `usfs_r01_dpg_alerts`, extracted once there (decision 34)"
 
+[mi_dnr.challenges]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01).
+
+mi-dnr, batch c13_cand_midwest_rockies_1: nothing published. If Trails Week's challenge returns, it is a
+mileage log, not places to tag. NCTA's Hike 100 counts the Iron Belle miles that are NCT, and it belongs
+to `ncta`.
+
+mi-dnr-high-country (folded into this folder), batch c13_cand_midwest_rockies_1: nothing published."""
+checked = [
+    "mi-dnr: Homepage nav, the Iron Belle RecSearch page, and a web search (2026-10-01) for DNR trail and hiking challenges. Skeptic recheck, verdict unchanged: (1) The \"Michigan Trails Week Challenge\" (log miles, earn badges) was real, but its RunSignup page (`runsignup.com/Race/MI/Lansing/MichiganTrailsWeekChallenge`, \"Sun September 19 - Sun September 26\", \"2021 Challenge Prizes\") is the 2021 instance, and `michigan.gov/TrailsWeek` is 404. The Mining Journal's September 2026 Trails Week article (Sept 19–26, 2026) lists no mileage challenge. (2) The \"Five Summits Trail Challenge\" is Expedition Detroit's …",
+    "mi-dnr-high-country: Same. Skeptic recheck: a web search (2026-10-01) for an HCP patch, challenge or completion programme found AllTrails reviews and blogs only.",
+]
+where = [
+    "https://gisagodnr.state.mi.us/arcgis/rest/services",
+    "https://gisp.mcgi.state.mi.us/arcgis/rest/services",
+    "https://michigan.gov/dnr",
+]
+
+[mi_dnr.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01).
+
+mi-dnr, batch c13_cand_midwest_rockies_1: nothing published. USGS 3DEP.
+
+mi-dnr-high-country (folded into this folder), batch c13_cand_midwest_rockies_1: nothing published."""
+checked = [
+    "mi-dnr: Service list of `gisagodnr…/rest/services/DNR` (6 services) and the hub link `gis-midnr.opendata.arcgis.com`.",
+    "mi-dnr-high-country: RecSearch page; TMTC page.",
+]
+where = [
+    "https://gisagodnr.state.mi.us/arcgis/rest/services",
+    "https://gisp.mcgi.state.mi.us/arcgis/rest/services",
+    "https://michigan.gov/dnr",
+]
+
+[mi_dnr.photos]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+mi-dnr, batch c13_cand_midwest_rockies_1: published, and not landed.
+
+mi-dnr-high-country (folded into this folder), batch c13_cand_midwest_rockies_1: nothing published."""
+checked = [
+    'mi-dnr: `/dnr/about/newsroom/photo-video`: "a curated collection of images available for both public and commercial use", the DNR Public Portfolio at `https://michigan-dnr.canto.com/v/DNRPublicPortfolio` (Canto portal). (Skeptic spot-check: 303 → `/index.html#/v/DNRPublicPortfolio`, a JavaScript single-page app whose shell mentions "login" 4 times. Whether the portfolio opens without an account cannot be read without running it.)',
+    "mi-dnr-high-country: Same.",
+]
+where = [
+    "https://michigan-dnr.canto.com/v/DNRPublicPortfolio",
+    "https://gisagodnr.state.mi.us/arcgis/rest/services",
+    "https://gisp.mcgi.state.mi.us/arcgis/rest/services",
+    "https://michigan.gov/dnr",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mi_dnr.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+mi-dnr, batch c13_cand_midwest_rockies_1: published, and not landed.
+
+mi-dnr-high-country (folded into this folder), batch c13_cand_midwest_rockies_1: published, and not
+landed."""
+checked = [
+    'mi-dnr: `dnrParksAndRecreation/FeatureServer/5` "Michigan State Park Boundaries": 108 polygons. `DNRManagementBoundariesOPENDATA/FeatureServer/8` Parks Unit Boundary and `/9` Trails Management Units.',
+    "mi-dnr-high-country: Pigeon River Country State Forest (HQ, 9966 Twin Lakes Road, Vanderbilt); the Discovery Center.",
+]
+where = [
+    "https://gisagodnr.state.mi.us/arcgis/rest/services",
+    "https://gisp.mcgi.state.mi.us/arcgis/rest/services",
+    "https://michigan.gov/dnr",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mi_dnr.podcasts]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+mi-dnr, batch c13_cand_midwest_rockies_1: published, and not landed. Wildlife topics, not trails.
+
+mi-dnr-high-country (folded into this folder), batch c13_cand_midwest_rockies_1: nothing published."""
+checked = [
+    'mi-dnr: "Wildtalk" RSS `https://feeds.buzzsprout.com/1808556.rss`: 100 items, newest 2026-09-01. (Skeptic spot-check: 301 → `rss.buzzsprout.com`; 101 items, newest "UP habitat work, barred owls and deer season", 2026-10-01. A new episode posted today.)',
+    "mi-dnr-high-country: TMTC sitemap (296 URLs) and nav.",
+]
+where = [
+    "https://feeds.buzzsprout.com/1808556.rss",
+    "https://gisagodnr.state.mi.us/arcgis/rest/services",
+    "https://gisp.mcgi.state.mi.us/arcgis/rest/services",
+    "https://michigan.gov/dnr",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mi_dnr.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+mi-dnr, batch c13_cand_midwest_rockies_1: published, and not landed. No potable-water layer found.
+
+mi-dnr-high-country (folded into this folder), batch c13_cand_midwest_rockies_1: published, and not
+landed."""
+checked = [
+    'mi-dnr: `services3.arcgis.com/Jdnp1TjADvSDxMAX/ArcGIS/rest/services/dnrParksAndRecreation/FeatureServer/2`: State Park Campgrounds, 261 points. `/3`: Campgrounds on State Forest Land, 144. `DNRReferenceAssetsOPENDATA/FeatureServer/10`: "DNR Managed Site", 2,991 points, including 43 "Trailhead Nonmotorized Multi-use", 39 "Trailhead" and 24 "Scenic Site". `/6`: parking lots, 1,317. `/7`: amenities, 2,864, including 298 fire rings. `/14`: "Water Infrastructure", 44 — fishing piers and shore structures, not drinking water.',
+    "mi-dnr-high-country: `https://www.michigan.gov/recsearch/trails/high-country-pathway` names 13 campgrounds and the Pigeon River Country State Forest HQ (HTML). The coordinates would come from `dnrParksAndRecreation/FeatureServer/3` (state forest campgrounds); the match was not measured.",
+]
+where = [
+    "https://www.michigan.gov/recsearch/trails/high-country-pathway",
+    "https://gisagodnr.state.mi.us/arcgis/rest/services",
+    "https://gisp.mcgi.state.mi.us/arcgis/rest/services",
+    "https://michigan.gov/dnr",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mi_dnr.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+mi-dnr, batch c13_cand_midwest_rockies_1: published, and not landed. Archived. Low value against layer
+`/7`.
+
+mi-dnr-high-country (folded into this folder), batch c13_cand_midwest_rockies_1: published, and not
+landed. The Discovery Center is a non-DNR nonprofit at the forest HQ: another unaudited candidate, like
+TMTC. Its water sentence is general, not per-site."""
+checked = [
+    'mi-dnr: `https://www.michigan.gov/recsearch/trails/iron-belle-trail`: an overall PDF plus ~40 section map PDFs under `www2.dnr.state.mi.us/publications/pdfs/ForestsLandWater/_Archived/Iron_Belle_Trail_Maps/`, which the page itself calls "archived web content".',
+    "mi-dnr-high-country: The RecSearch page describes a multi-day loop (\"up to a week\"). The TMTC page gives \"80 mi loop\", \"Moderate\". HTML. Skeptic addition: the Pigeon River Country Discovery Center (`pigeonriverdiscoverycenter.org/trails/`, WordPress; `wp-json` answers 200) is a feature-by-feature guide to the HCP and the forest's other pathways. It gives grid references such as \"footbridge crossing the Black River near Chandler Dam Rd (7'N 24'W)\" and the North Spur Shore-to-Shore crossing, plus \"Drinking water and toilets are available at the campgrounds. Do not drink from streams or springs without first …",
+]
+where = [
+    "https://www.michigan.gov/recsearch/trails/iron-belle-trail",
+    "https://gisagodnr.state.mi.us/arcgis/rest/services",
+    "https://gisp.mcgi.state.mi.us/arcgis/rest/services",
+    "https://michigan.gov/dnr",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mi_dnr.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+mi-dnr, batch c13_cand_midwest_rockies_1: published, and not landed. `IBTStatus` gives the built
+fraction as a field, which is exactly what `trail_candidates.json` says the schema lacks. Overlap with
+`ncta_trail` ("~1033 mi" per the candidate row) is Unvalidated.
+
+mi-dnr-high-country (folded into this folder), batch c13_cand_midwest_rockies_1: published, and not
+landed."""
+checked = [
+    'mi-dnr: `https://gisagodnr.state.mi.us/arcgis/rest/services/DNR/DNRTrailsOPENDATA/FeatureServer/7` "Iron Belle Trail": 816 segments. Existing Hiking 454 (990.05 mi); Proposed Hiking 192 (280.01 mi); Existing Biking 76 (515.03 mi); Proposed Biking 67 (273.21 mi); plus connectors and hiking-and-biking rows. Fields: `IBTStatus`, `IBTType`, `Manager`, `Ownership`. The same service has `/2` "DNR Hiking Trails" (9,460 segments statewide), `/16` "Statewide Railtrails" (879) and `/20` "Michigan Trail Networks" (4,669). maxRecordCount 2,000.',
+    "mi-dnr-high-country: `DNRTrailsOPENDATA/FeatureServer/2` `HikingName LIKE '%High Country%'`: 46 segments, 76.26 mi, plus 1 segment, 2.44 mi, shared with the Clear Lake–Jackson Lake Pathway. TMTC links the DNR PDF (`d3s32p6dzmubdh.cloudfront.net/wp-content/uploads/2024/03/high_country_pathway_bw.pdf`) and TrailForks.",
+]
+where = [
+    "https://gisagodnr.state.mi.us/arcgis/rest/services/DNR/DNRTrailsOPENDATA/FeatureServer/7",
+    "https://gisagodnr.state.mi.us/arcgis/rest/services",
+    "https://gisp.mcgi.state.mi.us/arcgis/rest/services",
+    "https://michigan.gov/dnr",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mo_state_parks.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+Page only. Stamp locations are the parks, which are already in `places`. (added by skeptic) Two more
+programmes in the site's "Park Programs" menu: the Explorer Program (`/basic-page/explorer-program`,
+"The patches and stars earned are visible symbols…", earned at parks and historic sites) and the …"""
+checked = [
+    '`https://mostateparks.com/passport-program`: "The Passport Map… track your visits to every state park and historic site and… commemorate park anniversaries" (a paper map picked up at parks). Also the Missouri Civil War Passport Program (`/page/80901/…`, from search).',
+]
+where = [
+    "https://mostateparks.com/passport-program",
+    "https://gis.dnr.mo.gov/server/rest/services",
+    "https://mostateparks.com/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mo_state_parks.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+USGS 3DEP covers Missouri."""
+checked = [
+    "Checked the 24 folders on `gis.dnr.mo.gov/server/rest/services`. `geology` holds bedrock, sinkholes, abandoned mines and water wells, with no DEM. `parks` holds 6 services, with no elevation. Also checked the Katy pages on mostateparks.com.",
+]
+where = ["https://gis.dnr.mo.gov/server/rest/services", "https://mostateparks.com/"]
+
+[mo_state_parks.photos]
+confirmed = 2026-10-01
+summary = "Could not be told (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2)."
+checked = [
+    "nothing: the coverage audit's row reads 'Not checked.' (2026-10-01, batch c14_cand_midwest_rockies_2)",
+]
+where = ["https://gis.dnr.mo.gov/server/rest/services", "https://mostateparks.com/"]
+reason = "nobody has looked: the coverage audit's row for this type reads 'Not checked.', and nothing since has"
+
+[mo_state_parks.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+`/basic-page/mileage-chart-katy-trail` is an image, so the trail towns need the trailhead layer."""
+checked = [
+    "`…/parks/Missouri_State_Parks_Boundaries/FeatureServer`: layer 0 DNR Lands 207 polygons, layer 2 Wild Areas 13, layer 3 Natural Areas, layer 4 park points. `SPHS_trails_public` layers 9–11 (park polygons).",
+]
+where = ["https://gis.dnr.mo.gov/server/rest/services", "https://mostateparks.com/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mo_state_parks.podcasts]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+Dormant since mid-2022. Two video episodes, so lowest priority. Reading the back-catalogue on a schedule
+would need the YouTube Data API (key), not the RSS."""
+checked = [
+    'YouTube oEmbed for both videos names the uploader `author_name: "Missouri State Parks"`, `author_url: https://www.youtube.com/@MissouriStateParks`, the channel the site footer links. 2 episodes: "Missouri State Parks Podcast - Episode 1 - Trout Season Opening Day" (`youtube.com/watch?v=6O1OtNkMX64`, published Feb 28, 2022) and "…Episode 2 - Summertime Events" (`watch?v=oSkF8lpxIiI`, Jun 21, 2022). Format: video on YouTube, no audio RSS. The channel feed `https://www.youtube.com/feeds/videos.xml?user=MissouriStateParks` (RSS, newest 15 only) does not reach back to 2022. Apple Podcasts searches …',
+]
+where = [
+    "https://www.youtube.com/@MissouriStateParks",
+    "https://www.youtube.com/feeds/videos.xml?user=MissouriStateParks",
+    "https://gis.dnr.mo.gov/server/rest/services",
+    "https://mostateparks.com/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mo_state_parks.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+Page only. I did not open the trails page or the entire-trail page."""
+checked = [
+    'Pages: `https://mostateparks.com/park/katy-trail/trails`, `/page/katy-trail-state-park/entire-trail-katy-trail`. Story map virtual tour (`modnr.maps.arcgis.com/apps/MapSeries/index.html?appid=f088462639764b22bec2907d450691af`). "Tuesdays on the Trail" guided events.',
+]
+where = [
+    "https://mostateparks.com/park/katy-trail/trails",
+    "https://gis.dnr.mo.gov/server/rest/services",
+    "https://mostateparks.com/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mo_state_parks.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+Four Katy geometries from one agency, which makes this a dedupe case for the intermediate models. The
+DNR's own `SPHS_trails_public` beats the 2019 MSDIS copy."""
+checked = [
+    "The DNR's own server: `https://gis.dnr.mo.gov/server/rest/services/sphs_trails/SPHS_trails_public/MapServer`. Layer 3 Trail Routes 373. Layer 7 Long Trails 7 (all Katy sections: West, Mid-West, Mid-East, East). Layers 5/6 blaze colours. Layer 4 surface types. Also `parks/Trail_Advisory_Viewer/MapServer/7` (Katy Trail, 1) and `/6` (Rock Island, 1). MSDIS copy: `https://services2.arcgis.com/kNS2ppBA4rwAQQZy/arcgis/rest/services/MO_2019_Katy_Trail/FeatureServer/0` (owner `MSDISMizzou`): 2 features, Katy Trail and Rock Island Spur. Item text: \"developed by the Missouri Department of Natural …",
+]
+where = [
+    "https://gis.dnr.mo.gov/server/rest/services/sphs_trails/SPHS_trails_public/MapServer",
+    "https://services2.arcgis.com/kNS2ppBA4rwAQQZy/arcgis/rest/services/MO_2019_Katy_Trail/FeatureServer/0",
+    "https://gis.dnr.mo.gov/server/rest/services",
+    "https://mostateparks.com/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[mo_state_parks.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c14_cand_midwest_rockies_2) reads: The `Caution`
+rows above. The "Active Advisories" block on every Katy page: "Restrooms and Water unavailable at some
+trailheads November through March", "Tick Awareness", "Firewood Advisory". Page
+`https://mostateparks.com/basic-page/potential-flood-locations-katy-trail` gives river-stage thresholds
+per section. Examples: Boonville gauge 26.1 ft → "MM 178.9 to 181.5… may be closed"; St. Charles 27 ft →
+MM 34–34.7; 31 ft → Frontier Park, Weldon Spring."""
+
 [mohonk.challenges]
 confirmed = 2026-10-01
 summary = """
@@ -7809,6 +9380,95 @@ where = [
     "https://services8.arcgis.com/cQ05sucxF4UWabFF/arcgis/rest/services",
 ]
 reason = "published with addresses and no coordinate: a point is never geocoded from an address"
+
+[montour_trail.challenges]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+Confirmed by skeptic."""
+checked = [
+    "Same. The only award-like slug is `awards-accomplishments`, which lists the council's own awards. Skeptic: the same sitemap and category checks find no challenge, patch or mileage club.",
+]
+where = ["https://services9.arcgis.com/pEGQIuX7IMt2zLd0/arcgis/rest/services", "https://montourtrail.org/"]
+
+[montour_trail.elevation]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+It is unusual for a club to publish elevation. Its source DEM is not stated."""
+checked = [
+    '`.../Centerlines_View/FeatureServer/0`: 18 "M- and Z-Enabled centerlines ... segmented for ... elevation charts". Elevation App: experience `7d1e3a1c6dc8431ebf078960c6f3639b`. Contours: `tiles.arcgis.com/tiles/pEGQIuX7IMt2zLd0/arcgis/rest/services/Elevation_Contours/VectorTileServer`.',
+]
+where = ["https://services9.arcgis.com/pEGQIuX7IMt2zLd0/arcgis/rest/services", "https://montourtrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[montour_trail.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c16_cand_northeast_2)."
+checked = [
+    "The site gallery (robo-gallery) states no licence. The 360° imagery services belong to third parties (`EsriTrainingSvc` `Montour_Trail_Assets`; `Jes_Hoestmaelingen`), not MTC.",
+]
+where = ["https://services9.arcgis.com/pEGQIuX7IMt2zLd0/arcgis/rest/services", "https://montourtrail.org/"]
+
+[montour_trail.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2)."
+checked = [
+    "`/trailheads-2/` lists access areas by mileage, grouped by town. `.../MTC_Friends_Groups/FeatureServer` exists but was not queried.",
+]
+where = ["https://services9.arcgis.com/pEGQIuX7IMt2zLd0/arcgis/rest/services", "https://montourtrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[montour_trail.podcasts]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+Confirmed by skeptic."""
+checked = [
+    "Checked 100 page slugs and the nav. Skeptic: `wp/v2/categories` lists alerts (0), event (0), news (6), pres-sez (1) and uncategorized (1). The Tribe categories are alert 7, event 11, homepage 5 and upcoming 6. `/feed/` is 2023 posts. A web search turns up only unrelated trail podcasts.",
+]
+where = ["https://services9.arcgis.com/pEGQIuX7IMt2zLd0/arcgis/rest/services", "https://montourtrail.org/"]
+
+[montour_trail.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+Confirmed by skeptic."""
+checked = [
+    'Checked the maps page, the POI StoryMap (`storymaps.arcgis.com/stories/0de417dc...`) and events. "Tour the Montour 2026" is a ride event. Skeptic recheck: `wp-sitemap.xml` holds 66 pages, 8 posts (all 2023) and 335 event URLs. The events are committee meetings (60 each for 4 committees), Friends-group meetings, Penny Days and the 4 alerts, with no guided walk. `/points-of-interest/` (modified 2026-09-24) embeds the same StoryMap. `/amenities/` (2026-07-05) lists fountains, portable toilets and picnic shelters "in order of Trail mileage" and links Experience `7e1b09658c5a4160863c75cb3c2ec5ea` …',
+]
+where = ["https://services9.arcgis.com/pEGQIuX7IMt2zLd0/arcgis/rest/services", "https://montourtrail.org/"]
+
+[montour_trail.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Drawn from another folder's resource (coverage audit 2026-10-01, batch c16_cand_northeast_2).
+
+One row's `COMMENTS` reads "Muse Branch - Proposed" while its `Status` is 1. (upgraded by skeptic from
+Reasoned to Measured) The route layer's own `Status` domain reads 1 Existing, 2 Proposed, 3 Removed, −11
+Data Not Available, −99 Data Not Researched. So the proposed Muse Branch (`Branch` 6) is …"""
+checked = [
+    "Via `pasda_dcnr_trails`: `'Montour Trail'`, 1 feature, `MILES` 64.87. The club also publishes its own geometry: `services9.arcgis.com/pEGQIuX7IMt2zLd0/arcgis/rest/services/Montour_Trail_Route_Editor_view/FeatureServer/10`, 17 lines, of which `TrailType` 'Trail' is 11 and 'Share the Road' is 6; last edited 2026-02-17. `.../Connecting_Trail_Systems_View/FeatureServer/0` has 10 lines.",
+]
+where = ["https://services9.arcgis.com/pEGQIuX7IMt2zLd0/arcgis/rest/services", "https://montourtrail.org/"]
+reason = "drawn from pasda/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[montour_trail.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c16_cand_northeast_2) reads: The same feed
+(maintenance equipment is a caution, not a closure). Route-layer `COMMENTS`: "Route 51 has high-speed
+traffic and no shoulders or sidewalks ... walk your bike through this area"; "Clinton Rd. has a steep
+grade, narrow shoulder and high speed traffic for 0.2 miles". `/safety-and-etiquette/`: "unexpected
+gravelly spots, troughs and washouts". `Winter-Maintenance-Policy.pdf`."""
 
 [mormon_trails.challenges]
 confirmed = 2026-10-04
@@ -8420,14 +10080,14 @@ Drawn from another folder's resource (decision 53 phase B, 2026-10-03).
 This club's closures arrive through usfs/ `usfs_r06_fire_closure_points`,
 `usfs_r06_fire_closure_lines`, `usfs_r06_fire_closure_areas`; _shared/king_county_parks/
 `king_county_parks_alerts_points`, `king_county_parks_alerts_lines`,
-`king_county_parks_alerts_areas`; _shared/wa_state_parks/ `wsprc_winter_rec_closures`, each
+`king_county_parks_alerts_areas`; wa_parks/ `wsprc_winter_rec_closures`, each
 extracted once in its steward's folder (decision 34). Its portion is assigned in dbt.
 
 Read and not wired (the decision 53 inventory, batch 3, 2026-10-03):
 https://mtsgreenway.org/wp-json/wp/v2/posts?search=closure, 24 blog posts, none a notice (the newest
 2026-01-16, an essay on wildfire resilience). The Trust publishes no notices of its own."""
 checked = [
-    "via usfs/ `usfs_r06_fire_closure_points`, `usfs_r06_fire_closure_lines`, `usfs_r06_fire_closure_areas`; _shared/king_county_parks/ `king_county_parks_alerts_points`, `king_county_parks_alerts_lines`, `king_county_parks_alerts_areas`; _shared/wa_state_parks/ `wsprc_winter_rec_closures` (decision 53 phase B, 2026-10-03): `usfs_r06_fire_closure_points` reads `R06_FireClosureOrders_PublicView/FeatureServer/0`; `usfs_r06_fire_closure_lines` reads `R06_FireClosureOrders_PublicView/FeatureServer/1`; `usfs_r06_fire_closure_areas` reads `R06_FireClosureOrders_PublicView/FeatureServer/2`; `king_county_parks_alerts_points` reads `Parks_alert_and_construction_view/FeatureServer/0`; `king_county_parks_alerts_lines` reads `Parks_alert_and_construction_view/FeatureServer/1`; `king_county_parks_alerts_areas` reads `Parks_alert_and_construction_view/FeatureServer/2`; `wsprc_winter_rec_closures` reads `Temporary_Closure_(Public)/FeatureServer/0`",
+    "via usfs/ `usfs_r06_fire_closure_points`, `usfs_r06_fire_closure_lines`, `usfs_r06_fire_closure_areas`; _shared/king_county_parks/ `king_county_parks_alerts_points`, `king_county_parks_alerts_lines`, `king_county_parks_alerts_areas`; wa_parks/ `wsprc_winter_rec_closures` (decision 53 phase B, 2026-10-03): `usfs_r06_fire_closure_points` reads `R06_FireClosureOrders_PublicView/FeatureServer/0`; `usfs_r06_fire_closure_lines` reads `R06_FireClosureOrders_PublicView/FeatureServer/1`; `usfs_r06_fire_closure_areas` reads `R06_FireClosureOrders_PublicView/FeatureServer/2`; `king_county_parks_alerts_points` reads `Parks_alert_and_construction_view/FeatureServer/0`; `king_county_parks_alerts_lines` reads `Parks_alert_and_construction_view/FeatureServer/1`; `king_county_parks_alerts_areas` reads `Parks_alert_and_construction_view/FeatureServer/2`; `wsprc_winter_rec_closures` reads `Temporary_Closure_(Public)/FeatureServer/0`",
     "Counted inside the NHA polygon `MTS_Boundary/FeatureServer/0`, generalised at 500 m to 262 vertices. USFS `R06_FireClosureOrders_PublicView`: Three Queens Fire order 06-17-03-2026-44 (Cle Elum RD) has 9 points, 56 lines and 1 polygon, all to 2026-10-31. Order 06-17-03-26-07 has 1 polygon to 2028-11-30. King County `Parks_alert_and_construction_view/FeatureServer/0`: 10 active points (`EndDate IS NULL OR >= now`) inside the NHA. The countywide figures (14 points, 8 lines, 3 areas) are the audit's. WA State Parks `Temporary_Closure_(Public)/0` (\"PARKS - Winter Rec Temporary Closure\"): 47 lines …",
 ]
 where = [
@@ -8442,7 +10102,7 @@ where = [
     "https://mtsgreenway.org/{arcgis,server,gis}/rest/services",
     "https://mtsgreenway.org/",
 ]
-reason = "drawn from usfs/'s and _shared/king_county_parks/'s and _shared/wa_state_parks/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in"
+reason = "drawn from usfs/'s and _shared/king_county_parks/'s and wa_parks/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in"
 
 [mtsg.elevation]
 confirmed = 2026-10-01
@@ -9277,6 +10937,88 @@ where = [
 ]
 reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
 
+[nett.challenges]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c19_cand_southeast_1).
+
+The name is a false friend for the challenges mart."""
+checked = [
+    '`/cotton-patch-challenge/` is a third-party cycling event in Greenville ("22nd anniversary", routes 12–74 mi) hosted by the Rotary Club, not a NETT programme. No completion programme.',
+]
+where = ["https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services", "https://netexastrail.org/"]
+
+[nett.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c19_cand_southeast_1).
+
+3DEP."""
+checked = ["Page sitemap (46 pages), the web map's 8 layers, PDFs listed."]
+where = ["https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services", "https://netexastrail.org/"]
+
+[nett.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c19_cand_southeast_1)."
+checked = ["`/trail-gallery/`, `/media/`, WP `robo_gallery_table` and `album` post types; no licence."]
+where = ["https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services", "https://netexastrail.org/"]
+
+[nett.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c19_cand_southeast_1)."
+checked = [
+    "The 16 section pages describe each trail town (Roxton, Paris, …) with emergency contacts (\"Lamar County Sheriff's Department – a phone number\"); `/parking/` lists parking by mileage from Farmersville trailhead (\"Some of these are unofficial\"); \"NET Trail Town Centers\" layer (`pI8vz`).",
+]
+where = ["https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services", "https://netexastrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[nett.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c19_cand_southeast_1)."
+checked = [
+    "Page sitemap; WP REST `/wp/v2/posts` total 10 posts, newest 2025-05-29. `/nett-song/` is a song page, not a podcast.",
+]
+where = ["https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services", "https://netexastrail.org/"]
+
+[nett.suggested_hikes]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c19_cand_southeast_1)."
+checked = [
+    "The 16 section pages are section guides (length, surface, access, parking, camping). `/traveling-on-the-northeast-texas-trail/`. HTML.",
+]
+where = ["https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services", "https://netexastrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[nett.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c19_cand_southeast_1).
+
+The only line data for the trail. Its condition notes are 2015, so load the geometry and drop the notes,
+or show them with the date."""
+checked = [
+    '`https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services/NET_KML_TRAIL_SEGMENTS/FeatureServer/1` (ArcGIS FeatureServer, converted from KML): 29 lines named by section ("Farmersville to Merit (5mi)", "Merit to Celeste (7.7mi)" …), each `PopupInfo` holding a dated condition note ("1/23/2015: This section is well maintained. The first 2.5 miles is paved with concrete. Then turns to crushed granite."); data last edited 2018-04-05. Behind the "NorthEast Texas Trail Amenities" app (`77ad9c74c33d434a81d94db707a04898`, modified 2026-03-04) over the web map "Cheri NETT working map" …',
+]
+where = [
+    "https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services/NET_KML_TRAIL_SEGMENTS/FeatureServer/1",
+    "https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services",
+    "https://netexastrail.org/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[nett.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c19_cand_southeast_1) reads: Section pages: surface
+notes ("Good surface condition, gravel and grass … Some water holes after rains"), construction phases
+(TxDOT TAP/TASA, dated 2017–2020). `/safety-rules/`: hours (30 min before sunrise to 30 min after
+sunset), "No hunting or discharging of firearms", TPWD game-warden patrols. `/game-warden-patrol/`.
+HTML."""
+
 [nez_perce.challenges]
 confirmed = 2026-10-01
 summary = "Nothing published (coverage audit 2026-10-01, batch c11_nht)."
@@ -9403,6 +11145,98 @@ where = [
     "https://nezpercetrail.net/",
 ]
 reason = "drawn from usfs/'s resources, extracted once there (decision 34); checked names the page this org's notices arrive in"
+
+[ngpc.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+`wp-content` shows the site runs WordPress, but `/wp-json/` is behind the same 403."""
+checked = [
+    "\"2025 Your Parks Adventure: Trail Trek challenge\", rules PDF `https://outdoornebraska.gov/wp-content/uploads/2025/05/2025-Trail-Trek-Rules.pdf` (search index; returns 403 to us). Visit Nebraska's Passport \"Cowboy Cache\" (`nebraskapassport.com/cowboycache`) belongs to the tourism office, not NGPC.",
+]
+where = [
+    "https://outdoornebraska.gov/wp-content/uploads/2025/05/2025-Trail-Trek-Rules.pdf",
+    "https://services5.arcgis.com/IOshH1zLrIieqrNk/arcgis/rest/services",
+    "https://outdoornebraska.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[ngpc.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+USGS 3DEP."""
+checked = [
+    "Checked the 83 `NGPC.GISAdmin` feature and map services listed by ArcGIS search. The only contour product is `LakeContours`, lake bathymetry.",
+]
+where = ["https://services5.arcgis.com/IOshH1zLrIieqrNk/arcgis/rest/services", "https://outdoornebraska.gov/"]
+
+[ngpc.photos]
+confirmed = 2026-10-01
+summary = "Could not be told (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2)."
+checked = ["Site blocked."]
+where = ["https://services5.arcgis.com/IOshH1zLrIieqrNk/arcgis/rest/services", "https://outdoornebraska.gov/"]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[ngpc.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2)."
+checked = [
+    '`…/Park_Areas/FeatureServer/0` 74 polygons. `…/Parks_Locations/FeatureServer/0` 75 points. `NPGCProperties2023_2024`, `StateLands` ("Federal Lands PAA"), `Conservation_Partner_Lands`.',
+]
+where = ["https://services5.arcgis.com/IOshH1zLrIieqrNk/arcgis/rest/services", "https://outdoornebraska.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[ngpc.podcasts]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+Hunting-focused. Low value to a hiker. (added by skeptic) Spot-check of the RSS itself: 146 items, but
+the newest `pubDate` is 2026-09-29, not the 2026-09-14 the Apple API gave. Apple lags the feed, so a
+freshness check should read the RSS."""
+checked = [
+    "\"Hunt Nebraska\", RSS `https://feeds.soundcloud.com/users/soundcloud:users:1042080637/sounds.rss`. Apple lists the artist as \"Nebraska Game and Parks\": 146 episodes, newest 2026-09-14. Also \"Time Outdoors is Time Well Spent\" (`anchor.fm/s/50f1504/podcast/rss`, 2 episodes, 2018). The magazine's `/podcasts/` page returns 403.",
+]
+where = [
+    "https://feeds.soundcloud.com/users/soundcloud:users:1042080637/sounds.rss",
+    "https://services5.arcgis.com/IOshH1zLrIieqrNk/arcgis/rest/services",
+    "https://outdoornebraska.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[ngpc.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+Page. Extraction stays blocked by the 403, so the club file is a resource that cannot run yet, not a
+NOT_AVAILABLE note. The `Rating` vocabulary is inconsistent (Difficult/hard, Moderate/medium) and needs
+a mapping."""
+checked = [
+    'The search index lists `https://outdoornebraska.gov/parks/explore-trails/` ("Explore Trails"), `…/explore-trails/hiking-biking/` ("Hiking & Biking"), and per-trail pages `…/hiking-biking/ponca-trails/` and `…/hiking-biking/cowboy-trail/`. The index snippet describes "an interactive trails map where you can search for trails near you… trail width, surface, permitted uses and features". All of them, plus `/wp-json/wp/v2/types`, `/feed/` and `/sitemap_index.xml`, returned a Cloudflare 403 to curl again on 2026-10-01, and to WebFetch. Machine-readable support: `Park_Trails/FeatureServer/0` (932 …',
+]
+where = [
+    "https://outdoornebraska.gov/parks/explore-trails/",
+    "https://services5.arcgis.com/IOshH1zLrIieqrNk/arcgis/rest/services",
+    "https://outdoornebraska.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[ngpc.trail_lines]
+shares = "closures"
+summary = """
+The Cowboy Trail's line is the commission's 29-section status layer, `ngpc_cowboy_trail_improvements`,
+which closures.py extracts: the maintainer chose it (2026-10-11, review page 01, P8) because it covers
+only the developed trail. The one-feature corridor line, Cowboy_Trail_Complete/FeatureServer/0 (321.33
+mi, 'GIS Value', edited 2016-10-05), must never draw as trail, and no file extracts it.
+
+make_dbt_staging.py stages a share only from a geometric type's resource, so no trail_lines model reads
+this one yet: drawing it waits on one. The coverage audit's row (2026-10-01, batch
+c14_cand_midwest_rockies_2) also names Park_Trails/FeatureServer/0 (932 segments) and
+TrailsNewmap/FeatureServer/8 (394), published and not landed."""
 
 [nh_granit.challenges]
 confirmed = 2026-10-01
@@ -10381,6 +12215,94 @@ classifies whether it obstructs the trail. The non-closure posts include
 "Buckabear Wildfire" (2025-09-04) and a reblazing notice (coverage audit
 2026-10-01, batch b2_nynjtc)."""
 
+[nys_canal.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+Whether a passport programme exists behind that flag is U."""
+checked = [
+    'Canalway Challenge, `https://eriecanalway.org/explore/challenge`: free sign-up, pick a mileage goal, four regions of about 90 mi each, "End-to-Ender" for the full 360, and a finisher kit. Page, with an online log behind login. `nycanalmap.com` sets `passport:1` on 25 markers.',
+]
+where = [
+    "https://eriecanalway.org/explore/challenge",
+    "https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services",
+    "https://canals.ny.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[nys_canal.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+USGS 3DEP covers it. The towpath is near-flat."""
+checked = [
+    "Canal Corp's 81 services and ECNHC's sitemap (402 URLs). The \"Multibeam Sounding\" tile services are canal depth, not trail elevation.",
+]
+where = ["https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services", "https://canals.ny.gov/"]
+
+[nys_canal.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c17_cand_northeast_3)."
+checked = [
+    'The photo contest grants ECNHC a "nonexclusive … royalty-free license" from the entrants. It is not an open licence to anyone else.',
+]
+where = ["https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services", "https://canals.ny.gov/"]
+
+[nys_canal.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c17_cand_northeast_3)."
+checked = [
+    "`nycanalmap.com` markers: MunicipalCenter 53, Parks 25, CanalAmenityCenter 20, Lock 54, PlacesofInterest 128 (page script). Canal Corp services `Muni` and `Key_Locations` (not counted).",
+]
+where = ["https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services", "https://canals.ny.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[nys_canal.podcasts]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+Verdict kept."""
+checked = [
+    "ECNHC `sitemap.xml` (402 URLs, no podcast), its nav, and Canal Corp's nav. A web search found \"Canal Keepers\", which comes from Syracuse University and WAMC, not ECNHC. Skeptic re-checked: the sitemap's audio/video-like URLs are `/gallery/videos` and `/gallery/videos/canal-stories` (video, not audio) and event pages; a second web search found only the Syracuse and WAMC shows.",
+]
+where = ["https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services", "https://canals.ny.gov/"]
+
+[nys_canal.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+Mostly cycling and driving trips."""
+checked = [
+    "ECNHC itineraries: 11 pages under `https://eriecanalway.org/explore/Plan-Visit/itineraries/` (count corrected by skeptic: the listing links 11 distinct slugs, `Village-to-Village` through `paddling-cayuga-seneca-canal`), e.g. `cycling-western-erie`. Also `/explore/cycling/cycling-day-trips`. Pages.",
+]
+where = [
+    "https://eriecanalway.org/explore/Plan-Visit/itineraries/",
+    "https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services",
+    "https://canals.ny.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[nys_canal.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+Canal Corp's server is the steward's original. EST copies come from c16's org."""
+checked = [
+    "Partly LOADED via `oprhp_trails`: about 47 mi in Unit Central (Old Erie Canal State Park). Canal Corp's own: `https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services/Canalway_Trail/FeatureServer/3`, 7 route polylines (`ROUTE` T-ER, T-CH…), edited 2022-04-29. Also `Trail_Ownership` (\"Complete Trail Sectioned by Ownership\") and `Trail_Maintenance/FeatureServer/21` (418 segments by maintainer, edited 2026-02-03). ECNHC KML: `https://www.nycanalmap.com/kml/ecnhc1.kml` (203,643 B, 2021-08-09) and `EmpireStateTrail_December2021.kmz` (240,493 B). OPRHP's `EST_Public/3` has 27 Erie legs …",
+]
+where = [
+    "https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services/Canalway_Trail/FeatureServer/3",
+    "https://www.nycanalmap.com/kml/ecnhc1.kml",
+    "https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services",
+    "https://canals.ny.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
 [nysdec.challenges]
 confirmed = 2026-10-01
 summary = "The Catskills Fire Tower Challenge is a DEC web page and PDF, under DEC's Website Content Usage policy."
@@ -11219,6 +13141,180 @@ where = [
     "https://nrimp.dfw.state.or.us/arcgis/rest/services/ORHAM/ORHAM/MapServer",
 ]
 reason = "drawn from _shared/nifc/'s and _shared/odfw/'s resources, extracted once there (decision 34); checked names the layers this org's data arrives in; the org's own non-ArcGIS sources are listed in the docstring, still to wire"
+
+[oprd.challenges]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01).
+
+oprd, batch c21_cand_west_2: nothing published.
+
+odot (folded into this folder), batch c21_cand_west_2: nothing published."""
+checked = [
+    "oprd: Checked the navigation (Junior Ranger, a children's programme) and a search: the Oregon Pacific Coast Passport is a fee pass, \"Oregon State Parks will no longer sell\" it. (Skeptic re-search 2026-10-01: the nearest thing is the \"Oregon Hiking Bucket List\", a $64.99 deck of 50 scratch-off hike cards sold by Oregon Parks Forever, a separate nonprofit (`shop.orparksforever.org/products/oregon-hiking-bucket-list`). It has no completion record or reward and does not say its hikes are state-park trails. It is not OPRD's and it is paid.)",
+    "odot: Both pages, and ODOT's ArcGIS presence above.",
+]
+where = [
+    "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services",
+    "https://gis.prd.state.or.us/arcgis/rest/services",
+    "https://stateparks.oregon.gov/",
+]
+
+[oprd.closures]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+oprd, batch c21_cand_west_2: published, and not landed. (Corrected by skeptic, 2026-10-01: one request,
+not 191. The site's own notices page `index.cfm?do=v.notices` calls
+`https://stateparks.oregon.gov/services/notices.cfc?method=getAll&currPage=1&perPage=200` — JSON (served
+as `text/html`), 175 notices across all parks with `park_id`, `park_name` …
+
+odot (folded into this folder), batch c21_cand_west_2: published, and not landed. Road closures only.
+They matter for reaching the trailheads, not for the car-free tread. Trail closures are in OPRD's
+notices. (Skeptic, 2026-10-01: there is a live State Trail closure right now — "The section of the
+Historic Columbia River Highway State Trail between Eagle Creek and Cascade Locks …"""
+checked = [
+    'oprd: Every `https://stateparks.oregon.gov/index.cfm?do=park.profile&parkId=N` page embeds a `serverData.notices` JSON array with typed notices. OC&E (167): "Partial wildfire closure" 2026-09-03, "the trail will remain closed from Hildebrand Road to Sprague River". Also "Emergency closure" 2021-07-09, "The Woods Line section … impacted by the Bootleg Fire … will remain closed". Every page also embeds `serverData.parksList`: 191 parks with `park_status_descr` (Open 173, Reduction in Services/Facilities 16, Temporarily Closed 2). The ArcGIS `LO_STATE_PARK_STATUS` layer holds 0 features today.',
+    "odot: TripCheck API `https://www.tripcheck.com/Pages/API`. Its operation list includes incidents and closures, JSON, through `apiportal.odot.state.or.us`.",
+]
+where = [
+    "https://www.tripcheck.com/Pages/API",
+    "https://stateparks.oregon.gov/services/notices.cfc?method=getAll&currPage=1&perPage=200",
+    "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services",
+    "https://gis.prd.state.or.us/arcgis/rest/services",
+    "https://stateparks.oregon.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[oprd.elevation]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+oprd, batch c21_cand_west_2: published, and not landed. Do not use for climb. A surface model includes
+the tree canopy. USGS 3DEP is already the elevation source. Recorded so nobody re-finds it.
+
+odot (folded into this folder), batch c21_cand_west_2: nothing published. USGS 3DEP covers it."""
+checked = [
+    'oprd: Image services owned by `orstateparks`: "OSIP 2018 DIM Digital Surface Model" (`…/Elevation/DIM_2018_DIGITAL_SURFACE_MODEL/ImageServer`) and a 2022 DRAFT. The same host serves `EL_BE_1meter`, "Oregon Bare Earth Lidar Mosaic", with no stated publisher.',
+    "odot: Nothing on the ODOT pages.",
+]
+where = [
+    "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services",
+    "https://gis.prd.state.or.us/arcgis/rest/services",
+    "https://stateparks.oregon.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[oprd.photos]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01).
+
+oprd, batch c21_cand_west_2: nothing published. Aerial shoreline photos are not an openly licensed
+collection of trail features.
+
+odot (folded into this folder), batch c21_cand_west_2: nothing published."""
+checked = [
+    'oprd: `orstateparks` holds "OPRD Oblique Aerial Imagery" and an "Oregon ShoreZone 2011 Still Photo Index", with no licence stated.',
+    "odot: No openly licensed collection on the pages above.",
+]
+where = [
+    "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services",
+    "https://gis.prd.state.or.us/arcgis/rest/services",
+    "https://stateparks.oregon.gov/",
+]
+
+[oprd.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+oprd, batch c21_cand_west_2: published, and not landed.
+
+odot (folded into this folder), batch p04_persist: published, and not landed. Licence classes: ODOT's
+service is attribution_only (copyrightText "Oregon Department of Transportation"; web map: "This product
+is for informational purposes and may not be suitable for legal, engineering, or surveying purposes").
+OPRD is attribution_only (copyrightText "Oregon Parks and …"""
+checked = [
+    "oprd: `https://maps.prd.state.or.us/arcgis/rest/services/Land_ownership/Oregon_State_Parks/FeatureServer/0`: 422 polygons (© OPRD). `serverData.parksList`: 191 parks with lat/long and status. Access points: 463 (above).",
+    "odot: ODOT `https://gis.odot.state.or.us/arcgis1006/rest/services/oregon_scenic_byways/oregon_scenic_byways/MapServer`. Layer 3 \"State Parks\" holds 431 polygons, 2 named \"Historic Columbia River Highway State Trail\". Layer 38 `city_points` has 39 places in a Gorge envelope (−122.45, 45.45, −121.1, 45.8), including Troutdale, Corbett, Bridal Veil, Multnomah Falls, Bonneville, Cascade Locks, Hood River, Mosier, Rowena and The Dalles. Layer 30 has 16 POIs for `BYWAY_NAME='HISTORIC COLUMBIA RIVER HIGHWAY'`, including Vista House, Multnomah Falls, Bridge of the Gods, Rowena Crest, the Twin Tunnels Trail …",
+]
+where = [
+    "https://maps.prd.state.or.us/arcgis/rest/services/Land_ownership/Oregon_State_Parks/FeatureServer/0",
+    "https://gis.odot.state.or.us/arcgis1006/rest/services/oregon_scenic_byways/oregon_scenic_byways/MapServer",
+    "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services",
+    "https://gis.prd.state.or.us/arcgis/rest/services",
+    "https://stateparks.oregon.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[oprd.podcasts]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01).
+
+oprd, batch c21_cand_west_2: nothing published. Probably a `_shared/` candidate if wanted. It is not
+OPRD's.
+
+odot (folded into this folder), batch c21_cand_west_2: nothing published."""
+checked = [
+    "oprd: Checked the site navigation and a web search. The \"Explore Oregon Podcast\" belongs to the Statesman Journal, not OPRD. (Skeptic re-search 2026-10-01: the three shows that cover Oregon State Parks are the Statesman Journal's Explore Oregon, KLCC's \"Oregon on the Record\" (an interview with the director, 2025-07-29) and \"Peak Northwest\" — none is OPRD's. The site's route table (`serverData.routes`, 31 routes, read on the notices page) has no audio section; its nearest neighbours are news, feature articles, Let's Go events, Junior Ranger and Scenic Bikeways.)",
+    "odot: The State-Trail page links one YouTube playlist of six short videos. That is video, not audio.",
+]
+where = [
+    "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services",
+    "https://gis.prd.state.or.us/arcgis/rest/services",
+    "https://stateparks.oregon.gov/",
+]
+
+[oprd.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+oprd, batch c21_cand_west_2: published, and not landed. Page and JSON-in-page.
+
+odot (folded into this folder), batch c21_cand_west_2: published, and not landed. Prose segment guide.
+Overlaps OPRD's park profile."""
+checked = [
+    "oprd: The park-profile `park_narrative` HTML. OC&E's is a trail guide by section, e.g. \"7.6 paved miles; Toilets available at Reeder Road and Wiard Park\". Also the OCT page with its 10 maps, \"Scenic Trails\" (`v.page&id=61`) and the \"Oregon Signature Trails Inventory Report\" StoryMap (`5b97c8df…`).",
+    'odot: `https://www.oregon.gov/odot/Regions/Pages/State-Trail.aspx` (page): the Bonneville, Mitchell Point and Twin Tunnels segments with car-free mileage, e.g. "eight miles of car-free trail heading east from Wyeth Trailhead".',
+]
+where = [
+    "https://www.oregon.gov/odot/Regions/Pages/State-Trail.aspx",
+    "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services",
+    "https://gis.prd.state.or.us/arcgis/rest/services",
+    "https://stateparks.oregon.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[oprd.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01).
+
+oprd, batch c21_cand_west_2: published, and not landed. The candidate row's "ten section PDFs, no GIS"
+is out of date: OPRD does publish GIS. The 150 mi in the live layer covers the in-park pieces, not the
+362-mile route. Which source is the walkable alignment is @unvalidated. It would be settled by comparing
+the 2024 GeoJSON against the 10 PDFs and …
+
+odot (folded into this folder), batch c21_cand_west_2: published, and not landed. The machine-readable
+trail geometry is OPRD's GeoJSON item "Historic Columbia" (§2). The candidate note holds: of 68–69 open
+miles, only about 12 are car-free trail. The rest is drivable highway and must not draw as trail."""
+checked = [
+    'oprd: (a) `https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services/OPRD_Rec_Trails_Hosted_view/FeatureServer/0`: 482 lines, last edit 2026-09-30. Fields: `name`, `surface`, `length_ft`, `public_display`, `park_hub_id`, `qc_grade`. Of these, "Oregon Coast Trail" is 32 features and 150.0 mi by `length_ft`. (b) GeoJSON items from the Signature Trails Map: "Oregon Coast Trail" `85c6fe94441a48e6b8d6316a09dc4acf` (2,790,280 B) and "Historic Columbia" `8484f7ad82d648f2b2e1486bf277f9d1` (183,522 B), both modified 2024-04-30. (c) OCT section PDFs `/ckFiles/files/OCT-Map-1.pdf` … `OCT-Map-10.pdf` …',
+    "odot: ODOT publishes the trail only as a PDF: `https://www.oregon.gov/odot/Regions/Documents/HCRH/HCRHST-Map-Printable-2024.pdf`. An ArcGIS search for \"Historic Columbia River Highway\" found 8 items. ODOT's two (`OregonDOTGIS` MapJournal `37e36b93…`, `oregon.scenicbyways_ODOT` basemap) are about the scenic byway, not the car-free trail. Upstream: `usfs_trails` carries two pieces, \"HCRH RUCKEL CREEK SECTION\" and \"HCRH STARVATION CREEK SECTION\" (admin_org 0622, `gis_miles` null).",
+]
+where = [
+    "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services/OPRD_Rec_Trails_Hosted_view/FeatureServer/0",
+    "https://www.oregon.gov/odot/Regions/Documents/HCRH/HCRHST-Map-Printable-2024.pdf",
+    "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services",
+    "https://gis.prd.state.or.us/arcgis/rest/services",
+    "https://stateparks.oregon.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
 
 [osta.challenges]
 confirmed = 2026-10-04
@@ -12234,6 +14330,99 @@ where = [
 ]
 reason = "a wall: both notice pages answer our agent with a challenge (Vercel 429, Cloudflare 403); held until PCTA answers, and its open ArcGIS layers land in pcta/closures.py"
 
+[peninsula_trails.challenges]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2)."
+checked = [
+    'Same sitemaps. "volunteer-award" is not a hiker challenge, and the Tour de Lavender is a ride event. (Skeptic re-check 2026-10-01: same 73 pages and 6 categories, plus a web search; the only patch found is a 4" × 3" patch listed among membership benefits (from a search result pointing at `/get-involved/gift-membership/`; I did not open that page), which rewards joining, not walking.)',
+]
+where = ["https://olympicdiscoverytrail.org/"]
+
+[peninsula_trails.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+USGS."""
+checked = [
+    "Site navigation, page and attachment sitemaps. RideWithGPS draws elevation from its own DEM, not from the PTC.",
+]
+where = ["https://olympicdiscoverytrail.org/"]
+
+[peninsula_trails.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2)."
+checked = ['The FAQ invites hikers to "Share Your ODT Photos" to the PTC. No licence.']
+where = ["https://olympicdiscoverytrail.org/"]
+
+[peninsula_trails.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+Pages."""
+checked = [
+    "The page sitemap lists the four trail towns: `/visit/trail-towns/port-townsend/`, `/sequim/`, `/port-angeles/`, `/forks/`.",
+]
+where = ["https://olympicdiscoverytrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[peninsula_trails.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2)."
+checked = [
+    '`post-sitemap.xml` (62 posts) has nothing audio. Nor do the navigation or page sitemap. (Skeptic re-check 2026-10-01: `sitemap_index.xml` lists 8 sitemaps — post, page, attachment, `ai1ec_event`, homeslider, trailalerts, cilentslogo, category; the 73 non-upload page URLs and the 6 WordPress categories — Trail Updates 46, ODT in the Press 13, Sponsors and Grants 5, Volunteers 4, Job Postings 1, Upcoming Events 1 — have nothing audio. "2025 Adventure Travel Series" and "Travelers Journal Presentations" are live talks.)',
+]
+where = ["https://olympicdiscoverytrail.org/"]
+
+[peninsula_trails.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+Clallam is a government source. Its water flag is a facility attribute, not a flow report."""
+checked = [
+    'Clallam `…/ODT_AccessPoints/FeatureServer/0` ("User Amenties"): 29 points (Trailhead 11, Access 11, Bathroom 3, Rest Stop 2, Road Crossing 2), with coded `Water`, `Bathroom`, `Parking` and `EquestMount` fields. `Water` = Yes on 8. RideWithGPS route POIs, e.g. 26 on the East Central route: parking 10, restroom 8, camping 2, "caution" 2. The page `/visit/camping/` lists about 18 campgrounds, several with hiker/biker sites (read via WebFetch because the WAF blocked curl).',
+]
+where = ["https://olympicdiscoverytrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[peninsula_trails.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+Written for bikes. The trail is mostly paved."""
+checked = [
+    "Segment pages `/explore/trail-segments/{east-end,east-central,west-central,west-end}/` and `/explore/olympic-adventure-route/`, with RideWithGPS embeds (routes 33103002, 33103242, 28091670, 47374029). The maps page `/explore-maps-odt-bicycling/` has 8 PDFs.",
+]
+where = ["https://olympicdiscoverytrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[peninsula_trails.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Drawn from another folder's resource (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+Clallam's `STATUS` is the one field anywhere that separates on-road ODT from built trail (46.9 mi
+"Complete - On Road / Paved Road"). "Proposed" and "Under Construction" must never draw. The RCO
+`segment_length_mi` total for WSDOT's ODT rows (184.2 mi) is not miles. See the flag under §6."""
+checked = [
+    "`wa_rco_trails` `trail_name LIKE '%Olympic Discovery%'` matches rows under WSDOT (20), USFS (4, plus 32 \"Adventure Route\" rows), NPS (1), Jefferson County (1) and WA State Parks (1). The PTC publishes its own geometry. First, the RideWithGPS user `10826316`, \"Peninsula Trails Coalition\", has 25 public routes: section routes (e.g. \"ODT West - Forest and Ocean SectionGPTJul2024\", 43.1 mi) and detours. Second, there is a 2017 Shortlist app under `ODTmaps`. Also published by Clallam County (a government account, org \"Clallam County\"): …",
+]
+where = ["https://olympicdiscoverytrail.org/"]
+reason = "drawn from wa_rco/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[peninsula_trails.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c21_cand_west_2) reads: Same feed. None of today's
+4 items is a hazard rather than a closure."""
+
 [pinhoti.challenges]
 confirmed = 2026-10-01
 summary = """
@@ -12838,6 +15027,107 @@ where = [
 ]
 reason = "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
+[r2r.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+Page. The Honor Roll lists names, so leave it out."""
+checked = [
+    '`…/hiking-recognition-gift-or-remembrance/`: Certificate of Completion ("$10.00 printed… $3.00 electronic"), Clear Acrylic Award, Trail Society Patches, an Honor Roll, an FKT link.',
+]
+where = ["https://rivertorivertrail.net/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[r2r.elevation]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2)."
+checked = ["Checked the menus, the 19 WordPress categories and the map table."]
+where = ["https://rivertorivertrail.net/"]
+
+[r2r.photos]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+No open licence."""
+checked = ['Photo widgets on pages; footer "All rights reserved © The River to River Trail".']
+where = ["https://rivertorivertrail.net/"]
+
+[r2r.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+Page."""
+checked = [
+    '"Other SNF Info" page: a Google map of the Shawnee NF, plus pages of natural bridges and arches, waterfalls, and named shelter bluffs and caves.',
+]
+where = ["https://rivertorivertrail.net/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[r2r.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2)."
+checked = [
+    'Checked the menus and the 19 WordPress categories. (skeptic re-checked, verdict stands) `/wp-json/wp/v2/search?search=podcast` returns 2 posts, both library book-talk announcements whose speaker has "a yearlong podcast" of his own. `/wp-json/wp/v2/types` lists no podcast or episode post type.',
+]
+where = ["https://rivertorivertrail.net/"]
+
+[r2r.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+The table is a parseable page, but its mileposts are not coordinates, so each one needs a linear
+reference against the line. A spring listed in a 2018 table is not a confirmed water source today. It
+must carry its date into the staleness logic."""
+checked = [
+    'Trail Information page: "River to River Trail Mileages… lists the mileage at all trail heads and notable points of interest… whether… along roads or as trails in the woods"; also picnic-table locations installed in fall 2023. Shawnee trailheads and campgrounds arrive via `usfs_rec_sites`. (added by skeptic: opened.) `https://rivertorivertrail.net/home/trail-information/river-to-river-trail-mileages/` (WP page 294) is an HTML table: mileage east-to-west and west-to-east, Trail/Road, section lengths, and a location description, from "0 / 160.5 Elizabethtown" westward. Rows include "Spring Side …',
+]
+where = [
+    "https://rivertorivertrail.net/home/trail-information/river-to-river-trail-mileages/",
+    "https://rivertorivertrail.net/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[r2r.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+Hike reports are narratives. The day-hike maps page and the Trail Guide PDF are the closest things to a
+published hike list. "Hike Announcements" are dated group-hike events, not route descriptions."""
+checked = [
+    'WordPress REST categories: "Society Public Hikes" 134, "Hike Reports" 137, "Section Hiking Discussions" 6, "Trail Guide" 4. Page `…/home/other-snf-info/shawnee-nf-day-hike-maps/`. (added by skeptic) Categories the audit did not list (`/wp-json/wp/v2/categories`, 2026-10-01): "Hike Announcements" 152, "Hiking the R2R Trail" 23, "Through Hiking Discussions" 12, "Multi Day Hikes" 1, "Avenza Maps" 9. The published section guide is the R2R Trail Guide V5.5 PDF (points_of_interest row). Spot-check: the day-hike maps page answered HTTP 200.',
+]
+where = ["https://rivertorivertrail.net/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[r2r.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Drawn from another folder's resource (coverage audit 2026-10-01, batch c14_cand_midwest_rockies_2).
+
+About 94 of the 160 mi. The rest runs on roads and state land, which `usfs_trails` does not carry. The
+PDFs are not vectors."""
+checked = [
+    "In `usfs_trails`, Shawnee NF (`admin_org LIKE '0908%'`) with `trail_no LIKE '001%'`: 57 segments, 94.40 `gis_miles`. Named spurs: \"R-R GARDEN OF THE GODS LOOP\" (001A, 5.19), \"RIVER TO RIVER LOOP\" (001B, 0.86), \"R-R HIGH KNOB LOOP\" (001C, 0.66). The Society's own geometry: 35 geo-referenced PDFs at `http://www.rivertorivertrail.net/trail-information/map-table/` (2023–2024 editions, for example `wp-content/uploads/2023/03/R2RTrl2023Map_10.pdf`), and the Avenza \"River to River Trail Bundle\" (28 maps) and \"Battery Rock Leg Bundle\" (5), both free.",
+]
+where = ["https://rivertorivertrail.net/"]
+reason = "drawn from usfs/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[r2r.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c14_cand_midwest_rockies_2) reads: Same category,
+non-closure posts (2025-04-18 "Trail Society Clears Tornado Damage"). Shawnee NF page header: "Fire
+Danger Status High"."""
+
 [ratc.challenges]
 confirmed = 2026-10-10
 summary = """
@@ -12944,6 +15234,99 @@ where = [
     "https://ratc.org/",
 ]
 reason = "drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[rctc.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+Skeptic: the Baker Trail is also one of the 18 trails in DCNR's State Forest Trails Award (see the PA
+DCNR shared block). That award is DCNR's and KTA's, so it goes in `pa-dcnr/`, not here."""
+checked = [
+    'Rachel Carson Trail Challenge ("Hike the trail in one day!", annual, 30th edition in 2026), Baker Trail UltraChallenge, and the RCTC Geotrail (40 caches; "collect any 26 clues … will receive a custom … Geocoin"). Pages.',
+]
+where = ["https://rachelcarsontrails.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[rctc.elevation]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+The steward's own climb figure per segment."""
+checked = ["Each `route` feature carries `ascending` and `descending`. RCT totals: 9,761 up and 9,697 down."]
+where = ["https://rachelcarsontrails.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[rctc.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c17_cand_northeast_3)."
+checked = [
+    'Flickr `rachelcarsontrailsconservancy`: 25 of 25 first-page photos are `"license":0` (All Rights Reserved).',
+]
+where = ["https://rachelcarsontrails.org/"]
+
+[rctc.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+Same rows as the parking POIs. Deduplicate."""
+checked = [
+    '"Plan a Hike" parking directory (from the GeoJSON). Linked Allegheny County parks: Harrison Hills, Hartwood Acres, North Park.',
+]
+where = ["https://rachelcarsontrails.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[rctc.podcasts]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+Verdict kept."""
+checked = [
+    "`sitemap.xml.gz` (1,733 URLs): 0 'podcast'. Skeptic re-checked: a web search for an RCTC podcast found none of RCTC's own; it found an RCTC YouTube channel (video, not audio) and a participant's personal show. The `/trails/mtoc` page links one recorded 2021 presentation to NCTA, a single recording, not a series.",
+]
+where = ["https://rachelcarsontrails.org/"]
+
+[rctc.suggested_hikes]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c17_cand_northeast_3)."
+checked = [
+    '"Plan a Hike … By Segment Length" lists every hike between parking pairs, computed from the GeoJSON `distance` field. Also seasonal hikes under `/events/`.',
+]
+where = ["https://rachelcarsontrails.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[rctc.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c17_cand_northeast_3).
+
+The URL carries a version date, so the redirect is a free freshness signal. The Harmony file's stamp is
+2018-11-10.
+
+The Baker Trail's route and spurs (71 lines on 2026-10-09) land with its points in
+points_of_interest.py's `rctc_baker_trail_geojson` (wave 6, decision 122). No trail_lines file shares
+that resource, so they draw nothing, and none was proposed to on the row's review (2026-10-11)."""
+checked = [
+    "The loaded copy is stale. `pasda_dcnr_trails` has 37.13 mi from 2017. RCTC's own GeoJSON: `https://www.rachelcarsontrails.org/gis/rct-geojson` redirects to `/gis/10/10-20260608-geojson` (124,093 B, `application/vnd.geo+json`): 21 `route` and 2 `connector` LineStrings, 46.2 mi. Baker: `/gis/bt-geojson` redirects to `/gis/20/20-20260814-geojson` (259,229 B): 47 route and 24 spur. Skeptic re-ran the RCT URL: same redirect, 124,093 B, 21 route + 21 parking + 2 connector. Skeptic, new: the Harmony Trail page carries `data-geojsonurl=\"/gis/ht-geojson\"`, which redirects to …",
+]
+where = ["https://www.rachelcarsontrails.org/gis/rct-geojson", "https://rachelcarsontrails.org/"]
+reason = "published and not landed as lines: the Rachel Carson Trail's and the Harmony Trail's files have no sources.json row, and the Baker Trail's lines arrive in points_of_interest.py's file, which no trail_lines model reads"
+
+[rctc.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c17_cand_northeast_3) reads: The same sections.
+RCT: "extensive truck activity … where the trail crosses Burtner Road (11 March 2026)". Baker: "The
+northern trailhead parking area is closed every year from April 15th to May…". Skeptic, new: the Harmony
+Trail page (`/trails/harmony-trail`) has its own Trail Alerts: "Coyotes have been sighted near the trail
+… Be vigilant with small children and pets. (14 February 2024)"."""
 
 [ridgetrail.challenges]
 confirmed = 2026-10-04
@@ -14737,6 +17120,102 @@ where = [
 ]
 reason = "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
+[tahoe_pyramid.challenges]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2)."
+checked = [
+    'WordPress search for "challenge": 2 posts, neither a programme. (Skeptic re-check 2026-10-01: the full site menu (31 links: trail info, sections, Trail Guide, Future Sections, Report Trail Conditions, news, about, stewardship, donate), the 20 categories, and a web search for end-to-end/completion programmes. Nothing. "Report Trail Conditions" and the "Trail Adopter Reporting Form" are inbound forms, not a feed.)',
+]
+where = ["https://tahoepyramidtrail.org/"]
+
+[tahoe_pyramid.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+USGS."""
+checked = ["The site navigation."]
+where = ["https://tahoepyramidtrail.org/"]
+
+[tahoe_pyramid.photos]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+No open licence, and the photos are of people by design."""
+checked = [
+    'The 2026 Photo Contest page: "Photos selected … will be credited to you … Submitting the picture assumes you have permission to use this image for possible publication."',
+]
+where = ["https://tahoepyramidtrail.org/"]
+
+[tahoe_pyramid.places]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+Page. Low value."""
+checked = [
+    "Five section pages name the towns and endpoints: Tahoe City, Hirschdale, Verdi, Reno/Sparks, Mustang/USA Parkway, Wadsworth, Pyramid Lake.",
+]
+where = ["https://tahoepyramidtrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[tahoe_pyramid.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2)."
+checked = [
+    "WordPress search for \"podcast\": 1 hit, the March 2025 newsletter linking a \"Wild Nevada Podcast Interview\", which is someone else's show. (Skeptic re-check 2026-10-01: the 20 WordPress categories — the nearest are \"Tahoe-Pyramid Trail Videos\" 1 and \"TPT Personal Stories\" 4 — and the registered post types (`team_members`, `newsletter`, `modula-gallery`, no audio type).)",
+]
+where = ["https://tahoepyramidtrail.org/"]
+
+[tahoe_pyramid.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+Parking only. No water and no camping."""
+checked = [
+    "My Maps KML parking points (8 on Verdi–Sparks; the other four maps were not opened). The 3 RideWithGPS routes sampled carry 0 POIs.",
+]
+where = ["https://tahoepyramidtrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[tahoe_pyramid.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+The UNR StoryMaps are a university account's, not TPT's."""
+checked = [
+    "The section pages (`/tahoe-city-hirschdale/`, `/hirschdale-to-verdi/`, `/verdi-to-reno-sparks/`, `/mustang-to-usa-parkway-2/`, `/wadsworth-to-pyramid-lake/`), the brochure `TPT-Trail-Brochure-2025.pdf`, `Overview_Dec2019.pdf`, and UNR StoryMaps (`rmicander_unr`, 5 stories, e.g. `2a5cf67a…`).",
+]
+where = ["https://tahoepyramidtrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[tahoe_pyramid.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+The candidate note says the trail is bike-oriented, and the open-sections layer agrees. Its `TYPE`
+values are Share the Road 31.8 mi, Paved Bike Path 20.8, Double Track 15.4, Bike Lane 14.3 and Single
+Track 10.9. Much of the route is road."""
+checked = [
+    'The RideWithGPS user `1592381`, "Tahoe-Pyramid Trail" (Reno), has 10 routes: 5 sections × 2 directions, e.g. "Tahoe City - Hirschdale" 25.1 mi and "Wadsworth to Pyramid Lake" 22.0 mi. There are 5 Google My Maps embeds, one per section page. The one opened (`mid=1ukP78N6ioZtBTFMT835szUyGYumHDi9f`) has 2 route lines and 8 parking points. There are also section PDFs, e.g. `HirschdaleFarad_Dec2023.pdf`. No loaded upstream carries it: `usfs_trails` has no "TAHOE%PYRAMID" name.',
+]
+where = ["https://tahoepyramidtrail.org/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[tahoe_pyramid.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c21_cand_west_2) reads: Same page: "Unwelcome Siren
+Alarm(s) … on Hirschdale Road have been reported as REACTIVATED" (`/hirschdale-sirens/`)."""
+
 [tahoe_rim.challenges]
 confirmed = 2026-10-04
 summary = """
@@ -15265,6 +17744,134 @@ where = [
 ]
 reason = "drawn from nps/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
+[tpwd.challenges]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c19_cand_southeast_1).
+
+The same kind of entry as `arkansas-parks`' Park Explorer row: an award for activities done at a park.
+It is not tied to any trail and publishes no place list. It is weak for a challenges mart about trails,
+but it is published, so it is not NOT_PUBLISHED. The 2016 geocache challenge stays out."""
+checked = [
+    "Sitemap (3,997 URLs) for passport, challenge, patch, bucket list: none current. The geocaching page (`/state-parks/parks/things-to-do/geocaching/`) is general advice. A 2016 PDF, `…/geocache/media/pdf/Geocachechallengecoordinates.pdf` (146,831 bytes, last-modified 2016-02-24), is still served but no current page links it. So is `geocache_passport_general.pdf` (1,141,521 bytes, last-modified 2016-02-24). Skeptic, 2026-10-01: `https://tpwd.texas.gov/spdest/programs/jr_ranger/` (the sitemap's `/state-parks/programs/junior-ranger-program/…` redirects there) reads: \"Pick up a free Junior Ranger …",
+]
+where = [
+    "https://tpwd.texas.gov/spdest/programs/jr_ranger/",
+    "https://tpwd.texas.gov/arcgis/rest/services",
+    "https://tpwd.texas.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[tpwd.elevation]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c19_cand_southeast_1).
+
+USGS 3DEP (`_shared/usgs`). The trailway climbs the Caprock Escarpment, so profile matters here; 3DEP
+covers it."""
+checked = ["`TPWD_StateParks` items (18), the trails service, sitemap (3,997 URLs)."]
+where = ["https://tpwd.texas.gov/arcgis/rest/services", "https://tpwd.texas.gov/"]
+
+[tpwd.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c19_cand_southeast_1)."
+checked = [
+    "Sitemap: 6 photo URLs, all tips pages or one park's gallery (Seminole Canyon). No licence statement found.",
+]
+where = ["https://tpwd.texas.gov/arcgis/rest/services", "https://tpwd.texas.gov/"]
+
+[tpwd.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c19_cand_southeast_1)."
+checked = [
+    "`https://services1.arcgis.com/1mtXwieMId59thmg/arcgis/rest/services/Texas_State_Parks_Boundaries/FeatureServer/0`: 116 polygons, modified 2026-03-06. Same licence line.",
+]
+where = [
+    "https://services1.arcgis.com/1mtXwieMId59thmg/arcgis/rest/services/Texas_State_Parks_Boundaries/FeatureServer/0",
+    "https://tpwd.texas.gov/arcgis/rest/services",
+    "https://tpwd.texas.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[tpwd.podcasts]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c19_cand_southeast_1).
+
+Outdoor topics, not trail-specific. Under the Texas Sky has stopped."""
+checked = [
+    'Better Outside, RSS `https://tpwd.texas.gov/podcasts/better-outside`: 10 items, from 2025-05-12 (iTunes lists the latest as 2026-07-01). Under the Texas Sky, RSS `https://tpwd.texas.gov/podcasts/utts`: 54 episodes, 2019-01-23 → 2021-01-06. Both carry "Texas Parks and Wildlife" as copyright.',
+]
+where = [
+    "https://tpwd.texas.gov/podcasts/better-outside",
+    "https://tpwd.texas.gov/podcasts/utts",
+    "https://tpwd.texas.gov/arcgis/rest/services",
+    "https://tpwd.texas.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[tpwd.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c19_cand_southeast_1).
+
+The 13 composting toilets are most likely the trailway's comfort stations (Reasoned from the page's
+wording; not checked against coordinates). The no-water statement is the safety fact."""
+checked = [
+    '`https://services1.arcgis.com/1mtXwieMId59thmg/arcgis/rest/services/Texas_State_Parks_Public_Areas/FeatureServer`: layer 0 Park Headquarters 123, layer 1 Public Building/Structure 1,013 (fields `ParkName`, `Category`, `Descriptor`, `LastEditDate`), layer 2 Campground Area 468, layer 3 Day Use Area 258; item modified 2024-03-01. In Caprock Canyons, layer 1 holds 31 points: "Toilet - Composting" 13, Overlook 3, Pavilion 3, Restroom 2, … Also `Texas_State_Parks_Headquarters__Access_Points` (129). The trailway page states "No water is available on the Trailway. Comfort stations are located at …',
+]
+where = [
+    "https://services1.arcgis.com/1mtXwieMId59thmg/arcgis/rest/services/Texas_State_Parks_Public_Areas/FeatureServer",
+    "https://tpwd.texas.gov/arcgis/rest/services",
+    "https://tpwd.texas.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[tpwd.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c19_cand_southeast_1).
+
+The layer's named segments are the hike units."""
+checked = [
+    "The trailway page: the trailway \"is broken into shorter segments, ranging from 5 to 12 miles long (one way)\", with Clarity Tunnel \"4.5 miles west of Monk's Crossing (9-mile round trip)\". Interactive map `/state-parks/caprock-canyons/map`; park map PDF `pwd_br_p4506_0079m.pdf`. HTML + PDF.",
+]
+where = ["https://tpwd.texas.gov/arcgis/rest/services", "https://tpwd.texas.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[tpwd.trail_lines]
+confirmed = 2026-10-11
+summary = """
+Drawn from tx_tamers/'s `tpwd_state_park_trails`, TPWD's own State Parks Trails layer, which tx_tamers/
+extracted under decision 54's wave 1 (2026-10-03), before TPWD had a folder. Decision 34 would extract
+it here, which renames its raw table, so it stays where it lands until somebody moves it on purpose.
+
+The coverage audit's row (2026-10-01, batch c19_cand_southeast_1) is below."""
+checked = [
+    "tx_tamers/trail_lines.py claims `tpwd_state_park_trails`, this layer, and lands it as raw_tx_tamers__tpwd_state_park_trails (the extract's folders, read 2026-10-11)",
+    "`https://tpwd.texas.gov/arcgis/rest/services/Parks/TexasStateParksTrails/MapServer/0` \"State Parks Trails\" (ArcGIS MapServer, polyline; fields `ParkName`, `Official`, `Name1`, `TrailUse`, `LengthMI`): 3,307 segments, 1,386.4 mi statewide, \"only trails designated as official are displayed\", \"vetted by park staff\". Caprock Canyons trailway segments in it: Quitaque Canyon 17.36 mi, Grundy Canyon 11.81, Oxbow 9.94, Kent Creek 9.88, Plains Junction 9.72, Los Lingos 4.98 (sum 63.68 mi against the stated 64.25), plus the park's own trails (Canyon Rim, Upper/Lower North and South Prong, Haynes Ridge …",
+]
+where = [
+    "https://tpwd.texas.gov/arcgis/rest/services/Parks/TexasStateParksTrails/MapServer/0",
+    "https://tpwd.texas.gov/arcgis/rest/services",
+    "https://tpwd.texas.gov/",
+]
+reason = "drawn from tx_tamers/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[tpwd.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c19_cand_southeast_1) reads: Same page: "Aug. 12,
+2026 - The park is under a burn ban. No wood or charcoal fires allowed"; "July 27, 2026 - During rutting
+season (May through September), use extra caution around bison … stay at least 50 yards away". The
+trailway page: "Sections of the Trailway are remote … Please don't travel alone … cell service is
+limited. Watch for falling rocks and rattlesnakes", plus the Clarity Tunnel bat colony ("Never pick up a
+bat … wear long-sleeved outerwear"). HTML."""
+
 [trustees.challenges]
 confirmed = 2026-10-04
 summary = """
@@ -15516,10 +18123,10 @@ where = [
 [tx_tamers.closures]
 confirmed = 2026-10-03
 summary = """
-Drawn from _shared/tpwd/'s two state-park alert pages (decision 53 phase B, 2026-10-03).
+Drawn from tpwd/'s two state-park alert pages (decision 53 phase B, 2026-10-03).
 
-The alerts on the club's trails are Texas Parks and Wildlife's, per park, and TPWD has no club folder, so
-its pages land once in _shared/tpwd/park_alerts.py (decision 34): Davis Mountains State Park's
+The alerts on the club's trails are Texas Parks and Wildlife's, per park, and its pages
+land once in tpwd/closures.py, TPWD's own folder since its trail_orgs.json row (2026-10-11; decision 34): Davis Mountains State Park's
 (`tpwd_davis_mountains_alerts`: primitive-area closures for hunts, Oct. 2-10, Nov. 6-11 and Feb. 19-24,
 and a burn ban) and McKinney Falls State Park's (`tpwd_mckinney_falls_alerts`: a burn ban). TPWD's
 copyright policy restricts copying, which decision 55 reads as facts and a link. Guadalupe Mountains is
@@ -15530,7 +18137,7 @@ whether it publishes notices of its own is unknown.
 Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
 p05_persist), whose `checked` is kept below."""
 checked = [
-    "via _shared/tpwd/park_alerts.py `tpwd_davis_mountains_alerts` and `tpwd_mckinney_falls_alerts` (decision 53 phase B, 2026-10-03): each park's /alert page, read live as one PageNotice each.",
+    "via tpwd/closures.py `tpwd_davis_mountains_alerts` and `tpwd_mckinney_falls_alerts` (decision 53 phase B, 2026-10-03): each park's /alert page, read live as one PageNotice each.",
     "(decision 53 inventory, batch 2, 2026-10-03) https://texastrailtamers.org/: 'CONNECT tunnel failed, response 502' from the sandbox's proxy; not reached.",
     "(coverage audit, 2026-10-01) `https://tpwd.texas.gov/state-parks/davis-mountains/alert` (HTML, rendered on the server): \"Primitive Area Closures. The primitive camping area will be closed on the following dates: 6 a.m. on Oct. 2 to 8 a.m. on Oct. 10; 6 a.m. on Nov. 6 to 8 a.m. on Nov. 11; 6 a.m. on Feb. 19 to 8 a.m. on Feb. 24. Only permitted hunters will be allowed on these dates.\" `/state-parks/mckinney-falls/alert` has no closure today. Guadalupe Mountains is covered by the NPS Alerts API (b6_federal.md: 617 alerts nationwide; it needs a key, which I did not use). Tried: 1–3 no closure layer in TPWD's REST folders or …",
 ]
@@ -15539,7 +18146,7 @@ where = [
     "https://tpwd.texas.gov/state-parks/mckinney-falls/alert",
     "https://texastrailtamers.org/",
 ]
-reason = "drawn from _shared/tpwd/'s resources, extracted once there (decision 34); checked names the pages this org's closures arrive in"
+reason = "drawn from tpwd/'s resources, extracted once there (decision 34); checked names the pages this org's closures arrive in"
 
 [tx_tamers.elevation]
 confirmed = 2026-10-01
@@ -15590,19 +18197,20 @@ where = [
 [tx_tamers.points_of_interest]
 confirmed = 2026-10-03
 summary = """
-Published by a steward with no club folder.
+Published by TPWD, and not landed.
 
 The points at McKinney Falls are Texas Parks and Wildlife's (Texas_State_Parks_Public_Areas), whose layer
-carries its own restriction (decision 36: publish as non-commercial). TPWD has no folder among
-trail_orgs.json's managing clubs, so it waits on decision 54's wave 6."""
+carries its own restriction (decision 36: publish as non-commercial). TPWD has a folder of its own since its
+trail_orgs.json row (tpwd/, 2026-10-11), which extracts its alert pages and not this layer."""
 checked = [
     "the coverage audit's read (2026-10-01): Texas_State_Parks_Public_Areas/FeatureServer layers 0 to 3 under ParkName LIKE 'McKinney%': headquarters 1, buildings 13, campground areas 7, day-use areas 4; no water-source or trailhead layer",
     "the extract's folder list, 2026-10-03: no folder for TPWD, so no row is registered for it in this wave",
+    "the extract's folders, 2026-10-11: tpwd/ holds closures.py alone, its alert pages, so nothing extracts this layer",
 ]
 where = [
     "https://services1.arcgis.com/1mtXwieMId59thmg/arcgis/rest/services/Texas_State_Parks_Public_Areas/FeatureServer",
 ]
-reason = "published by a steward with no club folder (TPWD); waits on decision 54's wave 6"
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
 
 [tx_tamers.suggested_hikes]
 confirmed = 2026-10-01
@@ -15616,16 +18224,16 @@ where = ["https://texastrailtamers.org/"]
 [tx_tamers.warnings]
 confirmed = 2026-10-03
 summary = """
-Drawn from _shared/tpwd/'s two state-park alert pages (decision 53 phase B, 2026-10-03).
+Drawn from tpwd/'s two state-park alert pages (decision 53 phase B, 2026-10-03).
 
 The burn bans at McKinney Falls and Davis Mountains are the warnings half of the TPWD alert pages that
-land once in _shared/tpwd/park_alerts.py (decision 34); the warnings staging model reads those tables
+land once in tpwd/closures.py (decision 34); the warnings staging model reads those tables
 too. closures.py says what else was looked at.
 
 Before decision 53 phase B this file was the coverage audit's note (confirmed 2026-10-01, batch
 p05_persist), whose `checked` is kept below."""
 checked = [
-    "via _shared/tpwd/park_alerts.py `tpwd_davis_mountains_alerts` and `tpwd_mckinney_falls_alerts` (decision 53 phase B, 2026-10-03).",
+    "via tpwd/closures.py `tpwd_davis_mountains_alerts` and `tpwd_mckinney_falls_alerts` (decision 53 phase B, 2026-10-03).",
     '(coverage audit, 2026-10-01) McKinney Falls: "Burn Ban Aug. 11, 2026 - The park is under a burn ban. Wood fires are not allowed." Davis Mountains: "Burn Ban Jan. 1, 2026 - No wood fires are allowed." Tried: as closures.',
 ]
 where = [
@@ -15634,7 +18242,7 @@ where = [
     "https://tpwd.texas.gov/arcgis/rest/services",
     "https://texastrailtamers.org/",
 ]
-reason = "drawn from _shared/tpwd/'s resources, extracted once there (decision 34); checked names the pages this org's warnings arrive in"
+reason = "drawn from tpwd/'s resources, extracted once there (decision 34); checked names the pages this org's warnings arrive in"
 
 [usace.challenges]
 confirmed = 2026-10-01
@@ -16449,6 +19057,114 @@ Nothing published (coverage audit 2026-10-01, batch p03_persist).
 checked = ["The same feed and scan: no hazard notices. Tried: 1–7 as for closures."]
 where = ["https://voc.org/"]
 
+[vtrans.challenges]
+confirmed = 2026-10-01
+summary = "Could not be told (coverage audit 2026-10-01, batch c18_cand_northeast_4)."
+checked = [
+    "Website blocked, as above. The AGOL search found no challenge layer. `LVRT_Events/0` (14 points, 2020) is a construction-project list (`ProjectNam`, `ExpectedCo`…), not an event or challenge.",
+]
+where = [
+    "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services",
+    "https://railtrails.vermont.gov/",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[vtrans.elevation]
+confirmed = 2026-10-01
+summary = """
+Could not be told (coverage audit 2026-10-01, batch c18_cand_northeast_4).
+
+USGS 3DEP."""
+checked = ["None among the 47 AGOL trail items, and the website is blocked."]
+where = [
+    "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services",
+    "https://railtrails.vermont.gov/",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[vtrans.photos]
+confirmed = 2026-10-01
+summary = "Could not be told (coverage audit 2026-10-01, batch c18_cand_northeast_4)."
+checked = ["CROplanning POIs carry a `Photo` field (Google Drive thumbnails, no licence). Website blocked."]
+where = [
+    "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services",
+    "https://railtrails.vermont.gov/",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[vtrans.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c18_cand_northeast_4)."
+checked = [
+    "Public Facilities: `assetType` 12 (Trail Head), 30 on LVRT, each with a `town` field. Skeptic: VTrans AGOL also holds `lvrt_adjacent_towns`, `LVRT_Town_Boundaries_Publish` and `lvrt_adjacent_counties` (geometry type not checked).",
+]
+where = [
+    "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services",
+    "https://railtrails.vermont.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[vtrans.podcasts]
+confirmed = 2026-10-01
+summary = "Could not be told (coverage audit 2026-10-01, batch c18_cand_northeast_4)."
+checked = [
+    "Website blocked (re-tried 2026-10-01 with a browser user agent: `/`, `/sitemap.xml`, `/wp-json/` and `/feed/` all answer 202 with an `sgcaptcha` meta refresh). The 73-item AGOL search found no audio.",
+]
+where = [
+    "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services",
+    "https://railtrails.vermont.gov/",
+]
+reason = "the coverage audit could not tell on 2026-10-01; checked says what stopped it"
+
+[vtrans.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c18_cand_northeast_4).
+
+No water published. Absent means unknown, not "none" (R)."""
+checked = [
+    '`…/NXmBVyW5TaiCXqFs/…/VT_Rail_Trails_Viewer_Public_Facilities/FeatureServer/0`: 873 points (597 LVRT), edited 2026-09-24. On LVRT: crossings 280, bridges 72, pause places 52, cattle passes 34, parking facilities 32, boat access 31, historic sites 29, trailheads 30 (16 of them with parking), fishing 22, camping 6, hospital 2. `VT_Rail_Trails_Points_of_Interest/1`: 594 businesses (LVRT 381). The `assetType` domain includes "Water Fill Up Site", with 0 rows.',
+]
+where = [
+    "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services",
+    "https://railtrails.vermont.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[vtrans.suggested_hikes]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c18_cand_northeast_4).
+
+A weak fit: connectors, not hikes. Whatever the website itself publishes is still UNKNOWN."""
+checked = [
+    "`railtrails.vermont.gov` is SiteGround-captcha'd (curl and WebFetch both; it also captchas `/sitemap.xml`, `/wp-json/` and `/feed/`, and `web.archive.org` is blocked by this sandbox's egress policy). The 6 routes are short connectors from the trail into villages, e.g. \"Portland Street: Streets with sidewalks to village businesses\", \"Cambridge Greenway: Gravel recreation path to village businesses\", and one link out to the Missisquoi Valley Rail Trail.",
+]
+where = [
+    "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services",
+    "https://railtrails.vermont.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[vtrans.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c18_cand_northeast_4).
+
+Prefer the VTrans centerline over the CROplanning copy (R: same owner as the closure layers, though its
+last edit, 2023-11-09, is seven months older than the CROplanning line's). Do not read the empty
+`VT_Rail_Lines_Open_Status` as "everything open": empty means unknown (R)."""
+checked = [
+    '`https://services9.arcgis.com/SamFhTsFobuXbRCf/arcgis/rest/services/Lamoille_Valley_Rail_Trail_view/FeatureServer/0`: 1 polyline, `LineName` LVRT, MP 0 → 95.24, edited 2024-06-13 (owner `CROplanning`). VTrans: `tiles.arcgis.com/tiles/NXmBVyW5TaiCXqFs/arcgis/rest/services/VT_Rail_Lines_and_Trails/VectorTileServer` (2025-12-03), plus the web app "VTrans State-Owned Rail Trails". No loaded source covers Vermont. Skeptic: a VTrans-owned centerline exists. `https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services/LVRT_Centerline_NOJOGS_Publish/FeatureServer/0` holds 1 polyline …',
+]
+where = [
+    "https://services9.arcgis.com/SamFhTsFobuXbRCf/arcgis/rest/services/Lamoille_Valley_Rail_Trail_view/FeatureServer/0",
+    "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services/LVRT_Centerline_NOJOGS_Publish/FeatureServer/0",
+    "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services",
+    "https://railtrails.vermont.gov/",
+]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
 [w3r.challenges]
 confirmed = 2026-10-04
 summary = """
@@ -16588,6 +19304,101 @@ summary = "Published, and not landed (coverage audit 2026-10-01, batch c11_nht).
 checked = ["Same"]
 where = ["https://mapservices.nps.gov/arcgis/rest/services", "https://w3r-us.org/"]
 reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[wa_parks.challenges]
+confirmed = 2026-10-01
+summary = """
+Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+If the maintainer counts one-weekend event passports as challenges, this row flips; I did not count it."""
+checked = [
+    '`sitemap.xml` has no passport, challenge or bucket-list pages. First Day Hikes is an event. (Skeptic re-check 2026-10-01: the agency did run one — the Centennial GeoTour / Passport GeoChallenge (100+ geocaches in 102 parks, from June 2013) — but a 2016 Valley Record story reports it ending, with passports accepted until 10 October. The only current "passport" is the national Girl Scouts Love State Parks weekend (`/find-activity/event-calendar/2026/sep/2026-girls-scouts-love-state-parks`), a one-weekend event run with Girl Scouts USA and NASPD. `/find-activity/activity-search/geocaching` is an …',
+]
+where = ["https://services5.arcgis.com/4LKAHwqnBooVDUlX/arcgis/rest/services", "https://parks.wa.gov/"]
+
+[wa_parks.elevation]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+Low value next to USGS 3DEP. The slope data is accessibility assessment."""
+checked = [
+    "`…/Contours20ft`: 17,344 contour lines (© WSPRC GIS). `…/Trail_Details`: Slope, Cross Slope, Tread Width and Surface, 1,380 each.",
+]
+where = ["https://services5.arcgis.com/4LKAHwqnBooVDUlX/arcgis/rest/services", "https://parks.wa.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[wa_parks.photos]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2)."
+checked = [
+    "`/about/contact-us/share-your-photos` collects photos inbound. The `King_Tide_Photo_Submission_2023`–`2026` layers are citizen submissions with no licence stated.",
+]
+where = ["https://services5.arcgis.com/4LKAHwqnBooVDUlX/arcgis/rest/services", "https://parks.wa.gov/"]
+
+[wa_parks.places]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2)."
+checked = [
+    "`…/ParkBoundaries/FeatureServer/2`: 207 polygons. `…/WA_State_Park_Boundaries`: 212. `…/ParkEntrances`.",
+]
+where = ["https://services5.arcgis.com/4LKAHwqnBooVDUlX/arcgis/rest/services", "https://parks.wa.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[wa_parks.podcasts]
+confirmed = 2026-10-01
+summary = "Nothing published (coverage audit 2026-10-01, batch c21_cand_west_2)."
+checked = [
+    "`sitemap.xml` (1,539 URLs) and the navigation. YouTube is video. (Skeptic re-check 2026-10-01: same sitemap re-grepped for `podcast`, 0; a web search finds only the Department of Retirement Systems' \"Episode 52 – A guide to Washington state parks and passes\" and TVW's \"Washington State Parks\" video series — neither is WSPRC's.)",
+]
+where = ["https://services5.arcgis.com/4LKAHwqnBooVDUlX/arcgis/rest/services", "https://parks.wa.gov/"]
+
+[wa_parks.points_of_interest]
+confirmed = 2026-10-01
+summary = """
+Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+The road intersections are the ways off a 246-mile rail trail. The tunnels include the 2.3-mi unlit
+Snoqualmie Tunnel. `Water_points` (32) is not drinking water: its types are valve 17, yard hydrant 10,
+waste-disposal pad 3. It must never become a water POI. The `Trailheads` layer of …"""
+checked = [
+    '`…/Trailheads_PublicView/FeatureServer/0`: 108, last edit 2026-09-29, with `RestRooms`, `PARKING_AVAILABLE`, `BACKPACKING_PERMIT` and `ESTABLISHED_CAMPSITE_ON_TRAIL`. `…/TrailMilepostsView`: 506. `…/Tunnels`: 13 (8 "IRON HORSE TRAIL", i.e. Palouse to Cascades, and 5 Columbia Plateau; last edit 2016-05-13). `…/Bridges`: 183. `…/Cross_State_Trail___Road_Intersections`: 376. `…/Campsites/FeatureServer/78`: 6,124. `…/PARKS_Warming_Shelters_(Public)`: 27. `…/FacilityInventory`: 2,792 (numeric `TYPE` codes with no domain, so it needs a key from WSPRC).',
+]
+where = ["https://services5.arcgis.com/4LKAHwqnBooVDUlX/arcgis/rest/services", "https://parks.wa.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[wa_parks.suggested_hikes]
+confirmed = 2026-10-01
+summary = "Published, and not landed (coverage audit 2026-10-01, batch c21_cand_west_2)."
+checked = [
+    'Per-trail park pages, e.g. `/find-parks/state-parks/palouse-cascades-state-park-trail` with a brochure PDF and "Palouse to Cascades State Park Trail - Full Map.pdf" (2026-07). Field-guide histories for all four trails. About 25 First Day Hike events in `sitemap.xml` (1,539 URLs).',
+]
+where = ["https://services5.arcgis.com/4LKAHwqnBooVDUlX/arcgis/rest/services", "https://parks.wa.gov/"]
+reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+
+[wa_parks.trail_lines]
+confirmed = 2026-10-01
+summary = """
+Drawn from another folder's resource (coverage audit 2026-10-01, batch c21_cand_west_2).
+
+The RCO copy matches WSPRC's feature counts one for one (46, 26, 2), so RCO is redistributing WSPRC
+(Reasoned). Read the length flag above."""
+checked = [
+    "`management_agency='Washington State Parks'` rows: Palouse to Cascades 15, Columbia Plateau 2, Willapa Hills 26, Spokane River Centennial 46. WSPRC publishes its own geometry: `…/Long_Distance_Trails/FeatureServer/0` (87 features covering exactly these trails plus Klickitat, last edit 2024-03-07, EPSG:2927) and `…/Trails/FeatureServer/0` (2,543 lines, item modified 2026-07-14).",
+]
+where = ["https://services5.arcgis.com/4LKAHwqnBooVDUlX/arcgis/rest/services", "https://parks.wa.gov/"]
+reason = "drawn from wa_rco/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
+
+[wa_parks.warnings]
+shares = "closures"
+summary = """
+Read with closures (wave 6, decision 122, 2026-10-09). closures.py's notice sources feed this type too:
+one upstream is one resource and one raw table (decision 34), and dbt's decision 7 classifier splits
+each notice into closures or warnings.
+
+The coverage audit's warnings row (2026-10-01, batch c21_cand_west_2) reads: The same page: Burn Ban 149
+(fire danger by level), Notification 31, General 11, Shellfish 2, Winter Recreation Advisory. The banner
+today read: "All parks are under a Level 2 or Level 3 Burn Ban"."""
 
 [wa_rco.challenges]
 confirmed = 2026-10-01

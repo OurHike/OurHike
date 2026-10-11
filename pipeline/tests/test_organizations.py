@@ -463,7 +463,9 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # (fltc_special_places): 1 `maintainer_authorisation`, decision 70. They add the Mid State Trail's 23 sections
     # (msta_sections): 1 `maintainer_authorisation`, decision 70. They add the Iditarod Historic Trail Alliance's
     # passport stamp sites (iditarod_passport_stamps): 1 `unresolved`, a challenge list.
-    assert counts == {"maintainer_authorisation": 260, "public_gis": 279, "stated_by_org": 208, "unresolved": 32}
+    # Wave 6's approved rows (2026-10-11) add 1 `public_gis`: IDOT's bicycle inventory (idot_bike_inventory), registered
+    # under IDOT's own trail_orgs.json row (review page 02, P10), whose item states a disclaimer and no terms of use.
+    assert counts == {"maintainer_authorisation": 260, "public_gis": 280, "stated_by_org": 208, "unresolved": 32}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

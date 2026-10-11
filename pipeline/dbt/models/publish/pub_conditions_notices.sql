@@ -98,9 +98,10 @@
 -- phone offline for days still greys a notice on its day. Every row carries
 -- the key, null included, but one kind: a row without it reads on the phone
 -- as carrying no verdict at all, which is what a file from before this field
--- says, and what decision 67's standing hazard areas say on purpose (below). Measured on
--- UA's file of 2026-10-10 17:24 UTC (8,305 notices), the key adds 203,133
--- bytes, 11,807,956 to 12,011,089, and 9,651 gzipped at level 6.
+-- says, and what decision 67's standing hazard areas say on purpose
+-- (below). Measured on UA's file of 2026-10-10 17:24 UTC (8,305 notices),
+-- the key adds 203,133 bytes, 11,807,956 to 12,011,089, and 9,651 gzipped
+-- at level 6.
 --
 -- DECISION 67'S HAZARD AREAS (seeds/notice_hazard_areas.csv) carry `hazard`
 -- (hunting, shooting or burned_area) and never obstruct the trail. A burned

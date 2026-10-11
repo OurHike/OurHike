@@ -446,6 +446,55 @@ def test_an_hourly_hand_off_built_from_clean_tables_is_read_and_kept(reread):
     assert answer.complete
 
 
+def hand_off_a_bundle(bucket: Bucket, reported_by: str | None) -> None:
+    """An hourly comparison bundle, handed off by hand_off.py's own `put-bundle`, as hourly_parity.py lays it out: the
+    reports rows the extract kept, one of them with `reported_by` (a WITHHELD_COLUMNS name) set to `reported_by`."""
+    folder = bucket.tmp_path / "hourly-bundle"
+    (folder / "raw" / "conditions").mkdir(parents=True)
+    (folder / "new").mkdir()
+    answers = {
+        "reports": {
+            "columns": [["id", "varchar"], ["reported_by", "varchar"]],
+            "rows": [{"id": "r1", "reported_by": reported_by}],
+        }
+    }
+    (folder / "raw" / "conditions" / "ourhike_postgres.json").write_text(json.dumps(answers))
+    (folder / "new" / "conditions_reports.json").write_text(json.dumps({"reports": [{"id": "r1"}]}))
+    hand_off.put_bundle(f"{bucket.url}/history/conditions_ua", folder, run="593")
+
+
+def test_an_hourly_comparison_bundle_is_unpacked_and_one_holding_a_field_goes_with_its_hand_off(reread, capsys):
+    """hand_off.py's checks/parity_inputs.json.gz holds its files as JSON texts inside one gzipped document, where
+    JSON_KEY sees no inner key: read as a JSON file it would always read clean. Each file is read on its own instead."""
+    hand_off_a_warehouse(reread, None)
+    hand_off_a_bundle(reread, SENTINEL)
+
+    answer = reread.find()
+    status = reread.run("--delete")
+
+    out = lines_of(capsys)
+    objects = {stored.key: stored for stored in answer.store.objects}
+    bundle = objects[f"{HAND_OFF}parity_inputs.json.gz"]
+    assert (bundle.kind, bundle.read, bundle.unit) == (purge.BUNDLE, True, HAND_OFF)
+    assert bundle.fields["raw/conditions/ourhike_postgres.json:reported_by"] == purge.Holding("WITHHELD_COLUMNS", 1, 1)
+    assert objects[f"{HAND_OFF}parity_inputs.json"].kind == purge.RECORD
+    assert f"{HAND_OFF} (an hourly hand-off, 4 objects" in out
+    assert status == 0
+    assert not {key for key in reread.keys() if key.startswith(HAND_OFF)}, "the warehouse and the bundle go together"
+
+
+def test_a_comparison_bundle_of_clean_answers_is_read_and_kept(reread):
+    hand_off_a_warehouse(reread, None)
+    hand_off_a_bundle(reread, None)
+
+    answer = reread.find()
+
+    bundle = {stored.key: stored for stored in answer.store.objects}[f"{HAND_OFF}parity_inputs.json.gz"]
+    assert bundle.read and not bundle.holds and bundle.empty_columns
+    assert not [stored.key for stored in answer.doomed if stored.key.startswith(HAND_OFF)]
+    assert answer.complete
+
+
 @pytest.mark.parametrize("chunk", [7, 64, 1 << 20])
 def test_every_key_is_counted_once_however_the_stream_is_cut(monkeypatch, chunk):
     """json_keys() reads JSON_CHUNK at a time; a key cut by a chunk's edge is found once, from the carry."""
@@ -536,3 +585,12 @@ def test_place_puts_each_kind_of_object_where_the_code_writes_it():
     assert (packed.kind, packed.unit, packed.first) == (purge.DUCKDB, "history/conditions_ua/checks/", False)
     pointer = purge.place("history/conditions_ua/checks/hand_off.json", "", 0)
     assert (pointer.kind, pointer.unit, pointer.first) == (purge.RECORD, "history/conditions_ua/checks/", True)
+    bundle = purge.place("history/conditions_ua/checks/parity_inputs.json.gz", "", 0)
+    assert (bundle.kind, bundle.unit, bundle.first) == (purge.BUNDLE, "history/conditions_ua/checks/", False)
+    bundle_pointer = purge.place("history/conditions_ua/checks/parity_inputs.json", "", 0)
+    assert (bundle_pointer.kind, bundle_pointer.unit, bundle_pointer.first) == (
+        purge.RECORD,
+        "history/conditions_ua/checks/",
+        False,
+    )
+    assert purge.place("history/conditions_ua/elsewhere.json.gz", "", 0).kind == purge.UNREAD, "only the bundle's own key"

@@ -64,6 +64,12 @@ than deleted on every purge for being transient: the listing then says whether i
 it only if it did, the rule every other object is under. A hand-off built after the current tables are clean holds
 none (Reasoned: hand_off.py's `put` uploads the warehouse the leg's build made from those tables).
 
+Beside it since open question 17 (the maintainer's poll of 2026-10-10, "Compare every soak hour"),
+`checks/parity_inputs.json.gz`, hourly_parity.py's comparison bundle, goes with the same unit, its own pointer
+`checks/parity_inputs.json` a record of it. It holds rows, the answers the leg's extract kept and the rows its build
+read, as JSON texts inside one gzipped document, where JSON_KEY sees no inner key. So it is unpacked and each of its
+files read on its own (read_bundle()), under PERSON_FIELDS and WITHHELD_COLUMNS, rather than listed under NOT READ.
+
 WHAT HOLDS ONE. An object with a value in a listed field: anything but a null or an empty string, in a column its
 schema names or under a key its rows carry. A column with no value in it is not a copy of anybody, and it is what
 every re-read table has: dlt keeps each column its schema has seen, so a table read again without a field still
@@ -100,6 +106,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import io
 import json
 import os
 import re
@@ -140,6 +147,8 @@ from extract._run import (
     run_log_rows,
 )
 from extract._warehouse import PIN_MANIFEST, RAW_INPUTS_PREFIX, SERVED_MANIFEST, SERVED_PREFIX, committed_tables
+from hand_off import BUNDLE as HAND_OFF_BUNDLE
+from hand_off import BUNDLE_POINTER as HAND_OFF_BUNDLE_POINTER
 from hand_off import FOLDER as HAND_OFF_FOLDER
 from hand_off import POINTER as HAND_OFF_POINTER
 from row_history import ELEMENTARY_POINTER, ELEMENTARY_SAVES, POINTER, SAVES
@@ -159,12 +168,16 @@ DLT_TABLES = frozenset({"_dlt_loads", "_dlt_pipeline_state", "_dlt_version"})
 #: dbt's records stored beside a warehouse (build-reference.yml's "Store the warehouse and its manifest" step).
 DBT_RECORDS = frozenset({"manifest.json", "run_results.json"})
 
-#: How each object is read: a Parquet schema, a DuckDB catalog, a JSON file's keys, or not at all (a record, dlt's
-#: bookkeeping, or a format this script does not read).
+#: How each object is read: a Parquet schema, a DuckDB catalog, a JSON file's keys, the keys of every file in an
+#: hourly comparison bundle, or not at all (a record, dlt's bookkeeping, or a format this script does not read).
 PARQUET, DUCKDB, JSON_ROWS, RECORD, DLT, UNREAD = "parquet", "duckdb", "json", "record", "dlt", "unread"
+BUNDLE = "bundle"
 JSON_SUFFIXES = (".json", ".geojson", ".jsonl", ".ndjson")
 #: A DuckDB file gzipped, as hand_off.py uploads the hourly warehouse: unpacked before it is read (read_duckdb()).
 DUCKDB_GZ_SUFFIX = ".duckdb.gz"
+#: The rule an hourly comparison bundle's files are read under (read_bundle()): PERSON_FIELDS, as for every file no
+#: raw table rules, and WITHHELD_COLUMNS, because its OurHike rows are ConditionsQuery's, whose tables carry that list.
+BUNDLE_RULE_LISTS = (("PERSON_FIELDS", _kinds.PERSON_FIELDS), ("WITHHELD_COLUMNS", _kinds.WITHHELD_COLUMNS))
 
 #: Every key in a JSON byte stream, and whether its value is empty. A quoted string followed by a colon is a key by
 #: JSON's grammar; `n` is the only first byte a null can have, and `""` is the empty string. An escaped quote is
@@ -279,7 +292,7 @@ class Stored:
     key: str  # relative to the bucket's root, as the listing prints it
     path: str  # as the bucket's filesystem client names it
     size: int
-    kind: str  # PARQUET, DUCKDB, JSON_ROWS, RECORD, DLT or UNREAD
+    kind: str  # PARQUET, DUCKDB, JSON_ROWS, BUNDLE, RECORD, DLT or UNREAD
     area: str  # where it sits, for the listing's counts
     unit: str | None = None  # the prefix it is deleted with, or None when it stands alone
     first: bool = False  # deleted before the rest of its unit
@@ -364,10 +377,15 @@ def place(key: str, path: str, size: int) -> Stored:
         elif parts[2] in (SAVES, ELEMENTARY_SAVES) and len(parts) >= 5:
             stored.unit = "/".join(parts[:4]) + "/"
         elif parts[2] == HAND_OFF_FOLDER and len(parts) >= 4:
-            # hand_off.py's hourly hand-off: its pointer goes first, so a checks run finds nothing handed off.
+            # hand_off.py's hourly hand-off: its pointer goes first, so a checks run finds nothing handed off. The
+            # comparison bundle beside the warehouse, and its own pointer, go with it (hand_off.py put-bundle).
             stored.unit = "/".join(parts[:3]) + "/"
             if "/".join(parts[2:]) == HAND_OFF_POINTER:
                 stored.kind, stored.first = RECORD, True
+            elif "/".join(parts[2:]) == HAND_OFF_BUNDLE_POINTER:
+                stored.kind = RECORD
+            elif "/".join(parts[2:]) == HAND_OFF_BUNDLE:
+                stored.kind = BUNDLE
     return stored
 
 
@@ -537,6 +555,27 @@ def read_json(store: Store, stored: Stored, rule: FieldRule) -> None:
             stored.fields[name] = Holding(listed, occurrences, with_value)
 
 
+def read_bundle(store: Store, stored: Stored) -> None:
+    """The listed fields among the keys of every file in an hourly comparison bundle (hand_off.py put-bundle).
+
+    The bundle is one gzipped JSON document whose files are JSON texts held as strings, so a key inside one is escaped
+    there and JSON_KEY, by design, never sees it: each file is taken out of the document and read on its own, under
+    BUNDLE_RULE_LISTS, each field named `<file>:<key>`. Counts only, as every reader here."""
+    rule = FieldRule(BUNDLE_RULE_LISTS)
+    with store.fs.open(stored.path, "rb") as packed, gzip.open(packed, "rb") as raw:
+        document = json.load(raw)
+    for path, text in sorted((document.get("files") or {}).items()):
+        per_key: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+        for (key, empty), occurrences in json_keys(io.BytesIO(text.encode("utf-8"))).items():
+            tally = per_key[_decoded(key)]
+            tally[0] += occurrences
+            if empty not in JSON_EMPTY:
+                tally[1] += occurrences
+        for name, (occurrences, with_value) in per_key.items():
+            if listed := rule.listed_by(name):
+                stored.fields[f"{path}:{name}"] = Holding(listed, occurrences, with_value)
+
+
 def _quoted(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
@@ -624,6 +663,8 @@ def _read_one(store: Store, stored: Stored, rules: FieldRules, scratch: Path) ->
             read_json(store, stored, rules(stored.table))
         elif stored.kind == DUCKDB:
             read_duckdb(store, stored, rules, scratch)
+        elif stored.kind == BUNDLE:
+            read_bundle(store, stored)
         stored.read = True
     except FileNotFoundError:
         # The hourly legs are not in raw-lake-monthly: a notices run trims its served copies and a load replaces its
@@ -646,7 +687,8 @@ def held_units(objects: list[Stored]) -> set[str]:
 
 def read_everything(store: Store, rules: FieldRules, scratch: Path, readers: int, timings: dict[str, float]) -> None:
     """Every Parquet file first, since each costs a footer and they decide most units; then every JSON file outside the
-    units those decided, a pinned as-landed file once per recorded sha256; then every DuckDB file left, one at a time."""
+    units those decided, a pinned as-landed file once per recorded sha256; then every DuckDB file and hourly
+    comparison bundle left, one at a time."""
     started = time.monotonic()
     with ThreadPoolExecutor(readers) as pool:
         list(pool.map(lambda stored: _read_one(store, stored, rules, scratch), [s for s in store.objects if s.kind == PARQUET]))
@@ -681,9 +723,9 @@ def read_everything(store: Store, rules: FieldRules, scratch: Path, readers: int
     started = time.monotonic()
     held = held_units(store.objects)
     for stored in store.objects:
-        if stored.kind == DUCKDB and stored.unit not in held:
+        if stored.kind in (DUCKDB, BUNDLE) and stored.unit not in held:
             _read_one(store, stored, rules, scratch)
-    timings["DuckDB catalogs"] = time.monotonic() - started
+    timings["DuckDB catalogs and comparison bundles"] = time.monotonic() - started
 
 
 # --- The answer -----------------------------------------------------------------------------------------------------
@@ -770,7 +812,7 @@ def _fields(fields: dict[str, Holding], unit: str = "rows") -> str:
 
 
 def _of(stored: Stored) -> str:
-    return _fields(stored.fields, "occurrences" if stored.kind == JSON_ROWS else "rows")
+    return _fields(stored.fields, "occurrences" if stored.kind in (JSON_ROWS, BUNDLE) else "rows")
 
 
 def pins(answer: Answer) -> tuple[list[str], list[str]]:

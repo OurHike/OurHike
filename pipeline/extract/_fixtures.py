@@ -1,6 +1,11 @@
 """Fixture mode: the real extract, over canned upstream answers, into a warehouse for CI's dbt job.
 
-    python -m extract._fixtures --raw-dir <fixtures> --warehouse <warehouse.duckdb>
+    python -m extract._fixtures --raw-dir <fixtures> --warehouse <warehouse.duckdb> [--record-answers <dir>]
+
+`--record-answers` keeps what the hourly lane is served from NWS and OurHike's
+Postgres, as a conditions leg keeps it on a real run (extract/_answers.py), so
+the hour's comparison with today's exporters runs over the fixtures end to end
+(hourly_parity.py).
 
 ELT.md, "Fixture mode", is the design. CI has no fetched data and may not
 fetch any (TESTING.md), so this runs the extract's own resources over canned
@@ -598,13 +603,18 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
     return chosen, FixtureAdapter(arcgis, socrata, feeds, wordpress=wordpress, nws=nws, pages=pages, routed=routed)
 
 
-def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
-    """Run every lane over the fixtures into a `file://` store under `store`, then load the warehouse. Returns {table: rows}."""
+def build(raw_dir: Path, warehouse: Path, store: Path, record_answers: Path | None = None) -> dict[str, int]:
+    """Run every lane over the fixtures into a `file://` store under `store`, then load the warehouse. Returns {table: rows}.
+
+    `record_answers`: also keep what the hourly lane was served from NWS and OurHike's Postgres, in that directory,
+    as a conditions leg's --record-answers keeps it on a real run (extract/_answers.py), so the record-and-serve path
+    of the hour's comparison runs over the fixtures end to end (hourly_parity.py)."""
     # Imported here, not at the top: parity.py's old sides (today's exporters)
     # import FixtureConnection and FixtureAdapter under requirements.txt's
     # pins, which hold no dlt and no pyarrow (measured 2026-10-02: with every
     # package requirements.txt does not pin blocked, `import dlt` stopped the
     # closures, reports and atc_updates old sides).
+    from extract._answers import Recorder, recording, table_states
     from extract._run import LANES, lane_resources, make_pipeline, run_pipeline
     from extract._warehouse import load_warehouse
 
@@ -646,10 +656,16 @@ def build(raw_dir: Path, warehouse: Path, store: Path) -> dict[str, int]:
     if postgres is not None:
         _kinds.psycopg = FixturePsycopg(postgres)
         os.environ[export_conditions.URL_ENV_VAR] = "postgresql://fixture-mode.invalid/none"
+    recorder = Recorder() if record_answers is not None else None
     try:
         for lane in LANES:
             if lane_resources(lane, resources):
-                report = run_pipeline(lane, bucket_url, resources=resources, pipelines_dir=pipelines_dir)
+                if recorder is not None and lane == "hourly":
+                    with recording(recorder):
+                        report = run_pipeline(lane, bucket_url, resources=resources, pipelines_dir=pipelines_dir)
+                    recorder.write(record_answers, table_states(report), lane=lane, run_id=report.run_id, outcome=report.outcome)
+                else:
+                    report = run_pipeline(lane, bucket_url, resources=resources, pipelines_dir=pipelines_dir)
                 # The monthly lane leaves a failing upstream out and loads the rest (_run.ISOLATING_LANES).
                 # A fixture is a file in this repository, so a refusal here is a broken fixture, not a bad day.
                 if report.isolated:
@@ -683,8 +699,13 @@ def main(argv: list[str] | None = None) -> dict[str, int]:
     parser.add_argument("--raw-dir", type=Path, required=True, help="where make_dbt_fixtures.py wrote its files")
     parser.add_argument("--warehouse", type=Path, required=True)
     parser.add_argument("--store", type=Path, help="the file:// raw store and dlt state; defaults beside the warehouse")
+    parser.add_argument(
+        "--record-answers",
+        type=Path,
+        help="also keep what the hourly lane was served from NWS and OurHike's Postgres here (extract/_answers.py)",
+    )
     args = parser.parse_args(argv)
-    counts = build(args.raw_dir, args.warehouse, args.store or args.warehouse.parent / "fixture-store")
+    counts = build(args.raw_dir, args.warehouse, args.store or args.warehouse.parent / "fixture-store", args.record_answers)
     print(f"{len(counts)} tables, {sum(counts.values())} rows, into {args.warehouse}")
     return counts
 

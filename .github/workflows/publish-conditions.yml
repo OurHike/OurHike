@@ -39,6 +39,17 @@
 # for the checks or reads what they find, so they can neither delay nor
 # change what a hiker downloads.
 #
+# AND THE dbt PATH'S SIX CONDITIONS FILES ARE COMPARED WITH TODAY'S
+# EXPORTERS EVERY HOUR, in check-conditions.yml's `parity` job, which the
+# same dispatch starts beside the checks (pipeline/ELT.md's open question 17,
+# the maintainer's poll of 2026-10-10: "Compare every soak hour"). The
+# extract keeps the answers it received, and the hand-off step puts them in
+# the leg's private history store with what the build read and wrote. Here,
+# nothing more: the comparison runs in no job of this file, so it can
+# neither hold back a hiker's files nor keep this run holding publish-data
+# any longer (#1513 - A queued publish is silently cancelled when another
+# one joins publish-data, and it looks like a green build).
+#
 # HOURLY since 2026-08-15 (#720), where this used to be daily on the
 # maintainer's "a closure can be latent by a day" from 2026-08-08. What
 # changed is that the client now re-reads on the same clock, so the shorter
@@ -1182,6 +1193,16 @@ jobs:
       # dispatches from run 532 to 566 took this step 60 to 98 s (Measured
       # 2026-10-06 from the Actions API's step times), the figures a smaller
       # cap would be sized from.
+      #
+      # THE HOUR'S ANSWERS ARE KEPT FOR THE COMPARISON (--record-answers;
+      # open question 17, the maintainer's poll of 2026-10-10: "Compare every
+      # soak hour"). extract/_answers.py wraps the transport alone: NWS's body
+      # and OurHike's closures and reports rows are kept as they arrive, in
+      # fixture mode's files under data/hourly_parity/answers/, so
+      # check-conditions.yml's `parity` job serves today's exporters the same
+      # answers and no upstream is asked twice. No request is added or
+      # changed; keeping them can never fail the step (extract/_run.py's
+      # keep_answers()).
       - name: Extract this leg's closures and warnings into the raw store (dbt path)
         id: extract
         if: env.PHONE_FILES == 'dbt'
@@ -1214,7 +1235,8 @@ jobs:
           set +e
           "$RUNNER_TEMP/extract/bin/python" -m extract._run --lane "$LEG" --raw-bucket "$R2_RAW_BUCKET" \
             --read-seconds 150 --pipelines-dir "$RUNNER_TEMP/dlt" \
-            --warehouse data/warehouse.duckdb --summary "$GITHUB_STEP_SUMMARY"
+            --warehouse data/warehouse.duckdb --summary "$GITHUB_STEP_SUMMARY" \
+            --record-answers data/hourly_parity/answers
           status=$?
           set -e
           if [ "$status" -eq 3 ]; then
@@ -1513,7 +1535,29 @@ jobs:
       # geometry, so its size and R2's rate are @unvalidated until this
       # step's log line gives both. build_marts.py writes the build's record
       # into the warehouse last (its docstring, "THE HOURLY LANE'S CHECKS RUN
-      # APART"), so what crosses is the whole of what the checks need.
+      # APART"), so what crosses is the whole of what the checks need. Soak
+      # run 624 (2026-10-10) handed off 2,626,433,024 bytes, 960,100,794
+      # gzipped, in 38.21 s of this step's 60 (Measured, its log).
+      #
+      # THEN THE HOUR'S COMPARISON BUNDLE, AFTER THE WAREHOUSE (open question
+      # 17; hourly_parity.py's docstring): the answers the extract kept, the
+      # ATC and NYNJTC rows the build read, its weather squares and its exit,
+      # and the six files its writers wrote, a few megabytes, put beside the
+      # warehouse under a pointer of its own (hand_off.py put-bundle). After
+      # it, so the checks' hand-off keeps every second it had, and inside this
+      # step, because the job's caps already add to 899 of its 900 seconds
+      # (.github/tests/test_conditions_build_budget.py): no step of its own
+      # fits. Either half failing leaves the other alone, and only the
+      # warehouse's decides this step's outcome; a bundle that does not move
+      # is check-conditions.yml's `parity` job's to say, as an hour not
+      # compared. The bundle gets what the warehouse left of the first 50 s,
+      # under `timeout`, so it can never run this step into its cap after a
+      # hand-off that worked, and is put only once gathered, so one that
+      # failed leaves the last run's in the store, which take-bundle refuses
+      # as another run's.
+      # @unvalidated, picked: ten seconds of margin under the minute; the
+      # fixtures' bundle took 1.0 s and its put 0.19 s to a local directory
+      # (Measured 2026-10-10), and this step's log gives R2's real figure.
       - name: Hand this build's warehouse to its checks (dbt path)
         if: ${{ !cancelled() && env.PHONE_FILES == 'dbt' && steps.build.outcome == 'success' && (steps.publish.outcome == 'success' || steps.publish.outcome == 'failure') }}
         continue-on-error: true
@@ -1530,10 +1574,28 @@ jobs:
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
-        run: >-
-          "$RUNNER_TEMP/extract/bin/python" hand_off.py put
-          --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT"
-          --warehouse data/warehouse.duckdb --run "$RUN" --attempt "$ATTEMPT" --commit "$COMMIT"
+        run: |
+          set +e
+          started=$SECONDS
+          "$RUNNER_TEMP/extract/bin/python" hand_off.py put --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
+            --warehouse data/warehouse.duckdb --run "$RUN" --attempt "$ATTEMPT" --commit "$COMMIT"
+          status=$?
+          left=$((50 - (SECONDS - started)))
+          if [ "$left" -lt 5 ]; then
+            echo "::warning title=Comparison bundle not moved::the warehouse's hand-off took $((SECONDS - started)) s of this step's minute, so no comparison bundle was put and this hour's comparison will say so."
+            exit "$status"
+          fi
+          timeout "$left" bash -c '
+            "$RUNNER_TEMP/extract/bin/python" hourly_parity.py bundle --answers data/hourly_parity/answers \
+              --warehouse data/warehouse.duckdb --processed data/processed/dbt --out data/hourly_parity/bundle &&
+            "$RUNNER_TEMP/extract/bin/python" hand_off.py put-bundle \
+              --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
+              --bundle data/hourly_parity/bundle --run "$RUN" --attempt "$ATTEMPT" --commit "$COMMIT"
+          '
+          if [ "$?" -eq 124 ]; then
+            echo "::warning title=Comparison bundle not moved::the bundle did not move in the ${left} s the warehouse's hand-off left it, so this hour's comparison will say so."
+          fi
+          exit "$status"
 
       # A WARNING, NEVER RED: decision 100 (the maintainer's poll of
       # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
@@ -1725,7 +1787,9 @@ jobs:
   # the warehouse its leg handed off above, runs every Elementary check of
   # the lane and puts conditions/data_quality.json in place; one whose leg
   # handed off nothing (the exporters path, or a build that failed) says so
-  # and checks nothing.
+  # and checks nothing. Beside them, its `parity` job takes the leg's
+  # comparison bundle and compares the six conditions files with today's
+  # exporters (open question 17).
   #
   # THROUGH THE API'S workflow_dispatch, as refresh-reference.yml's
   # `dispatch` job starts build-reference.yml: the one event a GITHUB_TOKEN
@@ -1767,7 +1831,7 @@ jobs:
           {
             echo "## The checks of this run's build"
             echo
-            echo "check-conditions.yml runs every Elementary check of the hourly lane over each leg's warehouse and puts conditions/data_quality.json in place. To run them again on this build, while it is still the newest its leg handed off:"
+            echo "check-conditions.yml runs every Elementary check of the hourly lane over each leg's warehouse and puts conditions/data_quality.json in place, and beside the checks compares the six conditions files with today's exporters on the hour's own answers. To run them again on this build, while it is still the newest its leg handed off:"
             echo
             echo '```'
             echo "$again"

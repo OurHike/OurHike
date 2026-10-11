@@ -1,7 +1,7 @@
 """gate_report: one answer for every R2 key today's pipeline publishes, from the shadow run's parity results.
 
     python gate_report.py --parity-dir <dir> --out <dir> [--dbt-manifest dbt/target/manifest.json] [--strict]
-        [--summary <file>]
+        [--summary <file>] [--hourly-dir <the soak's hourly-parity-* artifacts>]
 
 Exits 0 once both files are written, whatever they say; 1 with --strict when
 any key blocks go (KeyRow.blocks_go); 2 when there are no parity results or
@@ -65,6 +65,32 @@ differently: podcasts/episodes.json is compact from dbt and indented from
 export_podcasts.py (measured 2026-10-01: 33,234 B → 25,457 B, no content
 difference; ELT.md's known-differences table). That formatting is the
 reviewed reason every `equal` key carries, stated once.
+
+THE HOURLY COMPARISONS (--hourly-dir; open question 17, the maintainer's poll
+of 2026-10-10, "Compare every soak hour"). The six `conditions/*` keys have no
+parity result on the monthly lane, which pins its own inputs and none of an
+hour's, so they would read `not_ported` and block go for good.
+check-conditions.yml's `parity` job compares them every hour on that hour's
+own answers instead (hourly_parity.py), and uploads each run's results, keys
+and changed fields only, as an artifact. --hourly-dir is a directory of those
+artifacts, one folder per run, as `gh run download` writes them. A key whose
+writer has no monthly result is then judged by soak_coverage(), which says
+precisely what "clean across the soak" means here:
+- one hourly comparison that found a difference nothing explains, or that
+  crashed, anywhere in the results, makes the key `differs`;
+- otherwise the key passes only when EVERY run of the UA leg (SOAK_LEG,
+  decision 46) in the soak's last SOAK_HOURS (counted back from that leg's
+  newest run in the results, and reaching back to a run at or before that
+  start) compared it clean, and no two of those runs are more than
+  SOAK_MAX_GAP_HOURS apart, so an hour with no comparison (an input that was
+  not this hour's, a writer held back, a run that never came) is a hole the
+  soak has to cover again rather than a pass. Clean is
+  `equal`, or `no_records` (both files empty) for a family
+  MAY_COMPARE_NO_RECORDS lists, the monthly lane's rule;
+- anything else stays blocking, as `not_ported` with why
+  `soak_not_covered`, and the detail names what is short.
+A key that has a monthly result is judged by it, unless an hourly comparison
+found a difference, which no monthly result outweighs.
 """
 
 from __future__ import annotations
@@ -78,8 +104,11 @@ import re
 import sys
 import tempfile
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from hourly_parity import FAMILIES as HOURLY_FAMILIES
+from hourly_parity import HOURLY_FORMAT, RUN_FILE, run_label
 from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
 from parity import NEW_DATA_REASON as PARITY_NEW_DATA_REASON
 from parity import RESULT_FORMAT as PARITY_RESULT_FORMAT
@@ -171,9 +200,13 @@ VERDICT_TITLES = {
 
 #: The three ways a key is not ported, the one that blocks go first: a dbt
 #: writer owns the key and nothing compared its file.
-NOT_PORTED_ORDER = ("writer_without_result", "exposure_without_writer", "no_exposure")
+NOT_PORTED_ORDER = ("writer_without_result", "soak_not_covered", "exposure_without_writer", "no_exposure")
 NOT_PORTED_TITLES = {
     "writer_without_result": "A dbt writer owns it, and no parity result compared its file: this blocks go",
+    "soak_not_covered": (
+        "A dbt writer owns it, and its hourly comparisons on real data do not yet cover the soak (soak_coverage()): "
+        "this blocks go"
+    ),
     "exposure_without_writer": "An exposure documents it, and today's code still writes it",
     "no_exposure": "No dbt exposure names it: today's code writes it, and the dbt path does not touch it",
 }
@@ -482,6 +515,160 @@ def load_results(parity_dir: Path) -> dict[str, dict]:
     return results
 
 
+# --- the hourly comparisons on real data (--hourly-dir) ------------------------------------------------------------
+
+#: Decision 46 amends decision 30's soak to 3 days of hourly runs on UA; the module docstring's rule counts that many
+#: hours back from the newest run of SOAK_LEG in --hourly-dir. Decided, not picked.
+SOAK_HOURS = 72
+#: The leg whose runs can cover the soak: decision 46's "an hourly dispatch of the conditions lane on UA". Another
+#: leg's run can still make a key differ, and never fills an hour UA missed. Decided, not picked.
+SOAK_LEG = "ua"
+#: The longest two consecutive runs of the soak may be apart and still both count, in hours. @unvalidated, picked: the
+#: soak's routine dispatches publish-conditions.yml at :18 every hour, and runs 617 to 624 (2026-10-10, 11:20 to 18:19
+#: UTC) began 55.6 to 63.0 minutes apart (Measured from the Actions API's created_at), so 1.5 hours takes that jitter
+#: and refuses one missing hour. What would settle it: the spread of a whole soak's gaps, from the same API, and the
+#: maintainer's word on whether one missed hour in 72 still counts as "every soak hour".
+SOAK_MAX_GAP_HOURS = 1.5
+
+
+@dataclass
+class HourlyRun:
+    """The comparison of one leg's build in one publish-conditions.yml run, as check-conditions.yml's `parity` job
+    made it: its run.json, and its families' parity results."""
+
+    at: datetime  # when the build began, the hour its answers are of (compared_at where the build said nothing)
+    run: str
+    leg: str
+    commit: str | None
+    families: dict[str, dict]
+    results: dict[str, dict]
+    path: Path
+
+
+def _instant(text: str | None) -> datetime | None:
+    if not text:
+        return None
+    moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+
+def load_hourly(hourly_dir: Path) -> list[HourlyRun]:
+    """Every hourly comparison under `hourly_dir`: each run.json in HOURLY_FORMAT, with the parity results beside it.
+    A run.json in another format is refused by name, as load_results() refuses a stray result."""
+    runs = []
+    for path in sorted(hourly_dir.rglob(RUN_FILE)):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict) or document.get("format") != HOURLY_FORMAT:
+            raise ValueError(f"{path} is not an hourly comparison ({HOURLY_FORMAT}); only hourly_parity.py's go in --hourly-dir")
+        at = _instant(document.get("built_at")) or _instant(document.get("compared_at"))
+        if at is None:
+            raise ValueError(f"{path} says neither when its build began nor when it compared")
+        results = {}
+        for family, answer in (document.get("families") or {}).items():
+            if answer.get("result"):
+                result_path = path.parent / answer["result"]
+                if result_path.exists():
+                    results[family] = json.loads(result_path.read_text(encoding="utf-8"))
+        runs.append(
+            HourlyRun(
+                at=at,
+                run=run_label(document),
+                leg=str(document.get("leg")),
+                commit=document.get("commit"),
+                families=document.get("families") or {},
+                results=results,
+                path=path,
+            )
+        )
+    return sorted(runs, key=lambda run: run.at)
+
+
+def _clean(family: str, answer: dict | None) -> bool:
+    if answer is None:
+        return False
+    return answer.get("verdict") == "equal" or (answer.get("verdict") == "no_records" and family in MAY_COMPARE_NO_RECORDS)
+
+
+def _hours(span: timedelta) -> str:
+    return f"{span.total_seconds() / 3600:.1f} h"
+
+
+def _stamp(moment: datetime) -> str:
+    return moment.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+
+@dataclass
+class Coverage:
+    """soak_coverage()'s answer for one family: `differs`, `clear` or `short`, said in words, and the run whose
+    result stands for it (the newest that differed, or the newest clean one)."""
+
+    state: str
+    detail: str
+    result: dict | None = None
+    differing: int = 0
+
+
+def soak_coverage(runs: list[HourlyRun], family: str) -> Coverage:
+    """Whether `family`'s hourly comparisons are clean across the soak: the module docstring, "THE HOURLY COMPARISONS"."""
+    if not runs:
+        return Coverage("short", "no hourly comparison was read")
+    differing = [run for run in runs if (run.families.get(family) or {}).get("verdict") in ("differs", "failed")]
+    if differing:
+        newest = differing[-1]
+        named = "; ".join(
+            f"run {run.run} ({run.families[family].get('why') or run.families[family]['verdict']})" for run in differing[-3:]
+        )
+        return Coverage(
+            "differs",
+            f"{len(differing)} of {len(runs)} hourly comparisons on real data found a difference nothing explains, or "
+            f"crashed: {named}",
+            result=newest.results.get(family),
+            differing=len(differing),
+        )
+    soak = [run for run in runs if run.leg == SOAK_LEG]
+    if not soak:
+        legs = ", ".join(sorted({run.leg for run in runs}))
+        return Coverage("short", f"no hourly comparison of the {SOAK_LEG} leg (SOAK_LEG) was read, only of {legs}")
+    end = soak[-1].at
+    start = end - timedelta(hours=SOAK_HOURS)
+    before = [run for run in soak if run.at <= start]
+    if not before:
+        return Coverage(
+            "short",
+            f"the {SOAK_LEG} leg's hourly comparisons read span {_hours(end - soak[0].at)} ({_stamp(soak[0].at)} to "
+            f"{_stamp(end)}), short of the soak's {SOAK_HOURS} h (SOAK_HOURS)",
+        )
+    window = [before[-1], *[run for run in soak if run.at > start]]
+    unclean = [run for run in window if not _clean(family, run.families.get(family))]
+    if unclean:
+        named = "; ".join(
+            f"run {run.run} at {_stamp(run.at)}: "
+            + ((run.families.get(family) or {}).get("why") or (run.families.get(family) or {}).get("verdict") or "no result")
+            for run in unclean[:3]
+        )
+        return Coverage(
+            "short",
+            f"{len(unclean)} of the {len(window)} runs in the soak's last {SOAK_HOURS} h did not compare it clean ({named})",
+        )
+    gaps = [(later.at - earlier.at, earlier, later) for earlier, later in zip(window, window[1:], strict=False)]
+    widest, earlier, later = max(gaps, key=lambda gap: gap[0]) if gaps else (timedelta(0), window[0], window[0])
+    if widest > timedelta(hours=SOAK_MAX_GAP_HOURS):
+        return Coverage(
+            "short",
+            f"runs {earlier.run} and {later.run} are {_hours(widest)} apart ({_stamp(earlier.at)} to {_stamp(later.at)}), "
+            f"more than SOAK_MAX_GAP_HOURS ({SOAK_MAX_GAP_HOURS} h): an hour went uncompared",
+        )
+    legs = ", ".join(sorted({run.leg for run in window}))
+    commits = ", ".join(sorted({str(run.commit)[:12] for run in window}))
+    return Coverage(
+        "clear",
+        f"compared on real data in every one of the {len(window)} runs of the soak's last {SOAK_HOURS} h, "
+        f"{_stamp(window[0].at)} to {_stamp(end)}, at most {_hours(widest)} apart, with no unexplained difference "
+        f"(leg {legs}; commit {commits})",
+        result=window[-1].results.get(family),
+    )
+
+
 # --- the answer per key -------------------------------------------------------
 
 
@@ -526,7 +713,7 @@ class KeyRow:
         """This report's reading of decision 30 item 2, for the maintainer to confirm: a key blocks go when it
         differs, when nothing was compared, or when a dbt writer owns it and no result compared its file. A key the
         dbt path does not write is listed with its reason and does not block."""
-        return self.verdict in ("differs", "not_compared") or self.why == "writer_without_result"
+        return self.verdict in ("differs", "not_compared") or self.why in ("writer_without_result", "soak_not_covered")
 
     @property
     def rank(self) -> tuple:
@@ -624,12 +811,50 @@ def judge(result: dict, pattern_note: str | None = None) -> tuple[str, str, list
     return "equal", f"no difference across {records}, keyed by {result.get('key')}", [], []
 
 
-def key_rows(today: list[TodayKey], dbt: list[DbtKey], results: dict[str, dict]) -> tuple[list[KeyRow], list[dict], list[DbtKey]]:
-    """Every today key's answer, the parity results that reach no today key, and the dbt keys today does not publish."""
+def _from_hourly(row: KeyRow, coverage: Coverage, family: str, key: str) -> None:
+    """`row` answered by its family's hourly comparisons (soak_coverage())."""
+    row.family = family
+    result = coverage.result
+    if result is not None:
+        row.new_file, row.old_records, row.new_records = (
+            result.get("new_file"),
+            result.get("old_records"),
+            result.get("new_records"),
+        )
+    if coverage.state == "differs":
+        row.verdict, row.why, row.detail = "differs", None, coverage.detail
+        differences = [
+            _difference(item, "not explained: a defect in the new path until it is classified")
+            for item in (result or {}).get("differences") or []
+        ]
+        if result is not None and result.get("outcome") == "old_side_refused":
+            differences.append(
+                Listed("file", f"today's exporter refused this hour's input and the writer wrote a file: {result.get('message')}")
+            )
+        row.differences = differences or [Listed("hourly comparison", coverage.detail)]
+        row.listed = [_difference(item) for item in (result or {}).get("explained") or []]
+    elif coverage.state == "clear" and result is not None:
+        row.why = None
+        row.verdict, detail, row.differences, row.listed = judge(result)
+        row.detail = f"{coverage.detail}; the newest: {detail}"
+    else:
+        row.verdict, row.why, row.detail = "not_ported", "soak_not_covered", coverage.detail
+    for item in [*row.differences, *row.listed]:
+        item.safety = safety_groups(item.fields, key)
+
+
+def key_rows(
+    today: list[TodayKey], dbt: list[DbtKey], results: dict[str, dict], hourly: list[HourlyRun] | None = None
+) -> tuple[list[KeyRow], list[dict], list[DbtKey]]:
+    """Every today key's answer, the parity results that reach no today key, and the dbt keys today does not publish.
+
+    `hourly` is load_hourly()'s runs: a key whose writer the monthly lane has no result for is judged by its family's
+    soak_coverage(), and an hourly difference makes any key differ (the module docstring, "THE HOURLY COMPARISONS")."""
     by_pattern = {key_pattern(entry.key): entry for entry in dbt}
     by_location: dict[str, list[dict]] = {}
     for result in results.values():
         by_location.setdefault(result["new_file_name"], []).append(result)
+    hourly_by_location = {family.new_file: family.name for family in HOURLY_FAMILIES.values()}
 
     rows: list[KeyRow] = []
     used: set[str] = set()
@@ -651,7 +876,12 @@ def key_rows(today: list[TodayKey], dbt: list[DbtKey], results: dict[str, dict])
         else:
             row.exposure, row.writer = owned.exposure, owned.writer
             matched = by_location.get(owned.location or "", [])
-            if not matched:
+            hourly_family = hourly_by_location.get(owned.location or "")
+            coverage = soak_coverage(hourly, hourly_family) if hourly and hourly_family else None
+            if coverage is not None and (coverage.state == "differs" or not matched):
+                _from_hourly(row, coverage, hourly_family, entry.key)
+                used.update(result["family"] for result in matched)
+            elif not matched:
                 row.why = "writer_without_result"
                 row.detail = (
                     f"{owned.writer} writes it as {owned.location}, and no parity result in --parity-dir compared that file"
@@ -737,7 +967,15 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
         "# Go/no-go gate: every R2 key today's pipeline publishes",
         "",
         f'Decision 30, item 2 (pipeline/ELT.md, "The go/no-go gate"). {len(rows)} keys, from parity results in '
-        f"`{inputs['parity_dir']}` ({inputs['results']} families) and the dbt manifest `{inputs['dbt_manifest']}`.",
+        f"`{inputs['parity_dir']}` ({inputs['results']} families) and the dbt manifest `{inputs['dbt_manifest']}`"
+        + (
+            f", and {inputs['hourly_runs']} hourly comparisons on real data in `{inputs['hourly_dir']}`, "
+            f"{inputs['hourly_span']}: a key the monthly lane compares nothing for is clean only when every run of the "
+            f"soak's last {SOAK_HOURS} h compared it clean, none more than {SOAK_MAX_GAP_HOURS} h apart "
+            "(gate_report.soak_coverage())."
+            if inputs.get("hourly_runs")
+            else "."
+        ),
         "",
         "| Answer | Keys |",
         "|---|---|",
@@ -816,15 +1054,22 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
     return "\n".join(lines)
 
 
-def build_report(parity_dir: Path, dbt_manifest: Path) -> dict:
+def build_report(parity_dir: Path, dbt_manifest: Path, hourly_dir: Path | None = None) -> dict:
     results = load_results(parity_dir)
     if not results:
         raise FileNotFoundError(f"{parity_dir} holds no parity results; run parity.py with --json-dir {parity_dir} first")
     if not dbt_manifest.exists():
         raise FileNotFoundError(f"{dbt_manifest} is missing; the report reads which keys dbt writes from the dbt manifest")
     manifest = json.loads(dbt_manifest.read_text(encoding="utf-8"))
-    rows, unmatched, new_keys = key_rows(today_keys(), dbt_keys(manifest), results)
+    hourly = load_hourly(hourly_dir) if hourly_dir is not None else None
+    if hourly_dir is not None and not hourly:
+        raise FileNotFoundError(f"{hourly_dir} holds no hourly comparison ({RUN_FILE}); download the soak's artifacts into it")
+    rows, unmatched, new_keys = key_rows(today_keys(), dbt_keys(manifest), results, hourly)
     inputs = {"parity_dir": _shown(parity_dir), "dbt_manifest": _shown(dbt_manifest), "results": len(results)}
+    if hourly:
+        inputs["hourly_dir"] = _shown(hourly_dir)
+        inputs["hourly_runs"] = len(hourly)
+        inputs["hourly_span"] = f"{_stamp(hourly[0].at)} to {_stamp(hourly[-1].at)}"
     return {
         "format": REPORT_FORMAT,
         "inputs": inputs,
@@ -868,9 +1113,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--summary", type=Path, default=None, help="a file the headline counts are appended to, such as $GITHUB_STEP_SUMMARY"
     )
+    parser.add_argument(
+        "--hourly-dir",
+        type=Path,
+        default=None,
+        help="the soak's hourly-parity-* artifacts, one folder per run (gh run download): soak_coverage() judges a key "
+        "the monthly lane compares nothing for",
+    )
     args = parser.parse_args(argv)
     try:
-        report = build_report(args.parity_dir, args.dbt_manifest)
+        report = build_report(args.parity_dir, args.dbt_manifest, args.hourly_dir)
     except (FileNotFoundError, ValueError) as problem:
         print(f"gate_report: {problem}", file=sys.stderr)
         return 2

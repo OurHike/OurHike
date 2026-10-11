@@ -84,7 +84,7 @@ import threading
 import time
 from collections import defaultdict
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -106,7 +106,7 @@ from dlt.common.storages.fsspec_filesystem import glob_files  # noqa: E402
 from dlt.normalize.exceptions import NormalizeJobFailed  # noqa: E402
 from dlt.pipeline.exceptions import PipelineStepFailed  # noqa: E402
 
-from extract import _geofabrik, _kinds, _robots  # noqa: E402
+from extract import _answers, _geofabrik, _kinds, _robots  # noqa: E402
 from extract._contract import (  # noqa: E402
     CADENCES,
     Carried,
@@ -2214,6 +2214,29 @@ def load_committed(
         return load_warehouse(con, pipeline, log=log, readers=readers, tables=tables)
 
 
+def keep_answers(
+    recorder: _answers.Recorder, directory: Path, lane: str, report: RunReport | None, stopped: BaseException | None = None
+) -> None:
+    """--record-answers' files (extract/_answers.py), said in the log and never a stop: the run's own outcome stands
+    whatever happens here, because a comparison is never a reason to hold back what a hiker downloads."""
+    known = report or getattr(stopped, "report", None)
+    try:
+        path = recorder.write(
+            directory,
+            _answers.table_states(known) if known is not None else {},
+            lane=lane,
+            run_id=known.run_id if known is not None else None,
+            outcome="stopped" if stopped is not None else known.outcome,
+        )
+    except Exception as failed:  # noqa: BLE001 - nothing here may change the run's own outcome
+        print(f"::warning title=Answers not kept::{type(failed).__name__}: {failed}; this hour's comparison will say so")
+        return
+    kept = ", ".join([*recorder.http, *recorder.postgres]) or "nothing"
+    print(
+        f"-- recorded answers: {kept}, in {path.parent}" + (f"; refused {sorted(recorder.refused)}" if recorder.refused else "")
+    )
+
+
 def main(argv: list[str] | None = None) -> RunReport:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--lane", required=True, choices=sorted(LANES) + sorted(LEGS))
@@ -2259,6 +2282,12 @@ def main(argv: list[str] | None = None) -> RunReport:
         help="read the one --only table now and land it with its dlt schema history erased (refresh='drop_resources'): "
         "for a field its publisher retyped, which data_type freeze refuses on every run (the dlt skill)",
     )
+    parser.add_argument(
+        "--record-answers",
+        type=Path,
+        help="also keep NWS's answer and OurHike's closures and reports rows as this run received them, in fixture "
+        "mode's files under this directory, for the hour's comparison with today's exporters (extract/_answers.py)",
+    )
     args = parser.parse_args(argv)
     if args.only and args.cross_lane_inputs:
         # Otherwise cross_lane_resources() would refuse ALSO_READS' tables,
@@ -2273,26 +2302,32 @@ def main(argv: list[str] | None = None) -> RunReport:
     # A leg's warehouse holds its job's tables alone, whatever else its store kept (load_warehouse()'s `tables`).
     keep = leg_tables(args.lane, discovered) if args.lane in LEGS else None
     report = None
+    recorder = _answers.Recorder() if args.record_answers is not None else None
     try:
         try:
-            report = run_pipeline(
-                args.lane,
-                bucket_url,
-                resources=resources,
-                pipelines_dir=args.pipelines_dir,
-                read_seconds=args.read_seconds,
-                as_landed=args.as_landed,
-                cross_lane=args.cross_lane_inputs,
-                normalize_workers=args.normalize_workers,
-                run_log_cache=args.run_log_cache,
-                reset=args.reset,
-            )
-        except ExtractRefused as refused:
-            if args.report_json:
+            with _answers.recording(recorder) if recorder is not None else nullcontext():
+                report = run_pipeline(
+                    args.lane,
+                    bucket_url,
+                    resources=resources,
+                    pipelines_dir=args.pipelines_dir,
+                    read_seconds=args.read_seconds,
+                    as_landed=args.as_landed,
+                    cross_lane=args.cross_lane_inputs,
+                    normalize_workers=args.normalize_workers,
+                    run_log_cache=args.run_log_cache,
+                    reset=args.reset,
+                )
+        except Exception as stopped:
+            if recorder is not None:
+                keep_answers(recorder, args.record_answers, args.lane, None, stopped)
+            if isinstance(stopped, ExtractRefused) and args.report_json:
                 args.report_json.write_text(
-                    json.dumps({"lane": args.lane, "outcome": "refused", "problems": str(refused).splitlines()}, indent=2)
+                    json.dumps({"lane": args.lane, "outcome": "refused", "problems": str(stopped).splitlines()}, indent=2)
                 )
             raise
+        if recorder is not None:
+            keep_answers(recorder, args.record_answers, args.lane, report)
         if args.report_json:
             # The extract's own run, written before --warehouse reads it back.
             args.report_json.write_text(json.dumps(report_document(report), indent=2, sort_keys=True, default=str))

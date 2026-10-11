@@ -1,5 +1,13 @@
 {{ config(materialized='table') }}
 {%- set tolerance_m = var('trail_lines_network_duplicate_tolerance_m') %}
+{#- Two names whose copies run within a centimetre of the same length tie
+    (S2, below). Reasoned, not fitted: the 16-segment buffer misses up to
+    10 m x (1 - cos(pi/64)) = 12 mm of a true circle at a line's ends, and a
+    published vertex is cut to 6 decimals of a degree, about 0.1 m, so no
+    difference under a centimetre is the ground's. Any value from about
+    1e-6 m, where two copies drawn the same length differ by arithmetic,
+    up to that 0.1 m answers the same. #}
+{%- set name_tie_m = 0.01 %}
 -- The network's published lines: every row int_trail_lines__network_judged
 -- keeps whose source may publish, with each declared duplicate drawn once
 -- (TL18, lib/duplicates.py, #1459 — Two New York City agencies draw the same
@@ -25,12 +33,41 @@
 -- 16 segments per quarter circle, shapely's `.buffer()` default. The
 -- duplicate is removed; its senior keeps its own geometry and fills `name`,
 -- `trail_status` and `blaze_color` only where it has none (merge()'s
--- INHERITABLE, the first junior to have one winning), and names the
--- junior's source in `duplicate_of`. Both constants round toward missing a
--- duplicate, and are chosen rather than fitted: measured for New York City's
--- pair only (#1453 — Measure whether New York City's two registered layers
--- draw the same tread twice — 2,095 greenway segments sit on NYC Parks
--- ground), @unvalidated for any other pair until its overlap is measured.
+-- INHERITABLE), and names the junior's source in `duplicate_of`. Both
+-- constants round toward missing a duplicate, and are chosen rather than
+-- fitted: measured for New York City's pair only (#1453 — Measure whether
+-- New York City's two registered layers draw the same tread twice — 2,095
+-- greenway segments sit on NYC Parks ground), @unvalidated for any other
+-- pair until its overlap is measured.
+--
+-- A SENIOR WITH NO NAME TAKES THE NAME IT FOLLOWS LONGEST: standard S2, the
+-- maintainer's poll of 2026-10-11 ("the named copy it follows for the
+-- longest distance (within 10 m), not the first in file order or by key").
+-- Of the names its swallowed copies carry, it takes the one whose copies lie
+-- within 10 m of it along the greatest length, each name's copies unioned
+-- first, so ground that two copies of one name share (one in each of two
+-- layers) counts once. Only a copy it swallows counts: a named path beside
+-- it that is kept as a line of its own is not a copy, and the line does not
+-- take its name. Two names within `name_tie_m`, 1 cm, of the same length tie,
+-- and the name that sorts first as text (DuckDB's byte order) wins, so copies
+-- drawn the same length name the line the same way on every build. Today's
+-- exporter takes the first named copy in file order (lib/duplicates.py:
+-- apply_duplicates() merges in file order and merge() keeps the first name),
+-- and this model took the first by staging key until S2.
+-- Measured 2026-10-11 on NYC Open Data's live rows (vjbm-hsyr, inkn-q76z,
+-- mzxg-pwib), counting every segment of each name within 10 m, in UTM 18N:
+-- Brookfield Park's unnamed line (121 m) has BROOKFIELD PARK WEST OUTER LOOP
+-- along 140 m and BROOKFIELD PARK BLUE TRAIL along 26 m; Cunningham Park's
+-- (244 m) has VANDERBILT MOTOR PARKWAY along 154 m and CUNNINGHAM PARK
+-- GREENWAY along 109 m. Counting only the copies each swallows, as this model
+-- does, in EPSG:5070: 130 m against 25 m (two segments) and 146 m against
+-- 100 m (five), the counts monthly run 30's rebuild found; which segments
+-- they are is Reasoned from each one's share of its length inside that
+-- line's buffer. Both ways name them West Outer Loop and Vanderbilt Motor
+-- Parkway, where today's exporter names Cunningham Park's line Cunningham
+-- Park Greenway. `trail_status` and `blaze_color` still come from the first
+-- junior that has one, in pair order then staging-key order: S2 names the
+-- name alone.
 --
 -- ONE PAIR AT A TIME IN THE PYTHON, ALL AT ONCE HERE. deduplicate() applies
 -- the pairs in registry order against the lines still standing, which only
@@ -38,8 +75,9 @@
 -- chain is declared, and this model's test stops the build if one is, rather
 -- than answering it differently. Where one senior line swallows lines from
 -- two pairs, `duplicate_of` names the later pair's junior, as the Python's
--- last merge() does; within a pair the juniors merge in staging-key order,
--- where the Python merges them in file order.
+-- last merge() does; within a pair the juniors give `trail_status` and
+-- `blaze_color` in staging-key order, where the Python merges them in file
+-- order.
 with judged as (
     select * from {{ ref('int_trail_lines__network_judged') }}
 ),
@@ -129,32 +167,40 @@ shares as (
     group by junior_key
 ),
 
+-- The length of each junior lying inside one senior line's own 10 m buffer.
+followed as (
+    select
+        junior_key,
+        junior_m,
+        senior_key,
+        senior_id,
+        senior_m,
+        st_length(
+            st_intersection(
+                junior_m,
+                st_buffer(senior_m, {{ tolerance_m }}, 16)
+            )
+        ) as followed_m
+    from candidates
+),
+
 -- The senior line each duplicate is reported against: most of the junior
 -- inside its own buffer, the lower id on a tie (find_duplicates()' `best`).
 reported as (
     select
-        candidates.junior_key,
-        candidates.senior_key
-    from candidates
-    inner join shares on candidates.junior_key = shares.junior_key
+        followed.junior_key,
+        followed.junior_m,
+        followed.senior_key,
+        followed.senior_m
+    from followed
+    inner join shares on followed.junior_key = shares.junior_key
     where
         shares.junior_share
         >= {{ var('trail_lines_network_duplicate_min_share') }}
     qualify
         row_number() over (
-            partition by candidates.junior_key
-            order by
-                st_length(
-                    st_intersection(
-                        candidates.junior_m,
-                        st_buffer(
-                            candidates.senior_m,
-                            {{ tolerance_m }},
-                            16
-                        )
-                    )
-                ) desc,
-                candidates.senior_id asc
+            partition by followed.junior_key
+            order by followed.followed_m desc, followed.senior_id asc
         ) = 1
 ),
 
@@ -163,6 +209,8 @@ reported as (
 swallowed as (
     select
         reported.senior_key,
+        reported.senior_m,
+        reported.junior_m,
         shares.pair_order,
         lines.trail_segment_key,
         lines.source_key,
@@ -174,17 +222,48 @@ swallowed as (
     inner join lines on reported.junior_key = lines.trail_segment_key
 ),
 
+-- S2 (the header): how far each name's swallowed copies follow their senior,
+-- the copies of one name unioned first so shared ground counts once.
+name_lengths as (
+    select
+        senior_key,
+        name,
+        st_length(
+            st_intersection(
+                st_union_agg(junior_m),
+                st_buffer(any_value(senior_m), {{ tolerance_m }}, 16)
+            )
+        ) as followed_m
+    from swallowed
+    where coalesce(name, '') != ''
+    group by senior_key, name
+),
+
+name_ties as (
+    select
+        senior_key,
+        name,
+        followed_m
+        >= max(followed_m) over (partition by senior_key)
+        - {{ name_tie_m }} as ties_the_longest
+    from name_lengths
+),
+
+-- The name followed longest; of names tied with it, the one sorting first.
+longest_name as (
+    select
+        senior_key,
+        name as junior_name
+    from name_ties
+    where ties_the_longest
+    qualify row_number() over (partition by senior_key order by name) = 1
+),
+
 -- merge(), field by field: a senior's own value wins where it has one, else
 -- the first junior's that has one; `duplicate_of` is the last junior's.
 inherited as (
     select
         senior_key,
-        list_extract(
-            list(name order by pair_order, trail_segment_key) filter (
-                where coalesce(name, '') != ''
-            ),
-            1
-        ) as junior_name,
         list_extract(
             list(trail_status order by pair_order, trail_segment_key) filter (
                 where coalesce(trail_status, '') != ''
@@ -212,7 +291,7 @@ select
     lines.trail_line_id,
     case
         when coalesce(lines.name, '') = ''
-            then coalesce(inherited.junior_name, lines.name)
+            then coalesce(longest_name.junior_name, lines.name)
         else lines.name
     end as name,
     case
@@ -233,5 +312,6 @@ select
     lines._loaded_at
 from lines
 left join inherited on lines.trail_segment_key = inherited.senior_key
+left join longest_name on lines.trail_segment_key = longest_name.senior_key
 left join reported on lines.trail_segment_key = reported.junior_key
 where reported.junior_key is null

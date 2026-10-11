@@ -859,20 +859,20 @@ def test_parity_does_not_call_a_staging_key_what_a_line_with_a_globalid_publishe
 
 
 def test_parity_explains_a_name_a_line_inherits_from_another_swallowed_copy_and_nothing_else():
-    """Run 30's nyc_parks_trails:row-2fd6-t8ys~mjm7: no name of its own, two named nyc_cscl_paths copies swallowed, the
-    first in file order today and the first by staging key in SQL. Only a name, and only on a line that swallowed the
-    same layer's copies on both sides, is explained."""
+    """Run 30's nyc_parks_trails:row-7cmw.ec29~bksa: no name of its own, five named nyc_dot_greenways copies swallowed,
+    'CUNNINGHAM PARK GREENWAY' first in file order today and 'VANDERBILT MOTOR PARKWAY' followed longest in SQL
+    (standard S2). Only a name, and only on a line that swallowed the same layer's copies on both sides, is explained."""
     family = parity.FAMILIES["nearby_trails"]
     path = [[0.0, 0.0], [1.0, 1.0]]
 
-    def survivor(line_id: str, name: str, swallowed: str | None = "nyc_cscl_paths", **changed) -> dict:
+    def survivor(line_id: str, name: str, swallowed: str | None = "nyc_dot_greenways", **changed) -> dict:
         feature = _line(line_id, name, path)
         feature["properties"].update({"duplicate_of": swallowed, **changed} if swallowed else changed)
         return feature
 
     old = {
         "features": [
-            survivor("p:1", "BROOKFIELD PARK WEST OUTER LOOP"),
+            survivor("p:1", "CUNNINGHAM PARK GREENWAY"),
             survivor("p:2", "Named once", swallowed=None),
             survivor("p:3", "Old name", length_miles=1.0),
             survivor("p:4", "Old name"),
@@ -880,10 +880,10 @@ def test_parity_explains_a_name_a_line_inherits_from_another_swallowed_copy_and_
     }
     new = {
         "features": [
-            survivor("p:1", "BROOKFIELD PARK BLUE TRAIL"),
+            survivor("p:1", "VANDERBILT MOTOR PARKWAY"),
             survivor("p:2", "Named twice", swallowed=None),
             survivor("p:3", "New name", length_miles=2.0),
-            survivor("p:4", "New name", swallowed="nyc_dot_greenways"),
+            survivor("p:4", "New name", swallowed="nyc_cscl_paths"),
         ]
     }
 

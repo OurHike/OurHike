@@ -174,7 +174,10 @@ models:
         description: The published id, unique across the network.
         data_tests: [not_null, unique]
       - name: name
-        description: The line's name, a swallowed duplicate's where the senior had none.
+        description: >
+          The line's name; where the senior had none, the name its swallowed
+          copies carry along the greatest length within 10 m of it (standard
+          S2, the model's header).
       - name: trail_status
         description: "'open' or 'closed'."
         data_tests:
@@ -1053,7 +1056,13 @@ unit_tests:
       stays; a junior with no senior row, or whose senior is dropped or may
       not publish, stays. tests/test_dbt_trail_lines_network_parity.py
       runs deduplicate() over the same rows, publication filtered first
-      (pipeline/ELT.md, "Publication filters run before dedup").
+      (pipeline/ELT.md, "Publication filters run before dedup"). The one
+      senior here with two named copies
+      (sql::a_senior_swallowing_from_two_pairs_names_the_later_junior) has
+      them the same length (405.183 m each in EPSG:5070, 'Path Name' 2 nm
+      longer by arithmetic, measured 2026-10-11), so standard S2's 1 cm tie
+      (the name sorting first) and the Python's file order both name it
+      'Greenway Name'; the next unit test holds S2 where the two part.
     model: int_trail_lines__network_deduplicated
     given:
       - input: ref('int_trail_lines__network_judged')
@@ -1131,6 +1140,90 @@ unit_tests:
         - {"trail_segment_key": "test_lib_duplicates::test_no_senior_records_removes_nothing", "trail_line_id": "lonely_junior:test_lib_duplicates::test_no_senior_records_removes_nothing", "name": null, "trail_status": "open", "blaze_color": "Unknown", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.719952663 40.66, -73.719952663 40.663617618)"}
         - {"trail_segment_key": "test_export_nearby_trails::test_a_junior_whose_senior_is_not_shipping_is_skipped[junior]", "trail_line_id": "junior_of_held:test_export_nearby_trails::test_a_junior_whose_senior_is_not_shipping_is_skipped[junior]", "name": null, "trail_status": "open", "blaze_color": "Unknown", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.469952663 40.66, -73.469952663 40.663617618)"}
         - {"trail_segment_key": "test_export_nearby_trails::test_no_declared_pairs_leaves_every_record_alone", "trail_line_id": "oprhp_trails:test_export_nearby_trails::test_no_declared_pairs_leaves_every_record_alone", "name": "Timp-Torne", "trail_status": "open", "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.37 40.66, -73.37 40.663617618)"}
+  - name: int_trail_lines__network_deduplicated_names_an_unnamed_line_after_the_copy_it_follows_longest
+    description: >
+      Standard S2 (the maintainer's poll of 2026-10-11): a senior line with
+      no name of its own takes the name its swallowed copies carry along the
+      greatest length within 10 m of it, never the first copy by staging key
+      or in file order. Six invented shapes, each on its own ground about
+      4 km from the next, every name's copies keyed so that the first by key
+      is the wrong answer. The Brookfield shape: a 25 m copy lying wholly
+      along a 120 m line against a 220 m copy lying along it for 136 m, which
+      names the line. The Cunningham shape: two names in pieces along a
+      240 m line, 147 m of one against 99 m of the other. Three 45 m pieces of
+      one name beat a single 100 m piece of another (names are summed, not
+      segments compared). Two names 5 mm apart in length tie (within
+      name_tie_m, 1 cm), and the one sorting first wins, though the other is
+      longer and first by key. One name drawn on the same ground by two
+      layers counts that ground once, 60 m, and loses to another name's
+      100 m. A named path running 107 m beside the line but kept as a line of
+      its own (27% of it near the line, under the 50% share) is not a copy,
+      so the line takes its one 30 m copy's name. No Python twin: today's
+      exporter takes the first named copy in file order, and parity.py's
+      INHERITED_NAME_REASON explains the difference.
+    model: int_trail_lines__network_deduplicated
+    given:
+      - input: ref('int_trail_lines__network_judged')
+        rows:
+          - {"trail_segment_key": "s2::the_brookfield_shape[senior]", "source_key": "parks_layer", "file_row": 1, "may_publish": true, "duplicate_of": null, "dropped_because": null, "trail_line_id": "parks_layer:s2::the_brookfield_shape[senior]", "name": null, "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-75.000000000 41.300000000, -75.000000000 41.301080497)"}
+          - {"trail_segment_key": "s2::the_brookfield_shape[a_short_copy_wholly_along]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::the_brookfield_shape[a_short_copy_wholly_along]", "name": "Blue Trail", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-75.000047760 41.300360166, -75.000047760 41.300585269)"}
+          - {"trail_segment_key": "s2::the_brookfield_shape[b_long_copy_partly_along]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::the_brookfield_shape[b_long_copy_partly_along]", "name": "Outer Loop", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.999952240 41.299954979, -74.999952240 41.301125518, -74.998877647 41.301125518)"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[senior]", "source_key": "parks_layer", "file_row": 1, "may_publish": true, "duplicate_of": null, "dropped_because": null, "trail_line_id": "parks_layer:s2::the_cunningham_shape[senior]", "name": null, "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.950000000 41.300000000, -74.950000000 41.302160994)"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[a_greenway_1]", "source_key": "greenways_layer", "file_row": 3, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "greenways_layer:s2::the_cunningham_shape[a_greenway_1]", "name": "Park Greenway", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.950047760 41.301143526, -74.950047760 41.301791824)"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[a_greenway_2]", "source_key": "greenways_layer", "file_row": 3, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "greenways_layer:s2::the_cunningham_shape[a_greenway_2]", "name": "Park Greenway", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.950047760 41.301791824, -74.950047760 41.301989915)"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[a_greenway_3]", "source_key": "greenways_layer", "file_row": 3, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "greenways_layer:s2::the_cunningham_shape[a_greenway_3]", "name": "Park Greenway", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.950047760 41.302070953, -74.950047760 41.302106969)"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[b_parkway_1]", "source_key": "greenways_layer", "file_row": 3, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "greenways_layer:s2::the_cunningham_shape[b_parkway_1]", "name": "Motor Parkway", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.949952240 41.300000000, -74.949952240 41.301143526)"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[b_parkway_2]", "source_key": "greenways_layer", "file_row": 3, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "greenways_layer:s2::the_cunningham_shape[b_parkway_2]", "name": "Motor Parkway", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.949952240 41.301989915, -74.949952240 41.302160994)"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[senior]", "source_key": "parks_layer", "file_row": 1, "may_publish": true, "duplicate_of": null, "dropped_because": null, "trail_line_id": "parks_layer:s2::three_short_pieces_of_one_name_beat_one_long_piece[senior]", "name": null, "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.900000000 41.300000000, -74.900000000 41.301800828)"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[a_one_long_piece]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::three_short_pieces_of_one_name_beat_one_long_piece[a_one_long_piece]", "name": "One Long Piece", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.899952240 41.300000000, -74.899952240 41.300900414)"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[b_short_piece_1]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::three_short_pieces_of_one_name_beat_one_long_piece[b_short_piece_1]", "name": "Three Short Pieces", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.900047760 41.300000000, -74.900047760 41.300405186)"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[b_short_piece_2]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::three_short_pieces_of_one_name_beat_one_long_piece[b_short_piece_2]", "name": "Three Short Pieces", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.900047760 41.300450207, -74.900047760 41.300855393)"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[b_short_piece_3]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::three_short_pieces_of_one_name_beat_one_long_piece[b_short_piece_3]", "name": "Three Short Pieces", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.900047760 41.300900414, -74.900047760 41.301305601)"}
+          - {"trail_segment_key": "s2::a_tie_goes_to_the_name_that_sorts_first[senior]", "source_key": "parks_layer", "file_row": 1, "may_publish": true, "duplicate_of": null, "dropped_because": null, "trail_line_id": "parks_layer:s2::a_tie_goes_to_the_name_that_sorts_first[senior]", "name": null, "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.850000000 41.300000000, -74.850000000 41.300900414)"}
+          - {"trail_segment_key": "s2::a_tie_goes_to_the_name_that_sorts_first[a_beta]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::a_tie_goes_to_the_name_that_sorts_first[a_beta]", "name": "Beta Path", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.849952240 41.300090041, -74.849952240 41.300810418)"}
+          - {"trail_segment_key": "s2::a_tie_goes_to_the_name_that_sorts_first[b_alpha]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::a_tie_goes_to_the_name_that_sorts_first[b_alpha]", "name": "Alpha Path", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.850047760 41.300090041, -74.850047760 41.300810373)"}
+          - {"trail_segment_key": "s2::one_name_on_two_layers_counts_its_ground_once[senior]", "source_key": "parks_layer", "file_row": 1, "may_publish": true, "duplicate_of": null, "dropped_because": null, "trail_line_id": "parks_layer:s2::one_name_on_two_layers_counts_its_ground_once[senior]", "name": null, "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.800000000 41.300000000, -74.800000000 41.301350621)"}
+          - {"trail_segment_key": "s2::one_name_on_two_layers_counts_its_ground_once[a_shared_on_paths]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::one_name_on_two_layers_counts_its_ground_once[a_shared_on_paths]", "name": "Shared Ground", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.799952240 41.300000000, -74.799952240 41.300540249)"}
+          - {"trail_segment_key": "s2::one_name_on_two_layers_counts_its_ground_once[a_shared_on_greenways]", "source_key": "greenways_layer", "file_row": 3, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "greenways_layer:s2::one_name_on_two_layers_counts_its_ground_once[a_shared_on_greenways]", "name": "Shared Ground", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.799952240 41.300000000, -74.799952240 41.300540249)"}
+          - {"trail_segment_key": "s2::one_name_on_two_layers_counts_its_ground_once[b_own_ground]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::one_name_on_two_layers_counts_its_ground_once[b_own_ground]", "name": "Own Ground", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.800047760 41.300360166, -74.800047760 41.301260580)"}
+          - {"trail_segment_key": "s2::a_named_path_kept_as_its_own_line_is_not_a_copy[senior]", "source_key": "parks_layer", "file_row": 1, "may_publish": true, "duplicate_of": null, "dropped_because": null, "trail_line_id": "parks_layer:s2::a_named_path_kept_as_its_own_line_is_not_a_copy[senior]", "name": null, "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.750000000 41.300000000, -74.750000000 41.300900414)"}
+          - {"trail_segment_key": "s2::a_named_path_kept_as_its_own_line_is_not_a_copy[a_kept_path]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::a_named_path_kept_as_its_own_line_is_not_a_copy[a_kept_path]", "name": "Kept Path", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.749952240 41.300000000, -74.749952240 41.300900414, -74.746370263 41.300900414)"}
+          - {"trail_segment_key": "s2::a_named_path_kept_as_its_own_line_is_not_a_copy[b_short_copy]", "source_key": "paths_layer", "file_row": 2, "may_publish": true, "duplicate_of": "parks_layer", "dropped_because": null, "trail_line_id": "paths_layer:s2::a_named_path_kept_as_its_own_line_is_not_a_copy[b_short_copy]", "name": "Short Copy", "trail_status": "open", "trail_status_basis": "default_without_status_column", "geom_wkt": "LINESTRING (-74.750047760 41.300180083, -74.750047760 41.300450207)"}
+      - input: ref('int_trail_lines__blazes')
+        rows:
+          - {"trail_segment_key": "s2::the_brookfield_shape[senior]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::the_brookfield_shape[a_short_copy_wholly_along]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::the_brookfield_shape[b_long_copy_partly_along]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[senior]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[a_greenway_1]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[a_greenway_2]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[a_greenway_3]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[b_parkway_1]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::the_cunningham_shape[b_parkway_2]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[senior]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[a_one_long_piece]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[b_short_piece_1]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[b_short_piece_2]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[b_short_piece_3]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::a_tie_goes_to_the_name_that_sorts_first[senior]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::a_tie_goes_to_the_name_that_sorts_first[a_beta]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::a_tie_goes_to_the_name_that_sorts_first[b_alpha]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::one_name_on_two_layers_counts_its_ground_once[senior]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::one_name_on_two_layers_counts_its_ground_once[a_shared_on_paths]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::one_name_on_two_layers_counts_its_ground_once[a_shared_on_greenways]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::one_name_on_two_layers_counts_its_ground_once[b_own_ground]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::a_named_path_kept_as_its_own_line_is_not_a_copy[senior]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::a_named_path_kept_as_its_own_line_is_not_a_copy[a_kept_path]", "blaze_color": "Unknown"}
+          - {"trail_segment_key": "s2::a_named_path_kept_as_its_own_line_is_not_a_copy[b_short_copy]", "blaze_color": "Unknown"}
+    expect:
+      rows:
+        - {"trail_segment_key": "s2::the_brookfield_shape[senior]", "name": "Outer Loop", "duplicate_of": "paths_layer"}
+        - {"trail_segment_key": "s2::the_cunningham_shape[senior]", "name": "Motor Parkway", "duplicate_of": "greenways_layer"}
+        - {"trail_segment_key": "s2::three_short_pieces_of_one_name_beat_one_long_piece[senior]", "name": "Three Short Pieces", "duplicate_of": "paths_layer"}
+        - {"trail_segment_key": "s2::a_tie_goes_to_the_name_that_sorts_first[senior]", "name": "Alpha Path", "duplicate_of": "paths_layer"}
+        - {"trail_segment_key": "s2::one_name_on_two_layers_counts_its_ground_once[senior]", "name": "Own Ground", "duplicate_of": "greenways_layer"}
+        - {"trail_segment_key": "s2::a_named_path_kept_as_its_own_line_is_not_a_copy[senior]", "name": "Short Copy", "duplicate_of": "paths_layer"}
+        - {"trail_segment_key": "s2::a_named_path_kept_as_its_own_line_is_not_a_copy[a_kept_path]", "name": "Kept Path", "duplicate_of": null}
   - name: int_trail_lines__network_area_closures_answers_what_apply_area_closures_answers
     description: >
       One line per case of tests/test_export_nearby_trails.py's closed areas

@@ -589,16 +589,21 @@ def _club_line_reasons(old: dict, new: dict, family_key: str, key_of: Callable[[
 
 #: Why a line that swallowed another layer's copies of it can carry another name in each file (TL18).
 INHERITED_NAME_REASON = (
-    "expected by int_trail_lines__network_deduplicated's header, which says so: a line with no name of its own takes "
-    "the name of the first named copy it swallows (lib/duplicates.py's merge()), and the SQL takes the copies in "
-    "staging-key order where today's exporter takes them in file order. A Socrata layer's file order is its `:id` "
-    "order, which a replacement of the dataset mints again (ELT.md, 'Stable upstream keys'), so today's name can "
-    "change with no change on the ground and the staging key's cannot. Explained only where the line is in both files, "
-    "has swallowed the same layer's copies in both, and differs in its name alone. Monthly run 30's two, rebuilt from "
-    "NYC Open Data's live rows on 2026-10-08: nyc_parks_trails:row-2fd6-t8ys~mjm7 swallows two nyc_cscl_paths "
-    "segments, 'BROOKFIELD PARK WEST OUTER LOOP' first in file order and 'BROOKFIELD PARK BLUE TRAIL' first by key; "
-    "row-7cmw.ec29~bksa swallows five greenway segments, 'CUNNINGHAM PARK GREENWAY' first in file order and "
-    "'VANDERBILT MOTOR PARKWAY' first by key"
+    "expected by standard S2 (the maintainer's poll of 2026-10-11), which int_trail_lines__network_deduplicated's "
+    "header states: a line with no name of its own takes the name its swallowed copies carry along the greatest length "
+    "within 10 m of it, each name's copies unioned, and a name within 1 cm of that length ties, the one sorting first "
+    "winning. Today's exporter picks differently: lib/duplicates.py's apply_duplicates() merges the copies in file "
+    "order and merge() keeps the first name, so today's file names the line after its first named copy in file order, "
+    "however little of that copy lies along it. The two agree only where the copy followed longest is also first in "
+    "file order. A Socrata layer's file order is its `:id` order, which a replacement of the dataset mints again "
+    "(ELT.md, 'Stable upstream keys'), so today's name can change with no change on the ground. Explained only where "
+    "the line is in both files, has swallowed the same layer's copies in both, and differs in its name alone. Monthly "
+    "run 30's two lines, rebuilt from NYC Open Data's live rows on 2026-10-08 and measured 2026-10-11 in EPSG:5070: "
+    "nyc_parks_trails:row-2fd6-t8ys~mjm7 swallows two nyc_cscl_paths segments, 'BROOKFIELD PARK WEST OUTER LOOP' "
+    "(130 m within 10 m, first in file order) and 'BROOKFIELD PARK BLUE TRAIL' (25 m), so both writers name it West "
+    "Outer Loop and it is no longer a difference; row-7cmw.ec29~bksa swallows five greenway segments, 'CUNNINGHAM PARK "
+    "GREENWAY' first in file order (100 m over three) and 'VANDERBILT MOTOR PARKWAY' (146 m over two), so today's "
+    "exporter names it 'CUNNINGHAM PARK GREENWAY' and the dbt writer 'VANDERBILT MOTOR PARKWAY'"
 )
 
 

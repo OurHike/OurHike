@@ -523,12 +523,13 @@ SOAK_HOURS = 72
 #: The leg whose runs can cover the soak: decision 46's "an hourly dispatch of the conditions lane on UA". Another
 #: leg's run can still make a key differ, and never fills an hour UA missed. Decided, not picked.
 SOAK_LEG = "ua"
-#: The longest two consecutive runs of the soak may be apart and still both count, in hours. @unvalidated, picked: the
-#: soak's routine dispatches publish-conditions.yml at :18 every hour, and runs 617 to 624 (2026-10-10, 11:20 to 18:19
-#: UTC) began 55.6 to 63.0 minutes apart (Measured from the Actions API's created_at), so 1.5 hours takes that jitter
-#: and refuses one missing hour. What would settle it: the spread of a whole soak's gaps, from the same API, and the
-#: maintainer's word on whether one missed hour in 72 still counts as "every soak hour".
-SOAK_MAX_GAP_HOURS = 1.5
+#: The longest two consecutive runs of the soak may be apart and still both count, in hours. Decided: decision 158, the
+#: maintainer's poll of 2026-10-11, "Allow one missed hour". The soak's routine dispatches publish-conditions.yml at :18
+#: every hour from the session that watches the pull request, and runs 617 to 624 (2026-10-10, 11:20 to 18:19 UTC) began
+#: 55.6 to 63.0 minutes apart (Measured from the Actions API's created_at). A restart of that session's container then
+#: delayed the 23:18 UTC tick by 56 minutes, so run 629 (22:18) was followed by run 631 (00:15), 1 h 57 min apart
+#: (Measured, 2026-10-11). 2.5 hours takes one missed hour and its jitter, and still refuses two in a row.
+SOAK_MAX_GAP_HOURS = 2.5
 
 
 @dataclass

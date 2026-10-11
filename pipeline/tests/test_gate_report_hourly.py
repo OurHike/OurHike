@@ -157,14 +157,15 @@ def test_two_missing_hours_in_a_row_are_a_gap_the_soak_has_to_cover_again(tmp_pa
     )
 
 
-def test_one_missing_hour_with_dispatch_jitter_still_covers_the_soak(tmp_path):
+def test_dispatch_jitter_and_one_missing_hour_still_cover_the_soak(tmp_path):
     """SOAK_MAX_GAP_HOURS takes the jitter the soak's routine shows (55.6 to 63.0 minutes between runs 617 and 624) and
-    refuses a missing hour."""
+    one missed hour (decision 158: run 629 at 22:18 and run 631 at 00:15 UTC, a container restart between them). Two in a
+    row are refused, in the test above."""
     root = tmp_path / "jitter"
     for index in range(73):
         _run(root, index + (0.05 if index % 2 else -0.05) if 0 < index < 72 else index, {"closures": "equal"})
     assert soak_coverage(load_hourly(root), "closures").state == "clear"
-    assert soak_coverage(load_hourly(_soak(tmp_path / "missing", skip=(30,))), "closures").state == "short"
+    assert soak_coverage(load_hourly(_soak(tmp_path / "missing", skip=(30,))), "closures").state == "clear"
 
 
 def test_a_soak_shorter_than_SOAK_HOURS_keeps_the_key_blocking(tmp_path):

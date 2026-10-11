@@ -305,7 +305,7 @@ jobs:
         timeout-minutes: 4
         run: |
           python3.12 -m venv "$RUNNER_TEMP/extract"
-          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet --require-hashes -r requirements-extract.txt
           python3.12 -m venv "$RUNNER_TEMP/dbt"
           "$RUNNER_TEMP/dbt/bin/pip" install --quiet --require-hashes -r requirements-dbt-build.txt
           "$RUNNER_TEMP/dbt/bin/pip" install --quiet --require-hashes --no-build-isolation -r requirements-dbt.txt
@@ -560,7 +560,7 @@ jobs:
         run: |
           pip install -r requirements.txt
           python3.12 -m venv "$RUNNER_TEMP/extract"
-          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet --require-hashes -r requirements-extract.txt
 
       # This build's bundle and no other, as `check` takes its warehouse:
       # hand_off.py's take-bundle finds nothing for another run's or another

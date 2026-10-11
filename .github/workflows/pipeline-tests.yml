@@ -403,7 +403,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           python -m venv "$RUNNER_TEMP/extract"
-          "$RUNNER_TEMP/extract/bin/pip" install -r requirements-extract.txt
+          "$RUNNER_TEMP/extract/bin/pip" install --require-hashes -r requirements-extract.txt
 
       # THE dbt GENERATORS' OUTPUT (pipeline/ELT.md decision 91): nothing
       # make_dbt_staging.py or generate_notice_models.py writes is committed,

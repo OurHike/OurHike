@@ -230,7 +230,7 @@ jobs:
         timeout-minutes: 3
         run: |
           python -m venv "$RUNNER_TEMP/extract"
-          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet --require-hashes -r requirements-extract.txt
 
       # extract/_run.py's notices leg: each upstream read on its own, one
       # thread per club folder, within --read-seconds; one that fails, times

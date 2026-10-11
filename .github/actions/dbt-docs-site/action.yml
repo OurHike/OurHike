@@ -95,7 +95,7 @@ runs:
       working-directory: pipeline
       run: |
         python -m venv "$RUNNER_TEMP/dbt-docs-extract"
-        "$RUNNER_TEMP/dbt-docs-extract/bin/pip" install --quiet -r requirements-extract.txt
+        "$RUNNER_TEMP/dbt-docs-extract/bin/pip" install --quiet --require-hashes -r requirements-extract.txt
         "$RUNNER_TEMP/dbt-docs-extract/bin/python" generate_dbt.py
 
     # For build.sh's DuckDB-WASM: npm ci of duckdb-wasm/package-lock.json, and

@@ -128,7 +128,7 @@ jobs:
       - name: Install the extract's own pins
         run: |
           python -m venv "$RUNNER_TEMP/extract"
-          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet --require-hashes -r requirements-extract.txt
 
       # The input reaches the script through env, the rule
       # .github/tests/test_run_steps_take_inputs_through_env.py holds.

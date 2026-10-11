@@ -177,7 +177,7 @@ jobs:
       - name: Install the extract's own pins
         run: |
           python -m venv "$RUNNER_TEMP/extract"
-          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet --require-hashes -r requirements-extract.txt
 
       # extract/_run.py's after-run check failing exits 1 after the run log
       # is written, and nothing it loaded is read. A layer whose read fails,
@@ -310,7 +310,7 @@ jobs:
       - name: Install the extract's pins and the pipeline's pins
         run: |
           python -m venv "$RUNNER_TEMP/extract"
-          "$RUNNER_TEMP/extract/bin/pip" install --quiet -r requirements-extract.txt
+          "$RUNNER_TEMP/extract/bin/pip" install --quiet --require-hashes -r requirements-extract.txt
           python -m venv "$RUNNER_TEMP/pipeline"
           "$RUNNER_TEMP/pipeline/bin/pip" install --quiet -r requirements.txt
           "$RUNNER_TEMP/pipeline/bin/pip" install --quiet "duckdb-extension-spatial==$("$RUNNER_TEMP/pipeline/bin/python" -c 'import duckdb; print(duckdb.__version__)')"

@@ -676,7 +676,8 @@ def test_the_pipeline_suite_installs_the_pypdf_the_extract_job_runs():
     def pin(path: Path) -> str | None:
         lines = [line for line in path.read_text().splitlines() if line.startswith("pypdf==")]
         assert len(lines) <= 1, path
-        return lines[0].split("==")[1] if lines else None
+        # `.split()[0]`: in a hashed requirements file the pin line ends in a backslash (decision 160).
+        return lines[0].split("==")[1].split()[0] if lines else None
 
     assert pin(PIPELINE_DIR / "requirements-extract.txt") is not None
     assert pin(PIPELINE_DIR / "requirements-dev.in") == pin(PIPELINE_DIR / "requirements-extract.txt")

@@ -177,6 +177,7 @@ LOCATION_FIELDS = frozenset(
 #: file equal to an empty file says nothing about the writer's records.
 #: The POI types are lib/poi_schema.ALLOWED_EMPTY_POI_TYPES, the list
 #: export_poi.py's own completeness gate reads, so the two cannot drift.
+#: work_projects is the maintainer's: decision 162 (poll, 2026-10-11).
 MAY_COMPARE_NO_RECORDS: dict[str, str] = {
     f"poi_{poi_type}{version}": (
         f"`{poi_type}` is in lib/poi_schema.ALLOWED_EMPTY_POI_TYPES: ATC publishes no trailhead layer "
@@ -187,6 +188,14 @@ MAY_COMPARE_NO_RECORDS: dict[str, str] = {
     )
     for poi_type in ALLOWED_EMPTY_POI_TYPES
     for version in ("", "_v2")
+} | {
+    "work_projects": (
+        "reference/work_projects.json's `rows` is empty by the maintainer's decision of 2026-08-20 on #760 (Volunteer "
+        "opportunities on a map, the next fourteen days): no invented workday may reach a hiker, so both writers' "
+        "files hold no record on real data (0 rows, read 2026-10-11). Decision 162 (poll, 2026-10-11) counts it as "
+        "covered: CI's fixture family compares the writer on rows on every push, and the soak shows both real files "
+        "empty"
+    ),
 }
 
 VERDICT_ORDER = ("differs", "not_compared", "not_ported", "equal_apart_from_listed", "equal")

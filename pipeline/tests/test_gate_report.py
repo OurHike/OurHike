@@ -223,20 +223,23 @@ def test_two_files_with_no_records_are_not_compared_unless_the_family_may_be_emp
     }
     rows = {row.key: row for row in key_rows(today, dbt, results)[0]}
 
+    # Decision 162: work projects' reviewed file is empty on purpose, so it may compare empty too.
     work = rows["conditions/work_projects.json"]
-    assert (work.verdict, work.blocks_go) == ("not_compared", True)
-    assert "MAY_COMPARE_NO_RECORDS" in work.detail
+    assert (work.verdict, work.blocks_go) == ("equal_apart_from_listed", False)
+    assert "#760" in next(item.reason for item in work.listed if item.what == "records")
     trailhead = rows["poi_trailhead.geojson"]
     assert (trailhead.verdict, trailhead.blocks_go) == ("equal_apart_from_listed", False)
     assert "ALLOWED_EMPTY_POI_TYPES" in next(item.reason for item in trailhead.listed if item.what == "records")
 
 
-def test_only_the_poi_types_export_poi_may_publish_empty_may_compare_no_records():
-    """One home: lib/poi_schema.ALLOWED_EMPTY_POI_TYPES. Work projects and highlights are not on it."""
+def test_only_the_poi_types_export_poi_may_publish_empty_and_work_projects_may_compare_no_records():
+    """One home for the POI types: lib/poi_schema.ALLOWED_EMPTY_POI_TYPES. Work projects is the maintainer's own
+    (decision 162); highlights is not on it."""
     from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
 
     expected = {f"poi_{kind}{version}" for kind in ALLOWED_EMPTY_POI_TYPES for version in ("", "_v2")}
-    assert set(gate_report.MAY_COMPARE_NO_RECORDS) == expected == {"poi_trailhead", "poi_trailhead_v2"}
+    assert expected == {"poi_trailhead", "poi_trailhead_v2"}
+    assert set(gate_report.MAY_COMPARE_NO_RECORDS) == expected | {"work_projects"}
     assert set(gate_report.MAY_COMPARE_NO_RECORDS) <= set(parity.FAMILIES)
     assert all(reason.strip() for reason in gate_report.MAY_COMPARE_NO_RECORDS.values())
 

@@ -196,10 +196,12 @@ def test_comparisons_of_two_empty_files_count_only_for_a_family_the_monthly_rule
     """The real reviewed work-projects file holds no rows, so each hour compares two empty lists: the monthly lane's
     MAY_COMPARE_NO_RECORDS rule decides whether that says anything, here as there."""
     runs = load_hourly(_soak(tmp_path))
+    monkeypatch.delitem(gate_report.MAY_COMPARE_NO_RECORDS, "work_projects")
     rows, _, _ = key_rows(TODAY, [WORK], {}, runs)
     assert _row(rows, "conditions/work_projects.json").why == "soak_not_covered"
     assert "equal, no records" not in _row(rows, "conditions/work_projects.json").detail
 
+    # Decision 162 lists it, with its reason.
     monkeypatch.setitem(gate_report.MAY_COMPARE_NO_RECORDS, "work_projects", "the reviewed file holds no rows")
     rows, _, _ = key_rows(TODAY, [WORK], {}, runs)
     assert not _row(rows, "conditions/work_projects.json").blocks_go

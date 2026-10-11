@@ -484,7 +484,7 @@ NOTICE_SEED_COLUMNS = ("title", "category", "status", "starts", "ends", "rescind
 #: settles it: it stays out, nobody reads its values, and the Florida Trail's closed segments take their place from
 #: their own geometry (int_closures__club_notices.sql's rule 4), which they always did. What is left is for the seed
 #: to stop naming it, at which point this set is empty.
-KNOWN_LEFT_OUT = {("fta_fnst_closed_segments", "Manager_Na")}
+KNOWN_LEFT_OUT: set[tuple[str, str]] = set()
 
 
 def declared_fields() -> list[tuple[str, str]]:

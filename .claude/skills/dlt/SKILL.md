@@ -425,7 +425,11 @@ third run answered 53 resources FRESH whose rows no build could read
 - Schema contract `{"columns": "evolve", "data_type": "freeze"}` on ArcGIS.
 - **ArcGIS pages come from `lib/arcgis.py`'s `iter_layer_pages()`, never a
   second pager.** It steps by rows returned, stops on an empty page, halves a
-  refused page and refuses a server that repeats a page. dlt's
+  refused page, and raises `OffsetIgnored` on a server that repeats a page or
+  serves more rows than the layer's own count (`expected=`, read before the
+  pages); `extract/_kinds.py` then reads the layer again by object id
+  (`keyset=`), as Missouri State Parks' advisories need (decision 164: its
+  server ignores `resultOffset` and `orderByFields`, measured 2026-10-11). dlt's
   `OffsetPaginator` steps by `limit`: against a server capping pages at 4,
   `limit=10` loaded 4 of 10 rows (measured 2026-10-01). A later kind that does
   use `rest_api` sets `value_step = len(page)` and `maximum_offset`.

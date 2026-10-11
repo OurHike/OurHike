@@ -50,7 +50,7 @@ iata_lands_hunting_regs,Display_Name,Hunting_Reg,,,,,,,County,"Standing rules wi
 fltc_temporary_notices,Notice,,Status,,,,EditDate_1,Link,Map,"Status's values were not read (the row's notes)"
 fltc_seasonal_closures,Descrip,,,,,,Date_Modif,,Map,"No active flag and no season dates (the row's notes)"
 fltc_hunting_bypasses,Descrip,,,,,,Date_Modif,,,"A bypass route"
-fta_fnst_closed_segments,Trail_Name,,Open_Statu,,,,Last_Edi_1,,Manager_Na,"745 segments, 3 closed (the row's notes); the layer is filtered to Open_Statu other than Open"
+fta_fnst_closed_segments,Trail_Name,,Open_Statu,,,,Last_Edi_1,,,"745 segments, 3 closed (the row's notes); the layer is filtered to Open_Statu other than Open. No locality: Manager_Na is person-shaped and stays out (S4, decision 181), so a closed segment is placed by its own line alone"
 cdtc_alert_points,Name,Type,Active,,,,,Website2,,"Type Alert|Closure and Active Yes|No (the row's notes)"
 cdtc_alert_lines,Name,Type,Active,,,,,Website2,,"As cdtc_alert_points"
 cdtc_area_closures,Name,,Active,,,,,,,"Date is null on the sample (the row's notes)"

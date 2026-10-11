@@ -274,10 +274,13 @@ describe('a long hike’s 7-day stretch', () => {
     expect(hikes[0].stretch.atSpans).toEqual([[5, 50]])
     expect(hikes[0].onRoute.map((n) => n.notice_id)).toEqual(['atc_trail_updates:bridge'])
     // The days behind are walked from today on, so the stretch still starts
-    // today, and a notice that ended yesterday does not touch it.
+    // today. A notice that ended yesterday still touches it: its own end no
+    // longer hides it, and the panel greys it (the maintainer's frame A).
     expect(hikes[0].stretch.from).toBe(TODAY)
     const endedYesterday = { ...bridge, notice_id: 'x', ends_on: shiftDay(TODAY, -1) }
-    expect(pick([endedYesterday], [behind], []).hikes[0].onRoute).toEqual([])
+    expect(
+      pick([endedYesterday], [behind], []).hikes[0].onRoute.map((n) => n.notice_id),
+    ).toEqual(['x'])
   })
 
   it('leaves out a plan whose unwalked days are all dated before today, as abandoned', () => {
@@ -410,8 +413,17 @@ describe('a placed notice', () => {
       notice_id: 'club_points:autumn',
       starts_on: '2026-11-15',
     }
+    expect(pick([autumn], [tenDayTrip()], []).hikes[0].onRoute).toEqual([])
+  })
+
+  // The maintainer's frame A (2026-10-10): a notice past its own end date
+  // stays, greyed by the panel, rather than leaving it. Until then this rule
+  // dropped it here, so a closure a source forgot to extend was never shown.
+  it('still touches a hike when its own end date is before the hike’s first day', () => {
     const ended = { ...nearPoint, notice_id: 'club_points:ended', ends_on: '2026-10-01' }
-    expect(pick([autumn, ended], [tenDayTrip()], []).hikes[0].onRoute).toEqual([])
+    expect(
+      pick([ended], [tenDayTrip()], []).hikes[0].onRoute.map((n) => n.notice_id),
+    ).toEqual(['club_points:ended'])
   })
 })
 
@@ -607,9 +619,9 @@ describe('a state-wide agency notice (decision 76)', () => {
     expect(hikes[0].stateWide).toEqual([])
   })
 
-  it('does not touch a hike its own dates end before', () => {
+  it('still touches a hike its own end date is before, for the panel to grey (frame A)', () => {
     const ended = { ...stateWide([UTAH]), ends_on: shiftDay(TODAY, -1) }
-    expect(pick([ended], [], [dayHike(TODAY)]).hikes[0].stateWide).toEqual([])
+    expect(pick([ended], [], [dayHike(TODAY)]).hikes[0].stateWide).toHaveLength(1)
   })
 })
 
@@ -713,5 +725,37 @@ describe('what the panel shows, once', () => {
         .map((n) => n.notice_id)
         .sort(),
     ).toEqual(['oprhp_trail_closures:c', 'oprhp_trail_closures:n'])
+  })
+
+  // Closures still lead; within them, one that reads as current on the
+  // phone's day comes before one that may no longer apply, however much more
+  // recently the second was edited (lib/noticeCurrency.ts).
+  it('lists a current closure before a newer one that may no longer apply', () => {
+    const stale = notice({
+      notice_id: 'oprhp_trail_closures:stale',
+      source_key: 'oprhp_trail_closures',
+      obstructs_trail: true,
+      updated_at: '2026-10-03T00:00:00Z',
+      ends_on: shiftDay(TODAY, -1),
+      current_until: shiftDay(TODAY, -1),
+    })
+    const current = notice({
+      notice_id: 'oprhp_trail_closures:current',
+      source_key: 'oprhp_trail_closures',
+      obstructs_trail: true,
+      updated_at: '2026-09-01T00:00:00Z',
+      current_until: shiftDay(TODAY, 30),
+    })
+    const plain = notice({
+      notice_id: 'oprhp_trail_closures:notice',
+      source_key: 'oprhp_trail_closures',
+      current_until: shiftDay(TODAY, 30),
+    })
+    const planned = pick([plain, stale, current], [], [dayHike(TODAY)])
+    expect(planned.hikes[0].fromClubs.map((n) => n.notice_id)).toEqual([
+      'oprhp_trail_closures:current',
+      'oprhp_trail_closures:stale',
+      'oprhp_trail_closures:notice',
+    ])
   })
 })

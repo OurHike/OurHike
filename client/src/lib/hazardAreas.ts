@@ -33,9 +33,14 @@ import {
   type GeometryParts,
   type Position,
 } from './noticeGeometry'
+import { longDay } from './noticeCurrency'
 import type { TrailNotice } from './notices'
 import type { NoticeHazard } from './publishedConditions'
 import { NOTICE_REACH_FEET } from './plannedNotices'
+
+// lib/noticeCurrency.ts's now; re-exported because the panel and its tests
+// read it from here, where it lived first.
+export { longDay }
 import type { TrailGraphIndex } from './trailGraph'
 import { cellsInBox, type TrailIndex, type VertexIndex } from './trailPosition'
 
@@ -68,6 +73,11 @@ export interface HazardAdvisory {
  *  area's words, keyed by the area's notice id. */
 export interface StretchAdvisory extends HazardAdvisory {
   id: string
+  /** lib/noticeCurrency.ts's line when the area's own notice no longer reads
+   *  as current on the phone's day ("Its source gives no date. It may no
+   *  longer apply."), so the stretch's card greys the advisory as the area's
+   *  card does; null or absent while it reads as current. */
+  notCurrent?: string | null
 }
 
 export const HAZARD_ADVISORIES: Readonly<Record<NoticeHazard, HazardAdvisory>> = {
@@ -220,33 +230,6 @@ export function hazardFeatureCollection(
         : [],
     ),
   }
-}
-
-/**
- * "October 1, 2026" from a notice's `starts_on` or `ends_on`, an ISO day such
- * as "2026-10-01", read as the calendar day it names - the same words
- * lib/atcNoticeText.ts's `longDate` gives a stamp, so a sheet that prints both
- * prints one date style, never "2026-10-01" beside "October 5, 2026".
- * Anything that is not an ISO day is shown as the source wrote it, never as
- * "Invalid Date": publishedNotices.ts reads both fields as plain text. So is
- * a day no calendar has, such as "2026-04-31", which V8 rolls over to May 1
- * (measured 2026-10-09, Node 22): the parsed day must name the same day back.
- *
- * Here rather than beside `longDate` because the panel and the area's card
- * already import this module, and an import of atcNoticeText.ts from here
- * would tie lib/noticeSelection.ts's chunk to the sheets' (that module's
- * header gives the launch budget's reason).
- */
-export function longDay(day: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day
-  const at = new Date(`${day}T00:00:00Z`)
-  if (Number.isNaN(at.getTime()) || at.toISOString().slice(0, 10) !== day) return day
-  return at.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    timeZone: 'UTC',
-  })
 }
 
 /**

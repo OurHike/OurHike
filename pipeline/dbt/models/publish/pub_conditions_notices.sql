@@ -86,6 +86,21 @@
 -- 57), null in a build without its history (decision 58). `starts_on` and
 -- `ends_on` are the club's own, never filled in.
 --
+-- `current_until` IS THE LAST DAY THE NOTICE READS AS CURRENT, an ISO day,
+-- or null where it gives no date that bounds it (pipeline/ELT.md, "Status,
+-- water and expiry rules", rules 2 and 4): its own end date, else the long
+-- end of a duration its own title states counted from its own start, else
+-- its `updated_at` plus 90 days, one limit for every source
+-- (macros/notice_current_until.sql has the order, and dbt_project.yml's
+-- var notice_freshness_limit_days the @unvalidated number). The phone
+-- compares it with its own clock and shows the notice greyed after it, with
+-- one line saying why (the maintainer's frame A, poll of 2026-10-10), so a
+-- phone offline for days still greys a notice on its day. Every row carries
+-- the key, null included: a row without it is a file from before this
+-- field, which the phone reads as carrying no verdict at all. Measured on
+-- UA's file of 2026-10-10 17:24 UTC (8,305 notices), the key adds 203,133
+-- bytes, 11,807,956 to 12,011,089, and 9,651 gzipped at level 6.
+--
 -- DECISION 67'S HAZARD AREAS (seeds/notice_hazard_areas.csv) carry `hazard`
 -- (hunting, shooting or burned_area) and never obstruct the trail. A burned
 -- area is in the file while USFS's layer lists it: a full listing, so an area
@@ -391,6 +406,16 @@ notice_rows as (
             'starts_on', strftime(club_notices.starts_on, '%Y-%m-%d'),
             'ends_on', strftime(club_notices.ends_on, '%Y-%m-%d'),
             'updated_at', club_notices.updated_at,
+            'current_until',
+            strftime(
+                {{ notice_current_until(
+                    'club_notices.ends_on',
+                    'club_notices.starts_on',
+                    'club_notices.title',
+                    'club_notices.updated_at'
+                ) }},
+                '%Y-%m-%d'
+            ),
             'checked_at',
             {{ python_utc_seconds(
                 'case when club_notices.carried_since is null'

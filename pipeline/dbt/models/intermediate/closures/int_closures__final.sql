@@ -8,9 +8,13 @@
 -- closure that obstructs it, from a source that passed int_closures__gate
 -- and may publish (int_sources__publication).
 --
--- A CLUB NOTICE THAT MAY NOT PUBLISH AS CURRENT IS LEFT OUT: one whose own
--- end date has passed, or whose own status says it is not current
--- (int_closures__club_notices' `held_because`, decision 53's phase C).
+-- A CLUB NOTICE ITS OWN STATUS OR DATES HOLD BACK IS LEFT OUT: one whose own
+-- status says it is not current, an order its source says was rescinded, or
+-- one whose own start is still to come (int_closures__club_notices'
+-- `held_because`, decision 53's phase C). One whose own end date has passed
+-- is not held back (the maintainer's frame A, 2026-10-10): it no longer
+-- closes the trail, so it lands in the warnings mart, and
+-- conditions/notices.json's `current_until` lets the phone grey it.
 --
 -- DECISION 7'S SPLIT, CLOSURES' HALF: only rows whose `obstructs_trail` is
 -- true. A null (nobody has classified it, every NYNJTC alert today) and a

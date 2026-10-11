@@ -45,9 +45,9 @@
 --                         has not loaded reads as no rows (macros/notices.sql's
 --                         notice_raw_table), so it is held here, never read
 --                         as nothing closed. One row that may not publish
---                         as current (int_closures__club_notices'
---                         `held_because`, an ended or inactive notice) holds
---                         that row back and not its source; one key two
+--                         (int_closures__club_notices' `held_because`, an
+--                         inactive, rescinded or not yet started notice)
+--                         holds that row back and not its source; one key two
 --                         different raw rows share (`key_versions`) holds the
 --                         source, which decision 40 allows only for exact
 --                         copies, and its exactness test warns rather than

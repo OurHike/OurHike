@@ -526,6 +526,91 @@ describe('with conditions/notices.json (#1805, decision 66)', () => {
     expect(within(list).queryByText(MISSING_WARNING)).toBeNull()
     expect(within(list).getByRole('heading', { name: '2 trail notices' })).toBeVisible()
   })
+
+  // The maintainer's frame A (2026-10-10): the hook hands its sheets the day
+  // of the clock App already ticks, so a notice whose current_until is today
+  // reads as current until midnight and greys after it, with the app left
+  // open and no new file. A notice's last day is still current (lib/
+  // noticeCurrency.ts's `isCurrentOn` says why).
+  it('greys a planned hike’s notice the day after its current_until, on the clock alone', async () => {
+    // 2026-05-15 plus 90 days is TODAY, as the pipeline would publish it.
+    const fading = orgNotice({ updated_at: '2026-05-15T10:00:00Z', current_until: TODAY })
+    const { result, rerender } = renderHook(
+      ({ now }: { now: Date }) =>
+        useNoticesPanel({
+          updates: [update()],
+          orgNotices: [orgNotice()],
+          reviewedAt: null,
+          stewards: STEWARDS,
+          trailIndex: NO_INDEX,
+          bbox: BBOX,
+          now,
+          clubNotices: [fading],
+          clubNoticesGeneratedAt: NOW,
+          // Tomorrow, so the hike is inside the window on both days.
+          dayHikes: [dayHike('2026-08-14')],
+        }),
+      { initialProps: { now: NOW } },
+    )
+    await waitFor(() => expect(result.current.mapScreen.noticeCount).toBe(1))
+    act(() => result.current.mapScreen.onOpenNotices?.())
+    await waitFor(() => expect(result.current.mapScreen.noticeList).not.toBeNull())
+    const shown = render(<>{result.current.mapScreen.noticeList}</>)
+    const today = await screen.findByRole(
+      'dialog',
+      { name: 'Notices for your planned hikes' },
+      { timeout: 5_000 },
+    )
+    const title = await within(today).findByText('A.T. Detour at Harriman State Park')
+    expect(title.closest('li')?.className).not.toContain('notice--not-current')
+    expect(within(today).queryByText(/It may no longer apply\./)).toBeNull()
+
+    rerender({ now: new Date(NOW.getTime() + 24 * 60 * 60 * 1000) })
+    shown.rerender(<>{result.current.mapScreen.noticeList}</>)
+    const tomorrow = screen.getByRole('dialog', {
+      name: 'Notices for your planned hikes',
+    })
+    const line = await within(tomorrow).findByText(
+      'Last reported May 15, 2026. It may no longer apply.',
+    )
+    expect(line.closest('li')?.className).toContain('notice--not-current')
+    // Still listed, and still counted: greyed, never hidden.
+    expect(within(tomorrow).getByText('A.T. Detour at Harriman State Park')).toBeVisible()
+    expect(result.current.mapScreen.noticeCount).toBe(1)
+  })
+
+  it('greys ATC’s tapped sheet by that notice’s own row in notices.json, and only with that file', async () => {
+    const atcRow = orgNotice({
+      notice_id: `${ATC_SOURCE_KEY}:harpers-ferry-footbridge-closure`,
+      source_key: ATC_SOURCE_KEY,
+      title: 'Harpers Ferry: Footbridge Closure',
+      // 2026-04-01 plus 90 days, six weeks before TODAY.
+      updated_at: '2026-04-01T15:00:00Z',
+      current_until: '2026-06-30',
+    })
+    const tap = `${ATC_SOURCE_KEY}:harpers-ferry-footbridge-closure`
+    type Sheet = { props: { notCurrent: unknown } } | null
+
+    const withFile = clubPanel([atcRow], [dayHike(TODAY)])
+    act(() => withFile.result.current.mapScreen.onSelectAtcUpdate?.(tap))
+    await waitFor(() =>
+      expect(
+        (withFile.result.current.mapScreen.atcUpdateSheet as Sheet)?.props.notCurrent,
+      ).toEqual({
+        line: 'Last reported April 1, 2026. It may no longer apply.',
+        saysUpdated: true,
+      }),
+    )
+    cleanup()
+
+    // atc_updates.json alone carries no verdict, so the sheet reads as it
+    // always did.
+    const withoutFile = clubPanel(null, [dayHike(TODAY)])
+    act(() => withoutFile.result.current.mapScreen.onSelectAtcUpdate?.(tap))
+    const sheet = withoutFile.result.current.mapScreen.atcUpdateSheet as Sheet
+    expect(sheet).not.toBeNull()
+    expect(sheet?.props.notCurrent).toBeNull()
+  })
 })
 
 describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)', () => {
@@ -607,8 +692,10 @@ describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)'
     })
     await waitFor(() => expect(result.current.hazardAreas).toHaveLength(1))
     expect(result.current.mapScreen.hazardAreas).toBe(result.current.hazardAreas)
+    // No `current_until` key on the fixture row, so no verdict and no line
+    // (lib/noticeCurrency.ts, "A FILE WITH NO VERDICT READS AS IT ALWAYS DID").
     expect(result.current.hazardAdvisoriesAt([-77, 34.305])).toEqual([
-      { id: 'oprhp_hunting_areas:1', ...HAZARD_ADVISORIES.hunting },
+      { id: 'oprhp_hunting_areas:1', ...HAZARD_ADVISORIES.hunting, notCurrent: null },
     ])
     // The planned-hike panel is not what this file turns on: with neither
     // notices.json nor a plan the list stays today's.

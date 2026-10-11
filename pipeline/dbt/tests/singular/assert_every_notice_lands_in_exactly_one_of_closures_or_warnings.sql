@@ -15,8 +15,10 @@
 --
 -- THE CLUB NOTICES (decision 53, phase C) are counted as they land: a
 -- closures-type one through int_closures__unioned like any notice, unless
--- its own end date or status holds it back (`notice_held_because`), which
--- lands it in neither; a warnings-type one through int_warnings__unioned,
+-- its own status or dates hold it back (`notice_held_because`: a status
+-- read as not current, a rescinded order, a start still to come), which
+-- lands it in neither; one past its own end date is not held, and lands in
+-- warnings; a warnings-type one through int_warnings__unioned,
 -- which only the warnings mart takes; and one a feed's window aged out
 -- (int_closures__window_carried) in the mart it was in.
 with passing as (

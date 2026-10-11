@@ -11,9 +11,10 @@
 --
 -- IT STAYS UNTIL, per phase C:
 -- - a person marks it lifted (seeds/notice_marks.csv);
--- - its own end date passes: a feed item states none (extract/_notices.py's
---   FEED_COLUMNS), so a carried feed notice has no end to pass, and the mart
---   rows this reads keep none either;
+-- - nothing about its own end date: a notice past it is kept, greyed on the
+--   phone (the maintainer's frame A, 2026-10-10), and a feed item states
+--   none anyway (extract/_notices.py's FEED_COLUMNS), so the mart rows this
+--   reads keep none either;
 -- - the club's own full listing omits it: where a club publishes the full
 --   list, that list is registered as the source and the feed is not
 --   (FeedNotices' docstring), so no window source here has one.

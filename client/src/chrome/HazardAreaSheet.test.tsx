@@ -37,12 +37,21 @@ const HUNTING: TrailNotice = {
   hazard: 'hunting',
 }
 
+/** The phone's own calendar day the tests read a notice's `current_until`
+ *  against (lib/noticeCurrency.ts). */
+const TODAY = '2026-10-10'
+
 afterEach(cleanup)
 
 describe('HazardAreaSheet', () => {
   it('is an advisory that says the trails through it stay open, in OurHike’s words', () => {
     render(
-      <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
+      <HazardAreaSheet
+        notice={HUNTING}
+        stewards={STEWARDS}
+        today={TODAY}
+        onClose={() => undefined}
+      />,
     )
     const sheet = screen.getByRole('dialog', { name: 'Hunting allowed' })
     expect(sheet.textContent).toContain('Advisory')
@@ -54,7 +63,12 @@ describe('HazardAreaSheet', () => {
   // so its card talks about the area; "This stretch…" is the tapped line's.
   it('talks about the area the hiker tapped, never a stretch of trail', () => {
     render(
-      <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
+      <HazardAreaSheet
+        notice={HUNTING}
+        stewards={STEWARDS}
+        today={TODAY}
+        onClose={() => undefined}
+      />,
     )
     const sheet = screen.getByRole('dialog', { name: 'Hunting allowed' })
     expect(sheet.textContent).toContain('Hunting is allowed in this area.')
@@ -63,7 +77,12 @@ describe('HazardAreaSheet', () => {
 
   it('says "From Ice Age Trail Alliance", the registry’s name, and the area’s facts', () => {
     render(
-      <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
+      <HazardAreaSheet
+        notice={HUNTING}
+        stewards={STEWARDS}
+        today={TODAY}
+        onClose={() => undefined}
+      />,
     )
     expect(screen.getByText('From Ice Age Trail Alliance')).toBeTruthy()
     expect(
@@ -73,7 +92,12 @@ describe('HazardAreaSheet', () => {
 
   it('says the publisher gives no season dates rather than inventing one', () => {
     render(
-      <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
+      <HazardAreaSheet
+        notice={HUNTING}
+        stewards={STEWARDS}
+        today={TODAY}
+        onClose={() => undefined}
+      />,
     )
     expect(
       screen.getByText(
@@ -86,7 +110,12 @@ describe('HazardAreaSheet', () => {
   // OurHike's, and nobody from OurHike has been to the area.
   it('says who drew the area, that the advice is OurHike’s and that nobody checked the ground', () => {
     render(
-      <HazardAreaSheet notice={HUNTING} stewards={STEWARDS} onClose={() => undefined} />,
+      <HazardAreaSheet
+        notice={HUNTING}
+        stewards={STEWARDS}
+        today={TODAY}
+        onClose={() => undefined}
+      />,
     )
     expect(screen.getByRole('note').textContent).toBe(
       'Ice Age Trail Alliance drew this area; the advice is OurHike’s. OurHike hasn’t checked it on the ground.',
@@ -98,6 +127,7 @@ describe('HazardAreaSheet', () => {
       <HazardAreaSheet
         notice={{ ...HUNTING, starts_on: '2026-11-15', ends_on: '2026-12-13' }}
         stewards={STEWARDS}
+        today={TODAY}
         onClose={() => undefined}
       />,
     )
@@ -113,9 +143,88 @@ describe('HazardAreaSheet', () => {
       <HazardAreaSheet
         notice={{ ...HUNTING, hazard: null }}
         stewards={STEWARDS}
+        today={TODAY}
         onClose={() => undefined}
       />,
     )
     expect(container.textContent).toBe('')
+  })
+  // The maintainer's frame A (2026-10-10): an area whose own notice may no
+  // longer apply keeps its card, greyed, with one line under its source. The
+  // map still draws it.
+  describe('once the area’s notice may no longer apply', () => {
+    it('says "Its source gives no date. It may no longer apply." for a current_until of null', () => {
+      render(
+        <HazardAreaSheet
+          notice={{ ...HUNTING, current_until: null }}
+          stewards={STEWARDS}
+          today={TODAY}
+          onClose={() => undefined}
+        />,
+      )
+      const sheet = screen.getByRole('dialog', { name: 'Hunting allowed' })
+      expect(sheet.className).toContain('notice--not-current')
+      expect(
+        screen.getByText('Its source gives no date. It may no longer apply.'),
+      ).toBeTruthy()
+      // Still the advisory, with its advice: greyed is not removed.
+      expect(sheet.textContent).toContain('Hunting is allowed in this area.')
+    })
+
+    it('says "Its source gives no end or update date" for a burned area dated only by its fire', () => {
+      render(
+        <HazardAreaSheet
+          notice={{
+            ...HUNTING,
+            hazard: 'burned_area',
+            starts_on: '2026-08-26',
+            current_until: null,
+          }}
+          stewards={STEWARDS}
+          today={TODAY}
+          onClose={() => undefined}
+        />,
+      )
+      expect(
+        screen.getByText(
+          'Its source gives no end or update date. It may no longer apply.',
+        ),
+      ).toBeTruthy()
+      expect(screen.queryByText(/Its source gives no date\./)).toBeNull()
+    })
+
+    it('prints "Last reported" with the edit date once, not again as "— updated"', () => {
+      render(
+        <HazardAreaSheet
+          notice={{
+            ...HUNTING,
+            updated_at: '2026-06-01T15:00:00Z',
+            current_until: '2026-08-30',
+          }}
+          stewards={STEWARDS}
+          today={TODAY}
+          onClose={() => undefined}
+        />,
+      )
+      expect(
+        screen.getByText('Last reported June 1, 2026. It may no longer apply.'),
+      ).toBeTruthy()
+      expect(screen.getByText('From Ice Age Trail Alliance')).toBeTruthy()
+      expect(screen.queryByText(/— updated/)).toBeNull()
+    })
+
+    it('reads as current, with no line, while current_until is today', () => {
+      render(
+        <HazardAreaSheet
+          notice={{ ...HUNTING, current_until: TODAY }}
+          stewards={STEWARDS}
+          today={TODAY}
+          onClose={() => undefined}
+        />,
+      )
+      const sheet = screen.getByRole('dialog', { name: 'Hunting allowed' })
+      expect(sheet.className).not.toContain('notice--not-current')
+      expect(screen.queryByText(/may no longer apply/)).toBeNull()
+    })
   })
 })

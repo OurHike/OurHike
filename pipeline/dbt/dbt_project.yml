@@ -308,6 +308,25 @@ vars:
   # edge across the source's area: Reasoned from the grid in
   # macros/notice_phone_geometry.sql (at most 0.78 m), not measured.
   notice_area_snap_allowance_m: 1.0
+  # Rule 2's freshness limit (pipeline/ELT.md, "Status, water and expiry
+  # rules"), ONE FOR EVERY SOURCE: the maintainer's polls of 2026-10-10 chose
+  # "90 days for all", and no limit of its own for any source or any closure.
+  # A notice that states no end date and no duration of its own is current
+  # through the 90th day after its source's own edit date (`updated_at`, its
+  # UTC day), and after that day the phone shows it greyed, "Last reported
+  # <date>. It may no longer apply." macros/notice_current_until.sql is the
+  # one reader; conditions/notices.json carries its answer as `current_until`
+  # and the phone compares that day with its own clock, so this is the one
+  # home of the number.
+  # @unvalidated: picked, not measured. Measured on UA's notices.json of
+  # 2026-10-10 17:24 UTC only as a count of what it greys (pipeline/ELT.md
+  # has the numbers), which says nothing about whether 90 is right. What
+  # settles it is each source's own recorded edit dates: how long a notice
+  # stays listed after its last edit before its source edits it again or
+  # drops it, computed per source from the marts' row history
+  # (`_changed_at`, and when a key leaves), never a number picked by hand for
+  # one source or one closure.
+  notice_freshness_limit_days: 90
   poi_site_name_radius_m: 150.0            # lib/poi_sites.py NAME_MATCH_RADIUS_M
   poi_site_proximity_radius_m: 60.0        # lib/poi_sites.py PROXIMITY_RADIUS_M
   poi_site_max_radius_m: 1609.344          # lib/poi_sites.py MAX_SITE_RADIUS_M

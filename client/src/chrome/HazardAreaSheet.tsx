@@ -14,9 +14,18 @@
 // word a hiker does not use, and "the agency" was a second name for the
 // organization the meta line already names (the word-choice review of #1805,
 // 2026-10-09).
+//
+// AN AREA THAT MAY NO LONGER APPLY IS SAID SO, as a row of the planned-hike
+// list is (the maintainer's frame A, 2026-10-10): past the last day
+// conditions/hazard_areas.json gives its notice (`current_until`), or with no
+// date at all, the card's Advisory tag greys and one line from
+// lib/noticeCurrency.ts sits under its source - "Its source gives no date. It
+// may no longer apply." The map still draws the area: drawings are the
+// maintainer's call, and unchanged.
 
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES, hazardDates } from '../lib/hazardAreas'
+import { notCurrent } from '../lib/noticeCurrency'
 import { noticeOrgLabel, noticeUpdatedAt, type TrailNotice } from '../lib/notices'
 import { isSafeLink } from '../lib/safeLink'
 import { possessive, type Stewards } from '../lib/stewards'
@@ -24,20 +33,34 @@ import { possessive, type Stewards } from '../lib/stewards'
 export interface HazardAreaSheetProps {
   notice: TrailNotice
   stewards: Stewards
+  /** The phone's own calendar day (lib/passedToday.ts's `localDay`), which
+   *  the notice's `current_until` is read against. */
+  today: string
   onClose: () => void
 }
 
-export function HazardAreaSheet({ notice, stewards, onClose }: HazardAreaSheetProps) {
+export function HazardAreaSheet({
+  notice,
+  stewards,
+  today,
+  onClose,
+}: HazardAreaSheetProps) {
   const org = noticeOrgLabel(stewards)(notice)
   const advisory =
     notice.hazard === null || notice.hazard === undefined
       ? null
       : HAZARD_ADVISORIES[notice.hazard]
-  const updatedAt = noticeUpdatedAt(notice)
+  const old = notCurrent(notice, today)
+  // The edit date once, in the greyed line where that line carries it.
+  const updatedAt = old?.saysUpdated ? null : noticeUpdatedAt(notice)
   if (advisory === null) return null
 
   return (
-    <div className="closure-sheet" role="dialog" aria-label={advisory.heading}>
+    <div
+      className={old === null ? 'closure-sheet' : 'closure-sheet notice--not-current'}
+      role="dialog"
+      aria-label={advisory.heading}
+    >
       <div className="legend__head">
         <h2 className="legend__title">
           {advisory.heading}{' '}
@@ -65,6 +88,7 @@ export function HazardAreaSheet({ notice, stewards, onClose }: HazardAreaSheetPr
           ? `From ${org}`
           : `From ${org} — updated ${longDate(updatedAt)}`}
       </p>
+      {old !== null && <p className="notice__not-current">{old.line}</p>}
 
       {notice.source_url !== null && isSafeLink(notice.source_url) && (
         <a

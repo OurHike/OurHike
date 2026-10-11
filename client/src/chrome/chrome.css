@@ -2855,6 +2855,50 @@
   color: var(--fg-1);
 }
 
+/* A notice that may no longer apply (#1805, the maintainer's frame A, poll of
+   2026-10-10): it keeps its place, greyed, with one line under it from
+   lib/noticeCurrency.ts. `.notice--not-current` goes on the row, the sheet or
+   the stretch's advisory; `.notice__not-current` is the line.
+
+   Greyed by token, never by opacity, which would fade the line below with
+   everything else: the title, the heading, a sheet's red status line, the
+   advisory and the tag drop to the third text level `--fg-3`, the faintest
+   grey that still holds WCAG AA's 4.5:1 on every surface in both themes
+   (4.53:1 at its worst, on the sunken surface the tag sits on;
+   design-system/tokens/colors.css says how it was derived). The frame's own
+   rows are greyer than that, at 62% opacity, which a phone read in sun cannot
+   afford. The tag's and the category's caution tint gives way to that sunken
+   surface, so a notice that may no longer apply stops shouting caution. The
+   row's dates and its source line stay `--fg-2`, as every line a hiker
+   decides whether to trust the screen by does (src/test/trustLines.test.ts,
+   the maintainer's poll of 2026-09-26), and the link keeps its colour: the
+   source's page is how a hiker finds out whether it still applies. */
+.notice--not-current .atc-notices__title,
+.notice--not-current .closure-sheet__status,
+.notice--not-current .legend__title,
+.notice--not-current .line-sheet__advisory {
+  color: var(--fg-3);
+}
+
+.notice--not-current .planned-notices__tag,
+.notice--not-current .planned-notices__category {
+  background: var(--bg-sunken);
+  color: var(--fg-3);
+}
+
+/* The line itself is a trust line (src/test/trustLines.test.ts): `--fg-2`,
+   at the meta line's size and never fainter, on the sunken box frame A draws
+   it in, because it is the sentence the greyed notice now depends on. */
+.notice__not-current {
+  margin: 4px 0 0;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  background: var(--bg-sunken);
+  color: var(--fg-2);
+}
+
 /* ---------- Waypoint card (tapped pin) ---------- */
 
 /* Floats beside the pin it describes rather than docking at the bottom edge -

@@ -147,6 +147,50 @@ describe('the line-detail sheet', () => {
   })
 })
 
+// Decision 67's advisory on a tapped stretch, and the maintainer's frame A
+// (2026-10-10): an area whose own notice may no longer apply greys its
+// advisory, which then carries the area card's line. Both areas invented.
+describe('a stretch’s hazard advisories', () => {
+  const HUNTING = {
+    id: 'fixture_hunting:1',
+    heading: 'Hunting allowed',
+    body: 'This stretch crosses land where hunting is allowed. Wear blaze orange in season. The trail stays open.',
+  }
+
+  it('prints a current area’s advisory as it always did', () => {
+    render(
+      <LineSheet
+        detail={NEARBY}
+        advisories={[{ ...HUNTING, notCurrent: null }]}
+        onClose={vi.fn()}
+      />,
+    )
+    const advisory = screen.getByText(/This stretch crosses land where hunting/)
+    expect(advisory.closest('.notice--not-current')).toBeNull()
+    expect(screen.queryByText(/may no longer apply/)).toBeNull()
+  })
+
+  it('greys an advisory whose area may no longer apply, and prints its line under it', () => {
+    render(
+      <LineSheet
+        detail={NEARBY}
+        advisories={[
+          {
+            ...HUNTING,
+            notCurrent: 'Its source gives no date. It may no longer apply.',
+          },
+        ]}
+        onClose={vi.fn()}
+      />,
+    )
+    const advisory = screen.getByText(/This stretch crosses land where hunting/)
+    expect(advisory.closest('.notice--not-current')).not.toBeNull()
+    expect(
+      screen.getByText('Its source gives no date. It may no longer apply.').className,
+    ).toBe('notice__not-current')
+  })
+})
+
 describe('adding a point to a day hike (#979)', () => {
   it('offers nothing when the shell did not pass a handler', () => {
     // This sheet's own rule, and the one five other modules cite by name: a

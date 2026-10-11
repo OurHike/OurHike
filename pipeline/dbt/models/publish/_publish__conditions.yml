@@ -127,11 +127,14 @@ models:
           Every club notice, by source_key and then notice_id, each an object
           of exactly these keys: notice_id, source_key, club, provider,
           steward_kind, title, category, locality, place, hazard,
-          obstructs_trail, starts_on, ends_on, updated_at, checked_at,
-          first_seen_at, changed_at, carried_since, source_url and
-          review_state, and `states` on the rows of a source
-          seeds/notice_states.csv names (decision 76). No other field of a
-          source, its person fields or its prose among them, can reach it.
+          obstructs_trail, starts_on, ends_on, updated_at, current_until,
+          checked_at, first_seen_at, changed_at, carried_since, source_url
+          and review_state, and `states` on the rows of a source
+          seeds/notice_states.csv names (decision 76). `current_until` is the
+          last day the notice reads as current, or null where it gives no
+          date that bounds it (macros/notice_current_until.sql). No other
+          field of a source, its person fields or its prose among them, can
+          reach it.
         data_type: json
 
   - name: pub_conditions_hazard_areas
@@ -368,7 +371,7 @@ unit_tests:
           - {table_name: raw_a__club_page, outcome: skipped, checked_at: '2026-10-04 09:00:00+00'}
     expect:
       rows:
-        - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","states":["ID","MT"]}]'}
+        - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","current_until":"2026-12-29","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"current_until":"2026-11-01","checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","current_until":"2026-12-28","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"current_until":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","states":["ID","MT"]}]'}
 
   - name: pub_conditions_notices_simplifies_an_area_for_a_phone
     model: pub_conditions_notices
@@ -437,7 +440,7 @@ unit_tests:
           - {table_name: raw_iata__iata_lands_hunting_regs, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
     expect:
       rows:
-        - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.50126,44.5],[-89.44975,44.49911],[-89.44876,44.51018],[-89.50025,44.51089],[-89.50126,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+        - {notices: '[{"notice_id":"iata_lands_hunting_regs:1","source_key":"iata_lands_hunting_regs","club":"iata","provider":"IATA","steward_kind":"club","title":"Fixture Hunting Parcel","category":"Open for public hunting","locality":"Fixture","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-89.50126,44.5],[-89.44975,44.49911],[-89.44876,44.51018],[-89.50025,44.51089],[-89.50126,44.5]]]}},"hazard":"hunting","obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"current_until":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
 
   - name: pub_conditions_hazard_areas_keeps_only_the_hazard_rows_of_the_notices_file_as_written
     model: pub_conditions_hazard_areas
@@ -619,7 +622,279 @@ unit_tests:
           - {table_name: raw_a__club_ok, outcome: loaded, checked_at: '2026-10-04 10:00:00+00'}
     expect:
       rows:
-        - {notices: '[{"notice_id":"club_ok:1","source_key":"club_ok","club":"a","provider":"Fixture Club A","steward_kind":"club","title":"Fixture bridge out","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+        - {notices: '[{"notice_id":"club_ok:1","source_key":"club_ok","club":"a","provider":"Fixture Club A","steward_kind":"club","title":"Fixture bridge out","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"current_until":null,"checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+
+  - name: pub_conditions_notices_current_until_is_the_rows_own_end_date_first
+    model: pub_conditions_notices
+    description: >
+      Rule 4's first clause, the maintainer's "End date first" (poll of
+      2026-10-10): a notice with its own end date is current through that
+      day, whatever else it says. Its edit date cannot move it either way:
+      one edited 8 days after its end, and one whose edit is 21 months older
+      than its end, both read their end. A duration its title states, from
+      its own start, does not either.
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-10T12:00:00Z'"
+        when_row_history_is_off: ""
+    given:
+      - input: ref('closures', v=1)
+        rows: []
+      - input: ref('warnings', v=1)
+        format: sql
+        rows: |
+          select
+              warning_id,
+              'org_notice' as warning_kind,
+              'fixture' as club,
+              'fixture_club' as source_key,
+              cast(null as boolean) as obstructs_trail,
+              'not_reviewed' as review_state,
+              cast(title as varchar) as title,
+              cast(null as varchar) as category,
+              cast(null as json) as states,
+              cast(null as varchar) as locality,
+              cast(null as double) as mile_start,
+              cast(null as double) as mile_end,
+              cast(starts_on as date) as starts_on,
+              cast(ends_on as date) as ends_on,
+              cast(updated_at as varchar) as updated_at,
+              cast(null as varchar) as source_url,
+              cast(null as varchar) as geom_geojson,
+              cast(null as timestamptz) as _first_seen_at,
+              cast(null as timestamptz) as _changed_at,
+              cast(null as timestamptz) as carried_since
+          from (values
+              ('fixture_club:ends-after-its-edit-ran-out', 'Fixture section closed', null, '2026-12-31', '2025-01-01T12:00:00Z'),
+              ('fixture_club:ends-and-states-a-duration', 'Fixture loop closed for 6 months', '2026-10-06', '2026-10-20', null),
+              ('fixture_club:ends-before-its-edit-runs-out', 'Fixture bridge out', null, '2026-10-01', '2026-10-09T12:00:00Z')
+          ) as notices (warning_id, title, starts_on, ends_on, updated_at)
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: fixture_club, club: fixture, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_fixture__fixture_club, staged_by: stg_fixture__fixture_club, steward_kind: club}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: fixture_club, provider: 'Fixture Club', title: 'Fixture Club notices'}
+      - input: ref('notice_hazard_areas')
+        rows: []
+      - input: ref('notice_states')
+        rows: []
+      - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: fixture_club, passed: true, may_publish: true, rows_total: 3}
+      - input: ref('base_extract__runs')
+        rows: []
+    expect:
+      rows:
+        - {notices: '[{"notice_id":"fixture_club:ends-after-its-edit-ran-out","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture section closed","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-12-31","updated_at":"2025-01-01T12:00:00Z","current_until":"2026-12-31","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:ends-and-states-a-duration","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture loop closed for 6 months","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2026-10-06","ends_on":"2026-10-20","updated_at":null,"current_until":"2026-10-20","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:ends-before-its-edit-runs-out","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture bridge out","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-10-01","updated_at":"2026-10-09T12:00:00Z","current_until":"2026-10-01","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+
+  - name: pub_conditions_notices_current_until_is_then_a_duration_its_own_title_states
+    model: pub_conditions_notices
+    description: >
+      Rule 4's middle clause (macros/notice_current_until.sql): with no end
+      date, the long end of a duration its own title states, counted from
+      its own start. 3 to 6 months from 2025-01-06 is 2025-07-06, before its
+      edit date's 90 days, which come after it in the order; two weeks, 4
+      to 5 weeks, approximately 3-6 months and 10 days the same way; 1 year
+      from a leap day clamps to 2025-02-28. Without a start the title is not
+      read and the edit date decides; a stay limit ("14 Day Stay") and an
+      open-ended "at least 6 months" are not durations it reads, so the edit
+      date decides, or nothing does.
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-10T12:00:00Z'"
+        when_row_history_is_off: ""
+    given:
+      - input: ref('closures', v=1)
+        rows: []
+      - input: ref('warnings', v=1)
+        format: sql
+        rows: |
+          select
+              warning_id,
+              'org_notice' as warning_kind,
+              'fixture' as club,
+              'fixture_club' as source_key,
+              cast(null as boolean) as obstructs_trail,
+              'not_reviewed' as review_state,
+              cast(title as varchar) as title,
+              cast(null as varchar) as category,
+              cast(null as json) as states,
+              cast(null as varchar) as locality,
+              cast(null as double) as mile_start,
+              cast(null as double) as mile_end,
+              cast(starts_on as date) as starts_on,
+              cast(ends_on as date) as ends_on,
+              cast(updated_at as varchar) as updated_at,
+              cast(null as varchar) as source_url,
+              cast(null as varchar) as geom_geojson,
+              cast(null as timestamptz) as _first_seen_at,
+              cast(null as timestamptz) as _changed_at,
+              cast(null as timestamptz) as carried_since
+          from (values
+              ('fixture_club:d1-months-range', 'Lower loop closed for 3 to 6 months (fixture)', '2025-01-06', null, '2026-03-05T12:00:00Z'),
+              ('fixture_club:d2-weeks-in-words', 'Fixture bridge closure for two weeks', '2026-10-01', null, null),
+              ('fixture_club:d3-weeks-range', 'Fixture playground Temporarily Closed for 4 to 5 Weeks for maintenance', '2026-10-08', null, null),
+              ('fixture_club:d4-approximately', 'Fixture ponds closed for approximately 3-6 months', '2025-01-06', null, null),
+              ('fixture_club:d5-days', 'CLOSED FOR 10 DAYS (FIXTURE)', '2026-10-01', null, null),
+              ('fixture_club:d6-a-year-from-a-leap-day', 'Fixture trail closed for 1 year', '2024-02-29', null, null),
+              ('fixture_club:d7-no-start', 'Fixture loop closed for 6 months', null, null, '2026-09-01T12:00:00Z'),
+              ('fixture_club:d8-a-stay-limit', '14 Day Stay Camping Limit Order (fixture)', '2026-01-01', null, null),
+              ('fixture_club:d9-at-least', 'Fixture road closed for at least 6 months', '2026-01-01', null, '2026-09-01T12:00:00Z')
+          ) as notices (warning_id, title, starts_on, ends_on, updated_at)
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: fixture_club, club: fixture, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_fixture__fixture_club, staged_by: stg_fixture__fixture_club, steward_kind: club}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: fixture_club, provider: 'Fixture Club', title: 'Fixture Club notices'}
+      - input: ref('notice_hazard_areas')
+        rows: []
+      - input: ref('notice_states')
+        rows: []
+      - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: fixture_club, passed: true, may_publish: true, rows_total: 9}
+      - input: ref('base_extract__runs')
+        rows: []
+    expect:
+      rows:
+        - {notices: '[{"notice_id":"fixture_club:d1-months-range","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Lower loop closed for 3 to 6 months (fixture)","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2025-01-06","ends_on":null,"updated_at":"2026-03-05T12:00:00Z","current_until":"2025-07-06","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:d2-weeks-in-words","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture bridge closure for two weeks","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2026-10-01","ends_on":null,"updated_at":null,"current_until":"2026-10-15","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:d3-weeks-range","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture playground Temporarily Closed for 4 to 5 Weeks for maintenance","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2026-10-08","ends_on":null,"updated_at":null,"current_until":"2026-11-12","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:d4-approximately","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture ponds closed for approximately 3-6 months","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2025-01-06","ends_on":null,"updated_at":null,"current_until":"2025-07-06","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:d5-days","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"CLOSED FOR 10 DAYS (FIXTURE)","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2026-10-01","ends_on":null,"updated_at":null,"current_until":"2026-10-11","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:d6-a-year-from-a-leap-day","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail closed for 1 year","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2024-02-29","ends_on":null,"updated_at":null,"current_until":"2025-02-28","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:d7-no-start","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture loop closed for 6 months","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-01T12:00:00Z","current_until":"2026-11-30","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:d8-a-stay-limit","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"14 Day Stay Camping Limit Order (fixture)","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2026-01-01","ends_on":null,"updated_at":null,"current_until":null,"checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:d9-at-least","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture road closed for at least 6 months","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2026-01-01","ends_on":null,"updated_at":"2026-09-01T12:00:00Z","current_until":"2026-11-30","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+
+  - name: pub_conditions_notices_current_until_is_then_its_edit_date_plus_90_days
+    model: pub_conditions_notices
+    description: >
+      Rule 2's limit, 90 days for every source (var
+      notice_freshness_limit_days): with no end date and no duration, the
+      UTC day of its own edit stamp plus 90. Both sides of a UTC midnight:
+      23:59:59 on 2026-07-12 gives 2026-10-10, and 00:00:00 on 2026-07-13
+      gives 2026-10-11; a stamp written with an offset is read in UTC (22:00
+      at -04:00 is 02:00 the next day). A stamp nothing can read is no date.
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-10T12:00:00Z'"
+        when_row_history_is_off: ""
+    given:
+      - input: ref('closures', v=1)
+        rows: []
+      - input: ref('warnings', v=1)
+        format: sql
+        rows: |
+          select
+              warning_id,
+              'org_notice' as warning_kind,
+              'fixture' as club,
+              'fixture_club' as source_key,
+              cast(null as boolean) as obstructs_trail,
+              'not_reviewed' as review_state,
+              cast(title as varchar) as title,
+              cast(null as varchar) as category,
+              cast(null as json) as states,
+              cast(null as varchar) as locality,
+              cast(null as double) as mile_start,
+              cast(null as double) as mile_end,
+              cast(starts_on as date) as starts_on,
+              cast(ends_on as date) as ends_on,
+              cast(updated_at as varchar) as updated_at,
+              cast(null as varchar) as source_url,
+              cast(null as varchar) as geom_geojson,
+              cast(null as timestamptz) as _first_seen_at,
+              cast(null as timestamptz) as _changed_at,
+              cast(null as timestamptz) as carried_since
+          from (values
+              ('fixture_club:e1-last-second-of-a-utc-day', 'Fixture trail work', null, null, '2026-07-12T23:59:59Z'),
+              ('fixture_club:e2-first-second-of-the-next', 'Fixture trail work', null, null, '2026-07-13T00:00:00Z'),
+              ('fixture_club:e3-a-stamp-with-an-offset', 'Fixture trail work', null, null, '2026-07-12T22:00:00-04:00'),
+              ('fixture_club:e4-a-stamp-nothing-reads', 'Fixture trail work', null, null, 'Spring 2026')
+          ) as notices (warning_id, title, starts_on, ends_on, updated_at)
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: fixture_club, club: fixture, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_fixture__fixture_club, staged_by: stg_fixture__fixture_club, steward_kind: club}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: fixture_club, provider: 'Fixture Club', title: 'Fixture Club notices'}
+      - input: ref('notice_hazard_areas')
+        rows: []
+      - input: ref('notice_states')
+        rows: []
+      - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: fixture_club, passed: true, may_publish: true, rows_total: 4}
+      - input: ref('base_extract__runs')
+        rows: []
+    expect:
+      rows:
+        - {notices: '[{"notice_id":"fixture_club:e1-last-second-of-a-utc-day","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-07-12T23:59:59Z","current_until":"2026-10-10","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:e2-first-second-of-the-next","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-07-13T00:00:00Z","current_until":"2026-10-11","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:e3-a-stamp-with-an-offset","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-07-12T22:00:00-04:00","current_until":"2026-10-11","checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:e4-a-stamp-nothing-reads","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"Spring 2026","current_until":null,"checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
+
+  - name: pub_conditions_notices_current_until_is_null_with_no_date_of_any_kind
+    model: pub_conditions_notices
+    description: >
+      The order's last step: a notice that gives no date of any kind has
+      no `current_until`, and the phone never reads it as current. A start
+      date alone bounds nothing, so a burned area dated only by its fire's
+      start has none either. The key is written null, never left out: a row
+      without it is a file from before the field.
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-10T12:00:00Z'"
+        when_row_history_is_off: ""
+    given:
+      - input: ref('closures', v=1)
+        rows: []
+      - input: ref('warnings', v=1)
+        format: sql
+        rows: |
+          select
+              warning_id,
+              'org_notice' as warning_kind,
+              'fixture' as club,
+              'fixture_club' as source_key,
+              cast(null as boolean) as obstructs_trail,
+              'not_reviewed' as review_state,
+              cast(title as varchar) as title,
+              cast(null as varchar) as category,
+              cast(null as json) as states,
+              cast(null as varchar) as locality,
+              cast(null as double) as mile_start,
+              cast(null as double) as mile_end,
+              cast(starts_on as date) as starts_on,
+              cast(ends_on as date) as ends_on,
+              cast(updated_at as varchar) as updated_at,
+              cast(null as varchar) as source_url,
+              cast(null as varchar) as geom_geojson,
+              cast(null as timestamptz) as _first_seen_at,
+              cast(null as timestamptz) as _changed_at,
+              cast(null as timestamptz) as carried_since
+          from (values
+              ('fixture_club:n1-no-date-at-all', 'Fixture section closed', null, null, null),
+              ('fixture_club:n2-a-start-alone', 'FIXTURE FIRE', '2026-08-26', null, null)
+          ) as notices (warning_id, title, starts_on, ends_on, updated_at)
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: fixture_club, club: fixture, notice_type: warnings, reader: page_notice, listing: full, raw_table: raw_fixture__fixture_club, staged_by: stg_fixture__fixture_club, steward_kind: club}
+      - input: ref('stg_registry__sources')
+        rows:
+          - {source_key: fixture_club, provider: 'Fixture Club', title: 'Fixture Club notices'}
+      - input: ref('notice_hazard_areas')
+        rows: []
+      - input: ref('notice_states')
+        rows: []
+      - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: fixture_club, passed: true, may_publish: true, rows_total: 2}
+      - input: ref('base_extract__runs')
+        rows: []
+    expect:
+      rows:
+        - {notices: '[{"notice_id":"fixture_club:n1-no-date-at-all","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"Fixture section closed","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":null,"current_until":null,"checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"},{"notice_id":"fixture_club:n2-a-start-alone","source_key":"fixture_club","club":"fixture","provider":"Fixture Club","steward_kind":"club","title":"FIXTURE FIRE","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"current_until":null,"checked_at":null,"first_seen_at":null,"changed_at":null,"carried_since":null,"source_url":null,"review_state":"unreviewed"}]'}
 
   - name: pub_conditions_notice_states_writes_each_shape_with_its_margin_and_the_files_own_date
     model: pub_conditions_notice_states

@@ -434,7 +434,7 @@ What is left is account work, in this order:
    curl -sS https://<service>/openapi.json    # the release gate reads this
    curl -sS https://<service>/closures        # [] - it can reach the database
    ```
-   `/health` answers without touching Postgres, so a healthy `/health` beside a 500 on `/closures` is precisely step 3 not having been run — the error reads `UndefinedTable: relation "closures" does not exist`. Allow the cold start on the first of these: 30-60 seconds, once.
+   `/health` answers without touching Postgres (and a database that cannot be reached at all now stops the container from starting, #1756, with `/ready` as the endpoint that pings it), so a healthy `/health` beside a 500 on `/closures` is precisely step 3 not having been run — the error reads `UndefinedTable: relation "closures" does not exist`. Allow the cold start on the first of these: 30-60 seconds, once.
 
    Setting `API_BASE_URL` also arms the daily check — `check-deployment.yml` asks `/health` on every run and reports it on **#738 — Deployed app reachability**, where it currently reads `skipped` because there is nothing to ask (#1359). That is the difference between finding out the free tier was withdrawn on the day it happens and finding out when somebody's report fails to send.
 

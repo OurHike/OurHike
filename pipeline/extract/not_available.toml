@@ -15703,7 +15703,9 @@ bulk export is not refused by robots.txt and answers, but it is Recreation.gov's
 for twelve agencies (pipeline/SOURCE_SURVEY.md), not a Corps publication, and its download page says
 that downloading it is agreeing to the RIDB API Access Agreement, a contract with Recreation.gov's
 operator (`terms` quotes it). Entering a contract is the maintainer's act, not a build's, so it was
-not downloaded; [usace.points_of_interest] records the same read."""
+not downloaded; [usace.points_of_interest] records the same read. The maintainer entered it on
+2026-10-11 (pipeline/ELT.md decision 161), and its reader is not built: it waits for #1811 — Fast
+follows after PR #1805's dlt → dbt re-platform, by decision 152's rule for what was not ready."""
 checked = [
     "ridb.recreation.gov/robots.txt, read 2026-10-04T11:41:47Z under lib/user_agent.py's agent: `User-agent: *` / `Disallow: /api` / `Disallow: /api/*` / `Crawl-delay: 10`; `/api/v1/recareas` falls under it, so it was not requested.",
     "https://ridb.recreation.gov/downloads/RIDBFullExport_V1_CSV.zip, one HEAD on 2026-10-04 (robots allows /downloads/): 200, application/zip, 247,747,658 bytes, Last-Modified Sat, 03 Oct 2026 18:47:00 GMT. Not downloaded, so the Corps' share of it is unmeasured.",
@@ -15717,7 +15719,7 @@ where = [
     "https://usace.army.mil/",
 ]
 terms = "ridb.recreation.gov/robots.txt (read 2026-10-04 and 2026-10-10): `User-agent: *` / `Disallow: /api` / `Disallow: /api/*` / `Crawl-delay: 10`. ridb.recreation.gov/download (read 2026-10-10): \"By downloading this data, you are agreeing to the RIDB API Access Agreement.\" That agreement (ridb.recreation.gov/access-agreement-ridb, read 2026-10-10): \"You agree not to use the API or the content or information delivered as part of the Responses: ... (iv) in connection with any activities where the use or failure of the APIs could lead to death, personal injury, or environmental damage; ... or (vii) in connection with any activity that we deem, in our sole discretion, may be associated with an unreasonable level of risk, may create liability for us or a third party, may cause us to lose the services of any of our third party service providers, may cause us to be in breach of a contract between us and a third party, or may not reflect positively on API Vendor.\" and \"You acknowledge that the content of Responses is provided by the United States Government and is not independently verified by API Vendor. ... You agree not to misrepresent the source of any Responses.\" and \"You are encouraged to provide a link to recreation.gov or otherwise identify the data source, ridb.recreation.gov, when incorporating the data into your own system.\" and \"Either party may terminate this Agreement at any time, for any reason or for no reason.\""
-reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and downloading it accepts the RIDB API Access Agreement, which is the maintainer's to enter or decline"
+reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and downloading it accepts the RIDB API Access Agreement, which the maintainer entered on 2026-10-11 (decision 161); its reader waits for #1811"
 
 [usace.podcasts]
 confirmed = 2026-10-04
@@ -15752,8 +15754,9 @@ Two routes, neither wired here. RIDB's API, the Corps' share of Recreation.gov's
 campsites, is refused by ridb.recreation.gov's robots.txt for every agent, ours included, before any
 key would matter. RIDB's bulk export is not refused by robots.txt and answers, but it is Recreation.gov's
 national download for twelve agencies (pipeline/SOURCE_SURVEY.md), not a Corps publication, and
-downloading it is agreeing to the RIDB API Access Agreement, which is the maintainer's to enter
-([usace.places] says what was read on 2026-10-10; `terms` quotes it). The Tulsa District points
+downloading it is agreeing to the RIDB API Access Agreement, which the maintainer entered on
+2026-10-11 (decision 161; [usace.places] says what was read on 2026-10-10, and that its reader
+waits for #1811; `terms` quotes it). The Tulsa District points
 (trailheads, campgrounds, campsites, recreation
 features) are ArcGIS layers on the service usace_tulsa_trails already reads for lines: wave 1's kind."""
 checked = [
@@ -15770,7 +15773,7 @@ where = [
     "https://usace.army.mil/",
 ]
 terms = "ridb.recreation.gov/robots.txt (read 2026-10-04 and 2026-10-10): `User-agent: *` / `Disallow: /api` / `Disallow: /api/*` / `Crawl-delay: 10`. ridb.recreation.gov/download (read 2026-10-10): \"By downloading this data, you are agreeing to the RIDB API Access Agreement.\" That agreement (ridb.recreation.gov/access-agreement-ridb, read 2026-10-10): \"You agree not to use the API or the content or information delivered as part of the Responses: ... (iv) in connection with any activities where the use or failure of the APIs could lead to death, personal injury, or environmental damage; ... or (vii) in connection with any activity that we deem, in our sole discretion, may be associated with an unreasonable level of risk, may create liability for us or a third party, may cause us to lose the services of any of our third party service providers, may cause us to be in breach of a contract between us and a third party, or may not reflect positively on API Vendor.\" and \"You acknowledge that the content of Responses is provided by the United States Government and is not independently verified by API Vendor. ... You agree not to misrepresent the source of any Responses.\" and \"You are encouraged to provide a link to recreation.gov or otherwise identify the data source, ridb.recreation.gov, when incorporating the data into your own system.\" and \"Either party may terminate this Agreement at any time, for any reason or for no reason.\""
-reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and downloading it accepts the RIDB API Access Agreement, the maintainer's to enter or decline; the Tulsa points are ArcGIS layers the lead routes"
+reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and downloading it accepts the RIDB API Access Agreement, which the maintainer entered on 2026-10-11 (decision 161), its reader waiting for #1811; the Tulsa points are ArcGIS layers the lead routes"
 
 [usace.suggested_hikes]
 confirmed = 2026-10-10

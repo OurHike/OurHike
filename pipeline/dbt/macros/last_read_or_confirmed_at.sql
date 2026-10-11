@@ -20,8 +20,22 @@
     the extract asked: a source registered this morning has not gone 24
     hours unread. The leg's kept log holds every row of a table that has never
     loaded (extract/_run.py's kept_log()), so that first row is the first ask.
-    A table the log never mentions reads null, which dbt 2.0.6 reads as
-    1970-01-01 and so as stale (measured 2026-10-07 in a scratch project).
+
+    A table the log never mentions has not been asked yet: its source was
+    registered after the extract that reads it last ran. It counts from the
+    newest row the log holds for any table, which in the hourly warehouse is
+    this run's own read, so it passes until the notices leg first asks about
+    it. Before 2026-10-11 it read null, which dbt 2.0.6 reads as 1970-01-01:
+    on publish-conditions.yml run 634 RATC's three notice sources, new in that
+    build's code, turned the run red before the notices leg had once run the
+    code that reads them, and each notice source added later would have done
+    the same until the next notices run, up to 4 hours by its cron (Reasoned).
+    What still alarms (Reasoned): tests/test_notice_source_freshness.py holds
+    that every table tagged for the notices run log is one a notices leg
+    reads, so a table missing from that log is one the leg has not run yet,
+    and publish-conditions.yml fails the run when the notices copy it read is
+    over 8 hours old. A log with no row at all still reads null, and so as
+    stale (dbt 2.0.6, measured 2026-10-07 in a scratch project).
 
     The hourly warehouse holds the conditions leg's run log and the notices
     copy's beside it (extract/_warehouse.py's add_served()); the monthly and
@@ -32,9 +46,14 @@
 {% macro last_read_or_confirmed_at(relation) -%}
     select
         coalesce(
-            max(checked_at) filter (where outcome in ('loaded', 'skipped')),
-            min(checked_at)
+            max(checked_at) filter (
+                where table_name = '{{ relation.identifier }}'
+                and outcome in ('loaded', 'skipped')
+            ),
+            min(checked_at) filter (
+                where table_name = '{{ relation.identifier }}'
+            ),
+            max(checked_at)
         )
     from {{ source('extract', '_extract_runs') }}
-    where table_name = '{{ relation.identifier }}'
 {%- endmacro %}

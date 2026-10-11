@@ -14,7 +14,8 @@ them all red. So every notice source measures from the extract's run log
 instead (macros/last_read_or_confirmed_at.sql): the newest `_extract_runs` row
 for its table whose outcome is `loaded` or `skipped`, which a refused run never
 writes. A source with no such row counts from the first row the log holds for
-it, the first time the extract asked.
+it, the first time the extract asked, and a source the log never mentions from
+the log's newest row: the extract has not run the code that reads it yet.
 
 The warehouse here is built by hand: `raw._extract_runs` with the rows each
 case needs, and each case's raw table with the `_loaded_at` its last load gave
@@ -103,7 +104,7 @@ def _notice_sources(cadence: str, reaches_hikers: bool, count: int) -> list[tupl
 
 def _cases() -> dict[str, tuple[str, str, datetime, list[tuple[str, datetime]]]]:
     """Each case: (dbt source name, raw table, its `_loaded_at`, its run log rows as (outcome, checked_at))."""
-    hourly = _notice_sources("hourly", True, 5)
+    hourly = _notice_sources("hourly", True, 6)
     daily = _notice_sources("daily", True, 2)
     (quiet,) = _notice_sources("hourly", False, 1)
     every_4_hours = range(26, 0, -4)  # the notices job's cron, decision 61: 26, 22, ..., 2 hours ago
@@ -117,6 +118,7 @@ def _cases() -> dict[str, tuple[str, str, datetime, list[tuple[str, datetime]]]]
         "read an hour ago": (hourly[2], _ago(1), [("loaded", _ago(1))]),
         "never read, first asked 30 hours ago": (hourly[3], None, [("refused", _ago(30)), ("incomplete", _ago(6))]),
         "never read, first asked 2 hours ago": (hourly[4], None, [("refused", _ago(2))]),
+        "never asked yet": (hourly[5], None, []),
         "daily, confirmed 30 hours ago": (daily[0], _ago(80), [("loaded", _ago(80)), ("skipped", _ago(30))]),
         "daily, refused for 50 hours": (daily[1], _ago(50), [("loaded", _ago(50)), ("refused", _ago(26)), ("refused", _ago(2))]),
         "reaching no hiker, refused for 30 hours": (quiet, _ago(30), [("loaded", _ago(30)), ("refused", _ago(2))]),
@@ -270,6 +272,13 @@ def test_a_notice_source_never_read_since_the_extract_first_asked_30_hours_ago_i
 def test_a_notice_source_the_extract_first_asked_2_hours_ago_is_not_stale_yet(freshness):
     """A source registered this morning has not gone 24 hours unread, whatever its first read answered."""
     assert freshness["never read, first asked 2 hours ago"] == "pass"
+
+
+def test_a_notice_source_the_log_never_mentions_is_not_stale_before_the_extract_first_asks(freshness):
+    """publish-conditions.yml run 634 (2026-10-11): RATC's three notice sources, new in that build's code, had no row
+    in the served notices copy's log, read as 1970-01-01, and turned the run red before the notices leg had once run
+    the code that reads them. A table the log never mentions now counts from the log's newest row, an hour old here."""
+    assert freshness["never asked yet"] == "pass"
 
 
 def test_a_daily_notice_source_confirmed_30_hours_ago_is_not_stale_because_it_is_checked_once_a_day(freshness):

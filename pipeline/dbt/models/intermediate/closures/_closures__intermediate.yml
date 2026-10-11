@@ -289,10 +289,11 @@ models:
       - name: held_because
         description: >
           Why the notice may not publish as current, in words for the job log:
-          its own status or category says not current, its own category is
-          not the hazard its source is listed for, or its own order was
-          rescinded. Never its own end date or its own start: both publish.
-          Null where it may.
+          its own status or category says not current (a status's yields to
+          a category value notice_category_values says outranks it), its own
+          category is not the hazard its source is listed for, or its own
+          order was rescinded. Never its own end date or its own start: both
+          publish. Null where it may.
       - name: key_versions
         description: >
           How many different raw rows share the notice's key, counted by its
@@ -1959,8 +1960,13 @@ unit_tests:
       warning; the Great Allegheny Passage's Hidden is held whatever its
       category says, as is its Cleared, and its Fully Obstructed closes (P6);
       NETT's bridges, a layer with no status field, close through the seed's
-      empty value (P11); VTrans's isActive 0 is held. The status, category
-      and hazard seeds are mocked as the seed files are
+      empty value (P11); VTrans's isActive 0 is held. NGPC's Cowboy Trail
+      sections (P7+P8 ship them): a Condition of 'Not Passable' or
+      'Impassable' closes the trail however Road_Status reads, its 'Open'
+      included, because the category seed says it outranks the status (the
+      Niobrara Bridge section), compared without case or surrounding space;
+      its other Open sections are held and its Alt Route is a warning. The
+      status, category and hazard seeds are mocked as the seed files are
       (tests/test_dbt_closures_club_notices.py).
     model: int_closures__club_notices
     given:
@@ -2002,6 +2008,11 @@ unit_tests:
           - {notice_key: 'k34', source_key: 'nett_damaged_bridges', club: 'nett', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: '2017-05-25 21:26:11+00', source_url: null, locality: null, geom_geojson: '{"type":"Point","coordinates":[-95.7,33.5]}', _loaded_at: '2026-10-03 00:00:00+00', source_id: 'n34', title: 'Fixture Bridge (collapsed)', status: null}
           - {notice_key: 'k35', source_key: 'vtrans_rail_trail_closures', club: 'vtrans', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'v35', title: 'Fixture Rail Trail', status: '0'}
           - {notice_key: 'k36', source_key: 'vtrans_rail_trail_closures', club: 'vtrans', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'v36', title: 'Fixture Rail Trail', status: '1'}
+          - {notice_key: 'k37', source_key: 'ngpc_cowboy_trail_improvements', club: 'ngpc', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Not Passable', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: '2024-05-28 15:35:00+00', source_url: null, locality: 'Fixture Bridge Parking Lot', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '19', title: null, status: 'Open'}
+          - {notice_key: 'k38', source_key: 'ngpc_cowboy_trail_improvements', club: 'ngpc', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Impassable', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: '2026-03-05 21:40:00+00', source_url: null, locality: 'Fixture St in Fixture Town', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '13', title: null, status: 'Closed'}
+          - {notice_key: 'k39', source_key: 'ngpc_cowboy_trail_improvements', club: 'ngpc', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Rough Surfaces Exist', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: '2026-03-05 21:33:00+00', source_url: null, locality: 'Fixture Town', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '5', title: null, status: 'Open'}
+          - {notice_key: 'k40', source_key: 'ngpc_cowboy_trail_improvements', club: 'ngpc', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Good_Condition', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: '2026-03-05 21:48:00+00', source_url: null, locality: '516.5 ave', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '36', title: null, status: 'Alt Route'}
+          - {notice_key: 'k41', source_key: 'ngpc_cowboy_trail_improvements', club: 'ngpc', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: ' not passable ', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: '2024-05-28 15:35:00+00', source_url: null, locality: 'Fixture Bridge', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '41', title: null, status: ' open '}
       - input: ref('notice_hazard_areas')
         rows:
           - {source_key: 'oprhp_hunting_areas', hazard: 'hunting', category_value: 'Hunting area', why: 'Hunting 1 ''Hunting area'' 135 of 224 (the row''s notes). Hunting 2 ''Restricted Area/Safety Zone'' 89 is where hunting is restricted, so it is not listed and its rows are held back. @unvalidated that Description carries ''Hunting area'' word for word: read from the notes and the fixture''s ''Restricted Area/Safety Zone'', not from a live value; a different spelling holds every NY Parks area back, a miss rather than a safety zone drawn as hunting'}
@@ -2082,10 +2093,14 @@ unit_tests:
           - {source_key: 'vtrans_rail_trail_warnings', status_value: '0', reads_as: 'not_current', why: 'As vtrans_rail_trail_closures: isActive 0 on 15 of 17 on 2026-10-09 (the row''s notes), 9 of them with no endDate (the read''s saved rows, counted 2026-10-11)'}
           - {source_key: 'gap_trail_alerts', status_value: 'Hidden', reads_as: 'not_current', why: 'The ACF `visibility`, which seeds/notice_source_fields.csv stages as the status: ''Hidden'' 59 of 65 on 2026-10-09 (the row''s notes), an alert the conservancy no longer shows on its own site. The maintainer''s answer to page 01''s P6 (poll of 2026-10-11): Hidden and Cleared are both not current, Cleared by seeds/notice_category_values.csv'}
           - {source_key: 'nett_damaged_bridges', status_value: '', reads_as: 'closes_trail', why: 'An empty value is every row of a layer with no status field, which is its own status: every row of the coalition''s damaged-bridges layer is a bridge it marks collapsed or burned (3 on 2026-10-09, the row''s notes). The maintainer''s answer to page 02''s P11 (poll of 2026-10-11, frame A): drawn closed, with its date'}
+          - {source_key: 'ngpc_cowboy_trail_improvements', status_value: 'Closed', reads_as: 'closes_trail', why: 'Road_Status (''Trail Status'') ''Closed'' 2 of 29 (read live 2026-10-11, the same 29 sections as the saved read of 2026-10-09): Hohman St in Oakdale to 525th Ave in Neligh, and Neligh to Clearwater, both Condition ''Impassable'' (edited 2026-03-05). Page 01''s ''29 sections, 2 closed''. ''Alt Route'' (2 of 29, Condition ''Good_Condition'') is not listed, so it is a warning nobody reviewed: each is the HWY 275 detour beside a closed section, its Comments ''Use HWY 275 as alt route'' and its line over the same longitudes as that section''s (the saved read''s geometry)'}
+          - {source_key: 'ngpc_cowboy_trail_improvements', status_value: 'Open', reads_as: 'not_current', why: 'Road_Status ''Open'' 25 of 29 (read live 2026-10-11): an open section tells a hiker nothing. A Condition seeds/notice_category_values.csv reads as closing outranks it, so the Niobrara Bridge section, Open beside ''Not Passable'', closes the trail; the other 24 are held, whatever their Condition (''Rough Surfaces Exist'' 7, ''Good'' 4, null 3, ''Passable'' 2, and 8 more values on one section each)'}
       - input: ref('notice_category_values')
         rows:
-          - {source_key: 'gap_trail_alerts', category_value: 'Cleared', reads_as: 'not_current', why: 'The ACF `status`, which seeds/notice_source_fields.csv stages as the category: ''Cleared'' 54 of 65 on 2026-10-09 (the row''s notes), every one of them Hidden as well (the read''s saved rows, counted 2026-10-11), an alert the conservancy has cleared. The maintainer''s answer to page 01''s P6 (poll of 2026-10-11): Hidden and Cleared are both not current'}
-          - {source_key: 'gap_trail_alerts', category_value: 'Fully Obstructed', reads_as: 'closes_trail', why: 'ACF `status` ''Fully Obstructed'' 2 of 65 on 2026-10-09 (the row''s notes), 1 Visible and 1 Hidden (the read''s saved rows, counted 2026-10-11): the trail is blocked. Page 01''s proposal, ''Fully Obstructed as closed'', which the maintainer''s P6 answer left standing; ''Partially Obstructed'' (9) is not listed, so it is a warning nobody reviewed'}
+          - {source_key: 'gap_trail_alerts', category_value: 'Cleared', reads_as: 'not_current', outranks_status: 'false', why: 'The ACF `status`, which seeds/notice_source_fields.csv stages as the category: ''Cleared'' 54 of 65 on 2026-10-09 (the row''s notes), every one of them Hidden as well (the read''s saved rows, counted 2026-10-11), an alert the conservancy has cleared. The maintainer''s answer to page 01''s P6 (poll of 2026-10-11): Hidden and Cleared are both not current'}
+          - {source_key: 'gap_trail_alerts', category_value: 'Fully Obstructed', reads_as: 'closes_trail', outranks_status: 'false', why: 'ACF `status` ''Fully Obstructed'' 2 of 65 on 2026-10-09 (the row''s notes), 1 Visible and 1 Hidden (the read''s saved rows, counted 2026-10-11): the trail is blocked. Page 01''s proposal, ''Fully Obstructed as closed'', which the maintainer''s P6 answer left standing; ''Partially Obstructed'' (9) is not listed, so it is a warning nobody reviewed. Its own Hidden holds it whatever this says (outranks_status false), as the maintainer''s P6 answer reads Hidden: 1 of the 2 is Hidden'}
+          - {source_key: 'ngpc_cowboy_trail_improvements', category_value: 'Impassable', reads_as: 'closes_trail', outranks_status: 'true', why: 'Condition ''Impassable'' 2 of 29 (read live 2026-10-11, the same 29 sections as the saved read of 2026-10-09), both Road_Status ''Closed'': Hohman St in Oakdale to 525th Ave in Neligh, and Neligh to Clearwater, the Elkhorn bridge out (edited 2026-03-05). The section cannot be passed, so it closes the trail however Road_Status reads: the settlement the row''s reaches_hikers_comment names, which the maintainer''s P7+P8 answer (poll of 2026-10-11) ships'}
+          - {source_key: 'ngpc_cowboy_trail_improvements', category_value: 'Not Passable', reads_as: 'closes_trail', outranks_status: 'true', why: 'Condition ''Not Passable'' 1 of 29 (read live 2026-10-11): Niobrara Bridge Parking Lot to Niobrara Bridge, whose Road_Status reads ''Open'' (edited 2024-05-28), the section contradicting itself that page 01 says must never show as open. As ''Impassable'', it closes the trail however Road_Status reads. ''Passable'' (2 of 29) is another value and is not listed'}
     expect:
       rows:
         - {notice_id: 'usfs_r06_fire_closure_lines:g01', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Fire Area Closure', locality: null, geom_geojson: null, updated_at: null}
@@ -2124,6 +2139,11 @@ unit_tests:
         - {notice_id: 'nett_damaged_bridges:n34', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Bridge (collapsed)', locality: null, geom_geojson: '{"type":"Point","coordinates":[-95.7,33.5]}', updated_at: '2017-05-25T21:26:11Z'}
         - {notice_id: 'vtrans_rail_trail_closures:v35', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads 0, which the source uses for a notice that is not current', title: 'Fixture Rail Trail', locality: 'Fixture', geom_geojson: null, updated_at: null}
         - {notice_id: 'vtrans_rail_trail_closures:v36', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Rail Trail', locality: 'Fixture', geom_geojson: null, updated_at: null}
+        - {notice_id: 'ngpc_cowboy_trail_improvements:19', obstructs_trail: true, review_state: 'org_published', held_because: null, title: null, locality: 'Fixture Bridge Parking Lot', geom_geojson: null, updated_at: '2024-05-28T15:35:00Z'}
+        - {notice_id: 'ngpc_cowboy_trail_improvements:13', obstructs_trail: true, review_state: 'org_published', held_because: null, title: null, locality: 'Fixture St in Fixture Town', geom_geojson: null, updated_at: '2026-03-05T21:40:00Z'}
+        - {notice_id: 'ngpc_cowboy_trail_improvements:5', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own status reads Open, which the source uses for a notice that is not current', title: null, locality: 'Fixture Town', geom_geojson: null, updated_at: '2026-03-05T21:33:00Z'}
+        - {notice_id: 'ngpc_cowboy_trail_improvements:36', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: null, locality: '516.5 ave', geom_geojson: null, updated_at: '2026-03-05T21:48:00Z'}
+        - {notice_id: 'ngpc_cowboy_trail_improvements:41', obstructs_trail: true, review_state: 'org_published', held_because: null, title: null, locality: 'Fixture Bridge', geom_geojson: null, updated_at: '2024-05-28T15:35:00Z'}
 
   - name: int_closures__club_notices_keeps_a_notice_for_a_days_margin_either_side_of_its_own_dates
     description: >

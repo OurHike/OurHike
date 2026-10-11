@@ -120,20 +120,23 @@ seeds:
   - name: notice_category_values
     description: >
       What a value of a source's own category field means, for a source whose
-      staged status is a flag and whose category says what the notice says
-      of the trail: the Great Allegheny Passage's alerts, whose status is the
-      conservancy's `visibility` and whose category its own `status`
-      (seeds/notice_source_fields.csv). `closes_trail` and `not_current` read
-      as they do in notice_status_values, and int_closures__club_notices
-      holds a notice either seed reads as `not_current`, whatever the other
-      says. A value not listed reads as neither. @unvalidated per row except
-      where `why` quotes a measured count; what settles each is the source's
-      own documentation of its values.
+      category says what the notice says of the trail beside a status that
+      says something else: the Great Allegheny Passage's alerts, whose status
+      is the conservancy's `visibility` and whose category its own `status`,
+      and NGPC's Cowboy Trail sections, whose status is Road_Status and whose
+      category is Condition (seeds/notice_source_fields.csv). `closes_trail`
+      and `not_current` read as they do in notice_status_values, and
+      int_closures__club_notices holds a notice either seed reads as
+      `not_current`, whatever the other says, except where this seed's row
+      `outranks_status`. A value not listed reads as neither. @unvalidated per
+      row except where `why` quotes a measured count; what settles each is the
+      source's own documentation of its values.
     config:
       column_types:
         source_key: varchar
         category_value: varchar
         reads_as: varchar
+        outranks_status: boolean
         why: varchar
     columns:
       - name: source_key
@@ -149,6 +152,23 @@ seeds:
           - accepted_values:
               arguments:
                 values: [closes_trail, not_current]
+      - name: outranks_status
+        description: >
+          True where this value's reading holds however the source's own
+          status reads, a status notice_status_values reads as `not_current`
+          included. For a category that says the trail cannot be passed beside
+          a status that says it is open: the source contradicting itself,
+          where reading it closed is the side a hiker is safer on, since it
+          never shows as open a section the source also calls impassable
+          (NGPC's Niobrara Bridge section, Road_Status 'Open' with Condition
+          'Not Passable', which its sources.json row says must never show as
+          open). False where the
+          status's `not_current` holds the notice whatever its category says:
+          the Great Allegheny Passage's Hidden, which the maintainer's answer
+          to wave 6's page 01, P6 (poll of 2026-10-11), reads as not current.
+          A rule for every source that lists one, never for one source
+          (decision 141).
+        data_tests: [not_null]
       - name: why
         description: The evidence, quoted from the source's sources.json notes where they hold it.
   - name: notice_hazard_areas

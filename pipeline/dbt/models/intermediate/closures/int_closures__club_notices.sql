@@ -88,6 +88,14 @@
 --    Passage's Cleared, its category), a use a hiker is not (Michigan's '-1',
 --    a closure for ORV or snowmobile use, the maintainer's P4), or an open
 --    one, which tells a hiker nothing.
+--    EXCEPT A CATEGORY VALUE THAT OUTRANKS THE STATUS
+--    (seeds/notice_category_values.csv's `outranks_status`): its reading
+--    holds however the status reads, so a section NGPC's Condition calls
+--    'Not Passable' or 'Impassable' closes the trail beside a Road_Status of
+--    'Open' (the Niobrara Bridge section, read live 2026-10-11), which its
+--    sources.json row says must never show as open. A row of the seed says
+--    which way each value goes, so the Great Allegheny Passage's Hidden
+--    still holds its 'Fully Obstructed' alert (the maintainer's P6).
 -- 4. PLACE ONLY FROM THE SOURCE'S OWN GEOMETRY. `geom_geojson` is the
 --    staging model's own geometry, never a match of `locality` or a title
 --    against a place table: a notice with none is unplaced, and its
@@ -159,6 +167,8 @@ read_status as (
         notices.*,
         status_values.reads_as as status_reads,
         category_values.reads_as as category_reads,
+        coalesce(category_values.outranks_status, false)
+            as category_outranks_status,
         hazard_sources.hazard,
         coalesce(hazard_sources.every_row, false) as hazard_every_row,
         hazard_values.category_value is not null as hazard_category_listed,
@@ -186,12 +196,13 @@ read_status as (
 ),
 
 -- Rule 1's one date hold comes last, from macros/notice_date_holds.sql;
--- rule 2's end date is `has_ended`, which holds nothing back.
+-- rule 2's end date is `has_ended`, which holds nothing back. Rule 3's
+-- status hold yields to a category value that outranks the status.
 judged as (
     select
         *,
         case
-            when status_reads = 'not_current'
+            when status_reads = 'not_current' and not category_outranks_status
                 then
                     'its own status reads ' || coalesce(status, 'nothing')
                     || ', which the source uses for a notice that is not '

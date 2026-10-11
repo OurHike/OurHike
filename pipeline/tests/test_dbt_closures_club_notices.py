@@ -11,7 +11,9 @@ And it holds the maintainer's answers of 2026-10-11 on how wave 6's statuses rea
 to the seeds, where a later edit would otherwise move one without a word: Missouri's Archived alone is not current
 (P1), Michigan's '-1' is nothing for a hiker on both its layers (P4), a closed Florida park closes its trails (P5),
 the Great Allegheny Passage's Hidden and Cleared are both not current (P6), and NETT's damaged bridges close the
-trail with no status field to read (P11).
+trail with no status field to read (P11). NGPC's Cowboy Trail sections, which P7+P8 ship, read as their sources.json
+row settles: a Condition of 'Impassable' or 'Not Passable' closes the trail however Road_Status reads, so the Niobrara
+Bridge section, 'Open' beside 'Not Passable', is never shown open.
 """
 
 import csv
@@ -130,3 +132,42 @@ def test_the_gap_alerts_hidden_and_cleared_are_both_not_current():
 def test_netts_damaged_bridges_close_the_trail_through_the_empty_value():
     """P11, frame A: drawn closed with its date. The layer has no status field, so every row reads the empty value."""
     assert _readings("notice_status_values", "status_value")[("nett_damaged_bridges", "")] == "closes_trail"
+
+
+def test_a_category_value_outranks_the_status_only_where_it_closes_the_trail():
+    """`outranks_status` lets a closing category beat a status read as not current, and nothing else: a not-current
+    category already holds a row whatever its status says (rule 3), so a true one there would mean nothing."""
+    for row in _seed("notice_category_values"):
+        assert row["outranks_status"] in ("true", "false"), row
+        if row["outranks_status"] == "true":
+            assert row["reads_as"] == "closes_trail", row
+
+
+def test_ngpcs_impassable_sections_close_however_road_status_reads_and_the_gap_alerts_hidden_still_holds():
+    """NGPC's settlement (its sources.json row): Condition 'Impassable' or 'Not Passable' closes the trail however
+    Road_Status reads, so the Niobrara Bridge section, 'Open' beside 'Not Passable', is never shown as open. The
+    Great Allegheny Passage's 'Fully Obstructed' does not outrank its Hidden (P6: Hidden is not current)."""
+    categories = {(row["source_key"], row["category_value"]): row for row in _seed("notice_category_values")}
+    for value in ("Impassable", "Not Passable"):
+        row = categories[("ngpc_cowboy_trail_improvements", value)]
+        assert (row["reads_as"], row["outranks_status"]) == ("closes_trail", "true"), row
+    assert categories[("gap_trail_alerts", "Fully Obstructed")]["outranks_status"] == "false"
+    statuses = {
+        value: reads
+        for (key, value), reads in _readings("notice_status_values", "status_value").items()
+        if key == "ngpc_cowboy_trail_improvements"
+    }
+    assert statuses == {"Open": "not_current", "Closed": "closes_trail"}
+
+    test = _unit_test()
+    (given,) = [g for g in test["given"] if g["input"] == "ref('int_closures__club_notices_unioned')"]
+    expected = {row["notice_id"]: row for row in test["expect"]["rows"]}
+    niobrara = [
+        row
+        for row in given["rows"]
+        if row["source_key"] == "ngpc_cowboy_trail_improvements" and (row["status"], row["category"]) == ("Open", "Not Passable")
+    ]
+    assert niobrara, "the unit test has no section reading Open beside Not Passable"
+    for row in niobrara:
+        out = expected[f"ngpc_cowboy_trail_improvements:{row['source_id']}"]
+        assert out["obstructs_trail"] is True and out["held_because"] is None, out

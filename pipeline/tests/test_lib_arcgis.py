@@ -2,6 +2,9 @@
 raises on any unmocked request, which is the isolation guarantee this suite
 relies on (see TESTING.md)."""
 
+import re
+from urllib.parse import parse_qs, urlsplit
+
 import pytest
 import requests
 
@@ -840,3 +843,133 @@ def test_a_size_the_server_always_refuses_is_asked_again_only_after_twice_as_man
         "pages between one try at 448 and the next, twice as many each time"
     )
     assert set(sizes[tries[0] :]) == {224, 448}, "settled at 224, the largest size it reached that the server answers"
+
+
+# --- a server that ignores resultOffset, and the read past the highest id ----
+#
+# Missouri State Parks' advisories layer, gis.dnr.mo.gov's
+# parks/Trail_Advisory_Viewer/MapServer/13 (`mo_state_parks_trail_advisories`),
+# measured 2026-10-11: its metadata says supportsPagination and supportsOrderBy
+# true, and it ignores both resultOffset and orderByFields, answering its 4 rows
+# in an order that rotates from one request to the next. It honours
+# resultRecordCount and the `where` it is sent ('OBJECTID > 20439' answered no
+# rows). The object ids and rows here are invented; the shape is that one.
+
+
+class RotatingLayer:
+    """A layer that ignores resultOffset and orderByFields, its rows one turn further round each time it is asked."""
+
+    def __init__(self, requests_mock, oids, *, honours_where=True, with_ids=True, cap=2000):
+        self.oids, self.honours_where, self.with_ids, self.cap = list(oids), honours_where, with_ids, cap
+        self.turn = 0
+        self.asked: list[dict] = []
+        requests_mock.get(LAYER_URL + "/query", json=self.answer)
+
+    def answer(self, request, context):
+        asked = {key: values[0] for key, values in parse_qs(urlsplit(request.url).query).items()}  # case kept, unlike .qs
+        self.asked.append(asked)
+        past = re.search(r"OBJECTID > (\d+)$", asked.get("where", ""))
+        rows = [oid for oid in self.oids if not (self.honours_where and past) or oid > int(past.group(1))]
+        if asked.get("returnCountOnly") == "true":
+            return {"count": len(rows)}
+        turn = self.turn % len(rows) if rows else 0
+        self.turn += 1
+        size = min(int(asked.get("resultRecordCount", self.cap)), self.cap)
+        served = (rows[turn:] + rows[:turn])[:size]
+        properties = ({"OBJECTID": oid, "STATUS": "Closed"} if self.with_ids else {"STATUS": "Closed"} for oid in served)
+        return {
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "properties": p, "geometry": None} for p in properties],
+        }
+
+
+def test_a_server_that_ignores_the_offset_in_a_rotating_order_is_stopped_at_the_page_that_passes_its_count(requests_mock):
+    """Notices run 25 paged Missouri's 4 rows 58 times before two pages matched (2026-10-11); this fake's never match."""
+    layer = RotatingLayer(requests_mock, [41, 77, 63, 5])
+
+    with pytest.raises(arcgis.OffsetIgnored, match="served 8 rows, past the 4 it counted before the read, by offset 4"):
+        list(arcgis.iter_layer_pages(LAYER_URL, expected=4))
+
+    assert [asked["resultOffset"] for asked in layer.asked] == ["0", "4"], "two pages, not fifty-eight"
+
+
+def test_a_page_that_repeats_the_one_before_it_raises_offset_ignored_so_a_caller_can_read_past_the_highest_id(requests_mock):
+    requests_mock.get(LAYER_URL + "/query", json={"features": [{"properties": {"OBJECTID": 1}, "geometry": None}]})
+
+    with pytest.raises(arcgis.OffsetIgnored, match="with the page before it; it ignores resultOffset"):
+        list(arcgis.iter_layer_pages(LAYER_URL))
+
+
+@pytest.mark.parametrize(("rows", "refused"), [(11, False), (12, True)])
+def test_a_layer_that_gains_rows_during_its_read_is_read_by_offset_while_they_fit_its_allowance(requests_mock, rows, refused):
+    """Counted at 10, so overrun_allowance() lets 1 row more through: 11 served by offset is read, 12 is not."""
+    layer = list(range(rows))
+
+    def answer(request, context):
+        offset, size = int(request.qs["resultoffset"][0]), min(int(request.qs["resultrecordcount"][0]), 4)
+        return {"features": [{"properties": {"OBJECTID": n}, "geometry": None} for n in layer[offset : offset + size]]}
+
+    requests_mock.get(LAYER_URL + "/query", json=answer)
+    pages = arcgis.iter_layer_pages(LAYER_URL, expected=10)
+
+    if refused:
+        with pytest.raises(arcgis.OffsetIgnored, match="served 12 rows, past the 10 it counted"):
+            list(pages)
+    else:
+        assert [feature["properties"]["OBJECTID"] for page in pages for feature in page] == list(range(11))
+
+
+@pytest.mark.parametrize(("expected", "allowance"), [(0, 1), (4, 1), (19, 1), (20, 2), (154_780, 15_478)])
+def test_the_overrun_allowance_is_a_tenth_of_the_count_and_one_row_at_least(expected, allowance):
+    assert arcgis.overrun_allowance(expected) == allowance
+
+
+def test_reading_past_the_highest_id_serves_each_row_once_though_the_server_ignores_the_ordering(requests_mock):
+    """Its first page ends on 5, so a cursor taken from the last row would ask 'OBJECTID > 5' and serve 41, 77 and 63 again."""
+    layer = RotatingLayer(requests_mock, [41, 77, 63, 5])
+
+    pages = list(arcgis.iter_layer_pages(LAYER_URL, expected=4, keyset="OBJECTID"))
+
+    served = [feature["properties"]["OBJECTID"] for page in pages for feature in page]
+    assert served == [41, 77, 63, 5], "every row once, in the order the server sent them"
+    assert [(asked["where"], asked["orderByFields"], "resultOffset" in asked) for asked in layer.asked] == [
+        ("1=1", "OBJECTID ASC", False),
+        ("OBJECTID > 77", "OBJECTID ASC", False),
+    ], "the second page starts past the highest id served, and neither page asks for an offset"
+
+
+def test_reading_past_the_highest_id_keeps_the_callers_where_clause_beside_the_bound(requests_mock):
+    layer = RotatingLayer(requests_mock, [41, 77, 63, 5])
+
+    list(arcgis.iter_layer_pages(LAYER_URL, where="STATUS = 'Closed'", keyset="OBJECTID"))
+
+    assert [asked["where"] for asked in layer.asked] == ["STATUS = 'Closed'", "(STATUS = 'Closed') AND OBJECTID > 77"]
+
+
+def test_reading_past_the_highest_id_refuses_a_server_that_ignores_the_where_clause_too(requests_mock):
+    RotatingLayer(requests_mock, [41, 77, 63, 5], honours_where=False)
+
+    with pytest.raises(RuntimeError, match="answered 'OBJECTID > 77' with OBJECTID 5; it ignores the where clause"):
+        list(arcgis.iter_layer_pages(LAYER_URL, keyset="OBJECTID"))
+
+
+def test_reading_past_the_highest_id_refuses_a_feature_that_carries_no_integer_id(requests_mock):
+    RotatingLayer(requests_mock, [41, 77, 63, 5], with_ids=False)
+
+    with pytest.raises(RuntimeError, match="served a feature with no integer OBJECTID"):
+        list(arcgis.iter_layer_pages(LAYER_URL, keyset="OBJECTID"))
+
+
+def test_reading_past_the_highest_id_on_a_server_that_ignores_the_ordering_comes_up_short_when_a_page_cannot_hold_the_layer(
+    requests_mock,
+):
+    """The limit iter_layer_pages states: pages of 2 from 6 rows in no order skip the rows below each page's highest id.
+
+    Nothing here proves the read whole; the caller's count after it does, and
+    refuses it (tests/test_extract_run.py).
+    """
+    RotatingLayer(requests_mock, [41, 77, 63, 5, 90, 12], cap=2)
+
+    served = [f["properties"]["OBJECTID"] for page in arcgis.iter_layer_pages(LAYER_URL, keyset="OBJECTID") for f in page]
+
+    assert served == [41, 77, 90], "3 of 6: short, which the count after the read refuses"

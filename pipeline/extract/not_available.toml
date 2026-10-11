@@ -8342,18 +8342,6 @@ checked = [
 ]
 where = ["https://mainehuts.org/"]
 
-[maine_huts.points_of_interest]
-confirmed = 2026-10-01
-summary = """
-Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2).
-
-The huts are staffed lodging, and they are the shelters on this trail."""
-checked = [
-    "The 4 huts in the nav: Stratton Brook, Poplar Stream, Flagstaff Lake, and Grand Falls (Closed). `hut-sitemap.xml` has 5 URLs, and `trailhead-sitemap.xml` has 7 trailheads. Pages only; the sampled trailhead page has no coordinates.",
-]
-where = ["https://mainehuts.org/"]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
-
 [maine_huts.suggested_hikes]
 confirmed = 2026-10-01
 summary = "Published, and not landed (coverage audit 2026-10-01, batch c16_cand_northeast_2)."

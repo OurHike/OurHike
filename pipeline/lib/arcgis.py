@@ -3,7 +3,10 @@
 Handles pagination via resultOffset since ArcGIS servers cap how many
 features they'll return per request (maxRecordCount) - and, since #1790,
 halves the page when a server refuses one, because some also cap the bytes
-an answer may carry and say so only by answering an error page.
+an answer may carry and say so only by answering an error page. A server
+that ignores resultOffset is read past the highest object id instead
+(iter_layer_pages' `keyset`), once its caller has seen offset paging fail
+there (OffsetIgnored).
 
 Every request goes through lib/http_retry (#659): this module used to do
 bare requests.get, so one transient ATC 5xx failed a whole fetch_all run -
@@ -88,6 +91,72 @@ PRECISION_FALLBACK = 6
 # went one feature a request (the first heavy-cluster test in
 # tests/test_lib_arcgis.py, 2026-10-09).
 GROW_AFTER_PAGES = 3
+
+# A READ BY OFFSET MAY PASS THE COUNT TAKEN BEFORE ITS PAGES BY A TENTH OF
+# THAT COUNT, AND BY ONE ROW AT LEAST (overrun_allowance()); a page that takes
+# the rows read further raises OffsetIgnored (iter_layer_pages' `expected`).
+# Reasoned: a server that honours resultOffset can serve more rows than that
+# count only by rows that joined the layer during the read, since a row
+# joining below the offset repeats one row and the count after moves with it.
+# So the allowance only decides when a growing layer stops being read by
+# offset and is read again past its highest object id (`keyset`), a read held
+# to the count after it like any other. Missouri State Parks' advisories
+# layer, which ignores resultOffset, has 4 rows and serves 4 more on every
+# page, so it trips on its second page (5 rows allowed, 8 served).
+#
+# A tenth is @unvalidated: picked, and nothing in this repository used a
+# number for a layer that grows during a read before it (check_not_truncated
+# lets an overshoot of any size pass). What would settle it: the largest
+# growth a registered layer shows inside one read, which extract/_kinds.py's
+# `_read_into` prints, both counts in the line, on every run where its count
+# moved under a read of more than one page.
+OVERRUN_DIVISOR = 10
+
+
+def overrun_allowance(expected: int) -> int:
+    """How many rows past `expected` a read by offset may serve before it is taken as ignoring resultOffset."""
+    return max(1, expected // OVERRUN_DIVISOR)
+
+
+class OffsetIgnored(RuntimeError):
+    """Offset paging is shown not to work on this layer: a page repeated the one before it, or the rows passed the count.
+
+    A RuntimeError, so a caller that has no other way to read the layer
+    refuses it as it always did. One that has, such as extract/_kinds.py's
+    ArcgisLayer, throws away the pages it was given and reads the layer again
+    with iter_layer_pages' `keyset`.
+    """
+
+
+def keyset_where(where: str, field: str, cursor: int | None) -> str:
+    """The `where` of a keyset page: the caller's clause, and past `cursor` on `field` once a page has been read."""
+    if cursor is None:
+        return where
+    past = f"{field} > {cursor}"
+    return past if where.strip() == "1=1" else f"({where}) AND {past}"
+
+
+def keyset_value(feature: dict, field: str):
+    """A feature's value of the keyset field, as the page carried it: its own property, else GeoJSON's `id`."""
+    properties = feature.get("properties") or {}
+    return properties[field] if field in properties else feature.get("id")
+
+
+def keyset_highest(query_url: str, batch: list[dict], field: str, cursor: int | None) -> int:
+    """The highest `field` value a keyset page served, once each is shown to be an integer past `cursor`, served once.
+
+    Raises RuntimeError otherwise: a feature with no integer id cannot be
+    read past, and an id at or below the cursor, or twice in one page, is a
+    server ignoring the `where` it was sent (keyset_where()).
+    """
+    values = [keyset_value(feature, field) for feature in batch]
+    if any(not isinstance(value, int) or isinstance(value, bool) for value in values):
+        raise RuntimeError(f"{query_url} served a feature with no integer {field}, so it cannot be read past its highest id")
+    if len(set(values)) < len(values):
+        raise RuntimeError(f"{query_url} served one {field} twice in a page read past its highest id")
+    if cursor is not None and min(values) <= cursor:
+        raise RuntimeError(f"{query_url} answered '{field} > {cursor}' with {field} {min(values)}; it ignores the where clause")
+    return max(values)
 
 
 def query_page(
@@ -176,6 +245,8 @@ def iter_layer_pages(
     backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
     return_z: bool = False,
     paginate: bool = True,
+    expected: int | None = None,
+    keyset: str | None = None,
 ):
     """Yield each page of GeoJSON features `fetch_layer_geojson` would collect, in order.
 
@@ -198,13 +269,42 @@ def iter_layer_pages(
     `backoff` is the caller's too: how long each page waits out a server that
     stops answering (lib/http_retry.py).
 
-    A SERVER THAT IGNORES `resultOffset` IS REFUSED, not looped on. One that
-    does not support pagination answers every offset with page one, and
-    this loop, which stops only on an empty page, would never stop (ELT.md
-    asks for a `maximum_offset` on every layer for this reason; @unvalidated
-    against a live server, since none registered here has been seen doing
-    it). Two consecutive pages identical feature for feature cannot come
-    from one layer read in order, so the second one raises.
+    A SERVER THAT IGNORES `resultOffset` RAISES OffsetIgnored, rather than
+    being looped on. It answers every offset with page one, and this loop,
+    which stops only on an empty page, would never stop. Two ways to see it:
+    - Two consecutive pages identical feature for feature cannot come from
+      one layer read in order, so the second one raises.
+    - `expected`, the caller's `returnCountOnly` count taken before the
+      pages: once the rows read pass it by more than overrun_allowance(), the
+      page that took them there raises before it is yielded. The first check
+      alone did not hold: Missouri State Parks' advisories layer
+      (`mo_state_parks_trail_advisories`, an on-prem MapServer whose metadata
+      says supportsPagination true) ignores resultOffset and serves its 4 rows
+      in a rotating order, so notices run 25 paged the same 4 rows 58 times
+      before two pages happened to match (measured 2026-10-11). With
+      `expected` it raises on its second page.
+    With neither `expected` nor `keyset` the requests are exactly what they
+    were before either existed (tests/test_lib_arcgis.py pins the whole query).
+
+    `keyset` READS PAST THE HIGHEST OBJECT ID INSTEAD OF BY OFFSET, for a
+    caller whose offset read raised OffsetIgnored. It names the layer's object
+    id field. Each page asks `where` past the highest id read so far
+    (keyset_where()), ordered by that field, with no resultOffset, and the
+    next page starts past the highest id this one served, never past its last
+    row: Missouri's server ignores `orderByFields` as well (measured
+    2026-10-11, eight queries under lib/user_agent.py's USER_AGENT: ascending,
+    it answered 14037, 20039, 20439, 12; asked for 2 rows ascending, 14037 and
+    20439, not the two lowest; 'OBJECTID > 20439' answered none), and a
+    cursor taken from the last row would serve a row twice. It is the same
+    loop: stop on an empty page, halve a refused page, grow it back. It
+    raises a plain RuntimeError for a feature with no integer id, for an id
+    at or below one already read or twice in a page (a server that ignores
+    the `where` too), and for rows passing `expected` as above. ITS LIMIT: on
+    a server that ignores the ordering, a page holding fewer rows than the
+    layer has left can skip rows below the highest id it served, and only the
+    caller's count after the read sees it, as it sees any short read. On
+    Missouri one page holds the layer: 4 rows against the 1,000 asked and its
+    maxRecordCount of 2,000.
 
     `return_z` KEEPS EACH VERTEX'S ELEVATION, which `f=geojson` drops.
     Measured 2026-10-03 on ATC's Z-enabled `ATX_Ratings/FeatureServer/9`:
@@ -244,7 +344,8 @@ def iter_layer_pages(
             return_z=return_z,
         )
         return
-    offset = 0
+    offset = 0  # rows read so far: the next page's resultOffset, and the rows held to `expected`
+    cursor = None  # with `keyset`, the highest object id read so far; None before the first page
     previous = None
     initial = records  # the size the read began at, to go back to when no page has answered yet
     last_good = None  # the last page size that answered, to go back to after one rounded feature
@@ -276,13 +377,16 @@ def iter_layer_pages(
 
     while True:
         params = {
-            "where": where,
+            "where": where if keyset is None else keyset_where(where, keyset, cursor),
             "outFields": out_fields,
             "outSR": 4326,
             "f": "geojson",
-            "resultOffset": offset,
-            "resultRecordCount": records,
         }
+        if keyset is None:
+            params["resultOffset"] = offset
+        else:
+            params["orderByFields"] = f"{keyset} ASC"
+        params["resultRecordCount"] = records
         if return_z:
             params["f"] = "json"
             params["returnZ"] = "true"
@@ -309,9 +413,8 @@ def iter_layer_pages(
                 print(f"  {query_url} answered {status} at a page of {records}; retrying at {smaller}")
                 records = smaller
             else:
-                print(
-                    f"  {query_url} answered {status} for the feature at offset {offset}; asking it at {PRECISION_FALLBACK} decimals"
-                )
+                at = f"at offset {offset}" if keyset is None else f"past {keyset} {cursor}"
+                print(f"  {query_url} answered {status} for the feature {at}; asking it at {PRECISION_FALLBACK} decimals")
                 rounded = True
             continue
         refusal = page_refusal(resp)
@@ -327,11 +430,20 @@ def iter_layer_pages(
             batch = [esri_feature_to_geojson(feature) for feature in batch]
         if not batch:
             return
-        if batch == previous:
-            raise RuntimeError(f"{query_url} answered offset {offset} with the page before it; it ignores resultOffset")
+        if keyset is not None:
+            highest = keyset_highest(query_url, batch, keyset, cursor)
+        elif batch == previous:
+            raise OffsetIgnored(f"{query_url} answered offset {offset} with the page before it; it ignores resultOffset")
+        if expected is not None and offset + len(batch) > expected + overrun_allowance(expected):
+            served = f"{query_url} served {offset + len(batch)} rows, past the {expected} it counted before the read"
+            if keyset is None:
+                raise OffsetIgnored(f"{served}, by offset {offset}; it ignores resultOffset")
+            raise RuntimeError(f"{served}, past its highest {keyset} read")
         yield batch
         previous = batch
         offset += len(batch)
+        if keyset is not None:
+            cursor = highest
         if rounded:
             # With no page answered before it, the one rounded feature is no size to keep: a fast 5xx burst on
             # the first page halved 1,000 to 1 and would have read the rest of the layer a feature a request

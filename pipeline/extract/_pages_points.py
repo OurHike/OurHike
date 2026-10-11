@@ -740,6 +740,73 @@ def parse_patc_tuscarora_points(page: str, url: str) -> list[dict]:
     return rows
 
 
+#: A Maine Huts & Trails hut page (mainehuts.org/hut/<slug>/, the 4 its hut-sitemap.xml lists, read 2026-10-11):
+#: its map is drawn by an inline script, `var hut = { lat: 45.3031, lng: -70.2070, zoom: 14, ...};` and then
+#: `L.map('map').setView([hut.lat, hut.lng], hut.zoom)`, the marker that would mark the spot commented out; its
+#: one `<h1>` is the hut's name, "(Closed)" after it on the one hut the site calls closed; and an `<h2>` the site
+#: spells "Accomodations" heads a `<dl>` of `<dt>Capacity</dt><dd>32</dd>` and `<dt>Number of bunkrooms</dt>`.
+MAINE_HUTS_MAP = re.compile(r"var hut = \{\s*lat:\s*(?P<lat>-?\d+(?:\.\d+)?),\s*lng:\s*(?P<lng>-?\d+(?:\.\d+)?)\s*,")
+MAINE_HUTS_CLOSED = re.compile(r"\s*\(closed\)\s*$", re.IGNORECASE)
+MAINE_HUTS_FACTS = re.compile(r"(?is)<h2\b[^>]*>\s*Accomm?odations\s*</h2>\s*<dl\b[^>]*>(?P<facts>.*?)</dl>")
+MAINE_HUTS_FACT = re.compile(r"(?is)<dt\b[^>]*>(?P<term>.*?)</dt>\s*<dd\b[^>]*>(?P<value>.*?)</dd>")
+#: The facts kept, by the `<dt>` the page writes, and the column each lands as. Every hut page states both.
+MAINE_HUTS_KEPT = {"capacity": "capacity", "number of bunkrooms": "bunkrooms"}
+PAGE_COLUMN_TYPES["maine_huts_huts"] = {"status": "text"}
+
+
+@_parser("maine_huts_huts")
+def parse_maine_huts_hut(page: str, url: str) -> list[dict]:
+    """One Maine Huts & Trails hut: its name, its beds and bunkrooms, the site's own word if it is closed, and its point.
+
+    THE POINT IS THE STEWARD'S OWN, AND IT IS ITS MAP'S CENTRE: the `lat` and `lng` the page's own script centres
+    the hut's map on, at zoom 14, as MDHTA's guide is read from the coordinates its own map plots. No marker is
+    drawn there (the page's marker block is commented out), so `geometry_basis` says what the point is, and the
+    row carries it to dbt. The figures are written to four decimal places, about 11 m north to south and 8 m east
+    to west at 45 degrees north (Reasoned). How far each centre sits from its hut's door is @unvalidated: nothing
+    independent was compared, and what would settle it is each point beside an independent fix, such as OSM's
+    hut nodes, which the pipeline already extracts, or a GPS reading at a hut. Nothing is geocoded: the only
+    street address the pages print is the Kingfield office's, in the footer.
+
+    `status` is 'closed' where the page's `<h1>` ends in "(Closed)" (Grand Falls Hut's, read 2026-10-11), and None
+    otherwise: unknown, never 'open', since a heading without the label says nothing of the hut's season. A page
+    without exactly one map script, one `<h1>`, or both facts as whole numbers is not the page this was written
+    against, and refuses: the hut is never landed without its point or with a figure guessed.
+    """
+    maps = list(MAINE_HUTS_MAP.finditer(page))
+    if len(maps) != 1:
+        raise PageLayoutChanged(f"{url}: {len(maps)} `var hut` map scripts, not the one each hut page draws its map with")
+    headings = [" ".join(html_lines(heading)) for heading in re.findall(r"(?is)<h1\b[^>]*>(.*?)</h1>", page)]
+    if len(headings) != 1 or not headings[0]:
+        raise PageLayoutChanged(f"{url}: {len(headings)} <h1> headings, not the hut's one name")
+    name = MAINE_HUTS_CLOSED.sub("", headings[0]).strip()
+    if not name:
+        raise PageLayoutChanged(f"{url}: an <h1> with no name before its label: {headings[0]!r}")
+    block = MAINE_HUTS_FACTS.search(page)
+    if block is None:
+        raise PageLayoutChanged(f"{url}: no Accomodations list of facts")
+    facts: dict[str, int] = {}
+    for fact in MAINE_HUTS_FACT.finditer(block["facts"]):
+        term = " ".join(html_lines(fact["term"])).strip().lower()
+        if term in MAINE_HUTS_KEPT:
+            value = " ".join(html_lines(fact["value"])).strip()
+            if not re.fullmatch(r"\d+", value):
+                raise PageLayoutChanged(f"{url}: {term} is {value!r}, not a whole number")
+            facts[MAINE_HUTS_KEPT[term]] = int(value)
+    if set(facts) != set(MAINE_HUTS_KEPT.values()):
+        raise PageLayoutChanged(f"{url}: the Accomodations list states {sorted(facts)}, not capacity and bunkrooms")
+    return [
+        {
+            "name": name,
+            "kind": "hut",
+            "slug": urlparse(url).path.rstrip("/").rsplit("/", 1)[-1],
+            "status": "closed" if name != headings[0].strip() else None,
+            **facts,
+            "geometry_basis": "page_map_centre",
+            "geometry": north_america(float(maps[0]["lat"]), float(maps[0]["lng"]), f"{url} {name}"),
+        }
+    ]
+
+
 # --- The resource -------------------------------------------------------------------------------------------------
 
 WP_ROUTE = "/wp-json/wp/v2/"

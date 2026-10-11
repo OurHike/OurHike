@@ -8,8 +8,7 @@ still holds the page back.
   and Grand Falls). Its title is held to 'Trail Conditions', so a reused page id is refused. mainehuts.org's
   robots.txt asks no Crawl-delay (2026-10-09).
 
-Its 4 huts, the trail's shelters, are pages with no coordinates; the maintainer asked for a page reader that places
-them (the same poll, P12), which waits on what the pages carry.
+Its 4 huts are points_of_interest.py's, read off each hut page's own map script (P12, 2026-10-11).
 """
 
 from extract._notices import page_notice

@@ -18,6 +18,7 @@ import errno
 import hashlib
 import json
 import pickle
+import re
 import shutil
 import tempfile
 import threading
@@ -69,6 +70,7 @@ AGOL = "https://services1.arcgis.com/orgid/arcgis/rest/services"
 LINES_URL = f"{AGOL}/Trails/FeatureServer/0"
 LINES_Z_URL = f"{AGOL}/CenterlineZ/FeatureServer/9"
 UNPAGED_URL = "https://gis.example.org/arcgis/rest/services/Trail/MapServer/0"
+ADVISORIES_URL = "https://gis.example.gov/server/rest/services/parks/Advisories/MapServer/13"
 CLOSURES_URL = f"{AGOL}/Closures/FeatureServer/0"
 STATUS_URL = f"{AGOL}/SiteStatus/FeatureServer/0"
 STAFFED_URL = f"{AGOL}/Waypoints/FeatureServer/1"
@@ -185,6 +187,7 @@ def registry(tmp_path, monkeypatch):
                     {"key": "trails", "url": LINES_URL},
                     {"key": "centerline_z", "url": LINES_Z_URL, "return_z": True},
                     {"key": "unpaged", "url": UNPAGED_URL},
+                    {"key": "advisories", "url": ADVISORIES_URL},
                     {"key": "closures_layer", "url": CLOSURES_URL},
                     {"key": "status_layer", "url": STATUS_URL, "where": "status = 'closed'"},
                     {
@@ -1243,6 +1246,159 @@ def test_a_layer_whose_server_refuses_pagination_is_read_whole_by_object_id(regi
 
     assert [row["FID"] for row in rows] == ids
     assert proofs == {resource.table: 5}, "the proof is still the server's returnCountOnly"
+
+
+class RotatingAdvisories:
+    """Missouri State Parks' advisories layer's shape, `mo_state_parks_trail_advisories` (measured 2026-10-11).
+
+    Its metadata says supportsPagination and supportsOrderBy true and names no
+    objectIdField, its OBJECTID typed esriFieldTypeOID; it ignores resultOffset
+    and orderByFields, and answers each query with the rows under the `where`
+    it was sent, which it does honour ('OBJECTID > n'), one turn further round
+    than the query before, cut to resultRecordCount and to `max_records`. The
+    ids and rows are invented. `asked` is every request in order, the layer
+    document as 'layer' and each query as 'query', its parameters' case kept.
+    """
+
+    def __init__(self, requests_mock, oids, *, oid_typed=True, max_records=2000):
+        self.oids, self.max_records, self.turn = list(oids), max_records, 0
+        self.asked: list[tuple[str, dict]] = []
+        oid = {"name": "OBJECTID", "type": "esriFieldTypeOID" if oid_typed else "esriFieldTypeInteger"}
+        self.metadata = {
+            "fields": [oid, {"name": "STATUS", "type": "esriFieldTypeString"}],
+            "maxRecordCount": max_records,
+            "advancedQueryCapabilities": {"supportsPagination": True, "supportsOrderBy": True},
+        }
+        requests_mock.get(ADVISORIES_URL, json=self.layer)
+        requests_mock.get(ADVISORIES_URL + "/query", json=self.query)
+
+    @staticmethod
+    def _params(request) -> dict:
+        return {key: values[0] for key, values in parse_qs(urlsplit(request.url).query).items()}
+
+    def layer(self, request, context):
+        self.asked.append(("layer", self._params(request)))
+        return self.metadata
+
+    def query(self, request, context):
+        asked = self._params(request)
+        self.asked.append(("query", asked))
+        past = re.search(r"OBJECTID > (\d+)$", asked.get("where", ""))
+        rows = [oid for oid in self.oids if past is None or oid > int(past.group(1))]
+        if asked.get("returnCountOnly") == "true":
+            return {"count": len(rows)}
+        turn = self.turn % len(rows) if rows else 0
+        self.turn += 1
+        served = (rows[turn:] + rows[:turn])[: min(int(asked["resultRecordCount"]), self.max_records)]
+        line = {"type": "LineString", "coordinates": [[-92.30, 38.90], [-92.31, 38.91]]}
+        features = [{"type": "Feature", "properties": {"OBJECTID": oid, "STATUS": "Closed"}, "geometry": line} for oid in served]
+        return {"type": "FeatureCollection", "features": features}
+
+
+def advisories():
+    return ArcgisLayer(key="advisories", club="testclub", type="closures")
+
+
+COUNT = {"where": "1=1", "returnCountOnly": "true", "f": "json"}
+BY_OFFSET = {"where": "1=1", "outFields": "*", "outSR": "4326", "f": "geojson", "resultRecordCount": "1000"}
+PAST_THE_ID = {**BY_OFFSET, "orderByFields": "OBJECTID ASC"}
+
+
+def test_a_layer_whose_server_ignores_resultoffset_lands_its_4_rows_once_read_past_its_highest_object_id(
+    registry, requests_mock, capsys
+):
+    """Notices run 25 paged Missouri's 4 advisories 58 times; now 2 pages by offset, then 2 past the highest id."""
+    layer = RotatingAdvisories(requests_mock, [41, 77, 63, 5])
+    proofs = {}
+
+    landed = [row["OBJECTID"] for row in advisories().rows(proofs)]
+
+    assert sorted(landed) == [5, 41, 63, 77] and len(landed) == 4, "each of the 4 rows exactly once"
+    assert proofs == {"raw_testclub__advisories": 4}, "held to the server's own count after the read"
+    assert layer.asked == [
+        ("layer", {"f": "json"}),
+        ("query", COUNT),
+        ("query", {**BY_OFFSET, "resultOffset": "0"}),
+        ("query", {**BY_OFFSET, "resultOffset": "4"}),
+        ("query", {**PAST_THE_ID, "where": "1=1"}),
+        ("query", {**PAST_THE_ID, "where": "OBJECTID > 77"}),
+        ("query", COUNT),
+    ], "the page that served 8 rows of a 4-row layer stops the offset read; the next starts past the highest id, 77"
+    assert "it ignores resultOffset; reading it again past its highest OBJECTID" in capsys.readouterr().out
+
+
+def test_a_layer_whose_server_ignores_resultoffset_and_names_no_object_id_field_is_refused(registry, requests_mock):
+    """No field is named or typed as the object id, so there is nothing to read it past, and the read is not guessed."""
+    layer = RotatingAdvisories(requests_mock, [41, 77, 63, 5], oid_typed=False)
+
+    with pytest.raises(RuntimeError, match="it ignores resultOffset, and its metadata names no object id field to read it by"):
+        list(advisories().rows({}))
+
+    assert [params.get("resultOffset") for _, params in layer.asked if "outFields" in params] == ["0", "4"]
+
+
+def test_a_server_that_ignores_the_ordering_too_and_holds_more_rows_than_a_page_is_refused_never_landed_short(
+    registry, requests_mock
+):
+    """Read past the highest id in pages of 2, 6 rows in no order skip rows below each page's highest; the count refuses it."""
+    RotatingAdvisories(requests_mock, [41, 77, 63, 5, 90, 12], max_records=2)
+
+    with pytest.raises(RuntimeError, match="the server counts 6 features and 2 were read"):
+        list(advisories().rows({}))
+
+
+def test_a_layer_whose_offset_paging_works_makes_exactly_the_requests_it_made_before(registry, requests_mock):
+    """The read past the highest id is a fallback only: a layer that pages by offset is asked what it was asked at 68091c95."""
+    FakeLayer(requests_mock, LINES_URL, [feature(oid) for oid in range(1, 6)])
+
+    rows = list(lines().rows({}))
+
+    assert [row["OBJECTID"] for row in rows] == [1, 2, 3, 4, 5]
+    asked = [(urlsplit(r.url).path, parse_qs(urlsplit(r.url).query)) for r in requests_mock.request_history]
+    page = {
+        "where": ["1=1"],
+        "outFields": ["OBJECTID,GlobalID,NAME,EDITED,CAPACITY"],
+        "outSR": ["4326"],
+        "f": ["geojson"],
+        "resultRecordCount": ["1000"],
+    }
+    layer, query = urlsplit(LINES_URL).path, urlsplit(LINES_URL).path + "/query"
+    assert asked == [
+        (layer, {"f": ["json"]}),
+        (query, {"where": ["1=1"], "returnCountOnly": ["true"], "f": ["json"]}),
+        (query, {**page, "resultOffset": ["0"]}),
+        (query, {**page, "resultOffset": ["2"]}),
+        (query, {**page, "resultOffset": ["4"]}),
+        (query, {**page, "resultOffset": ["5"]}),
+        (query, {"where": ["1=1"], "returnCountOnly": ["true"], "f": ["json"]}),
+    ]
+
+
+def test_a_read_that_serves_every_counted_row_and_one_twice_is_refused_rather_than_landed_with_the_repeat(
+    registry, requests_mock, monkeypatch
+):
+    """Its second page starts a row early, an order that moves between pages: 4 rows read, 3 distinct, and the server counts 3.
+
+    Before the fix the count passed it, nothing read it again, and site 2
+    landed twice (no counted row was missing, so the shifted-read check did
+    not fire either).
+    """
+    monkeypatch.setattr(arcgis, "PAGE_SIZE", 2)
+    pages = {"0": [1, 2], "2": [2, 3]}
+
+    def query(request, context):
+        params = {key.lower(): value[0] for key, value in request.qs.items()}
+        if params.get("returncountonly") == "true":
+            return {"count": 3}
+        return {"type": "FeatureCollection", "features": [feature(oid) for oid in pages.get(params["resultoffset"], [])]}
+
+    requests_mock.get(STATUS_URL, json={"objectIdField": "OBJECTID", "fields": FIELDS})
+    requests_mock.get(STATUS_URL + "/query", json=query)
+
+    with pytest.raises(
+        RuntimeError, match="4 features read hold 3 distinct object ids, all 3 the server counts and 1 served again"
+    ):
+        list(status_layer().rows({}))
 
 
 def test_turning_return_z_on_reads_a_layer_again_and_leaves_every_other_digest_as_it_was(registry):

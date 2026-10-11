@@ -518,7 +518,7 @@ import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
 } from './chrome/waypointFiltersPanel'
-import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiLayers'
+import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiIds'
 import { useTappedLinePanel } from './chrome/tappedLinePanel'
 import {
   paceEstimate,

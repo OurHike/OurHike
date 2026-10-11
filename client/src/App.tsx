@@ -511,7 +511,13 @@ import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { PressPlate } from './chrome/PressPlate'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
-import { atcUpdateBanner, atcUpdateLanes, type RankedAtcUpdate } from './lib/atcUpdates'
+import {
+  atcBandId,
+  atcUpdateBanner,
+  atcUpdateLanes,
+  type RankedAtcUpdate,
+} from './lib/atcUpdates'
+import { isCurrentOn } from './lib/noticeCurrency'
 import { ATC_SOURCE_KEY } from './lib/notices'
 import { useNoticesPanel } from './chrome/noticesPanel'
 import { useAlertSheets } from './chrome/alertSheetsPanel'
@@ -3256,6 +3262,11 @@ function App() {
    *  change, same shape as `noticeOrg` above. */
   const trailSources = useMemo(() => trailSourceTableFrom(stewards), [stewards])
 
+  /** The phone's calendar day, which a notice's `current_until` is read
+   *  against (lib/noticeCurrency.ts): a string, so the banner memo below
+   *  runs again once a day for it, not on every tick of the clock. */
+  const noticeDay = localDay(now)
+
   const { closureAhead, advisoryAhead } = useMemo(() => {
     if (fixMile === null) return { closureAhead: null, advisoryAhead: null }
 
@@ -3301,12 +3312,21 @@ function App() {
         // short form - "ATC", "NYNJTC" - which is what a line read while
         // walking needs, and it is theirs rather than an abbreviation this app
         // invented.
+        // Decision 157: the header ends "may no longer apply" whenever the
+        // notice's row in conditions/notices.json has gone grey on this
+        // phone's day, so it never reads at full voice what the planned-hike
+        // list greys. Without that file (decision 77: nothing planned) there
+        // is no verdict, and the line reads as before.
+        const row = clubNotices?.find(
+          (notice) => notice.notice_id === atcBandId(atc.update),
+        )
         return atcUpdateBanner(
           atc.update,
           fixMile,
           heading,
           noticeOrg(ATC_SOURCE_KEY),
           units,
+          row !== undefined && !isCurrentOn(row, noticeDay),
         )
       }
       return null
@@ -3326,7 +3346,16 @@ function App() {
     // walking, because `fixMile` and `heading` change with every fix; stuck
     // for a hiker standing still or without a fix, which is when somebody is
     // most likely to be reading it.
-  }, [noticeOrg, placedClosures, atcUpdates, fixMile, heading, units])
+  }, [
+    noticeOrg,
+    placedClosures,
+    atcUpdates,
+    fixMile,
+    heading,
+    units,
+    clubNotices,
+    noticeDay,
+  ])
 
   /**
    * Every published report placed on the mile axis.

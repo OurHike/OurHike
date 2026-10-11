@@ -339,4 +339,34 @@ describe('rows nobody here has read (#963)', () => {
 
     expect(atcUpdateBanner(ahead, 480, 'NOBO', 'ATC')).toContain('not checked by OurHike')
   })
+
+  // Decision 157: a notice the planned-hike list has greyed never reads at
+  // full voice on the header either.
+  it('ends with "may no longer apply" when its notices.json row has gone grey', () => {
+    const here = atcUpdateBanner(update(), 480, 'NOBO', 'ATC', 'imperial', true)
+    const ahead = atcUpdateBanner(
+      update({
+        review_state: 'unreviewed',
+        start_mile_marker: 500,
+        end_mile_marker: 500,
+      }),
+      480,
+      'NOBO',
+      'ATC',
+      'imperial',
+      true,
+    )
+
+    expect(here).toMatch(/ · may no longer apply$/)
+    expect(ahead).toMatch(/ · not checked by OurHike · may no longer apply$/)
+  })
+
+  it('adds nothing while its row is current, or with no row to ask', () => {
+    expect(atcUpdateBanner(update(), 480, 'NOBO', 'ATC')).not.toContain(
+      'may no longer apply',
+    )
+    expect(
+      atcUpdateBanner(update(), 480, 'NOBO', 'ATC', 'imperial', false),
+    ).not.toContain('may no longer apply')
+  })
 })

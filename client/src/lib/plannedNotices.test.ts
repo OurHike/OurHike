@@ -416,6 +416,35 @@ describe('a placed notice', () => {
     expect(pick([autumn], [tenDayTrip()], []).hikes[0].onRoute).toEqual([])
   })
 
+  // starts_on is a UTC day, and a start on UTC day D can fall on the US
+  // evening of D-1: a closure starting the day after the stretch's last day
+  // is listed, two days after is not (mayStartBy, lib/noticeCurrency.ts).
+  it('touches a hike whose last day is the day before the notice’s UTC start day', () => {
+    const stretchEnd = shiftDay(TODAY, NOTICE_WINDOW_DAYS - 1)
+    const nextDay = {
+      ...nearPoint,
+      notice_id: 'club_points:next-day',
+      starts_on: shiftDay(stretchEnd, 1),
+    }
+    const twoDays = {
+      ...nearPoint,
+      notice_id: 'club_points:two-days',
+      starts_on: shiftDay(stretchEnd, 2),
+    }
+    expect(
+      pick([nextDay, twoDays], [tenDayTrip()], []).hikes[0].onRoute.map(
+        (n) => n.notice_id,
+      ),
+    ).toEqual(['club_points:next-day'])
+  })
+
+  it('touches a hike when the notice’s start is not a real day', () => {
+    const garbled = { ...nearPoint, notice_id: 'club_points:garbled', starts_on: 'TBD' }
+    expect(
+      pick([garbled], [tenDayTrip()], []).hikes[0].onRoute.map((n) => n.notice_id),
+    ).toEqual(['club_points:garbled'])
+  })
+
   // The maintainer's frame A (2026-10-10): a notice past its own end date
   // stays, greyed by the panel, rather than leaving it. Until then this rule
   // dropped it here, so a closure a source forgot to extend was never shown.

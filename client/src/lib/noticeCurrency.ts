@@ -114,6 +114,19 @@ function dayBefore(day: string): string {
 }
 
 /**
+ * Whether a notice can have begun by the end of `day`, a calendar day on the
+ * phone: false only when the day before its own start is after `day`, by
+ * `obstructsOn`'s reasoning below, so a closure stated as starting on UTC day
+ * D counts as touching a planned day D-1, on whose US evening it can begin.
+ * No start, or one that is not a real ISO day, is no constraint: the notice
+ * shows, the cautious side.
+ */
+export function mayStartBy(notice: TrailNotice, day: string): boolean {
+  const start = notice.starts_on
+  return !isIsoDay(start) || dayBefore(start) <= day
+}
+
+/**
  * Whether a notice closes the trail on `today`, the phone's calendar day: its
  * published `obstructs_trail`, from the day before its own start. The panel's
  * "Closure" tag and its closures-first order read this, never the bare field,

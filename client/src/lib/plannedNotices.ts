@@ -154,7 +154,7 @@ import {
   type GeometryParts,
   type Position,
 } from './noticeGeometry'
-import { isCurrentOn, obstructsOn } from './noticeCurrency'
+import { isCurrentOn, mayStartBy, obstructsOn } from './noticeCurrency'
 import type { TrailNotice } from './notices'
 import type { NoticeStateArea } from './publishedConditions'
 import { clubTimeline, type ClubSections } from './clubSections'
@@ -475,12 +475,13 @@ function placedParts(
   return null
 }
 
-/** Whether a notice can touch the planned days in time: false only when its
- *  own start is after the last of them. An absent start is no constraint,
- *  and its own end never is - a notice past its end shows greyed (the module
- *  comment's frame A). */
+/** Whether a notice can touch the planned days in time: false only when the
+ *  day before its own start is after the last of them (`mayStartBy`: its
+ *  `starts_on` is a UTC day, so it can begin on the US evening before). An
+ *  absent start is no constraint, and its own end never is - a notice past
+ *  its end shows greyed (the module comment's frame A). */
 function overlapsInTime(notice: TrailNotice, stretch: PlannedStretch): boolean {
-  return !(notice.starts_on && notice.starts_on > stretch.to)
+  return mayStartBy(notice, stretch.to)
 }
 
 function noticeProvider(

@@ -759,3 +759,78 @@ describe('what the panel shows, once', () => {
     ])
   })
 })
+
+// P3, the maintainer's frame B (2026-10-11): a closure whose own start is
+// still ahead is shown now and closes the trail only from the day before its
+// start (lib/noticeCurrency.ts's obstructsOn), so until then it does not sort
+// among the closures. The hike is five days out; the closure starts the day
+// before it, and was edited more recently than either other row, so it would
+// lead the list if it counted as a closure.
+describe('a closure that has not started yet (frame B)', () => {
+  const HIKE_DAY = shiftDay(TODAY, 5)
+  const upcoming = notice({
+    notice_id: 'oprhp_trail_closures:upcoming',
+    source_key: 'oprhp_trail_closures',
+    obstructs_trail: true,
+    starts_on: shiftDay(TODAY, 4),
+    updated_at: '2026-10-03T00:00:00Z',
+  })
+  const current = notice({
+    notice_id: 'oprhp_trail_closures:current',
+    source_key: 'oprhp_trail_closures',
+    obstructs_trail: true,
+    updated_at: '2026-09-01T00:00:00Z',
+  })
+  const plain = notice({
+    notice_id: 'oprhp_trail_closures:notice',
+    source_key: 'oprhp_trail_closures',
+    updated_at: '2026-10-02T00:00:00Z',
+  })
+
+  function orderOn(today: string): string[] {
+    return plannedNotices({
+      notices: [plain, upcoming, current],
+      trips: [],
+      dayHikes: [dayHike(HIKE_DAY)],
+      today,
+      trailIndex: INDEX,
+      routeDayHike: null,
+      clubSections: SECTIONS,
+      stewards: STEWARDS,
+    }).hikes[0].fromClubs.map((n) => n.notice_id)
+  }
+
+  it('is shown to the hike it starts before, and sorts after the closures until the day before its start', () => {
+    expect(orderOn(TODAY)).toEqual([
+      'oprhp_trail_closures:current',
+      'oprhp_trail_closures:upcoming',
+      'oprhp_trail_closures:notice',
+    ])
+    expect(orderOn(shiftDay(TODAY, 2))).toEqual([
+      'oprhp_trail_closures:current',
+      'oprhp_trail_closures:upcoming',
+      'oprhp_trail_closures:notice',
+    ])
+  })
+
+  it('sorts among the closures from the day before its start, and on its start day', () => {
+    for (const today of [shiftDay(TODAY, 3), shiftDay(TODAY, 4)]) {
+      expect(orderOn(today)).toEqual([
+        'oprhp_trail_closures:upcoming',
+        'oprhp_trail_closures:current',
+        'oprhp_trail_closures:notice',
+      ])
+    }
+  })
+
+  it('is still left out of a hike whose last planned day is before its start, nine days out', () => {
+    const later = {
+      ...upcoming,
+      notice_id: 'oprhp_trail_closures:later',
+      starts_on: shiftDay(TODAY, 9),
+    }
+    expect(pick([later], [], [dayHike(shiftDay(TODAY, 6))]).hikes[0].fromClubs).toEqual(
+      [],
+    )
+  })
+})

@@ -30,10 +30,22 @@
 // notice of an older file would be a display outrunning its source just as
 // surely as calling a stale one current; the file simply makes no claim.
 //
+// A NOTICE WHOSE OWN START IS STILL AHEAD (P3, the maintainer's frame B, poll
+// of 2026-10-11: "Shown now, marked with its start. It closes the trail only
+// from its start day."). conditions/notices.json carries such a notice with
+// its `starts_on` and, for a closure, `obstructs_trail` true, so the phone
+// judges it against its own day here, as it judges `current_until`:
+// `startsAhead` says it has not started, `isCurrentOn` never greys it before
+// then, and `obstructsOn` is the one answer to "does it close the trail
+// today" that every reader of that file asks instead of the bare field. ATC's
+// and NYNJTC's own files carry no start, so their readers keep the field.
+//
 // A LEAF MODULE, with no import but the notice's type, for the launch budget's
 // reason (lib/noticeSelection.ts's header): lib/plannedNotices.ts and
-// lib/hazardAreas.ts import it, so it travels in the chunk those two already
-// share, and the sheets that import it add no chunk of their own.
+// lib/hazardAreas.ts import it, and so does App.tsx for the header's "may no
+// longer apply" (decision 157), which puts it in the eager entry chunk - the
+// built main chunk carries this module's lines (measured 2026-10-11) - so
+// every byte here is a launch byte (client/scripts/check-build-output.mjs).
 
 import type { TrailNotice } from './notices'
 
@@ -79,6 +91,51 @@ function stampDay(stamp: string | null): string | null {
 }
 
 /**
+ * The notice's own start day while it is still after `today`, the phone's
+ * calendar day, else null: what frame B's "Starts Oct 20" tag names (P3).
+ *
+ * Only a real ISO day counts. A start this build cannot read is no start, so
+ * the notice reads as already begun and closes the trail as published, the
+ * cautious side. A hazard area is never upcoming: its dates are its season or
+ * its fire's (lib/hazardAreas.ts's `hazardDates`, which prints them on its
+ * card) and it never closes a trail, so there is nothing for a start to hold.
+ */
+export function startsAhead(notice: TrailNotice, today: string): string | null {
+  const day = notice.starts_on
+  return (notice.hazard ?? null) === null && isIsoDay(day) && today < day ? day : null
+}
+
+/** The ISO day before an ISO day, by UTC date arithmetic, so a DST change
+ *  cannot move it. */
+function dayBefore(day: string): string {
+  const at = new Date(`${day}T00:00:00Z`)
+  at.setUTCDate(at.getUTCDate() - 1)
+  return at.toISOString().slice(0, 10)
+}
+
+/**
+ * Whether a notice closes the trail on `today`, the phone's calendar day: its
+ * published `obstructs_trail`, from the day before its own start. The panel's
+ * "Closure" tag and its closures-first order read this, never the bare field,
+ * so no surface calls a closure in force that another calls upcoming.
+ *
+ * WHY THE DAY BEFORE (Reasoned, not measured on any source). `starts_on` is
+ * the UTC day of the source's start instant (pipeline/dbt's
+ * int_closures__club_notices: `cast(timezone('UTC', starts_at) as date)`). In
+ * every US zone behind UTC, UTC-4 to UTC-11, an instant on UTC day D falls on
+ * local day D-1 or D; ahead of it, in Guam and the Northern Marianas (UTC+10),
+ * on D or D+1. So from local day D-1 the phone is never later than the start:
+ * it rounds toward a closure closing the trail a day early, never a day late
+ * (CLAUDE.md: round toward caution). The "Starts" tag stays until day D, the
+ * day the row's own "from" line prints, so the two never name different days.
+ */
+export function obstructsOn(notice: TrailNotice, today: string): boolean {
+  if (!notice.obstructs_trail) return false
+  const start = startsAhead(notice, today)
+  return start === null || today >= dayBefore(start)
+}
+
+/**
  * Whether a notice reads as current on `today`, the phone's own calendar day
  * (lib/passedToday.ts's `localDay`).
  *
@@ -88,8 +145,13 @@ function stampDay(stamp: string | null): string | null {
  * is safer on (Reasoned). The day is compared in the phone's own zone, where
  * the source's end date is a day in the source's zone: for a hiker in the
  * zone of the trail they are reading about, the two are the same day.
+ *
+ * Always current before its own start (frame B): nothing it says can have
+ * lapsed before it begins, whatever `current_until` says - null for a row
+ * that gives only a start (pipeline/dbt/macros/notice_current_until.sql).
  */
 export function isCurrentOn(notice: TrailNotice, today: string): boolean {
+  if (startsAhead(notice, today) !== null) return true
   const until = notice.current_until
   if (until === undefined) return true
   return until !== null && isIsoDay(until) && today <= until

@@ -173,12 +173,15 @@ PERSON_FIELDS = frozenset(
 
 # The backstop for a person field nobody has named yet, such as next month's
 # new staff column: an ArcGIS field whose name reads as a person's is left out
-# unless its sources.json row clears it in `not_person_fields` (PASDA's
+# unless its own name marks an organisation (ORGANISATION_SUFFIXES, below) or
+# its sources.json row clears it in `not_person_fields` (PASDA's
 # `LastEdit_1`, say, if it ever arrives as text). Matched against the name
 # split into words (_name_words), so `LastEdBy` is read as `last_ed_by` and
 # `Contact Email` as `contact_email`. Dropped and printed, never a failed
-# run: a false match costs one column until somebody clears it, and a missed
-# one ships a person.
+# run: a false match costs one column, and a missed one ships a person.
+# Since standard S4 (the maintainer's poll of 2026-10-11) no person reads a
+# person-shaped column's values to clear it (ORGANISATION_SUFFIXES says what
+# clears one now).
 # @unvalidated: the word list was drafted for decision 54 on 2026-10-03 from
 # the names seen so far, not from a survey of field names. What would settle
 # it is the names a few monthly runs print, read for false matches and misses.
@@ -279,6 +282,42 @@ PERSON_SHAPED = re.compile(
     r"|(^|_)(mobile|cell)($|\d)"
 )
 
+# STANDARD S4, the maintainer's poll of 2026-10-11: "A column whose name looks
+# like a person's stays out, with no person looking at its values. It is
+# cleared only when its own name marks an organisation (…Org, …Agency, …Unit,
+# …Dept)." So a name PERSON_SHAPED reads as a person's still loads when the
+# name itself, as the upstream spells it, ends in one of these, in any case:
+# a plain suffix match (names_an_organisation()), never a look at a value.
+# It clears step 2 alone: a name PERSON_FIELDS, the row's `person_fields` or a
+# reader's plumbing lists stays out whatever it ends in.
+# What it clears, measured 2026-10-11: none of the 71 person-shaped names
+# among the 2,884 distinct JSON keys and ArcGIS field names in the files
+# make_dbt_fixtures.py writes ends in one; the two names known to that do are
+# NPS places' `managedByOrg` (its row's notes) and NIFC current perimeters'
+# `attr_FFReportApprovedByUnit` (the notices lane's log of 2026-10-11, which
+# also left out `attr_FFReportApprovedByTitle` and `attr_ModifiedBySystem`).
+# NPS places' `isManagedByNps` stays out by its `by` though it reads as a
+# flag: Nps is no organisation word here, the cost of reading no values.
+# What stays out under it: those two other NIFC names, every `full_name` no
+# row clears, the four columns no model reads (nps_anza_nht's and
+# usfws_trail_segments' `MAINTAINER`, nc_state_parks_points' `FullName`,
+# montour_trail_access_areas' `AssetMaintainer`), USGS volcanoes'
+# `obs_fullname`, and the Florida Trail's `Manager_Na`, whose closures take
+# their place from their own geometry (int_closures__club_notices.sql's rule
+# 4), never from it. The 43 names 38 rows clear in `not_person_fields` were
+# written before S4, each on what its row records, and stand: S4 does not say
+# whether to withdraw them, and some feed what a hiker reads
+# (ugrc_state_park_points' `full_name` is that layer's name and key;
+# oprd_hunting_areas' `FULL_NAME` and nps_seki_closures' `FullName` are
+# notice titles).
+ORGANISATION_SUFFIXES = ("org", "agency", "unit", "dept")
+
+
+def names_an_organisation(name: str) -> bool:
+    """Whether `name`, as the upstream spells it, ends in one of ORGANISATION_SUFFIXES in any case (standard S4)."""
+    return name.lower().endswith(ORGANISATION_SUFFIXES)
+
+
 # Field types whose values are never a person's name, whatever the field is
 # called: ArcGIS's ids and its dates. So editor tracking's `last_edited_date`
 # loads while `last_edited_user` does not, and so does a date that happens to
@@ -361,7 +400,9 @@ class PersonRule:
        `plumbing` (WordPress's WP_DROPPED) are always left out, whatever the
        row's `not_person_fields` says;
     2. PERSON_SHAPED, read against the name split into words (_name_words),
-       leaves the rest out unless `not_person_fields` clears the name.
+       leaves the rest out unless the name's own ending marks an
+       organisation (ORGANISATION_SUFFIXES, standard S4) or
+       `not_person_fields` clears the name.
 
     `field_rules` is what extract/_run.py's definition_digest() keeps, so a
     name added to either list reads the upstream again on the next run,
@@ -398,8 +439,13 @@ class PersonRule:
         return None
 
     def shaped(self, name: str) -> bool:
-        """Whether PERSON_SHAPED reads `name` as a person's and the row's `not_person_fields` does not clear it (step 2)."""
-        return not _named_in(name, self.not_person_fields) and bool(PERSON_SHAPED.search(_name_words(name)))
+        """Whether PERSON_SHAPED reads `name` as a person's, and neither its own organisation ending
+        (names_an_organisation()) nor the row's `not_person_fields` clears it (step 2)."""
+        return (
+            not names_an_organisation(name)
+            and not _named_in(name, self.not_person_fields)
+            and bool(PERSON_SHAPED.search(_name_words(name)))
+        )
 
     def left_out(self, names) -> dict[str, str]:
         """Every one of `names` that never loads, lower-cased, with the rule that leaves it out."""
@@ -408,8 +454,9 @@ class PersonRule:
 
 
 def report_shaped(key: str, dropped: dict[str, str], names=None) -> None:
-    """Print the names only PERSON_SHAPED left out, as the upstream spells them where `names` says, so a false match is
-    seen and cleared in `not_person_fields`."""
+    """Print the names only PERSON_SHAPED left out, as the upstream spells them where `names` says, so what the backstop
+    leaves out is seen by name, never by value. Under standard S4 nobody reads such a column's values to clear it; its
+    own name clears it only by ending in one of ORGANISATION_SUFFIXES."""
     if shaped := sorted(name for name in (dropped if names is None else names) if dropped.get(name.lower()) == SHAPED):
         print(f"  {key}: left out {shaped}, person-shaped names its sources.json row does not clear in not_person_fields")
 

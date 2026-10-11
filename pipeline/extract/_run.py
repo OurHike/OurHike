@@ -914,6 +914,10 @@ def definition_digest(resource: Resource) -> str:
         "resource": repr(resource),
         "person_fields": sorted(_kinds.PERSON_FIELDS),
         "person_shaped": _kinds.PERSON_SHAPED.pattern,
+        # Standard S4's exception to it (2026-10-11): a suffix taken off reads every layer again, so a column it had
+        # let in stops loading on the next run rather than riding a FRESH check (a copy already stored is the purge's,
+        # ELT.md's "Purging a field that should never have loaded").
+        "organisation_suffixes": list(_kinds.ORGANISATION_SUFFIXES),
         "field_rules": getattr(resource, "field_rules", None),
         "wordpress_dropped": sorted(_kinds.WP_DROPPED),
         "withheld_columns": sorted(_kinds.WITHHELD_COLUMNS),

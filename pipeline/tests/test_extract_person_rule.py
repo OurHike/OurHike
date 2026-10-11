@@ -480,9 +480,10 @@ def test_an_organisation_column_the_widened_backstop_reads_as_a_persons_still_lo
 NOTICE_SEED_COLUMNS = ("title", "category", "status", "starts", "ends", "rescinded", "link", "locality")
 #: Declared fields the person rule leaves out today, each with why it stands. fta_fnst_closed_segments' `Manager_Na`
 #: is the notice seed's locality, and the backstop has read it as a person's since `manager` joined the word list
-#: (review finding EXD-3, 02a53b22, 2026-10-05), so that notice's locality reads null. Whether it names a person or
-#: the land's managing body is unread: a person reading its values settles it, then clears it in the row, or the seed
-#: stops naming it.
+#: (review finding EXD-3, 02a53b22, 2026-10-05), so that notice's locality reads null. Standard S4 (2026-10-11)
+#: settles it: it stays out, nobody reads its values, and the Florida Trail's closed segments take their place from
+#: their own geometry (int_closures__club_notices.sql's rule 4), which they always did. What is left is for the seed
+#: to stop naming it, at which point this set is empty.
 KNOWN_LEFT_OUT = {("fta_fnst_closed_segments", "Manager_Na")}
 
 
@@ -524,3 +525,77 @@ def test_no_field_a_registry_row_or_a_seed_names_for_a_model_is_one_the_person_r
 
     assert len(declared) > 1000, "the registry and the seeds were read"
     assert left_out == KNOWN_LEFT_OUT, sorted(left_out - KNOWN_LEFT_OUT)
+
+
+# --- standard S4: a name that marks an organisation ----------------------------------------------------------------
+
+#: Person-shaped names whose own ending marks an organisation, so standard S4 (the maintainer's poll of 2026-10-11)
+#: clears them with nobody reading a value: NPS places' `managedByOrg` and NIFC current perimeters'
+#: `attr_FFReportApprovedByUnit`, the two such names any registered layer is known to carry (extract/_kinds.py's
+#: ORGANISATION_SUFFIXES), and invented ones in each of the four endings and three cases.
+ORGANISATION_NAMED = (
+    *("managedByOrg", "attr_FFReportApprovedByUnit"),
+    *("Contact_Agency", "OWNER_AGENCY", "contact_dept", "MaintainedByDept", "EditorUnit", "CONTACTORG"),
+)
+
+#: Person-shaped names that stay out under S4: NIFC's other two left-out names, the Florida Trail's `Manager_Na`, a
+#: `full_name`, USGS volcanoes' `obs_fullname`, and an organisation's word anywhere but at the very end.
+STILL_PERSON_SHAPED = (
+    *("attr_FFReportApprovedByTitle", "Manager_Na", "full_name", "obs_fullname", "attr_ModifiedBySystem"),
+    *("managedByOrgName", "OrgContact", "Agency Contact Email", "Unit_Manager", "DeptSupervisor", "contact_org_2"),
+)
+
+
+@pytest.mark.parametrize("name", ORGANISATION_NAMED)
+def test_a_person_shaped_name_ending_in_an_organisations_word_loads(name):
+    assert _kinds.PERSON_SHAPED.search(_kinds._name_words(name)), "the pattern alone reads it as a person's"
+    assert _kinds.names_an_organisation(name)
+    assert _kinds.PersonRule().left_out([name]) == {}
+
+
+@pytest.mark.parametrize("name", STILL_PERSON_SHAPED)
+def test_a_person_shaped_name_without_an_organisations_ending_stays_out(name):
+    assert not _kinds.names_an_organisation(name)
+    assert _kinds.PersonRule().left_out([name]) == {name.lower(): _kinds.SHAPED}
+
+
+def test_an_organisations_ending_never_clears_a_name_a_list_names():
+    """Step 1 wins: a name the row's `person_fields` lists stays out, whatever it ends in."""
+    assert _kinds.PersonRule.of({"person_fields": ["ContactOrg"]}).left_out(["ContactOrg"]) == {
+        "contactorg": "the row's person_fields"
+    }
+    assert not any(_kinds.names_an_organisation(name) for name in _kinds.PERSON_FIELDS)
+
+
+@pytest.mark.parametrize(
+    ("key", "field", "loads"),
+    [
+        ("nifc_wfigs_current_perimeters", "attr_FFReportApprovedByUnit", True),
+        ("nifc_wfigs_current_perimeters", "attr_FFReportApprovedByTitle", False),
+        ("nifc_wfigs_current_perimeters", "attr_ModifiedBySystem", False),
+        ("fta_fnst_closed_segments", "Manager_Na", False),
+    ],
+)
+def test_each_registered_layers_column_s4_names_is_ruled_by_its_own_name(key, field, loads):
+    """The real rows, on their own `person_fields` and `not_person_fields`: NIFC's approving unit loads by its name
+    and its approver's title does not; the Florida Trail's `Manager_Na` stays out."""
+    layer = _kinds.ArcgisLayer(key=key, club="testclub", type="closures")
+
+    verdict = layer.dropped_fields({"fields": [{"name": field, "type": "esriFieldTypeString"}]})
+
+    assert (verdict == {}) is loads, verdict
+
+
+def test_nps_places_managed_by_org_loads_on_its_own_row_and_is_managed_by_nps_stays_out():
+    """NPS places' row (its notes list both fields): `managedByOrg` loads by its ending. `isManagedByNps` reads as a
+    person's by its `…By…` and ends in no organisation's word, so it stays out though the API's own name suggests a
+    flag: the one column S4 costs this row, the price of reading no values."""
+    from extract._contract import PIPELINE_DIR
+
+    rows = {row["key"]: row for row in json.loads((PIPELINE_DIR / "sources.json").read_text())["sources"]}
+    rule = _kinds.PersonRule.of(rows["nps_api_places"])
+
+    assert rule.left_out(["managedByOrg", "isManagedByNps", "contacts"]) == {
+        "ismanagedbynps": _kinds.SHAPED,
+        "contacts": "the row's person_fields",
+    }

@@ -54,6 +54,20 @@ THE ANSWERS, worst first:
   source today's exporters never read, parity.NEW_DATA_REASON) is listed
   once, by reason, with no field called changed and no safety flag: there is
   no old record, and new_data_report.py is where it is reviewed.
+
+WHICH LISTED DIFFERENCES COME TO THE MAINTAINER: standard S3, adopted by the
+maintainer's poll of 2026-10-11 ("A difference a written reason explains is
+accepted without row review. That includes one on a safety field, when the
+record is an exact copy of one that still publishes, so the hiker sees the
+same value. Only an unexplained difference, or one that changes a safety
+value a hiker would see, comes to you."). So a listed difference that touches
+no SAFETY_FIELDS field is accepted. One that touches one is accepted only when
+its reason is one of parity.EXACT_COPY_REASONS and parity.py found the copy
+equal, on every safety field, to the record on the other side it is a copy of
+(`differs_from_exact_copy`); every other stays open, with why
+(open_because()), flagged for approval one row at a time as ELT.md's "How a
+rule moves" has it. An open one does not block go, as no listed difference
+ever has: whether it should is the maintainer's to say.
 - `equal`: every record and top-level field equal, in order where order is
   published.
 
@@ -110,6 +124,7 @@ from pathlib import Path
 from hourly_parity import FAMILIES as HOURLY_FAMILIES
 from hourly_parity import HOURLY_FORMAT, RUN_FILE, run_label
 from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
+from parity import EXACT_COPY_REASONS
 from parity import NEW_DATA_REASON as PARITY_NEW_DATA_REASON
 from parity import RESULT_FORMAT as PARITY_RESULT_FORMAT
 
@@ -694,6 +709,12 @@ class Listed:
     new: str | None = None
     # Set when parity.py ran with --keys-only: the sides that hold it, whose records were not written.
     held_by: list[str] | None = None
+    # Standard S3's two facts, which parity.py writes on a difference one of parity.EXACT_COPY_REASONS explains: the
+    # record on the other side it is an exact copy of, and the field paths on which the two differ.
+    exact_copy_of: str | None = None
+    differs_from_exact_copy: list[str] | None = None
+    # Why this listed difference comes to the maintainer (open_because()), or None where it is accepted.
+    open_because: str | None = None
 
 
 @dataclass
@@ -716,7 +737,14 @@ class KeyRow:
 
     @property
     def safety(self) -> list[str]:
-        return sorted({group for item in [*self.differences, *self.listed] for group in item.safety})
+        """The safety groups that come to the maintainer: every unexplained difference's, and each open listed one's."""
+        coming = [*self.differences, *(item for item in self.listed if item.open_because)]
+        return sorted({group for item in coming for group in item.safety})
+
+    @property
+    def safety_accepted(self) -> list[str]:
+        """The safety groups of listed differences standard S3 accepts: exact copies a hiker sees the same value on."""
+        return sorted({group for item in self.listed if not item.open_because for group in item.safety})
 
     @property
     def blocks_go(self) -> bool:
@@ -729,7 +757,7 @@ class KeyRow:
     def rank(self) -> tuple:
         differing_safety = any(item.safety for item in self.differences)
         differing_location = any(touches_location(item.fields) for item in self.differences)
-        explained_safety = any(item.safety for item in self.listed)
+        explained_safety = any(item.safety and item.open_because for item in self.listed)
         return (
             VERDICT_ORDER.index(self.verdict),
             NOT_PORTED_ORDER.index(self.why) if self.why in NOT_PORTED_ORDER else 0,
@@ -753,7 +781,7 @@ def _difference(item: dict, reason: str | None = None) -> Listed:
         # Listed once per reason, as new data: new_data_report.py reviews these records, source by source, and the
         # safety fields they carry are new rather than changed, so they are not offered for approval here row by row.
         return Listed(what=item["what"], reason=item.get("reason") or reason or "", held_by=item.get("held_by"))
-    return Listed(
+    listed = Listed(
         what=item["what"],
         reason=reason or item.get("reason") or "",
         fields=fields,
@@ -761,7 +789,39 @@ def _difference(item: dict, reason: str | None = None) -> Listed:
         old=item.get("old"),
         new=item.get("new"),
         held_by=item.get("held_by"),
+        exact_copy_of=item.get("exact_copy_of"),
+        differs_from_exact_copy=item.get("differs_from_exact_copy"),
     )
+    # Decided here as well as in settle(), which knows the file, so no listed difference ever reads as accepted
+    # before it is judged.
+    listed.open_because = open_because(listed)
+    return listed
+
+
+def open_because(item: Listed, key: str | None = None) -> str | None:
+    """Why a listed difference in the file at `key` comes to the maintainer, or None where standard S3 accepts it.
+
+    The module docstring, "WHICH LISTED DIFFERENCES COME TO THE MAINTAINER": one on no safety field is accepted, and
+    one on a safety field only when its reason is an exact copy's and the copy carries, on every safety field, the
+    value of the record it copies, so a hiker sees the same value. An exact copy parity.py names no partner for (a
+    result written before S3, or a partner not on its side exactly once) is open: what the hiker sees is unread."""
+    if not item.safety:
+        return None
+    groups = ", ".join(item.safety)
+    if item.reason not in EXACT_COPY_REASONS:
+        return f"it changes {groups}, and its reason is not an exact copy's"
+    if item.exact_copy_of is None or item.differs_from_exact_copy is None:
+        return f"it is explained as an exact copy, and parity.py names no record it copies, so whether a hiker sees the same {groups} is unread"
+    if differing := safety_groups(item.differs_from_exact_copy, key):
+        return f"its {', '.join(differing)} differs from that of {item.exact_copy_of}, the record it is an exact copy of"
+    return None
+
+
+def settle(items: list[Listed], key: str | None) -> None:
+    """Each listed difference's safety groups in the file at `key`, and whether it comes to the maintainer."""
+    for item in items:
+        item.safety = safety_groups(item.fields, key)
+        item.open_because = open_because(item, key)
 
 
 def judge(result: dict, pattern_note: str | None = None) -> tuple[str, str, list[Listed], list[Listed]]:
@@ -849,8 +909,9 @@ def _from_hourly(row: KeyRow, coverage: Coverage, family: str, key: str) -> None
         row.detail = f"{coverage.detail}; the newest: {detail}"
     else:
         row.verdict, row.why, row.detail = "not_ported", "soak_not_covered", coverage.detail
-    for item in [*row.differences, *row.listed]:
+    for item in row.differences:
         item.safety = safety_groups(item.fields, key)
+    settle(row.listed, key)
 
 
 def key_rows(
@@ -908,8 +969,9 @@ def key_rows(
                         "what was compared; the cut into one object each is not"
                     )
                 row.verdict, row.detail, row.differences, row.listed = judge(result, note)
-                for item in [*row.differences, *row.listed]:
+                for item in row.differences:
                     item.safety = safety_groups(item.fields, entry.key)
+                settle(row.listed, entry.key)
                 row.family, row.new_file = result["family"], result["new_file"]
                 row.old_records, row.new_records = result.get("old_records"), result.get("new_records")
         rows.append(row)
@@ -948,13 +1010,24 @@ def _table(rows: list[KeyRow]) -> list[str]:
 
 
 def _listed(items: list[Listed]) -> list[str]:
-    """The listed differences, one bullet per (reason, safety groups, changed fields), safety first."""
+    """The listed differences, one bullet per (reason, safety groups, changed fields, why open), the open ones first.
+
+    An open one on a safety field is flagged for approval one row at a time; one standard S3 accepts says so, once."""
     groups: dict[tuple, list[str]] = {}
     for item in items:
-        groups.setdefault((not item.safety, item.reason, tuple(item.safety), tuple(item.fields)), []).append(item.what)
+        key = (not item.open_because, item.reason, tuple(item.safety), tuple(item.fields), item.open_because or "")
+        groups.setdefault(key, []).append(item.what)
     lines = []
-    for (_, reason, safety, fields), named in sorted(groups.items()):
-        flag = f" (**safety: {', '.join(safety)}**, approve each row on its own)" if safety else ""
+    for (_, reason, safety, fields, opened), named in sorted(groups.items()):
+        if safety and opened:
+            flag = f" (**safety: {', '.join(safety)}**, open because {opened}: approve each row on its own)"
+        elif safety:
+            flag = (
+                f" (safety: {', '.join(safety)}, accepted without row review by standard S3: each is an exact copy of a "
+                "record that still publishes, and carries its value on every safety field)"
+            )
+        else:
+            flag = ""
         changed = f" Changed: {', '.join(f'`{name}`' for name in fields)}." if fields else ""
         shown = ", ".join(f"`{_cell(what)}`" for what in named[:12]) + (f" and {len(named) - 12} more" if len(named) > 12 else "")
         lines.append(f"- listed, {len(named)}: {shown}{flag}. {reason}.{changed}")
@@ -972,7 +1045,10 @@ def _shown(path: Path) -> str:
 def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[DbtKey], inputs: dict) -> str:
     counts = {verdict: sum(row.verdict == verdict for row in rows) for verdict in VERDICT_ORDER}
     safety_rows = [row for row in rows if row.verdict == "differs" and any(item.safety for item in row.differences)]
-    explained_safety = [row for row in rows if row.verdict != "differs" and any(item.safety for item in row.listed)]
+    explained_safety = [
+        row for row in rows if row.verdict != "differs" and any(item.safety and item.open_because for item in row.listed)
+    ]
+    accepted_copies = [item for row in rows for item in row.listed if item.safety and not item.open_because]
     lines = [
         "# Go/no-go gate: every R2 key today's pipeline publishes",
         "",
@@ -992,7 +1068,10 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
         *(f"| {VERDICT_TITLES[verdict]} | {counts[verdict]} |" for verdict in VERDICT_ORDER),
         "",
         f"**{len(safety_rows)} key(s) differ on a safety field**, and {len(explained_safety)} more carry an explained "
-        "difference that touches one. ELT.md: safety fields are approved one row at a time, never in bulk.",
+        "difference on one that stays open, so it comes to the maintainer: ELT.md approves safety fields one row at a "
+        f"time, never in bulk. {len(accepted_copies)} explained difference(s) on a safety field are accepted without "
+        "row review by standard S3 (the maintainer's poll of 2026-10-11): each is an exact copy of a record that "
+        "still publishes, carrying its value on every safety field, so a hiker sees the same value.",
         "",
         f"**{sum(row.blocks_go for row in rows)} key(s) block go** on this report's reading of decision 30 (for the "
         "maintainer to confirm): a key that differs, that nothing was compared for, or that a dbt writer owns with no "
@@ -1085,7 +1164,10 @@ def build_report(parity_dir: Path, dbt_manifest: Path, hourly_dir: Path | None =
         "inputs": inputs,
         "counts": {verdict: sum(row.verdict == verdict for row in rows) for verdict in VERDICT_ORDER},
         "blocking": [row.key for row in rows if row.blocks_go],
-        "keys": [{**asdict(row), "safety": row.safety, "blocks_go": row.blocks_go} for row in rows],
+        "keys": [
+            {**asdict(row), "safety": row.safety, "safety_accepted": row.safety_accepted, "blocks_go": row.blocks_go}
+            for row in rows
+        ],
         "unmatched_results": [{"family": r["family"], "new_file": r["new_file"], "outcome": r["outcome"]} for r in unmatched],
         "new_keys": [asdict(entry) for entry in new_keys],
         "markdown": render_markdown(rows, unmatched, new_keys, inputs),

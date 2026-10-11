@@ -756,6 +756,42 @@ def test_parity_explains_copies_of_one_line_the_dbt_writer_published_once_and_no
     assert "properties.id s:4" not in reasons
 
 
+def test_each_line_copy_names_the_copy_on_the_other_side_and_differs_from_it_in_its_id_alone():
+    """Standard S3's partner for every id NETWORK_COPY_REASON explains (parity._network_copies()): a copy only today's
+    file publishes names the lowest id the dbt writer keeps, and an id only the dbt writer's publishes names the
+    lowest of today's. result_document() then finds the two differ in `properties.id` alone, so trail_status reads
+    the same to a hiker, as on monthly run 31's 57 copied lines."""
+    family = parity.FAMILIES["nearby_trails"]
+    a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]
+    old = {"features": [_line("s:1", "A", a), _line("s:2", "A", a), _line("s:3", "A", a), _line("s:4", "B", b)]}
+    new = {"features": [_line("s:1", "A", a), _line("s:{R-1}", "A", a)]}
+    for feature in (*old["features"], *new["features"]):
+        feature["properties"]["trail_status"] = "open"
+
+    copies = family.copies(old, new)
+    assert copies == {"properties.id s:2": "s:1", "properties.id s:3": "s:1", "properties.id s:{R-1}": "s:1"}
+    found = parity.differences(old, new, family)
+    document = parity.result_document(
+        "nearby_trails",
+        family,
+        Path("nearby_trails.geojson"),
+        "differences",
+        1,
+        old=old,
+        new=new,
+        found=found,
+        reasons=family.explained(old, new),
+        copies=copies,
+    )
+    facts = {item["what"]: (item["exact_copy_of"], item["differs_from_exact_copy"]) for item in document["explained"]}
+    assert facts == {
+        "properties.id s:2": ("properties.id s:1", ["properties.id"]),
+        "properties.id s:3": ("properties.id s:1", ["properties.id"]),
+        "properties.id s:{R-1}": ("properties.id s:1", ["properties.id"]),
+    }
+    assert [item["what"] for item in document["differences"]] == ["properties.id s:4"], "a lost line names no copy"
+
+
 def test_parity_never_explains_two_positional_ids_that_name_different_lines():
     family = parity.FAMILIES["nearby_trails"]
     a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]

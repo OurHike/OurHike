@@ -135,6 +135,12 @@ class Family:
     # first (_trail_graph_kinds).
     kinds: Callable[[dict, dict, list], dict[str, str]] | None = None
     kind_meanings: tuple[tuple[str, str], ...] = ()
+    # Standard S3 (the maintainer's poll of 2026-10-11) needs, for each difference `explained` gives one of
+    # EXACT_COPY_REASONS, the record on the other side it is an exact copy of: {difference: that record's key}. For
+    # a copy only today's file publishes, the record the dbt writer still publishes; for a record only the dbt
+    # writer's holds, one of today's copies of it. result_document() writes that key and the field paths on which
+    # the two differ, so gate_report.py can tell whether a hiker still sees the same value on a safety field.
+    copies: Callable[[dict, dict], dict[str, str]] | None = None
 
 
 def _podcasts_old() -> dict:
@@ -517,16 +523,6 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     is what the two NYNJTC models did until 2026-10-09, while this function explained it as feature_id_not_landed.
     """
 
-    def line(feature: dict) -> str:
-        properties = {name: value for name, value in feature["properties"].items() if name != "id"}
-        return canonical({"properties": properties, "geometry": feature["geometry"]})
-
-    def ids(document: dict) -> dict[str, list[str]]:
-        found: dict[str, list[str]] = {}
-        for feature in document.get("features") or []:
-            found.setdefault(line(feature), []).append(str(feature["properties"]["id"]))
-        return found
-
     def positional(feature_id: str) -> bool:
         return ":generated-" in feature_id
 
@@ -536,7 +532,7 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     def object_id(feature_id: str) -> bool:
         return feature_id.partition(":")[2].isdigit()
 
-    old_ids, new_ids = ids(old), ids(new)
+    old_ids, new_ids = _network_line_ids(old), _network_line_ids(new)
     reasons: dict[str, str] = {}
     for shared in old_ids.keys() & new_ids.keys():
         was, now = sorted(old_ids[shared]), sorted(new_ids[shared])
@@ -565,6 +561,36 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
         for feature_id in set(was) | set(now):
             reasons[f"properties.id {feature_id}"] = NETWORK_ID_REASONS[case]
     return reasons
+
+
+def _network_line_ids(document: dict) -> dict[str, list[str]]:
+    """{a line's source, properties but `id`, and geometry, as canonical JSON: every id the file publishes it under}."""
+    found: dict[str, list[str]] = {}
+    for feature in document.get("features") or []:
+        properties = {name: value for name, value in feature["properties"].items() if name != "id"}
+        found.setdefault(canonical({"properties": properties, "geometry": feature["geometry"]}), []).append(
+            str(feature["properties"]["id"])
+        )
+    return found
+
+
+def _network_copies(old: dict, new: dict) -> dict[str, str]:
+    """For each id NETWORK_COPY_REASON explains, the id on the other side it is an exact copy of (Family.copies).
+
+    The same lines _network_id_reasons() calls copies: one that both files publish, the dbt writer under fewer ids. An
+    id only today's file publishes is a copy of the lowest id the dbt writer still publishes the line under, and an id
+    only the dbt writer's publishes is a copy of the lowest of today's. Every copy of one line carries the same
+    properties but `id`, so a copy differs from its partner in `properties.id` alone, which result_document() checks
+    rather than assumes."""
+    old_ids, new_ids = _network_line_ids(old), _network_line_ids(new)
+    copies: dict[str, str] = {}
+    for shared in old_ids.keys() & new_ids.keys():
+        was, now = sorted(old_ids[shared]), sorted(new_ids[shared])
+        if len(now) >= len(was):
+            continue
+        copies.update({f"properties.id {feature_id}": now[0] for feature_id in set(was) - set(now)})
+        copies.update({f"properties.id {feature_id}": was[0] for feature_id in set(now) - set(was)})
+    return copies
 
 
 def _club_line_reasons(old: dict, new: dict, family_key: str, key_of: Callable[[dict], str]) -> dict[str, str]:
@@ -1400,6 +1426,7 @@ FAMILIES: dict[str, Family] = {
         key="properties.id",
         key_of=lambda feature: str(feature["properties"]["id"]),
         explained=_nearby_trails_reasons,
+        copies=_network_copies,
     ),
     "network_overview": Family(
         old=lambda: _network_old("network_overview.geojson"),
@@ -1520,14 +1547,21 @@ POI_REASONS = {
     ),
 }
 
+#: The reasons that say a record is an exact copy, by decision 40's staging dedupe, of one the other file holds:
+#: standard S3 (the maintainer's poll of 2026-10-11) accepts a difference one of these explains without row review,
+#: on a safety field too, when the copy and the record that still publishes carry the same value there, so a hiker
+#: sees the same value. Each family that can give one has a Family.copies, which names that record; gate_report.py
+#: reads both. Every other reason on a safety field still comes to the maintainer.
+EXACT_COPY_REASONS = frozenset({NETWORK_COPY_REASON, POI_REASONS["exact_copy"]})
+
 
 def _row_id_order(value) -> tuple:
     """A source_feature_id's sort key: numbers numerically, then strings."""
     return (0, value, "") if isinstance(value, int | float) and not isinstance(value, bool) else (1, 0, str(value))
 
 
-def _removed_copies(old: dict, new: dict) -> set[str]:
-    """The POIs today's file publishes and the dbt writer's does not, each an exact copy of one it does.
+def _removed_copies(old: dict, new: dict) -> dict[str, str]:
+    """{each POI today's file publishes and the dbt writer's does not: the id of the copy of it the dbt writer keeps}.
 
     A copy is a feature of the same layer that agrees with another on its geometry and every property but `id`,
     `source_feature_id` (the server's own row id) and the site properties, which today's exporter derives from the
@@ -1544,13 +1578,13 @@ def _removed_copies(old: dict, new: dict) -> set[str]:
     copies: dict[tuple[str, str], list[dict]] = {}
     for feature in old.get("features") or []:
         copies.setdefault(body(feature), []).append(feature)
-    removed: set[str] = set()
+    removed: dict[str, str] = {}
     for group in copies.values():
         if len(group) < 2:
             continue
         kept, *dropped = sorted(group, key=lambda feature: _row_id_order(feature["properties"]["source_feature_id"]))
         if _poi_id(kept) in new_ids:
-            removed |= {_poi_id(feature) for feature in dropped if _poi_id(feature) not in new_ids}
+            removed.update({_poi_id(feature): _poi_id(kept) for feature in dropped if _poi_id(feature) not in new_ids})
     return removed
 
 
@@ -1558,6 +1592,14 @@ def _exact_copy_reasons(old: dict, new: dict) -> dict[str, str]:
     """POI_REASONS["exact_copy"] for each of _removed_copies(); anything else the new file lacks, or has extra, is
     still a difference."""
     return {f"properties.id {poi_id}": POI_REASONS["exact_copy"] for poi_id in _removed_copies(old, new)}
+
+
+def _poi_copies(old: dict, new: dict) -> dict[str, str]:
+    """For each POI _exact_copy_reasons() explains, the id of the copy the dbt writer still publishes (Family.copies).
+
+    Copies agree on every property but their ids and site in today's file; whether the kept copy still carries the
+    same values in the dbt writer's, its confidence among them, is result_document()'s to measure, not this one's."""
+    return {f"properties.id {poi_id}": kept for poi_id, kept in _removed_copies(old, new).items()}
 
 
 def _without_site(feature: dict) -> str:
@@ -2071,7 +2113,12 @@ FAMILIES.update(
         # Unordered: the layers' rows are read in file order, and three of the
         # layers come from base models that keep no row number.
         "nearby_poi": Family(
-            old=_nearby_poi_old, records="features", key="properties.id", key_of=_poi_id, explained=_nearby_poi_reasons
+            old=_nearby_poi_old,
+            records="features",
+            key="properties.id",
+            key_of=_poi_id,
+            explained=_nearby_poi_reasons,
+            copies=_poi_copies,
         ),
         "retired_poi": Family(old=_retired_poi_old, records="features", key="properties.id", ordered=True, key_of=_poi_id),
     }
@@ -2530,6 +2577,16 @@ def key_order(key: str) -> tuple:
     return (0, int(key), key) if key.isascii() and key.isdigit() else (1, 0, key)
 
 
+def records_by_key(document: dict | None, family: Family) -> dict[str, list[dict]]:
+    """Every record of `document` under its key, in the form it is compared in (`normalize`), as differences() reads
+    them: a key the file holds more than once lists every copy."""
+    found: dict[str, list[dict]] = {}
+    for record in (document or {}).get(family.records) or []:
+        key = family.key_of(record) if family.key_of else str(record[family.key])
+        found.setdefault(key, []).append(family.normalize(record) if family.normalize else record)
+    return found
+
+
 def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | None, str | None]]:
     """(what, old, new) for every record and top-level field that differs, by key; empty when the two agree."""
 
@@ -2546,20 +2603,11 @@ def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | N
     def record_key(record: dict) -> str:
         return family.key_of(record) if family.key_of else str(record[family.key])
 
-    def shaped(record: dict) -> dict:
-        return family.normalize(record) if family.normalize else record
-
-    def index(document: dict) -> dict[str, list[dict]]:
-        copies: dict[str, list[dict]] = {}
-        for record in document.get(family.records) or []:
-            copies.setdefault(record_key(record), []).append(shaped(record))
-        return copies
-
     # A KEY EITHER SIDE HOLDS MORE THAN ONCE is a difference of its own, carrying every copy of it on each side, even
     # when both sides hold the same copies: a record key names one record in the file a phone reads. Keyed into one
     # record per key, the last copy stood for the rest, so a writer that published one water point twice, one copy
     # wrong, compared equal on an unordered family (PY-4 of PR #1805's second review).
-    a, b = index(old), index(new)
+    a, b = records_by_key(old, family), records_by_key(new, family)
     for key in sorted(a.keys() | b.keys(), key=key_order):
         was, now = a.get(key, []), b.get(key, [])
         if len(was) > 1 or len(now) > 1:
@@ -2709,6 +2757,7 @@ def result_document(
     reasons: dict[str, str] | None = None,
     message: str | None = None,
     kinds: dict[str, str] | None = None,
+    copies: dict[str, str] | None = None,
 ) -> dict:
     """One family's comparison as RESULT_FORMAT: everything the console said, in fields.
 
@@ -2721,10 +2770,22 @@ def result_document(
     A record that only changed its key (rekeyed()) changes `family.key`
     alone, and names its partner in `same_record_as`. A difference
     `family.kinds` sorted carries its `kind`, and `kinds` counts each.
+
+    An explained difference whose reason is one of EXACT_COPY_REASONS also
+    carries standard S3's two facts, from `copies` (Family.copies):
+    `exact_copy_of`, the record on the other side it is an exact copy of,
+    and `differs_from_exact_copy`, the field paths on which the copy as
+    today's file publishes it and the record the dbt writer publishes
+    differ. Both are keys and field names, never a value, so they survive
+    --keys-only. Neither is written where `copies` names no partner or the
+    partner's key is not on its side exactly once: gate_report.py then keeps
+    a safety field's difference open.
     """
     reasons = reasons or {}
     kinds = kinds or {}
+    copies = copies or {}
     partners = rekeyed(list(found), family.key)
+    sides = {"old": records_by_key(old, family), "new": records_by_key(new, family)} if copies else {}
 
     def entry(what: str, a: str | None, b: str | None) -> dict:
         if what in partners:
@@ -2732,6 +2793,16 @@ def result_document(
         else:
             found_entry = {"what": what, "old": a, "new": b, "fields": changed_fields(what, a, b)}
         return {**found_entry, "kind": kinds[what]} if what in kinds else found_entry
+
+    def copy_facts(what: str, a: str | None, b: str | None) -> dict:
+        """S3's two facts for one difference (the docstring): the partner is on the side that lacks the record."""
+        if reasons.get(what) not in EXACT_COPY_REASONS or what not in copies or (a is None) == (b is None):
+            return {}
+        partner = sides["new" if b is None else "old"].get(copies[what], [])
+        if len(partner) != 1:
+            return {}
+        today, dbt = (a, canonical(partner[0])) if b is None else (canonical(partner[0]), b)
+        return {"exact_copy_of": f"{family.key} {copies[what]}", "differs_from_exact_copy": changed_fields(what, today, dbt)}
 
     old_sources, old_unnamed = record_sources(old, family.records)
     new_sources, new_unnamed = record_sources(new, family.records)
@@ -2749,7 +2820,9 @@ def result_document(
         "message": message,
         "old_records": None if old is None else len(old.get(family.records) or []),
         "new_records": None if new is None else len(new.get(family.records) or []),
-        "explained": [{**entry(what, a, b), "reason": reasons[what]} for what, a, b in found if what in reasons],
+        "explained": [
+            {**entry(what, a, b), **copy_facts(what, a, b), "reason": reasons[what]} for what, a, b in found if what in reasons
+        ],
         "differences": [entry(what, a, b) for what, a, b in found if what not in reasons],
         "kinds": dict(Counter(kinds.values())),
         "old_sources": old_sources,
@@ -2888,6 +2961,7 @@ def main(argv: list[str] | None = None) -> int:
     found = differences(old, new, family)
     count = len(old.get(family.records) or [])
     reasons = family.explained(old, new) if family.explained else {}
+    copies = family.copies(old, new) if family.copies else {}
     explained = [difference for difference in found if difference[0] in reasons]
     for reason in dict.fromkeys(reasons[what] for what, _, _ in explained):
         named = [what for what, _, _ in explained if reasons[what] == reason]
@@ -2898,7 +2972,7 @@ def main(argv: list[str] | None = None) -> int:
     if not unexplained:
         beyond = f" beyond the {len(explained)} explained above" if explained else ""
         print(f"{args.family}: no differences{beyond} across {count} {family.records}, keyed by {family.key}")
-        return finish(0, "no_differences", old=old, new=new, found=found, reasons=reasons)
+        return finish(0, "no_differences", old=old, new=new, found=found, reasons=reasons, copies=copies)
     kinds = family.kinds(old, new, unexplained) if family.kinds else {}
 
     def show(what: str, a: str | None, b: str | None, indent: str) -> None:
@@ -2917,7 +2991,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  of no kind above, {len(rest)}:")
     for what, a, b in rest:
         show(what, a, b, "    " if kinds else "  ")
-    return finish(1, "differences", old=old, new=new, found=found, reasons=reasons, kinds=kinds)
+    return finish(1, "differences", old=old, new=new, found=found, reasons=reasons, kinds=kinds, copies=copies)
 
 
 if __name__ == "__main__":

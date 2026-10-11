@@ -33,6 +33,7 @@ vi.mock('./trailGraphStore', async (importOriginal) => ({
   readStoredGraph: vi.fn(async () => null),
   writeStoredGraph: vi.fn(async () => true),
   forgetStoredGraph: vi.fn(async () => undefined),
+  recordAlsoPublishedIn: vi.fn(async () => undefined),
 }))
 
 vi.mock('./config', async (importOriginal) => {
@@ -64,8 +65,13 @@ const {
   mergeGraphShard,
 } = await import('./trailGraphData')
 const { trailGraphCellKey } = await import('./config')
-const { graphCellStoreKey, readStoredGraph, writeStoredGraph } =
-  await import('./trailGraphStore')
+const {
+  graphCellStoreKey,
+  olderCopyKey,
+  readStoredGraph,
+  recordAlsoPublishedIn,
+  writeStoredGraph,
+} = await import('./trailGraphStore')
 const { buildGraphIndex } = await import('./trailGraph')
 const { LAUNCH_ARTIFACT_BUDGET_BYTES } = await import('./artifactBudget')
 
@@ -534,7 +540,10 @@ const EAST_GEOMETRY_RELEASE_10 = JSON.stringify([[NODE[2], NODE[3]], SEAM_EDGE])
 describe('one release per merged graph (#1828)', () => {
   /** Stored copies by store key, each with its own release and hash. */
   function holdingReleases(
-    records: Record<string, { body: string; version: string; hash?: string }>,
+    records: Record<
+      string,
+      { body: string; version: string; hash?: string; alsoPublishedIn?: string[] }
+    >,
   ) {
     vi.mocked(readStoredGraph).mockImplementation(async (storeKey: string) => {
       const record = records[storeKey]
@@ -543,6 +552,7 @@ describe('one release per merged graph (#1828)', () => {
         bytes: new Blob([record.body]),
         hash: record.hash ?? 'whatever-it-was-when-it-was-fetched',
         version: record.version,
+        alsoPublishedIn: record.alsoPublishedIn ?? [],
         fetchedAt: 1,
       }
     })
@@ -862,6 +872,329 @@ describe('one release per merged graph (#1828)', () => {
       },
     })
     expect(await fetchTrailGraphGeometryCells(merged())).toMatchObject({ kind: 'loaded' })
+  })
+
+  // #1828 review. One bar of signal reads the manifest and fails the
+  // multi-MB cells; a release can publish a cell byte-identical to the copy
+  // this phone holds; and a release folder can answer 404 for everything.
+  describe('the #1828 review', () => {
+    const WEST_GRAPH = graphCellStoreKey(WEST.name, 'graph')
+    const EAST_GRAPH = graphCellStoreKey(EAST.name, 'graph')
+    const WEST_GEOMETRY_KEY = graphCellStoreKey(WEST.name, 'geometry')
+    const EAST_GEOMETRY_KEY = graphCellStoreKey(EAST.name, 'geometry')
+
+    /** Both cells merged, west first, as release 10's graph. */
+    function mergedAsRelease10() {
+      const west = mergeGraphShard(
+        emptyMergedGraph(),
+        WEST.name,
+        JSON.parse(WEST_SHARD),
+        RELEASE_10,
+      )
+      return mergeGraphShard(west, EAST.name, JSON.parse(EAST_SHARD), RELEASE_10)
+    }
+
+    /** A release folder that is not there: the manifest and every file 404. */
+    function releaseFolderMissing() {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.resolve({ ok: false, status: 404 } as unknown as Response)),
+      )
+    }
+
+    beforeEach(() => {
+      vi.mocked(recordAlsoPublishedIn).mockClear()
+      vi.mocked(writeStoredGraph).mockClear()
+    })
+
+    it('loadGraphShard with signal leaves a byte-identical stored copy to a caller building from another release than the manifest’s, and records it as the manifest’s', async () => {
+      // Handing it back as release 10's would fix the caller's graph at
+      // release 10 at this cell, and the hike's next cell - stored only
+      // under release 9 - could never join it. The caller asks the store
+      // again once its run knows its release (lib/useTrailGraph.ts).
+      const hash = await hashOf(WEST_SHARD)
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9', hash } })
+      manifestOnly(
+        await hashed({ [WEST_KEYS.graph]: WEST_SHARD }, { version: 'release-10' }),
+      )
+
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toEqual({
+        kind: 'absent',
+        because: 'unreachable',
+        heldRelease: RELEASE_9,
+      })
+      expect(recordAlsoPublishedIn).toHaveBeenCalledWith(WEST_GRAPH, hash, 'release-10')
+      // Asked for the manifest's own release, the same copy is a cell.
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_10)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_10,
+      })
+    })
+
+    it('loadGraphShard offline takes a copy stored under release 9 for release 10 once release 10 published the same bytes, and for release 9 still', async () => {
+      holdingReleases({
+        [WEST_GRAPH]: {
+          body: WEST_SHARD,
+          version: 'release-9',
+          alsoPublishedIn: ['release-10'],
+        },
+      })
+
+      expect(await loadGraphShard(WEST, undefined, false, RELEASE_10)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_10,
+      })
+      expect(await loadGraphShard(WEST, undefined, false, RELEASE_9)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_9,
+      })
+    })
+
+    it('loadGraphShard keeps the stored copy rather than rewriting it when a fetch brings the same bytes, and records the manifest’s release on it', async () => {
+      // Rewritten under release 10, the copy left release 9, and a stored
+      // hike whose other cell is release 9's refused it offline.
+      const hash = await hashOf(WEST_SHARD)
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9', hash } })
+      serve({
+        files: { [WEST_KEYS.graph]: WEST_SHARD },
+        manifest: await hashed(
+          { [WEST_KEYS.graph]: WEST_SHARD },
+          { version: 'release-10' },
+        ),
+      })
+
+      expect(await loadGraphShard(WEST)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_10,
+      })
+      await vi.waitFor(() =>
+        expect(recordAlsoPublishedIn).toHaveBeenCalledWith(
+          WEST_GRAPH,
+          hash,
+          'release-10',
+        ),
+      )
+      expect(writeStoredGraph).not.toHaveBeenCalled()
+    })
+
+    it('loadGraphShard takes the stored copy of the release asked for when the release’s manifest answers 404', async () => {
+      // Measured 2026-10-09: data.ourhike.org answers 404 for the release
+      // this build pins, its manifest and its cells alike.
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9' } })
+      releaseFolderMissing()
+
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_9,
+      })
+    })
+
+    it('loadGraphShard answers not-in-release when the manifest answers 404 and this phone holds no copy of the release asked for', async () => {
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-10' } })
+      releaseFolderMissing()
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toEqual({
+        kind: 'absent',
+        because: 'not-in-release',
+      })
+
+      holdingReleases({})
+      expect(await loadGraphShard(WEST)).toEqual({
+        kind: 'absent',
+        because: 'not-in-release',
+      })
+    })
+
+    it('loadGraphShard takes the stored copy of the release asked for when a captive portal answers the manifest and the cell with its own page', async () => {
+      // 200 for everything, and nothing a hash could hold: before, the page
+      // fetched for the cell was `unverifiable`, settled for the session,
+      // with the cell on this phone.
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9' } })
+      const page = '<html><body>Sign in to use this Wi-Fi</body></html>'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() =>
+          Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'text/html' }),
+            json: () => Promise.reject(new SyntaxError('Unexpected token <')),
+            arrayBuffer: () => Promise.resolve(new TextEncoder().encode(page).buffer),
+          } as unknown as Response),
+        ),
+      )
+
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_9,
+      })
+      holdingReleases({})
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toEqual({
+        kind: 'absent',
+        because: 'unverifiable',
+      })
+    })
+
+    it('loadGraphShard still answers not-in-release, whatever is stored, when the manifest is readable and the cell answers 404', async () => {
+      holdingReleases({ [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9' } })
+      serve({ manifest: { version: 'release-9', artifacts: {} } })
+
+      expect(await loadGraphShard(WEST, undefined, true, RELEASE_9)).toEqual({
+        kind: 'absent',
+        because: 'not-in-release',
+      })
+    })
+
+    it('fetchTrailGraphGeometryCells with signal takes a stored half whose hash the graph’s own manifest names, whatever release it was stored under', async () => {
+      // One bar: the graph is release 9, its manifest answers, the geometry
+      // fetches fail. The halves on this phone were stored under release 8
+      // and are release 9's bytes.
+      const westHash = await hashOf(WEST_GEOMETRY)
+      holdingReleases({
+        [WEST_GEOMETRY_KEY]: {
+          body: WEST_GEOMETRY,
+          version: 'release-8',
+          hash: westHash,
+        },
+        [EAST_GEOMETRY_KEY]: {
+          body: EAST_GEOMETRY,
+          version: 'release-8',
+          hash: await hashOf(EAST_GEOMETRY),
+        },
+      })
+      manifestOnly(
+        await hashed({
+          [WEST_KEYS.geometry]: WEST_GEOMETRY,
+          [EAST_KEYS.geometry]: EAST_GEOMETRY,
+        }),
+      )
+
+      expect(await fetchTrailGraphGeometryCells(merged())).toMatchObject({
+        kind: 'loaded',
+      })
+      expect(recordAlsoPublishedIn).toHaveBeenCalledWith(
+        WEST_GEOMETRY_KEY,
+        westHash,
+        'release-9',
+      )
+    })
+
+    it('fetchTrailGraphGeometryCells offline takes release 9’s halves into a release-10 graph when each cell’s routing half is the same bytes in both', async () => {
+      // A routing half is refetched whenever its cell is wanted; the other
+      // halves only while a day hike is open. The halves line up per cell,
+      // so a geometry half published beside these routing bytes lines up
+      // with them in any release that published them.
+      holdingReleases({
+        [WEST_GRAPH]: {
+          body: WEST_SHARD,
+          version: 'release-9',
+          alsoPublishedIn: ['release-10'],
+        },
+        [EAST_GRAPH]: {
+          body: EAST_SHARD,
+          version: 'release-9',
+          alsoPublishedIn: ['release-10'],
+        },
+        [WEST_GEOMETRY_KEY]: { body: WEST_GEOMETRY, version: 'release-9' },
+        [EAST_GEOMETRY_KEY]: { body: EAST_GEOMETRY, version: 'release-9' },
+      })
+
+      expect(
+        await fetchTrailGraphGeometryCells(mergedAsRelease10(), undefined, false),
+      ).toMatchObject({ kind: 'loaded' })
+    })
+
+    it('fetchTrailGraphGeometryCells offline refuses release 9’s halves for a release-10 graph when a cell’s routing half on this phone is release 10’s alone', async () => {
+      // Release 10's east cell lists its edges in another order with the
+      // same count, so release 9's east geometry would draw the seam edge
+      // along the east trail.
+      holdingReleases({
+        [WEST_GRAPH]: {
+          body: WEST_SHARD,
+          version: 'release-9',
+          alsoPublishedIn: ['release-10'],
+        },
+        [EAST_GRAPH]: { body: EAST_SHARD_RELEASE_10, version: 'release-10' },
+        [WEST_GEOMETRY_KEY]: { body: WEST_GEOMETRY, version: 'release-9' },
+        [EAST_GEOMETRY_KEY]: { body: EAST_GEOMETRY, version: 'release-9' },
+      })
+
+      expect(
+        await fetchTrailGraphGeometryCells(mergedAsRelease10(), undefined, false),
+      ).toEqual({ kind: 'absent' })
+    })
+  })
+
+  // #1837 - After a data release changes one piece of a saved hike, the
+  // phone strands the rest of the hike offline until every piece is
+  // refreshed. A cell half refetched from a release that changed it keeps
+  // the copy it replaced under lib/trailGraphStore.ts's `olderCopyKey`, and
+  // a graph built from that copy's release reads it there.
+  describe('the older copy kept beside a refreshed cell (#1837)', () => {
+    const WEST_GRAPH = graphCellStoreKey(WEST.name, 'graph')
+    const EAST_GRAPH = graphCellStoreKey(EAST.name, 'graph')
+    const WEST_GEOMETRY_KEY = graphCellStoreKey(WEST.name, 'geometry')
+    const EAST_GEOMETRY_KEY = graphCellStoreKey(EAST.name, 'geometry')
+
+    /** The east cell refreshed from release 10, release 9's copy kept. */
+    const EAST_REFRESHED = {
+      [EAST_GRAPH]: { body: EAST_SHARD_RELEASE_10, version: 'release-10' },
+      [olderCopyKey(EAST_GRAPH)]: { body: EAST_SHARD, version: 'release-9' },
+    }
+
+    it('loadGraphShard offline takes the copy kept under olderCopyKey when release 9 is asked for, and the current copy for release 10', async () => {
+      holdingReleases(EAST_REFRESHED)
+
+      expect(await loadGraphShard(EAST, undefined, false, RELEASE_9)).toEqual({
+        kind: 'shard',
+        shard: JSON.parse(EAST_SHARD),
+        release: RELEASE_9,
+      })
+      expect(await loadGraphShard(EAST, undefined, false, RELEASE_10)).toEqual({
+        kind: 'shard',
+        shard: JSON.parse(EAST_SHARD_RELEASE_10),
+        release: RELEASE_10,
+      })
+    })
+
+    it('loadGraphShard offline names the current copy’s release when neither copy is of the release asked for', async () => {
+      holdingReleases(EAST_REFRESHED)
+
+      expect(
+        await loadGraphShard(EAST, undefined, false, { version: 'release-8' }),
+      ).toEqual({ kind: 'absent', because: 'unreachable', heldRelease: RELEASE_10 })
+    })
+
+    it('loadGraphShard takes the copy kept under olderCopyKey for a release-9 graph when the release’s manifest answers 404', async () => {
+      // The same store read as with no signal (`unlessKept`).
+      holdingReleases(EAST_REFRESHED)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.resolve({ ok: false, status: 404 } as unknown as Response)),
+      )
+
+      expect(await loadGraphShard(EAST, undefined, true, RELEASE_9)).toMatchObject({
+        kind: 'shard',
+        release: RELEASE_9,
+      })
+    })
+
+    it('fetchTrailGraphGeometryCells offline takes the release-9 geometry kept under olderCopyKey for a release-9 graph whose east cell was refreshed from release 10', async () => {
+      // Release 10's east geometry lists the east trail first; on release
+      // 9's east cell it would put the seam edge's vertices on the east
+      // trail. The edge-count check passes both.
+      holdingReleases({
+        ...EAST_REFRESHED,
+        [WEST_GRAPH]: { body: WEST_SHARD, version: 'release-9' },
+        [WEST_GEOMETRY_KEY]: { body: WEST_GEOMETRY, version: 'release-9' },
+        [EAST_GEOMETRY_KEY]: { body: EAST_GEOMETRY_RELEASE_10, version: 'release-10' },
+        [olderCopyKey(EAST_GEOMETRY_KEY)]: { body: EAST_GEOMETRY, version: 'release-9' },
+      })
+
+      expect(await fetchTrailGraphGeometryCells(merged(), undefined, false)).toEqual({
+        kind: 'loaded',
+        data: [[NODE[0], NODE[1]], SEAM_EDGE, [NODE[2], NODE[3]]],
+      })
+    })
   })
 })
 
@@ -1205,6 +1538,7 @@ describe('the phone that has no signal (#1050)', () => {
         bytes: new Blob([body]),
         hash: 'whatever-it-was-when-it-was-fetched',
         version: 'release-9',
+        alsoPublishedIn: [],
         fetchedAt: 1,
       }
     })
@@ -1382,6 +1716,7 @@ describe('what the network refusing to answer is NOT (#1274)', () => {
         bytes: new Blob([body]),
         hash: 'whatever',
         version: RELEASE_9.version,
+        alsoPublishedIn: [],
         fetchedAt: 1,
       }
     })

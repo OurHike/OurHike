@@ -1,21 +1,13 @@
-// The waypoint source's id, its two layers' ids, the property a pin carries
-// its POI id in, and the two zooms the shell reads - and nothing that builds
-// a layer.
+// The POI layers' ids, their feature properties, the waypoint seam and the
+// locate zoom: the values the shell reads without drawing a pin.
 //
-// A LEAF, ON PURPOSE, for features/LAUNCH_BUDGET.md §4.4's rule: a constant
-// the shell reads out of a screen-sized module belongs in a module of its
-// own. Before this file, App.tsx (both zooms), lib/useDrawnPoiCounts.ts,
-// map/trailBadges.ts, map/poiTaps.ts, map/drawnPois.ts and map/poiPinProbe.ts
-// each imported one or two of these from map/poiLayers.ts, so every launch
-// parsed the whole pin layer builder - its ring compositing, its icon and
-// sort expressions, its filter - on a Today screen that mounts no map.
-// map/poiLayers.ts re-exports every one of them, the way map/style.ts
-// re-exports map/styleIds.ts (#1591), so a reader that imported an id from
-// there still does. scripts/check-build-output.mjs refuses a string only the
-// builder holds in any eager chunk, so it cannot drift back in.
-//
-// The comments below travelled with the constants they describe. Two that
-// pointed at code which stayed in map/poiLayers.ts now name it.
+// A MODULE OF ITS OWN SINCE #1837's FIX, for the launch budget. App.tsx and
+// lib/useDrawnPoiCounts.ts read POI_PIN_MIN_ZOOM and LOCATE_MIN_ZOOM, and a
+// static value import brings the exporting module whole into the importer's
+// chunk (features/LAUNCH_BUDGET.md §4.4), so these constants held all of
+// map/poiLayers.ts - its builders, its icon and ring imports - in the eager
+// chunk. map/poiLayers.ts re-exports every name here, so map modules keep
+// their import path; the shell imports from this file.
 
 export const POI_SOURCE_ID = 'pois'
 export const POI_LAYER_ID = 'poi-pins'
@@ -28,11 +20,23 @@ export const POI_LAYER_ID = 'poi-pins'
  * and which cannot hold this one: MapLibre runs a string feature id through
  * `parseInt` (FeatureWrapper, maplibre-gl 6), and every id the pipeline
  * publishes - "atc_shelters:<guid>", "opentrail_at:1234" - comes back NaN. The
- * feature id map/poiLayers.ts's poiFeatureCollection writes is still set,
- * because it is the honest place for it and because a numeric-id release
- * would then work; nothing reads it.
+ * feature id below is still set, because it is the honest place for it and
+ * because a numeric-id release would then work; nothing reads it.
  */
 export const POI_ID_PROPERTY = 'poi_id'
+
+/**
+ * The waypoint's name, carried on the feature so a label layer can draw it
+ * (#1194).
+ *
+ * It was deliberately absent until now, and {@link buildPoiLayer}'s own note
+ * said why: "Names are not here because nothing draws them." That stopped
+ * being true when the day-hike builder needed to answer "which shelter is
+ * that" without a tap. What has NOT changed is that the pin layer still draws
+ * no text - see map/poiLabels.ts for the separate layer that does, and for
+ * why it is separate.
+ */
+export const POI_NAME_PROPERTY = 'poi_name'
 
 /**
  * The seam. Below this the map is the corridor view and carries no waypoints
@@ -126,7 +130,7 @@ export const POI_PIN_MIN_ZOOM = 7
 // The maintainer's rule of 2026-09-18 stands unchanged over the top of the
 // new seam: "Don't auto hide the POIs ever. It's a safety thing, hikers need
 // to know that info." So from z7 up, every category the hiker has switched on
-// is drawn, and map/poiLayers.ts's poiFilter carries no zoom term at all.
+// is drawn, and {@link poiFilter} carries no zoom term at all.
 // poiLayers.test.ts's "the map never hides a category of its own accord"
 // block is that rule, pinned, and it now runs at every zoom from the seam up.
 //

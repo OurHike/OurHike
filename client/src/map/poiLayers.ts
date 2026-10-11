@@ -78,32 +78,28 @@ import {
   crowdingByPoi,
 } from './poiCrowding'
 import { whenStyleReady } from './styleReady'
+// The ids, the seam and the locate zoom live in poiIds.ts, a module of their
+// own, so the shell reads them without bringing this module and what it
+// imports into the eager chunk (features/LAUNCH_BUDGET.md §4.4: a constant
+// read out of a screen-sized module belongs in a module of its own).
+// Re-exported here, so every map module keeps the import path it had.
 import {
   POI_DOT_LAYER_ID,
   POI_ID_PROPERTY,
   POI_LAYER_ID,
+  POI_NAME_PROPERTY,
   POI_PIN_MIN_ZOOM,
   POI_SOURCE_ID,
-} from './poiLayerIds'
-
-// The ids and zooms the shell reads live in a leaf (map/poiLayerIds.ts) so
-// that reading one does not bring this builder into the eager bundle
-// (features/LAUNCH_BUDGET.md §4.4). Re-exported, so nothing that imported
-// one from here has to change.
-export * from './poiLayerIds'
-
-/**
- * The waypoint's name, carried on the feature so a label layer can draw it
- * (#1194).
- *
- * It was deliberately absent until now, and {@link buildPoiLayer}'s own note
- * said why: "Names are not here because nothing draws them." That stopped
- * being true when the day-hike builder needed to answer "which shelter is
- * that" without a tap. What has NOT changed is that the pin layer still draws
- * no text - see map/poiLabels.ts for the separate layer that does, and for
- * why it is separate.
- */
-export const POI_NAME_PROPERTY = 'poi_name'
+} from './poiIds'
+export {
+  LOCATE_MIN_ZOOM,
+  POI_DOT_LAYER_ID,
+  POI_ID_PROPERTY,
+  POI_LAYER_ID,
+  POI_NAME_PROPERTY,
+  POI_PIN_MIN_ZOOM,
+  POI_SOURCE_ID,
+} from './poiIds'
 
 // {@link POI_PRIORITY} lives in poiPriority.ts and is imported above. It moved
 // there when site composition needed the same ordering to decide which member

@@ -479,7 +479,7 @@ const EAGER_FORBIDDEN = [
   {
     marker: 'ring_lift',
     what: 'the waypoint layer builder (map/poiLayers.ts)',
-    where: 'map/poiLayerIds.ts for a source or layer id, or the pin seam zoom',
+    where: 'map/poiIds.ts for a source or layer id, or the pin seam zoom',
   },
   {
     marker: 'corridor-unattributed-casing',

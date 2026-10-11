@@ -19,7 +19,7 @@
 //
 // SAFE TO TAKE AGAIN, WHATEVER THE DATA BECOMES (.claude/skills/pr-screenshot/
 // SKILL.md's four rules). No waypoint draws below POI_PIN_MIN_ZOOM, 7
-// (map/poiLayerIds.ts), so no campsite of any kind is on the map at 6.5, half
+// (map/poiIds.ts), so no campsite of any kind is on the map at 6.5, half
 // a zoom short of the seam, and src/test/regionMapShots.test.ts fails this
 // recipe if its zoom ever reaches it. The drive never signs in, never presses
 // locate, and opens nobody's report or photo; a published serious warning

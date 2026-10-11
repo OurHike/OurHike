@@ -9,7 +9,7 @@
 // frames ground inside its box and outside every narrower box nested in it,
 // so its frame is that box's own data rather than a neighbour's.
 //
-// THE ZOOM is below POI_PIN_MIN_ZOOM (map/poiLayerIds.ts): below it no
+// THE ZOOM is below POI_PIN_MIN_ZOOM (map/poiIds.ts): below it no
 // waypoint draws as a pin or as a dot (map/poiLayers.ts's POI_DOT_MIN_ZOOM is
 // the same constant), so no campsite of any kind is on the map in a region
 // shot, whatever the bucket holds next month. A seam moved further out, or a
@@ -23,7 +23,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { readRepoFile } from './repoFile'
-import { POI_PIN_MIN_ZOOM } from '../map/poiLayerIds'
+import { POI_PIN_MIN_ZOOM } from '../map/poiIds'
 import { CAMERA_MEMORY_KEY, readCamera, type RememberedCamera } from '../lib/cameraMemory'
 
 interface RegionRecipe {

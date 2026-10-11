@@ -19,7 +19,7 @@ import duckdb
 import pytest
 
 from extract import _kinds, _notices
-from extract._contract import all_resources, discover
+from extract._contract import all_resources, discover, discover_shared
 from extract._kinds import WordpressPosts, feed_notices, page_notice, wordpress_posts
 from extract._notices import (
     DATE,
@@ -556,6 +556,164 @@ def test_a_page_with_its_own_wording_states_its_date_through_a_pattern_around_da
 
     pattern = re.compile(r"New this week \(" + DATE + r"\)", re.IGNORECASE)
     assert page_stated_date("Backcountry information. New this week (10/1/2026)", pattern) == ("10/1/2026", "2026-10-01")
+
+
+# The forms P13 added (the maintainer, 2026-10-11: "Fix the dates! the reader should be able to handle different
+# format"), one test each, and each refusal; extract/_notices.py's comment above DATE names the sources that use them.
+
+
+@pytest.mark.parametrize(
+    "text", ["Updated 14 August 2026", "Updated 14 August, 2026", "Last updated: 14 August 2026", "Updated 14 august 2026"]
+)
+def test_a_day_first_date_with_the_months_full_name_is_read(text):
+    assert page_stated_date(text)[1] == "2026-08-14"
+
+
+@pytest.mark.parametrize("text", ["Updated 14 Aug 2026", "Updated 14 Aug. 2026", "Updated 25 Oct 2009", "Updated 2 Sept 2026"])
+def test_a_day_first_date_with_the_months_short_name_with_or_without_a_period_is_read(text):
+    assert page_stated_date(text)[0] == text.removeprefix("Updated ")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Updated August 14 2026", ("August 14 2026", "2026-08-14")),
+        ("Updated Aug. 14 2026", ("Aug. 14 2026", "2026-08-14")),
+        ("Updated August 14,2026", ("August 14,2026", "2026-08-14")),
+    ],
+)
+def test_a_month_first_date_with_no_comma_or_no_space_before_the_year_is_read(text, expected):
+    assert page_stated_date(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Updated August 24th, 2026", "2026-08-24"),
+        ("Updated Aug 1st 2026", "2026-08-01"),
+        ("Updated 22nd August 2026", "2026-08-22"),
+        ("Updated 3rd Aug. 2026", "2026-08-03"),
+    ],
+)
+def test_a_day_with_st_nd_rd_or_th_after_it_is_read_month_first_or_day_first(text, expected):
+    assert page_stated_date(text)[1] == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Updated Monday, August 24th, 2026", ("Monday, August 24th, 2026", "2026-08-24")),
+        ("Last updated: Fri, 14 Aug 2026", ("Fri, 14 Aug 2026", "2026-08-14")),
+        ("Updated on Friday 14 August 2026", ("Friday 14 August 2026", "2026-08-14")),
+        ("Updated Tues. 8/11/2026", ("Tues. 8/11/2026", "2026-08-11")),
+        ("Updated Thurs, 2026-08-13", ("Thurs, 2026-08-13", "2026-08-13")),
+    ],
+)
+def test_a_date_behind_its_weekday_is_read_with_the_weekday_in_its_text(text, expected):
+    """pa.gov's Tioga advisories write 'Monday, August 24th, 2026' (extract/pasda/closures.py)."""
+    assert page_stated_date(text) == expected
+
+
+def test_an_iso_date_is_read():
+    assert page_stated_date("Updated 2026-08-14") == ("2026-08-14", "2026-08-14")
+
+
+@pytest.mark.parametrize(("text", "expected"), [("Updated 8/14/2026", "2026-08-14"), ("Updated 8/4/2026", "2026-08-04")])
+def test_a_numeric_date_is_read_month_first(text, expected):
+    assert page_stated_date(text)[1] == expected
+
+
+@pytest.mark.parametrize("text", ["Updated 14/8/2026", "Updated 31/12/26", "Updated 13/1/2026"])
+def test_a_numeric_date_whose_first_part_is_over_12_is_refused_rather_than_read_day_first(text):
+    assert page_stated_date(text) is None
+
+
+@pytest.mark.parametrize("text", ["Updated Monday, August 14, 2026", "Updated Sat 14 Aug 2026", "Updated Mon 9/4/26"])
+def test_a_weekday_the_day_is_not_refuses_the_date(text):
+    """14 August 2026 was a Friday and 4 September 2026 a Friday too: which of the two words slipped would be a guess."""
+    assert page_stated_date(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Updated September 31, 2026",
+        "Updated 31 September 2026",
+        "Updated 29 February 2025",
+        "Updated 2/29/2025",
+        "Updated 2026-02-30",
+        "Updated 2026-13-01",
+        "Updated 0 August 2026",
+    ],
+)
+def test_a_date_that_is_no_real_day_is_refused_in_every_form(text):
+    assert page_stated_date(text) is None
+
+
+def test_the_29th_of_february_is_read_in_a_leap_year():
+    assert page_stated_date("Updated 29 February 2024") == ("29 February 2024", "2024-02-29")
+
+
+@pytest.mark.parametrize("text", ["Updated October 2013", "Updated May 2024", "Updated Sept. 2026"])
+def test_a_month_and_year_with_no_day_is_not_read(text):
+    assert page_stated_date(text) is None
+
+
+@pytest.mark.parametrize("text", ["Updated 14 Augst 2026", "Updated Augustus 14, 2026", "Updated 14 Decimber 2026"])
+def test_a_word_that_is_no_months_name_is_not_read(text):
+    assert page_stated_date(text) is None
+
+
+def rctc_resource(key: str):
+    """The conservancy's own resource, as extract/_shared/rctc/closures.py declares it."""
+    (resource,) = [resource for resource in all_resources(discover_shared()) if resource.key == key]
+    return resource
+
+
+def test_an_rctc_trail_page_is_dated_by_its_newest_alert_and_never_by_a_month_with_no_day(requests_mock):
+    """The Baker Trail's page in its own shape (read 2026-10-11): no "Updated" stamp, each alert ending in its date.
+
+    Through the real resource, extract/_shared/rctc/closures.py's, whose
+    ALERT_DATE is DATE alone in parentheses. Before P13 the row landed no date.
+    """
+    url = "https://www.rachelcarsontrails.org/trails/baker-trail"
+    alerts = (
+        "<li>A detour bypasses about 4 miles of trail. (21 September 2024)</li>"
+        "<li>The shelter has been removed and the site is no longer available. (May 2024)</li>"
+        "<li>The southern terminus has moved; refer to the map above (14 August 2026)</li>"
+        "<li>Pay attention to ensure you follow the new blazing. (15 July 2026)</li>"
+        "<li>An open house is planned for a later year (3 October 2099)</li>"
+    )
+    page = (
+        '<html><head><meta property="og:title" content="Baker Trail"><title>Baker Trail - RCTC</title></head>'
+        f"<body><main><h2>Trail Alerts</h2><ul>{alerts}</ul></main></body></html>"
+    )
+    requests_mock.get(url, text=page, headers={"Content-Type": "text/html; charset=UTF-8"})
+
+    (row,) = list(rctc_resource("rctc_baker_trail_alerts").rows({}))
+
+    assert (row["date"], row["date_text"], row["date_source"]) == ("2026-08-14", "14 August 2026", "page_text")
+    assert row["title"] == "Baker Trail"
+
+
+def test_every_rctc_trail_page_reads_its_alerts_dates_through_the_same_pattern():
+    import re
+
+    patterns = {
+        rctc_resource(key).date_pattern
+        for key in ("rctc_rachel_carson_trail_alerts", "rctc_baker_trail_alerts", "rctc_harmony_trail_alerts")
+    }
+
+    (pattern,) = patterns
+    alerts = re.compile(pattern, re.IGNORECASE)
+    assert page_stated_date("Coyotes have been sighted near the trail. (14 February 2024)", alerts) == (
+        "14 February 2024",
+        "2024-02-14",
+    )
+    assert (
+        page_stated_date("The reroute ends at Ridge Road (March 2020). Closed again (14 March 2020)", alerts)[1] == "2020-03-14"
+    )
+    assert page_stated_date("Last updated: August 27, 2026", alerts) is None, "the alerts' own dates, never another stamp"
 
 
 # --- Politeness ----------------------------------------------------------------

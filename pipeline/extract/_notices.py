@@ -846,6 +846,35 @@ def html_text(fragment: str) -> str:
 # [b1]). Numeric dates read month first: every one measured is a US club's,
 # and each read that way (Reasoned). A date with no year ('Trail Update
 # 4/13', foothillstrail.org [b1]) is not read: the year would be a guess.
+#
+# DATE READS THE FORMS SOURCES USE GENERALLY, not only those (P13, the
+# maintainer, 2026-10-11: "Fix the dates! the reader should be able to handle
+# different format"), each tested by its form in tests/test_extract_notices.py:
+# - month first, the month's name full or cut short, with or without a
+#   period, with or without a comma before the year, the day with or without
+#   'st', 'nd', 'rd' or 'th': 'August 14, 2026', 'Aug. 14 2026', 'August
+#   24th, 2026';
+# - day first, the same way: '14 August 2026', '14 Aug. 2026', '14 August,
+#   2026'. Measured 2026-10-11, one read of each of rachelcarsontrails.org's
+#   three trail pages (`rctc_*_alerts`): no "Updated" stamp, and every alert
+#   ends in its own date in parentheses, day first, 31, 14 and 1 of them
+#   ('(14 August 2026)', '(11 March 2026)', '(25 Oct 2009)'), so that file
+#   sets a `date_pattern` around DATE. Their '(October 2013)' and '(May
+#   2024)' name no day, and are not read;
+# - either one behind a weekday, full or cut short: 'Monday, August 24th,
+#   2026' (pa.gov's Tioga State Forest advisories page, read 2026-10-03 and
+#   quoted in extract/pasda/closures.py; an advisory's start, which
+#   STATED_DATE leaves alone, as no "Updated" stands before it), 'Fri, 14 Aug
+#   2026'. A weekday the day is not refuses the date: which of the two is the
+#   slip would be a guess;
+# - ISO, 'YYYY-MM-DD' (NBATC's announcements' items, extract/nbatc/closures.py);
+# - numeric, month first, 'M/D/YYYY' or 'M/D/YY', as above. A numeric date
+#   whose first part is over 12 is refused rather than read day first: no
+#   source here writes one (every registered one is in the United States,
+#   and every numeric date measured above reads month first), so day first
+#   would be a guess.
+# Whatever the form, a date that is no real day ('September 31, 2026',
+# '29 February 2025') is refused, never moved to the nearest one.
 _MONTHS = (
     "january",
     "february",
@@ -860,10 +889,19 @@ _MONTHS = (
     "november",
     "december",
 )
+_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+_MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*"
+_ORDINAL = r"(?:st|nd|rd|th)?"
+_BEFORE_YEAR = r"(?:\s*,\s*|\s+)"  # 'August 14, 2026', 'August 14 2026', 'August 14,2026'
 _DATE = (
-    r"(?P<date>(?P<month>(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\.?\s+(?P<day>\d{1,2}),?\s+(?P<year>\d{4})"
-    r"|(?P<m>\d{1,2})/(?P<d>\d{1,2})/(?P<y>\d{4}|\d{2})(?!\d)"
-    r"|(?P<iso>\d{4}-\d{2}-\d{2}))"
+    r"(?P<date>"
+    r"(?:(?P<weekday>"
+    + "|".join((*_WEEKDAYS, "tues", "thurs", "thur", "mon", "tue", "wed", "thu", "fri", "sat", "sun"))
+    + r")\b\.?,?\s+)?"
+    r"(?:(?P<month>" + _MONTH + r")\.?\s+(?P<day>\d{1,2})" + _ORDINAL + _BEFORE_YEAR + r"(?P<year>\d{4})(?!\d)"
+    r"|(?<!\d)(?P<dday>\d{1,2})" + _ORDINAL + r"\s+(?P<dmonth>" + _MONTH + r")\.?" + _BEFORE_YEAR + r"(?P<dyear>\d{4})(?!\d)"
+    r"|(?<!\d)(?P<m>\d{1,2})/(?P<d>\d{1,2})/(?P<y>\d{4}|\d{2})(?!\d)"
+    r"|(?<!\d)(?P<iso>\d{4}-\d{2}-\d{2})(?!\d)))"
 )
 STATED_DATE = re.compile(r"\b(?:last\s+)?updated?(?:\s+on)?\s*:?\s*" + _DATE, re.IGNORECASE)
 # The date part alone, for a page whose own wording STATED_DATE does not
@@ -877,23 +915,43 @@ STATED_DATE = re.compile(r"\b(?:last\s+)?updated?(?:\s+on)?\s*:?\s*" + _DATE, re
 DATE = _DATE
 
 
+def _month_number(word: str) -> int | None:
+    """A month's name, full or cut short ('Aug', 'Sept'), as its number, or None for a word that is no month's."""
+    word = word.lower()
+    word = "sep" if word == "sept" else word
+    return next((n for n, name in enumerate(_MONTHS, 1) if name.startswith(word)), None)
+
+
 def _stated_date(match: re.Match) -> date | None:
-    """The day a match of DATE names, or None where it names no real day (a 31 September, an unknown month)."""
+    """The day a match of DATE names, or None where it names no real day.
+
+    None for a 31 September or a 29 February outside a leap year, for a word
+    that is no month's, for a numeric date whose first part is over 12 (read
+    month first, never guessed day first), and for a weekday the day is not.
+    A club's own pattern may define only some of DATE's groups (NBATC's,
+    `date` and `iso`); the ones it lacks read as absent.
+    """
     group = match.groupdict()
     try:
         if group.get("iso"):
-            return date.fromisoformat(group["iso"])
-        if group.get("month"):
-            word = group["month"].lower()
-            word = "sep" if word == "sept" else word
-            month = next((n for n, name in enumerate(_MONTHS, 1) if name.startswith(word)), None)
-            return date(int(group["year"]), month, int(group["day"])) if month else None
-        if group.get("y"):
+            stated = date.fromisoformat(group["iso"])
+        elif group.get("month") or group.get("dmonth"):
+            first = bool(group.get("month"))
+            month = _month_number(group["month"] if first else group["dmonth"])
+            if month is None:
+                return None
+            stated = date(int(group["year" if first else "dyear"]), month, int(group["day" if first else "dday"]))
+        elif group.get("y"):
             year = int(group["y"])
-            return date(year + 2000 if year < 100 else year, int(group["m"]), int(group["d"]))
+            stated = date(year + 2000 if year < 100 else year, int(group["m"]), int(group["d"]))
+        else:
+            return None
     except (TypeError, ValueError):
         return None
-    return None
+    weekday = (group.get("weekday") or "").lower()
+    if weekday and not _WEEKDAYS[stated.weekday()].startswith(weekday):
+        return None
+    return stated
 
 
 def page_stated_date(text: str, pattern: re.Pattern | None = STATED_DATE) -> tuple[str, str] | None:

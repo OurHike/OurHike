@@ -257,9 +257,10 @@ models:
       Every generated club notice source's rows, read by decision 53's phase
       C rules (pipeline/ELT.md): one row per notice in the closures family's
       columns, with `obstructs_trail` true only where the source's own status
-      says closed and its own end has not passed, and `held_because` set where
-      the notice may not publish as current. Nothing is dropped here; the
-      finals leave out a held row. Place is the source's own geometry only.
+      says closed and its own end has not passed, whether or not its own
+      start has come, and `held_because` set where the notice may not
+      publish as current. Nothing is dropped here; the finals leave out a
+      held row. Place is the source's own geometry only.
     columns:
       - name: notice_id
         description: "`<source key>:<the source's own id>`, unique across every source."
@@ -275,8 +276,10 @@ models:
         description: >
           True only where the source files the notice under closures, its own
           status field holds a value notice_status_values reads as
-          `closes_trail`, and its own end date has not passed. Null
-          otherwise, never false: nobody here classified it.
+          `closes_trail`, nothing holds it, and its own end date has not
+          passed. A start still ahead does not change it: the phone closes
+          the trail from the day before `starts_on`. Null otherwise, never
+          false: nobody here classified it.
         data_tests:
           - accepted_values:
               arguments:
@@ -284,9 +287,9 @@ models:
       - name: held_because
         description: >
           Why the notice may not publish as current, in words for the job log:
-          its own end date has passed, its own order was rescinded, its own
-          start has not come, or its own status says not current. Null where
-          it may.
+          its own status says not current, its own category is not the hazard
+          its source is listed for, or its own order was rescinded. Never its
+          own end date or its own start: both publish. Null where it may.
       - name: key_versions
         description: >
           How many different raw rows share the notice's key, counted by its
@@ -1931,8 +1934,10 @@ unit_tests:
       status before its end, or with none, closes the trail; a status the
       source uses for not current (CDPR's OPEN) holds it; an unlisted status
       (Partial Closure) is a warning nobody reviewed; a rescinded order is
-      held; a seasonal closure whose own start has not come is held, and
-      closes once it has; a notice its club files under
+      held; a seasonal closure whose own start has not come publishes and
+      closes the trail now, as one whose start has come does (the
+      maintainer's frame B for wave 6's page 01, P3, 2026-10-11: the phone
+      closes it from the day before its start); a notice its club files under
       warnings never closes a trail; place is the source's own geometry or
       nothing, its locality its own words; the title's entities are read
       as Python's html.unescape reads them; the edit stamp is printed in
@@ -2030,7 +2035,7 @@ unit_tests:
         - {notice_id: 'ncta_trail_alerts:9', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Trail Alert: CR–17 to Fixture Beach', locality: 'CR-17 to Fixture Beach', geom_geojson: null, updated_at: '2026-09-21T14:13:20Z'}
         - {notice_id: 'ncta_trail_alerts:10', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Trail Alert: Fixture Road', locality: null, geom_geojson: '{"type":"Point","coordinates":[-76.5,42.4]}', updated_at: null}
         - {notice_id: 'ncta_trail_alerts:key-k11', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Trail Alert: no id', locality: null, geom_geojson: null, updated_at: null}
-        - {notice_id: 'nps_yell_bear_management_areas:y12', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own start date, 2999-03-10, has not come', title: 'Fixture Bear Management Area', locality: null, geom_geojson: null, updated_at: null}
+        - {notice_id: 'nps_yell_bear_management_areas:y12', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Bear Management Area', locality: null, geom_geojson: null, updated_at: null}
         - {notice_id: 'nps_yell_bear_management_areas:y13', obstructs_trail: true, review_state: 'org_published', held_because: null, title: 'Fixture Bear Management Area', locality: null, geom_geojson: null, updated_at: null}
         - {notice_id: 'iata_lands_hunting_regs:h14', obstructs_trail: null, review_state: 'not_reviewed', held_because: 'its own category, No hunting, is not one notice_hazard_areas reads as hunting', title: 'Fixture Preserve', locality: 'Fixture', geom_geojson: null, updated_at: null}
         - {notice_id: 'iata_lands_hunting_regs:h15', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Hunting Parcel', locality: 'Fixture', geom_geojson: null, updated_at: null}
@@ -2043,11 +2048,14 @@ unit_tests:
       comparison flipped goes red: an 'Active' closure that ended yesterday
       still closes the trail, and one that ended the day before is kept but
       no longer closes it (rule 2; neither is held, rule 1 since the
-      maintainer's frame A of 2026-10-10); one starting tomorrow publishes
-      and one starting the day after is held; an order rescinded the day
-      before yesterday or yesterday is held, and one rescinded today or
-      tomorrow is not, the same day of margin an end date has. Every stated
-      time is noon UTC, so each row's day is the same in every US zone.
+      maintainer's frame A of 2026-10-10); a notice starting tomorrow, the
+      day after, or next month publishes now with its own `starts_on`, and
+      an 'Active' closure among them publishes `obstructs_trail` true, its
+      start read by the phone (rule 1 since the maintainer's frame B of
+      2026-10-11 for wave 6's page 01, P3); an order rescinded the day before
+      yesterday or yesterday is held, and one rescinded today or tomorrow is
+      not, the same day of margin an end date has. Every stated time is noon
+      UTC, so each row's day is the same in every US zone.
     model: int_closures__club_notices
     overrides:
       vars:
@@ -2059,6 +2067,8 @@ unit_tests:
           - {notice_key: 'ended_two_days_ago', source_key: 'usfs_r06_fire_closure_lines', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: '2026-10-03 12:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'ended_two_days_ago', title: 'Fixture order', status: 'Active'}
           - {notice_key: 'starts_tomorrow', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2026-10-06 12:00:00+00', ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'starts_tomorrow', title: 'Fixture order', status: null}
           - {notice_key: 'starts_in_two_days', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2026-10-07 12:00:00+00', ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'starts_in_two_days', title: 'Fixture order', status: null}
+          - {notice_key: 'closure_starts_in_two_days', source_key: 'usfs_r06_fire_closure_lines', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2026-10-07 12:00:00+00', ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'closure_starts_in_two_days', title: 'Fixture order', status: 'Active'}
+          - {notice_key: 'closure_starts_next_month', source_key: 'usfs_r06_fire_closure_lines', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: '2026-11-20 12:00:00+00', ends_at: '2026-12-01 12:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'closure_starts_next_month', title: 'Fixture order', status: 'Active'}
           - {notice_key: 'rescinded_two_days_ago', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: '2026-10-03 12:00:00+00', source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'rescinded_two_days_ago', title: 'Fixture order', status: null}
           - {notice_key: 'rescinded_yesterday', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: '2026-10-04 12:00:00+00', source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'rescinded_yesterday', title: 'Fixture order', status: null}
           - {notice_key: 'rescinded_today', source_key: 'usfs_r03_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: '2026-10-05 12:00:00+00', source_edited_at: null, source_url: null, locality: null, geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: 'rescinded_today', title: 'Fixture order', status: null}
@@ -2070,14 +2080,16 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {notice_id: 'usfs_r06_fire_closure_lines:ends_yesterday', held_because: null, obstructs_trail: true}
-        - {notice_id: 'usfs_r06_fire_closure_lines:ended_two_days_ago', held_because: null, obstructs_trail: null}
-        - {notice_id: 'usfs_r03_forest_orders:starts_tomorrow', held_because: null}
-        - {notice_id: 'usfs_r03_forest_orders:starts_in_two_days', held_because: 'its own start date, 2026-10-07, has not come'}
-        - {notice_id: 'usfs_r03_forest_orders:rescinded_two_days_ago', held_because: 'its own order was rescinded on 2026-10-03'}
-        - {notice_id: 'usfs_r03_forest_orders:rescinded_yesterday', held_because: 'its own order was rescinded on 2026-10-04'}
-        - {notice_id: 'usfs_r03_forest_orders:rescinded_today', held_because: null}
-        - {notice_id: 'usfs_r03_forest_orders:rescinded_tomorrow', held_because: null}
+        - {notice_id: 'usfs_r06_fire_closure_lines:ends_yesterday', held_because: null, obstructs_trail: true, starts_on: null}
+        - {notice_id: 'usfs_r06_fire_closure_lines:ended_two_days_ago', held_because: null, obstructs_trail: null, starts_on: null}
+        - {notice_id: 'usfs_r03_forest_orders:starts_tomorrow', held_because: null, obstructs_trail: null, starts_on: '2026-10-06'}
+        - {notice_id: 'usfs_r03_forest_orders:starts_in_two_days', held_because: null, obstructs_trail: null, starts_on: '2026-10-07'}
+        - {notice_id: 'usfs_r06_fire_closure_lines:closure_starts_in_two_days', held_because: null, obstructs_trail: true, starts_on: '2026-10-07'}
+        - {notice_id: 'usfs_r06_fire_closure_lines:closure_starts_next_month', held_because: null, obstructs_trail: true, starts_on: '2026-11-20'}
+        - {notice_id: 'usfs_r03_forest_orders:rescinded_two_days_ago', held_because: 'its own order was rescinded on 2026-10-03', obstructs_trail: null, starts_on: null}
+        - {notice_id: 'usfs_r03_forest_orders:rescinded_yesterday', held_because: 'its own order was rescinded on 2026-10-04', obstructs_trail: null, starts_on: null}
+        - {notice_id: 'usfs_r03_forest_orders:rescinded_today', held_because: null, obstructs_trail: null, starts_on: null}
+        - {notice_id: 'usfs_r03_forest_orders:rescinded_tomorrow', held_because: null, obstructs_trail: null, starts_on: null}
 
   - name: int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log
     description: >
@@ -2527,6 +2539,53 @@ unit_tests:
         - {notice_id: 'club_held:ended_two_days_ago', mart: warnings, obstructs_trail: null, review_state: not_reviewed}
         - {notice_id: 'club_held:ended_yesterday', mart: closures, obstructs_trail: true, review_state: org_published}
         - {notice_id: 'club_held:no_end', mart: closures, obstructs_trail: true, review_state: org_published}
+
+  - name: int_closures__held_carried_carries_a_notice_whose_own_start_is_still_ahead
+    description: >
+      A closure whose own start is a week or a month ahead is carried as it
+      was saved, in the closures mart and still closing the trail, as a
+      fresh read of it now publishes (the maintainer's frame B for wave 6's
+      page 01, P3, 2026-10-11: shown now as upcoming, and closed by the
+      phone from the day before its start). Before it, rule 1's start hold
+      dropped such a carried row whose start was more than a day ahead. The
+      dates are relative to the build, as the test above's are.
+    model: int_closures__held_carried
+    given:
+      - input: ref('stg_row_history__closures')
+        format: sql
+        rows: |
+          select
+              closure_id,
+              'club_held' as source_key,
+              cast(null as timestamp) as dbt_valid_to,
+              json_object('title', closure_id, 'obstructs_trail', true, 'review_state', 'org_published', 'starts_on', cast(starts_on as varchar)) as row_json
+          from (
+              values
+              ('club_held:starts_in_a_week', cast(timezone('UTC', now()) as date) + 7),
+              ('club_held:starts_in_a_month', cast(timezone('UTC', now()) as date) + 30)
+          ) as saved (closure_id, starts_on)
+      - input: ref('stg_row_history__warnings')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as warning_id,
+              cast(null as varchar) as warning_kind,
+              cast(null as varchar) as source_key,
+              cast(null as timestamp) as dbt_valid_to,
+              cast(null as json) as row_json
+          where false
+      - input: ref('int_closures__gate')
+        rows:
+          - {source_key: club_held, passed: false, may_publish: true}
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: club_held, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_held, staged_by: stg_a__club_held}
+      - input: ref('int_closures__window_carried')
+        rows: []
+    expect:
+      rows:
+        - {notice_id: 'club_held:starts_in_a_week', mart: closures, obstructs_trail: true, review_state: org_published}
+        - {notice_id: 'club_held:starts_in_a_month', mart: closures, obstructs_trail: true, review_state: org_published}
 
   - name: int_closures__gate_holds_a_source_whose_row_leaks_its_wording_or_lands_outside_its_region
     description: >

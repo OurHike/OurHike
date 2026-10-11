@@ -35,10 +35,13 @@
 -- date stays carried, and rule 2 reads it again: it no longer closes the
 -- trail, so it lands in warnings as not reviewed, as a fresh read of it
 -- would. conditions/notices.json's `current_until` is its end date, and the
--- phone greys it. Rule 1's holds (macros/notice_date_holds.sql) still apply,
--- and cannot fire on a carried row: its start was within the margin when it
--- was read, and its rescission day cannot be checked, because rescinded_on
--- does not reach the marts, so the history holds none to carry.
+-- phone greys it. NOR DOES ITS OWN START: a carried notice whose start is
+-- still ahead stays carried, closing the trail as it did, as a fresh read of
+-- it would publish it (the maintainer's frame B for wave 6's page 01, P3,
+-- poll of 2026-10-11; int_closures__club_notices' rule 1). Rule 1's one
+-- date hold left, a rescinded order (macros/notice_date_holds.sql), cannot
+-- fire on a carried row: rescinded_on does not reach the marts, so the
+-- history holds none to carry.
 --
 -- WHAT IT DOES NOT DO. With OURHIKE_ROW_HISTORY=off, or on a cold start, the
 -- history is empty and nothing is carried, and so for a source held on every
@@ -167,10 +170,6 @@ judged as (
         *,
         {{ notice_has_ended('ends_on', notice_build_date()) }} as has_ended
     from read_back
-    where
-        case
-            {{ notice_date_holds('starts_on', notice_build_date()) }}
-        end is null
 )
 
 select

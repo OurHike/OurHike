@@ -10,21 +10,45 @@
 --
 -- THE RULES, each held by a unit test in _closures__intermediate.yml:
 --
--- 1. A NOTICE WHOSE STATED END HAS PASSED IS KEPT, and is never read as
---    current. The maintainer's frame A (poll of 2026-10-10): a notice past
---    its own end date stays in the list, greyed, rather than leaving it.
---    Until then this rule held such a notice back, so UA's notices.json of
---    2026-10-10 17:24 UTC carried none of them: 0 of its 1,464 rows with an
---    end date had one already past. Standing Stone's closure pages, which
---    still serve closures that ended in 2022 and 2023 (phase A), now reach a
---    phone that way. conditions/notices.json's `current_until` is that end
---    day (macros/notice_current_until.sql), and the phone greys the notice
---    after it on its own clock, so a phone offline for days greys it on the
---    day, which a build-time hold could not. Rule 2 below still reads it.
---    Its end is the day of `ends_at` in UTC.
---    TWO DATES STILL HOLD A NOTICE BACK (macros/notice_date_holds.sql). An
+-- 1. A NOTICE IS KEPT WHATEVER ITS OWN DATES SAY.
+--    ONE WHOSE STATED END HAS PASSED is never read as current. The
+--    maintainer's frame A (poll of 2026-10-10): a notice past its own end
+--    date stays in the list, greyed, rather than leaving it. Until then this
+--    rule held such a notice back, so UA's notices.json of 2026-10-10 17:24
+--    UTC carried none of them: 0 of its 1,464 rows with an end date had one
+--    already past. Standing Stone's closure pages, which still serve
+--    closures that ended in 2022 and 2023 (phase A), now reach a phone that
+--    way. conditions/notices.json's `current_until` is that end day
+--    (macros/notice_current_until.sql), and the phone greys the notice after
+--    it on its own clock, so a phone offline for days greys it on the day,
+--    which a build-time hold could not. Rule 2 below still reads it. Its end
+--    is the day of `ends_at` in UTC.
+--    ONE WHOSE OWN START IS STILL AHEAD PUBLISHES NOW, AS UPCOMING: the
+--    maintainer's frame B for wave 6's page 01, P3 (poll of 2026-10-11, "show
+--    it now, as upcoming"). Until then this rule held it while its UTC start
+--    day was more than one day ahead (Yellowstone's bear management areas,
+--    New Jersey's WMA restrictions, King County's alerts and IDPR's emergency
+--    closures state one), so a phone that last connected before that day
+--    never showed it. It now carries its own `starts_on`, and
+--    `obstructs_trail` is rule 2's, read without regard to the start: a
+--    closure that starts next month publishes `obstructs_trail` true today.
+--    THE PHONE DECIDES THE DAY IT CLOSES, the other half of the same answer:
+--    it draws the trail closed only from the day before `starts_on` on its
+--    own calendar, and tags the notice "Starts <date>" until then. The day
+--    before, because `starts_on` is the UTC day of the source's start
+--    instant, and an instant stated in a United States zone (UTC-4 to
+--    UTC-10) falls in that zone on that UTC day or the day before it, never
+--    after; so a phone in the trail's zone closes the trail up to a day
+--    early, never a day late (Reasoned from the zones' offsets, not measured
+--    on any source). A start the source states as a day alone (an ArcGIS
+--    DateOnly field, or epoch milliseconds at UTC midnight) is that day, and
+--    the phone closes the trail the whole day before it. `current_until` is
+--    not moved by the start (macros/notice_current_until.sql: its own end
+--    first), so an upcoming notice with no end and no edit date carries a
+--    null one; until its start the phone's tag says what it is.
+--    ONE DATE STILL HOLDS A NOTICE BACK (macros/notice_date_holds.sql): an
 --    order the source says was rescinded is held, once the build's UTC date
---    is past the UTC day of its rescission: that is the source's own word
+--    is past the UTC day of its rescission. That is the source's own word
 --    that the order was lifted, as a status is, not a date OurHike reads an
 --    expiry from. An order is lifted at that instant, not at the end of a
 --    stated day, and the first build to hold it starts at 00:00 UTC the next
@@ -32,11 +56,7 @@
 --    toward showing an order up to a day after it was lifted, never hiding
 --    one still in force (Reasoned, not measured on any source; with no
 --    margin, before 2026-10-05, a Denver order rescinded at local midnight
---    was held from 18:00 local the evening before). And a notice whose own
---    start is still to come is held (Yellowstone's bear management areas,
---    New Jersey's WMA restrictions and King County's alerts state one):
---    held while its UTC start day is more than one day ahead, so the margin
---    shows a closure a day early, never a day late.
+--    was held from 18:00 local the evening before).
 -- 2. A STATUS ALONE IS NEVER READ AS CLOSED NOW WHEN ITS OWN END HAS PASSED.
 --    `obstructs_trail` is true only where the source's own status field
 --    holds a value seeds/notice_status_values.csv reads as `closes_trail`,
@@ -135,9 +155,8 @@ read_status as (
             and lower(trim(notices.category)) = hazard_values.category_value
 ),
 
--- Rule 1's two holds come last, from macros/notice_date_holds.sql, which
--- int_closures__held_carried applies to a carried row too; rule 2's end
--- date is `has_ended`, which holds nothing back.
+-- Rule 1's one date hold comes last, from macros/notice_date_holds.sql;
+-- rule 2's end date is `has_ended`, which holds nothing back.
 judged as (
     select
         *,
@@ -155,9 +174,7 @@ judged as (
                     'its own category, ' || coalesce(category, 'none')
                     || ', is not one notice_hazard_areas reads as '
                     || hazard
-            {{ notice_date_holds(
-                'starts_on', 'build_date', rescinded_on='rescinded_on'
-            ) }}
+            {{ notice_date_holds('build_date', 'rescinded_on') }}
         end as held_because,
         {{ notice_has_ended('ends_on', 'build_date') }} as has_ended
     from read_status

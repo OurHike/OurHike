@@ -661,7 +661,7 @@ def render_stg(source: NoticeSource, fields: dict[str, dict]) -> str:
     lines += _wrap(
         "Only facts cross from base_: the source's id, title, category, status, dates, link, a place name and its "
         "own geometry (decision 55, and ORG_NOTICES.md section 7). Classifying a status, holding back a "
-        "rescinded or not yet started notice and placing it are int_closures__club_notices' work."
+        "rescinded order and placing a notice are int_closures__club_notices' work."
     )
     lines += ["with base as (", "    select *", f"    from {{{{ ref({_sql_string(source.base_model)}) }}}}", "),", ""]
     lines += [

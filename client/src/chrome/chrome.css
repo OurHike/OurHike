@@ -2807,9 +2807,12 @@
 
 /* The mock's `.tag`: a small mono label ahead of the title. Two registers and
    no more - the sunken sage one for a notice, and the caution tint for a
-   closure or an area advisory (decision 67's "Advisory"). Semantic tokens,
-   so both flip with the theme and the text keeps `--fg-1`'s contrast on
-   them; never the closure band's red, because an advisory is not a closure. */
+   closure or an area advisory (decision 67's "Advisory"), and for a closure's
+   "Starts Oct 20" before its start (P3's frame B, whose wireframe drew that
+   tag blue: no blue register exists, so it takes the closure's). Semantic
+   tokens, so both flip with the theme and the text keeps `--fg-1`'s contrast
+   on them; never the closure band's red, because an advisory is not a
+   closure. */
 .planned-notices__tag {
   display: inline-block;
   padding: 1px 5px;

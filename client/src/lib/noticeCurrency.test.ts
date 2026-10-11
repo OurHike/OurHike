@@ -5,6 +5,8 @@ import {
   isIsoDay,
   longDay,
   notCurrent,
+  obstructsOn,
+  startsAhead,
 } from './noticeCurrency'
 import type { TrailNotice } from './notices'
 import { localDay } from './passedToday'
@@ -152,6 +154,97 @@ describe('notCurrent’s line, one for each step that set current_until', () => 
       NOT_CURRENT_LINES.startOnly,
     ]) {
       expect(line.endsWith(' It may no longer apply.')).toBe(true)
+    }
+  })
+})
+
+// P3, the maintainer's frame B (poll of 2026-10-11): "Shown now, marked with
+// its start. It closes the trail only from its start day." The phone closes
+// it from the day before (`obstructsOn` says why), and keeps the start until
+// the day itself. Each day is read through the mocked clock, as above.
+describe('a closure whose own start is still ahead (frame B)', () => {
+  // Only a start: notice_current_until.sql gives such a row no day at all,
+  // which on its own would grey it.
+  const upcoming = notice({ starts_on: '2026-10-20', current_until: null })
+
+  it('nine days before its start is current, names its start, and does not close the trail', () => {
+    vi.useFakeTimers()
+    const today = phoneDayAt(2026, 10, 11, 9)
+    expect(startsAhead(upcoming, today)).toBe('2026-10-20')
+    expect(isCurrentOn(upcoming, today)).toBe(true)
+    expect(notCurrent(upcoming, today)).toBeNull()
+    expect(obstructsOn(upcoming, today)).toBe(false)
+  })
+
+  it('closes the trail from just after midnight on the day before its start, still naming its start', () => {
+    vi.useFakeTimers()
+    expect(obstructsOn(upcoming, phoneDayAt(2026, 10, 18, 23))).toBe(false)
+    const dayBefore = phoneDayAt(2026, 10, 19, 0)
+    expect(obstructsOn(upcoming, dayBefore)).toBe(true)
+    expect(startsAhead(upcoming, dayBefore)).toBe('2026-10-20')
+    expect(isCurrentOn(upcoming, dayBefore)).toBe(true)
+  })
+
+  it('on its start day closes the trail and is no longer upcoming, read by its current_until again', () => {
+    vi.useFakeTimers()
+    const startDay = phoneDayAt(2026, 10, 20, 6)
+    expect(startsAhead(upcoming, startDay)).toBeNull()
+    expect(obstructsOn(upcoming, startDay)).toBe(true)
+    // As every start-only row reads once it has begun (unchanged by P3).
+    expect(notCurrent(upcoming, startDay)?.line).toBe(NOT_CURRENT_LINES.startOnly)
+  })
+
+  it('counts the day before across a month end: a start on November 1 closes from October 31', () => {
+    const november = notice({ starts_on: '2026-11-01' })
+    expect(obstructsOn(november, '2026-10-30')).toBe(false)
+    expect(obstructsOn(november, '2026-10-31')).toBe(true)
+  })
+
+  it('stays current before its start though the 90 days after its edit ran out first', () => {
+    // Edited in May for a closure from October 20: current_until is the
+    // edit plus 90 days, August 10, before the closure has even begun.
+    const announced = notice({
+      starts_on: '2026-10-20',
+      updated_at: '2026-05-12T12:00:00Z',
+      current_until: '2026-08-10',
+    })
+    expect(isCurrentOn(announced, '2026-10-11')).toBe(true)
+    expect(notCurrent(announced, '2026-10-11')).toBeNull()
+    expect(notCurrent(announced, '2026-10-20')?.line).toBe(
+      'Last reported May 12, 2026. It may no longer apply.',
+    )
+  })
+
+  it('leaves a notice with no start as published: obstructs_trail and current_until decide, on any day', () => {
+    const plain = notice({ current_until: '2026-10-15' })
+    expect(startsAhead(plain, '2026-10-11')).toBeNull()
+    expect(obstructsOn(plain, '2026-10-11')).toBe(true)
+    expect(obstructsOn(plain, '2030-01-01')).toBe(true)
+    expect(obstructsOn(notice({ obstructs_trail: false }), '2026-10-11')).toBe(false)
+    expect(isCurrentOn(plain, '2026-10-15')).toBe(true)
+    expect(isCurrentOn(plain, '2026-10-16')).toBe(false)
+  })
+
+  it('reads a start it cannot parse as no start, so the closure closes the trail as published', () => {
+    for (const starts_on of ['2026-10-2', '20 October 2026', '2026-02-30']) {
+      const unreadable = notice({ starts_on })
+      expect(startsAhead(unreadable, '2026-01-01')).toBeNull()
+      expect(obstructsOn(unreadable, '2026-01-01')).toBe(true)
+    }
+  })
+
+  it('never holds back a notice that does not close the trail, before or after its start', () => {
+    const warning = notice({ obstructs_trail: false, starts_on: '2026-10-20' })
+    expect(obstructsOn(warning, '2026-10-11')).toBe(false)
+    expect(obstructsOn(warning, '2026-10-19')).toBe(false)
+    expect(obstructsOn(warning, '2026-10-20')).toBe(false)
+    expect(startsAhead(warning, '2026-10-11')).toBe('2026-10-20')
+  })
+
+  it('never calls a hazard area upcoming: its start is its season or its fire’s', () => {
+    for (const hazard of ['hunting', 'shooting', 'burned_area'] as const) {
+      const area = notice({ hazard, obstructs_trail: false, starts_on: '2026-10-20' })
+      expect(startsAhead(area, '2026-10-11')).toBeNull()
     }
   })
 })

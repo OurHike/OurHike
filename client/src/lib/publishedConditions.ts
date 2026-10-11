@@ -407,10 +407,11 @@ export interface NoticeStateArea {
  * nothing true to put there and absent means unknown. A renderer must show
  * the title alone in that case rather than inventing a word.
  *
- * `obstructsTrail` is false on every published row and the pipeline forces it
- * so - an unreviewed notice may never draw a barrier across a trail. It is
- * carried rather than assumed because a reviewed row will one day be able to
- * say otherwise.
+ * `obstructsTrail` is false on every row of NYNJTC's own file and the pipeline
+ * forces it so - an unreviewed notice may never draw a barrier across a trail.
+ * It is carried rather than assumed because a reviewed row will one day be
+ * able to say otherwise, and because rows of conditions/notices.json already
+ * can, where a source's own status closes the trail (see the field).
  */
 export interface OrgNotice {
   notice_id: string
@@ -424,6 +425,14 @@ export interface OrgNotice {
    *  rather than as a guess. */
   locality: string
   place: NoticePlace
+  /**
+   * Whether the notice closes the trail, as published, and NOT whether it
+   * does today: conditions/notices.json carries it true for a closure whose
+   * own start is still ahead (P3, the maintainer's frame B, 2026-10-11).
+   * Read it through lib/noticeCurrency.ts's `obstructsOn`, which holds it
+   * back until the day before `starts_on`, so no surface calls a closure in
+   * force that another calls upcoming.
+   */
   obstructs_trail: boolean
   /** The ORG's own last-updated stamp, and the age a hiker cares about.
    *  Null in conditions/notices.json where the club gives none, which
@@ -456,7 +465,11 @@ export interface OrgNotice {
   state_areas?: NoticeStateArea[]
   /** Decision 67's kind of area, or null for an ordinary notice. */
   hazard?: NoticeHazard | null
-  /** The notice's own start and end days, ISO, where the club states them. */
+  /** The notice's own start and end days, ISO, where the club states them:
+   *  the UTC day of the source's own instant (pipeline/dbt's
+   *  int_closures__club_notices), never filled in. A start still after the
+   *  phone's day makes the notice upcoming (lib/noticeCurrency.ts's
+   *  `startsAhead`). */
   starts_on?: string | null
   ends_on?: string | null
   /**

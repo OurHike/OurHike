@@ -96,7 +96,14 @@
 //
 // AND IN TIME: a notice whose own start is after the hike's last planned day
 // does not touch it. Most notices state no start, and then only the place
-// decides. ITS OWN END NEVER HIDES IT (the maintainer's frame A, 2026-10-10):
+// decides. One that starts on or before that day touches it though the start
+// is still ahead of today (P3, the maintainer's frame B, 2026-10-11): it is
+// shown now, marked with its start, and closes the trail only from the day
+// before it (lib/noticeCurrency.ts's `obstructsOn` says why that day). Before
+// P3 the pipeline held such a notice back until the day before its start
+// (pipeline/dbt's int_closures__club_notices, rule 1), so a phone that last
+// connected earlier never showed it.
+// ITS OWN END NEVER HIDES IT (the maintainer's frame A, 2026-10-10):
 // a notice past its end date stays in the panel, greyed with one line saying
 // so (lib/noticeCurrency.ts), and one that ends before the hike's first day
 // shows as current today, its "until" day in its row. Until then a notice
@@ -104,10 +111,11 @@
 // closure that ended last week, and one a source forgot to extend, was never
 // shown at all.
 //
-// CURRENT FIRST, WITHIN EACH KIND. Closures lead every list, as before; among
-// closures, and among the rest, a notice that still reads as current on the
-// phone's day comes before one that may no longer apply, and then the most
-// recently updated first.
+// CURRENT FIRST, WITHIN EACH KIND. Closures lead every list, as before - a
+// closure that has not started counts as one from the day before its start,
+// never sooner (`obstructsOn`); among closures, and among the rest, a notice
+// that still reads as current on the phone's day comes before one that may
+// no longer apply, and then the most recently updated first.
 //
 // WHICH CLUBS MAINTAIN THE ROUTE, from data the phone already has, never a
 // name match:
@@ -146,7 +154,7 @@ import {
   type GeometryParts,
   type Position,
 } from './noticeGeometry'
-import { isCurrentOn } from './noticeCurrency'
+import { isCurrentOn, obstructsOn } from './noticeCurrency'
 import type { TrailNotice } from './notices'
 import type { NoticeStateArea } from './publishedConditions'
 import { clubTimeline, type ClubSections } from './clubSections'
@@ -482,12 +490,15 @@ function noticeProvider(
   return notice.provider ?? byKey.get(notice.source_key)
 }
 
-/** Closures first; then, among closures and among the rest, a notice that
- *  reads as current on `today` before one that may no longer apply; then the
- *  most recently updated. */
+/** Closures first - a notice that closes the trail on `today`, which one
+ *  that has not started does only from the day before (`obstructsOn`); then,
+ *  among closures and among the rest, a notice that reads as current on
+ *  `today` before one that may no longer apply; then the most recently
+ *  updated. */
 function byWeight(today: string): (a: TrailNotice, b: TrailNotice) => number {
   return (a, b) => {
-    if (a.obstructs_trail !== b.obstructs_trail) return a.obstructs_trail ? -1 : 1
+    const closes = obstructsOn(a, today)
+    if (closes !== obstructsOn(b, today)) return closes ? -1 : 1
     const current = isCurrentOn(a, today)
     if (current !== isCurrentOn(b, today)) return current ? -1 : 1
     return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')

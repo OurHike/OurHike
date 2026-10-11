@@ -551,4 +551,100 @@ describe('PlannedNoticeList', () => {
       expect(screen.queryByText(/may no longer apply/)).toBeNull()
     })
   })
+
+  // P3, the maintainer's frame B (poll of 2026-10-11): "Shown now, marked with
+  // its start. It closes the trail only from its start day." The frame's row:
+  // the "Starts" tag, the title, the row's own "from" date, then the club.
+  describe('a closure whose own start is still ahead (frame B)', () => {
+    // Nine days after TODAY. Only a start, so notice_current_until.sql gives
+    // it no day at all, which would grey it once it has begun.
+    const UPCOMING = notice({
+      notice_id: 'gmc:upcoming',
+      title: 'Emergency closure, Fixture Creek Trail',
+      obstructs_trail: true,
+      starts_on: '2026-10-19',
+      updated_at: null,
+      current_until: null,
+    })
+
+    function renderOn(today: string, ...rows: TrailNotice[]) {
+      renderList(
+        {
+          empty: null,
+          undated: 0,
+          hikes: [{ stretch: STRETCH, onRoute: rows, stateWide: [], fromClubs: [] }],
+        },
+        today,
+      )
+    }
+
+    it('nine days out leads with "Starts Oct 19" in place of Closure, then its "from" date and its club, never greyed', () => {
+      renderOn(TODAY, UPCOMING)
+      const upcoming = row('Emergency closure, Fixture Creek Trail')
+      expect(Array.from(upcoming.children).map((line) => line.textContent)).toEqual([
+        'Starts Oct 19 Emergency closure, Fixture Creek Trail',
+        'from October 19, 2026',
+        'Green Mountain Club',
+        'Read Green Mountain Club’s notice',
+      ])
+      expect(within(upcoming).getByText('Starts Oct 19').className).toBe(
+        'planned-notices__tag planned-notices__tag--warn',
+      )
+      expect(within(upcoming).queryByText('Closure')).toBeNull()
+      expect(upcoming.className).not.toContain('notice--not-current')
+      expect(within(upcoming).queryByText(/may no longer apply/)).toBeNull()
+    })
+
+    it('still says "Starts Oct 19" on the day before its start, when it already closes the trail', () => {
+      renderOn('2026-10-18', UPCOMING)
+      const upcoming = row('Emergency closure, Fixture Creek Trail')
+      expect(within(upcoming).getByText('Starts Oct 19')).toBeTruthy()
+      expect(within(upcoming).queryByText('Closure')).toBeNull()
+    })
+
+    it('is tagged Closure with no "Starts" tag on its start day', () => {
+      renderOn('2026-10-19', UPCOMING)
+      const started = row('Emergency closure, Fixture Creek Trail')
+      expect(within(started).getByText('Closure').className).toBe(
+        'planned-notices__tag planned-notices__tag--warn',
+      )
+      expect(within(started).queryByText(/^Starts /)).toBeNull()
+    })
+
+    it('tags a notice that will not close the trail "Starts Oct 19" in the plain tint', () => {
+      renderOn(
+        TODAY,
+        notice({
+          notice_id: 'gmc:work',
+          title: 'Fixture trail work',
+          starts_on: '2026-10-19',
+        }),
+      )
+      expect(within(row('Fixture trail work')).getByText('Starts Oct 19').className).toBe(
+        'planned-notices__tag',
+      )
+    })
+
+    it('shows the source’s own "Closure" category under an upcoming closure, whose tag no longer says it', () => {
+      renderOn(TODAY, { ...UPCOMING, category: 'Closure' })
+      expect(
+        within(row('Emergency closure, Fixture Creek Trail')).getByText(
+          'Listed as “Closure”',
+        ),
+      ).toBeTruthy()
+    })
+
+    it('leaves a closure with no start tagged Closure, as before', () => {
+      renderOn(
+        TODAY,
+        notice({
+          notice_id: 'gmc:no-start',
+          title: 'Fixture bridge',
+          obstructs_trail: true,
+        }),
+      )
+      expect(within(row('Fixture bridge')).getByText('Closure')).toBeTruthy()
+      expect(screen.queryByText(/^Starts /)).toBeNull()
+    })
+  })
 })

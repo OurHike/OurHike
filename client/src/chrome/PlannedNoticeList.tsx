@@ -30,10 +30,16 @@
 // line carries the edit date, the "— updated" date is not repeated above it,
 // as the frame has it. Judged on the phone's own day (`today`), so a notice
 // greys on the day its date passes, offline or not.
+//
+// A NOTICE THAT HAS NOT STARTED LEADS WITH ITS START (P3, the maintainer's
+// frame B, poll of 2026-10-11): "Starts Oct 20" in place of its kind, until
+// that day, over its own "from October 20, 2026" line, and it is never
+// greyed before it starts. It counts as a closure, tag and order, only from
+// the day before its start (lib/noticeCurrency.ts's `obstructsOn`).
 
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES, longDay } from '../lib/hazardAreas'
-import { notCurrent } from '../lib/noticeCurrency'
+import { notCurrent, obstructsOn, startsAhead } from '../lib/noticeCurrency'
 import { noticeOrgLabel, noticeUpdatedAt, type TrailNotice } from '../lib/notices'
 import type { PlannedHikeNotices, PlannedNotices } from '../lib/plannedNotices'
 import { isSafeLink } from '../lib/safeLink'
@@ -65,9 +71,32 @@ function dates(from: string, to: string): string {
   return from === to ? shortDay(from) : `${shortDay(from)} – ${shortDay(to)}`
 }
 
-/** The tag a row leads with: what kind of notice, in two words at most. */
-function tag(notice: TrailNotice): { text: string; warn: boolean } {
-  if (notice.obstructs_trail) return { text: 'Closure', warn: true }
+/** "Oct 20" from an ISO day, read as the calendar day it names: frame B's
+ *  tag. No year: a notice in this panel starts by its hike's last planned
+ *  day, inside the 7 days (lib/plannedNotices.ts's `overlapsInTime`), and the
+ *  row's "from" line carries the year. */
+function monthDay(day: string): string {
+  const [year, month, date] = day.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, date)).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/**
+ * The tag a row leads with: what kind of notice, in two words at most - or,
+ * for one whose own start is still ahead, that day (frame B). That tag takes
+ * the caution tint where the notice closes the trail from its start: the
+ * panel shows a notice only where it starts by its hike's last planned day,
+ * so such a closure is in force before the hike's days are over.
+ */
+function tag(notice: TrailNotice, today: string): { text: string; warn: boolean } {
+  const start = startsAhead(notice, today)
+  if (start !== null) {
+    return { text: `Starts ${monthDay(start)}`, warn: obstructsOn(notice, start) }
+  }
+  if (obstructsOn(notice, today)) return { text: 'Closure', warn: true }
   if (notice.hazard !== null && notice.hazard !== undefined) {
     return { text: 'Advisory', warn: true }
   }
@@ -136,7 +165,7 @@ function Row({
   org: string
   today: string
 }) {
-  const { text, warn } = tag(notice)
+  const { text, warn } = tag(notice, today)
   const title = notice.title || `${org} notice`
   const category = categoryLine(notice, title, text)
   const old = notCurrent(notice, today)

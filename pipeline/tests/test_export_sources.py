@@ -915,7 +915,12 @@ class TestTheRegistryTheConsoleReads:
         # section K's hand-back (2026-10-10) registered the Smoky Mountains Hiking Club (org:smhc) for its 900
         # Miler Club list, a workbook, and 145 since it registered the Roanoke Appalachian Trail Club (org:ratc)
         # for its 14 AT Hikes page, once the club's robots.txt answered.
-        assert len(orgs) == 145
+        # And section K's per-site readers (the same day) registered four more: the Old Dominion Appalachian
+        # Trail Club (org:odatc) for its circuit hikes page, the Susquehanna Appalachian Trail Club (org:satc) for
+        # its 'Hiking In Central Pennsylvania' directory, the Colorado Fourteeners Initiative (org:cfi) for its
+        # peak pages' recommended routes, and the Iditarod Historic Trail Alliance (org:iditarod) for its Visitor
+        # Guide's passport stamp sites: 149.
+        assert len(orgs) == 149
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -934,6 +939,7 @@ class TestTheRegistryTheConsoleReads:
             "org:cdpr",
             "org:census",
             "org:cdtc",
+            "org:cfi",
             "org:cfpa",
             "org:chesapeakeconservancy",
             "org:cmc",
@@ -957,6 +963,7 @@ class TestTheRegistryTheConsoleReads:
             "org:gmc",
             "org:hhc",
             "org:iata",
+            "org:iditarod",
             "org:indnr",
             "org:iowadnr",
             "org:kingcountyparks",
@@ -992,6 +999,7 @@ class TestTheRegistryTheConsoleReads:
             "org:nysoprhp",
             "org:octa",
             "org:ocvt",
+            "org:odatc",
             "org:odfw",
             "org:ohta",
             "org:onda",
@@ -1011,6 +1019,7 @@ class TestTheRegistryTheConsoleReads:
             "org:ridgetrail",
             "org:rmc",
             "org:rmfi",
+            "org:satc",
             "org:sbts",
             "org:sccparks",
             "org:shta",

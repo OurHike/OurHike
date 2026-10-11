@@ -10143,6 +10143,19 @@ def _tuscarora_pages() -> list[tuple[str, str, str]]:
     return [(home_url, HTML, home), (page_url, HTML, _k_page("Section 1-3", sections))]
 
 
+def _msta_sections_page() -> str:
+    """The Joomla Section Updates page: its description, then the 'More Articles...' list, one link a section, named
+    'Section <n> - <span>', beside a region page's 'See Section 3 updates' link, which names no span."""
+    base = "/index.php/the-trail/section-updates"
+    return _k_page(
+        "Section Updates",
+        '<h1 class="rt-pagetitle">Section Updates</h1><div class="rt-description">Fixture prose.</div>'
+        f'<h3 class="title">More Articles...</h3><ul><li><a href="{base}/1-section-1">Section 1 - Fixture Line to PA '
+        f'000 @ Fixture Gap</a></li><li><a href="{base}/2-section-a">Section A - Fixture Spur, Fixture Junction to '
+        f'Fixture SP</a></li></ul><div class="boxed"><a href="{base}/3-section-3">See Section 3 updates</a></div>',
+    )
+
+
 def _kta_page() -> str:
     hike = (
         '<span style="font-weight:700">Fixture Trail {n}</span><br /><span>Fixture County</span><br />'
@@ -10224,6 +10237,28 @@ def _cfpa_page() -> str:
     )
 
 
+def _cfi_pages() -> list[tuple[str, str, str]]:
+    """The page sitemap (peak pages beside a range page), two Divi peak pages whose 'Recommended Route' paragraph opens
+    with the route's name before an em dash and before '- ', and one with no such heading, which lands no row."""
+    base = "https://www.14ers.org/peaks/fixture-range"
+    peaks = {
+        f"{base}/fixture-peak/": ("Fixture Peak", "Fixture Gulch Route—use of this route will help to reduce impacts."),
+        f"{base}/fixture-needle/": ("Fixture Needle", "Fixture Basin to Fixture Ridge- use of this route will help."),
+        f"{base}/fixture-dome/": ("Fixture Dome", None),
+    }
+    pages = []
+    for url, (name, route) in peaks.items():
+        recommended = f"<h2>Recommended Route</h2><p>{route} Fixture prose.</p>" if route else ""
+        body = (
+            f'<h1>{name}</h1><h4 class="et_pb_module_header">Info</h4><p>Elevation:</p><p>14,000 (Fixture)</p>'
+            f"<p>Contact:</p><p>Fixture Ranger District: 555.0100</p>{recommended}"
+            "<h2>Peak Specific Environmental and Safety Concerns</h2><p>Fixture prose.</p>"
+        )
+        pages.append((url, HTML, _k_page(f"{name} - Colorado Fourteeners Initiative", body)))
+    sitemap = ("https://www.14ers.org/wp-sitemap-posts-page-1.xml", XML, _k_sitemap([f"{base}/", *peaks]))
+    return [sitemap, *pages]
+
+
 def _mratc_page() -> str:
     hikes = "".join(
         f"<h5>{n} / Fixture Gap {n} to Fixture Road</h5><p>{n + 5} miles | One way | Moderate<br/>*Cars at both ends*</p>"
@@ -10233,6 +10268,22 @@ def _mratc_page() -> str:
     return _k_page(
         "Suggested Hikes | MRATC",
         f"<h2>Suggested Hikes in the Fixture Area</h2><h2>Fixture Trail Hikes</h2>{hikes}<h2>Hikes to High Points</h2>",
+    )
+
+
+def _msgtc_faq_page() -> str:
+    """The FAQ's markup: an h1.entry-title, then one h3 a question and its answer's paragraphs, two opening 'Best
+    Route', the first answer stating a distance in brackets and the second none."""
+    return _k_page(
+        "FAQ – Monadnock-Sunapee Greenway Trail Club",
+        '<h1 class="entry-title">FAQ</h1><div class="entry-content"><h3>48.7</h3>'
+        "<p>Fixture prose: the Fixture Greenway is 48.7 miles summit to summit.</p>"
+        "<h3>Best Route up or down Fixture Mountain</h3>"
+        "<p>We recommend taking the Fixture Summit Trail (also the Fixture Trail) (2.1 miles). Fixture directions from "
+        "the lot.</p><p>(Note- Fixture note about an overgrown trail)</p>"
+        "<h3>Best Route to Fixture Lookout from Fixture State Park</h3>"
+        "<p>We recommend taking the Fixture Pond Trail to the Greenway Trail north to Mt. Fixture.</p>"
+        "<h3>Water sources on the Greenway?</h3><p>Fixture water prose.</p></div>",
     )
 
 
@@ -10256,6 +10307,26 @@ def _fta_page() -> str:
         "<h1>Day &amp; Section Hike</h1><h3>Grab-And-Go FT Hikes:</h3>"
         f'<div class="uael-hotspot-container" data-length="2">{grab}</div><h3>Other Trail Hikes:</h3>'
         f'<div class="uael-hotspot-container" data-length="1">{other}</div>',
+    )
+
+
+def _fltc_special_places_page() -> str:
+    """The Special Places page: one featured place with its byline, and the sidebar's WordPress page list, whose
+    links under /special-places/ are the special places and whose other links (a park) are not."""
+    base = "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail"
+    sidebar = "".join(
+        f'<li class="page_item page-item-{n}"><a href="{base}/{path}/">{name}</a></li>'
+        for n, path, name in (
+            (2230, "parks/fixture-state-park", "Fixture State Park"),
+            (1307, "special-places/fixture-gorge", "Fixture Gorge"),
+            (2291, "special-places/fixture-waterfall-hikes", "Fixture Waterfall Hikes"),
+        )
+    )
+    return _k_page(
+        "Special Places | Finger Lakes Trail Conference",
+        f'<h1 class="main-title entry-title"><a href="{base}/special-places/">Special Places</a></h1><p>Fixture prose: '
+        "use the links on the right to visit others.</p><h1>Fixture Gorge</h1><p>by Fixture Credit</p><p>Fixture "
+        f"paragraph.</p><aside><ul>{sidebar}</ul></aside>",
     )
 
 
@@ -10291,6 +10362,22 @@ def _smd_page() -> str:
     )
 
 
+def _satc_page() -> str:
+    """The Weebly directory paragraph: its first line ending in the list's title, then each place's name on a line of
+    its own, an underlined A.T. section or a bold link, and the club's prose on the next; one entry gives its own
+    length in its only figure, and another states two figures, so neither of the second's is read."""
+    return _k_page(
+        "Hiking In Central Pennsylvania - Susquehanna Appalachian Trail Club",
+        '<h2 class="wsite-content-title">Hiking In Central Pennsylvania</h2><div class="paragraph">Fixture prose.</div>'
+        '<div class="paragraph"><strong><font size="5">Information&nbsp; &nbsp; </font></strong><u><strong>'
+        "<font>South Central Pennsylvania Trails and Hikes</font></strong></u><br /><br /><u><strong><font>Appalachian "
+        "Trail: Fixture Bridge to PA-000&nbsp;</font></strong></u><br /><strong><font>Fixture prose on this 6.3-mile "
+        'segment.</font></strong><br /><br /><strong><a href="https://parks.example.org/fixture/">Fixture Park&nbsp;</a>'
+        '</strong><br /><strong>Fixture prose: a 3.1-mile loop and a 2-mile spur, with a <a href="https://parks.example.'
+        'org/fixture/map.pdf">map</a>.</strong><br /></div>',
+    )
+
+
 def _mohonk_page() -> str:
     base = "https://www.mohonkpreserve.org/wp-content/uploads/2021/07"
     return _k_page(
@@ -10304,6 +10391,19 @@ def _mohonk_page() -> str:
         '<h4><a href="#fixture-2">Other Hikes</a></h4><h5>Popular Hikes that continue onto neighboring lands:</h5>'
         f'<ul><li><a href="{base}/FX_SuggestedHike_TOWER_MAP.pdf">Fixture Tower from the Fixture Trailhead</a></li></ul>'
         "<h4>Check This Out</h4>",
+    )
+
+
+def _matc_page() -> str:
+    """One trail's WordPress page: its <title> naming it, a cover title, the maintenance paragraphs, and two h4
+    trailheads each followed by driving directions whose miles are a drive's."""
+    return _k_page(
+        "Fixture Loop Trail &#8211; Maine Appalachian Trail Club",
+        '<p class="has-text-align-center"><strong>Fixture Loop Trail</strong></p><p>Fixture prose: the club maintains '
+        'the trail east of Route 00.</p><h4 class="wp-block-heading">Southern Trail Head</h4><p>Fixture directions: '
+        'travel 4.7 miles and turn right.</p><h4 class="wp-block-heading">Northern Trail Head</h4><p>Fixture '
+        'directions: it is 7.3 miles north of the southern trailhead.</p><h4 class="wp-block-heading">Fixture History'
+        "</h4><p>Fixture paragraph.</p>",
     )
 
 
@@ -10327,6 +10427,24 @@ def _onda_pages() -> list[tuple[str, str, str]]:
         '<div class="entry-content"><p>Fixture paragraph.</p></div>',
     )
     return [(sitemap_url, XML, _k_sitemap(["https://onda.org/hike/", hike_url])), (hike_url, HTML, hike)]
+
+
+def _odatc_page() -> str:
+    """The Wild Apricot content gadget: a bold heading line, a sentence, then one list item a hike, its name on the first
+    line and its 'Description' and 'Printable map' links after it, one map on the club's own host."""
+    hikes = (
+        '<li><font size="2">Fixture Rocks Trail<br><a href="https://hikes.example.org/fixture-rocks/" target="_blank">'
+        'Description</a><br><a href="https://hikes.example.org/fixture-rocks/map.pdf" target="_blank">Printable map</a>'
+        '<br><br></font></li><li><font size="2">Fixture Trail (AKA Fixture Mountain Trail)<br>'
+        '<a href="https://hikes.example.org/fixture-mountain/" target="_blank">Description</a><br>'
+        '<a href="/resources/Documents/Fixture%20Loop%20Map.pdf" target="_blank">Printable map</a></font></li>'
+    )
+    return _k_page(
+        "AT Circuit Hikes - Old Dominion Appalachian Trail Club",
+        '<div class="gadgetStyleBody gadgetContentEditableArea"><div><strong style="font-size: 10pt;"><font size="4">'
+        'Circuit Hikes Near Our Section of the AT</font></strong><br></div><div><font size="2">Fixture prose: there '
+        f"are two circuit hikes near our section.</font></div><div><ul>{hikes}</ul></div></div>",
+    )
 
 
 def _ota_pages() -> list[tuple[str, str, str]]:
@@ -10463,6 +10581,33 @@ def _sstc_sweet_16_page() -> str:
     )
 
 
+def _spnhf_challenge_pages() -> list[tuple[str, str, str]]:
+    """The challenge page stating its Tier 1 count, the site's sitemap listing that many challenge pages beside other
+    pages, and each challenge page as the Drupal theme sets it: an h1.page-title 'Forest Reservation Challenge:
+    <name>', the selfie paragraph, a 'Tier 2 (<region>):' line, the questions, and a Reservation Guide link."""
+    site = "https://www.forestsociety.org"
+    challenge = _k_page(
+        "Take the Forest Reservation Challenge! | Forest Society",
+        '<h1 class="page-title">Take the Forest Reservation Challenge!</h1><p>There are two ways to complete the Forest '
+        "Reservation Challenge, Tier 1 (2 Reservations) and Tier 2 (subset of 3-7 Reservations within a specific "
+        f'region).</p><p>Fixture prose.</p><a href="{site}/sitemap.xml">View our Sitemap</a>',
+    )
+    pages = {f"{site}/forest-reservation-challenge-fixture-{n}-forest": f"Fixture {n} Forest" for n in (1, 2)}
+    answers = [
+        (f"{site}/challenge", HTML, challenge),
+        (f"{site}/sitemap.xml", XML, _k_sitemap([f"{site}/challenge", f"{site}/5-hikes-challenge", *pages])),
+    ]
+    for url, name in pages.items():
+        body = (
+            f'<h1 class="page-title">Forest Reservation Challenge: {name}</h1><p>Fixture prose: take a self photo at '
+            "the fixture sign.</p><p>Tier 2 (Fixture Region): Capture one of the above photographs.</p><p>Fixture "
+            f'explanation of the discovery questions?</p><p>To learn more about {name}, visit our <a href="/property/'
+            f'{url.rsplit("challenge-", 1)[1]}">Reservation Guide</a>.</p>'
+        )
+        answers.append((url, HTML, _k_page(f"Forest Reservation Challenge: {name} | Forest Society", body)))
+    return answers
+
+
 def _ttc_scavenger_page() -> str:
     base = "https://thetrailconservancy.org/wp-content/uploads/2023/09"
     buttons = "".join(
@@ -10526,19 +10671,28 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         "foothills_sections": _foothills_pages(),
         "cohos_day_hikes": [("https://www.cohostrail.org/day-hike/", HTML, _cohos_page())],
         "patc_tuscarora_sections": _tuscarora_pages(),
+        "msta_sections": [("https://hike-mst.org/index.php/the-trail/section-updates", HTML, _msta_sections_page())],
         "kta_favorite_hikes": [("https://www.kta-hike.org/favorite-hikes-in-pennsylvania.html", HTML, _kta_page())],
         "ratc_at_hikes": [("https://www.ratc.org/at-hiking/ratcs-14-at-hikes/", HTML, _ratc_page())],
         "amc_itineraries": [("https://www.outdoors.org/resources/itineraries/", HTML, _amc_page())],
         "ata_passages": _ata_pages(),
         "cfpa_trails": [("https://ctwoodlands.org/trails/", HTML, _cfpa_page())],
+        "cfi_recommended_routes": _cfi_pages(),
         "mratc_suggested_hikes": [("https://www.mratc.org/suggested-hikes", HTML, _mratc_page())],
+        "msgtc_best_routes": [("https://www.msgtc.org/faq/", HTML, _msgtc_faq_page())],
         "fta_day_hikes": [("https://floridatrail.org/day-hike/", HTML, _fta_page())],
+        "fltc_special_places": [
+            ("https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/", HTML, _fltc_special_places_page())
+        ],
         "buckeye_sections": _buckeye_pages(),
         "smd_diablo_range_hikes": [
             ("https://savemountdiablo.org/experience/field-guides/hikes-in-the-diablo-range/", HTML, _smd_page())
         ],
+        "satc_central_pa_hikes": [("https://www.satc-hike.org/hiking-in-central-pennsylvania.html", HTML, _satc_page())],
         "mohonk_suggested_hikes": [("https://www.mohonkpreserve.org/visit/activities/suggested-hikes/", HTML, _mohonk_page())],
+        "matc_grafton_loop_trail": [("https://www.matc.org/grafton-loop-trail/", HTML, _matc_page())],
         "onda_hikes": _onda_pages(),
+        "odatc_circuit_hikes": [("https://www.odatc.org/page-1503143", HTML, _odatc_page())],
         "ota_sections": _ota_pages(),
         "wi_dnr_hiking": _wi_dnr_pages(),
         "mdhta_trails": _mdhta_pages(),
@@ -10549,6 +10703,7 @@ def _k_pages_documents() -> dict[str, list[tuple[str, str, str]]]:
         ],
         "amc_four_thousand_footer_lists": _amc4000_pages(),
         "sstc_sweet_16": [("https://www.standingstonetrail.org/sweet-16-trail-challenge", HTML, _sstc_sweet_16_page())],
+        "spnhf_forest_reservation_challenge": _spnhf_challenge_pages(),
         "ttc_scavenger_hunt": [("https://thetrailconservancy.org/programs/scavenger-hunt/", HTML, _ttc_scavenger_page())],
         "dcnr_geotrail": [
             ("https://www.pa.gov/agencies/dcnr/recreation/what-to-do/geocaching/dcnr-geo-trail", HTML, _dcnr_geotrail_page())
@@ -10568,17 +10723,24 @@ K_PAGES_ROWS = {
     "foothills_sections": 1,
     "cohos_day_hikes": 2,
     "patc_tuscarora_sections": 2,
+    "msta_sections": 2,
     "kta_favorite_hikes": 2,
     "ratc_at_hikes": 2,
     "amc_itineraries": 2,
     "ata_passages": 1,
     "cfpa_trails": 2,
+    "cfi_recommended_routes": 2,
     "mratc_suggested_hikes": 2,
+    "msgtc_best_routes": 2,
     "fta_day_hikes": 2,
+    "fltc_special_places": 2,
     "buckeye_sections": 1,
     "smd_diablo_range_hikes": 2,
+    "satc_central_pa_hikes": 2,
     "mohonk_suggested_hikes": 2,
+    "matc_grafton_loop_trail": 1,
     "onda_hikes": 1,
+    "odatc_circuit_hikes": 2,
     "ota_sections": 1,
     "wi_dnr_hiking": 2,
     "mdhta_trails": 2,
@@ -10587,6 +10749,7 @@ K_PAGES_ROWS = {
     "gatc_georgia_4000": 2,
     "amc_four_thousand_footer_lists": 4,
     "sstc_sweet_16": 2,
+    "spnhf_forest_reservation_challenge": 2,
     "ttc_scavenger_hunt": 2,
     "dcnr_geotrail": 2,
     "cmc_lookout_towers": 2,

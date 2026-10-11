@@ -386,6 +386,24 @@ def test_a_park_table_with_a_column_nobody_has_read_refuses(registry, requests_m
         list(nc_parks(registry, monkeypatch).rows({}))
 
 
+def test_a_mid_state_trail_section_lands_its_span_and_a_link_that_names_no_span_is_not_a_section():
+    base = "https://hike-mst.org/index.php/the-trail/section-updates"
+    page = Page(
+        base,
+        parse_html(
+            f'<ul><li><a href="{base}/1-section-1">Section 1 - Fixture Line to PA 000 @ Fixture Gap</a></li></ul>'
+            f'<div><a href="{base}/3-section-3">See Section 3 updates</a></div>'
+            '<a href="https://hike-mst.org/index.php/the-trail/everett-region">Section 2 - Fixture Region page</a>'
+        ),
+    )
+    (row,) = SITE_PARSERS["msta_sections"].read(page, None)
+    assert (row["section"], row["place"], row["link"]) == (
+        "Section 1",
+        "Fixture Line to PA 000 @ Fixture Gap",
+        f"{base}/1-section-1",
+    )
+
+
 def test_a_foothills_paragraph_continues_a_label_only_in_that_labels_shape():
     found = blocks(
         parse_html(
@@ -450,6 +468,18 @@ def test_a_tuscarora_section_with_no_elevation_line_refuses():
         SITE_PARSERS["patc_tuscarora_sections"].read(home, pages.get)
 
 
+def test_the_matc_trail_page_lands_its_name_and_no_distance_and_refuses_once_a_trailhead_heading_is_gone():
+    head = "<title>Fixture Loop Trail – Maine Appalachian Trail Club</title>"
+    trailheads = "<h4>Southern Trail Head</h4><p>Drive 4.7 miles.</p><h4>Northern Trail Head</h4><p>Drive 7.3 miles.</p>"
+    page = Page("https://www.matc.org/grafton-loop-trail/", parse_html(head + trailheads))
+    assert SITE_PARSERS["matc_grafton_loop_trail"].read(page, None) == [
+        {"name": "Fixture Loop Trail", "link": page.url, "source_url": page.url}
+    ], "the page's miles are a drive's, so no distance lands"
+    moved = Page(page.url, parse_html(head + "<h4>Southern Trail Head</h4><p>Drive 4.7 miles.</p>"))
+    with pytest.raises(LayoutChanged, match="headings have moved"):
+        SITE_PARSERS["matc_grafton_loop_trail"].read(moved, None)
+
+
 def test_a_bold_line_with_no_county_after_it_is_not_a_kta_hike():
     page = Page(
         "https://www.kta-hike.org/favorite-hikes-in-pennsylvania.html",
@@ -461,6 +491,36 @@ def test_a_bold_line_with_no_county_after_it_is_not_a_kta_hike():
     )
     (row,) = SITE_PARSERS["kta_favorite_hikes"].read(page, None)
     assert (row["name"], row["place"], row["section"]) == ("Fixture Trail", "Fixture County", "Favorite Fixture Hikes")
+
+
+CFI = "https://www.14ers.org/peaks/fixture-range"
+
+
+def cfi_rows(pages: dict[str, str]) -> list[dict]:
+    """cfi_recommended_routes over a sitemap listing `pages` (url: body) and a range page, each fetched from the dict."""
+    locs = "".join(f"<url><loc>{url}</loc></url>" for url in [f"{CFI}/", *pages])
+    sitemap = Page("https://www.14ers.org/wp-sitemap-posts-page-1.xml", parse_html(f"<urlset>{locs}</urlset>"))
+    return SITE_PARSERS["cfi_recommended_routes"].read(sitemap, lambda url: Page(url, parse_html(pages[url])))
+
+
+def test_a_cfi_peak_lands_its_route_only_where_the_recommended_route_paragraph_names_one_before_a_dash():
+    rows = cfi_rows(
+        {
+            f"{CFI}/a/": "<h1>Fixture Peak</h1><h2>Recommended Route</h2><p>Fixture Gulch Route—use of this route helps.</p>",
+            f"{CFI}/b/": "<h1>Fixture Needle</h1><h2>Recommended Route</h2><p>Fixture Basin Route – use of this route.</p>",
+            f"{CFI}/c/": "<h1>Fixture Dome</h1><h2>Recommended Route</h2><p>Update: As of 2011, Fixture Basin is open!</p>",
+            f"{CFI}/d/": "<h1>Fixture Hill</h1><h2>Route Information</h2><p>Fixture Trail—use of this route helps.</p>",
+        }
+    )
+    assert [(row["name"], row["route"], row["link"]) for row in rows] == [
+        ("Fixture Peak", "Fixture Gulch Route", f"{CFI}/a/"),
+        ("Fixture Needle", "Fixture Basin Route", f"{CFI}/b/"),
+    ], "an update in the route's place, or a page with no 'Recommended Route' heading, lands no row"
+
+
+def test_a_cfi_peak_page_with_a_recommended_route_and_no_h1_refuses():
+    with pytest.raises(LayoutChanged, match="no h1"):
+        cfi_rows({f"{CFI}/a/": "<h2>Recommended Route</h2><p>Fixture Gulch Route—use of this route helps.</p>"})
 
 
 def test_a_passage_end_lands_the_coordinates_the_page_states_signed_by_hemisphere():
@@ -479,6 +539,23 @@ def test_an_amc_card_that_links_off_the_itineraries_is_not_a_trip():
     )
     (row,) = SITE_PARSERS["amc_itineraries"].read(page, None)
     assert (row["name"], row["difficulty"], row["duration"]) == ("Fixture Trip", "Easy", "1 Day")
+
+
+def msgtc_faq(answer: str) -> Page:
+    return Page("https://www.msgtc.org/faq/", parse_html(f"<h1>FAQ</h1><h3>Best Route up Fixture Mountain</h3><p>{answer}</p>"))
+
+
+def test_an_msgtc_route_keeps_an_abbreviated_name_whole_and_leaves_the_rest_of_its_answer_unread():
+    (row,) = SITE_PARSERS["msgtc_best_routes"].read(
+        msgtc_faq("We recommend taking the Fixture Trail to Mt. Fixture (3.4 miles). Fixture directions."), None
+    )
+    assert (row["route"], row["distance_mi"], row["distance_text"]) == ("Fixture Trail to Mt. Fixture", 3.4, "3.4 miles")
+    assert "directions" not in json.dumps(row)
+
+
+def test_an_msgtc_best_route_whose_answer_no_longer_names_a_route_refuses():
+    with pytest.raises(LayoutChanged, match="We recommend taking the"):
+        SITE_PARSERS["msgtc_best_routes"].read(msgtc_faq("Try the Fixture Trail, 3.4 miles."), None)
 
 
 def test_a_distance_with_two_figures_lands_as_its_words_and_no_number():
@@ -504,11 +581,58 @@ def test_a_florida_map_whose_tooltips_do_not_match_its_stated_count_refuses():
         SITE_PARSERS["fta_day_hikes"].read(page, None)
 
 
+def test_an_fltc_special_place_is_a_sidebar_page_under_special_places_listed_once_and_nothing_else_is():
+    base = "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail"
+    items = "".join(
+        f'<li class="page_item"><a href="{base}/{path}">{name}</a></li>'
+        for path, name in (
+            ("parks/fixture-park/", "Fixture Park"),
+            ("special-places/fixture-gorge/", "Fixture Gorge"),
+            ("special-places/fixture-gorge/", "Fixture Gorge"),
+            ("special-places/fixture-gorge/photos/", "Fixture Gorge Photos"),
+        )
+    )
+    page = Page(f"{base}/special-places/", parse_html(f"<h1>Fixture Gorge</h1><p>by Fixture Author</p><ul>{items}</ul>"))
+    rows = SITE_PARSERS["fltc_special_places"].read(page, None)
+    assert [(row["name"], row["link"]) for row in rows] == [("Fixture Gorge", f"{base}/special-places/fixture-gorge/")]
+    assert "Fixture Author" not in json.dumps(rows)
+
+
 def test_a_florida_shape_lands_only_where_the_line_names_one():
     assert _pages_content._fta_route("4.8 mile loop") == "loop"
     assert _pages_content._fta_route("3.6 miles round trip") == "round trip"
     for text in ("8.1 miles linear", "10.2 miles loop/linear", "1.7 mile loop + 1.2 mile spur", "11.2 miles loop and linear"):
         assert _pages_content._fta_route(text) is None, text
+
+
+def satc_directory(entries: str) -> Page:
+    return Page(
+        "https://www.satc-hike.org/hiking-in-central-pennsylvania.html",
+        parse_html(f'<div class="paragraph">Information South Central Pennsylvania Trails and Hikes<br />{entries}</div>'),
+    )
+
+
+def test_a_satc_place_lands_a_distance_only_where_its_own_sentence_gives_its_length_in_one_figure():
+    page = satc_directory(
+        "<u>Appalachian Trail: Fixture Gap to PA-000</u><br />Fixture prose on this 6.3-mile segment.<br />"
+        '<a href="https://a.example.org/">Fixture Loop Park</a><br />Combine two trails for a 3.1-mile loop hike.<br />'
+        '<a href="https://b.example.org/">Fixture Greenbelt</a><br />This 20+mile necklace rings the city.<br />'
+        '<a href="https://c.example.org/">Fixture Long Trail</a><br />This 140-mile trail has 35 miles in the county, '
+        'and a <a href="https://c.example.org/m.jpg">map</a><br />here.<br />'
+    )
+    rows = SITE_PARSERS["satc_central_pa_hikes"].read(page, None)
+    assert [(row["name"], row["distance_mi"], row["distance_text"]) for row in rows] == [
+        ("Appalachian Trail: Fixture Gap to PA-000", 6.3, "6.3-mile"),
+        ("Fixture Loop Park", None, None),
+        ("Fixture Greenbelt", None, None),
+        ("Fixture Long Trail", None, None),
+    ], "'a 3.1-mile loop', '20+mile' and a sentence with two figures are the club's prose; a 'map' link is no name"
+    assert rows[0]["link"] == page.url and rows[1]["link"] == "https://a.example.org/"
+
+
+def test_a_satc_directory_whose_first_entry_is_not_a_name_refuses():
+    with pytest.raises(LayoutChanged, match="is not a name"):
+        SITE_PARSERS["satc_central_pa_hikes"].read(satc_directory("Fixture prose before any name.<br />"), None)
 
 
 def test_a_wisconsin_trail_heading_with_no_length_lands_no_row():
@@ -538,6 +662,36 @@ def test_a_wisconsin_trail_heading_with_no_length_lands_no_row():
 def test_an_ozark_ascent_written_with_a_prime_is_read_and_n_a_lands_as_text():
     assert _pages_content._ota_feet("4200′") == (4200.0, "4200′")
     assert _pages_content._ota_feet("N/A") == (None, "N/A")
+
+
+ODATC = "https://www.odatc.org/page-1503143"
+ODATC_HEADING = "<div><strong><font>Circuit Hikes Near Our Section of the AT</font></strong><br></div>"
+
+
+def test_an_odatc_circuit_hike_lands_as_a_loop_with_its_description_and_its_map_resolved_on_the_clubs_host():
+    page = Page(
+        ODATC,
+        parse_html(
+            f'{ODATC_HEADING}<div><ul><li><font>Fixture Trail<br><a href="https://hikes.example.org/f/">Description</a>'
+            '<br><a href="/resources/Documents/Fixture.pdf">Printable map</a></font></li></ul></div>'
+            "<ul><li>Fixture footer item</li></ul>"
+        ),
+    )
+    (row,) = SITE_PARSERS["odatc_circuit_hikes"].read(page, None)
+    assert (row["name"], row["route_type"], row["link"], row["map_link"]) == (
+        "Fixture Trail",
+        "loop",
+        "https://hikes.example.org/f/",
+        "https://www.odatc.org/resources/Documents/Fixture.pdf",
+    ), "only the list after the heading is read, and a relative map link resolves on the club's host"
+
+
+def test_an_odatc_page_whose_hike_has_no_description_link_or_whose_heading_is_gone_refuses():
+    item = '<ul><li><font>Fixture Trail<br><a href="/m.pdf">Printable map</a></font></li></ul>'
+    with pytest.raises(LayoutChanged, match="no 'Description' link"):
+        SITE_PARSERS["odatc_circuit_hikes"].read(Page(ODATC, parse_html(ODATC_HEADING + item)), None)
+    with pytest.raises(LayoutChanged, match="no 'Circuit Hikes Near Our Section of the AT' heading"):
+        SITE_PARSERS["odatc_circuit_hikes"].read(Page(ODATC, parse_html("<h2>Hikes</h2>" + item)), None)
 
 
 def test_a_buckeye_section_reads_its_miles_and_counties_and_never_its_supervisor():
@@ -576,6 +730,44 @@ def test_an_estimated_four_thousand_footer_keeps_its_asterisk_beside_its_number(
         ("The New England Four Thousand Footers", 5384.0, "5384*", True),
         ("The New England Hundred Highest", 5384.0, "5384*", True),
     }
+
+
+SPNHF = "https://www.forestsociety.org"
+
+
+def spnhf_rows(stated: int, pages: dict[str, str]) -> list[dict]:
+    """spnhf_forest_reservation_challenge over a challenge page stating `stated` and a sitemap listing `pages`."""
+    challenge = Page(f"{SPNHF}/challenge", parse_html(f"<p>Tier 1 ({stated} Reservations) and Tier 2 (subset).</p>"))
+    locs = "".join(f"<url><loc>{url}</loc></url>" for url in [f"{SPNHF}/5-hikes-challenge", *pages])
+    answers = {f"{SPNHF}/sitemap.xml": f"<urlset>{locs}</urlset>", **pages}
+    return SITE_PARSERS["spnhf_forest_reservation_challenge"].read(challenge, lambda url: Page(url, parse_html(answers[url])))
+
+
+def test_a_forest_reservation_lands_its_name_region_and_guide_page_and_never_its_questions():
+    url = f"{SPNHF}/forest-reservation-challenge-fixture-forest"
+    (row,) = spnhf_rows(
+        1,
+        {
+            url: "<h1>Forest Reservation Challenge: Fixture Forest</h1><p>Fixture prose: a selfie at the sign.</p>"
+            "<p>Tier 2 (Fixture Region): answer the following questions:</p><p>Who built Fixture Farm?</p>"
+            '<a href="/property/fixture-forest">Reservation Guide</a>'
+        },
+    )
+    assert (row["name"], row["section"], row["guide_link"], row["link"]) == (
+        "Fixture Forest",
+        "Fixture Region",
+        f"{SPNHF}/property/fixture-forest",
+        url,
+    )
+    assert "Who built" not in json.dumps(row) and "selfie" not in json.dumps(row)
+
+
+def test_a_forest_reservation_challenge_whose_sitemap_disagrees_with_its_stated_count_or_whose_page_moved_refuses():
+    page = {f"{SPNHF}/forest-reservation-challenge-a": "<h1>Forest Reservation Challenge: A</h1>"}
+    with pytest.raises(LayoutChanged, match="lists 1 challenge pages and the challenge states 2"):
+        spnhf_rows(2, page)
+    with pytest.raises(LayoutChanged, match="not 'Forest Reservation Challenge: <name>'"):
+        spnhf_rows(1, {f"{SPNHF}/forest-reservation-challenge-a": "<h1>Page not found</h1>"})
 
 
 def test_a_four_thousand_footer_index_missing_a_list_refuses():

@@ -311,6 +311,41 @@ def test_a_blue_blazer_table_with_no_header_refuses():
         PDF_FAMILIES["nbatc_blue_blazer"].read(PdfFacts(texts=("Fixture page\n",)), NBATC)
 
 
+AMC_CT = "https://ct-amc.org/wp/wp-content/uploads/2019/07/EOR_HikerBadgeForm.pdf"
+#: An invented text layer set as EOR_HikerBadgeForm.pdf's is: the title, the table header, indented items with their
+#: codes, one name wrapped onto an unindented line with no code, the unindented legend, and after the end line a
+#: committee member's address, which no row may carry.
+AMC_CT_TEXT = (
+    "EOR Hiker Badge \nFixture prose about the trails. \nDate Hiked Trail Name  Source \nCode \n  Fixture Hollow W \n"
+    " Fixture Hopyard H \n  Fixture Park S,H \n  Fixture Hollow State \nPark \n  \nSource \nCode \n"
+    "J Fixture Tract Walk Book \nH 50Fixtures, 1998 \n",
+    "  Fixture Lake CoE \n \nWhere to find trail descriptions and information \n  Fixture Member W \n"
+    "  12 Fixture Road, Fixture CT 06000 \n",
+)
+
+
+def test_an_eor_badge_trail_lands_its_name_and_code_a_wrapped_name_joined_and_nothing_past_the_legend():
+    rows = PDF_FAMILIES["amc_ct_eor_hiker_badge"].read(PdfFacts(texts=AMC_CT_TEXT), AMC_CT)
+
+    assert [(row["name"], row["guidebook_code"]) for row in rows] == [
+        ("Fixture Hollow", "W"),
+        ("Fixture Hopyard", "H"),
+        ("Fixture Park", "S,H"),
+        ("Fixture Hollow State Park", None),
+        ("Fixture Lake", "CoE"),
+    ], "the legend's 'J ...' and 'H ...' lines are not trails, and nothing after the end line is read"
+    assert "Fixture Member" not in json.dumps(rows) and "06000" not in json.dumps(rows)
+    assert {row["challenge"] for row in rows} == {"EOR Hiker Badge"}
+
+
+def test_an_eor_badge_form_whose_end_line_is_gone_refuses_rather_than_reading_on_into_its_people():
+    without_end = (AMC_CT_TEXT[0], AMC_CT_TEXT[1].replace("Where to find trail descriptions and information \n", ""))
+    with pytest.raises(PdfLayoutChanged, match="no 'Where to find trail descriptions'"):
+        PDF_FAMILIES["amc_ct_eor_hiker_badge"].read(PdfFacts(texts=without_end), AMC_CT)
+    with pytest.raises(PdfLayoutChanged, match="not 'EOR Hiker Badge'"):
+        PDF_FAMILIES["amc_ct_eor_hiker_badge"].read(PdfFacts(texts=("Fixture Badge\n", AMC_CT_TEXT[1])), AMC_CT)
+
+
 TTA = "https://tennesseetrails.org/wp-content/uploads/2020/08/FranWallasQualificationForm.pdf"
 TTA_TEXT = (
     "Fixture Person's 3 Great Hikes\n“I hiked 'em all”\nName:\ne-mail: phone:\nCheck List of the Hikes\n"
@@ -334,3 +369,36 @@ def test_a_great_hikes_form_whose_list_is_not_its_titles_count_refuses():
     longer = (TTA_TEXT[0] + "Fixture Extra\n",)
     with pytest.raises(PdfLayoutChanged, match="lists 4 hikes and its title states 3"):
         PDF_FAMILIES["tta_great_hikes"].read(PdfFacts(texts=longer), TTA)
+
+
+IDITAROD = "https://www.iditarod100.org/uploads/5/2/4/5/52459009/iditarodnhtvisitorguide.pdf"
+#: An invented text layer set as the Visitor Guide's stamp page is: prose, the heading, 'Town: Site' lines, a name
+#: wrapped onto a one-word line and one onto a bracket, two more sites under one town, a word split after its first
+#: capital, and a sidebar question that ends the list.
+IDITAROD_TEXT = (
+    "Fixture prose about the program.\n",
+    "Iditarod National Historic Trail \nPassport Stamp Program\nFixture prose (see full list below).\n"
+    "Iditarod NHT Passport Stamp \nParticipants\nFixtureport: Fixture Fjords Information \nCenter\n"
+    "Fixtureton:  Fixture Field Office (Fixture \nTract) \nFixture Public Lands Information Center  \n"
+    "(Downtown Fixtureton) \nFixture V isitors Center\nWhy November 10, 1978?\nFixture prose with a Fixture: colon.\n",
+)
+
+
+def test_a_passport_stamp_site_lands_its_name_and_town_wrapped_names_joined_and_the_sidebar_unread():
+    rows = PDF_FAMILIES["iditarod_passport_stamps"].read(PdfFacts(texts=IDITAROD_TEXT), IDITAROD)
+
+    assert [(row["place"], row["name"]) for row in rows] == [
+        ("Fixtureport", "Fixture Fjords Information Center"),
+        ("Fixtureton", "Fixture Field Office (Fixture Tract)"),
+        ("Fixtureton", "Fixture Public Lands Information Center (Downtown Fixtureton)"),
+        ("Fixtureton", "Fixture Visitors Center"),
+    ], "a site under the same town is its own row; the sidebar question ends the list"
+    assert {row["challenge"] for row in rows} == {"Iditarod NHT Passport Stamp Program"}
+
+
+def test_a_visitor_guide_without_its_stamp_list_or_whose_list_never_ends_refuses():
+    with pytest.raises(PdfLayoutChanged, match="no 'Iditarod NHT Passport Stamp Participants' list"):
+        PDF_FAMILIES["iditarod_passport_stamps"].read(PdfFacts(texts=(IDITAROD_TEXT[0],)), IDITAROD)
+    endless = (IDITAROD_TEXT[1].split("Why November")[0],)
+    with pytest.raises(PdfLayoutChanged, match="never ends"):
+        PDF_FAMILIES["iditarod_passport_stamps"].read(PdfFacts(texts=endless), IDITAROD)

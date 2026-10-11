@@ -451,7 +451,19 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # 900 Miler Club list, a challenge list, which no decision answers yet, and 1 `maintainer_authorisation`:
     # RATC's 14 AT Hikes, a club's hike list, which decision 70 answers; and 3 more `maintainer_authorisation`,
     # RATC's closures and warnings, decision 53's drafted rows, under decisions 53, 55 and 107.
-    assert counts == {"maintainer_authorisation": 253, "public_gis": 279, "stated_by_org": 208, "unresolved": 29}
+    # Section K's per-site readers (2026-10-10) add MSGTC's two FAQ routes (msgtc_best_routes): 1
+    # `maintainer_authorisation`, decision 70's facts and a link for a club's hike list.
+    # They add ODATC's two circuit hikes (odatc_circuit_hikes): 1 `maintainer_authorisation`, decision 70 again.
+    # They add SATC's directory of 28 places (satc_central_pa_hikes): 1 `maintainer_authorisation`, decision 70.
+    # They add CFI's 22 recommended fourteener routes (cfi_recommended_routes): 1 `maintainer_authorisation`, decision 70.
+    # They add the Forest Society's Forest Reservation Challenge (spnhf_forest_reservation_challenge): 1 `unresolved`,
+    # because a club's challenge list publishes on no decision yet. They add AMC Connecticut's East of the River Hiker
+    # Badge form (amc_ct_eor_hiker_badge): 1 `unresolved`, the same reason. They add MATC's Grafton Loop Trail page
+    # (matc_grafton_loop_trail): 1 `maintainer_authorisation`, decision 70. They add FLTC's Special Places
+    # (fltc_special_places): 1 `maintainer_authorisation`, decision 70. They add the Mid State Trail's 23 sections
+    # (msta_sections): 1 `maintainer_authorisation`, decision 70. They add the Iditarod Historic Trail Alliance's
+    # passport stamp sites (iditarod_passport_stamps): 1 `unresolved`, a challenge list.
+    assert counts == {"maintainer_authorisation": 260, "public_gis": 279, "stated_by_org": 208, "unresolved": 32}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

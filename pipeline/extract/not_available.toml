@@ -961,22 +961,6 @@ DCR's park alerts layer, the live channel for the Massachusetts A.T.'s state lan
 once in _shared/ma_dcr/ as `ma_dcr_park_alerts` (decision 34), and its warnings are split from its
 closures in dbt."""
 
-[amc_ct.challenges]
-confirmed = 2026-10-04
-summary = """
-The East of the River Hiker Badge's 2019 form, and not landed (decision 54 wave 5, section K,
-2026-10-04).
-
-EOR_HikerBadgeForm.pdf (2019, 3 pages) lists about 27 eastern Connecticut trails, each with a source code for the
-guidebook that describes it (W, the CT Walk Book; H, 50 Hikes, 1998; ...); some names wrap across lines with no
-code. Its page 3 names the badge committee's members with their home addresses and telephone numbers, people's,
-never read. A reader for this form is a per-family reader not built here."""
-checked = [
-    "https://ct-amc.org/wp/wp-content/uploads/2019/07/EOR_HikerBadgeForm.pdf (HTTP 200, 143,557 bytes, Last-Modified 2019-07-21, 2026-10-04): 3 pages",
-]
-where = ["https://ct-amc.org/wp/wp-content/uploads/2019/07/EOR_HikerBadgeForm.pdf"]
-reason = "needs a per-site reader, not built in this pull request: a 2019 form whose trail names wrap"
-
 [amc_ct.closures]
 confirmed = 2026-10-01
 summary = """
@@ -3266,25 +3250,6 @@ checked = [
 where = ["https://www.14ers.org/peaks/front-range/mount-bierstadt/", "https://14ers.org/"]
 reason = "published with no coordinate: heights and trailhead names in prose, never geocoded"
 
-[cfi.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Its 53 peak pages in more than one layout, and not landed (decision 54 wave 4, section K,
-2026-10-04).
-
-14ers.org's page sitemap lists 53 /peaks/<range>/<peak>/ pages, each read 2026-10-04. They were written 2012 to
-2017 in more than one layout: 23 carry a 'Recommended Route' heading whose paragraph opens with the route's name
-before a dash ('Stevens Gulch Route—use of this route will help ...'), one of them (Wilson Peak's) with an update
-instead; 6 of those (the Front Range's) also state an 'Elevation:' fact; 30 carry neither in a form a parser can
-find. A reader for each layout is a per-site reader not built
-here. The 2019 14er Report Card PDF grades routes and is the challenges or trail-condition cell's."""
-checked = [
-    "https://www.14ers.org/wp-sitemap-posts-page-1.xml (HTTP 200, 2026-10-04): 130 pages, 53 of them peaks",
-    "the 53 peak pages (HTTP 200 each, 2026-10-04): 23 with a 'Recommended Route' heading, 6 of them with 'Elevation:', 30 with neither",
-]
-where = ["https://www.14ers.org/peaks/"]
-reason = "needs a per-site reader, not built in this pull request: three page layouts across the 53 peaks"
-
 [cfi.trail_lines]
 confirmed = 2026-10-01
 summary = """
@@ -5338,21 +5303,6 @@ guest is now FLTC's marketing director. That is not an FLTC feed. `FLT News` is 
 checked = ['WP search for "podcast" returned 0.']
 where = ["https://services7.arcgis.com/GwV4OWqOyYWWUpBK/arcgis/rest/services", "https://fingerlakestrail.org/"]
 
-[fltc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Published as passport booklets and a page of special places, and not landed (decision 54 wave 5,
-section K, 2026-10-04).
-
-The Passport Hikes are three booklets of 12 hikes (the coverage audit) and the 21 PassportHikes waypoints are an
-ArcGIS layer's, the lead's; /plan-hikes-finger-lakes-trail/special-places/ describes places in prose; the
-Cross-County Hike Series is events. fingerlakestrail.org's robots.txt disallows /FLTC/ and /REF/."""
-checked = [
-    "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/ (HTTP 200, 243,667 bytes, 2026-10-04T15:38:10Z): places in prose",
-]
-where = ["https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/"]
-reason = "needs a per-site reader, not built in this pull request: places in prose, the passport hikes in booklets"
-
 [fmst.challenges]
 confirmed = 2026-10-04
 summary = """
@@ -6274,20 +6224,6 @@ checked = [
 ]
 where = ["https://dnrmaps.wi.gov/arcgis/rest/services", "https://iceagetrail.org/"]
 reason = "drawn from wi_dnr/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
-
-[iditarod.challenges]
-confirmed = 2026-10-04
-summary = """
-The passport stamps, whose locations the page does not list, and not landed (decision 54 wave 5,
-section K, 2026-10-04).
-
-/passport-stamp-program.html says the Iditarod NHT has 'a total of 9 stamps at different locations' and lists none;
-the coverage audit places the list on page 14 of the Visitor Guide PDF, a magazine layout (suggested_hikes.py)."""
-checked = [
-    "https://www.iditarod100.org/passport-stamp-program.html (HTTP 200, 84,171 bytes, 2026-10-04): '9 stamps at different locations', no list",
-]
-where = ["https://www.iditarod100.org/passport-stamp-program.html"]
-reason = "not published as a list: the page names no stamp location; the guide's list is a magazine page"
 
 [iditarod.closures]
 confirmed = 2026-10-03
@@ -7458,19 +7394,6 @@ checked = [
 where = ["https://www.matc.org/grafton-loop-trail/"]
 reason = "drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
-[matc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-One trail's page, and not landed (decision 54 wave 5, section K, 2026-10-04).
-
-/grafton-loop-trail/ describes one trail, its two trailheads by driving directions; its only distance ('It is 7.3
-miles north of the southern trailhead') is inside those directions. One route in paragraphs is not a list to read."""
-checked = [
-    "https://www.matc.org/grafton-loop-trail/ (HTTP 200, 112,422 bytes, 2026-10-04): 'Southern Trail Head' and 'Northern Trail Head' paragraphs of directions",
-]
-where = ["https://www.matc.org/grafton-loop-trail/"]
-reason = "needs a per-site reader, not built in this pull request: one route whose facts are inside driving directions"
-
 [matc.trail_lines]
 confirmed = 2026-10-01
 summary = """
@@ -8332,18 +8255,6 @@ checked = [
 where = ["https://msgtc.org/shelters/"]
 reason = "needs a per-site reader, not built in this pull request: the shelters are described in prose with no coordinate"
 
-[msgtc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Published as two answers in an FAQ, and not landed (decision 54 wave 5, section K, 2026-10-04).
-
-msgtc.org/faq/ answers 'Best Route up or down Mount Sunapee' (the Summit Trail, 2.1 miles) and 'Best Route to
-Lucia's Lookout from Pillsbury State Park' in sentences. Needs a per-site reader that reads facts out of prose, not
-built in this pull request. msgtc.org asks `Crawl-delay: 10`."""
-checked = ["https://www.msgtc.org/faq/ (HTTP 200, 33,299 bytes, 2026-10-04): two recommended routes inside FAQ answers"]
-where = ["https://www.msgtc.org/faq/"]
-reason = "needs a per-site reader, not built in this pull request: two routes inside FAQ prose"
-
 [msgtc.trail_lines]
 confirmed = 2026-10-01
 summary = """
@@ -8467,20 +8378,6 @@ checked = [
 where = ["https://hike-mst.org/robots.txt", "https://hike-mst.org/images/pdfs/2016-07-01-ths-geocoded.xls"]
 terms = "hike-mst.org/robots.txt (read 2026-10-04): `User-agent: *` / `Disallow: /images/`"
 reason = "refused: robots.txt disallows /images/, where the trailhead spreadsheet sits; held until the association permits"
-
-[mst_pa.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Its region pages in prose, and not landed (decision 54 wave 5, section K, 2026-10-04).
-
-The four region pages (Everett, State College, Woolrich, Tioga) describe their sections in paragraphs ('MST
-Sections 1 through 6 pass Buchanan State Forest ...') and name the regional manager with a telephone number, a
-person's, never read; the section facts are the printed guide's. The region updates are notices, decision 53's."""
-checked = [
-    "https://hike-mst.org/index.php/the-trail/everett-region (HTTP 200, 37,896 bytes, 2026-10-04): 'Highlights:' and paragraphs",
-]
-where = ["https://hike-mst.org/index.php/the-trail/everett-region"]
-reason = "needs a per-site reader, not built in this pull request: the regions' facts are inside paragraphs"
 
 [mst_pa.trail_lines]
 confirmed = 2026-10-01
@@ -11085,20 +10982,6 @@ checked = [
 where = ["https://odatc.org/resources/Documents/ODATC%20Water%20Board%202018-4.xlsx", "https://odatc.net/"]
 reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
 
-[odatc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Two circuit hikes on one page, and not landed (decision 54 wave 4, section K, 2026-10-04).
-
-odatc.org/page-1503143 (a Wild Apricot page) describes two circuit hikes in prose: Humpback Rocks, whose
-description and map are hikingupward.com's, and the Albright Loop, with ODATC's own PDF map. Two hikes in
-paragraphs are a page a person reads; odatc.org's robots.txt asks `Crawl-delay: 10`."""
-checked = [
-    "https://www.odatc.org/page-1503143 (HTTP 200, 30,143 bytes, 2026-10-04T17:39:16Z): no headings; two PDFs, /resources/Documents/Albright%20Loop%20Map.pdf and hikingupward.com's map",
-]
-where = ["https://www.odatc.org/page-1503143"]
-reason = "needs a per-site reader, not built in this pull request: two hikes whose facts are inside paragraphs"
-
 [odatc.trail_lines]
 confirmed = 2026-10-01
 summary = """
@@ -13547,21 +13430,6 @@ where = [
 ]
 reason = "drawn from atc/'s resources, extracted once there (decision 34); checked names the layer this org's data arrives in"
 
-[satc.suggested_hikes]
-confirmed = 2026-10-04
-summary = """
-Published as a directory of paragraphs, and not landed (decision 54 wave 5, section K, 2026-10-04).
-
-satc-hike.org/hiking-in-central-pennsylvania.html lists about 30 places to hike, most of them other
-organisations' parks and trails, each a linked name and a paragraph of SATC's prose. Three are SATC's own A.T.
-sections, and their distances (6.3, 9.7 and 15.8 miles) sit inside those sentences. Needs a per-site reader that
-reads facts out of prose, not built in this pull request."""
-checked = [
-    "https://www.satc-hike.org/hiking-in-central-pennsylvania.html (HTTP 200, 116,903 bytes, 2026-10-04): about 30 entries, each a name (most linking another organisation's site) and a paragraph",
-]
-where = ["https://www.satc-hike.org/hiking-in-central-pennsylvania.html"]
-reason = "needs a per-site reader, not built in this pull request: the facts are inside paragraphs of prose"
-
 [satc.trail_lines]
 confirmed = 2026-10-01
 summary = """
@@ -14490,23 +14358,6 @@ checked = [
 ]
 where = ["https://smhclub.org/resources/Documents/atmc_newsletters/", "https://cdn.wildapricot.com"]
 reason = "published and not landed: each month's newsletter is a new URL, and no reader that follows the newest slot exists yet"
-
-[spnhf.challenges]
-confirmed = 2026-10-04
-summary = """
-The Forest Reservation Challenge's reservations on a PDF map, and not landed (decision 54 wave 5,
-section K, 2026-10-04).
-
-/challenge names the challenge's 33 featured reservations (Tier 1) and its regions (Tier 2) without listing them:
-the list is a PDF game board with clickable markers (frc_game-board_0.pdf) and the Forest Reservation Guide. The
-coverage audit found 33 'forest-reservation-challenge-' pages, a reader for which is not built here. The 5 Hikes
-Challenge (15 August to 31 October, 25 hidden 'tree cookies') is dated. Photos participants submit 'become the
-property of the Forest Society', the photos cell's business."""
-checked = [
-    "https://www.forestsociety.org/challenge (HTTP 200, 95,520 bytes, 2026-10-04): 'Visit ALL 33 of the featured reservations', the list on a PDF game board",
-]
-where = ["https://www.forestsociety.org/challenge"]
-reason = "needs a per-site reader, not built in this pull request: the reservations are on a PDF map and 33 pages"
 
 [spnhf.closures]
 confirmed = 2026-10-03
@@ -15922,21 +15773,27 @@ terms = "ridb.recreation.gov/robots.txt (read 2026-10-04 and 2026-10-10): `User-
 reason = "refused for the API by robots.txt; the bulk export is Recreation.gov's, not the Corps', and downloading it accepts the RIDB API Access Agreement, the maintainer's to enter or decline; the Tulsa points are ArcGIS layers the lead routes"
 
 [usace.suggested_hikes]
-confirmed = 2026-10-04
+confirmed = 2026-10-10
 summary = """
-Published district by district and lake by lake, and not landed (decision 54 wave 4, section K,
-2026-10-04).
+Published district by district and lake by lake, and not landed: one lake's page reads, and no page read lists the
+others (section K's per-site readers, 2026-10-10).
 
-Each district runs its own site and each lake its own pages: Fort Worth District's Canyon Lake trails page (two
-trails, Old Hancock Trail and Guadalupe Trail, their miles in a sentence), Lake Georgetown's Goodwater Loop map
-PDF, Rock Island and St. Louis districts' pages in their own layouts (the coverage audit). A reader for each is a
-per-site reader for dozens of sites, not built here."""
+Fort Worth District's Canyon Lake trails page names two trails under h2s, each a paragraph: the Old Hancock Trail
+('The trail navigate for 4 miles, one way') and the Guadalupe Trail ('just under a mile, one way', and 'This trail
+closes during high water releases from the dam'). Its footer forbids dissemination without the district's written
+consent (quoted in `terms`), which no decision names. The lake menu on the page holds only Canyon Lake's own pages,
+and the district site's home page links no list of its lakes, so a reader for this page would land one lake's two
+trails as the Corps' whole answer, which is why none is registered. The coverage audit's other pages (Lake
+Georgetown's Goodwater Loop map PDF, Rock Island and St. Louis districts' trails pages) each have their own
+layout."""
 checked = [
-    "https://www.swf-wc.usace.army.mil/canyon/Recreation/Trails/ (HTTP 200, 65,274 bytes, 2026-10-04T17:39:32Z): headings 'Old Hancock Trail' and 'Guadalupe Trail', their lengths in prose",
+    "https://www.swf-wc.usace.army.mil/canyon/Recreation/Trails/ (HTTP 200, 65,274 bytes, 2026-10-10T18:35:09Z): h2s 'Old Hancock Trail' and 'Guadalupe Trail', their lengths in prose; robots.txt (412 bytes) asks no Crawl-delay and disallows neither",
+    "the same page's lake menu (44 options, every one under /canyon/) and https://www.swf-wc.usace.army.mil/ (HTTP 200, 50,748 bytes, 2026-10-10T19:51:12Z): no list of the district's other lakes in either's markup",
     "(the coverage audit, 2026-10-01) Lake Georgetown's Hiking Trail Map.pdf (446,682 bytes); Rock Island and St. Louis districts' trails pages",
 ]
 where = ["https://www.swf-wc.usace.army.mil/canyon/Recreation/Trails/", "https://usace.army.mil/"]
-reason = "needs a per-site reader, not built in this pull request: one per district and lake, each laid out its own way"
+terms = "Fort Worth District's lake pages, footer 'NOTICE', read 2026-10-10: \"All information presented herein is the property of the government of the United States of America and may be revised or deleted at any time without prior notice. Dissemination of this information without the expressed written consent of the Public Affairs Office, Fort Worth District U.S. Army Corps of Engineers is strictly prohibited. These data are gathered electronically and, as presented, have NOT undergone any form of quality control. These data are NOT guaranteed to be valid or correct.\""
+reason = "needs a reader per district site and a list of each district's lakes, which no page read gives; and the Fort Worth District's notice forbids dissemination without consent, which no decision names, for the maintainer"
 
 [usfs.challenges]
 confirmed = 2026-10-04
@@ -17202,25 +17059,31 @@ terms = "https://www.wta.org/our-work/about/terms-of-service (decision 53's inve
 reason = "needs a per-site reader that reads only changed pages at a 60 s Crawl-delay, not built in this pull request; its terms are the maintainer's to rule on first"
 
 [wta.suggested_hikes]
-confirmed = 2026-10-04
+confirmed = 2026-10-10
 summary = """
-Published, and not landed: a reader at WTA's Crawl-delay would take hours, and its terms restrict
-the Content to internal use (decision 54 wave 5, section K, 2026-10-04).
+Published as a listing a reader can take, and not landed: its read budget on the monthly lane is the maintainer's
+call (section K's per-site readers, 2026-10-10).
 
-wta.org/go-outside/hikes lists '4268 Hikes', each with length, elevation gain, highest point and rating, 30 a page
-(`b_start:int=30` to `4260`). wta.org's robots.txt asks `Crawl-delay: 60` of every agent, so the listing alone is
-143 requests, about two and a half hours, and the hike pages 71 hours (Reasoned from those two counts). WTA's Terms
-of Service allow its Content to be used 'solely for internal informational purposes' (quoted in `terms`), which
-restricts reuse and refuses no reading. Needs a per-site reader and a read budget that fits the monthly lane, not
-built in this pull request; the terms are for the maintainer."""
+wta.org/go-outside/hikes lists its hikes 30 a page over 143 pages (`b_start:int=30` to `4260`). Each hike is an h3
+linking its page, a region ('Snoqualmie Region > Snoqualmie Pass'), and a definition list: Length ('4.4 miles,
+roundtrip'), Elevation Gain ('1,600 feet'), Highest Point ('2,600 feet') and Rating (hikers' average); the summary
+under it is WTA's prose. So a ContentPages parser is a short one, and robots.txt allows every listing page. What
+holds it is time: robots.txt asks `Crawl-delay: 60` of every agent, so the listing alone is 143 requests, about
+2 h 23 min, in refresh-reference.yml's extract job, whose limit is 240 minutes and whose measured runs took 105 to
+161.5 minutes (Reasoned from those numbers: the reads run four folders at a time, so WTA's would run beside the
+rest, and whether the job still fits depends on when it starts). The terms limit the Content to 'internal
+informational purposes' (quoted in `terms`); decision 55 names that wording as a copying restriction, not a
+refusal to read, and decision 70 answers it for a club's hike list as facts and a link. They name no bar on
+automated access."""
 checked = [
-    "https://www.wta.org/go-outside/hikes (HTTP 200, 286,082 bytes, 2026-10-04): '4268 Hikes'",
-    "robots.txt (2026-10-04): `Crawl-delay: 60` under `User-agent: *`",
-    "https://www.wta.org/our-work/about/terms-of-service (HTTP 200, 2026-10-04), section 3, quoted in `terms`",
+    "https://www.wta.org/go-outside/hikes (HTTP 200, 274,518 bytes, 2026-10-10T19:48:19Z): 30 hikes, a pager to page 143, each hike's h3, region, Length, Elevation Gain, Highest Point and Rating",
+    "robots.txt (1,376 bytes, 2026-10-10): `Crawl-delay: 60`; its 12 rules (Plone's view and form paths) disallow none of /go-outside/hikes, ?b_start:int=30 or ?b_start:int=4260, as extract/_robots.py matches them",
+    "https://www.wta.org/our-work/about/terms-of-service (HTTP 200, 112,851 bytes, 2026-10-10): searched for automat, robot, scrap, crawl and spider, none found; section 3 quoted in `terms`",
+    ".github/workflows/refresh-reference.yml's extract job: `timeout-minutes: 240`, and its comment's measured step times (105 to 127 minutes on monthly runs 18 to 22; 161.5 on run 13)",
 ]
 where = ["https://www.wta.org/go-outside/hikes", "https://www.wta.org/our-work/about/terms-of-service"]
 terms = "'You may view, copy, download, and print Content that is available on this website, subject to the following conditions: The Content may be used solely for internal informational purposes. No part of this website or its Content may be reproduced or transmitted in any form, by any means, electronic or mechanical, including photocopying and recording, for any other purpose. The Content may not be modified.'"
-reason = "needs a per-site reader, not built in this pull request: 4,268 hikes, 30 a page, at a 60 s Crawl-delay need a read budget of hours, and the terms limit the Content to internal use, for the maintainer"
+reason = "waits on the maintainer's call on the read budget, not on a parser: 143 listing requests at WTA's Crawl-delay of 60 s are about 2 h 23 min a month in a 240-minute job; #1811 — Fast follows after PR #1805's dlt → dbt re-platform: the hiker's own download choice, the cutover, and what the port found in today's code"
 
 [wta.trail_lines]
 confirmed = 2026-10-01

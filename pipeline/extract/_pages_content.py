@@ -1007,6 +1007,38 @@ def _tuscarora_sections(page: Page, fetch) -> list[dict]:
     return rows
 
 
+_MSTA_SECTION = re.compile(r"(?P<section>Section (?:\d+|[A-Z])) - (?P<span>.+)")
+
+
+def _msta_sections(page: Page, fetch) -> list[dict]:
+    """The Mid State Trail Association's sections (hike-mst.org/index.php/the-trail/section-updates), read 2026-10-10.
+
+    The Section Updates page lists the trail's sections as links, one a section, each its number or letter and the
+    span it covers: 'Section 1 - MD to PA 326 @ Rainsburg Gap' to 'Section 20 - PA 287 Middlebury/Tioga to NY
+    Border', then the spurs, 'Section A - Greenwood Spur, Detweiler Junction to Greenwood Furnace SP' to 'Section C',
+    23 on 2026-10-10. Each section's name, its span and its link are read. The linked pages are each section's
+    alerts, which the msta_section_<n> notice rows read; they are not fetched here. No page states a section's
+    length (the region pages describe the sections in prose and their facts are the printed guide's), so no distance
+    lands. A list that names no section raises.
+    """
+    rows = []
+    for anchor in page.root.find_all("a"):
+        match = _MSTA_SECTION.fullmatch(fact(anchor.text()) or "")
+        href = page.link(anchor.get("href"))
+        if match is None or not href or "/section-updates/" not in urlparse(href).path:
+            continue
+        rows.append(
+            {
+                "name": fact(anchor.text()),
+                "section": match["section"],
+                "place": fact(match["span"]),
+                "link": href,
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
 def _kta_favorite_hikes(page: Page, fetch) -> list[dict]:
     """The Keystone Trails Association's 'Favorite Hikes in Pennsylvania' (kta-hike.org), read 2026-10-04.
 
@@ -1281,6 +1313,46 @@ def _cfpa_trails(page: Page, fetch) -> list[dict]:
     return rows
 
 
+# 'Keyhole Route—use of this route will help ...', with an em dash, a spaced en dash or a hyphen before ' use'.
+_CFI_ROUTE = re.compile(r"(?P<route>.+?)\s*(?:—|–|-(?=\s))\s*use of this route\b.*", re.IGNORECASE | re.DOTALL)
+
+
+def _cfi_recommended_routes(page: Page, fetch) -> list[dict]:
+    """The Colorado Fourteeners Initiative's recommended routes: one per peak page (14ers.org/peaks/<range>/<peak>/).
+
+    The registry row's URL is the site's page sitemap (wp-sitemap-posts-page-1.xml), the one place every peak page is
+    listed: 53 on 2026-10-10, beside 6 range pages and /peaks/, which have no peak and are not read. A peak page
+    names its peak in its h1. 23 of the 53, written 2012 to 2017, carry a 'Recommended Route' heading whose next
+    paragraph opens with the route's name before a dash, 'Keyhole Route—use of this route will help to reduce
+    impacts to this Fourteener's fragile alpine environment' (an em dash on most, ' – ' or '- ' on two); the peak's
+    name, the route's name and the link are read, and the rest of the paragraph is CFI's. The other 30 pages carry
+    no such heading, and one of the 23, Wilson Peak's, opens its paragraph with a 2011 update rather than a route,
+    so those 31 peaks land no row: a gap this reader states rather than fills from their prose. No page states a
+    class, a difficulty, a distance or a climb for its route in a form read here, so none lands; the six Front Range
+    pages' 'Elevation:' is the summit's and is not read. A peak page with a 'Recommended Route' heading and no h1
+    raises.
+    """
+    peaks = [loc for loc in sitemap_locations(page) if re.fullmatch(r"/peaks/[a-z0-9-]+/[a-z0-9-]+/?", urlparse(loc).path)]
+    if not peaks:
+        raise LayoutChanged("cfi: the page sitemap lists no /peaks/<range>/<peak>/ page")
+    rows = []
+    for href in peaks:
+        peak = fetch(href)
+        found = blocks(peak.root)
+        at = next((i for i, block in enumerate(found) if block.level and block.text.lower() == "recommended route"), None)
+        if at is None:
+            continue
+        name = next((block.text for block in found if block.level == 1), None)
+        if name is None:
+            raise LayoutChanged(f"cfi: {href} has a 'Recommended Route' heading and no h1")
+        after = found[at + 1] if at + 1 < len(found) and found[at + 1].level is None else None
+        route = _CFI_ROUTE.fullmatch(after.text) if after is not None else None
+        if route is None:
+            continue  # Wilson Peak's update, 2026-10-10: no route named before a dash
+        rows.append({"name": fact(name), "route": fact(route["route"]), "link": peak.url, "source_url": peak.url})
+    return rows
+
+
 _MRATC_HIKE = re.compile(r"\d+\s*/\s*(?P<name>.+)")
 
 
@@ -1318,6 +1390,48 @@ def _mratc_suggested_hikes(page: Page, fetch) -> list[dict]:
                 "distance_text": distance_text,
                 "route_type": route_type(parts[1]),
                 "difficulty": fact(parts[2]),
+                "link": page.url,
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
+# The route clause runs to its first full stop that does not close an abbreviation ('Mt. Sunapee' is one name).
+_MSGTC_ROUTE = re.compile(
+    r"We recommend taking the (?P<route>.+?)(?:\s*\((?P<distance>[^()]*\d[^()]*)\))?"
+    + "".join(rf"(?<!\b{abbreviation})" for abbreviation in ("Mt", "Mtn", "St", "Rd", "Rte", "Ft"))
+    + r"\.(?:\s.*)?"
+)
+
+
+def _msgtc_best_routes(page: Page, fetch) -> list[dict]:
+    """The Monadnock-Sunapee Greenway Trail Club's two recommended routes, in its FAQ (msgtc.org/faq/), read 2026-10-10.
+
+    The FAQ is one h3 a question and its answer in paragraphs under it. Two questions open 'Best Route' ('Best
+    Route up or down Mount Sunapee', 'Best Route to Lucia’s Lookout from Pillsbury State Park'), and each answer's
+    first paragraph names the route in one clause, 'We recommend taking the Summit Trail (also the SRK Trail)
+    (2.1 miles).', the distance in brackets on one of the two. The question as the page writes it, the route's name
+    and the distance with its words are read; the rest of the answer (the trailhead, a note that another trail is
+    overgrown) is the club's and lands nowhere. The page does not say whether 2.1 miles is one way, so no shape is
+    read. The FAQ's other questions (the Greenway's 48.7 miles summit to summit, where to buy the guide, parking,
+    water, campfires) are not hikes, and are not read. A 'Best Route' answer that does not open 'We recommend
+    taking the' raises.
+    """
+    rows = []
+    for heading, body in sections(blocks(page.root), 3):
+        if not heading.text.startswith("Best Route"):
+            continue
+        answer = _MSGTC_ROUTE.fullmatch(body[0].text) if body else None
+        if answer is None:
+            raise LayoutChanged(f"msgtc: {heading.text!r} is not answered 'We recommend taking the ...'")
+        distance, distance_text = single_miles(answer["distance"]) if answer["distance"] else (None, None)
+        rows.append(
+            {
+                "name": fact(heading.text),
+                "route": fact(answer["route"]),
+                "distance_mi": distance,
+                "distance_text": distance_text,
                 "link": page.url,
                 "source_url": page.url,
             }
@@ -1399,6 +1513,31 @@ def _fta_day_hikes(page: Page, fetch) -> list[dict]:
             )
     if containers != 2:
         raise LayoutChanged(f"fta: the page holds {containers} hotspot maps, not the two this parser reads")
+    return rows
+
+
+FLTC_SPECIAL_PLACES = "/plan-hikes-finger-lakes-trail/special-places/"
+
+
+def _fltc_special_places(page: Page, fetch) -> list[dict]:
+    """The Finger Lakes Trail Conference's Special Places (fingerlakestrail.org/plan-hikes-finger-lakes-trail/special-places/).
+
+    The page features one place ('Below is just one of our Special Places; use the links on the right to visit
+    others.') and its sidebar's page list (li.page_item) links every page under it: 8 on 2026-10-10, places
+    ('Mitchellsville Gorge', 'Sweedler Preserve at Lick Brook') and themed pages ('Waterfall Hikes', 'Winter Hiking on
+    the Finger Lakes Trail', '3 Hikes Involving the Lithuanian Loop Trail'). Each child page's title and link are
+    read; the sidebar's other links (the parks, the maps, the end-to-end pages) are not special places and are not
+    read, nor is the featured place's article, whose byline names its authors. The pages themselves describe their
+    hikes in prose and are not fetched, so no distance lands.
+    """
+    rows, seen = [], set()
+    for item in page.root.find_all("li", cls="page_item"):
+        anchor = item.find("a")
+        href = page.link(anchor.get("href")) if anchor is not None else None
+        if not href or href in seen or not re.fullmatch(re.escape(FLTC_SPECIAL_PLACES) + r"[a-z0-9-]+/?", urlparse(href).path):
+            continue
+        seen.add(href)
+        rows.append({"name": fact(anchor.text()), "section": "Special Places", "link": href, "source_url": page.url})
     return rows
 
 
@@ -1496,6 +1635,63 @@ def _smd_diablo_range_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+SATC_DIRECTORY = "South Central Pennsylvania Trails and Hikes"
+_SATC_AT_SECTION = re.compile(r"Appalachian Trail: .+ to .+")
+# A distance an entry's own sentence gives itself ('on this 6.3-mile segment'), the only shape read from its prose.
+_SATC_OWN_LENGTH = re.compile(r"\bthis (\d+(?:\.\d+)?)-mile\b", re.IGNORECASE)
+_SATC_FIGURE = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def _satc_central_pa_hikes(page: Page, fetch) -> list[dict]:
+    """The Susquehanna A.T. Club's 'Hiking In Central Pennsylvania' (satc-hike.org), a Weebly page: 28 places, 2026-10-10.
+
+    One paragraph holds the directory, its first line ending 'South Central Pennsylvania Trails and Hikes'
+    (SATC_DIRECTORY), then each place's name on a line of its own and a line or two of SATC's prose under it. Three names are SATC's
+    own A.T. sections, underlined and unlinked ('Appalachian Trail: PA-225 to PA-325'); the other 25 are other
+    organisations' parks and trails, each name a link to its owner's site, linked and never fetched. A line is a
+    name where it is an A.T. section's or where the whole line is a link's text; the 'map' and 'here' links inside
+    the prose are not names. The prose is not read, with one exception: where an entry's prose states exactly one
+    figure and gives it as the entry's own length ('on this 6.3-mile segment', 'This 9.7-mile SATC maintained
+    section'), that distance lands with the words it was read from. On 2026-10-10 that is the three A.T. sections
+    and the Conewago Recreation Trail ('This 5-mile trail'); a figure in any other shape ('a 3.1-mile loop hike', 'the
+    13-mile trail', 'This 20+mile necklace') is the club's sentence and is not read. A page with no such paragraph,
+    or one whose first entry is not a name, raises.
+    """
+    directory = next(
+        (block.node for block in blocks(page.root) if (block.node.lines() or [""])[0].endswith(SATC_DIRECTORY)), None
+    )
+    if directory is None:
+        raise LayoutChanged(f"satc: no paragraph's first line ends {SATC_DIRECTORY!r}")
+    anchors: dict[str, str | None] = {}
+    for anchor in directory.find_all("a"):
+        anchors.setdefault(fact(anchor.text()) or "", page.link(anchor.get("href")))
+    entries: list[tuple[str, str | None, list[str]]] = []
+    for line in directory.lines()[1:]:
+        if _SATC_AT_SECTION.fullmatch(line):
+            entries.append((line, page.url, []))
+        elif anchors.get(line) and line.lower() not in ("map", "here"):
+            entries.append((line, anchors[line], []))
+        elif entries:
+            entries[-1][2].append(line)
+        else:
+            raise LayoutChanged(f"satc: the directory's first entry {line!r} is not a name")
+    rows = []
+    for name, link, prose in entries:
+        text = " ".join(prose)
+        own = _SATC_OWN_LENGTH.search(text) if len(_SATC_FIGURE.findall(text)) == 1 else None
+        distance, distance_text = miles(own.group(0)) if own else (None, None)
+        rows.append(
+            {
+                "name": fact(name),
+                "distance_mi": distance,
+                "distance_text": distance_text,
+                "link": link,
+                "source_url": page.url,
+            }
+        )
+    return rows
+
+
 def _mohonk_suggested_hikes(page: Page, fetch) -> list[dict]:
     """Mohonk Preserve's Suggested Hikes (mohonkpreserve.org/visit/activities/suggested-hikes/), by trailhead.
 
@@ -1537,6 +1733,27 @@ def _mohonk_suggested_hikes(page: Page, fetch) -> list[dict]:
     return rows
 
 
+MATC_TRAILHEADS = ("Southern Trail Head", "Northern Trail Head")
+
+
+def _matc_grafton_loop_trail(page: Page, fetch) -> list[dict]:
+    """The Maine A.T. Club's page for the Grafton Loop Trail (matc.org/grafton-loop-trail/), one trail, read 2026-10-10.
+
+    The page is the trail's own: its <title> names it ('Grafton Loop Trail – Maine Appalachian Trail Club'), then two
+    paragraphs say who maintains which half (MATC east of Route 26, the AMC west of it), and two h4s, 'Southern
+    Trail Head' and 'Northern Trail Head' (MATC_TRAILHEADS), are each followed by driving directions. The trail's name
+    and the link are read. Every distance on the page is a drive ('travel North on Route 26 ... 4.7 miles'; 'It is 7.3
+    miles north of the southern trailhead' by road), not the trail's, so no distance is read, and the page states no
+    climb. A page whose <title> does not name it, or which lacks either trailhead heading, raises.
+    """
+    title = page.root.find("title")
+    name = fact(re.sub(r"\s*[–-]\s*Maine Appalachian Trail Club\s*$", "", title.text())) if title is not None else None
+    headings = {fact(node.text()) for node in page.root.find_all("h4")}
+    if not name or "Maine Appalachian Trail Club" in name or not set(MATC_TRAILHEADS) <= headings:
+        raise LayoutChanged(f"matc: the page's title or its {' and '.join(MATC_TRAILHEADS)} headings have moved")
+    return [{"name": name, "link": page.url, "source_url": page.url}]
+
+
 def _onda_hikes(page: Page, fetch) -> list[dict]:
     """The Oregon Natural Desert Association's hikes: hike-sitemap.xml lists 24 /hike/ pages, 2026-10-04.
 
@@ -1575,6 +1792,44 @@ def _onda_hikes(page: Page, fetch) -> list[dict]:
                 "drive_time": facts.get("drive time"),
                 "link": hike.url,
                 "source_url": hike.url,
+            }
+        )
+    return rows
+
+
+ODATC_HEADING = "Circuit Hikes Near Our Section of the AT"
+
+
+def _odatc_circuit_hikes(page: Page, fetch) -> list[dict]:
+    """The Old Dominion A.T. Club's 'Circuit Hikes Near Our Section of the AT' (odatc.org/page-1503143), a Wild Apricot
+    page: two hikes on 2026-10-10.
+
+    Under the heading (a bold line, ODATC_HEADING) and the sentence 'There are two circuit hikes near our maintained
+    section of the AT:', one list holds a hike an item: its name on the first line ('Humpback Rocks Trail', 'Albright
+    Trail (AKA Dobie Mountain Trail)'), then a 'Description' link and a 'Printable map' link. The name, both links
+    and the shape the page names, a circuit, which lands as 'loop', are read. Both descriptions and one map are
+    hikingupward.com's pages, linked and never fetched; the Albright map is ODATC's own PDF. The page states no
+    distance. A page without the heading, or an item without its 'Description' link, raises.
+    """
+    heading = next((block for block in blocks(page.root) if block.text == ODATC_HEADING), None)
+    listing = next((node for node in heading.node.following() if node.tag == "ul"), None) if heading else None
+    if listing is None:
+        raise LayoutChanged(f"odatc: the page has no {ODATC_HEADING!r} heading with a list after it")
+    rows = []
+    for item in listing.children:
+        if not isinstance(item, Node) or item.tag != "li":
+            continue
+        lines = item.lines()
+        links = {fact(anchor.text()): page.link(anchor.get("href")) for anchor in item.find_all("a")}
+        if not lines or not links.get("Description"):
+            raise LayoutChanged(f"odatc: a circuit hike {lines[:1]} has no 'Description' link")
+        rows.append(
+            {
+                "name": fact(lines[0]),
+                "route_type": "loop",
+                "map_link": links.get("Printable map"),
+                "link": links["Description"],
+                "source_url": page.url,
             }
         )
     return rows
@@ -1942,6 +2197,64 @@ def _sstc_sweet_16(page: Page, fetch) -> list[dict]:
     return rows
 
 
+_SPNHF_TIER_1 = re.compile(r".*Tier 1 \((?P<count>\d+) Reservations\).*")
+_SPNHF_PAGE = re.compile(r"/forest-reservation-challenge-[a-z0-9-]+/?")
+_SPNHF_REGION = re.compile(r"Tier 2 \((?P<region>[^)]+)\).*")
+SPNHF_TITLE = "Forest Reservation Challenge: "
+
+
+def _spnhf_forest_reservation_challenge(page: Page, fetch) -> list[dict]:
+    """The Forest Society's Forest Reservation Challenge (forestsociety.org/challenge): 33 reservations, 2026-10-10.
+
+    The challenge's page says Tier 1 is to visit them all, 'Tier 1 (33 Reservations)', and lists none: its list is a
+    PDF game board and the Reservation Guide. One page a reservation, /forest-reservation-challenge-<name>, is listed
+    by the site's sitemap (/sitemap.xml, the one place all 33 are listed), and each names its reservation in its h1,
+    'Forest Reservation Challenge: Creek Farm', its Tier 2 region in a line that opens 'Tier 2 (Seacoast):', and links
+    the reservation's page in the Reservation Guide (/property/<name>). The name, the region and both links are read;
+    the selfie locations and the discovery questions are the Society's wording and are not read, nor are the photos
+    participants send, which 'become the property of the Forest Society'. The pages the sitemap lists are held to the
+    count the challenge's page states, so a page dropped from the sitemap or added to it refuses rather than lands a
+    different list, and so does a page whose h1 is not 'Forest Reservation Challenge: <name>'.
+    """
+    stated = next((match for block in blocks(page.root) if (match := _SPNHF_TIER_1.fullmatch(block.text))), None)
+    if stated is None:
+        raise LayoutChanged("spnhf: the challenge page states no 'Tier 1 (N Reservations)'")
+    pages: list[str] = []
+    for loc in sitemap_locations(fetch(page.link("/sitemap.xml"))):
+        if _SPNHF_PAGE.fullmatch(urlparse(loc).path) and loc not in pages:
+            pages.append(loc)
+    if len(pages) != int(stated["count"]):
+        raise LayoutChanged(f"spnhf: the sitemap lists {len(pages)} challenge pages and the challenge states {stated['count']}")
+    rows = []
+    for href in pages:
+        reservation = fetch(href)
+        found = blocks(reservation.root)
+        title = next((block.text for block in found if block.level == 1), "")
+        if not title.startswith(SPNHF_TITLE):
+            raise LayoutChanged(f"spnhf: {href}'s h1 is {title!r}, not '{SPNHF_TITLE}<name>'")
+        region = next((match["region"] for block in found if (match := _SPNHF_REGION.match(block.text))), None)
+        guide = next(
+            (
+                link
+                for anchor in reservation.root.find_all("a")
+                if (link := reservation.link(anchor.get("href"))) and urlparse(link).path.startswith("/property/")
+            ),
+            None,
+        )
+        rows.append(
+            {
+                "challenge": "Forest Reservation Challenge",
+                "name": fact(title.removeprefix(SPNHF_TITLE)),
+                "item_type": "forest reservation",
+                "section": fact(region),
+                "guide_link": guide,
+                "link": reservation.url,
+                "source_url": reservation.url,
+            }
+        )
+    return rows
+
+
 def _ttc_scavenger_hunt(page: Page, fetch) -> list[dict]:
     """The Trail Conservancy's History of the Trail Scavenger Hunt (thetrailconservancy.org/programs/scavenger-hunt/).
 
@@ -2057,6 +2370,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
     "patc_tuscarora_sections": SiteParser(
         _tuscarora_sections, columns={"map": "text", "max_elevation_ft": "double", "min_elevation_ft": "double"}
     ),
+    "msta_sections": SiteParser(_msta_sections),
     "kta_favorite_hikes": SiteParser(_kta_favorite_hikes),
     "ratc_at_hikes": SiteParser(_ratc_at_hikes),
     "amc_itineraries": SiteParser(_amc_itineraries, columns={"duration": "text"}),
@@ -2073,12 +2387,18 @@ SITE_PARSERS: dict[str, SiteParser] = {
         },
     ),
     "cfpa_trails": SiteParser(_cfpa_trails),
+    "cfi_recommended_routes": SiteParser(_cfi_recommended_routes, columns={"route": "text"}),
     "mratc_suggested_hikes": SiteParser(_mratc_suggested_hikes),
+    "msgtc_best_routes": SiteParser(_msgtc_best_routes, columns={"route": "text"}),
     "fta_day_hikes": SiteParser(_fta_day_hikes),
+    "fltc_special_places": SiteParser(_fltc_special_places),
     "buckeye_sections": SiteParser(_buckeye_sections, columns={"off_road_mi": "double"}),
     "smd_diablo_range_hikes": SiteParser(_smd_diablo_range_hikes),
+    "satc_central_pa_hikes": SiteParser(_satc_central_pa_hikes),
     "mohonk_suggested_hikes": SiteParser(_mohonk_suggested_hikes),
+    "matc_grafton_loop_trail": SiteParser(_matc_grafton_loop_trail),
     "onda_hikes": SiteParser(_onda_hikes, columns={"seasons": "text", "drive_time": "text"}),
+    "odatc_circuit_hikes": SiteParser(_odatc_circuit_hikes, columns={"map_link": "text"}),
     "ota_sections": SiteParser(
         _ota_sections,
         columns={"ascent_north_to_south_ft": "double", "ascent_south_to_north_ft": "double", "ascent_text": "text"},
@@ -2093,6 +2413,7 @@ SITE_PARSERS: dict[str, SiteParser] = {
         _amc_four_thousand_footer_lists, columns={"rank": "bigint", "elevation_estimated": "bool", "trail": "text"}
     ),
     "sstc_sweet_16": SiteParser(_sstc_sweet_16),
+    "spnhf_forest_reservation_challenge": SiteParser(_spnhf_forest_reservation_challenge, columns={"guide_link": "text"}),
     "ttc_scavenger_hunt": SiteParser(_ttc_scavenger_hunt),
     "dcnr_geotrail": SiteParser(_dcnr_geotrail, columns={"theme": "text", "accessible": "bool"}),
     "cmc_lookout_towers": SiteParser(_cmc_lookout_towers),

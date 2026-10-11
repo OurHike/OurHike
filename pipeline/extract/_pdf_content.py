@@ -510,6 +510,63 @@ def _nbatc_blue_blazer(facts: PdfFacts, url: str) -> list[dict]:
     return out
 
 
+#: The EOR Hiker Badge form's guidebook codes, as its legend lists them (W the CT Walk Book, H 50 Hikes, J the Joshua
+#: Tract Walk Book, S Hiking in Southern New England, T TNC/Country Walks in CT, CoE the Corps of Engineers); a trail
+#: carries one or two, comma-joined ('S,H').
+_EOR_CODE = r"(?:W|H|J|S|T|CoE)"
+_EOR_ITEM = re.compile(rf"(?P<name>\S.*?)\s+(?P<code>{_EOR_CODE}(?:,{_EOR_CODE})*)")
+_EOR_NOT_A_NAME = re.compile(rf"{_EOR_CODE}\s|Source\b|Code\b")
+EOR_TITLE = "EOR Hiker Badge"
+EOR_HEADER = "Date Hiked Trail Name"
+EOR_END = "Where to find trail descriptions"
+
+
+def _amc_ct_eor_hiker_badge(facts: PdfFacts, url: str) -> list[dict]:
+    """AMC Connecticut Chapter's East of the River Hiker Badge form (ct-amc.org's EOR_HikerBadgeForm.pdf): 26 trails.
+
+    Read 2026-10-10: 3 pages, Last-Modified 2019-07-21, no ETag, 143,557 bytes. Page 1 opens with its title, 'EOR Hiker
+    Badge', then a table headed 'Date Hiked Trail Name Source Code', whose rows the text layer sets as indented lines,
+    a trail's name and its guidebook code ('Bigelow Hollow W', 'Hartman Park S,H'); page 2 continues them, and then
+    'Where to find trail descriptions and information' opens the guidebooks' legend. One name wraps onto an
+    unindented second line with no code ('Mansfield Hollow State' / 'Park') and is joined. Each trail's name and code
+    are read, the code as the form writes it. Page 3 names the badge committee's members with their home addresses
+    and telephone numbers, people's, so nothing after EOR_END is read, and a form in which EOR_END no longer appears
+    refuses rather than read on into it; so does a form whose title or table header has moved. The lines are read as
+    the text layer sets them, before lines() folds them, because an item's indent is what tells it from a wrapped
+    name's second line; the legend and the form's instructions are not indented.
+    """
+    raw = [line for text in facts.texts for line in text.splitlines()]
+    folded = [" ".join(line.split()) for line in raw]
+    if not folded or folded[0] != EOR_TITLE:
+        raise PdfLayoutChanged(f"amc_ct: the form opens {folded[:1]}, not {EOR_TITLE!r}")
+    try:
+        start = next(i for i, line in enumerate(folded) if line.startswith(EOR_HEADER))
+        end = next(i for i, line in enumerate(folded) if line.startswith(EOR_END))
+    except StopIteration:
+        raise PdfLayoutChanged(f"amc_ct: the form has no {EOR_HEADER!r} header or no {EOR_END!r}") from None
+    rows: list[dict] = []
+    for index in range(start + 1, end):
+        line = folded[index]
+        if not line or not raw[index][:1].isspace():
+            continue  # the legend, the instructions and a wrapped name's second line are not indented
+        item = _EOR_ITEM.fullmatch(line)
+        name, code = (item["name"], item["code"]) if item else (line, None)
+        after = folded[index + 1] if index + 1 < end else ""
+        if item is None and after and not raw[index + 1][:1].isspace() and not _EOR_NOT_A_NAME.match(after):
+            name = f"{name} {after}"
+        rows.append(
+            {
+                "challenge": EOR_TITLE,
+                "name": fact(name),
+                "item_type": "trail",
+                "guidebook_code": code,
+                "link": url,
+                "source_url": url,
+            }
+        )
+    return rows
+
+
 _TTA_TITLE = re.compile(r".*'s (?P<count>\d+) Great Hikes")
 _TTA_LIST_START = "I attest to having hiked all the trails listed above:"
 
@@ -548,6 +605,71 @@ def _tta_great_hikes(facts: PdfFacts, url: str) -> list[dict]:
     ]
 
 
+INHT_HEADING = ("Iditarod NHT Passport Stamp", "Participants")
+_INHT_SITE = re.compile(r"(?P<town>[A-Z][A-Za-z .'-]*?):\s+(?P<site>\S.*)")
+# The text layer splits a word after its first capital where the guide's type is kerned ('K enai', 'V isitor').
+_INHT_SPLIT = re.compile(r"\b([A-Z]) (?=[a-z])")
+
+
+def _inht_continues(line: str, previous: str) -> bool:
+    """Whether `line` continues the site above it rather than naming another in the same town: it opens a bracket or
+    in lower case, closes a bracket the line above left open, or is a word or two ('Center', 'Museum').
+
+    @unvalidated: 'a word or two' fits the 2026-10-10 read only, whose wrapped tails are one word and whose sites
+    are four words or more; a later guide listing a two-word site under a town would join it to the site above. What
+    would settle it is the next edition's list, read by a person beside the rows this lands."""
+    return line.startswith("(") or line[:1].islower() or previous.count("(") > previous.count(")") or len(line.split()) <= 2
+
+
+def _iditarod_passport_stamps(facts: PdfFacts, url: str) -> list[dict]:
+    """The Iditarod Historic Trail Alliance's Visitor Guide: its 'Iditarod NHT Passport Stamp Participants' list.
+
+    Read 2026-10-10: 24 pages, ETag and Last-Modified 2024-04-05, 11,786,538 bytes; the metadata's dates are 2018. The
+    list sits on the page titled 'Iditarod National Historic Trail Passport Stamp Program', under INHT_HEADING, one
+    site a line as 'Town: Site' ('Seward: Kenai Fjords National Park Information Center'), a long name wrapping onto
+    the next line, and two more Anchorage sites on lines of their own under 'Anchorage:'. 11 sites on that read. Each
+    site's name and its town are read; the paragraphs around the list and its 'Why November 10, 1978?' sidebar are the
+    Alliance's prose, and the list ends at a line that asks a question or opens 'The example passport stamps'. Words
+    the text layer split after their first capital ('V isitor') are joined (_INHT_SPLIT). The guide states no date its
+    list holds to, and the Alliance's own page (passport-stamp-program.html, 2026-10-10) says the trail has 'a total
+    of 9 stamps at different locations': the list's 11 sites are in 9 towns, which may be what that counts, though
+    neither says so. The rows land as the guide states them. A guide without the heading, or whose list never ends,
+    refuses.
+    """
+    lines = [" ".join(line.split()) for text in facts.texts for line in text.splitlines()]
+    try:
+        start = next(i for i in range(len(lines) - 1) if (lines[i], lines[i + 1]) == INHT_HEADING) + 2
+        end = next(i for i in range(start, len(lines)) if lines[i].endswith("?") or lines[i].startswith("The example"))
+    except StopIteration:
+        raise PdfLayoutChanged(f"iditarod: the guide has no {' '.join(INHT_HEADING)!r} list, or it never ends") from None
+    sites: list[dict] = []
+    town = None
+    for line in lines[start:end]:
+        if not line:
+            continue
+        match = _INHT_SITE.fullmatch(line)
+        if match:
+            town = match["town"]
+            sites.append({"place": town, "name": match["site"]})
+        elif town is None:
+            raise PdfLayoutChanged(f"iditarod: the list opens {line!r}, not 'Town: Site'")
+        elif sites and _inht_continues(line, sites[-1]["name"]):
+            sites[-1]["name"] = f"{sites[-1]['name']} {line}"
+        else:
+            sites.append({"place": town, "name": line})
+    return [
+        {
+            "challenge": "Iditarod NHT Passport Stamp Program",
+            "name": fact(_INHT_SPLIT.sub(r"\1", site["name"])),
+            "item_type": "passport stamp site",
+            "place": fact(site["place"]),
+            "link": url,
+            "source_url": url,
+        }
+        for site in sites
+    ]
+
+
 #: Every document family's parser, by the registry key (or the `family`) its resource names.
 PDF_FAMILIES: dict[str, PdfFamily] = {
     "rmc_recommended_hikes": PdfFamily(_rmc_recommended_hikes, columns={"time_text": "text"}),
@@ -563,5 +685,7 @@ PDF_FAMILIES: dict[str, PdfFamily] = {
     ),
     "gmc_side_to_side": PdfFamily(_gmc_side_to_side),
     "nbatc_blue_blazer": PdfFamily(_nbatc_blue_blazer, columns={"number": "bigint", "at_mile": "double", "at_mile_text": "text"}),
+    "amc_ct_eor_hiker_badge": PdfFamily(_amc_ct_eor_hiker_badge, columns={"guidebook_code": "text"}),
     "tta_great_hikes": PdfFamily(_tta_great_hikes, columns={"cave_entry_forbidden": "bool"}),
+    "iditarod_passport_stamps": PdfFamily(_iditarod_passport_stamps),
 }

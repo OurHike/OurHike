@@ -19228,6 +19228,44 @@
       "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maine Huts & Trails has no trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until the maintainer approves its row in chat and the row is written. That wait is the reason this row is held, not the publisher's terms: it states no terms, and decision 53 publishes a steward's notices as facts and a link. Settled by the approved row."
     },
     {
+      "key": "maine_huts_huts",
+      "title": "Maine Huts & Trails' 4 huts: each hut page's own map point, beds and bunkrooms",
+      "provider": "Maine Huts & Trails",
+      "kind": "page_points",
+      "url": "https://mainehuts.org/hut/",
+      "pages": [
+        "https://mainehuts.org/hut/grand-falls-hut/",
+        "https://mainehuts.org/hut/flagstaff-lake-hut/",
+        "https://mainehuts.org/hut/stratton-brook-hut/",
+        "https://mainehuts.org/hut/poplar-stream-hut/"
+      ],
+      "trust": "authoritative",
+      "steward": "Maine Huts & Trails",
+      "steward_contact": "https://mainehuts.org/",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a), as decision 69 (the maintainer's poll, 2026-10-04, card Q1) extends it to the points a club prints on its own public page: facts only (name, kind, the fix as the page states it), credited and linked, and none of the page's prose; int_sources__publication's rule 6 admits `page_points` under `public_gis`. The site's footer reads \"© 2026 Maine Huts & Trails. All rights reserved.\" (read 2026-10-11), and decision 69 was chosen over publishing only the pages with no copyright line. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION. mainehuts.org's robots.txt, read 2026-10-11 under lib/user_agent.py's USER_AGENT: its `User-agent: *` group disallows WooCommerce's upload folders, `/*?add-to-cart=`, `/*?*add-to-cart=` and `/wp-admin/` (allowing `/wp-admin/admin-ajax.php`), a Yoast block's second `User-agent: *` group disallows nothing, it names its sitemap (sitemap_index.xml) and asks no Crawl-delay; the hut pages are allowed.",
+      "licence_basis": "public_gis",
+      "attribution": "Maine Huts & Trails",
+      "terms": "mainehuts.org's footer on every hut page, read 2026-10-11: \"© 2026 Maine Huts & Trails. All rights reserved.\", beside a Privacy Policy link; no terms page is linked (none from the home page either, the triage, 2026-10-08).",
+      "person_fields": [],
+      "person_fields_comment": "None: the parser lands only the columns extract/_pages_points.py's parse_maine_huts_hut names (name, kind, slug, status, capacity, bunkrooms, geometry_basis, geometry), so no person's name, e-mail address or telephone number can land; the hut pages read 2026-10-11 name none beside a hut (the footer's office telephone and e-mail address are the organisation's, and are not read).",
+      "freshness": {
+        "kind": "read_and_hash",
+        "url": "https://mainehuts.org/hut/grand-falls-hut/",
+        "notes": "No validator trusted, and the pages' own were not read: the reader asks all four hut pages each monthly run and is FRESH only when the huts it parses hash as the last committed load did (extract/_pages_points.py's change check)."
+      },
+      "name_field": "name",
+      "type_field": "kind",
+      "key_fields": [
+        "slug"
+      ],
+      "key_comment": "`slug`, each hut page's own slug, the last part of its URL: unique on 4 of 4 (measured 2026-10-11 on the live pages, parsed as extract/_pages_points.py parses them). `source_url`, `name` and the point are unique on 4 of 4 too.",
+      "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's maine-huts points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row) and wave 6's question P12, which the maintainer answered on 2026-10-11 with 'build a page reader'; then read live on 2026-10-11 under lib/user_agent.py's USER_AGENT, robots.txt first: the sitemap index and its page, hut and location sitemaps (hut-sitemap.xml lists the 4 hut pages and the hut archive), each hut page twice (Grand Falls Hut's three times, once more for its map script), the hut type's REST route once (404, `rest_no_route`: the type is not in the REST API, so the HTML is read), and Big Eddy Trailhead's page (no map script: a trailhead page places nothing); about 22 requests in all over six runs, each run reading robots.txt as it began, three seconds or more apart except a robots.txt read and the request straight after it. Registered by hand.",
+      "discovered_date": "2026-10-11",
+      "notes": "4 huts, one page each, read 2026-10-11 and parsed as extract/_pages_points.py's parse_maine_huts_hut parses them: Grand Falls Hut, its <h1> 'Grand Falls Hut (Closed)' and its page 'Grand Falls Hut and the surrounding trails are temporarily closed', capacity 32 in 8 bunkrooms, at 45.3031, -70.2070; Flagstaff Lake Hut, 48 in 10, at 45.1979, -70.1771; Stratton Brook Hut, 44 in 10, at 45.1009, -70.3016; Poplar Stream Hut, 44 in 7, at 45.1013, -70.1862. EACH POINT IS ITS PAGE'S MAP CENTRE, not a marker: the page's own script sets `var hut = { lat, lng, zoom: 14 }` and `L.map('map').setView([hut.lat, hut.lng], hut.zoom)`, its marker block commented out, so every row's `geometry_basis` reads 'page_map_centre'. How far a centre sits from its hut is @unvalidated; the parser's docstring says what would settle it. Nothing is geocoded: the only street address the pages print is the Kingfield office's, in the footer. A HIKER'S SAFETY: Grand Falls Hut is closed, which its row's `status` carries; the other three state no status, which lands as unknown, never as open. The site books its huts (its page-sitemap.xml lists /book/, /hut-rentals/ and /cancellation-policy/, none of them read), so whether a hut is a hiker's shelter is a decision for when the row ships. Each page also lists 'Getting There' distances to trailheads and the neighbouring huts ('Big Eddy Trailhead' 8.3 miles from Grand Falls Hut), which this row does not read. The pages are 90,621 to 138,217 bytes of HTML.",
+      "reaches_hikers": false,
+      "reaches_hikers_comment": "Held, decisions 121 and 122 (the maintainer's polls, 2026-10-09): Maine Huts & Trails has no approved trail_orgs.json row yet, and every layer of a candidate steward loads now, held, until it has one. Typing a hut as a POI type would be a dbt/seeds/club_poi_types.csv row, which nothing has written, so an untyped kind publishes nothing even once the row ships."
+    },
+    {
       "key": "rctc_rachel_carson_trail_alerts",
       "title": "Rachel Carson Trail alerts (Rachel Carson Trails Conservancy)",
       "provider": "RCTC",

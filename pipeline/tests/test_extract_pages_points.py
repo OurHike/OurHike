@@ -28,6 +28,7 @@ from extract._pages_points import (
     parse_brbtc_section,
     parse_foot_trail_shelters,
     parse_foothills_gps_coordinates,
+    parse_maine_huts_hut,
     parse_mdhta_trail_guide,
     parse_ohta_major_trailheads,
     parse_palmetto_passage,
@@ -45,6 +46,7 @@ COORDINATES_REST = "https://conservancy.example.org/wp-json/wp/v2/pages/603"
 SECTIONS_SITEMAP = "https://conservancy.example.org/crb_trail-sitemap.xml"
 SECTION_PREFIX = "https://conservancy.example.org/trail/"
 TUSCARORA_PAGES = ["https://trail.example.org/section-1-2", "https://trail.example.org/section-3-4"]
+HUT_PAGES = ["https://huts.example.org/hut/fixture-falls-hut/", "https://huts.example.org/hut/fixture-lake-hut/"]
 
 
 @pytest.fixture
@@ -58,6 +60,7 @@ def registry(tmp_path, monkeypatch):
         {"key": "foothills_gps_coordinates", "url": "https://conservancy.example.org/maps/", "read_url": COORDINATES_REST},
         {"key": "brbtc_section_trailheads", "url": SECTIONS_SITEMAP, "sitemap": SECTIONS_SITEMAP, "page_prefix": SECTION_PREFIX},
         {"key": "patc_tuscarora_points", "url": "https://trail.example.org/", "pages": TUSCARORA_PAGES},
+        {"key": "maine_huts_huts", "url": "https://huts.example.org/hut/", "pages": HUT_PAGES},
     ]
     path.write_text(json.dumps({"sources": sources}))
     monkeypatch.setattr(_kinds, "REGISTRY_PATH", path)
@@ -596,3 +599,114 @@ def test_a_page_honours_its_rows_crawl_delay_and_the_default_gap_where_it_asks_n
     assert resource("foot_trail_shelters").crawl_delay == 10
     assert resource("mdhta_trail_guide_points").crawl_delay == _notices.DEFAULT_HOST_GAP_SECONDS
     assert resource("mdhta_trail_guide_points").part == "points"
+
+
+# --- Maine Huts & Trails' hut pages (P12) ---------------------------------------------------------------------------
+#
+# The shape read on 2026-10-11 off the 4 pages mainehuts.org's hut-sitemap.xml lists: one <h1>, "(Closed)" after the
+# name on Grand Falls Hut's; an "Accomodations" <dl> (the site's spelling) of Capacity and Number of bunkrooms; a
+# "Getting There" <dl> of trailheads and miles, which is not read; and the inline script that centres the page's
+# Leaflet map on the hut, its marker commented out. Every name and number here is invented.
+
+
+def hut_page(
+    heading: str = "Fixture Lake Hut",
+    lat: str = "45.1979",
+    lng: str = "-70.1771",
+    capacity: str = "48",
+    bunkrooms: str = "10",
+    scripts: int = 1,
+) -> str:
+    script = (
+        "<script>\n    var hut = {\n        lat: %s,\n        lng: %s,\n        zoom: 14,\n        // marker: {\n"
+        "        //     iconSize: [25, 41],\n        // }\n    };\n"
+        "    var map = L.map('map').setView([hut.lat, hut.lng], hut.zoom);\n</script>" % (lat, lng)
+    )
+    return (
+        f"<html><head><title>{heading} ~ Fixture Huts</title></head><body><nav><a href='/hut/'>Fixture Falls Hut (Closed)</a>"
+        f"</nav><main><h1>{heading}</h1><div class='mb-5'><h2 class='h6'>Accomodations</h2><dl class='mb-3'>"
+        f"<div class='row mb-3 small'><dt class='col-6 text-end'>Capacity</dt> <dd class='col-6'>{capacity}</dd>"
+        f"<dt class='col-6 text-end'>Number of bunkrooms</dt> <dd class='col-6'>{bunkrooms}</dd></div></dl></div>"
+        "<div class='mb-5'><h2 class='h6'>Getting There</h2><dl class='mb-3'><div class='row mb-3 small'>"
+        "<dt class='col-6 text-end'><a href='/trailhead/fixture/'>Fixture Trailhead (Closed)</a></dt>"
+        "<dd class='col-6'>2.2 miles</dd></div></dl></div><div id='map'></div></main>"
+        f"{script * scripts}<footer>© 2026 Fixture Huts. All rights reserved.</footer></body></html>"
+    )
+
+
+def test_a_hut_page_lands_its_name_beds_bunkrooms_and_its_own_map_centre_as_the_point():
+    (row,) = parse_maine_huts_hut(hut_page(), HUT_PAGES[1])
+
+    assert row == {
+        "name": "Fixture Lake Hut",
+        "kind": "hut",
+        "slug": "fixture-lake-hut",
+        "status": None,
+        "capacity": 48,
+        "bunkrooms": 10,
+        "geometry_basis": "page_map_centre",
+        "geometry": {"type": "Point", "coordinates": [-70.1771, 45.1979]},
+    }, "the trailhead list and its '(Closed)' trailhead are not the hut's, and are not read"
+
+
+def test_a_hut_whose_heading_says_closed_lands_closed_under_its_name_and_one_saying_nothing_lands_unknown_never_open():
+    (closed,) = parse_maine_huts_hut(hut_page("Fixture Falls Hut (Closed)", "45.3031", "-70.2070", "32", "8"), HUT_PAGES[0])
+    (unsaid,) = parse_maine_huts_hut(hut_page(), HUT_PAGES[1])
+
+    assert (closed["name"], closed["status"], closed["capacity"]) == ("Fixture Falls Hut", "closed", 32)
+    assert unsaid["status"] is None
+
+
+@pytest.mark.parametrize(("scripts", "refusal"), [(0, "0 `var hut` map scripts"), (2, "2 `var hut` map scripts")])
+def test_a_hut_page_without_its_map_script_or_with_two_refuses_rather_than_landing_a_hut_with_no_point_or_a_chosen_one(
+    scripts, refusal
+):
+    with pytest.raises(PageLayoutChanged, match=refusal):
+        parse_maine_huts_hut(hut_page(scripts=scripts), HUT_PAGES[1])
+
+
+@pytest.mark.parametrize(
+    ("page", "refusal"),
+    [
+        (hut_page(capacity="48 beds"), "capacity is '48 beds', not a whole number"),
+        (hut_page(bunkrooms=""), "number of bunkrooms is '', not a whole number"),
+        (hut_page().replace("Number of bunkrooms", "Pets"), r"states \['capacity'\], not capacity and bunkrooms"),
+        (hut_page().replace("Accomodations", "Rooms"), "no Accomodations list"),
+        (hut_page().replace("<h1>Fixture Lake Hut</h1>", ""), "0 <h1> headings"),
+        (hut_page().replace("</main>", "<h1>Another</h1></main>"), "2 <h1> headings"),
+    ],
+)
+def test_a_hut_page_whose_facts_or_name_are_not_in_the_measured_shape_refuses_rather_than_guessing_them(page, refusal):
+    with pytest.raises(PageLayoutChanged, match=refusal):
+        parse_maine_huts_hut(page, HUT_PAGES[1])
+
+
+def test_a_hut_page_spelling_accommodations_right_is_still_read():
+    (row,) = parse_maine_huts_hut(hut_page().replace("Accomodations", "Accommodations"), HUT_PAGES[1])
+
+    assert (row["capacity"], row["bunkrooms"]) == (48, 10)
+
+
+def test_a_hut_map_centre_south_of_the_equator_is_refused_not_repaired():
+    with pytest.raises(PageLayoutChanged, match="not a United States trail's point"):
+        parse_maine_huts_hut(hut_page(lat="-45.1979"), HUT_PAGES[1])
+
+
+def test_the_huts_row_reads_each_of_its_pages_once_and_each_hut_links_its_own(registry, requests_mock):
+    first = hut_page("Fixture Falls Hut (Closed)", "45.3031", "-70.2070", "32", "8")
+    requests_mock.get(HUT_PAGES[0], text=first, headers={"Content-Type": "text/html; charset=UTF-8"})
+    requests_mock.get(HUT_PAGES[1], text=hut_page(), headers={"Content-Type": "text/html; charset=UTF-8"})
+    proofs = {}
+
+    rows = list(resource("maine_huts_huts").rows(proofs))
+
+    assert [(row["slug"], row["status"], row["source_url"]) for row in rows] == [
+        ("fixture-falls-hut", "closed", HUT_PAGES[0]),
+        ("fixture-lake-hut", None, HUT_PAGES[1]),
+    ]
+    assert proofs == {"raw_testclub__maine_huts_huts": 2}
+    assert [request.url for request in requests_mock.request_history] == HUT_PAGES
+    assert {request.headers["User-Agent"] for request in requests_mock.request_history} == {_kinds.USER_AGENT}
+    assert resource("maine_huts_huts").column_hints()["status"] == {"data_type": "text"}, (
+        "the column exists on a load where no hut is closed"
+    )

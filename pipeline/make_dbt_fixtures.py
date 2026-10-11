@@ -9999,9 +9999,41 @@ def _tuscarora_answers() -> dict[str, tuple[str, str]]:
     return answers
 
 
+#: Maine Huts & Trails' 4 hut pages (held in extract/_shared/maine_huts, P12, read 2026-10-11): the `<h1>`, the
+#: "Accomodations" `<dl>` (the site's spelling) and the inline `var hut = { lat, lng, zoom }` map script, each value
+#: invented and each point on the fixture grid; the first hut is closed, as Grand Falls Hut's `<h1>` says it is.
+MAINE_HUTS_PAGES = tuple(
+    f"https://mainehuts.org/hut/{slug}/"
+    for slug in ("grand-falls-hut", "flagstaff-lake-hut", "stratton-brook-hut", "poplar-stream-hut")
+)
+
+
+def _maine_huts_page(n: int) -> str:
+    x, y = _point(n)["coordinates"]
+    name = ("Fixture Falls Hut (Closed)", "Fixture Lake Hut", "Fixture Brook Hut", "Fixture Stream Hut")[n - 1]
+    return (
+        f"<html><head><title>{name} ~ Maine Huts &amp; Trails</title></head><body>"
+        f"<nav><a href='{MAINE_HUTS_PAGES[0]}'>Fixture Falls Hut (Closed)</a></nav><main><h1>{name}</h1>"
+        "<div class='mb-5'><h2 class='h6'>Accomodations</h2><dl class='mb-3'><div class='row mb-3 small'>"
+        f"<dt class='col-6 text-end'>Capacity</dt> <dd class='col-6'>{30 + n}</dd>"
+        f"<dt class='col-6 text-end'>Number of bunkrooms</dt> <dd class='col-6'>{5 + n}</dd></div></dl></div>"
+        "<div class='mb-5'><h2 class='h6'>Getting There</h2><dl class='mb-3'><div class='row mb-3 small'>"
+        "<dt class='col-6 text-end'><a href='https://mainehuts.org/trailhead/fixture-trailhead/'>Fixture Trailhead</a></dt>"
+        f" <dd class='col-6'>{n}.5 miles</dd></div></dl></div><div id='map'></div></main>"
+        f"<script>\n    var hut = {{\n        lat: {y:.4f},\n        lng: {x:.4f},\n        zoom: 14,\n"
+        "        // marker: {\n        //     iconSize: [25, 41],\n        // }\n    };\n"
+        "    var map = L.map('map').setView([hut.lat, hut.lng], hut.zoom);\n</script></body></html>"
+    )
+
+
+def _maine_huts_answers() -> dict[str, tuple[str, str]]:
+    return {url: (PAGE_HTML, _maine_huts_page(n)) for n, url in enumerate(MAINE_HUTS_PAGES, 1)}
+
+
 #: Registry key -> (its answers, {url: (content type, body)}, and the rows its parser lands), for the sources a
 #: sitemap lists pages for, or a row's `pages` list.
 PAGE_POINTS_SITE_FIXTURES = {
+    "maine_huts_huts": (_maine_huts_answers, 4),
     "brbtc_section_trailheads": (_brbtc_answers, 2),
     "palmetto_trail_passages": (_palmetto_answers, 10),
     "ohta_major_trailheads": (

@@ -1166,7 +1166,10 @@ def test_a_name_added_to_a_rows_person_fields_reads_an_unmoved_layer_again(regis
     after_the_row = _run.definition_digest(staffed())
     assert after_the_row != before
     monkeypatch.setattr(_kinds, "PERSON_SHAPED", _kinds.re.compile("steward"))
-    assert _run.definition_digest(staffed()) != after_the_row, "a change to the backstop reads every layer again too"
+    after_the_backstop = _run.definition_digest(staffed())
+    assert after_the_backstop != after_the_row, "a change to the backstop reads every layer again too"
+    monkeypatch.setattr(_kinds, "ORGANISATION_SUFFIXES", ("org", "agency", "dept"))
+    assert _run.definition_digest(staffed()) != after_the_backstop, "and so does a suffix standard S4 takes back"
 
 
 def z_centerline():
@@ -1248,6 +1251,7 @@ def test_turning_return_z_on_reads_a_layer_again_and_leaves_every_other_digest_a
             "resource": repr(resource),
             "person_fields": sorted(_kinds.PERSON_FIELDS),
             "person_shaped": _kinds.PERSON_SHAPED.pattern,
+            "organisation_suffixes": list(_kinds.ORGANISATION_SUFFIXES),
             "field_rules": getattr(resource, "field_rules", None),
             "wordpress_dropped": sorted(_kinds.WP_DROPPED),
             "withheld_columns": sorted(_kinds.WITHHELD_COLUMNS),

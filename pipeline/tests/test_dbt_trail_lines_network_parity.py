@@ -756,6 +756,42 @@ def test_parity_explains_copies_of_one_line_the_dbt_writer_published_once_and_no
     assert "properties.id s:4" not in reasons
 
 
+def test_each_line_copy_names_the_copy_on_the_other_side_and_differs_from_it_in_its_id_alone():
+    """Standard S3's partner for every id NETWORK_COPY_REASON explains (parity._network_copies()): a copy only today's
+    file publishes names the lowest id the dbt writer keeps, and an id only the dbt writer's publishes names the
+    lowest of today's. result_document() then finds the two differ in `properties.id` alone, so trail_status reads
+    the same to a hiker, as on monthly run 31's 57 copied lines."""
+    family = parity.FAMILIES["nearby_trails"]
+    a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]
+    old = {"features": [_line("s:1", "A", a), _line("s:2", "A", a), _line("s:3", "A", a), _line("s:4", "B", b)]}
+    new = {"features": [_line("s:1", "A", a), _line("s:{R-1}", "A", a)]}
+    for feature in (*old["features"], *new["features"]):
+        feature["properties"]["trail_status"] = "open"
+
+    copies = family.copies(old, new)
+    assert copies == {"properties.id s:2": "s:1", "properties.id s:3": "s:1", "properties.id s:{R-1}": "s:1"}
+    found = parity.differences(old, new, family)
+    document = parity.result_document(
+        "nearby_trails",
+        family,
+        Path("nearby_trails.geojson"),
+        "differences",
+        1,
+        old=old,
+        new=new,
+        found=found,
+        reasons=family.explained(old, new),
+        copies=copies,
+    )
+    facts = {item["what"]: (item["exact_copy_of"], item["differs_from_exact_copy"]) for item in document["explained"]}
+    assert facts == {
+        "properties.id s:2": ("properties.id s:1", ["properties.id"]),
+        "properties.id s:3": ("properties.id s:1", ["properties.id"]),
+        "properties.id s:{R-1}": ("properties.id s:1", ["properties.id"]),
+    }
+    assert [item["what"] for item in document["differences"]] == ["properties.id s:4"], "a lost line names no copy"
+
+
 def test_parity_never_explains_two_positional_ids_that_name_different_lines():
     family = parity.FAMILIES["nearby_trails"]
     a, b = [[0.0, 0.0], [1.0, 1.0]], [[2.0, 2.0], [3.0, 3.0]]
@@ -859,20 +895,20 @@ def test_parity_does_not_call_a_staging_key_what_a_line_with_a_globalid_publishe
 
 
 def test_parity_explains_a_name_a_line_inherits_from_another_swallowed_copy_and_nothing_else():
-    """Run 30's nyc_parks_trails:row-2fd6-t8ys~mjm7: no name of its own, two named nyc_cscl_paths copies swallowed, the
-    first in file order today and the first by staging key in SQL. Only a name, and only on a line that swallowed the
-    same layer's copies on both sides, is explained."""
+    """Run 30's nyc_parks_trails:row-7cmw.ec29~bksa: no name of its own, five named nyc_dot_greenways copies swallowed,
+    'CUNNINGHAM PARK GREENWAY' first in file order today and 'VANDERBILT MOTOR PARKWAY' followed longest in SQL
+    (standard S2). Only a name, and only on a line that swallowed the same layer's copies on both sides, is explained."""
     family = parity.FAMILIES["nearby_trails"]
     path = [[0.0, 0.0], [1.0, 1.0]]
 
-    def survivor(line_id: str, name: str, swallowed: str | None = "nyc_cscl_paths", **changed) -> dict:
+    def survivor(line_id: str, name: str, swallowed: str | None = "nyc_dot_greenways", **changed) -> dict:
         feature = _line(line_id, name, path)
         feature["properties"].update({"duplicate_of": swallowed, **changed} if swallowed else changed)
         return feature
 
     old = {
         "features": [
-            survivor("p:1", "BROOKFIELD PARK WEST OUTER LOOP"),
+            survivor("p:1", "CUNNINGHAM PARK GREENWAY"),
             survivor("p:2", "Named once", swallowed=None),
             survivor("p:3", "Old name", length_miles=1.0),
             survivor("p:4", "Old name"),
@@ -880,10 +916,10 @@ def test_parity_explains_a_name_a_line_inherits_from_another_swallowed_copy_and_
     }
     new = {
         "features": [
-            survivor("p:1", "BROOKFIELD PARK BLUE TRAIL"),
+            survivor("p:1", "VANDERBILT MOTOR PARKWAY"),
             survivor("p:2", "Named twice", swallowed=None),
             survivor("p:3", "New name", length_miles=2.0),
-            survivor("p:4", "New name", swallowed="nyc_dot_greenways"),
+            survivor("p:4", "New name", swallowed="nyc_cscl_paths"),
         ]
     }
 

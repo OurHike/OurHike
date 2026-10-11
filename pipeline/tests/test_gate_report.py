@@ -49,6 +49,38 @@ def test_parity_json_names_every_field_of_a_record_the_new_path_loses(monkeypatc
     assert next(d for d in result["differences"] if d["what"] == "order")["fields"] == ["order"]
 
 
+def test_parity_json_names_the_record_an_exact_copy_copies_and_the_fields_they_differ_on(monkeypatch, tmp_path):
+    """Standard S3's two facts (result_document()): the record on the other side an exact copy copies, and the field
+    paths the two differ on. Here the copy differs from its partner in its key alone, then in a capacity the dbt
+    writer changed too. A difference no exact-copy reason explains, and a partner its side lacks, get neither, and
+    --keys-only keeps both facts while it drops every record."""
+    explained = {
+        "spotify_id b2": parity.POI_REASONS["exact_copy"],
+        "spotify_id a2": "expected by a test, as no copy",
+        "spotify_id b3": parity.POI_REASONS["exact_copy"],
+    }
+    options = {
+        "explained": lambda old, new: explained,
+        "copies": lambda old, new: {"spotify_id b2": "b", "spotify_id a2": "a", "spotify_id b3": "gone"},
+    }
+    old = {"episodes": [A, B, {**B, "spotify_id": "b2"}, {**A, "spotify_id": "a2"}, {**B, "spotify_id": "b3"}]}
+
+    _, result = _run(monkeypatch, tmp_path, old, {"episodes": [A, B]}, **options)
+    by_what = {item["what"]: item for item in result["explained"]}
+    assert (by_what["spotify_id b2"]["exact_copy_of"], by_what["spotify_id b2"]["differs_from_exact_copy"]) == (
+        "spotify_id b",
+        ["spotify_id"],
+    )
+    assert "exact_copy_of" not in by_what["spotify_id a2"] and "exact_copy_of" not in by_what["spotify_id b3"]
+
+    _, result = _run(monkeypatch, tmp_path, old, {"episodes": [A, {**B, "capacity": 7}]}, **options)
+    copy = next(item for item in result["explained"] if item["what"] == "spotify_id b2")
+    assert copy["differs_from_exact_copy"] == ["capacity", "spotify_id"]
+    kept = parity.without_records(result)["explained"]
+    assert next(item for item in kept if item["what"] == "spotify_id b2")["differs_from_exact_copy"] == ["capacity", "spotify_id"]
+    assert all("old" not in item and "new" not in item for item in kept)
+
+
 def test_parity_json_writes_an_old_side_refusal_before_the_same_exit(monkeypatch, tmp_path):
     def refuses():
         raise SystemExit("export_fake.py refuses its input, so it would publish nothing")
@@ -179,6 +211,190 @@ def test_an_explained_safety_difference_is_listed_for_approval_on_its_own_row():
     rows, _, _ = key_rows(TODAY, DBT, {"poi_water": _result("poi_water", "poi_water.geojson", explained=[explained])})
     water = next(row for row in rows if row.key == "poi_water.geojson")
     assert (water.verdict, water.safety) == ("equal_apart_from_listed", ["confidence"])
+    assert water.listed[0].open_because == "it changes confidence, and its reason is not an exact copy's"
+
+
+# --- standard S3: which listed differences come to the maintainer -----------------------------------------------
+
+#: The changed fields of monthly run 31's two exact-copy groups and its seasonal taps, as its keys-only results list
+#: them (field names only, read 2026-10-11 from the run's parity artifact): a restroom copy and a line copy today's
+#: file alone holds, and a tap the dbt writer's alone holds.
+RESTROOM_COPY_FIELDS = [
+    *("geometry.coordinates", "geometry.type", "properties.confidence", "properties.id", "properties.lat"),
+    *("properties.lon", "properties.name", "properties.poi_type", "properties.site_id", "properties.site_name"),
+    *("properties.site_role", "properties.source", "properties.source_feature_id", "properties.trail_id", "type"),
+]
+LINE_COPY_FIELDS = [
+    *("geometry.coordinates", "geometry.type", "properties.blaze_color", "properties.id", "properties.length_miles"),
+    *("properties.name", "properties.source", "properties.trail_status", "type"),
+]
+SEASONAL_TAP_FIELDS = [
+    *("geometry.coordinates", "geometry.type", "properties.confidence", "properties.description", "properties.id"),
+    *("properties.lat", "properties.lon", "properties.poi_type", "properties.source", "properties.source_feature_id"),
+    *("properties.trail_id", "properties.water_caution", "type"),
+]
+#: What a restroom copy and the copy staging kept differ on: their ids, and the site today's file folds them into.
+RESTROOM_COPY_DIFFERS = [
+    *("properties.id", "properties.site_id", "properties.site_name", "properties.site_role"),
+    "properties.source_feature_id",
+]
+NEARBY = [
+    TodayKey("nearby_poi.geojson", "artifact", "publish.collect_artifacts(), from nearby_manifest.json"),
+    TodayKey("nearby_trails.geojson", "artifact", "publish.collect_artifacts(), from nearby_trails_manifest.json"),
+]
+NEARBY_DBT = [
+    DbtKey("nearby_poi.geojson", "nearby_poi_geojson", "model.ourhike.pub_nearby_poi", "nearby_poi.geojson"),
+    DbtKey("nearby_trails.geojson", "nearby_trails_geojson", "model.ourhike.pub_nearby_trails", "nearby_trails.geojson"),
+]
+
+
+def _explained(what: str, fields: list[str], reason: str, held_by: str = "old", **facts) -> dict:
+    """One explained difference as a --keys-only result writes it: the key, the changed fields, the side holding it."""
+    return {"what": what, "fields": fields, "reason": reason, "held_by": [held_by], **facts}
+
+
+def _nearby(poi: list[dict], trails: list[dict]) -> dict:
+    rows, _, _ = key_rows(
+        NEARBY,
+        NEARBY_DBT,
+        {
+            "nearby_poi": _result("nearby_poi", "nearby_poi.geojson", ordered=False, explained=poi),
+            "nearby_trails": _result("nearby_trails", "nearby_trails.geojson", ordered=False, explained=trails),
+        },
+    )
+    return {row.key: row for row in rows}
+
+
+def test_an_explained_difference_on_no_safety_field_is_accepted_without_row_review():
+    renamed = _explained("properties.id x", ["properties.name"], "expected by decision 40", held_by="new")
+    row = _nearby([renamed], [])["nearby_poi.geojson"]
+
+    assert (row.verdict, row.safety, row.safety_accepted, row.listed[0].open_because) == (
+        "equal_apart_from_listed",
+        [],
+        [],
+        None,
+    )
+
+
+def test_an_exact_copy_carrying_its_originals_safety_values_is_accepted_without_row_review():
+    """Standard S3: a restroom copy staging removed, whose kept copy the dbt writer publishes with the same confidence,
+    differs from it in ids and site alone, so a hiker sees the same value and no row comes to the maintainer."""
+    copy = _explained(
+        "properties.id nyc_public_restrooms:row-b",
+        RESTROOM_COPY_FIELDS,
+        parity.POI_REASONS["exact_copy"],
+        exact_copy_of="properties.id nyc_public_restrooms:row-a",
+        differs_from_exact_copy=RESTROOM_COPY_DIFFERS,
+    )
+    rows = _nearby([copy], [])
+    row = rows["nearby_poi.geojson"]
+
+    assert (row.safety, row.safety_accepted, row.listed[0].open_because) == ([], ["confidence"], None)
+    markdown = gate_report.render_markdown(list(rows.values()), [], [], {"parity_dir": "d", "dbt_manifest": "m", "results": 2})
+    (line,) = [line for line in markdown.split("\n") if "row-b" in line]
+    assert "accepted without row review by standard S3" in line
+    assert "approve each row" not in line and "**safety" not in line
+    assert "and 0 more carry an explained difference on one that stays open" in markdown
+    assert "1 explained difference(s) on a safety field are accepted without row review by standard S3" in markdown
+
+
+def test_an_exact_copy_whose_safety_value_differs_from_its_originals_stays_open_and_names_it():
+    """The copy is an exact copy in today's file, and the record that still publishes now carries another confidence:
+    a hiker would see a different value, so the row comes to the maintainer, naming the field and the record."""
+    copy = _explained(
+        "properties.id nyc_public_restrooms:row-b",
+        RESTROOM_COPY_FIELDS,
+        parity.POI_REASONS["exact_copy"],
+        exact_copy_of="properties.id nyc_public_restrooms:row-a",
+        differs_from_exact_copy=[*RESTROOM_COPY_DIFFERS, "properties.confidence"],
+    )
+    rows = _nearby([copy], [])
+    row = rows["nearby_poi.geojson"]
+
+    assert (row.safety, row.safety_accepted) == (["confidence"], [])
+    assert row.listed[0].open_because == (
+        "its confidence differs from that of properties.id nyc_public_restrooms:row-a, the record it is an exact copy of"
+    )
+    markdown = gate_report.render_markdown(list(rows.values()), [], [], {"parity_dir": "d", "dbt_manifest": "m", "results": 2})
+    (line,) = [line for line in markdown.split("\n") if "row-b" in line]
+    assert "(**safety: confidence**, open because its confidence differs" in line and "approve each row on its own" in line
+    assert "and 1 more carry an explained difference on one that stays open" in markdown
+
+
+def test_an_exact_copy_parity_names_no_original_for_stays_open():
+    """A result written before S3, or a partner parity.py could not find once on its side, carries no partner: what a
+    hiker sees is unread, so the row stays open rather than being accepted on the reason's word."""
+    copy = _explained("properties.id nyc_public_restrooms:row-b", RESTROOM_COPY_FIELDS, parity.POI_REASONS["exact_copy"])
+    row = _nearby([copy], [])["nearby_poi.geojson"]
+
+    assert row.safety == ["confidence"]
+    assert "names no record it copies" in row.listed[0].open_because
+
+
+def test_a_copy_on_a_safety_field_another_reason_explains_stays_open_whatever_its_partner():
+    """Only an exact-copy reason can accept a safety field: decision 65's taps carry a new confidence, which is a value
+    a hiker sees change, so naming a partner does not accept them."""
+    tap = _explained(
+        "properties.id oprhp_facilities:13789",
+        SEASONAL_TAP_FIELDS,
+        parity.POI_REASONS["seasonal_tap"],
+        held_by="new",
+        exact_copy_of="properties.id oprhp_facilities:13790",
+        differs_from_exact_copy=["properties.id"],
+    )
+    row = _nearby([tap], [])["nearby_poi.geojson"]
+
+    assert row.safety == ["confidence"]
+    assert row.listed[0].open_because == "it changes confidence, and its reason is not an exact copy's"
+
+
+def test_monthly_run_31s_two_copy_groups_are_accepted_and_its_seasonal_taps_still_come_to_the_maintainer():
+    """Run 31's safety-field groups as S3 reads them once parity.py names each copy's partner: nearby_poi's 2 NYC
+    restroom copies on confidence and nearby_trails' 57 copied lines on trail_status pass without row review (a line
+    copy differs from the line the dbt writer keeps in its id alone); decision 65's 105 taps change a confidence a
+    hiker sees and stay open, so nearby_poi.geojson still carries an open safety flag and nearby_trails.geojson none."""
+    restrooms = [
+        _explained(
+            f"properties.id nyc_public_restrooms:row-copy-{n}",
+            RESTROOM_COPY_FIELDS,
+            parity.POI_REASONS["exact_copy"],
+            exact_copy_of=f"properties.id nyc_public_restrooms:row-kept-{n}",
+            differs_from_exact_copy=RESTROOM_COPY_DIFFERS,
+        )
+        for n in range(2)
+    ]
+    taps = [
+        _explained(f"properties.id oprhp_facilities:{n}", SEASONAL_TAP_FIELDS, parity.POI_REASONS["seasonal_tap"], "new")
+        for n in range(105)
+    ]
+    lines = [
+        _explained(
+            f"properties.id nyc_dot_greenways:row-copy-{n}",
+            LINE_COPY_FIELDS,
+            parity.NETWORK_COPY_REASON,
+            exact_copy_of=f"properties.id nyc_dot_greenways:row-kept-{n}",
+            differs_from_exact_copy=["properties.id"],
+        )
+        for n in range(57)
+    ]
+    rows = _nearby([*restrooms, *taps], lines)
+    poi, trails = rows["nearby_poi.geojson"], rows["nearby_trails.geojson"]
+
+    assert sum(bool(item.safety) and item.open_because is None for item in poi.listed) == 2
+    assert {item.reason for item in poi.listed if item.open_because} == {parity.POI_REASONS["seasonal_tap"]}
+    assert sum(bool(item.open_because) for item in poi.listed) == 105
+    assert (poi.safety, poi.safety_accepted) == (["confidence"], ["confidence"])
+    assert all(item.open_because is None for item in trails.listed)
+    assert (trails.safety, trails.safety_accepted) == ([], ["trail_status"])
+    markdown = gate_report.render_markdown(list(rows.values()), [], [], {"parity_dir": "d", "dbt_manifest": "m", "results": 2})
+    assert "59 explained difference(s) on a safety field are accepted without row review by standard S3" in markdown
+    assert "### `nearby_trails.geojson`\n" in markdown, "no safety flag on a key whose only safety rows S3 accepts"
+
+
+def test_the_exact_copy_reasons_are_the_two_staging_dedupe_reasons_and_each_family_giving_one_names_its_partner():
+    assert {parity.NETWORK_COPY_REASON, parity.POI_REASONS["exact_copy"]} == parity.EXACT_COPY_REASONS
+    assert {name for name, family in parity.FAMILIES.items() if family.copies} == {"nearby_poi", "nearby_trails"}
 
 
 def test_status_is_a_safety_field_in_a_conditions_file_and_not_in_challenges_json():

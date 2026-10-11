@@ -1391,6 +1391,68 @@ def test_monthly_run_30s_restrooms_are_a_removed_copy_its_dissolved_site_and_a_w
     }
 
 
+def _gate_row(old: dict, new: dict):
+    """nearby_poi.geojson's gate_report row for one comparison, as parity.py --keys-only writes it: standard S3 end
+    to end, from the family's own explained() and copies()."""
+    import gate_report
+
+    family = parity.FAMILIES["nearby_poi"]
+    found = parity.differences(old, new, family)
+    reasons = family.explained(old, new)
+    outcome = "no_differences" if set(reasons) >= {what for what, _, _ in found} else "differences"
+    document = parity.result_document(
+        "nearby_poi",
+        family,
+        Path("nearby_poi.geojson"),
+        outcome,
+        0 if outcome == "no_differences" else 1,
+        old=old,
+        new=new,
+        found=found,
+        reasons=reasons,
+        copies=family.copies(old, new),
+    )
+    today = [gate_report.TodayKey("nearby_poi.geojson", "artifact", "x")]
+    dbt = [gate_report.DbtKey("nearby_poi.geojson", "e", "model.ourhike.pub_nearby_poi", "nearby_poi.geojson")]
+    (row,) = gate_report.key_rows(today, dbt, {"nearby_poi": parity.without_records(document)})[0]
+    return row
+
+
+def test_a_removed_restroom_copy_names_the_copy_staging_kept_and_passes_s3_when_its_confidence_is_the_same():
+    """Run 30's Heckscher Playground pair: the copy today's file publishes beside the kept one differs from the kept
+    one as the dbt writer publishes it in ids and site alone, so standard S3 accepts it without row review."""
+    kept = _restroom("row-23sh~w2ra_8a88", "Heckscher Playground", -73.9771, 40.76837)
+    copy = _restroom("row-r5j3-f32v~9j7x", "Heckscher Playground", -73.9771, 40.76837)
+    old, new = _with_sites([kept, copy]), _with_sites([kept])
+
+    assert parity._poi_copies(old, new) == {f"properties.id {copy['id']}": kept["id"]}
+    row = _gate_row(old, new)
+    (listed,) = [item for item in row.listed if item.what == f"properties.id {copy['id']}"]
+    assert listed.exact_copy_of == f"properties.id {kept['id']}"
+    assert set(listed.differs_from_exact_copy) <= {
+        "properties.id",
+        "properties.source_feature_id",
+        *(f"properties.{name}" for name in parity.SITE_PROPERTIES),
+    }
+    assert (listed.safety, listed.open_because, row.safety, row.safety_accepted) == (["confidence"], None, [], ["confidence"])
+
+
+def test_a_removed_restroom_copy_whose_kept_copy_now_publishes_another_confidence_stays_open():
+    """The same pair with the kept copy at another confidence in the dbt writer's file: the hiker would see the copy's
+    `high` become `low`, so the copy's row comes to the maintainer, and so does the kept one's, which nothing explains."""
+    kept = _restroom("row-a", "Heckscher Playground", -73.9771, 40.76837)
+    copy = _restroom("row-b", "Heckscher Playground", -73.9771, 40.76837)
+    old, new = _with_sites([kept, copy]), _with_sites([{**kept, "confidence": "low"}])
+
+    row = _gate_row(old, new)
+    (listed,) = [item for item in row.listed if item.what == f"properties.id {copy['id']}"]
+    assert "properties.confidence" in listed.differs_from_exact_copy
+    assert listed.open_because == (
+        f"its confidence differs from that of properties.id {kept['id']}, the record it is an exact copy of"
+    )
+    assert row.verdict == "differs" and row.safety == ["confidence"]
+
+
 def test_a_site_the_dbt_writer_draws_otherwise_than_the_copys_removal_leaves_is_not_explained():
     """The kept copy's site is explained only as group_place_sites() redraws it without the copy: a site field the
     new file sets otherwise is still a difference, and so is any other property."""

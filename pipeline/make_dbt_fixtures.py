@@ -8352,6 +8352,9 @@ CLUB_POINT_FIXTURES = {
         ),
         {
             "OBJECTID": (1, 2),
+            # The measured key, (AmenityID, DateCreated, the shape) (its row's key_comment), kept distinct.
+            "AmenityID": ("AMT-fixture-1", "AMT-fixture-2"),
+            "DateCreated": (1759000000000, 1759086400000),
             "AmenityType": ("Drinking Water", "Shelter"),
             "Description": ("Fixture drinking water", "Fixture shelter"),
             "Creator": ("fixture person", "fixture person"),

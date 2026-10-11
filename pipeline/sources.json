@@ -18611,6 +18611,12 @@
       "person_fields_comment": "Read off the layer's live field list on 2026-10-09: Creator and Editor are the commission's own editor account fields (filled on 2,661 and 2,824 rows), so the extract leaves each out of the fields it asks for and it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59).",
       "id_field": "OBJECTID",
       "id_comment": "`OBJECTID`, the server's row id: distinct on 2,929 of 2,929, read 2026-10-09. AmenityID is not a key (2,631 distinct, null or empty on 198, 'AMT-02424' on 12 rows), and the geometry is distinct on 2,916, so a base model would key on OBJECTID with the geometry (decision 40). The layer has no GlobalID.",
+      "key_fields": [
+        "AmenityID",
+        "DateCreated",
+        "geometry"
+      ],
+      "key_comment": "(AmenityID, DateCreated, the shape): distinct on 2,929 of 2,929 rows, with no exact copies, measured 2026-10-11 by reading every row's attributes (Creator and Editor never requested) and every vertex at 6 decimal places. Of every single field and every pair of the layer's 11 fields that are neither a person's nor a row id, each tested with and without the shape, this is the only unique set (spike_table_keys.py's analyse(), with every pair tested beside it): the shape alone is distinct on 2,916, AmenityID on 2,631 (null or empty on 198), DateCreated on 993 (null on 438). OBJECTID stays `id_field`; make_dbt_staging.py publishes a point under this key instead, because a reload mints OBJECTID again (decision 40).",
       "name_field": "Description",
       "type_field": "AmenityType",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's ngpc points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: services5.arcgis.com's robots.txt answered 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies; two seconds or more between requests to one host; the layer's metadata, returnCountOnly, returnExtentOnly in EPSG:4326, the statistics fingerprint, the service's item, and every row's attributes and geometry for the key, each person field left out of every request. Registered by hand.",

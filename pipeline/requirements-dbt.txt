@@ -63,7 +63,7 @@ deepdiff==8.6.2
     # via dbt-common
 diff-cover==10.5.1
     # via sqlfluff
-duckdb==1.5.5
+duckdb==1.5.6
     # via
     #   -r requirements-dbt.in
     #   dbt-duckdb
@@ -183,11 +183,11 @@ six==1.17.0
     # via python-dateutil
 snowplow-tracker==1.1.0
     # via dbt-core
-sqlfluff==4.3.0
+sqlfluff==4.4.0
     # via
     #   -r requirements-dbt.in
     #   sqlfluff-templater-dbt
-sqlfluff-templater-dbt==4.3.0
+sqlfluff-templater-dbt==4.4.0
     # via -r requirements-dbt.in
 sqlglot==30.17.0
     # via metricflow

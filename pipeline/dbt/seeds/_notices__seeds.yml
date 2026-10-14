@@ -1,9 +1,9 @@
 version: 2
 
-# Decision 53's phase C: the club notice sources' seeds. Five are reviewed by
+# Decision 53's phase C: the club notice sources' seeds. Six are reviewed by
 # hand row by row (notice_source_fields, notice_status_values,
-# notice_category_values, decision 67's notice_hazard_areas and decision 76's
-# notice_states), one is a
+# notice_category_values, decision 67's notice_hazard_areas, decision 76's
+# notice_states and Q3's notice_steward_areas), one is a
 # person's mark on a notice (notice_marks), and one is written by
 # pipeline/generate_notice_models.py from the extract's own declarations
 # (notice_readers), which tests/test_generated_notice_models.py holds to what
@@ -208,6 +208,36 @@ seeds:
         description: A category value that means the hazard is there, as the source writes it; empty for every row.
       - name: why
         description: The evidence, quoted from the source's sources.json notes or the inventory's saved reads.
+  - name: notice_steward_areas
+    description: >
+      A notice source whose points sit inside its own steward's areas, and
+      the layer of those areas (the maintainer's answer to Q3, poll of
+      2026-10-11: "a status point inside exactly one of its steward's own
+      areas takes that area"). int_closures__club_notices' rule 4 gives such
+      a notice, where its own geometry is a point inside exactly one area of
+      that layer, the area as its place; inside none or several it keeps its
+      point. The areas layer is the same steward's (sources.json's
+      `steward`, which tests/test_generated_notice_models.py holds), rides a
+      notices leg so the hourly build holds it, and places a point only
+      while it may publish itself (int_closures__steward_areas).
+      pipeline/generate_notice_models.py stages each layer named here in the
+      areas shape rather than as notices. A source with no row keeps its own
+      geometry, which is the rule for every source but those listed.
+    config:
+      column_types:
+        source_key: varchar
+        areas_source_key: varchar
+        why: varchar
+    columns:
+      - name: source_key
+        description: The notice source's sources.json key.
+        data_tests: [not_null, unique]
+      - name: areas_source_key
+        description: The sources.json key of the layer of its steward's own areas.
+        data_tests: [not_null]
+      - name: why
+        description: Who decided it, and the measurement it rests on.
+        data_tests: [not_null]
   - name: notice_marks
     description: >
       A person's mark on one notice: `lifted` ends a notice that a feed's

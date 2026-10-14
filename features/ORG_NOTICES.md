@@ -103,7 +103,12 @@ an area grown 100 m outward and simplified at 100 m so that it still covers ever
 of the source's, a line or a point simplified at 10 m
 (`pipeline/dbt/models/publish/pub_conditions_notices.sql` says why). It is the source's
 shape, never one inferred from anything else, so it keeps the rule below. The two older
-files never carry it.
+files never carry it. One exception keeps it a shape the steward published (the
+maintainer's answer to Q3, decision 185, 2026-10-11): a notice whose own geometry is a
+point inside exactly one of its steward's own areas carries that area, a layer of the same
+steward's (`pipeline/dbt/seeds/notice_steward_areas.csv`;
+`int_closures__club_notices.sql`'s rule 4 holds the rule and its measurement). Florida's
+park statuses, placed by FDEP's park boundaries, are the one source it names.
 
 **ATC's rows become `at_miles` and nothing about their behaviour changes.** That arm is
 the existing mechanism, named. The migration is mechanical and the client's mile

@@ -260,7 +260,9 @@ models:
       or category says closed and its own end has not passed, whether or not
       its own start has come, and `held_because` set where the notice may not
       publish as current. Nothing is dropped here; the finals leave out a
-      held row. Place is the source's own geometry only.
+      held row. Place is the source's own geometry, but for a point inside
+      exactly one of its steward's own areas, which takes that area (rule 4,
+      the maintainer's answer to Q3, poll of 2026-10-11).
     columns:
       - name: notice_id
         description: "`<source key>:<the source's own id>`, unique across every source."
@@ -300,9 +302,43 @@ models:
           base model before the dedupe; int_closures__gate holds a source with
           any over one (decision 40 allows only exact copies).
       - name: geom_geojson
-        description: The source's own geometry, in OGC:CRS84 as GeoJSON, or null where it gives none.
+        description: >
+          The notice's place, in OGC:CRS84 as GeoJSON: the source's own
+          geometry, or, for a point inside exactly one of its steward's own
+          areas, that area's own outline (`placed_by` names it); null where
+          the source gives none.
+      - name: placed_by
+        description: >
+          The steward's own area a point lies inside and takes as its place,
+          `<areas source key>:<area id>` (int_closures__steward_areas); null
+          for every notice that keeps its own geometry, a point inside none
+          or two or more areas among them.
       - name: updated_at
         description: The source's own edit stamp, ISO 8601 UTC, or null where it gives none; never the load time.
+
+  - name: int_closures__steward_areas
+    description: >
+      The areas that may place a notice's point (int_closures__club_notices'
+      rule 4; the maintainer's answer to Q3, poll of 2026-10-11): one row per
+      notice source seeds/notice_steward_areas.csv links to a layer of its own
+      steward's areas, and per area of that layer whose layer may publish,
+      whose key one raw row holds, and which is a polygon. Each carries the
+      area's own outline as GeoJSON text.
+    columns:
+      - name: steward_area_key
+        description: The notice source and the area's key.
+        data_tests: [not_null, unique]
+      - name: source_key
+        description: The notice source whose points the area may place.
+        data_tests: [not_null]
+      - name: areas_source_key
+        description: The sources.json key of the layer the area belongs to.
+        data_tests: [not_null]
+      - name: area_id
+        description: The area's own id in its layer (the layer's measured key, FDEP's SITE_NAME).
+      - name: geom_geojson
+        description: The area's own outline, as drawn, in OGC:CRS84 as GeoJSON.
+        data_tests: [not_null]
 
   - name: int_closures__window_carried
     description: >
@@ -1955,9 +1991,10 @@ unit_tests:
       Closed closes, even before its start; a Missouri trailhead's Open is
       held and its Closed is a warning; Michigan's '-1' is held on both
       layers (P4) and its Temporarily Closed values close, compared without
-      case or surrounding space; Florida's closed park closes (P5, at its
-      own point), its open park is held and its closed campground is a
-      warning; the Great Allegheny Passage's Hidden is held whatever its
+      case or surrounding space; Florida's closed park closes (P5; with no
+      steward's areas given here it keeps its own point, which the
+      placement test below moves), its open park is held and its closed
+      campground is a warning; the Great Allegheny Passage's Hidden is held whatever its
       category says, as is its Cleared, and its Fully Obstructed closes (P6);
       NETT's bridges, a layer with no status field, close through the seed's
       empty value (P11); VTrans's isActive 0 is held. NGPC's Cowboy Trail
@@ -2079,7 +2116,7 @@ unit_tests:
           - {source_key: 'mi_dnr_trail_temporary_closures', status_value: 'Temporarily Closed Due To Trail Maintenance Or Repair', reads_as: 'closes_trail', why: 'As ''Temporarily Closed'': 6 of 207 on 2026-10-09'}
           - {source_key: 'mi_dnr_trail_temporary_reroutes', status_value: '-1', reads_as: 'not_current', why: 'As mi_dnr_trail_temporary_closures'' ''-1'' (the maintainer''s P4 answer, poll of 2026-10-11): 8 of the 11 reroutes on 2026-10-09, every one Motorized with Hiking ''No'' (the read''s saved rows, counted 2026-10-11). ''Temporarily Open Reroute'' (2) and a null status (1) are not listed: a reroute is a detour to follow, a warning'}
           - {source_key: 'fl_state_parks_day_use_status', status_value: 'Open', reads_as: 'not_current', why: 'PARK_STATUS ''Open'' 141 of 176 on 2026-10-09 (the row''s notes): an open park tells a hiker nothing'}
-          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Hurricane/Tropical Storm', reads_as: 'closes_trail', why: 'PARK_STATUS ''Closed-Hurricane/Tropical Storm'' 35 of 176 on 2026-10-09 (the row''s notes): the park closed whole, by its own staff. The maintainer''s answer to page 01''s P5 (poll of 2026-10-11, frame A) closes a closed park''s trails until the park''s own status reopens it. The layer is points with no park id (read live 2026-10-11), so the closure is placed at the park''s own point and closes no trail line (int_closures__club_notices'' rule 4)'}
+          - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Hurricane/Tropical Storm', reads_as: 'closes_trail', why: 'PARK_STATUS ''Closed-Hurricane/Tropical Storm'' 35 of 176 on 2026-10-09 (the row''s notes): the park closed whole, by its own staff. The maintainer''s answer to page 01''s P5 (poll of 2026-10-11, frame A) closes a closed park''s trails until the park''s own status reopens it. The layer is points with no park id (read live 2026-10-11), so the closure''s place is FDEP''s own boundary of the park where its point lies inside exactly one, and its point otherwise (the same poll''s Q3; seeds/notice_steward_areas.csv, int_closures__club_notices'' rule 4)'}
           - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Construction/Repair', reads_as: 'closes_trail', why: 'As ''Closed-Hurricane/Tropical Storm'': one of the eight Closed values of PARK_STATUS''s domain (read live 2026-10-11), on no row on 2026-10-09'}
           - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Fire/Smoke', reads_as: 'closes_trail', why: 'As ''Closed-Construction/Repair'''}
           - {source_key: 'fl_state_parks_day_use_status', status_value: 'Closed-Flood', reads_as: 'closes_trail', why: 'As ''Closed-Construction/Repair'''}
@@ -2101,6 +2138,17 @@ unit_tests:
           - {source_key: 'gap_trail_alerts', category_value: 'Fully Obstructed', reads_as: 'closes_trail', outranks_status: 'false', why: 'ACF `status` ''Fully Obstructed'' 2 of 65 on 2026-10-09 (the row''s notes), 1 Visible and 1 Hidden (the read''s saved rows, counted 2026-10-11): the trail is blocked. Page 01''s proposal, ''Fully Obstructed as closed'', which the maintainer''s P6 answer left standing; ''Partially Obstructed'' (9) is not listed, so it is a warning nobody reviewed. Its own Hidden holds it whatever this says (outranks_status false), as the maintainer''s P6 answer reads Hidden: 1 of the 2 is Hidden'}
           - {source_key: 'ngpc_cowboy_trail_improvements', category_value: 'Impassable', reads_as: 'closes_trail', outranks_status: 'true', why: 'Condition ''Impassable'' 2 of 29 (read live 2026-10-11, the same 29 sections as the saved read of 2026-10-09), both Road_Status ''Closed'': Hohman St in Oakdale to 525th Ave in Neligh, and Neligh to Clearwater, the Elkhorn bridge out (edited 2026-03-05). The section cannot be passed, so it closes the trail however Road_Status reads: the settlement the row''s reaches_hikers_comment names, which the maintainer''s P7+P8 answer (poll of 2026-10-11) ships'}
           - {source_key: 'ngpc_cowboy_trail_improvements', category_value: 'Not Passable', reads_as: 'closes_trail', outranks_status: 'true', why: 'Condition ''Not Passable'' 1 of 29 (read live 2026-10-11): Niobrara Bridge Parking Lot to Niobrara Bridge, whose Road_Status reads ''Open'' (edited 2024-05-28), the section contradicting itself that page 01 says must never show as open. As ''Impassable'', it closes the trail however Road_Status reads. ''Passable'' (2 of 29) is another value and is not listed'}
+      - input: ref('int_closures__steward_areas')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as steward_area_key,
+              cast(null as varchar) as source_key,
+              cast(null as varchar) as areas_source_key,
+              cast(null as varchar) as area_key,
+              cast(null as varchar) as area_id,
+              cast(null as varchar) as geom_geojson
+          where false
     expect:
       rows:
         - {notice_id: 'usfs_r06_fire_closure_lines:g01', obstructs_trail: null, review_state: 'not_reviewed', held_because: null, title: 'Fixture Fire Area Closure', locality: null, geom_geojson: null, updated_at: null}
@@ -2184,6 +2232,17 @@ unit_tests:
         rows: []
       - input: ref('notice_hazard_areas')
         rows: []
+      - input: ref('int_closures__steward_areas')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as steward_area_key,
+              cast(null as varchar) as source_key,
+              cast(null as varchar) as areas_source_key,
+              cast(null as varchar) as area_key,
+              cast(null as varchar) as area_id,
+              cast(null as varchar) as geom_geojson
+          where false
     expect:
       rows:
         - {notice_id: 'usfs_r06_fire_closure_lines:ends_yesterday', held_because: null, obstructs_trail: true, starts_on: null}
@@ -2196,6 +2255,80 @@ unit_tests:
         - {notice_id: 'usfs_r03_forest_orders:rescinded_yesterday', held_because: 'its own order was rescinded on 2026-10-04', obstructs_trail: null, starts_on: null}
         - {notice_id: 'usfs_r03_forest_orders:rescinded_today', held_because: null, obstructs_trail: null, starts_on: null}
         - {notice_id: 'usfs_r03_forest_orders:rescinded_tomorrow', held_because: null, obstructs_trail: null, starts_on: null}
+
+  - name: int_closures__club_notices_places_a_point_inside_exactly_one_of_its_stewards_own_areas_by_that_area
+    description: >
+      Rule 4, the maintainer's answer to Q3 (poll of 2026-10-11, "Its own
+      boundary"): a point of a source int_closures__steward_areas gives areas
+      for, inside exactly one of them, takes that area's own outline as its
+      place, word for word, and names it in `placed_by`, whichever of the
+      areas it is; a point inside two areas, and one inside none, keep their
+      own points; a line of the same source that crosses an area keeps its
+      line; and a point of another source inside the same area keeps its
+      point, because no area is given for its source (a campground is not
+      the park around it). Two fixture squares, A and B, overlap between lon
+      -82.42 and -82.40.
+    model: int_closures__club_notices
+    given:
+      - input: ref('int_closures__club_notices_unioned')
+        rows:
+          - {notice_key: 'p1', source_key: 'fl_state_parks_day_use_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-82.45,28.05]}', _loaded_at: '2026-10-11 00:00:00+00', source_id: 'inside_a', title: 'Fixture Park A', status: 'Closed-Hurricane/Tropical Storm'}
+          - {notice_key: 'p2', source_key: 'fl_state_parks_day_use_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-82.41,28.05]}', _loaded_at: '2026-10-11 00:00:00+00', source_id: 'inside_both', title: 'Fixture Park A and B', status: 'Closed-Hurricane/Tropical Storm'}
+          - {notice_key: 'p3', source_key: 'fl_state_parks_day_use_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-82.0,28.5]}', _loaded_at: '2026-10-11 00:00:00+00', source_id: 'inside_none', title: 'Fixture State Trail', status: 'Closed-Hurricane/Tropical Storm'}
+          - {notice_key: 'p4', source_key: 'fl_state_parks_day_use_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"LineString","coordinates":[[-82.55,28.05],[-82.35,28.05]]}', _loaded_at: '2026-10-11 00:00:00+00', source_id: 'a_line', title: 'Fixture Line', status: 'Closed-Hurricane/Tropical Storm'}
+          - {notice_key: 'p5', source_key: 'fl_state_parks_campground_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-82.45,28.05]}', _loaded_at: '2026-10-11 00:00:00+00', source_id: 'a_campground', title: 'Fixture Park A', status: 'Closed-Hurricane/Tropical Storm'}
+          - {notice_key: 'p6', source_key: 'fl_state_parks_day_use_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-82.35,28.05]}', _loaded_at: '2026-10-11 00:00:00+00', source_id: 'inside_b', title: 'Fixture Park B', status: 'Closed-Hurricane/Tropical Storm'}
+      - input: ref('int_closures__steward_areas')
+        rows:
+          - {steward_area_key: 'sa', source_key: 'fl_state_parks_day_use_status', areas_source_key: 'fl_state_parks_park_boundaries', area_key: 'a', area_id: 'Fixture Park A', geom_geojson: '{"type":"Polygon","coordinates":[[[-82.5,28.0],[-82.4,28.0],[-82.4,28.1],[-82.5,28.1],[-82.5,28.0]]]}'}
+          - {steward_area_key: 'sb', source_key: 'fl_state_parks_day_use_status', areas_source_key: 'fl_state_parks_park_boundaries', area_key: 'b', area_id: 'Fixture Park B', geom_geojson: '{"type":"MultiPolygon","coordinates":[[[[-82.42,28.0],[-82.3,28.0],[-82.3,28.1],[-82.42,28.1],[-82.42,28.0]]]]}'}
+      - input: ref('notice_status_values')
+        rows: []
+      - input: ref('notice_category_values')
+        rows: []
+      - input: ref('notice_hazard_areas')
+        rows: []
+    expect:
+      rows:
+        - {notice_id: 'fl_state_parks_day_use_status:inside_a', geom_geojson: '{"type":"Polygon","coordinates":[[[-82.5,28.0],[-82.4,28.0],[-82.4,28.1],[-82.5,28.1],[-82.5,28.0]]]}', placed_by: 'fl_state_parks_park_boundaries:Fixture Park A'}
+        - {notice_id: 'fl_state_parks_day_use_status:inside_both', geom_geojson: '{"type":"Point","coordinates":[-82.41,28.05]}', placed_by: null}
+        - {notice_id: 'fl_state_parks_day_use_status:inside_none', geom_geojson: '{"type":"Point","coordinates":[-82.0,28.5]}', placed_by: null}
+        - {notice_id: 'fl_state_parks_day_use_status:a_line', geom_geojson: '{"type":"LineString","coordinates":[[-82.55,28.05],[-82.35,28.05]]}', placed_by: null}
+        - {notice_id: 'fl_state_parks_campground_status:a_campground', geom_geojson: '{"type":"Point","coordinates":[-82.45,28.05]}', placed_by: null}
+        - {notice_id: 'fl_state_parks_day_use_status:inside_b', geom_geojson: '{"type":"MultiPolygon","coordinates":[[[[-82.42,28.0],[-82.3,28.0],[-82.3,28.1],[-82.42,28.1],[-82.42,28.0]]]]}', placed_by: 'fl_state_parks_park_boundaries:Fixture Park B'}
+
+  - name: int_closures__steward_areas_lets_only_a_publishable_one_version_polygon_of_a_linked_layer_place_a_point
+    description: >
+      Rule 4's areas: an area places a point only for the notice source the
+      link seed names its layer for, only while that layer may publish
+      itself (an outline never outruns its own licence or reaches_hikers),
+      only where its key is one raw row's (two outlines under one key are a
+      conflict, so neither places anything), and only where it is a Polygon
+      or a MultiPolygon. A held layer, an unlinked layer, a key two rows
+      share and a line each place nothing.
+    model: int_closures__steward_areas
+    given:
+      - input: ref('notice_steward_areas')
+        rows:
+          - {source_key: 'fixture_status', areas_source_key: 'fixture_boundaries', why: 'Fixture'}
+          - {source_key: 'other_status', areas_source_key: 'held_boundaries', why: 'Fixture'}
+      - input: ref('int_closures__steward_areas_unioned')
+        rows:
+          - {area_key: 'a1', source_key: 'fixture_boundaries', club: 'fixture', area_id: 'Park One', geom_geojson: '{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,0]]]}', key_versions: 1}
+          - {area_key: 'a2', source_key: 'fixture_boundaries', club: 'fixture', area_id: 'Park Two', geom_geojson: '{"type":"Polygon","coordinates":[[[2,0],[3,0],[3,1],[2,0]]]}', key_versions: 2}
+          - {area_key: 'a3', source_key: 'fixture_boundaries', club: 'fixture', area_id: 'Trail Three', geom_geojson: '{"type":"LineString","coordinates":[[4,0],[5,1]]}', key_versions: 1}
+          - {area_key: 'a4', source_key: 'fixture_boundaries', club: 'fixture', area_id: 'Park Four', geom_geojson: '{"type":"MultiPolygon","coordinates":[[[[6,0],[7,0],[7,1],[6,0]]]]}', key_versions: 1}
+          - {area_key: 'h1', source_key: 'held_boundaries', club: 'fixture', area_id: 'Held Park', geom_geojson: '{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,0]]]}', key_versions: 1}
+          - {area_key: 'u1', source_key: 'unlinked_boundaries', club: 'fixture', area_id: 'Unlinked Park', geom_geojson: '{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,0]]]}', key_versions: 1}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: 'fixture_boundaries', may_publish: true}
+          - {source_key: 'held_boundaries', may_publish: false}
+          - {source_key: 'unlinked_boundaries', may_publish: true}
+    expect:
+      rows:
+        - {source_key: 'fixture_status', areas_source_key: 'fixture_boundaries', area_id: 'Park One'}
+        - {source_key: 'fixture_status', areas_source_key: 'fixture_boundaries', area_id: 'Park Four'}
 
   - name: int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log
     description: >

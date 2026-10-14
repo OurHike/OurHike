@@ -29,7 +29,8 @@ dbt_internal_packages/
 /macros/generated_regions.sql
 # generate_notice_models.py: its owned_on_disk() claims every file under a
 # staging folder's notices/ (it deletes any there it does not write), its two
-# unions' parts by these two globs, and the six files after them.
+# notice unions' parts by these two globs, and the eight files after them,
+# the steward's areas union (2026-10-11) the last two.
 /models/staging/*/notices/
 /models/intermediate/closures/int_closures__club_notices_part_*_unioned.sql
 /models/intermediate/warnings/int_warnings__notice_wording_part_*_unioned.sql
@@ -39,3 +40,5 @@ dbt_internal_packages/
 /models/intermediate/warnings/_warnings__notice_wording_unioned.yml
 /seeds/notice_readers.csv
 /macros/generated_notice_regions.sql
+/models/intermediate/closures/int_closures__steward_areas_unioned.sql
+/models/intermediate/closures/_closures__steward_areas_unioned.yml

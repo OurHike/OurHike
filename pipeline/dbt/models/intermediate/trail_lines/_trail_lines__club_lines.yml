@@ -431,6 +431,25 @@ unit_tests:
       rows:
         - {trail_line_id: 'ngpc_cowboy_trail_improvements:niobrara-bridge', line_kind: 'club', trail_status: 'closed', trail_status_basis: 'stated', closure_kind: 'long_term', closure_reason: null, closure_source: null}
         - {trail_line_id: 'ngpc_cowboy_trail_improvements:rough', line_kind: 'club', trail_status: null, trail_status_basis: null, closure_kind: null, closure_reason: null, closure_source: null}
+  - name: trail_lines_overview_sketch_marks_a_club_group_its_own_layer_closed_and_no_other
+    model: int_trail_lines__network_overview_features
+    description: >
+      The overview sketch groups club lines as it groups the network's, by source, blaze and
+      status, so NGPC's closed Cowboy Trail sections are a feature of their own that carries
+      trail_status 'closed', which the phone's barred band reads at the sketch's zooms
+      (lib/closureStyle.ts's LONG_TERM_CLOSED_FILTER), and its other sections, whose status is
+      unknown, carry no trail_status member at all, never 'open'.
+    given:
+      - input: ref('int_trail_lines__network_overview_seam')
+        rows: []
+      - input: ref('int_trail_lines__club_overview')
+        rows:
+          - {"trail_line_id": "ngpc_cowboy_trail_improvements:elkhorn-bridge", "source_key": "ngpc_cowboy_trail_improvements", "blaze_color": "Unknown", "trail_status": "closed", "through_route": null, "seam_wkt": "LINESTRING (-98.0 42.1, -97.9 42.1)"}
+          - {"trail_line_id": "ngpc_cowboy_trail_improvements:rough", "source_key": "ngpc_cowboy_trail_improvements", "blaze_color": "Unknown", "trail_status": null, "through_route": null, "seam_wkt": "LINESTRING (-99.0 42.5, -98.9 42.5)"}
+    expect:
+      rows:
+        - {"feature_order": 0, "properties_json": "{\"source\":\"ngpc_cowboy_trail_improvements\",\"blaze_color\":\"Unknown\",\"line_kind\":\"club\",\"trail_status\":\"closed\"}", "coordinates_json": "[[[-98.0,42.1],[-97.9,42.1]]]"}
+        - {"feature_order": 1, "properties_json": "{\"source\":\"ngpc_cowboy_trail_improvements\",\"blaze_color\":\"Unknown\",\"line_kind\":\"club\"}", "coordinates_json": "[[[-99.0,42.5],[-98.9,42.5]]]"}
   - name: trail_lines_club_published_measures_both_lengths_on_the_wgs84_ellipsoid
     model: int_trail_lines__club_published
     description: >

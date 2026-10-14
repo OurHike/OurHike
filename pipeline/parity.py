@@ -1561,8 +1561,17 @@ POI_REASONS = {
         "expected by decision 65 (the maintainer's poll of 2026-10-04): a plumbed tap or fountain whose layer records "
         "no shutoff season, which export_nearby_poi.py holds back as a water holdback (sources.json's "
         "oprhp_water_holdback), ships as unconfirmed water carrying water_caution 'no_shutoff_season' "
-        "(int_points_of_interest__cautioned); only a record today's file lacks, of a layer whose taps "
-        "layer_rules names plumbed_water, at low confidence with that caution"
+        "(int_points_of_interest__cautioned), where its steward's own public flag shows it (decision 195); only a "
+        "record today's file lacks, of a layer whose taps layer_rules names plumbed_water, at low confidence with "
+        "that caution"
+    ),
+    "steward_hides": (
+        "expected by decision 195 (the maintainer's poll of 2026-10-14, 'A pin claims no more than its steward'): a "
+        "water or shelter point whose steward's own public flag does not show it is held "
+        "(int_points_of_interest__publishable, var poi_types_held_when_steward_hides), where export_nearby_poi.py "
+        "ships it at low confidence because that layer's flag sets confidence rather than filtering (sources.json's "
+        "public_flag_sets_confidence: NY Parks' ParksApp, 'N' on every one of its lean-tos); only a record today's "
+        "file holds and the dbt writer's lacks, of such a layer with no confidence floor, of a held type, rated low"
     ),
     "exact_copy_site": (
         "expected by decision 40, as an exact copy staging removes is: the POI is in both files and only its site "
@@ -1749,15 +1758,54 @@ def _seasonal_tap_reasons(old: dict, new: dict) -> dict[str, str]:
     }
 
 
+@functools.cache
+def _held_when_steward_hides() -> tuple[frozenset[str], frozenset[str]]:
+    """(the POI types decision 195 holds, the layers whose public flag sets confidence and that record no confidence
+    floor): dbt_project.yml's var poi_types_held_when_steward_hides, the rule's one home, and the sources.json entries
+    on which export_nearby_poi.public_verdict() rates low exactly the rows the flag does not show."""
+    import yaml
+
+    import export_nearby_poi
+
+    pipeline = Path(__file__).resolve().parent
+    variables = yaml.safe_load((pipeline / "dbt" / "dbt_project.yml").read_text(encoding="utf-8"))["vars"]
+    registry = export_nearby_poi.load_registry(pipeline / "sources.json")
+    layers = {
+        source["key"]
+        for source in export_nearby_poi.poi_sources(registry)
+        if source.get("public_field") and source.get("public_flag_sets_confidence") and not source.get("confidence_floor")
+    }
+    return frozenset(variables["poi_types_held_when_steward_hides"]), frozenset(layers)
+
+
+def _steward_hides_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The water and shelter points decision 195 holds that today's exporter ships at low confidence.
+
+    Only a record today's file holds and the new one lacks, of a layer whose public flag sets confidence and that
+    records no confidence floor, of a type the rule holds, rated low: the mark public_verdict() leaves on a row the
+    flag does not show. Anything else the new file lacks is still a difference."""
+    types, layers = _held_when_steward_hides()
+    new_ids = {_poi_id(feature) for feature in new.get("features") or []}
+    return {
+        f"properties.id {_poi_id(feature)}": POI_REASONS["steward_hides"]
+        for feature in old.get("features") or []
+        if _poi_id(feature) not in new_ids
+        and feature["properties"].get("source") in layers
+        and feature["properties"].get("poi_type") in types
+        and feature["properties"].get("confidence") == "low"
+    }
+
+
 def _nearby_poi_reasons(old: dict, new: dict) -> dict[str, str]:
-    """nearby_poi's five explained kinds: an exact copy staging removed, the site its removal dissolves, a whole
-    number written two ways, decision 31's new data, and decision 65's seasonal taps from a layer today's exporter
-    reads."""
+    """nearby_poi's six explained kinds: an exact copy staging removed, the site its removal dissolves, a whole
+    number written two ways, decision 31's new data, decision 65's seasonal taps from a layer today's exporter reads,
+    and decision 195's water and shelter points their steward does not show."""
     return {
         **_exact_copy_reasons(old, new),
         **_copy_site_reasons(old, new),
         **_whole_number_reasons(old, new),
         **_seasonal_tap_reasons(old, new),
+        **_steward_hides_reasons(old, new),
         **_new_source_reasons(old, new),
     }
 

@@ -351,6 +351,12 @@ vars:
   # export_nearby_poi.py's NETWORK_RING_EXEMPT_TYPES: the types the ring
   # never drops, because a hiker drives to them.
   poi_network_ring_exempt_types: ['parking', 'trailhead']
+  # Decision 195, "A pin claims no more than its steward" (the maintainer's
+  # poll of 2026-10-14): a point of these types that its steward's own public
+  # flag does not show is held (int_points_of_interest__publishable), where a
+  # layer whose flag sets confidence keeps its other types at low. No Python
+  # constant: export_nearby_poi.py, today's exporter, keeps them low.
+  poi_types_held_when_steward_hides: ['water', 'shelter']
   poi_trailhead_trail_radius_m: 100        # export_nearby_poi.py TRAILHEAD_TRAIL_RADIUS_M
   poi_description_earliest_year: 1800      # lib/poi_description.py EARLIEST_PLAUSIBLE_YEAR
   poi_description_latest_year: 2100        # lib/poi_description.py LATEST_PLAUSIBLE_YEAR

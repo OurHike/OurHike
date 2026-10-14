@@ -81,9 +81,11 @@ models:
       kept. The entry declares no poi_type: rows are typed one by one
       through export_nearby_poi.py's OPRHP_SUB_ASSET_TYPES, the
       poi_value_types seed, in int_points_of_interest__classified, which
-      keeps the 'Water Spigot' and 'Drinking Fountain' rows back as a water
-      holdback. ParksApp sets confidence and drops nothing; `Public_` (Y on
-      all 8,823) discriminates nothing.
+      types the 'Water Spigot' and 'Drinking Fountain' rows water since
+      decision 65. ParksApp sets confidence, and holds a water or shelter
+      point it does not show (decision 195, int_points_of_interest__publishable):
+      every spigot and every lean-to; `Public_` (Y on all 8,823)
+      discriminates nothing.
     columns:
       - name: poi_key
         description: >

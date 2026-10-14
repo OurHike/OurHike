@@ -20,6 +20,8 @@
 // No sheet is left open: the drive taps the point's cross until its sheet
 // opens - the proof the file, its reader and map/clubClosureTaps.ts have all
 // landed, since nothing else on screen says so - and closes it again.
+// club-closure-sheet.mjs is the same map with the greyed closure's sheet
+// left open.
 //
 // EVERY CLOSURE AND ORGANIZATION IS INVENTED (fixtures/clubClosures.mjs),
 // over Kansas farmland, and the file is answered on the wire before the app
@@ -28,8 +30,8 @@
 // (.claude/skills/pr-screenshot/SKILL.md): nothing is seeded but the camera,
 // and a CI browser has no location fix.
 import {
+  openClosureSheet,
   routeTrailClosures,
-  TRAIL_CLOSURES_CAMERA,
   trailClosureRows,
 } from './fixtures/clubClosures.mjs'
 
@@ -45,62 +47,14 @@ export const wait = 22000
 
 export const before = routeTrailClosures
 
-/** How long the drive taps the point closure before it gives up: the
- *  ceiling hazard-area-no-plan.mjs keeps for the same wait, on the same
- *  reasoning (nobody has timed it on a preview). */
-const TAP_FOR_MS = 45_000
-
-/** A lon/lat as a point on the map canvas at the camera: MapLibre's world is
- *  512 px a tile, so at zoom z a degree of longitude is 512 * 2^z / 360 px,
- *  and with no map padding the camera's centre is the canvas's centre
- *  (hazard-area-no-plan.mjs's canvasPoint). */
-function canvasPoint([lon, lat], box) {
-  const { center, zoom } = TRAIL_CLOSURES_CAMERA
-  const pxPerDegree = (512 * 2 ** zoom) / 360
-  const mercator = (degrees) =>
-    (Math.log(Math.tan(Math.PI / 4 + (degrees * Math.PI) / 360)) * 180) / Math.PI
-  return {
-    x: box.width / 2 + (lon - center[0]) * pxPerDegree,
-    y: box.height / 2 - (mercator(lat) - mercator(center[1])) * pxPerDegree,
-  }
-}
-
 export default async function drive(page) {
-  // lib/cameraMemory.ts's contract, as long-term-closures.mjs seeds it.
-  await page.evaluate((camera) => {
-    sessionStorage.setItem('ourhike:camera', JSON.stringify(camera))
-  }, TRAIL_CLOSURES_CAMERA)
-  await page.reload({ waitUntil: 'load' })
-
-  await page.getByRole('tab', { name: 'Map' }).click()
-  const canvas = page.locator('canvas.maplibregl-canvas').first()
-  await canvas.waitFor()
-  const box = await canvas.boundingBox()
-  if (box === null) throw new Error('the map canvas has no box to tap')
-  const position = canvasPoint(trailClosureRows().point.place.geometry.coordinates, box)
-
-  // Tap the bridge's cross until its sheet opens. A tap before the file, its
-  // reader and the closures' chunk have landed opens nothing, so tapping
-  // early costs nothing.
-  const sheet = page.getByRole('dialog', { name: 'Closure notice' })
-  const deadline = Date.now() + TAP_FOR_MS
-  while (!(await sheet.isVisible())) {
-    if (Date.now() > deadline) {
-      throw new Error(
-        `no "Closure notice" sheet after ${TAP_FOR_MS / 1000} s of taps on the ` +
-          'invented bridge closure: the closures did not draw, or something ' +
-          'drawn over the cross takes the tap',
-      )
-    }
-    try {
-      await canvas.click({ position, timeout: 5000 })
-    } catch (error) {
-      if (await sheet.isVisible()) break
-      throw error
-    }
-    await sheet.waitFor({ timeout: 1500 }).catch(() => undefined)
-  }
-  await sheet.getByText('Bridge out at Example Creek (example)').waitFor()
+  // The bridge's cross, until its sheet opens; then put the sheet away.
+  const { point } = trailClosureRows()
+  const sheet = await openClosureSheet(
+    page,
+    point.place.geometry.coordinates,
+    point.title,
+  )
   await sheet.getByRole('button', { name: 'Close' }).click()
   await sheet.waitFor({ state: 'hidden' })
 }

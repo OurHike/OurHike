@@ -6612,6 +6612,7 @@ function App() {
     selectedPoiId !== null ||
     line.mapScreen.lineSheet != null ||
     atc.mapScreen.atcUpdateSheet != null ||
+    atc.mapScreen.hazardAreaSheet != null ||
     atc.mapScreen.clubClosureSheet != null ||
     atc.mapScreen.noticeList != null ||
     workday.mapScreen.workdaySheet != null ||

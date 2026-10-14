@@ -1492,13 +1492,17 @@ export function MapView({
   // Decision 67's areas (#1805), under the same suppressions, and last in
   // line for a touch (map/hazardAreaTaps.ts's attachHazardTaps). No area,
   // no tap to wire.
-  const anyHazardArea = hazardAreas.length > 0
+  //
+  // KEYED ON THE LIST, as the club closures' tap below is and for its
+  // reason: keyed on whether there was an area, it never asked for a chunk
+  // that failed to load again, and the areas drew and stayed deaf to a touch
+  // for the rest of the app's life (MapView.hazardTapChunk.test.tsx).
   useEffect(() => {
     if (map === null || onSelectHazardArea === undefined || onRouteTap !== undefined)
       return
-    if (pressPlateOpen || !anyHazardArea) return
+    if (pressPlateOpen || hazardAreas.length === 0) return
     return attachHazardLazily((taps) => taps.attachHazardTaps(map, onSelectHazardArea))
-  }, [map, onSelectHazardArea, onRouteTap, pressPlateOpen, anyHazardArea])
+  }, [map, onSelectHazardArea, onRouteTap, pressPlateOpen, hazardAreas])
 
   // A club closure's tap (the maintainer's S6), under the same suppressions,
   // at the tape's rank (map/clubClosureTaps.ts). No closure, no tap to wire.

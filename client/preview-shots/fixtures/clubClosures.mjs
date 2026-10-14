@@ -198,3 +198,99 @@ export async function routeTrailClosures(page) {
     }),
   )
 }
+
+/** The four invented organizations, in the shape stewards.json has on the
+ *  wire (fixtures/stewards.mjs's seedStewards takes it), so a sheet names
+ *  each closure's publisher rather than its provider code. */
+export function clubClosureStewards() {
+  const steward = (provider, name, key) => ({
+    provider,
+    name,
+    trust: 'authoritative',
+    licence: null,
+    attribution: null,
+    terms: null,
+    terms_source: null,
+    layers: [],
+    keys: [key],
+    support: null,
+    store: null,
+    steward_id: `org:${provider.toLowerCase()}`,
+  })
+  return {
+    stewards: [
+      steward('ENF', 'Example National Forest', 'example_forest_closures'),
+      steward('ESP', 'Example State Parks', 'example_state_parks_status'),
+      steward('ETC', 'Example Trail Club', 'example_trail_club_alerts'),
+      steward('ECP', 'Example County Parks', 'example_county_parks_closures'),
+    ],
+  }
+}
+
+/** How long a drive taps a closure before it gives up: the ceiling
+ *  hazard-area-no-plan.mjs keeps for the same wait, on the same reasoning
+ *  (nobody has timed it on a preview). */
+const TAP_FOR_MS = 45_000
+
+/** A lon/lat as a point on the map canvas at TRAIL_CLOSURES_CAMERA:
+ *  MapLibre's world is 512 px a tile, so at zoom z a degree of longitude is
+ *  512 * 2^z / 360 px, and with no map padding the camera's centre is the
+ *  canvas's centre (hazard-area-no-plan.mjs's canvasPoint). */
+function canvasPoint([lon, lat], box) {
+  const { center, zoom } = TRAIL_CLOSURES_CAMERA
+  const pxPerDegree = (512 * 2 ** zoom) / 360
+  const mercator = (degrees) =>
+    (Math.log(Math.tan(Math.PI / 4 + (degrees * Math.PI) / 360)) * 180) / Math.PI
+  return {
+    x: box.width / 2 + (lon - center[0]) * pxPerDegree,
+    y: box.height / 2 - (mercator(lat) - mercator(center[1])) * pxPerDegree,
+  }
+}
+
+/**
+ * Open the map at TRAIL_CLOSURES_CAMERA and tap `lonLat` until a closure's
+ * sheet opens, then wait for `title` in it; returns the sheet.
+ *
+ * Tapping until the sheet opens is the proof the file, its reader and
+ * map/clubClosureTaps.ts have all landed, since nothing else on screen says
+ * so; a tap before then opens nothing, so tapping early costs nothing.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {[number, number]} lonLat
+ * @param {string} title
+ */
+export async function openClosureSheet(page, lonLat, title) {
+  // lib/cameraMemory.ts's contract, as long-term-closures.mjs seeds it.
+  await page.evaluate((camera) => {
+    sessionStorage.setItem('ourhike:camera', JSON.stringify(camera))
+  }, TRAIL_CLOSURES_CAMERA)
+  await page.reload({ waitUntil: 'load' })
+
+  await page.getByRole('tab', { name: 'Map' }).click()
+  const canvas = page.locator('canvas.maplibregl-canvas').first()
+  await canvas.waitFor()
+  const box = await canvas.boundingBox()
+  if (box === null) throw new Error('the map canvas has no box to tap')
+  const position = canvasPoint(lonLat, box)
+
+  const sheet = page.getByRole('dialog', { name: 'Closure notice' })
+  const deadline = Date.now() + TAP_FOR_MS
+  while (!(await sheet.isVisible())) {
+    if (Date.now() > deadline) {
+      throw new Error(
+        `no "Closure notice" sheet after ${TAP_FOR_MS / 1000} s of taps at ` +
+          `${lonLat.join(', ')}: the closures did not draw, or something drawn ` +
+          'over the mark takes the tap',
+      )
+    }
+    try {
+      await canvas.click({ position, timeout: 5000 })
+    } catch (error) {
+      if (await sheet.isVisible()) break
+      throw error
+    }
+    await sheet.waitFor({ timeout: 1500 }).catch(() => undefined)
+  }
+  await sheet.getByText(title).waitFor()
+  return sheet
+}

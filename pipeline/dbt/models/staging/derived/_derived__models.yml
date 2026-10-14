@@ -40,6 +40,39 @@ models:
       - name: loaded_at
         description: When step_dem_sampling wrote the row, UTC.
         data_tests: [not_null]
+  - name: stg_derived__closure_trail_lines
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a step that writes
+      # one row per line id is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('derived', 'closure_trail_lines')
+          config:
+            severity: warn
+    description: >
+      The release's nearby trail lines that may run inside an area closure,
+      from step_closure_trail_lines's derived.closure_trail_lines: the
+      release, the line's id and the line itself. Read by
+      int_closures__area_trail_cuts, which cuts them against each area
+      (decision 187).
+    columns:
+      - name: closure_trail_line_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name, the release and the line's id.
+        data_tests: [not_null, unique]
+      - name: release
+        description: The data release the line was published in.
+        data_tests: [not_null]
+      - name: line_id
+        description: The line's id in that release's nearby_trails.geojson.
+        data_tests: [not_null]
+      - name: geom
+        description: The line, a LineString or a MultiLineString in lon/lat (EPSG:4326), at 5 decimal places.
+        data_tests: [not_null]
+      - name: loaded_at
+        description: When step_closure_trail_lines wrote the row, UTC.
+        data_tests: [not_null]
   - name: stg_derived__weather_squares
     data_tests:
       # Says how many rows the dedupe dropped, which for one document per

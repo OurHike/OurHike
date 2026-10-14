@@ -105,6 +105,18 @@ of the source's, a line or a point simplified at 10 m
 shape, never one inferred from anything else, so it keeps the rule below. The two older
 files never carry it.
 
+**The map's half: `conditions/trail_closures.json`** (decisions 184 and 187 of
+`pipeline/ELT.md`, polls of 2026-10-11). Every row of `notices.json` that obstructs a
+trail, but ATC's, whose band already draws them, is copied into this file unchanged with
+one key added, `shape`: `line` and `point` keep the `geometry` arm as it is, and an
+`area`'s geometry becomes the MultiLineString of the mapped trail stretches inside the
+area as its source drew it, cut every hour against the release's nearby trail lines
+(`pipeline/dbt/models/intermediate/closures/int_closures__area_trail_cuts.sql`). An area no
+mapped trail runs inside, and a row with no geometry to cross out, stay in `notices.json`'s
+list and are not drawn: the map draws a closure only where its source placed one. The phone
+reads the file at launch, as it reads `hazard_areas.json`, and draws each with the
+crossed-out mark from the day before its `starts_on`; a route still goes through it.
+
 **ATC's rows become `at_miles` and nothing about their behaviour changes.** That arm is
 the existing mechanism, named. The migration is mechanical and the client's mile
 arithmetic — `atcUpdateBanner`, `atcUpdateDistanceAhead`, `closureSpan.ts`'s

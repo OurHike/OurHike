@@ -183,8 +183,10 @@ than as no hazard area (`client/src/lib/publishedNotices.ts`).
 closures onto the conditions clock, where a safety layer belongs** in its shape C, for
 every club closure, and S6 for how each is drawn). It holds the rows of
 `conditions/notices.json` that obstruct a trail, but ATC's, each with a `shape` of
-`line`, `area` or `point`; an area's `place` is the trail stretches inside it, cut every
-hour against the release's own nearby trail lines. The dbt writer
+`line`, `area`, `shade` or `point`; an area's `place` is the trail stretches inside it, cut
+every hour against the release's own trail lines (the nearby ones and the A.T.'s, decision
+192), and a `shade`'s is the area itself, where no mapped trail runs inside (decision 191).
+The dbt writer
 `pub_conditions_trail_closures` writes it, the phone reads it at launch and draws each
 closure with the crossed-out mark, and like `hazard_areas.json` it is written only on the
 dbt path, so a bucket the exporters still publish answers 404 for it. Nothing new is

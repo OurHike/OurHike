@@ -669,15 +669,16 @@ STEPS: list[Step] = [
         lane=HOURLY,
         reads_no_model=True,
     ),
-    # Decision 187 (S6, the maintainer's poll of 2026-10-11): the release's nearby
-    # trail lines whose box meets an area closure's, for
-    # int_closures__area_trail_cuts to cut. The hourly lane reads the lines
+    # Decision 187 (S6, the maintainer's poll of 2026-10-11): the release's trail
+    # lines whose box meets an area closure's, for
+    # int_closures__area_trail_cuts to cut, the A.T.'s own among them since
+    # decision 192. The hourly lane reads the lines
     # prepare_closure_trail_lines.py prepared once per release, which
     # publish-conditions.yml restores from the cache; with none it lands no
     # row and warns, and only the area closures miss that hour. Under
-    # --fixtures it prepares make_dbt_fixtures.py's nearby_trails.geojson
-    # first. Never left out with --without-step: the line and point closures
-    # its writer also carries need no lines.
+    # --fixtures it prepares make_dbt_fixtures.py's nearby_trails.geojson and
+    # trails.geojson first. Never left out with --without-step: the line and
+    # point closures its writer also carries need no lines.
     Step(
         name="step_closure_trail_lines",
         table="closure_trail_lines",
@@ -685,6 +686,8 @@ STEPS: list[Step] = [
         fixture_args=(
             "--geojson",
             "{raw_dir}/closure_trail_lines/nearby_trails.geojson",
+            "--at-geojson",
+            "{raw_dir}/closure_trail_lines/trails.geojson",
             "--release",
             "fixture",
         ),

@@ -19,7 +19,7 @@ import duckdb
 import pytest
 
 from extract import _kinds, _notices
-from extract._contract import all_resources, discover, discover_shared
+from extract._contract import all_resources, discover
 from extract._kinds import WordpressPosts, feed_notices, page_notice, wordpress_posts
 from extract._notices import (
     DATE,

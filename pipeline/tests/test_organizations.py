@@ -465,7 +465,9 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # passport stamp sites (iditarod_passport_stamps): 1 `unresolved`, a challenge list.
     # Wave 6's approved rows (2026-10-11) add 1 `public_gis`: IDOT's bicycle inventory (idot_bike_inventory), registered
     # under IDOT's own trail_orgs.json row (review page 02, P10), whose item states a disclaimer and no terms of use.
-    assert counts == {"maintainer_authorisation": 260, "public_gis": 280, "stated_by_org": 208, "unresolved": 32}
+    # P12's page reader (2026-10-11) adds 1 `public_gis`: Maine Huts & Trails' 4 hut pages (maine_huts_huts), the
+    # points a club prints on its own pages, which decision 69 reads as decision 21a's presumption; held with its row.
+    assert counts == {"maintainer_authorisation": 260, "public_gis": 281, "stated_by_org": 208, "unresolved": 32}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6
@@ -488,7 +490,7 @@ def test_a_public_gis_page_pdf_or_map_route_is_a_clubs_own_points_and_carries_no
     folder_of = {key: club_file.club for club_file in discover() for key in club_file.claims}
     rows = [s for s in REGISTRY["sources"] if s.get("licence_basis") == "public_gis" and s.get("kind") in CLUB_POINTS_KINDS]
 
-    assert len(rows) == 10, sorted(s["key"] for s in rows)
+    assert len(rows) == 11, sorted(s["key"] for s in rows)
     org_type = {s["key"]: types.get(slug_for_folder(folder_of.get(s["key"], ""))) for s in rows}
     not_a_club = {key: kind for key, kind in org_type.items() if kind not in CLUB_TYPES}
     assert not not_a_club, f"decision 69 reaches a club's own points only: {not_a_club}"
